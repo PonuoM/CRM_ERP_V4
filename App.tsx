@@ -2812,7 +2812,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleProcessOrders = async (ordersToProcess: { id: string; customerId?: string; creatorId?: number }[]) => {
+  const handleProcessOrders = async (ordersToProcess: { id: string; customerId?: string; creatorId?: number; items?: LineItem[] }[]) => {
     const orderIds = ordersToProcess.map(o => o.id);
     const activitiesToAdd: Activity[] = [];
     setOrders((prevOrders) => {
@@ -2856,23 +2856,75 @@ const App: React.FC = () => {
     });
     if (true) {
       // Group orders by customer to minimize API calls
-      const customerUpdates: Record<string, { creatorId: number }> = {};
+      const customerUpdates: Record<string, { creatorId: number; bucketId?: number | null }> = {};
+
+      const BASKET_FIND_NEW_OWNER = 38;
+      const BASKET_PERSONAL_1_2M = 39;
 
       for (const orderData of ordersToProcess) {
         try {
           await apiPatchOrder(orderData.id, { orderStatus: "Picking" });
 
           console.log(`Processing order ${orderData.id} for customer update`, { orderData });
-          if (orderData.customerId && orderData.creatorId) {
-            // We prioritize the *latest* order if multiple for same customer in batch? 
-            // Just take the first one encountered or overwrite.
-            customerUpdates[orderData.customerId] = { creatorId: orderData.creatorId };
-            console.log(`Queueing update for customer ${orderData.customerId} to creator ${orderData.creatorId}`);
+
+          // Determine assignment and basket logic
+          // Default: use creatorId from the order (or previous logic)
+          let targetAssignedTo = orderData.creatorId;
+          let targetBucketId: number | null = null;
+          let shouldUpdateAssignment = true;
+
+          // Universal Logic (Admin/Telesale/etc):
+          // Check if any item in the order was created by a Telesale
+          let hasTelesaleItem = false;
+          let telesaleCreatorId: number | null = null;
+
+          // Use items passed in payload
+          if (orderData.items) {
+            for (const item of orderData.items) {
+              if (item.creatorId) {
+                const creatorUser = users.find(u => u.id === item.creatorId);
+                if (creatorUser && creatorUser.role === UserRole.Telesale) {
+                  hasTelesaleItem = true;
+                  telesaleCreatorId = item.creatorId;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (hasTelesaleItem && telesaleCreatorId) {
+            // Case: Has Telesale items (e.g. Telesale upsell or Telesale own sale)
+            // Update assigned_to = user_id of telesale
+            targetAssignedTo = telesaleCreatorId;
+            // Update current_basket_key = 39 (Personal 1-2M)
+            targetBucketId = BASKET_PERSONAL_1_2M;
           } else {
-            console.warn(`Order ${orderData.id} missing info for customer update`, {
-              customerId: orderData.customerId,
-              creatorId: orderData.creatorId
-            });
+            // Case: No Telesale items (e.g. Admin sale, or pure duplicate)
+            // No update assigned_to (keep undefined => no change)
+            shouldUpdateAssignment = false;
+            // Update current_basket_key = 41 (Find New Owner)
+            targetBucketId = BASKET_FIND_NEW_OWNER;
+          }
+
+          if (orderData.customerId) {
+            // Merge multiple orders for same customer? 
+            // If multiple orders in export, last one wins logic.
+            const updatePayload: any = {};
+            if (shouldUpdateAssignment && targetAssignedTo) {
+              updatePayload.creatorId = targetAssignedTo;
+            }
+            if (targetBucketId !== null) {
+              updatePayload.bucketId = targetBucketId;
+            }
+
+            // Only add if there's something to update
+            if (Object.keys(updatePayload).length > 0) {
+              customerUpdates[orderData.customerId] = {
+                ...customerUpdates[orderData.customerId],
+                ...updatePayload
+              };
+              console.log(`Queueing update for customer ${orderData.customerId}`, updatePayload);
+            }
           }
 
         } catch (e) {
@@ -2887,16 +2939,31 @@ const App: React.FC = () => {
 
       Object.entries(customerUpdates).forEach(async ([customerId, data]) => {
         try {
-          // 1. API Update - also reset followup_bonus_remaining to 1 for this sale
-          await updateCustomer(customerId, {
-            assignedTo: data.creatorId,
-            assigned_to: data.creatorId,
+          const payload: any = {
             lifecycleStatus: CustomerLifecycleStatus.Old3Months,
             lifecycle_status: CustomerLifecycleStatus.Old3Months,
             ownershipExpires: ownershipExpiresIso,
             ownership_expires: ownershipExpiresIso,
             followup_bonus_remaining: 1,
-          });
+            // bucket_id: 39 or 41 if set
+          };
+
+          if (data.creatorId) {
+            payload.assignedTo = data.creatorId;
+            payload.assigned_to = data.creatorId;
+          }
+
+          if (data.bucketId) {
+            payload.current_basket_key = data.bucketId;
+            // Also map to bucketType? The API probably handles current_basket_key directly for v2.
+            // We'll send it as custom field if updateCustomer supports it.
+            // checking services/api.ts... updateCustomer takes Partial<Customer>.
+            // Customer interface doesn't have current_basket_key... 
+            // We might need to cast or add it.
+          }
+
+          // 1. API Update
+          await updateCustomer(customerId, payload);
 
           // 2. Local State Update
           setCustomers(prev => prev.map(c => {
