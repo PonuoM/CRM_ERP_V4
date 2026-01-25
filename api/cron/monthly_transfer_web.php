@@ -150,7 +150,7 @@ try {
         // หาลูกค้าที่หมดเวลา
         $limitClause = $limit ? "LIMIT " . ($limit - $processed) : "";
         $customersStmt = $pdo->prepare("
-            SELECT c.customer_id, c.first_name, c.last_name,
+            SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
                    c.current_basket_key, c.distribution_count,
                    DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
                    DATEDIFF(NOW(), COALESCE(
@@ -270,13 +270,14 @@ try {
                         echo " [NULL]";
                     }
 
-                    // 1. Log transition
+                    // 1. Log transition (triggered_by = previous assigned agent)
+                    $assignedTo = $customer['assigned_to'] ?? null;
                     $logTrans = $pdo->prepare("
                         INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
-                        VALUES (?, ?, ?, 'monthly_cron', NULL, ?, NOW())
+                        VALUES (?, ?, ?, 'monthly_cron', ?, ?, NOW())
                     ");
                     $transNote = "Auto-move from '$name' (In: {$daysInBasket}d, Order: {$daysSinceOrder}d) -> $targetBasketName";
-                    $logTrans->execute([$customerId, $basketId, $targetBasketId, $transNote]);
+                    $logTrans->execute([$customerId, $basketId, $targetBasketId, $assignedTo, $transNote]);
 
                     // 2. Log return/fail
                     $logReturn = $pdo->prepare("
@@ -284,12 +285,7 @@ try {
                         VALUES (?, ?, ?, ?, CURDATE(), NOW())
                     ");
                     $reason = "Monthly Fail: Exceeded {$failDays} days in $name";
-                    // assigned_to might be null, usually is
-                    $assignee = !empty($customers[0]['assigned_to']) ? $customers[0]['assigned_to'] : null; 
-                    // Note: efficient checking, but $customer loop variable doesn't have assigned_to in select?
-                    // Let's verify SELECT columns first. 
-                    // It seems SELECT in Line 151 misses assigned_to. Adding fallback or assume NULL.
-                    $logReturn->execute([$customerId, null, $reason, $daysSinceOrder]);
+                    $logReturn->execute([$customerId, $assignedTo, $reason, $daysSinceOrder]);
                     
                     echo " [OK]\n";
                     $totalTransferred++;

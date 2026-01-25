@@ -259,16 +259,18 @@ try {
                             echo " [NULL assigned_to]";
                         }
                         
-                        // 1. Log transition
+                        // 1. Log transition (triggered_by = previous assigned agent)
+                        $assignedTo = $customer['assigned_to'] ?? null;
                         $logStmt = $pdo->prepare("
                             INSERT INTO basket_transition_log 
                             (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
-                            VALUES (?, ?, ?, 'monthly_cron', NULL, ?, NOW())
+                            VALUES (?, ?, ?, 'monthly_cron', ?, ?, NOW())
                         ");
                         $logStmt->execute([
                             $customerId, 
                             $basketId, 
                             $targetBasketId,
+                            $assignedTo,
                             "Exceeded $failDays days. Days since order: $daysSinceOrder. Method: $matchedBy"
                         ]);
 
@@ -277,7 +279,6 @@ try {
                             INSERT INTO basket_return_log (customer_id, previous_assigned_to, reason, days_since_last_order, batch_date, created_at)
                             VALUES (?, ?, ?, ?, CURDATE(), NOW())
                         ");
-                        $assignedTo = $customer['assigned_to'] ?? null;
                         $logReturn->execute([$customerId, $assignedTo, "Monthly Cron Fail ($name)", $daysSinceOrder]);
                         
                         echo " [OK]\n";

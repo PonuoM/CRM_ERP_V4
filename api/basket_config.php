@@ -405,6 +405,7 @@ function handleBasketCustomers($pdo, $companyId)
             c.date_registered,
             c.last_order_date,
             c.total_purchases,
+            c.previous_assigned_to,
             DATEDIFF(CURDATE(), c.last_order_date) as days_since_order,
             DATEDIFF(CURDATE(), c.date_registered) as days_since_registered
         FROM customers c
@@ -493,8 +494,12 @@ function handleBulkAssign($pdo, $companyId)
 
     $pdo->beginTransaction();
     try {
-        // Prepare statement to get old basket key before update
-        $getOldBasketStmt = $pdo->prepare("SELECT current_basket_key FROM customers WHERE customer_id = ? AND company_id = ?");
+        // Prepare statement to get old data before update (basket + current agent + previous agents)
+        $getOldDataStmt = $pdo->prepare("
+            SELECT current_basket_key, assigned_to, previous_assigned_to 
+            FROM customers 
+            WHERE customer_id = ? AND company_id = ?
+        ");
         
         if ($targetBasketId) {
             // Update WITH current_basket_key (ID) AND basket_entered_date if target is resolved
@@ -504,7 +509,8 @@ function handleBulkAssign($pdo, $companyId)
                     date_assigned = NOW(),
                     basket_entered_date = NOW(),
                     lifecycle_status = 'Assigned',
-                    current_basket_key = ?
+                    current_basket_key = ?,
+                    previous_assigned_to = ?
                 WHERE customer_id = ? AND company_id = ?
             ");
         } else {
@@ -514,7 +520,8 @@ function handleBulkAssign($pdo, $companyId)
                 SET assigned_to = ?, 
                     date_assigned = NOW(),
                     basket_entered_date = NOW(),
-                    lifecycle_status = 'Assigned'
+                    lifecycle_status = 'Assigned',
+                    previous_assigned_to = ?
                 WHERE customer_id = ? AND company_id = ?
             ");
         }
@@ -539,14 +546,35 @@ function handleBulkAssign($pdo, $companyId)
             }
 
             try {
-                // Get old basket key before update
-                $getOldBasketStmt->execute([$customerId, $companyId]);
-                $oldBasketKey = $getOldBasketStmt->fetchColumn();
+                // Get old data before update (basket + current agent + previous agents JSON)
+                $getOldDataStmt->execute([$customerId, $companyId]);
+                $oldData = $getOldDataStmt->fetch(PDO::FETCH_ASSOC);
+                $oldBasketKey = $oldData['current_basket_key'] ?? null;
+                $oldAgentId = $oldData['assigned_to'] ?? null;
+                $previousAgentsJson = $oldData['previous_assigned_to'] ?? null;
+                
+                // Build updated previous_assigned_to array
+                $previousAgents = $previousAgentsJson ? json_decode($previousAgentsJson, true) : [];
+                if (!is_array($previousAgents)) {
+                    $previousAgents = [];
+                }
+                
+                // PREVENT DUPLICATE ASSIGNMENT: Skip if this agent was previously assigned to this customer
+                if (in_array((int)$agentId, $previousAgents)) {
+                    $errors[] = "Customer $customerId was previously assigned to agent $agentId - skipping";
+                    continue;
+                }
+                
+                // Add NEW agent (the one being assigned) to the history
+                // This tracks "which agents has this customer been assigned to"
+                $previousAgents[] = (int)$agentId;
+                
+                $newPreviousAgentsJson = json_encode($previousAgents);
                 
                 if ($targetBasketId) {
-                    $stmt->execute([$agentId, $targetBasketId, $customerId, $companyId]);
+                    $stmt->execute([$agentId, $targetBasketId, $newPreviousAgentsJson, $customerId, $companyId]);
                 } else {
-                    $stmt->execute([$agentId, $customerId, $companyId]);
+                    $stmt->execute([$agentId, $newPreviousAgentsJson, $customerId, $companyId]);
                 }
 
                 if ($stmt->rowCount() > 0) {

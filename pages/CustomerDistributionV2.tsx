@@ -283,7 +283,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
     };
 
-    // Generate preview
+    // Generate preview with Smart Allocation
+    // This ensures customers are not assigned to agents they were previously assigned to
     const handleGeneratePreview = () => {
         if (selectedAgents.length === 0) {
             setMessage({ type: 'error', text: 'กรุณาเลือกพนักงานอย่างน้อย 1 คน' });
@@ -295,21 +296,63 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
 
         const count = parseInt(countPerAgent) || 0;
-        const totalToDistribute = Math.min(selectedAgents.length * count, customers.length);
-        const availableCustomers = [...customers];
+        const customerPool = [...customers]; // Make a copy of the pool
         const previewData: DistributionPreview[] = [];
+        const assignedCustomerIds = new Set<string>(); // Track assigned customers
 
+        // Helper function to parse previous_assigned_to (can be JSON string or array)
+        const getPreviousAgents = (customer: Customer): number[] => {
+            const prev = customer.previous_assigned_to;
+            if (!prev) return [];
+            if (Array.isArray(prev)) return prev;
+            if (typeof prev === 'string') {
+                try {
+                    const parsed = JSON.parse(prev);
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                    return [];
+                }
+            }
+            return [];
+        };
+
+        // Round-robin allocation: for each agent, find eligible customers
         for (const agentId of selectedAgents) {
             const agent = agents.find(a => a.id === agentId);
             if (!agent) continue;
 
-            const assignCount = Math.min(count, availableCustomers.length);
-            const agentCustomers = availableCustomers.splice(0, assignCount);
+            const agentCustomers: Customer[] = [];
+
+            // Find customers that:
+            // 1. Are not yet assigned in this batch
+            // 2. Were NOT previously assigned to this agent
+            for (const customer of customerPool) {
+                if (agentCustomers.length >= count) break;
+
+                const customerId = customer.customer_id?.toString() || customer.id;
+                if (assignedCustomerIds.has(customerId)) continue;
+
+                const previousAgents = getPreviousAgents(customer);
+                if (previousAgents.includes(agentId)) continue; // Skip if previously assigned
+
+                agentCustomers.push(customer);
+                assignedCustomerIds.add(customerId);
+            }
 
             previewData.push({
                 agentId,
                 agentName: `${agent.firstName} ${agent.lastName}`,
                 customers: agentCustomers
+            });
+        }
+
+        // Check if any agent got less than requested
+        const shortfall = previewData.filter(p => p.customers.length < count);
+        if (shortfall.length > 0) {
+            const names = shortfall.map(p => `${p.agentName} (${p.customers.length}/${count})`).join(', ');
+            setMessage({
+                type: 'error',
+                text: `⚠️ บางพนักงานได้ลูกค้าน้อยกว่าที่กำหนดเนื่องจากมีลูกค้าซ้ำ: ${names}`
             });
         }
 
