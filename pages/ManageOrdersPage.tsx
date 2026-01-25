@@ -113,7 +113,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         payloadForProcess.push({
           id: fullOrder.id,
           customerId: fullOrder.customerId,
-          creatorId: fullOrder.creatorId
+          creatorId: fullOrder.creatorId,
+          items: fullOrder.items
         });
 
       } catch (err) {
@@ -720,6 +721,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         parentOrderId: typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null ? String(it.parent_order_id) : undefined,
         netTotal: Number(it.net_total ?? 0),
         isPromotionParent: !!(it.is_promotion_parent ?? 0),
+        creatorId: it.creator_id ? Number(it.creator_id) : (it.creatorId ? Number(it.creatorId) : undefined),
       })) : [],
       shippingCost: Number(r.shipping_cost ?? 0),
       billDiscount: Number(r.bill_discount ?? 0),

@@ -2091,7 +2091,7 @@ function handle_customers(PDO $pdo, ?string $id): void
             $current = null;
             try {
                 // Try to find by customer_id (PK) or customer_ref_id
-                $st = $pdo->prepare('SELECT customer_id, phone, company_id, assigned_to FROM customers WHERE customer_id=? OR customer_ref_id=? LIMIT 1');
+                $st = $pdo->prepare('SELECT customer_id, phone, company_id, assigned_to, current_basket_key FROM customers WHERE customer_id=? OR customer_ref_id=? LIMIT 1');
                 $st->execute([$id, $id]);
                 $current = $st->fetch();
 
@@ -2174,8 +2174,29 @@ function handle_customers(PDO $pdo, ?string $id): void
                     'is_in_waiting_basket=COALESCE(?, is_in_waiting_basket)',
                     'waiting_basket_start_date=COALESCE(?, waiting_basket_start_date)',
                     'is_blocked=COALESCE(?, is_blocked)',
-                    'followup_bonus_remaining=COALESCE(?, followup_bonus_remaining)'
+                    'followup_bonus_remaining=COALESCE(?, followup_bonus_remaining)',
+                    'current_basket_key=COALESCE(?, current_basket_key)'
                 ];
+
+                // Detect Basket Transition
+                $newBasketKey = $in['current_basket_key'] ?? $in['currentBasketKey'] ?? null;
+                $oldBasketKey = $current['current_basket_key'];
+
+                if ($newBasketKey !== null) {
+                    $updateFields[] = 'basket_entered_date=NOW()';
+
+                    // Log Transition
+                    // transition_type ENUM('sale', 'fail', 'monthly_cron', 'manual', 'redistribute')
+                    // Updates via API endpoint considered 'manual'
+                    $authUser = get_authenticated_user($pdo);
+                    $triggerUserId = $authUser['id'] ?? null;
+
+                    $logSql = "INSERT INTO basket_transition_log 
+                               (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at) 
+                               VALUES (?, ?, ?, 'manual', ?, 'Updated via API', NOW())";
+                    $logStmt = $pdo->prepare($logSql);
+                    $logStmt->execute([$id, $oldBasketKey, $newBasketKey, $triggerUserId]);
+                }
 
                 $params = [
                     $in['firstName'] ?? null,
@@ -2206,6 +2227,8 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $in['waiting_basket_start_date'] ?? null,
                     array_key_exists('is_blocked', $in) ? (int) $in['is_blocked'] : null,
                     array_key_exists('followup_bonus_remaining', $in) ? (int) $in['followup_bonus_remaining'] : null,
+                    // Check both snake_case and camelCase
+                    $newBasketKey,
                 ];
 
                 if ($newCustomerRefId) {
