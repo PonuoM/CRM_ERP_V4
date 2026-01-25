@@ -338,7 +338,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     body: JSON.stringify({
                         assignments,
                         source_basket_key: activeBasket,
-                        target_basket_key: targetBasket || undefined
+                        target_basket_key: targetBasket || undefined,
+                        triggered_by: currentUser?.userId
                     })
                 }
             );

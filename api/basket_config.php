@@ -522,8 +522,8 @@ function handleBulkAssign($pdo, $companyId)
         // Prepare statement for basket transition log
         $logStmt = $pdo->prepare("
             INSERT INTO basket_transition_log 
-            (customer_id, from_basket_key, to_basket_key, transition_type, created_at) 
-            VALUES (?, ?, ?, 'redistribute', NOW())
+            (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at) 
+            VALUES (?, ?, ?, 'redistribute', ?, 'Distributed via Distribution V2', NOW())
         ");
 
         $successCount = 0;
@@ -552,11 +552,12 @@ function handleBulkAssign($pdo, $companyId)
                 if ($stmt->rowCount() > 0) {
                     $successCount++;
                     
-                    // Log basket transition
+                    // Log basket transition (triggered_by = agent receiving customer)
                     $logStmt->execute([
                         $customerId, 
                         $oldBasketKey ?: null, 
-                        $targetBasketId ?: null
+                        $targetBasketId ?: null,
+                        $agentId
                     ]);
                 }
             } catch (Exception $e) {
@@ -678,8 +679,8 @@ function handleReclaimCustomers($pdo, $companyId)
             // Log basket transitions for each customer
             $logStmt = $pdo->prepare("
                 INSERT INTO basket_transition_log 
-                (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, created_at) 
-                VALUES (?, ?, ?, 'manual', ?, NOW())
+                (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at) 
+                VALUES (?, ?, ?, 'manual', ?, 'Reclaimed via Distribution V2', NOW())
             ");
             foreach ($affectedCustomerIds as $custId) {
                 $logStmt->execute([$custId, $dashboardBasketId, $targetBasketId, $agentId]);
