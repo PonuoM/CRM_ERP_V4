@@ -1983,8 +1983,11 @@ function handle_customers(PDO $pdo, ?string $id): void
             $phoneCandidate = trim($in['phone'] ?? '');
             $companyCandidate = $in['companyId'] ?? null;
             if ($phoneCandidate !== '' && $companyCandidate) {
-                $dupStmt = $pdo->prepare('SELECT first_name, last_name FROM customers WHERE phone = ? AND company_id = ? LIMIT 1');
-                $dupStmt->execute([$phoneCandidate, $companyCandidate]);
+                // Normalize: remove leading 0 for comparison
+                $normalizedPhone = ltrim($phoneCandidate, '0');
+                // Check if any phone in DB (normalized) matches this normalized input
+                $dupStmt = $pdo->prepare("SELECT first_name, last_name FROM customers WHERE TRIM(LEADING '0' FROM phone) = ? AND company_id = ? LIMIT 1");
+                $dupStmt->execute([$normalizedPhone, $companyCandidate]);
                 $duplicate = $dupStmt->fetch();
                 if ($duplicate) {
                     json_response([
@@ -1994,15 +1997,54 @@ function handle_customers(PDO $pdo, ?string $id): void
                 }
             }
             // Updated INSERT to use customer_ref_id and let customer_id be auto-increment
+            $customerRefId = $in['customerId'] ?? $in['id']; // This is the string ID (CUS-...)
+
+            // Handle Duplicate Customer Ref ID
+            // Logic: If Ref ID exists but phone is unique (checked above), generate a new Ref ID with suffix
+            $checkIdStmt = $pdo->prepare("SELECT COUNT(*) FROM customers WHERE customer_ref_id = ?");
+            $checkIdStmt->execute([$customerRefId]);
+            if ($checkIdStmt->fetchColumn() > 0) {
+                // ID exists, try to generate a unique one
+                // Expected format: CUS-{PHONE}-{COMPANY} or CUS-{PHONE}
+                // We want to insert suffix after Phone: CUS-{PHONE}_{SUFFIX}-{COMPANY}
+
+                $baseId = $customerRefId;
+                $suffix = 2;
+                $maxTries = 10;
+                $foundUnique = false;
+
+                // Regex to split ID: CUS-(PhonePart)(-(CompanyPart))?
+                if (preg_match('/^(CUS-[^-]+)(?:(-[0-9]+))?$/', $baseId, $matches)) {
+                    $prefix = $matches[1]; // CUS-0812345678
+                    $compSuffix = $matches[2] ?? ''; // -5 or empty
+
+                    while ($suffix <= $maxTries) {
+                        $newId = $prefix . '_' . $suffix . $compSuffix;
+                        $checkIdStmt->execute([$newId]);
+                        if ($checkIdStmt->fetchColumn() == 0) {
+                            $customerRefId = $newId;
+                            $foundUnique = true;
+                            // Log the auto-adjustment
+                            error_log("Duplicate Ref ID detected ($baseId). Generated new ID: $customerRefId");
+                            break;
+                        }
+                        $suffix++;
+                    }
+                }
+
+                // If regex didn't match or max tries reached, we stick to original and let DB error (or could fail gracefully)
+                // But usually this will fix the "Duplicate entry" error for changed numbers.
+            }
+
             error_log(json_encode([
                 'action' => 'create_customer',
-                'customerId' => $in['customerId'] ?? $in['id'] ?? null,
+                'customerId' => $customerRefId,
                 'phone' => $in['phone'] ?? null,
                 'backupPhone' => $in['backupPhone'] ?? null,
             ]));
             $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             $params = [
-                $in['customerId'] ?? $in['id'], // This is the string ID (CUS-...)
+                $customerRefId,
                 $in['firstName'] ?? '',
                 $in['lastName'] ?? '',
                 $in['phone'] ?? '',
@@ -2075,8 +2117,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                 if ($cleanedPhone === '') {
                     json_response(['error' => 'INVALID_PHONE', 'message' => 'Invalid phone number provided'], 400);
                 }
-                $duplicateStmt = $pdo->prepare('SELECT first_name, last_name FROM customers WHERE phone = ? AND company_id = ? AND customer_id <> ? LIMIT 1');
-                $duplicateStmt->execute([$newPhone, $companyId, $id]);
+
+                // Normalize: remove leading 0 for comparison
+                $normalizedPhone = ltrim($newPhone, '0');
+                $duplicateStmt = $pdo->prepare("SELECT first_name, last_name FROM customers WHERE TRIM(LEADING '0' FROM phone) = ? AND company_id = ? AND customer_id <> ? LIMIT 1");
+                $duplicateStmt->execute([$normalizedPhone, $companyId, $id]);
                 $duplicate = $duplicateStmt->fetch();
                 if ($duplicate) {
                     json_response([

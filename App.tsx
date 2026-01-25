@@ -3263,9 +3263,17 @@ const App: React.FC = () => {
           customerIdForOrder = newCustomer.id;
         }
 
-      } catch (e) {
+      } catch (e: any) {
         console.error("create customer API failed", e);
-        alert("ไม่สามารถสร้างลูกค้าได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง");
+        // apiFetch attaches the response data to e.data
+        const errData = e?.data || e;
+        if (errData?.error === 'DUPLICATE_PHONE' && errData?.message) {
+          alert(errData.message);
+        } else if (errData?.message) {
+          alert(`ไม่สามารถสร้างลูกค้าได้: ${errData.message}`);
+        } else {
+          alert("ไม่สามารถสร้างลูกค้าได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง");
+        }
         return; // Don't proceed with order creation if customer creation fails
       }
       setCustomers((prev) => [newCustomer, ...prev]);
