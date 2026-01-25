@@ -19,7 +19,7 @@ import {
 } from "@/utils/basketUtils";
 import { useBasketConfig, groupCustomersByDynamicBaskets, DynamicBasketConfig } from "@/hooks/useBasketConfig";
 import { formatThaiDate, getDaysSince, formatRelativeTime } from "@/utils/dateUtils";
-import { listCustomers, apiFetch } from "@/services/api";
+import { listCustomers, apiFetch, getBatchUpsellStatus } from "@/services/api";
 import { mapCustomerFromApi } from "@/utils/customerMapper";
 // NOTE: syncCustomers and db removed - Dashboard now uses propsCustomers directly
 import usePersistentState from "@/utils/usePersistentState";
@@ -49,12 +49,30 @@ const getContrastColor = (hexColor: string): string => {
     return (r * 299 + g * 587 + b * 114) / 1000 > 128 ? '#000000' : '#FFFFFF';
 };
 
-const TagColumn: React.FC<{ customer: Customer; openModal: (type: ModalType, data: any) => void; }> = ({ customer, openModal }) => {
+const TagColumn: React.FC<{
+    customer: Customer;
+    openModal: (type: ModalType, data: any) => void;
+    hasUpsell?: boolean;
+    upsellDone?: boolean;
+}> = ({ customer, openModal, hasUpsell, upsellDone }) => {
     const visibleTags = customer.tags ? customer.tags.slice(0, 2) : [];
     const hiddenCount = (customer.tags?.length || 0) - visibleTags.length;
 
     return (
         <div className="flex items-center flex-wrap gap-1">
+            {/* Upsell Tag - Orange, pulsing */}
+            {hasUpsell && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap bg-gradient-to-r from-red-500 to-orange-500 text-white animate-pulse">
+                    🔥 Upsell
+                </span>
+            )}
+
+            {/* Upsell Done Tag - Green */}
+            {upsellDone && !hasUpsell && (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap bg-green-100 text-green-800 border border-green-300">
+                    ✓ Upsell
+                </span>
+            )}
 
             {visibleTags.map((tag) => {
                 const tagColor = tag.color || '#9333EA';
@@ -262,14 +280,6 @@ const UpcomingAppointmentsPanel: React.FC<{
             >
                 <Calendar size={18} />
                 <span className="font-medium">นัดหมายใกล้ถึง</span>
-                {upcomingAppointments.length > 0 && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${isFilterActive
-                        ? "bg-green-600 text-white"
-                        : "bg-blue-600 text-white"
-                        }`}>
-                        {upcomingAppointments.length}
-                    </span>
-                )}
                 {isFilterActive && (
                     <span className="text-xs text-green-600 font-medium">(กำลังกรอง)</span>
                 )}
@@ -342,7 +352,9 @@ const CustomerRow = React.memo(({
     lastCall,
     hasAppointment,
     callCount,
-    daysUntilAppointment
+    daysUntilAppointment,
+    hasUpsell,
+    upsellDone
 }: {
     customer: Customer;
     onViewCustomer: (c: Customer) => void;
@@ -352,6 +364,8 @@ const CustomerRow = React.memo(({
     hasAppointment?: boolean;
     callCount: number;
     daysUntilAppointment?: number;
+    hasUpsell?: boolean;
+    upsellDone?: boolean;
 }) => {
     const daysSince = getDaysSince(customer.lastOrderDate);
 
@@ -410,7 +424,7 @@ const CustomerRow = React.memo(({
                 </div>
             </td>
             <td className="px-4 py-3">
-                <MemoizedTagColumn customer={customer} openModal={openModal} />
+                <MemoizedTagColumn customer={customer} openModal={openModal} hasUpsell={hasUpsell} upsellDone={upsellDone} />
             </td>
             <td className="px-4 py-3 text-center">
                 <div className="flex items-center justify-center gap-2">
@@ -457,6 +471,8 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
     // State
     const [localCustomers, setLocalCustomers] = useState<Customer[]>([]);
+
+
 
     // Fetch dynamic basket configs from API
     const { configs: basketConfigs, loading: basketConfigLoading } = useBasketConfig(user.companyId, 'dashboard_v2');
@@ -680,6 +696,8 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
         fetchCustomers();
     }, [user.id, user.companyId, refreshTrigger, propsCustomers]);
+
+
 
     // NOTE: Dashboard now fetches its own data if props are empty
 
@@ -1141,14 +1159,6 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     >
                         <Calendar size={18} />
                         <span className="font-medium">เลยนัดหมาย ⚠</span>
-                        {overdueAppointmentCount > 0 && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${filterByOverdueAppointment
-                                ? "bg-red-600 text-white"
-                                : "bg-red-500 text-white"
-                                }`}>
-                                {overdueAppointmentCount}
-                            </span>
-                        )}
                         {filterByOverdueAppointment && (
                             <span className="text-xs text-red-600 font-medium">(กำลังกรอง)</span>
                         )}

@@ -155,6 +155,9 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   const [localTags, setLocalTags] = useState<any[]>(customer.tags || []);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
+  // Track order IDs that have upsell items (for immediate badge display)
+  const [upsellDoneOrderIds, setUpsellDoneOrderIds] = useState<Set<string>>(new Set());
+
   const mapCall = (r: any): CallHistory => ({
     id: r.id,
     customerId: r.customer_id,
@@ -333,6 +336,36 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
     return () => { mounted = false; };
   }, [customer.id, customer.pk, customer.phone, refreshTrigger]);
+
+  // Auto-fetch items for Pending orders to check upsell status immediately
+  useEffect(() => {
+    const pendingOrders = localOrders.filter(o => o.orderStatus === 'Pending');
+    if (pendingOrders.length === 0) return;
+
+    const checkUpsellForOrders = async () => {
+      const upsellOrderIds = new Set<string>();
+
+      for (const order of pendingOrders) {
+        try {
+          const response = await getOrder(order.id);
+          const items = response?.items ?? [];
+          // Check if any item has different creator_id than order creator
+          const hasUpsellItems = items.some(
+            (item: any) => item.creator_id && order.creatorId && String(item.creator_id) !== String(order.creatorId)
+          );
+          if (hasUpsellItems) {
+            upsellOrderIds.add(order.id);
+          }
+        } catch (err) {
+          // Ignore errors, just don't show badge for this order
+        }
+      }
+
+      setUpsellDoneOrderIds(upsellOrderIds);
+    };
+
+    checkUpsellForOrders();
+  }, [localOrders]);
 
   // Check upsell eligibility
   useEffect(() => {
@@ -970,6 +1003,16 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
           </div>
         )}
 
+        {/* Upsell Done Badge - Show when has upsell items and still has Pending orders */}
+        {!hasUpsell && !upsellLoading && upsellDoneOrderIds.size > 0 && localOrders.some(o => o.orderStatus === 'Pending') && (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <div className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-green-100 text-green-800 border border-green-300 shadow-md">
+              <Check size={18} className="mr-2" />
+              Upsell สำเร็จแล้ว!
+            </div>
+          </div>
+        )}
+
 
         <button
           onClick={onClose}
@@ -1329,6 +1372,13 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                               const loading = detail?.loading;
                               const error = detail?.error;
 
+                              // Check if order has upsell items (items with different creator_id than order creator)
+                              const hasUpsellItems = items.some(
+                                (item: any) => item.creator_id && o.creatorId && String(item.creator_id) !== String(o.creatorId)
+                              );
+                              // Use either pre-fetched state or computed from expanded items
+                              const isUpsellDone = upsellDoneOrderIds.has(o.id) || hasUpsellItems;
+
                               return (
                                 <React.Fragment key={o.id}>
                                   <tr className="border-b last:border-0">
@@ -1347,7 +1397,15 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                       )}
                                     </td>
                                     <td className="py-2 px-2">
-                                      {getStatusChip(o.orderStatus)}
+                                      <div className="flex items-center gap-1">
+                                        {getStatusChip(o.orderStatus)}
+                                        {isUpsellDone && (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                            <Check size={12} className="mr-0.5" />
+                                            Upsell
+                                          </span>
+                                        )}
+                                      </div>
                                     </td>
                                     <td className="py-2 px-2">
                                       <button

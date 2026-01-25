@@ -4099,6 +4099,15 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $hasBankAccountId = in_array('bank_account_id', $existingColumns);
                 $hasTransferDate = in_array('transfer_date', $existingColumns);
                 $hasShippingProvider = in_array('shipping_provider', $existingColumns);
+                $hasBasketKeyAtSale = in_array('basket_key_at_sale', $existingColumns);
+
+                // Fetch current_basket_key from customer for statistics
+                $customerBasketKey = null;
+                if ($hasBasketKeyAtSale && !empty($in['customerId'])) {
+                    $basketStmt = $pdo->prepare('SELECT current_basket_key FROM customers WHERE customer_id = ?');
+                    $basketStmt->execute([$in['customerId']]);
+                    $customerBasketKey = $basketStmt->fetchColumn() ?: null;
+                }
 
                 // Build INSERT query dynamically based on available columns
                 $columns = ['id', 'customer_id', 'company_id', 'creator_id', 'order_date', 'delivery_date', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'recipient_first_name', 'recipient_last_name'];
@@ -4117,6 +4126,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
                 // Always add customer_type as it was added via migration
                 $columns[] = 'customer_type';
+                // Add basket_key_at_sale if column exists
+                if ($hasBasketKeyAtSale) {
+                    $columns[] = 'basket_key_at_sale';
+                }
 
                 foreach ($columns as $col) {
                     $placeholders[] = '?';
@@ -4300,6 +4313,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $values[] = isset($in['transferDate']) && $in['transferDate'] !== null && $in['transferDate'] !== '' ? $in['transferDate'] : null;
                 }
                 $values[] = $in['customerStatus'] ?? $in['customerType'] ?? null;
+                // Add basket_key_at_sale value
+                if ($hasBasketKeyAtSale) {
+                    $values[] = $customerBasketKey;
+                }
 
                 try {
                     $stmt->execute($values);
@@ -4345,7 +4362,7 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 if (!empty($in['items']) && is_array($in['items'])) {
                     // Two-phase insert to satisfy FK parent_item_id -> order_items(id)
-                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id, basket_key_at_sale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
 
                     $computeNetValues = function (array $item): array {
                         $quantity = isset($item['quantity']) ? (int) $item['quantity'] : 0;
@@ -4402,6 +4419,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 null,
                                 1,
                                 $creatorId,
+                                $customerBasketKey,
                             ]);
                             $dbId = (int) $pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -4434,6 +4452,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 null,
                                 0,
                                 $creatorId,
+                                $customerBasketKey,
                             ]);
                             $dbId = (int) $pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -4469,6 +4488,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $resolved,
                                 0,
                                 $creatorId,
+                                $customerBasketKey,
                             ]);
                             $dbId = (int) $pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -10093,6 +10113,8 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                 // 1. order_status = 'Pending'
                 // 2. order_date is within the last 24 hours
                 // 3. No upsell items exist yet (no order_items with creator_id != order.creator_id)
+                // 4. creator_id != assigned_to (creator is not the owner)
+                // 5. creator role is Telesale (6) or Supervisor (7)
                 $excludeCreatorClause = '';
                 $params = [$customerId];
                 if ($requesterId !== null) {
@@ -10104,7 +10126,9 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                 $stmt = $pdo->prepare("
                     SELECT COUNT(*) as eligible_count
                     FROM orders o
-                    WHERE o.customer_id = ?
+                    INNER JOIN customers c ON (c.customer_ref_id = o.customer_id OR c.customer_id = o.customer_id)
+                    LEFT JOIN users u ON u.id = o.creator_id
+                    WHERE (c.customer_id = ? OR c.customer_ref_id = ?)
                     AND o.order_status = 'Pending'
                     AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
                     {$excludeCreatorClause}
@@ -10114,7 +10138,12 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                         WHERE oi.parent_order_id = o.id
                         AND oi.creator_id != o.creator_id
                     )
+                    AND c.assigned_to IS NOT NULL
+                    AND c.assigned_to > 0
+                    AND o.creator_id != c.assigned_to
                 ");
+                // Add customerId twice for both conditions
+                array_unshift($params, $customerId);
                 $stmt->execute($params);
                 $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -10135,6 +10164,8 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                 // 1. order_status = 'Pending'
                 // 2. order_date is within the last 24 hours
                 // 3. No upsell items exist yet (no order_items with creator_id != order.creator_id)
+                // 4. creator_id != assigned_to (creator is not the owner)
+                // 5. creator role is Telesale (6) or Supervisor (7)
                 $excludeCreatorClause = '';
                 $params = [$customerId];
                 if ($requesterId !== null) {
@@ -10150,8 +10181,10 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                            o.recipient_first_name, o.recipient_last_name,
                            COUNT(oi.id) as item_count
                     FROM orders o
+                    INNER JOIN customers c ON (c.customer_ref_id = o.customer_id OR c.customer_id = o.customer_id)
+                    LEFT JOIN users u ON u.id = o.creator_id
                     LEFT JOIN order_items oi ON oi.parent_order_id = o.id
-                    WHERE o.customer_id = ?
+                    WHERE (c.customer_id = ? OR c.customer_ref_id = ?)
                     AND o.order_status = 'Pending'
                     AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
                     {$excludeCreatorClause}
@@ -10161,9 +10194,14 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                         WHERE oi2.parent_order_id = o.id
                         AND oi2.creator_id != o.creator_id
                     )
+                    AND c.assigned_to IS NOT NULL
+                    AND c.assigned_to > 0
+                    AND o.creator_id != c.assigned_to
                     GROUP BY o.id
                     ORDER BY o.order_date DESC
                 ");
+                // Add customerId twice for both conditions
+                array_unshift($params, $customerId);
                 $stmt->execute($params);
                 $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -10192,6 +10230,76 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                 }
 
                 json_response($orders);
+            } else if ($id === 'batch-status') {
+                // Batch check upsell status for multiple customers
+                // Returns: { customerId: { hasUpsell: bool, upsellDone: bool } }
+                $userId = isset($_GET['userId']) ? (int) $_GET['userId'] : null;
+                $customerIds = isset($_GET['customerIds']) ? explode(',', $_GET['customerIds']) : [];
+                
+                if (empty($customerIds)) {
+                    json_response(['error' => 'CUSTOMER_IDS_REQUIRED'], 400);
+                    return;
+                }
+
+                // Limit to 500 customers per request
+                $customerIds = array_slice($customerIds, 0, 500);
+                $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+
+                // Query 1: Get customers with eligible upsell orders (hasUpsell)
+                // Order is Pending, within 24h, creator != assigned_to, no upsell items yet
+                $upsellEligibleParams = $customerIds;
+                if ($userId !== null) {
+                    $upsellEligibleParams[] = $userId;
+                }
+                
+                $excludeCreatorClause = $userId !== null ? " AND o.creator_id != ?" : "";
+                
+                $stmt = $pdo->prepare("
+                    SELECT DISTINCT c.customer_id
+                    FROM orders o
+                    INNER JOIN customers c ON (c.customer_ref_id = o.customer_id OR c.customer_id = o.customer_id)
+                    WHERE c.customer_id IN ({$placeholders})
+                    AND o.order_status = 'Pending'
+                    AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    AND c.assigned_to IS NOT NULL
+                    AND c.assigned_to > 0
+                    AND o.creator_id != c.assigned_to
+                    {$excludeCreatorClause}
+                    AND NOT EXISTS (
+                        SELECT 1 FROM order_items oi
+                        WHERE oi.parent_order_id = o.id
+                        AND oi.creator_id != o.creator_id
+                    )
+                ");
+                $stmt->execute($upsellEligibleParams);
+                $upsellEligible = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+                // Query 2: Get customers with upsell done orders (has upsell items, still Pending)
+                $stmt2 = $pdo->prepare("
+                    SELECT DISTINCT c.customer_id
+                    FROM orders o
+                    INNER JOIN customers c ON (c.customer_ref_id = o.customer_id OR c.customer_id = o.customer_id)
+                    WHERE c.customer_id IN ({$placeholders})
+                    AND o.order_status = 'Pending'
+                    AND EXISTS (
+                        SELECT 1 FROM order_items oi
+                        WHERE oi.parent_order_id = o.id
+                        AND oi.creator_id != o.creator_id
+                    )
+                ");
+                $stmt2->execute($customerIds);
+                $upsellDone = $stmt2->fetchAll(PDO::FETCH_COLUMN);
+
+                // Build result map
+                $result = [];
+                foreach ($customerIds as $cid) {
+                    $result[$cid] = [
+                        'hasUpsell' => in_array($cid, $upsellEligible),
+                        'upsellDone' => in_array($cid, $upsellDone)
+                    ];
+                }
+
+                json_response($result);
             } else {
                 json_response(['error' => 'INVALID_ENDPOINT'], 404);
             }
@@ -10265,6 +10373,12 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
 
                 $pdo->beginTransaction();
                 try {
+                    // Fetch current_basket_key from customer for upsell statistics
+                    $upsellBasketKey = null;
+                    $basketStmt = $pdo->prepare('SELECT current_basket_key FROM customers WHERE customer_id = ?');
+                    $basketStmt->execute([$order['customer_id']]);
+                    $upsellBasketKey = $basketStmt->fetchColumn() ?: null;
+
                     $insertedItems = [];
                     // Initialize with existing total amount
                     $newTotalAmount = isset($order['total_amount']) ? (float) $order['total_amount'] : 0.0;
@@ -10322,13 +10436,13 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                         // Generate order_id (sub order ID)
                         $subOrderId = "{$orderId}-{$boxNumber}";
 
-                        // Insert order item with creator_id
+                        // Insert order item with creator_id and basket_key_at_sale
                         $itemStmt = $pdo->prepare("
                             INSERT INTO order_items (
                                 order_id, parent_order_id, product_id, product_name, quantity,
                                 price_per_unit, discount, net_total, is_freebie, box_number,
-                                promotion_id, parent_item_id, is_promotion_parent, creator_id
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                promotion_id, parent_item_id, is_promotion_parent, creator_id, basket_key_at_sale
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ");
 
                         $itemStmt->execute([
@@ -10345,7 +10459,8 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                             $promotionId,
                             $parentItemId,
                             $isPromotionParent,
-                            $creatorId
+                            $creatorId,
+                            $upsellBasketKey
                         ]);
 
                         $itemId = $pdo->lastInsertId();

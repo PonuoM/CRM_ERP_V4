@@ -1626,6 +1626,17 @@ export async function addUpsellItems(orderId: string, creatorId: number, items: 
   });
 }
 
+export async function getBatchUpsellStatus(
+  customerIds: (string | number)[],
+  userId?: number,
+): Promise<Record<string, { hasUpsell: boolean; upsellDone: boolean }>> {
+  const qs = new URLSearchParams({ customerIds: customerIds.map(String).join(',') });
+  if (userId != null) {
+    qs.set("userId", String(userId));
+  }
+  return apiFetch(`upsell/batch-status?${qs.toString()}`);
+}
+
 export async function listSentOrders(params: {
   month?: number;
   year?: number;
