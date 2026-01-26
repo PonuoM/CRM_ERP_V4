@@ -837,6 +837,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         filters.endDate,
       )}&bank_account_id=${encodeURIComponent(filters.bankAccountId)}`;
       const data: any = await apiFetch(url);
+      console.log("Reconcile Fetch Data:", data);
       if (!data?.ok) {
         throw new Error(data?.error || "ไม่สามารถดึงข้อมูลได้");
       }
@@ -854,9 +855,12 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           description: s.description,
         }))
         : [];
+      console.log("Mapped Statements:", statements);
       const normalizedOrders = normalizeOrders(data.orders || []);
       setAvailableOrders(normalizedOrders);
-      setStatementRows(autoMatchRows(statements, normalizedOrders));
+      const rows = autoMatchRows(statements, normalizedOrders);
+      console.log("AutoMatched Rows:", rows);
+      setStatementRows(rows);
     } catch (err: any) {
       setStatusMessage({
         type: "error",
@@ -1918,7 +1922,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                 : "bg-gray-100 text-gray-600"
                 }`}
             >
-              {statementRows.length}
+              {tabCounts.transfers}
             </span>
           </button>
           <button
@@ -1933,14 +1937,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           >
             <CheckCircle size={16} />
             <span>Approve COD</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "transfers"
-                ? "bg-green-100 text-green-600"
-                : "bg-gray-100 text-gray-600"
-                }`}
-            >
-              {tabCounts.transfers}
-            </span>
+            {/* Count not available via API yet */}
           </button>
           <button
             onClick={() => {
