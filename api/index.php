@@ -3690,6 +3690,16 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $parent = $data[$jsonKey[0]] ?? [];
                         if (isset($parent[$jsonKey[1]])) {
                             $val = $parent[$jsonKey[1]];
+                        } else {
+                            // FAST FIX: Also check top-level keys if nested not found
+                            // e.g. if shippingAddress.street not found, check data['street'] or data['recipient_first_name']
+                            // Use the second part of jsonKey (e.g. 'street') or dbCol
+                            $fallbackKey = $jsonKey[1];
+                            if (array_key_exists($fallbackKey, $data)) {
+                                $val = $data[$fallbackKey];
+                            } elseif (array_key_exists($dbCol, $data)) {
+                                $val = $data[$dbCol];
+                            }
                         }
                     } else {
                         // Check both camelCase and snake_case versions
