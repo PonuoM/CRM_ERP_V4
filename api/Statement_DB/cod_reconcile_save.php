@@ -81,7 +81,7 @@ function ensure_reconcile_tables(PDO $pdo): void
   } catch (PDOException $e) {
     // Ignore if the index does not exist.
   }
-  
+
 }
 
 // RECONCILE_CHARSET / RECONCILE_COLLATION already defined above
@@ -185,7 +185,7 @@ try {
   ensure_reconcile_tables($pdo);
 
   $pdo->beginTransaction();
-  
+
   error_log("cod_reconcile_save: Starting reconciliation for COD doc {$codDocumentId}, statement {$statementLogId}");
 
   // 1. Validate and get COD document
@@ -246,7 +246,7 @@ try {
   if (empty($codRecords)) {
     throw new RuntimeException("No COD records with order_id found for this document");
   }
-  
+
   error_log("cod_reconcile_save: Found " . count($codRecords) . " COD records");
 
   // 4. Get bank account info
@@ -292,9 +292,11 @@ try {
   // 6. Create reconcile logs for each COD record
   $insertLogStmt = $pdo->prepare("
     INSERT INTO statement_reconcile_logs
-      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, auto_matched)
+      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, auto_matched, 
+       reconcile_type, confirmed_at, confirmed_order_id, confirmed_order_amount, confirmed_payment_method, confirmed_action)
     VALUES
-      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :autoMatched)
+      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :autoMatched,
+       'Order', NOW(), :orderId, :confirmedAmount, 'COD', 'Confirmed')
   ");
 
   $orderUpdateStmt = $pdo->prepare("
@@ -324,7 +326,7 @@ try {
   $existingReconCache = [];
   $statementAmount = (float) $stmtInfo["amount"];
   $totalCodAmount = (float) $codDoc["total_input_amount"];
-  
+
   // Calculate proportional amounts first
   $allocatedAmounts = [];
   $totalAllocated = 0.0;
@@ -340,15 +342,15 @@ try {
     $allocatedAmounts[$idx] = round($statementAmount * $proportion, 2);
     $totalAllocated += $allocatedAmounts[$idx];
   }
-  
+
   // Adjust last valid record to account for rounding differences
   if (count($validIndices) > 0 && abs($totalAllocated - $statementAmount) > 0.01) {
     $lastIdx = $validIndices[count($validIndices) - 1];
     $allocatedAmounts[$lastIdx] = $statementAmount - ($totalAllocated - $allocatedAmounts[$lastIdx]);
   }
-  
+
   error_log("cod_reconcile_save: Allocated amounts calculated. Total: " . array_sum($allocatedAmounts) . ", Expected: {$statementAmount}");
-  
+
   // Distribute statement amount across COD records proportionally
   // Group by parent order (remove -1, -2 suffix)
   $orderGroups = [];
@@ -357,10 +359,10 @@ try {
     if ($orderId === "") {
       continue;
     }
-    
+
     // Get parent order ID (remove sub-order suffix like -1, -2)
     $parentOrderId = preg_replace('/-\d+$/', '', $orderId);
-    
+
     if (!isset($orderGroups[$parentOrderId])) {
       $orderGroups[$parentOrderId] = [];
     }
@@ -370,7 +372,7 @@ try {
       'original_order_id' => $orderId
     ];
   }
-  
+
   foreach ($orderGroups as $parentOrderId => $group) {
     // Validate parent order
     $orderStmt = $pdo->prepare("
@@ -388,7 +390,7 @@ try {
       error_log("Parent order not found: {$parentOrderId}, skipping COD records");
       continue;
     }
-    
+
     // Calculate total confirmed amount for all sub-orders in this parent
     $totalConfirmedForParent = 0.0;
     foreach ($group as $item) {
@@ -398,7 +400,7 @@ try {
         $totalConfirmedForParent += $confirmedAmount;
       }
     }
-    
+
     // Get existing reconciled amount for parent order
     if (!array_key_exists($parentOrderId, $existingReconCache)) {
       $orderReconSumStmt->execute([
@@ -408,7 +410,7 @@ try {
       $existingReconCache[$parentOrderId] = (float) $orderReconSumStmt->fetchColumn();
     }
     $existingReconciled = $existingReconCache[$parentOrderId];
-    
+
     $running = $batchRunningTotals[$parentOrderId] ?? 0.0;
     $proposedTotal = $existingReconciled + $running + $totalConfirmedForParent;
     if ($proposedTotal > (float) $order["total_amount"] + 0.01) {
@@ -417,7 +419,7 @@ try {
     }
     $runningAfter = $running + $totalConfirmedForParent;
     $batchRunningTotals[$parentOrderId] = $runningAfter;
-    
+
     // Insert reconcile log for parent order (once per parent, not per sub-order)
     try {
       $insertLogStmt->execute([
@@ -433,13 +435,13 @@ try {
       error_log("Failed to insert reconcile log: " . $insertError->getMessage());
       throw new RuntimeException("Failed to insert reconciliation record: " . $insertError->getMessage(), 0, $insertError);
     }
-    
+
     // Update all COD records for this parent order
     foreach ($group as $item) {
       $codRecord = $item['record'];
       $codRecordUpdateStmt->execute([":recordId" => $codRecord["id"]]);
     }
-    
+
     // Update parent order payment status/amount (once per parent order, after all sub-orders processed)
     if (!array_key_exists($parentOrderId, $existingReconCache)) {
       $orderReconSumStmt->execute([
@@ -449,7 +451,7 @@ try {
       $existingReconCache[$parentOrderId] = (float) $orderReconSumStmt->fetchColumn();
     }
     $existingReconciled = $existingReconCache[$parentOrderId];
-    
+
     $running = $batchRunningTotals[$parentOrderId] ?? 0.0;
     $accumulatedPaid = $existingReconciled + $running;
     $amountToSave = min((float) $order["total_amount"], max((float) $order["amount_paid"], $accumulatedPaid));
@@ -459,7 +461,7 @@ try {
     if ($currentPaymentStatus === "Approved" || $currentPaymentStatus === "Paid") {
       $targetStatus = $currentPaymentStatus;
     }
-    
+
     // Determine order status based on payment status
     // If payment is Approved/Paid, set order status to Delivered (เสร็จสิ้น)
     // Otherwise, follow the same logic as Transfer orders
@@ -527,7 +529,7 @@ try {
   error_log("SQL State: " . $e->getCode());
   error_log("File: " . $e->getFile() . " Line: " . $e->getLine());
   error_log("Trace: " . $e->getTraceAsString());
-  
+
   http_response_code(500);
   $errorMessage = $e->getMessage();
   if (strpos($errorMessage, "collation") !== false || strpos($errorMessage, "COERCIBLE") !== false) {
@@ -554,7 +556,7 @@ try {
   error_log("cod_reconcile_save.php Exception: " . $e->getMessage());
   error_log("File: " . $e->getFile() . " Line: " . $e->getLine());
   error_log("Trace: " . $e->getTraceAsString());
-  
+
   http_response_code(500);
   echo json_encode(
     [
@@ -576,7 +578,7 @@ try {
   error_log("cod_reconcile_save.php Throwable: " . $e->getMessage());
   error_log("File: " . $e->getFile() . " Line: " . $e->getLine());
   error_log("Trace: " . $e->getTraceAsString());
-  
+
   http_response_code(500);
   echo json_encode(
     [
