@@ -2254,20 +2254,23 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())')->execute([$targetId, $assignedTo]);
                 }
 
-                // Post-update normalization
-                $st2 = $pdo->prepare('SELECT assigned_to, is_in_waiting_basket, is_blocked FROM customers WHERE customer_id=?');
-                $st2->execute([$targetId]);
-                $row = $st2->fetch();
-                if ($row) {
-                    $assignedNow = $row['assigned_to'];
-                    $waitingNow = (int) $row['is_in_waiting_basket'] === 1;
-                    $blockedNow = (int) $row['is_blocked'] === 1;
-                    if ($blockedNow) {
-                        $pdo->prepare('UPDATE customers SET assigned_to=NULL, is_in_waiting_basket=0 WHERE customer_id=?')->execute([$targetId]);
-                    } else if ($waitingNow && $assignedNow !== null) {
-                        $pdo->prepare('UPDATE customers SET assigned_to=NULL WHERE customer_id=?')->execute([$targetId]);
-                    }
-                }
+                // Post-update normalization - REMOVED 2026-01-27
+                // Previously this code would clear assigned_to when is_blocked=1 or is_in_waiting_basket=1
+                // This caused telesale staff to lose customer ownership unexpectedly when logging calls
+                // Now using basket system (Dashboard V2) for ownership management instead
+                // $st2 = $pdo->prepare('SELECT assigned_to, is_in_waiting_basket, is_blocked FROM customers WHERE customer_id=?');
+                // $st2->execute([$targetId]);
+                // $row = $st2->fetch();
+                // if ($row) {
+                //     $assignedNow = $row['assigned_to'];
+                //     $waitingNow = (int) $row['is_in_waiting_basket'] === 1;
+                //     $blockedNow = (int) $row['is_blocked'] === 1;
+                //     if ($blockedNow) {
+                //         $pdo->prepare('UPDATE customers SET assigned_to=NULL, is_in_waiting_basket=0 WHERE customer_id=?')->execute([$targetId]);
+                //     } else if ($waitingNow && $assignedNow !== null) {
+                //         $pdo->prepare('UPDATE customers SET assigned_to=NULL WHERE customer_id=?')->execute([$targetId]);
+                //     }
+                // }
 
                 $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
                 $pdo->commit();

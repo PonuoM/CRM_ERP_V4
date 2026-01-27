@@ -488,13 +488,19 @@ function handleBulkAssign($pdo, $companyId)
             $linkStmt->execute([$sourceBasketKey]);
             $linkedBasketKey = $linkStmt->fetchColumn();
 
+            error_log("[Distribution V2 DEBUG] Source basket: $sourceBasketKey, Linked basket key: " . ($linkedBasketKey ?: 'NULL'));
+
             if ($linkedBasketKey) {
                 $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
                 $idStmt->execute([$linkedBasketKey]);
                 $targetBasketId = $idStmt->fetchColumn();
+                
+                error_log("[Distribution V2 DEBUG] Resolved target basket ID: " . ($targetBasketId ?: 'NULL'));
             }
         }
     }
+
+    error_log("[Distribution V2 DEBUG] Final target basket ID for distribution: " . ($targetBasketId ?: 'NULL'));
 
     $pdo->beginTransaction();
     try {

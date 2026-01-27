@@ -515,7 +515,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         }
     };
 
-    const [sortBy, setSortBy] = useState<"lastOrder" | "name" | "grade" | "dateAssignedNewest" | "dateAssignedOldest">("lastOrder");
+    const [sortBy, setSortBy] = usePersistentState<"lastOrder" | "name" | "grade" | "dateAssignedNewest" | "dateAssignedOldest">(`telesale_v2_sortby_${user.id}`, "dateAssignedNewest");
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 

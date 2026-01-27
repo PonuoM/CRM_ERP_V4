@@ -15,7 +15,7 @@ class BasketRoutingService {
      */
     public function handleSaleTransition($customerId, $userId) {
         // Get current customer basket
-        $stmt = $this->pdo->prepare("SELECT current_basket_key, distribution_count FROM customers WHERE id = ?");
+        $stmt = $this->pdo->prepare("SELECT current_basket_key, distribution_count FROM customers WHERE customer_id = ?");
         $stmt->execute([$customerId]);
         $customer = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -56,7 +56,7 @@ class BasketRoutingService {
 
         try {
             // Get current state for logging
-            $stmt = $this->pdo->prepare("SELECT current_basket_key, assigned_to, distribution_count FROM customers WHERE id = ? FOR UPDATE");
+            $stmt = $this->pdo->prepare("SELECT current_basket_key, assigned_to, distribution_count FROM customers WHERE customer_id = ? FOR UPDATE");
             $stmt->execute([$customerId]);
             $current = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -79,7 +79,7 @@ class BasketRoutingService {
                 $sql .= "$key = ?, ";
                 $params[] = $val;
             }
-            $sql = rtrim($sql, ", ") . " WHERE id = ?";
+            $sql = rtrim($sql, ", ") . " WHERE customer_id = ?";
             $params[] = $customerId;
             
             $stmt = $this->pdo->prepare($sql);
@@ -195,7 +195,7 @@ class BasketRoutingService {
         $this->pdo->beginTransaction();
 
         try {
-            $stmt = $this->pdo->prepare("SELECT assigned_to, current_basket_key, previous_assigned_to, distribution_count FROM customers WHERE id = ?");
+            $stmt = $this->pdo->prepare("SELECT assigned_to, current_basket_key, previous_assigned_to, distribution_count FROM customers WHERE customer_id = ?");
             $stmt->execute([$customerId]);
             $customer = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -273,7 +273,7 @@ class BasketRoutingService {
                 $sql .= "$key = ?, ";
                 $params[] = $val;
             }
-            $sql = rtrim($sql, ", ") . " WHERE id = ?";
+            $sql = rtrim($sql, ", ") . " WHERE customer_id = ?";
             $params[] = $customerId;
             
             $stmt = $this->pdo->prepare($sql);
