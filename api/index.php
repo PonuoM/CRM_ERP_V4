@@ -3723,20 +3723,22 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 $shouldClearPageId = ($salesChannelVal === 'โทร') || ($salesChannelPageIdProvided && $salesChannelPageIdVal === null);
                 if ($shouldClearPageId) {
-                    // Remove any existing sales_channel_page_id update and add explicit NULL
-                    $newUpdateFields = [];
-                    $newParams = [];
-                    $fieldIndex = 0;
+                    $foundIndex = -1;
                     foreach ($updateFields as $i => $field) {
-                        if (strpos($field, 'sales_channel_page_id') === false) {
-                            $newUpdateFields[] = $field;
-                            $newParams[] = $params[$i];
+                        if (strpos($field, 'sales_channel_page_id') !== false) {
+                            $foundIndex = $i;
+                            break;
                         }
                     }
-                    $updateFields = $newUpdateFields;
-                    $params = $newParams;
-                    // Add explicit NULL for sales_channel_page_id
-                    $updateFields[] = "sales_channel_page_id = NULL";
+
+                    if ($foundIndex >= 0) {
+                        // Found existing field, just ensure param is null
+                        $params[$foundIndex] = null;
+                    } else {
+                        // Not present, add it
+                        $updateFields[] = "sales_channel_page_id = ?";
+                        $params[] = null;
+                    }
                 }
 
                 if (!empty($data['updatedBy'])) {
@@ -3765,7 +3767,20 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $sql = "UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?";
                     $params[] = $id;
                     $stmt = $pdo->prepare($sql);
-                    $stmt->execute($params);
+
+                    // DEBUG LOG (RE-ADDED)
+                    $debugMsg = "DEBUG RE-UPDATE SQL: " . $sql . "\n";
+                    $debugMsg .= "DEBUG RE-PARAMS COUNT: " . count($params) . "\n";
+                    $debugMsg .= "DEBUG RE-PARAMS: " . json_encode($params) . "\n";
+                    file_put_contents(__DIR__ . '/basket_debug.log', $debugMsg, FILE_APPEND);
+
+                    try {
+                        $stmt->execute($params);
+                        file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG RE-UPDATE SUCCESS\n", FILE_APPEND);
+                    } catch (Throwable $e) {
+                        file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG RE-UPDATE FAILED: " . $e->getMessage() . "\n", FILE_APPEND);
+                        throw $e;
+                    }
                 }
 
                 // 2. Insert/Update Tracking Numbers
@@ -3774,29 +3789,35 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $hasLegacyTracking = isset($data['trackingNumbers']) && is_array($data['trackingNumbers']);
 
                 if ($hasDetailedTracking || $hasLegacyTracking) {
-                    // Delete existing
-                    $pdo->prepare("DELETE FROM order_tracking_numbers WHERE parent_order_id = ?")->execute([$id]);
+                    try {
+                        // Delete existing
+                        $pdo->prepare("DELETE FROM order_tracking_numbers WHERE parent_order_id = ?")->execute([$id]);
 
-                    if ($hasDetailedTracking) {
-                        // New format: [{ trackingNumber: '...', boxNumber: 1 }, ...]
-                        $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
-                        foreach ($data['trackingObjects'] as $obj) {
-                            $tn = trim($obj['trackingNumber'] ?? '');
-                            $bn = (int) ($obj['boxNumber'] ?? 1);
-                            if ($tn) {
-                                // Correctly map order_id to sub_order_id (pattern: parentId-boxNumber)
-                                $subOrderId = "$id-$bn";
-                                $trackStmt->execute([$id, $subOrderId, $bn, $tn]);
+                        if ($hasDetailedTracking) {
+                            // New format: [{ trackingNumber: '...', boxNumber: 1 }, ...]
+                            $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
+                            foreach ($data['trackingObjects'] as $obj) {
+                                $tn = trim($obj['trackingNumber'] ?? '');
+                                $bn = (int) ($obj['boxNumber'] ?? 1);
+                                if ($tn) {
+                                    // Correctly map order_id to sub_order_id (pattern: parentId-boxNumber)
+                                    $subOrderId = "$id-$bn";
+                                    $trackStmt->execute([$id, $subOrderId, $bn, $tn]);
+                                }
+                            }
+                        } else if ($hasLegacyTracking) {
+                            // Old format: ['tn1', 'tn2', ...]
+                            $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, tracking_number, box_number) VALUES (?, ?, ?, 1)");
+                            foreach ($data['trackingNumbers'] as $trackNum) {
+                                if (trim($trackNum)) {
+                                    $trackStmt->execute([$id, "$id-1", trim($trackNum)]);
+                                }
                             }
                         }
-                    } else if ($hasLegacyTracking) {
-                        // Old format: ['tn1', 'tn2', ...]
-                        $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, tracking_number, box_number) VALUES (?, ?, ?, 1)");
-                        foreach ($data['trackingNumbers'] as $trackNum) {
-                            if (trim($trackNum)) {
-                                $trackStmt->execute([$id, "$id-1", trim($trackNum)]);
-                            }
-                        }
+                        file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG TRACKING UPDATE SUCCESS\n", FILE_APPEND);
+                    } catch (Throwable $e) {
+                        file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG TRACKING UPDATE FAILED: " . $e->getMessage() . "\n", FILE_APPEND);
+                        throw $e;
                     }
                 }
 
@@ -3818,8 +3839,35 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $fallbackCreatorId = $stmt->fetchColumn();
                     }
 
+                    // Fetch basket_key_at_sale from orders table if column exists
+                    $orderBasketKey = null;
+                    try {
+                        $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+                        $hasBasketCol = $pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'basket_key_at_sale'")->fetchColumn();
+
+                        // Also check if order_items has the column
+                        $hasItemBasketCol = $pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'basket_key_at_sale'")->fetchColumn();
+
+                        if ($hasBasketCol && $hasItemBasketCol) {
+                            $bkStmt = $pdo->prepare("SELECT basket_key_at_sale FROM orders WHERE id = ?");
+                            $bkStmt->execute([$id]);
+                            $orderBasketKey = $bkStmt->fetchColumn();
+                        }
+                    } catch (Throwable $e) {
+                        // Ignore error, just default to null
+                    }
+
                     // Prepare the insert statement for reuse
-                    $insertSql = "INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, box_number, parent_item_id, is_promotion_parent, is_freebie, promotion_id, creator_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    // Dynamically build insert based on column existence
+                    $baseCols = "order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, box_number, parent_item_id, is_promotion_parent, is_freebie, promotion_id, creator_id";
+                    $baseVals = "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
+
+                    if ($orderBasketKey !== null) {
+                        $insertSql = "INSERT INTO order_items ($baseCols, basket_key_at_sale) VALUES ($baseVals, ?)";
+                    } else {
+                        $insertSql = "INSERT INTO order_items ($baseCols) VALUES ($baseVals)";
+                    }
+
                     $insStmt = $pdo->prepare($insertSql);
 
                     // Pass 1: Update existing items AND collect existing parent mapping
@@ -3866,7 +3914,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $boxNumber = $item['boxNumber'] ?? $item['box_number'] ?? 1;
                             $subOrderId = "$id-$boxNumber";
 
-                            $insStmt->execute([
+                            $insParams = [
                                 $subOrderId,
                                 $id,
                                 $item['productId'] ?? $item['product_id'] ?? null,
@@ -3881,7 +3929,12 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $isFreebie ? 1 : 0,
                                 $item['promotionId'] ?? $item['promotion_id'] ?? null,
                                 $itemCreatorId
-                            ]);
+                            ];
+                            if ($orderBasketKey !== null) {
+                                $insParams[] = $orderBasketKey;
+                            }
+
+                            $insStmt->execute($insParams);
 
                             $newDbId = (int) $pdo->lastInsertId();
                             if ($itemId) {
@@ -3906,7 +3959,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $boxNumber = $item['boxNumber'] ?? $item['box_number'] ?? 1;
                             $subOrderId = "$id-$boxNumber";
 
-                            $insStmt->execute([
+                            $insParams = [
                                 $subOrderId,
                                 $id,
                                 $item['productId'] ?? $item['product_id'] ?? null,
@@ -3921,7 +3974,12 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $isFreebie ? 1 : 0,
                                 $item['promotionId'] ?? $item['promotion_id'] ?? null,
                                 $itemCreatorId
-                            ]);
+                            ];
+                            if ($orderBasketKey !== null) {
+                                $insParams[] = $orderBasketKey;
+                            }
+
+                            $insStmt->execute($insParams);
 
                             $incomingIds[] = (int) $pdo->lastInsertId();
                             $newDbId = (int) $pdo->lastInsertId();
@@ -3959,7 +4017,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $boxNumber = $item['boxNumber'] ?? $item['box_number'] ?? 1;
                             $subOrderId = "$id-$boxNumber";
 
-                            $insStmt->execute([
+                            $insParams = [
                                 $subOrderId,
                                 $id,
                                 $item['productId'] ?? $item['product_id'] ?? null,
@@ -3974,7 +4032,12 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $isFreebie ? 1 : 0,
                                 $item['promotionId'] ?? $item['promotion_id'] ?? null,
                                 $itemCreatorId
-                            ]);
+                            ];
+                            if ($orderBasketKey !== null) {
+                                $insParams[] = $orderBasketKey;
+                            }
+
+                            $insStmt->execute($insParams);
 
                             $incomingIds[] = (int) $pdo->lastInsertId();
                             $newDbId = (int) $pdo->lastInsertId();
@@ -3995,18 +4058,35 @@ function handle_orders(PDO $pdo, ?string $id): void
                     }
 
                     // DELETE removed items
-                    $itemsToDelete = array_diff($existingIds, $incomingIds);
+                    // DELETE removed items
+                    $itemsToDelete = array_values(array_diff($existingIds, $incomingIds));
                     if (!empty($itemsToDelete)) {
-                        $placeholders = implode(',', array_fill(0, count($itemsToDelete), '?'));
+                        try {
+                            $placeholders = implode(',', array_fill(0, count($itemsToDelete), '?'));
 
-                        // Fix FK constraint: Delete dependent allocations first
-                        $deleteAllocSql = "DELETE FROM order_item_allocations WHERE order_item_id IN ($placeholders)";
-                        $pdo->prepare($deleteAllocSql)->execute($itemsToDelete);
+                            // Fix FK constraint: Delete dependent allocations first
+                            $deleteAllocSql = "DELETE FROM order_item_allocations WHERE order_item_id IN ($placeholders)";
+                            // DEBUG LOG
+                            file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG DELETE ALLOC SQL: $deleteAllocSql\n", FILE_APPEND);
+                            file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG DELETE ALLOC PARAMS: " . json_encode($itemsToDelete) . "\n", FILE_APPEND);
 
-                        // Then delete the items
-                        $deleteSql = "DELETE FROM order_items WHERE id IN ($placeholders) AND (order_id = ? OR parent_order_id = ?)";
-                        $deleteParams = array_merge($itemsToDelete, [$id, $id]);
-                        $pdo->prepare($deleteSql)->execute($deleteParams);
+                            $pdo->prepare($deleteAllocSql)->execute($itemsToDelete);
+
+                            // Then delete the items
+                            $deleteSql = "DELETE FROM order_items WHERE id IN ($placeholders) AND (order_id = ? OR parent_order_id = ?)";
+                            $deleteParams = array_merge($itemsToDelete, [$id, $id]);
+
+                            // DEBUG LOG
+                            file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG DELETE ITEMS SQL: $deleteSql\n", FILE_APPEND);
+                            file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG DELETE ITEMS PARAMS: " . json_encode($deleteParams) . "\n", FILE_APPEND);
+
+                            $pdo->prepare($deleteSql)->execute($deleteParams);
+
+                            file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG DELETE SUCCESS\n", FILE_APPEND);
+                        } catch (Throwable $e) {
+                            file_put_contents(__DIR__ . '/basket_debug.log', "DEBUG DELETE FAILED: " . $e->getMessage() . "\n", FILE_APPEND);
+                            throw $e;
+                        }
                     }
                 }
 
@@ -4797,6 +4877,13 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $params[] = $id;
 
                 $stmt = $pdo->prepare($updateSql);
+
+                // DEBUG LOG
+                $debugMsg = "DEBUG UPDATE SQL: " . $updateSql . "\n";
+                $debugMsg .= "DEBUG PARAMS COUNT: " . count($params) . "\n";
+                $debugMsg .= "DEBUG PARAMS: " . json_encode($params) . "\n";
+                file_put_contents(__DIR__ . '/basket_debug.log', $debugMsg, FILE_APPEND);
+
                 $stmt->execute($params);
 
 
