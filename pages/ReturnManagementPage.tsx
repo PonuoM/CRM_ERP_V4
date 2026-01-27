@@ -38,11 +38,11 @@ interface MatchResult {
   matchedOrder?: Order;
   matchedSubOrderId?: string | null;
   status:
-    | "matched"
-    | "unmatched_system"
-    | "unmatched_file"
-    | "amount_mismatch"
-    | "already_verified";
+  | "matched"
+  | "unmatched_system"
+  | "unmatched_file"
+  | "amount_mismatch"
+  | "already_verified";
   diff: number;
 }
 
@@ -88,6 +88,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   // Search State
   const [searchTracking, setSearchTracking] = useState("");
+  const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
 
   // Manage Modal State
   const [managingOrder, setManagingOrder] = useState<Order | null>(null);
@@ -220,16 +221,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         });
       }
 
-      // If no tracking found, maybe add a "Unknown Tracking" row or just Order ID?
-      if (rows.length === 0) {
-        rows.push({
-          trackingNumber: "No Tracking",
-          subOrderId: null,
-          status: "pending",
-          note: "",
-          items: [],
-        });
-      }
+
 
       // Remove duplicates based on tracking number if any
       const uniqueRows = rows.filter(
@@ -387,17 +379,23 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     if (actionRows.length === 0) {
       alert("กรุณาเลือกสถานะอย่างน้อย 1 รายการ");
       return;
+      return;
     }
 
-    if (!confirm(`ยืนยันการบันทึกข้อมูล ${actionRows.length} รายการ ? `))
-      return;
+    // Open Confirmation Modal instead of window.confirm
+    setIsConfirmSaveOpen(true);
+  };
+
+  const executeSave = async () => {
+    // Re-filter to get action rows (as closure might be stale, but state should be fresh)
+    const actionRows = manageRows.filter((r) => r.status !== "pending");
 
     setLoading(true);
     try {
       // Prepare payload for all actioned items
       // Prepare payload for all actioned items
       const payload = actionRows.map((r) => ({
-        sub_order_id: r.subOrderId || managingOrder.id, // Fallback to main ID if sub is missing
+        sub_order_id: r.subOrderId || managingOrder?.id || "", // Fallback to main ID if sub is missing
         status: r.status, // Send status 'returned' or 'delivered'
         note: r.note || "",
       }));
@@ -406,6 +404,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       if (res && res.status === "success") {
         alert(`บันทึกข้อมูลเรียบร้อย(${res.message})`);
         setManagingOrder(null);
+        setIsConfirmSaveOpen(false); // Close modal
         fetchOrders();
         fetchVerifiedOrders();
       } else {
@@ -1014,17 +1013,16 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               Sub Order: {v.sub_order_id}
                             </span>
                             <span
-                              className={`text-xs ${
-                                v.status === "returning"
-                                  ? "text-orange-600"
-                                  : v.status === "returned"
-                                    ? "text-red-600"
-                                    : v.status === "delivering"
-                                      ? "text-blue-600"
-                                      : v.status === "delivered"
-                                        ? "text-green-600"
-                                        : "text-gray-500"
-                              }`}
+                              className={`text-xs ${v.status === "returning"
+                                ? "text-orange-600"
+                                : v.status === "returned"
+                                  ? "text-red-600"
+                                  : v.status === "delivering"
+                                    ? "text-blue-600"
+                                    : v.status === "delivered"
+                                      ? "text-green-600"
+                                      : "text-gray-500"
+                                }`}
                             >
                               (
                               {v.status === "returning"
@@ -1459,6 +1457,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               >
                                 {item.name ||
                                   item.productName ||
+                                  item.product_name ||
                                   "Unknown Product"}
                                 <span className="text-gray-500 ml-1">
                                   x{item.quantity || 1}
@@ -1520,36 +1519,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               รับของคืนแล้ว (เข้าคลัง)
                             </span>
                           </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={"status-" + idx}
-                              checked={row.status === "delivering"}
-                              onChange={() => {
-                                const newRows = [...manageRows];
-                                newRows[idx].status = "delivering";
-                                setManageRows(newRows);
-                              }}
-                              className="text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="text-blue-700">
-                              อยู่ระหว่างจัดส่ง
-                            </span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={"status-" + idx}
-                              checked={row.status === "delivered"}
-                              onChange={() => {
-                                const newRows = [...manageRows];
-                                newRows[idx].status = "delivered";
-                                setManageRows(newRows);
-                              }}
-                              className="text-green-600 focus:ring-green-500"
-                            />
-                            <span className="text-green-700">จัดส่งสำเร็จ</span>
-                          </label>
+
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm align-top">
@@ -1590,7 +1560,54 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           </div>
         </div>
       )}
-    </div>
+
+      {/* Confirmation Modal */}
+      {
+        isConfirmSaveOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+              <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+                <h3 className="font-bold text-gray-800">ยืนยันการบันทึก</h3>
+                <button
+                  onClick={() => setIsConfirmSaveOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6">
+                <p className="text-gray-700 text-center mb-4">
+                  คุณต้องการบันทึกข้อมูล{" "}
+                  <span className="font-bold text-indigo-600">
+                    {manageRows.filter((r) => r.status !== "pending").length}
+                  </span>{" "}
+                  รายการ ใช่หรือไม่?
+                </p>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => setIsConfirmSaveOpen(false)}
+                    className="px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-100"
+                    disabled={loading}
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={executeSave}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-50 flex items-center gap-2"
+                    disabled={loading}
+                  >
+                    {loading && (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    )}
+                    ยืนยัน
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 };
 

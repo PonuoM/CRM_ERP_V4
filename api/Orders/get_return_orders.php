@@ -19,35 +19,29 @@ require_once '../config.php';
 $conn = db_connect();
 
 try {
-    // Join with orders to get details
-    // We select relevant columns for display
+    // Select from order_boxes where return_status is not null
     $sql = "
         SELECT 
-            wr.id,
-            wr.sub_order_id,
-            wr.status,
-            wr.note,
-            wr.created_at,
-            MAX(COALESCE(otn.tracking_number, wr.sub_order_id)) as tracking_number
-        FROM order_returns wr
+            ob.id,
+            ob.sub_order_id,
+            ob.return_status as status,
+            ob.return_note as note,
+            ob.return_created_at as created_at,
+            -- Try to get tracking number from order_tracking_numbers if possible, or fallback to sub_order_id
+            MAX(COALESCE(otn.tracking_number, ob.sub_order_id)) as tracking_number
+        FROM order_boxes ob
         LEFT JOIN order_tracking_numbers otn ON 
-            wr.sub_order_id = otn.tracking_number 
-            OR wr.sub_order_id = otn.parent_order_id
-            OR wr.sub_order_id = CONCAT(otn.parent_order_id, '-', otn.box_number)
-        GROUP BY wr.id
-        ORDER BY wr.created_at DESC
+            ob.sub_order_id = otn.tracking_number 
+            OR ob.sub_order_id = otn.parent_order_id
+            OR ob.sub_order_id = CONCAT(otn.parent_order_id, '-', otn.box_number)
+        WHERE ob.return_status IS NOT NULL
+        GROUP BY ob.id
+        ORDER BY ob.return_created_at DESC
     ";
 
     $stmt = $conn->prepare($sql);
     $stmt->execute();
     $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Should we fetch customer info? 
-    // ReturnManagementPage already has orders with customer info. 
-    // But Verified list might refer to old orders not in current 'Returned' list?
-    // Let's assume we might need to fetch customer info if we want to display it independent of the 'orders' state.
-    // For now, returning basic join data. ReturnManagementPage can likely match with its loaded 'orders' or we can enrich here.
-    // Let's just return what we have. Frontend can match 'o.customer_id' to known customers if needed, or we can LEFT JOIN customers too.
 
     echo json_encode(["status" => "success", "data" => $results]);
 

@@ -3373,13 +3373,12 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $params[] = '%' . $phoneDigits . '%';
                 }
 
-                // New Return Mode Logic: Filter out orders already present in order_returns
+                // New Return Mode Logic: Filter out orders that have any return status in order_boxes
                 if ($returnMode === 'pending') {
-                    // Check sub_order_id matches o.id or o.id-suffix
                     $whereConditions[] = "NOT EXISTS (
-                        SELECT 1 FROM order_returns orr 
-                        WHERE orr.sub_order_id = o.id 
-                           OR orr.sub_order_id LIKE CONCAT(o.id, '-%')
+                        SELECT 1 FROM order_boxes ob 
+                        WHERE ob.order_id = o.id 
+                          AND ob.return_status IS NOT NULL
                     )";
                 }
 
@@ -10235,7 +10234,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                 // Returns: { customerId: { hasUpsell: bool, upsellDone: bool } }
                 $userId = isset($_GET['userId']) ? (int) $_GET['userId'] : null;
                 $customerIds = isset($_GET['customerIds']) ? explode(',', $_GET['customerIds']) : [];
-                
+
                 if (empty($customerIds)) {
                     json_response(['error' => 'CUSTOMER_IDS_REQUIRED'], 400);
                     return;
@@ -10251,9 +10250,9 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                 if ($userId !== null) {
                     $upsellEligibleParams[] = $userId;
                 }
-                
+
                 $excludeCreatorClause = $userId !== null ? " AND o.creator_id != ?" : "";
-                
+
                 $stmt = $pdo->prepare("
                     SELECT DISTINCT c.customer_id
                     FROM orders o
@@ -10832,7 +10831,11 @@ function handle_sync_tracking($pdo)
 
     $pdo->beginTransaction();
     try {
-        $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
+        // Prepare statements
+        $checkStmt = $pdo->prepare("SELECT id FROM order_tracking_numbers WHERE parent_order_id = ? AND box_number = ? LIMIT 1");
+        $updateStmt = $pdo->prepare("UPDATE order_tracking_numbers SET tracking_number = ? WHERE id = ?");
+        $insertStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
+
         // Update shipping_provider (only if not empty), and always update statuses
         // IMPORTANT: payment_status must be updated BEFORE order_status because MySQL uses the updated value for subsequent fields in the same SET clause.
         $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
@@ -10841,7 +10844,6 @@ function handle_sync_tracking($pdo)
         $boxLookupStmt = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
 
         $results = [];
-        $processedOrders = [];
 
         foreach ($in['updates'] as $update) {
             $subOrderId = $update['sub_order_id'] ?? $update['order_id'] ?? null;
@@ -10861,30 +10863,51 @@ function handle_sync_tracking($pdo)
                 $boxNumber = (int) $boxInfo['box_number'];
             } else {
                 // Second Priority: Parse from sub_order_id suffix (fallback)
+                // Logic: ORD-001 -> Box 1, ORD-001-2 -> Box 2
                 $isSub = preg_match('/^(.+)-(\d+)$/', $subOrderId, $matches);
-                $parentOrderId = $isSub ? $matches[1] : $subOrderId;
-                $boxNumber = $isSub ? (int) $matches[2] : 1;
-            }
-
-            // 1. Wipe and Insert into order_tracking_numbers
-            if (!isset($processedOrders[$parentOrderId])) {
-                $pdo->prepare("DELETE FROM order_tracking_numbers WHERE parent_order_id = ?")->execute([$parentOrderId]);
-                $processedOrders[$parentOrderId] = true;
+                if ($isSub) {
+                    // Check if the suffix is actually a box number (numeric)
+                    // In our system, sub_orders are like ORD-123-1, ORD-123-2
+                    $parentOrderId = $matches[1];
+                    $boxNumber = (int) $matches[2];
+                } else {
+                    // No suffix, assume this IS the parent order ID, treating as Box 1
+                    $parentOrderId = $subOrderId;
+                    $boxNumber = 1;
+                }
             }
 
             // Always use parentOrderId-boxNumber for consistency with order_boxes sub_order_id
             $resolvedSubOrderId = "$parentOrderId-$boxNumber";
-            $trackStmt->execute([$parentOrderId, $resolvedSubOrderId, $boxNumber, $trackingNumber]);
+
+            // UPSERT LOGIC
+            // Check if tracking record exists for this Parent + Box
+            // Note: We use parent_order_id + box_number as the unique constraint concept for tracking numbers
+            $checkStmt->execute([$parentOrderId, $boxNumber]);
+            $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($existing) {
+                // UPDATE
+                $updateStmt->execute([$trackingNumber, $existing['id']]);
+                $results[] = [
+                    'sub_order_id' => $resolvedSubOrderId,
+                    'parent_order_id' => $parentOrderId,
+                    'box_number' => $boxNumber,
+                    'status' => 'updated'
+                ];
+            } else {
+                // INSERT
+                $insertStmt->execute([$parentOrderId, $resolvedSubOrderId, $boxNumber, $trackingNumber]);
+                $results[] = [
+                    'sub_order_id' => $resolvedSubOrderId,
+                    'parent_order_id' => $parentOrderId,
+                    'box_number' => $boxNumber,
+                    'status' => 'created'
+                ];
+            }
 
             // 2. Update statuses (and shipping_provider if present)
             $updateOrderStmt->execute([$shippingProvider, $shippingProvider, $parentOrderId]);
-
-            $results[] = [
-                'sub_order_id' => $resolvedSubOrderId,
-                'parent_order_id' => $parentOrderId,
-                'box_number' => $boxNumber,
-                'status' => 'success'
-            ];
         }
 
         $pdo->commit();
