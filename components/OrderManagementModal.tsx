@@ -1491,7 +1491,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     (async () => {
       try {
         const res = await fetch(
-          `${resolveApiBasePath()} /Address_DB/get_address_data.php ? endpoint = provinces`,
+          `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
         );
 
         if (!res.ok) return;
@@ -1510,7 +1510,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       (async () => {
         try {
           const res = await fetch(
-            `${resolveApiBasePath()} /Address_DB/get_address_data.php ? endpoint = districts & id=${selectedProvince} `,
+            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
           );
 
           if (!res.ok) return;
@@ -1538,7 +1538,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       (async () => {
         try {
           const res = await fetch(
-            `${resolveApiBasePath()} /Address_DB/get_address_data.php ? endpoint = sub_districts & id=${selectedDistrict} `,
+            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
           );
 
           if (!res.ok) return;
@@ -3880,7 +3880,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                 (s: any) =>
                                   s.amount && s.bankAccountId && s.transferDate,
                               );
-                              const hasCheckedSlips = slips.some(
+                              const hasCheckedSlips = slips.length > 0 && slips.every(
                                 (s: any) => s.checked,
                               );
                               const canConfirm =
