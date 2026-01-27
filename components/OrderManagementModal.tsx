@@ -476,8 +476,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const canEditPayAfterSlips =
     currentOrder?.paymentMethod === PaymentMethod.PayAfter;
   // สามารถแก้ไขสลิปได้เฉพาะ order ที่อยู่ใน tab waitingVerifySlip
-  const canEditSlips =
-    (order as any).isWaitingVerifySlipTab && (canVerifySlip || canEditPayAfterSlips);
+  // Allow editing slips regardless of tab (as requested)
+  const canEditSlips = (canVerifySlip || canEditPayAfterSlips);
 
   const initialSlips = Array.isArray((order as any).slips)
     ? (order as any).slips.map((s: any) => ({
@@ -3568,7 +3568,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                           {index + 1}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                          {canEditSlips && !isSlipLocked && !isLocked ? (
+                                          {canEditSlips && !isLocked ? (
                                             <select
                                               value={slip.bankAccountId || ""}
                                               onChange={async (e) => {
@@ -3614,7 +3614,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                           )}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                                          {canEditSlips && !isSlipLocked && !isLocked ? (
+                                          {canEditSlips && !isLocked ? (
                                             <input
                                               type="datetime-local"
                                               value={toLocalDatetimeString(
@@ -3644,7 +3644,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                           )}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
-                                          {canEditSlips && !isSlipLocked && !isLocked ? (
+                                          {canEditSlips && !isLocked ? (
                                             <input
                                               type="number"
                                               step="0.01"
