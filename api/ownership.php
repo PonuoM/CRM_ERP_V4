@@ -152,15 +152,15 @@ function checkAndUpdateCustomerStatus(PDO $pdo, array $customer): array {
             $customer['ownership_expires'] = $clamped->format('Y-m-d H:i:s');
             $expiry = $clamped;
         }
-        if ($expiry <= $now && !$customer['is_in_waiting_basket'] && !empty($customer['assigned_to'])) {
-            $pdo->prepare("UPDATE customers SET is_in_waiting_basket = 1, waiting_basket_start_date = ?, follow_up_date = NULL, assigned_to = NULL WHERE customer_id = ?")
-                ->execute([$now->format('Y-m-d H:i:s'), $customer['customer_id']]);
-            // Removed: Auto-complete appointments disabled - V2 Dashboard allows next owner to follow up
-            // $pdo->prepare("UPDATE appointments SET status = 'เสร็จสิ้น' WHERE customer_id = ? AND status <> 'เสร็จสิ้น'")->execute([$customer['customer_id']]);
-            $customer['is_in_waiting_basket'] = 1;
-            $customer['waiting_basket_start_date'] = $now->format('Y-m-d H:i:s');
-            $customer['assigned_to'] = NULL;
-        }
+        // DISABLED 2026-01-27: No longer using ownership_expires system
+        // Now using Dashboard V2 basket system for ownership management
+        // if ($expiry <= $now && !$customer['is_in_waiting_basket'] && !empty($customer['assigned_to'])) {
+        //     $pdo->prepare("UPDATE customers SET is_in_waiting_basket = 1, waiting_basket_start_date = ?, follow_up_date = NULL, assigned_to = NULL WHERE customer_id = ?")
+        //         ->execute([$now->format('Y-m-d H:i:s'), $customer['customer_id']]);
+        //     $customer['is_in_waiting_basket'] = 1;
+        //     $customer['waiting_basket_start_date'] = $now->format('Y-m-d H:i:s');
+        //     $customer['assigned_to'] = NULL;
+        // }
     }
     if ($customer['is_in_waiting_basket'] && $customer['waiting_basket_start_date']) {
         $waitingStart = new DateTime($customer['waiting_basket_start_date']);

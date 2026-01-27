@@ -2859,7 +2859,7 @@ const App: React.FC = () => {
       // Group orders by customer to minimize API calls
       const customerUpdates: Record<string, { creatorId: number; bucketId?: number | null }> = {};
 
-      const BASKET_FIND_NEW_OWNER = 52;
+      const BASKET_FIND_NEW_OWNER = 38;
       const BASKET_PERSONAL_1_2M = 39;
 
       for (const orderData of ordersToProcess) {
