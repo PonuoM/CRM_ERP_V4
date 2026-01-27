@@ -7207,6 +7207,7 @@ function handle_calls(PDO $pdo, ?string $id): void
                 // Pagination and Filtering
                 $companyId = $_GET['companyId'] ?? null;
                 $customerId = $_GET['customerId'] ?? null;
+                $assignedTo = $_GET['assignedTo'] ?? null;
                 $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
                 $pageSize = isset($_GET['pageSize']) ? (int) $_GET['pageSize'] : 500;
                 $offset = ($page - 1) * $pageSize;
@@ -7216,14 +7217,17 @@ function handle_calls(PDO $pdo, ?string $id): void
                 $params = [];
                 $wheres = [];
 
-                // Join with customers for company scoping if companyId is provided or to ensure validity
-                // Assuming customers.id is the PK that matches call_history.customer_id
-                // Note: Using LEFT JOIN to include calls where customer might be deleted (optional)
-                // BUT for company scoping, we MUST join.
-                if ($companyId) {
+                // Join with customers for company scoping or assignedTo filter
+                if ($companyId || $assignedTo) {
                     $sql .= " JOIN customers c ON ch.customer_id = c.customer_id";
-                    $wheres[] = "c.company_id = ?";
-                    $params[] = $companyId;
+                    if ($companyId) {
+                        $wheres[] = "c.company_id = ?";
+                        $params[] = $companyId;
+                    }
+                    if ($assignedTo) {
+                        $wheres[] = "c.assigned_to = ?";
+                        $params[] = $assignedTo;
+                    }
                 }
 
                 if ($customerId) {

@@ -124,14 +124,46 @@ class UpsellService {
 
     /**
      * Clear upsell assignment when order moves to picking
+     * Also moves the customer to New Customer Distribution (basket ID 52)
+     * Note: Customer doesn't have owner at this point (still in Distribution pool)
      */
     public function clearUpsellOnPicking($orderId) {
+        // 1. Clear upsell_user_id from order
         $stmt = $this->pdo->prepare("
             UPDATE orders 
             SET upsell_user_id = NULL
-            WHERE id = ? AND order_status = 'picking'
+            WHERE id = ?
         ");
         $stmt->execute([$orderId]);
+        
+        // 2. Get customer_id from order
+        $getCustomerStmt = $this->pdo->prepare("
+            SELECT customer_id FROM orders WHERE id = ?
+        ");
+        $getCustomerStmt->execute([$orderId]);
+        $customerId = $getCustomerStmt->fetchColumn();
+        
+        if ($customerId) {
+            // 3. Move customer to basket ID 52 (New Customer Distribution)
+            // Note: Don't clear assigned_to because customer doesn't have owner at this point
+            $updateCustomerStmt = $this->pdo->prepare("
+                UPDATE customers SET 
+                    current_basket_key = 52,
+                    basket_entered_date = NOW()
+                WHERE customer_id = ?
+                  AND (assigned_to IS NULL OR assigned_to = 0)
+            ");
+            $updateCustomerStmt->execute([$customerId]);
+            
+            // 4. Log the transition
+            $logStmt = $this->pdo->prepare("
+                INSERT INTO basket_transition_log 
+                (customer_id, from_basket_key, to_basket_key, transition_type, notes, created_at)
+                VALUES (?, NULL, 52, 'picking', 'Order moved to Picking - transferred to New Customer Distribution', NOW())
+            ");
+            $logStmt->execute([$customerId]);
+        }
+        
         return $stmt->rowCount() > 0;
     }
 
@@ -163,14 +195,18 @@ class UpsellService {
     }
 
     /**
-     * Handle failed/timeout Upsell - move customer to new_customer
+     * Handle failed/timeout Upsell - move customer to New Customer Distribution (ID 52)
+     * Customer becomes unassigned and goes back to pool for redistribution
      */
     public function handleUpsellNoSale($customerId, $reason = 'no_sale') {
-        // Update customer basket
+        // Update customer basket to ID 52 (New Customer Distribution) and clear owner
         $stmt = $this->pdo->prepare("
             UPDATE customers SET 
-                current_basket_key = 'new_customer',
-                basket_entered_date = NOW()
+                current_basket_key = 52,
+                basket_entered_date = NOW(),
+                assigned_to = NULL,
+                date_assigned = NULL,
+                lifecycle_status = 'Pool'
             WHERE customer_id = ?
         ");
         $stmt->execute([$customerId]);
@@ -178,10 +214,10 @@ class UpsellService {
         // Log transition
         $stmt = $this->pdo->prepare("
             INSERT INTO basket_transition_log 
-            (customer_id, from_basket_key, to_basket_key, transition_type, notes)
-            VALUES (?, 'upsell', 'new_customer', 'fail', ?)
+            (customer_id, from_basket_key, to_basket_key, transition_type, notes, created_at)
+            VALUES (?, 51, 52, 'fail', ?, NOW())
         ");
-        $stmt->execute([$customerId, "Upsell failed: $reason"]);
+        $stmt->execute([$customerId, "Upsell failed: $reason - moved to New Customer pool"]);
 
         return true;
     }

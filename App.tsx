@@ -886,7 +886,8 @@ const App: React.FC = () => {
           listPlatforms(sessionUser?.company_id, true, sessionUser?.role),
           listCallHistory({
             companyId: sessionUser?.company_id,
-            pageSize: 5000
+            pageSize: 10000,
+            assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
           }),
           // Appointments are now primarily loaded from customer.next_appointment_* fields
           // This call is just a fallback for customers not yet loaded - reduced pageSize
@@ -2858,7 +2859,7 @@ const App: React.FC = () => {
       // Group orders by customer to minimize API calls
       const customerUpdates: Record<string, { creatorId: number; bucketId?: number | null }> = {};
 
-      const BASKET_FIND_NEW_OWNER = 38;
+      const BASKET_FIND_NEW_OWNER = 52;
       const BASKET_PERSONAL_1_2M = 39;
 
       for (const orderData of ordersToProcess) {
