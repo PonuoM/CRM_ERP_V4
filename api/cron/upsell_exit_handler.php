@@ -66,6 +66,7 @@ try {
           -- Order สถานะ = Picking (เพิ่งเปลี่ยนจาก Pending)
           AND o.order_status = 'Picking'
           -- ยังไม่ได้อยู่ในถัง 52 แล้ว
+          -- รวม basket 53 ด้วย เพราะถ้า Picking แล้วยังไม่ถูกแจก ต้องย้ายไป 52
           AND (c.current_basket_key IS NULL OR c.current_basket_key != 52)
         ORDER BY o.order_date DESC
     ";

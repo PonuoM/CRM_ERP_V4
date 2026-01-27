@@ -85,7 +85,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             );
             // Custom sort order as requested
             const customOrder = [
-                'upsell',
+                'upsell_dis', // Basket 53 - Upsell Distribution
                 'new_customer',
                 'personal_1_2m',
                 'personal_last_chance',
@@ -107,13 +107,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
     }, [currentUser?.companyId]);
 
-    // Auto-set target basket for Upsell
+    // Auto-set target basket for Upsell Distribution
     useEffect(() => {
-        if (activeBasket === 'upsell') {
-            // Try to find basket with ID 51 if possible, otherwise just hint user?
-            // Since we don't hold IDs in a map easily, we just rely on user or default.
-            // But if we want to BE explicit, we could set it if we knew the key.
-            // For now, let's keep it empty to use backend default, or user handles it.
+        if (activeBasket === 'upsell_dis') {
+            // Basket 53 (upsell_dis) targets basket 51 (upsell) on distribution
+            // This is handled by backend logic in basket_config.php
             setTargetBasket('');
         } else {
             setTargetBasket('');
@@ -764,7 +762,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             <div className="space-y-4 mb-6">
                                 {dashboardBaskets.map(basket => {
                                     // Prevent reclaiming from Upsell basket
-                                    if (basket.basket_key === 'upsell') return null;
+                                    if (basket.basket_key === 'upsell_dis') return null;
 
                                     const currentHolding = reclaimingAgent.basketCounts?.[basket.basket_key] || 0;
                                     const isEmpty = currentHolding === 0;
