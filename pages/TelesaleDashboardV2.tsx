@@ -414,9 +414,9 @@ const CustomerRow = React.memo(({
             </td>
             <td className="px-4 py-3">
                 <div className="max-w-[150px]">
-                    {lastCall?.notes ? (
-                        <p className="text-xs text-gray-700 truncate" title={lastCall.notes}>
-                            {lastCall.notes}
+                    {(customer as any).lastCallNote ? (
+                        <p className="text-xs text-gray-700 truncate" title={(customer as any).lastCallNote}>
+                            {(customer as any).lastCallNote}
                         </p>
                     ) : (
                         <span className="text-xs text-gray-400">-</span>
@@ -566,31 +566,35 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     }, [activeBasketKey, selectedRegions, searchTerm, quickFilter, filterByAppointment, filterByOverdueAppointment, hideContactedDays]);
 
     // Optimize Call History Lookup - Only include calls by CURRENT USER after date_assigned
+    // caller field stores full name: "firstName lastName"
+    const currentUserFullName = `${user.firstName} ${user.lastName}`;
+
     const lastCallMap = useMemo(() => {
         const map = new Map<string, CallHistory>();
         if (!calls) return map;
 
-        // Create a map of customer dateAssigned for quick lookup
-        const customerDateAssigned = new Map<string, Date>();
-        localCustomers.forEach(c => {
-            if (c.dateAssigned) {
-                customerDateAssigned.set(String(c.id), new Date(c.dateAssigned));
-            }
-        });
+        // Debug: log first few calls and user name
+        console.log('[DashboardV2] currentUserFullName:', currentUserFullName);
+        console.log('[DashboardV2] Total calls:', calls.length);
+        console.log('[DashboardV2] Sample call callers:', calls.slice(0, 3).map(c => c.caller));
+
+        let matchCount = 0;
+        let skippedDueToCallerMismatch = 0;
 
         calls.forEach(call => {
             if (!call.customerId) return;
             const customerId = String(call.customerId);
 
-            // Only include calls made by the current user
-            if (Number(call.caller) !== user.id) return;
-
-            // Only include calls after the customer was assigned to this user
-            const dateAssigned = customerDateAssigned.get(customerId);
-            if (dateAssigned) {
-                const callDate = new Date(call.date);
-                if (callDate < dateAssigned) return;
+            // Only include calls made by the current user (compare by full name)
+            // NOTE: Removed dateAssigned check - we count ALL calls by this user regardless of assignment date
+            // This fixes the issue where customer was re-assigned and old calls weren't counted
+            const callerId = call.caller ? String(call.caller).trim() : '';
+            if (callerId !== currentUserFullName) {
+                skippedDueToCallerMismatch++;
+                return;
             }
+
+            matchCount++;
 
             // Use 'date' field per types.ts definition
             const callDate = new Date(call.date || Date.now());
@@ -601,8 +605,20 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 map.set(customerId, call);
             }
         });
+
+        console.log('[DashboardV2] lastCallMap size:', map.size,
+            'matched:', matchCount,
+            'skippedCaller:', skippedDueToCallerMismatch);
+
+        // Debug specific customer 16065
+        const testCustomerId = '16065';
+        const testCall = map.get(testCustomerId);
+        console.log('[DashboardV2] Debug customer 16065:',
+            'inMap:', map.has(testCustomerId),
+            'lastCall:', testCall?.date);
+
         return map;
-    }, [calls, localCustomers, user.id]);
+    }, [calls, currentUserFullName]);
 
     // Track customers with upcoming appointments and days until appointment
     // PRIORITY: Store UPCOMING (daysUntil >= 0) appointments over overdue ones
@@ -663,20 +679,14 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         return map;
     }, [calls, user.firstName, user.lastName]);
 
-    // Load customers: Use props if available, otherwise fetch directly from API
+    // Load customers: Fetch from API to get lastCallNote and other joined fields
+    // Fallback to propsCustomers if API fails
     useEffect(() => {
         if (!user?.id) return;
 
-        // If props have customers, use them
-        if (propsCustomers && propsCustomers.length > 0) {
-            const myCustomers = propsCustomers.filter(c => c.assignedTo === Number(user.id));
-            setLocalCustomers(myCustomers);
-            return;
-        }
-
-        // Otherwise, fetch directly from API
         const fetchCustomers = async () => {
             try {
+                console.log('[DashboardV2] Fetching customers from API...');
                 const response = await listCustomers({
                     companyId: user.companyId,
                     assignedTo: user.id,
@@ -685,12 +695,26 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
                 // listCustomers returns { total, data } object
                 const customers = response?.data || [];
+                console.log('[DashboardV2] API returned', customers.length, 'customers');
+
                 if (customers.length > 0) {
                     const mapped = customers.map((r: any) => mapCustomerFromApi(r));
+                    console.log('[DashboardV2] First customer lastCallNote:', mapped[0]?.lastCallNote);
                     setLocalCustomers(mapped);
+                } else if (propsCustomers && propsCustomers.length > 0) {
+                    // Fallback to propsCustomers if API returns empty
+                    console.log('[DashboardV2] Falling back to propsCustomers');
+                    const myCustomers = propsCustomers.filter(c => c.assignedTo === Number(user.id));
+                    setLocalCustomers(myCustomers);
                 }
             } catch (err) {
                 console.error('[DashboardV2] Failed to fetch customers:', err);
+                // Fallback to propsCustomers on error
+                if (propsCustomers && propsCustomers.length > 0) {
+                    console.log('[DashboardV2] Error fallback to propsCustomers');
+                    const myCustomers = propsCustomers.filter(c => c.assignedTo === Number(user.id));
+                    setLocalCustomers(myCustomers);
+                }
             }
         };
 

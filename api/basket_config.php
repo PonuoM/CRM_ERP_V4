@@ -327,7 +327,9 @@ function handleBasketCustomers($pdo, $companyId)
 
     // Specialized Logic for Upsell Basket
     if ($basketKey === 'upsell') {
-        // Definition: Customers with order TODAY created by role_id=3
+        // Definition: Customers with PENDING orders created by non-Telesale roles (not role_id 6 or 7)
+        // Entry: order_status = 'pending', creator role NOT IN (6,7), customer has no owner
+        // Exit: When order_status changes to 'picking' -> move to New Customer (ID 52)
         $sql = "
             SELECT 
                 c.customer_id,
@@ -357,8 +359,8 @@ function handleBasketCustomers($pdo, $companyId)
             ) os ON c.customer_id = os.customer_id
             WHERE c.company_id = ?
             AND (c.assigned_to IS NULL OR c.assigned_to = 0)
-            AND DATE(o.order_date) = CURDATE()
-            AND u.role_id = 3
+            AND o.order_status = 'Pending'
+            AND u.role_id NOT IN (6, 7)
             GROUP BY c.customer_id
         ";
 
@@ -369,8 +371,8 @@ function handleBasketCustomers($pdo, $companyId)
                      INNER JOIN users u ON o.creator_id = u.id
                      WHERE c.company_id = ?
                      AND (c.assigned_to IS NULL OR c.assigned_to = 0)
-                     AND DATE(o.order_date) = CURDATE()
-                     AND u.role_id = 3";
+                     AND o.order_status = 'Pending'
+                     AND u.role_id NOT IN (6, 7)";
 
         $countStmt = $pdo->prepare($countSql);
         $countStmt->execute([$companyId]);

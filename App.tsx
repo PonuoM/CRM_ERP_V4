@@ -886,7 +886,8 @@ const App: React.FC = () => {
           listPlatforms(sessionUser?.company_id, true, sessionUser?.role),
           listCallHistory({
             companyId: sessionUser?.company_id,
-            pageSize: 5000
+            pageSize: 10000,
+            assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
           }),
           // Appointments are now primarily loaded from customer.next_appointment_* fields
           // This call is just a fallback for customers not yet loaded - reduced pageSize
