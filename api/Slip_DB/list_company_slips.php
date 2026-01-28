@@ -31,6 +31,10 @@ $date_range = isset($_GET["date_range"]) ? strtolower(trim($_GET["date_range"]))
 $date_from = isset($_GET["date_from"]) ? trim($_GET["date_from"]) : "";
 $date_to = isset($_GET["date_to"]) ? trim($_GET["date_to"]) : "";
 $payment_method = isset($_GET["payment_method"]) ? trim($_GET["payment_method"]) : "all";
+$bank_account_id = isset($_GET["bank_account_id"]) ? trim($_GET["bank_account_id"]) : "all";
+$min_amount = isset($_GET["min_amount"]) && $_GET["min_amount"] !== "" ? (float) $_GET["min_amount"] : null;
+$max_amount = isset($_GET["max_amount"]) && $_GET["max_amount"] !== "" ? (float) $_GET["max_amount"] : null;
+$exclude_reconciled = isset($_GET["exclude_reconciled"]) && $_GET["exclude_reconciled"] === 'true';
 
 $page = isset($_GET["page"]) ? (int) $_GET["page"] : 1;
 $pageSize = isset($_GET["pageSize"]) ? (int) $_GET["pageSize"] : 20;
@@ -99,6 +103,51 @@ if ($payment_method !== "all" && $payment_method !== "") {
   $params[] = $payment_method;
 }
 
+if ($bank_account_id !== "all" && $bank_account_id !== "") {
+  $conditions[] = "os.bank_account_id = ?";
+  $params[] = $bank_account_id;
+}
+
+if ($min_amount !== null) {
+  $conditions[] = "o.total_amount >= ?";
+  $params[] = $min_amount;
+}
+
+if ($max_amount !== null) {
+  $conditions[] = "o.total_amount <= ?";
+  $params[] = $max_amount;
+}
+
+// 0. Check for statement_reconcile_logs table existence
+$hasReconcileTable = false;
+try {
+  $stmt = $conn->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'statement_reconcile_logs'");
+  $hasReconcileTable = ((int) $stmt->fetchColumn()) > 0;
+} catch (Exception $e) {
+  $hasReconcileTable = false;
+}
+
+$reconcileJoin = "";
+if ($hasReconcileTable) {
+  $reconcileJoin = "LEFT JOIN (
+        SELECT order_id, SUM(COALESCE(confirmed_amount, statement_amount)) as reconciled_total
+        FROM statement_reconcile_logs
+        GROUP BY order_id
+    ) recl ON recl.order_id = o.id";
+}
+
+if ($exclude_reconciled && $hasReconcileTable) {
+  // Filter out orders where Reconciled >= Total Amount
+  // Using a small epsilon for float comparison
+  $conditions[] = "(o.total_amount - COALESCE(recl.reconciled_total, 0)) > 1.00";
+  // Using 1.00 as buffer or 0.01? 
+  // If order is 100, reconciled is 100. -> 0 > 1.00 FALSE -> Excluded. Correct.
+  // If order is regular partially paid, e.g. 2000, paid 1000. -> 1000 > 1.00 TRUE -> Included. Correct.
+  // Why 1.00? Sometimes there are small adjustments. 0.01 is stricter. Let's use 0.50 to be safe from rounding?
+  // User usually pays exact or close. Let's use 0.01 for strictness first or just > 0.
+  // Let's use > 0.1 to avoid floating point dust.
+}
+
 try {
   $uploadsDir = realpath(__DIR__ . "/../uploads/slips");
 
@@ -159,6 +208,7 @@ try {
                INNER JOIN orders o ON o.id = os.order_id
                $customerJoin
                LEFT JOIN users u ON u.id = o.creator_id
+               $reconcileJoin
                WHERE $whereClause";
 
   // Special check for customer join if we need it for filtering (already included in countSql above)
@@ -268,6 +318,7 @@ try {
       $customerJoin
       LEFT JOIN users u ON u.id = o.creator_id
       $bankJoin
+      $reconcileJoin
       WHERE $whereClause
       ORDER BY os.created_at DESC
       LIMIT ? OFFSET ?";

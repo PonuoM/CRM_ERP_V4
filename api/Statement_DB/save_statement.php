@@ -15,7 +15,8 @@ $input = json_input();
  * - YYYY-MM-DD
  * - DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY (also DD/MM/YY with Buddhist year support)
  */
-function normalize_request_date(?string $raw): ?string {
+function normalize_request_date(?string $raw): ?string
+{
   $value = trim((string) $raw);
   if ($value === '') {
     return null;
@@ -52,7 +53,8 @@ function normalize_request_date(?string $raw): ?string {
  * Validate and combine date + time into a MySQL-compatible DATETIME string.
  * Returns string "Y-m-d H:i:s" if valid, or null if invalid.
  */
-function build_valid_transfer_at(?string $date, ?string $time): ?string {
+function build_valid_transfer_at(?string $date, ?string $time): ?string
+{
   $normalizedDate = normalize_request_date($date);
   $timeValue = str_replace('.', ':', trim((string) $time));
 
@@ -76,7 +78,8 @@ function build_valid_transfer_at(?string $date, ?string $time): ?string {
   return $normalizedDate . ' ' . $timeNorm;
 }
 
-function ensure_statement_bank_columns(PDO $pdo): void {
+function ensure_statement_bank_columns(PDO $pdo): void
+{
   $hasBankId = $pdo->query("SHOW COLUMNS FROM statement_logs LIKE 'bank_account_id'")->fetch();
   if (!$hasBankId) {
     $pdo->exec("ALTER TABLE statement_logs ADD COLUMN bank_account_id INT NULL AFTER amount");
@@ -93,7 +96,8 @@ function ensure_statement_bank_columns(PDO $pdo): void {
   }
 }
 
-function fetch_bank_account(PDO $pdo, int $bankAccountId, int $companyId): ?array {
+function fetch_bank_account(PDO $pdo, int $bankAccountId, int $companyId): ?array
+{
   $stmt = $pdo->prepare(
     "SELECT id, bank, bank_number
      FROM bank_account
@@ -161,13 +165,15 @@ try {
     $singleTime = $input['time'] ?? null;
     $singleAmount = $input['amount'] ?? null;
     if ($singleDate !== null || $singleTime !== null || $singleAmount !== null) {
-      $rowsInput = [[
-        'date' => $singleDate,
-        'time' => $singleTime,
-        'amount' => $singleAmount,
-        'channel' => $input['channel'] ?? '',
-        'description' => $input['description'] ?? '',
-      ]];
+      $rowsInput = [
+        [
+          'date' => $singleDate,
+          'time' => $singleTime,
+          'amount' => $singleAmount,
+          'channel' => $input['channel'] ?? '',
+          'description' => $input['description'] ?? '',
+        ]
+      ];
     }
   }
 
@@ -277,7 +283,7 @@ try {
         [
           'ok' => false,
           'error' => 'Duplicate import detected',
-          'detail' => "Already imported for {$bankDisplayName} on: {$dateList}. Delete the old batch for those dates before re-importing.",
+          'detail' => "มีการนำเข้าข้อมูลของ {$bankDisplayName} ในวันที่ {$dateList} แล้ว กรุณาลบการนำเข้าอันเก่าก่อนนำเข้าใหม่",
         ],
         409,
       );
