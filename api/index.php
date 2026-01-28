@@ -3396,10 +3396,41 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 // New Return Mode Logic: Filter out orders that have any return status in order_boxes
                 if ($returnMode === 'pending') {
+                    // Pending: No boxes have been verified (all return_status IS NULL)
+                    // Or no boxes exist (which conceptually is pending if order is returned?)
+                    // Logic: NOT EXISTS any box that IS NOT NULL
                     $whereConditions[] = "NOT EXISTS (
                         SELECT 1 FROM order_boxes ob 
                         WHERE ob.order_id = o.id 
                           AND ob.return_status IS NOT NULL
+                    )";
+                } elseif ($returnMode === 'partial') {
+                    // Partial (Checking): 
+                    // 1. At least one box IS NOT NULL (Verified)
+                    // 2. AND At least one box IS NULL (Unverified)
+                    $whereConditions[] = "EXISTS (
+                        SELECT 1 FROM order_boxes ob 
+                        WHERE ob.order_id = o.id 
+                          AND ob.return_status IS NOT NULL
+                    )";
+                    $whereConditions[] = "EXISTS (
+                        SELECT 1 FROM order_boxes ob 
+                        WHERE ob.order_id = o.id 
+                          AND ob.return_status IS NULL
+                    )";
+                } elseif ($returnMode === 'verified') {
+                    // Verified:
+                    // 1. At least one box IS NOT NULL (Verified) - ensures we don't pick up empty orders as verified
+                    // 2. AND NOT EXISTS any box that IS NULL (All are verified)
+                    $whereConditions[] = "EXISTS (
+                        SELECT 1 FROM order_boxes ob 
+                        WHERE ob.order_id = o.id 
+                          AND ob.return_status IS NOT NULL
+                    )";
+                    $whereConditions[] = "NOT EXISTS (
+                        SELECT 1 FROM order_boxes ob 
+                        WHERE ob.order_id = o.id 
+                          AND ob.return_status IS NULL
                     )";
                 }
 

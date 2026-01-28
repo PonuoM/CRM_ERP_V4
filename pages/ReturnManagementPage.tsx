@@ -15,6 +15,7 @@ import {
   Clipboard,
   X,
   Copy,
+  Clock,
 } from "lucide-react";
 import OrderDetailModal from "../components/OrderDetailModal";
 
@@ -65,7 +66,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const [importedData, setImportedData] = useState<ImportRow[]>([]);
   const [matchResults, setMatchResults] = useState<MatchResult[]>([]);
   // Tabs state
-  const [activeTab, setActiveTab] = useState<"pending" | "verified">("pending");
+  const [activeTab, setActiveTab] = useState<
+    "pending" | "checking" | "verified"
+  >("pending");
   const [verifiedOrders, setVerifiedOrders] = useState<VerifiedOrder[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,7 +99,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     trackingNumber: string;
 
     subOrderId: string | null;
-    status: "pending" | "returned" | "returning" | "delivered" | "delivering";
+    status: "pending" | "returned" | "returning" | "delivered" | "delivering" | "other";
+    collectedAmount?: number;
     note: string;
     items: any[];
   }
@@ -182,6 +186,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               trackingNumber: tNum,
               subOrderId: sId,
               status: "pending",
+              collectedAmount: 0,
               note: "",
               items: relevantItems,
             });
@@ -199,6 +204,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               trackingNumber: t,
               subOrderId: null,
               status: "pending",
+              collectedAmount: 0,
               note: "",
               items: [], // Cannot determine specific items without subOrderId mapping
             });
@@ -214,6 +220,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               trackingNumber: t.trim(),
               subOrderId: null,
               status: "pending",
+              collectedAmount: 0,
               note: "",
               items: [],
             });
@@ -271,14 +278,17 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const fetchOrders = async () => {
     setLoading(true);
     try {
+      let mode = "pending";
+      if (activeTab === "checking") mode = "partial";
+      if (activeTab === "verified") mode = "verified";
+
       const res = await listOrders({
         companyId: user.companyId,
         orderStatus: OrderStatus.Returned,
-        returnMode: "pending",
-        pageSize: 1000, // Construct a reasonable limit or pagination
+        returnMode: mode,
+        pageSize: 1000,
       });
       if (res.ok) {
-        // Defensive: Ensure orders is an array
         setOrders(Array.isArray(res.orders) ? res.orders : []);
       }
     } catch (err) {
@@ -374,11 +384,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     if (!managingOrder) return;
 
     // Filter for actions
-    const actionRows = manageRows.filter((r) => r.status !== "pending");
+    // Allow sending 'pending' to clear status
+    const actionRows = manageRows;
 
     if (actionRows.length === 0) {
       alert("กรุณาเลือกสถานะอย่างน้อย 1 รายการ");
-      return;
       return;
     }
 
@@ -388,7 +398,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   const executeSave = async () => {
     // Re-filter to get action rows (as closure might be stale, but state should be fresh)
-    const actionRows = manageRows.filter((r) => r.status !== "pending");
+    const actionRows = manageRows;
 
     setLoading(true);
     try {
@@ -397,6 +407,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       const payload = actionRows.map((r) => ({
         sub_order_id: r.subOrderId || managingOrder?.id || "", // Fallback to main ID if sub is missing
         status: r.status, // Send status 'returned' or 'delivered'
+        collected_amount: r.collectedAmount || 0,
         note: r.note || "",
       }));
 
@@ -968,6 +979,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           <tbody className="bg-white divide-y divide-gray-200">
             {sortedGroups.map((group) => {
               const { displayId, parentOrder, items } = group;
+              // Only show if parentOrder exists (meaning it matches the current filter/tab)
+              if (!parentOrder) return null;
+
               // Representative item (first one) for shared data if needed
               const rep = items[0];
 
@@ -1162,15 +1176,31 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           <div className="inline-flex bg-gray-100 p-1 rounded-lg">
             <button
               onClick={() => setActiveTab("pending")}
-              className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === "pending" ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
+              className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === "pending"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
             >
+              <Clock size={18} />
               ยังไม่ตรวจสอบ (Pending)
             </button>
             <button
-              onClick={() => setActiveTab("verified")}
-              className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === "verified" ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
+              onClick={() => setActiveTab("checking")}
+              className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === "checking"
+                ? "border-yellow-500 text-yellow-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
             >
-              ตรวจสอบแล้ว (Verified)
+              <AlertCircle size={18} />
+              อยู่ระหว่างตรวจสอบ (Checking)
+            </button>
+            <button
+              onClick={() => setActiveTab("verified")}
+              className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === "verified"
+                ? "border-green-600 text-green-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+            >    ตรวจสอบแล้ว (Verified)
             </button>
           </div>
         </div>
@@ -1517,6 +1547,58 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                             />
                             <span className="text-red-700">
                               รับของคืนแล้ว (เข้าคลัง)
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={"status-" + idx}
+                              checked={row.status === "delivered"}
+                              onChange={() => {
+                                const newRows = [...manageRows];
+                                newRows[idx].status = "delivered";
+                                setManageRows(newRows);
+                              }}
+                              className="text-green-600 focus:ring-green-500"
+                            />
+                            <span className="text-green-700">
+                              ส่งสำเร็จ (Delivered)
+                            </span>
+                          </label>
+                          {row.status === "delivered" && (
+                            <div className="ml-6 mt-1 flex items-center gap-2">
+                              <span className="text-xs text-gray-500">
+                                ยอดที่เก็บได้:
+                              </span>
+                              <input
+                                type="number"
+                                value={row.collectedAmount || ""}
+                                onChange={(e) => {
+                                  const newRows = [...manageRows];
+                                  newRows[idx].collectedAmount = parseFloat(
+                                    e.target.value,
+                                  );
+                                  setManageRows(newRows);
+                                }}
+                                className="w-24 px-2 py-1 text-sm border border-green-300 rounded focus:ring-green-500 focus:border-green-500"
+                                placeholder="บาท"
+                              />
+                            </div>
+                          )}
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={"status-" + idx}
+                              checked={row.status === "other"}
+                              onChange={() => {
+                                const newRows = [...manageRows];
+                                newRows[idx].status = "other";
+                                setManageRows(newRows);
+                              }}
+                              className="text-gray-600 focus:ring-gray-500"
+                            />
+                            <span className="text-gray-700">
+                              อื่นๆ (Others)
                             </span>
                           </label>
 
