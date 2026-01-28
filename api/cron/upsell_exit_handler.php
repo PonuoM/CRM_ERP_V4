@@ -19,11 +19,15 @@
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/cron_logger.php';
+
+$logger = new CronLogger('upsell_exit_handler');
+$logger->logStart();
 
 $dryRun = in_array('--dry-run', $argv ?? []) || isset($_GET['dry_run']);
 
 $pdo = db_connect();
-$companyId = 1;
+// Process all companies - no company filter
 
 $results = [
     'mode' => $dryRun ? '🔍 DRY-RUN (ไม่อัพเดทจริง)' : '✅ EXECUTE',
@@ -54,9 +58,9 @@ try {
             u.role_id as creator_role,
             DATEDIFF(NOW(), o.order_date) as days_ago
         FROM customers c
-        INNER JOIN orders o ON o.customer_id = c.customer_id
+        INNER JOIN orders o ON (o.customer_id = c.customer_id OR o.customer_id = c.customer_ref_id)
         INNER JOIN users u ON o.creator_id = u.id
-        WHERE c.company_id = ?
+        WHERE 1=1
           -- ลูกค้าไม่มีเจ้าของ
           AND (c.assigned_to IS NULL OR c.assigned_to = 0)
           -- Order สร้างภายใน 7 วันที่ผ่านมา
@@ -66,13 +70,13 @@ try {
           -- Order สถานะ = Picking (เพิ่งเปลี่ยนจาก Pending)
           AND o.order_status = 'Picking'
           -- ยังไม่ได้อยู่ในถัง 52 แล้ว
-          -- รวม basket 53 ด้วย เพราะถ้า Picking แล้วยังไม่ถูกแจก ต้องย้ายไป 52
-          AND (c.current_basket_key IS NULL OR c.current_basket_key != 52)
+          -- เป้าหมาย: ลูกค้าที่อยู่ในถัง 53 (Upsell Virtual) จะย้ายไป 52 (ลูกค้าใหม่)
+          -- หรือลูกค้าที่ไม่มี basket (จาก Order ที่ลูกค้าใหม่ถูกสร้างโดย Admin)
+          AND (c.current_basket_key = 53 OR c.current_basket_key IS NULL OR c.current_basket_key = 0)
         ORDER BY o.order_date DESC
     ";
     
-    $stmt = $pdo->prepare($exitSql);
-    $stmt->execute([$companyId]);
+    $stmt = $pdo->query($exitSql);
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Preview data
@@ -149,13 +153,19 @@ try {
     if ($dryRun) {
         $output['message'] = "🔍 DRY-RUN: พบ " . count($results['customers_to_move']) . " คนที่ตรงเงื่อนไข";
         $output['hint'] = "รันโดยไม่มี --dry-run เพื่ออัพเดทจริง";
+        $logger->log("DRY RUN: Found " . count($results['customers_to_move']) . " customers");
+        $logger->logEnd(count($results['customers_to_move']) > 0); // Only log if found customers
     } else {
         $output['message'] = "✅ ย้าย " . $results['moved_count'] . " คนไปถัง 52 เรียบร้อย";
+        $logger->log("EXECUTED: Moved " . $results['moved_count'] . " customers to basket 52");
+        $logger->logEnd($results['moved_count'] > 0); // Only log if moved customers
     }
     
     echo json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
 } catch (Exception $e) {
+    $logger->logError($e->getMessage());
+    $logger->logEnd();
     if (!$dryRun && $pdo->inTransaction()) {
         $pdo->rollBack();
     }

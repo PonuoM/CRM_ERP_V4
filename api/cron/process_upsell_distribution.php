@@ -29,6 +29,10 @@ if ($inputKey !== $SECRET_KEY) {
 
 define('SKIP_AUTH', true);
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/cron_logger.php';
+
+$logger = new CronLogger('process_upsell_distribution');
+$logger->logStart();
 
 $dryRun = ($_GET['dryrun'] ?? '1') === '1';
 
@@ -198,11 +202,16 @@ try {
     if ($dryRun) {
         echo "\nDRY RUN COMPLETE - No changes made\n";
         echo "To execute: add &dryrun=0 to URL\n";
+        $logger->log("DRY RUN: Processed={$grandTotal['processed']}, Would move={$grandTotal['moved']}");
     } else {
         echo "\nEXECUTION COMPLETE\n";
+        $logger->log("EXECUTED: Processed={$grandTotal['processed']}, Moved→53={$grandTotal['moved']}, Skipped={$grandTotal['skipped']}, Errors={$grandTotal['errors']}");
     }
+    $logger->logEnd();
     
 } catch (Exception $e) {
+    $logger->logError($e->getMessage());
+    $logger->logEnd();
     echo "FATAL ERROR: " . $e->getMessage() . "\n";
     echo "Line: " . $e->getLine() . "\n";
     echo "Trace: " . $e->getTraceAsString() . "\n";

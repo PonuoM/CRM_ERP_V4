@@ -32,6 +32,10 @@ if ($providedKey !== $expectedKey) {
 $dryRun = isset($_GET['dryrun']) && $_GET['dryrun'] == '1';
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/cron_logger.php';
+
+$logger = new CronLogger('process_upsell_by_others');
+$logger->logStart();
 
 echo "=====================================================\n";
 echo "Process Upsell By Others (Personal Basket → 51)\n";
@@ -48,11 +52,11 @@ try {
     // Get personal baskets (dashboard_v2 = Telesale's working baskets)
     // Use 'id' column because customers.current_basket_key stores the numeric id
     // Exclude upsell baskets 51, 53
+    // Process all companies - no company filter
     $basketStmt = $pdo->query("
-        SELECT id 
+        SELECT DISTINCT id 
         FROM basket_config 
-        WHERE company_id = 1 
-          AND target_page = 'dashboard_v2'
+        WHERE target_page = 'dashboard_v2'
           AND id NOT IN (51, 53)
           AND is_active = 1
     ");
@@ -60,6 +64,7 @@ try {
     
     if (empty($personalBaskets)) {
         echo "No personal baskets found.\n";
+        $logger->logEnd(false); // No work done, no log
         exit;
     }
     
@@ -81,7 +86,7 @@ try {
             o.creator_id as order_creator,
             u.role_id as creator_role
         FROM customers c
-        INNER JOIN orders o ON c.customer_id = o.customer_id
+        INNER JOIN orders o ON (c.customer_id = o.customer_id OR c.customer_ref_id = o.customer_id)
         INNER JOIN users u ON o.creator_id = u.id
         WHERE c.current_basket_key IN ({$basketList})
           AND c.assigned_to IS NOT NULL AND c.assigned_to > 0
@@ -101,6 +106,7 @@ try {
     
     if ($count === 0) {
         echo "No customers to process.\n";
+        $logger->logEnd(false); // No work done, no log
         exit;
     }
     
@@ -135,7 +141,7 @@ try {
                 // Log transition
                 $logStmt = $pdo->prepare("
                     INSERT INTO basket_transition_log 
-                    (customer_id, from_basket, to_basket, reason, created_at)
+                    (customer_id, from_basket_key, to_basket_key, transition_type, created_at)
                     VALUES (?, ?, ?, 'upsell_by_others', NOW())
                 ");
                 $logStmt->execute([
@@ -164,9 +170,16 @@ try {
     if ($dryRun) {
         echo "\nDRY RUN COMPLETE - No changes made\n";
         echo "To execute: add &dryrun=0 to URL\n";
+        $logger->log("DRY RUN: Found=$count, Would move=$moved");
+        $logger->logEnd($count > 0); // Only log if found customers
+    } else {
+        $logger->log("EXECUTED: Found=$count, Moved=$moved, Errors=$errors");
+        $logger->logEnd($moved > 0 || $errors > 0); // Log if moved or errors
     }
     
 } catch (PDOException $e) {
+    $logger->logError($e->getMessage());
+    // logError already flushes with hasWork=true
     echo "Database error: " . $e->getMessage() . "\n";
     exit(1);
 }

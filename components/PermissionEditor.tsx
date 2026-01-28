@@ -16,6 +16,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'home.dashboard', label: 'Dashboard (แดชบอร์ด)' },
             { key: 'home.talktime_dashboard', label: 'Dashboard Talk Time (แดชบอร์ดเวลาโทร)' },
             { key: 'home.sales_overview', label: 'Sales Overview (ภาพรวมยอดขาย)' },
+            { key: 'home.product_analysis', label: 'Product Analysis (วิเคราะห์ผลิตภัณฑ์)' },
             { key: 'accounting.report', label: 'Accounting Report (รายงานบัญชี)' },
         ]
     },

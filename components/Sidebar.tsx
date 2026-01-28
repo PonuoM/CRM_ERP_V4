@@ -155,6 +155,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Ads History": "ประวัติการกรอก Ads",
     "Marketing User Management": "จัดการผู้ใช้การตลาด-เพจ",
     "Google Sheet Import": "อัพสถานะ Aiport",
+    "Product Analysis": "วิเคราะห์ผลิตภัณฑ์",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -171,6 +172,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Attendance Report", icon: Clock, key: "home.attendance_report" },
         { label: "Orders Report", icon: ShoppingCart, key: "home.orders_report" },
         { label: "Accounting Report", icon: FileText, key: "accounting.report" },
+        { label: "Product Analysis", icon: BarChart2, key: "home.product_analysis" },
+        { label: "Telesale Performance", icon: BarChart2, key: "home.telesale_performance" },
       ]
     },
     {
