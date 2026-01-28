@@ -15,6 +15,7 @@ import {
   Clipboard,
   X,
   Copy,
+  Clock,
 } from "lucide-react";
 import OrderDetailModal from "../components/OrderDetailModal";
 
@@ -24,7 +25,6 @@ interface ReturnManagementPageProps {
 
 interface ImportRow {
   orderNumber: string;
-  amount: number;
   note?: string;
 }
 
@@ -65,7 +65,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const [importedData, setImportedData] = useState<ImportRow[]>([]);
   const [matchResults, setMatchResults] = useState<MatchResult[]>([]);
   // Tabs state
-  const [activeTab, setActiveTab] = useState<"pending" | "verified">("pending");
+  const [activeTab, setActiveTab] = useState<
+    "pending" | "checking" | "verified"
+  >("pending");
   const [verifiedOrders, setVerifiedOrders] = useState<VerifiedOrder[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,7 +98,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     trackingNumber: string;
 
     subOrderId: string | null;
-    status: "pending" | "returned" | "returning" | "delivered" | "delivering";
+    status: "pending" | "returned" | "returning" | "delivered" | "delivering" | "other";
+    collectedAmount?: number;
     note: string;
     items: any[];
   }
@@ -182,6 +185,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               trackingNumber: tNum,
               subOrderId: sId,
               status: "pending",
+              collectedAmount: 0,
               note: "",
               items: relevantItems,
             });
@@ -199,6 +203,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               trackingNumber: t,
               subOrderId: null,
               status: "pending",
+              collectedAmount: 0,
               note: "",
               items: [], // Cannot determine specific items without subOrderId mapping
             });
@@ -214,6 +219,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               trackingNumber: t.trim(),
               subOrderId: null,
               status: "pending",
+              collectedAmount: 0,
               note: "",
               items: [],
             });
@@ -271,14 +277,17 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const fetchOrders = async () => {
     setLoading(true);
     try {
+      let mode = "pending";
+      if (activeTab === "checking") mode = "partial";
+      if (activeTab === "verified") mode = "verified";
+
       const res = await listOrders({
         companyId: user.companyId,
         orderStatus: OrderStatus.Returned,
-        returnMode: "pending",
-        pageSize: 1000, // Construct a reasonable limit or pagination
+        returnMode: mode,
+        pageSize: 1000,
       });
       if (res.ok) {
-        // Defensive: Ensure orders is an array
         setOrders(Array.isArray(res.orders) ? res.orders : []);
       }
     } catch (err) {
@@ -319,12 +328,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   const handleDownloadTemplate = () => {
     const wb = XLSX.utils.book_new();
-    const headers = [["Order Number", "Amount", "Note (Optional)"]];
+    const headers = [["Tracking Number", "Note (Optional)"]];
     const ws = XLSX.utils.aoa_to_sheet(headers);
 
     // Add some example data? No, keep it clean.
     // Set col width
-    ws["!cols"] = [{ wch: 20 }, { wch: 15 }, { wch: 30 }];
+    ws["!cols"] = [{ wch: 20 }, { wch: 30 }];
 
     XLSX.utils.book_append_sheet(wb, ws, "ReturnTemplate");
     XLSX.writeFile(wb, "Return_Verification_Template.xlsx");
@@ -342,18 +351,19 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       if (cols.length < 2) return; // Skip invalid lines
 
       const rawOrder = cols[0].trim();
-      const rawAmount = cols[1].replace(/,/g, "").trim();
-      const rawNote = cols[2] ? cols[2].trim() : "";
+      // Skip amount column (previously index 1), note is now index 1 or 2 depending on if user kept column B or not?
+      // User said "remove amount from template", so template is now [Tracking, Note].
+      // But user also said "paste Excel", users might still paste 3 columns if they use old template?
+      // To be safe: If 2 columns -> Tracking, Note. If 3 columns -> Tracking, Amount(ignored), Note?
+      // The prompt says "remove column amount from template... import system don't need to store amount".
+      // Assuming user uses NEW template: Column A = Tracking, Column B = Note.
+      const rawNote = cols[1] ? cols[1].trim() : "";
 
       if (rawOrder) {
-        const amount = parseFloat(rawAmount);
-        if (!isNaN(amount)) {
-          parsed.push({
-            orderNumber: rawOrder,
-            amount: amount,
-            note: rawNote,
-          });
-        }
+        parsed.push({
+          orderNumber: rawOrder,
+          note: rawNote,
+        });
       }
     });
 
@@ -365,7 +375,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       setPasteContent("");
     } else {
       alert(
-        "ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบรูปแบบข้อมูล (Order ID [Tab] Amount)",
+        "ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบรูปแบบข้อมูล (Tracking Number [Tab] Note)",
       );
     }
   };
@@ -374,11 +384,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     if (!managingOrder) return;
 
     // Filter for actions
-    const actionRows = manageRows.filter((r) => r.status !== "pending");
+    // Allow sending 'pending' to clear status
+    const actionRows = manageRows;
 
     if (actionRows.length === 0) {
       alert("กรุณาเลือกสถานะอย่างน้อย 1 รายการ");
-      return;
       return;
     }
 
@@ -388,7 +398,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   const executeSave = async () => {
     // Re-filter to get action rows (as closure might be stale, but state should be fresh)
-    const actionRows = manageRows.filter((r) => r.status !== "pending");
+    const actionRows = manageRows;
 
     setLoading(true);
     try {
@@ -397,6 +407,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       const payload = actionRows.map((r) => ({
         sub_order_id: r.subOrderId || managingOrder?.id || "", // Fallback to main ID if sub is missing
         status: r.status, // Send status 'returned' or 'delivered'
+        collected_amount: r.collectedAmount || 0,
         note: r.note || "",
       }));
 
@@ -479,7 +490,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const processImportFile = (file: File, status: "returning" | "returned") => {
     // setImportTargetStatus(status); // Already set before file select
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       const bstr = evt.target?.result;
       const wb = XLSX.read(bstr, { type: "binary" });
       const wsname = wb.SheetNames[0];
@@ -490,24 +501,23 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
       const headerRow = data[0] as string[];
       let orderIdx = -1;
-      let amountIdx = -1;
       let noteIdx = -1;
 
       headerRow.forEach((h, i) => {
         const lower = String(h).toLowerCase();
-        if (
-          lower.includes("order") ||
-          lower.includes("id") ||
-          lower.includes("หมายเลข") ||
-          lower.includes("tracking")
+        // Priority: Tracking Number
+        if (lower.includes("tracking")) {
+          orderIdx = i;
+        }
+        // Fallback: Order ID/Number Check
+        else if (
+          orderIdx === -1 && (
+            lower.includes("order") ||
+            lower.includes("id") ||
+            lower.includes("หมายเลข"))
         )
           orderIdx = i;
-        if (
-          lower.includes("amount") ||
-          lower.includes("price") ||
-          lower.includes("ยอด")
-        )
-          amountIdx = i;
+
         if (
           lower.includes("note") ||
           lower.includes("remark") ||
@@ -516,12 +526,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           noteIdx = i;
       });
 
-      if (orderIdx === -1 || amountIdx === -1) {
-        // Fallback: Use col 0 and 1
+      if (orderIdx === -1) {
         orderIdx = 0;
-        amountIdx = 1;
-        // If col 2 exists, use it as note
-        if (data[0].length > 2) noteIdx = 2;
+        if (data[0].length > 1) noteIdx = 1;
       }
 
       const parsed: ImportRow[] = [];
@@ -529,21 +536,55 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         const row = data[i];
         if (!row || row.length === 0) continue;
         const rawOrder = row[orderIdx];
-        const rawAmount = row[amountIdx];
         const rawNote = noteIdx !== -1 ? row[noteIdx] : "";
 
         if (rawOrder) {
           parsed.push({
             orderNumber: String(rawOrder).trim(),
-            amount: Number(rawAmount || 0),
             note: rawNote ? String(rawNote).trim() : "",
           });
         }
       }
 
       setImportedData(parsed);
-      performMatching(parsed, orders, verifiedOrders);
+      setLoading(true);
+
+      // Fetch matching orders from API
+      let fetchedOrders: Order[] = [];
+      const trackingList = parsed.map((p) => p.orderNumber).filter(Boolean);
+
+      // Chunking to avoid URL length issues (50 per chunk)
+      const chunks = [];
+      for (let i = 0; i < trackingList.length; i += 50) {
+        chunks.push(trackingList.slice(i, i + 50));
+      }
+
+      try {
+        for (const chunk of chunks) {
+          if (chunk.length === 0) continue;
+          const res = await listOrders({
+            companyId: user.companyId,
+            trackingNumber: chunk.join(","),
+            pageSize: 1000,
+          });
+          if (res.ok && res.orders) {
+            fetchedOrders = [...fetchedOrders, ...res.orders];
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch import orders", err);
+      }
+
+      // Merge fetched orders with existing system orders
+      const allOrders = [...fetchedOrders, ...orders];
+      // Deduplicate by ID
+      const uniqueOrders = Array.from(
+        new Map(allOrders.map((o) => [o.id, o])).values(),
+      );
+
+      performMatching(parsed, uniqueOrders, verifiedOrders);
       setMode("verify");
+      setLoading(false);
     };
     reader.readAsBinaryString(file);
   };
@@ -558,26 +599,45 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
     imported.forEach((row) => {
       // Find by Tracking Number OR Order ID
-      const matched = systemOrders.find(
-        (o) =>
-          (Array.isArray(o.trackingNumbers) &&
-            o.trackingNumbers.some((t) => t.includes(row.orderNumber))) ||
-          o.id === row.orderNumber ||
-          // Also check trackingDetails
-          (Array.isArray(o.trackingDetails) &&
-            o.trackingDetails.some((t) =>
-              t.trackingNumber?.includes(row.orderNumber),
-            )),
-      );
+      // Find by Tracking Number OR Order ID
+      const matched = systemOrders.find((o) => {
+        // 1. Check Arrays (trackingNumbers)
+        if (
+          Array.isArray(o.trackingNumbers) &&
+          o.trackingNumbers.some((t) => t.includes(row.orderNumber))
+        )
+          return true;
+
+        // 2. Check Order ID
+        if (o.id === row.orderNumber) return true;
+
+        // 3. Check trackingDetails (Handle both camelCase and snake_case)
+        if (Array.isArray(o.trackingDetails)) {
+          const found = o.trackingDetails.some((t: any) => {
+            const tNum = t.trackingNumber || t.tracking_number;
+            return tNum && tNum.includes(row.orderNumber);
+          });
+          if (found) return true;
+        }
+
+        // 4. Check tracking_numbers string (snake_case from API)
+        const tStr = (o as any).tracking_numbers;
+        if (typeof tStr === 'string' && tStr.includes(row.orderNumber)) {
+          return true;
+        }
+
+        return false;
+      });
 
       if (matched) {
         // Determine Sub Order ID
         let subOrderId = null;
         // Case 1: Matched by Tracking Number
         if (Array.isArray(matched.trackingDetails)) {
-          const detail = matched.trackingDetails.find(
-            (d) => d.trackingNumber === row.orderNumber,
-          );
+          const detail = matched.trackingDetails.find((d: any) => {
+            const tNum = d.trackingNumber || d.tracking_number;
+            return tNum === row.orderNumber;
+          });
           if (detail && detail.order_id) {
             subOrderId = detail.order_id;
           }
@@ -594,14 +654,15 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
         matchedOrderIds.add(matched.id);
         // Defensive: Handle missing totalAmount and snake_case
-        const sysAmount = getOrderAmount(matched);
-        const diff = Math.abs(sysAmount - row.amount);
+        // Defensive: Handle missing totalAmount and snake_case
+        // const sysAmount = getOrderAmount(matched);
+        // const diff = Math.abs(sysAmount - row.amount); // No amount check anymore
         results.push({
           importRow: row,
           matchedOrder: matched,
           matchedSubOrderId: subOrderId,
-          status: diff < 1 ? "matched" : "amount_mismatch",
-          diff: sysAmount - row.amount, // Positive = System > Import
+          status: "matched", // Always match if ID found
+          diff: 0,
         });
       } else {
         // Check if it's already verified
@@ -643,19 +704,19 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Order ID
+              รหัสออเดอร์
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Tracking
+              เลขพัสดุ
             </th>
             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Amount
+              ยอดเงิน
             </th>
             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Date
+              วันที่สั่งซื้อ
             </th>
             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Actions
+              จัดการ
             </th>
           </tr>
         </thead>
@@ -705,7 +766,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 {getOrderAmount(order).toLocaleString()}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {new Date(order.orderDate).toLocaleDateString("th-TH")}
+                {new Date(
+                  order.orderDate || (order as any).order_date,
+                ).toLocaleDateString("th-TH")}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                 <button
@@ -736,11 +799,10 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       return;
 
     const payload = results.map((r) => ({
-      // Use matched Sub Order ID if available, else Matched Main Order ID, else Import Order Number
       sub_order_id:
         r.matchedSubOrderId ||
         (r.matchedOrder ? r.matchedOrder.id : r.importRow.orderNumber),
-      return_amount: r.importRow.amount,
+      return_amount: 0,
       status: importTargetStatus || "returned", // Use selected import status
       note: r.importRow.note || "",
     }));
@@ -794,22 +856,16 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              File Order/Tracking
+              เลขพัสดุที่นำเข้า
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              System Order
-            </th>
-            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Amount
+              ออเดอร์ในระบบ
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Note
-            </th>
-            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Diff
+              หมายเหตุ
             </th>
             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Status
+              สถานะ
             </th>
           </tr>
         </thead>
@@ -842,29 +898,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   "-"
                 )}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                <div>
-                  {res.importRow.amount.toLocaleString()}{" "}
-                  <span className="text-xs text-gray-500">(File)</span>
-                </div>
-                <div className="text-gray-400 text-xs">
-                  {res.matchedOrder
-                    ? getOrderAmount(res.matchedOrder).toLocaleString()
-                    : "-"}{" "}
-                  (Sys)
-                </div>
-              </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {res.importRow.note || "-"}
-              </td>
-              <td
-                className={`px - 6 py - 4 whitespace - nowrap text - sm text - right font - medium ${res.diff !== 0 ? "text-red-600" : "text-gray-400"} `}
-              >
-                {res.diff !== 0
-                  ? res.diff > 0
-                    ? `+ ${res.diff.toLocaleString()} `
-                    : res.diff.toLocaleString()
-                  : "-"}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-center">
                 {res.status === "matched" && (
@@ -949,25 +984,28 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Order ID
+                รหัสออเดอร์
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Tracking & Status
+                เลขพัสดุ & สถานะ
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Note
+                หมายเหตุ
               </th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Date
+                วันที่ตรวจสอบ
               </th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Action
+                จัดการ
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {sortedGroups.map((group) => {
               const { displayId, parentOrder, items } = group;
+              // Only show if parentOrder exists (meaning it matches the current filter/tab)
+              if (!parentOrder) return null;
+
               // Representative item (first one) for shared data if needed
               const rep = items[0];
 
@@ -1026,7 +1064,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                             >
                               (
                               {v.status === "returning"
-                                ? "อยู่ระหว่างตีกลับ"
+                                ? "ตีกลับ"
                                 : v.status === "returned"
                                   ? "เข้าคลังแล้ว"
                                   : v.status === "delivering"
@@ -1119,27 +1157,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           >
             <Download size={16} /> Template
           </button>
-          <button
-            onClick={() => {
-              setMode("list");
-              fetchOrders();
-            }}
-            className={`px - 4 py - 2 rounded - lg text - sm font - medium border flex items - center gap - 2 ${mode === "list" ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white border-gray-300 text-gray-700"} `}
-          >
-            <FileText size={16} /> รายการตีกลับ
-          </button>
-          <div className="h-8 w-px bg-gray-300 mx-2 self-center"></div>
 
-          {/* Tabs removed from here */ null}
-
-          <div className="h-8 w-px bg-gray-300 mx-2 self-center"></div>
-
-          <button
-            onClick={() => setIsPasteModalOpen(true)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
-          >
-            <Clipboard size={16} /> วางข้อมูล (Excel)
-          </button>
           <input
             type="file"
             accept=".csv,.xlsx,.xls"
@@ -1162,15 +1180,31 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           <div className="inline-flex bg-gray-100 p-1 rounded-lg">
             <button
               onClick={() => setActiveTab("pending")}
-              className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === "pending" ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
+              className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === "pending"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
             >
+              <Clock size={18} />
               ยังไม่ตรวจสอบ (Pending)
             </button>
             <button
-              onClick={() => setActiveTab("verified")}
-              className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === "verified" ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
+              onClick={() => setActiveTab("checking")}
+              className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === "checking"
+                ? "border-yellow-500 text-yellow-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
             >
-              ตรวจสอบแล้ว (Verified)
+              <AlertCircle size={18} />
+              อยู่ระหว่างตรวจสอบ (Checking)
+            </button>
+            <button
+              onClick={() => setActiveTab("verified")}
+              className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === "verified"
+                ? "border-green-600 text-green-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+            >    ตรวจสอบแล้ว (Verified)
             </button>
           </div>
         </div>
@@ -1272,14 +1306,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                     <thead>
                       <tr>
                         <th className="w-10 bg-gray-100 border-r border-b border-gray-300"></th>
-                        <th className="bg-gray-100 border-r border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/3">
-                          A (Tracking / Order ID)
+                        <th className="bg-gray-100 border-r border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/2">
+                          A (เลขพัสดุ / รหัสออเดอร์)
                         </th>
-                        <th className="bg-gray-100 border-r border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/3">
-                          B (Amount)
-                        </th>
-                        <th className="bg-gray-100 border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/3">
-                          C (Note)
+                        <th className="bg-gray-100 border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/2">
+                          B (หมายเหตุ)
                         </th>
                       </tr>
                     </thead>
@@ -1409,19 +1440,19 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 <thead className="bg-gray-100">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Tracking No.
+                      เลขพัสดุ
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Sub Order ID
+                      รหัสย่อย
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Products
+                      รายการสินค้า
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Status
+                      สถานะ
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Note
+                      หมายเหตุ
                     </th>
                   </tr>
                 </thead>
@@ -1500,7 +1531,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               className="text-orange-600 focus:ring-orange-500"
                             />
                             <span className="text-orange-700">
-                              อยู่ระหว่างตีกลับ
+                              ตีกลับ
                             </span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer">
@@ -1517,6 +1548,58 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                             />
                             <span className="text-red-700">
                               รับของคืนแล้ว (เข้าคลัง)
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={"status-" + idx}
+                              checked={row.status === "delivered"}
+                              onChange={() => {
+                                const newRows = [...manageRows];
+                                newRows[idx].status = "delivered";
+                                setManageRows(newRows);
+                              }}
+                              className="text-green-600 focus:ring-green-500"
+                            />
+                            <span className="text-green-700">
+                              ส่งสำเร็จ (Delivered)
+                            </span>
+                          </label>
+                          {row.status === "delivered" && (
+                            <div className="ml-6 mt-1 flex items-center gap-2">
+                              <span className="text-xs text-gray-500">
+                                ยอดที่เก็บได้:
+                              </span>
+                              <input
+                                type="number"
+                                value={row.collectedAmount || ""}
+                                onChange={(e) => {
+                                  const newRows = [...manageRows];
+                                  newRows[idx].collectedAmount = parseFloat(
+                                    e.target.value,
+                                  );
+                                  setManageRows(newRows);
+                                }}
+                                className="w-24 px-2 py-1 text-sm border border-green-300 rounded focus:ring-green-500 focus:border-green-500"
+                                placeholder="บาท"
+                              />
+                            </div>
+                          )}
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={"status-" + idx}
+                              checked={row.status === "other"}
+                              onChange={() => {
+                                const newRows = [...manageRows];
+                                newRows[idx].status = "other";
+                                setManageRows(newRows);
+                              }}
+                              className="text-gray-600 focus:ring-gray-500"
+                            />
+                            <span className="text-gray-700">
+                              อื่นๆ (Others)
                             </span>
                           </label>
 

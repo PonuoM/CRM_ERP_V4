@@ -28,6 +28,8 @@ const AUTO_MATCH_AMOUNT_DIFF = 1; // THB
 const AUTO_MATCH_TIME_SEC = 180; // 3 minutes
 const CANDIDATE_TIME_SEC = 1800; // 30 minutes window for suggestions
 const CANDIDATE_AMOUNT_DIFF = 500; // THB tolerance for suggestions
+const SHOW_APPROVE_SLIP = false;
+const SHOW_APPROVE_PAYAFTER = false;
 
 interface FinanceApprovalPageProps {
   user: User;
@@ -181,7 +183,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
 
   const [activeTab, setActiveTab] = useState<
     "slips" | "transfers" | "payafter"
-  >("slips");
+  >("transfers");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<
@@ -1904,27 +1906,29 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         </div>
 
         <div className="flex border-b border-gray-200 mb-6">
-          <button
-            onClick={() => {
-              setActiveTab("slips");
-              setSelectedIds([]);
-            }}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "slips"
-              ? "border-b-2 border-blue-600 text-blue-600"
-              : "text-gray-500 hover:text-gray-700"
-              }`}
-          >
-            <FileText size={16} />
-            <span>Approve สลิป</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "slips"
-                ? "bg-blue-100 text-blue-600"
-                : "bg-gray-100 text-gray-600"
+          {SHOW_APPROVE_SLIP && (
+            <button
+              onClick={() => {
+                setActiveTab("slips");
+                setSelectedIds([]);
+              }}
+              className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "slips"
+                ? "border-b-2 border-blue-600 text-blue-600"
+                : "text-gray-500 hover:text-gray-700"
                 }`}
             >
-              {tabCounts.transfers}
-            </span>
-          </button>
+              <FileText size={16} />
+              <span>Approve สลิป</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "slips"
+                  ? "bg-blue-100 text-blue-600"
+                  : "bg-gray-100 text-gray-600"
+                  }`}
+              >
+                {tabCounts.transfers}
+              </span>
+            </button>
+          )}
           <button
             onClick={() => {
               setActiveTab("transfers");
@@ -1939,27 +1943,29 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
             <span>Approve COD</span>
             {/* Count not available via API yet */}
           </button>
-          <button
-            onClick={() => {
-              setActiveTab("payafter");
-              setSelectedIds([]);
-            }}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "payafter"
-              ? "border-b-2 border-purple-600 text-purple-600"
-              : "text-gray-500 hover:text-gray-700"
-              }`}
-          >
-            <FileText size={16} />
-            <span>Approve PayAfter</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "payafter"
-                ? "bg-purple-100 text-purple-600"
-                : "bg-gray-100 text-gray-600"
+          {SHOW_APPROVE_PAYAFTER && (
+            <button
+              onClick={() => {
+                setActiveTab("payafter");
+                setSelectedIds([]);
+              }}
+              className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "payafter"
+                ? "border-b-2 border-purple-600 text-purple-600"
+                : "text-gray-500 hover:text-gray-700"
                 }`}
             >
-              {tabCounts.payafter}
-            </span>
-          </button>
+              <FileText size={16} />
+              <span>Approve PayAfter</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "payafter"
+                  ? "bg-purple-100 text-purple-600"
+                  : "bg-gray-100 text-gray-600"
+                  }`}
+              >
+                {tabCounts.payafter}
+              </span>
+            </button>
+          )}
         </div >
 
         {activeTab === "slips" ? (

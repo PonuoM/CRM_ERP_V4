@@ -29,28 +29,46 @@ try {
     // We now update order_boxes instead of inserting into order_returns.
     // We match by sub_order_id.
 
-    $stmt = $conn->prepare("UPDATE order_boxes SET return_status = ?, return_note = ?, return_created_at = NOW(), status = 'RETURNED' WHERE sub_order_id = ?");
+    // We now update order_boxes instead of inserting into order_returns.
+    // We match by sub_order_id.
+
+    // Prepare statement with placeholder for return_created_at
+    $stmt = $conn->prepare("UPDATE order_boxes SET return_status = ?, return_note = ?, collected_amount = ?, return_created_at = ?, status = 'RETURNED' WHERE sub_order_id = ?");
 
     $successCount = 0;
 
     foreach ($data['returns'] as $item) {
         $subOrderId = isset($item['sub_order_id']) ? $item['sub_order_id'] : '';
-        $status = isset($item['status']) ? $item['status'] : 'returned';
+        $rawStatus = isset($item['status']) ? $item['status'] : 'returned';
         $note = isset($item['note']) ? $item['note'] : '';
+        $collectedAmount = isset($item['collected_amount']) ? (float) $item['collected_amount'] : 0;
 
         if (empty($subOrderId))
             continue;
 
+        // Determine DB values based on status
+        if ($rawStatus === 'pending') {
+            $statusParam = null;
+            $noteParam = null;
+            $collectedAmountParam = 0;
+            $createdAtParam = null;
+        } else {
+            $statusParam = $rawStatus;
+            $noteParam = $note;
+            $collectedAmountParam = $collectedAmount;
+            $createdAtParam = date('Y-m-d H:i:s');
+        }
+
         // PDO execution
-        if ($stmt->execute([$status, $note, $subOrderId])) {
+        if ($stmt->execute([$statusParam, $noteParam, $collectedAmountParam, $createdAtParam, $subOrderId])) {
             // Check if any row was actually updated
             if ($stmt->rowCount() > 0) {
                 $successCount++;
             } else {
                 // FALLBACK: If sub_order_id not found, maybe it's a Main Order ID?
                 // Try updating all boxes for this order_id
-                $stmtFallback = $conn->prepare("UPDATE order_boxes SET return_status = ?, return_note = ?, return_created_at = NOW(), status = 'RETURNED' WHERE order_id = ?");
-                if ($stmtFallback->execute([$status, $note, $subOrderId])) {
+                $stmtFallback = $conn->prepare("UPDATE order_boxes SET return_status = ?, return_note = ?, collected_amount = ?, return_created_at = ?, status = 'RETURNED' WHERE order_id = ?");
+                if ($stmtFallback->execute([$statusParam, $noteParam, $collectedAmountParam, $createdAtParam, $subOrderId])) {
                     if ($stmtFallback->rowCount() > 0) {
                         $successCount++;
                     }

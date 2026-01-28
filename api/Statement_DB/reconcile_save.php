@@ -11,11 +11,11 @@ if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
 
 require_once dirname(__DIR__) . "/config.php";
 
-register_shutdown_function(function() {
-    $error = error_get_last();
-    if ($error !== null && $error['type'] === E_ERROR) {
-        file_put_contents(__DIR__ . "/debug_reconcile.txt", "FATAL ERROR: " . print_r($error, true) . "\n", FILE_APPEND);
-    }
+register_shutdown_function(function () {
+  $error = error_get_last();
+  if ($error !== null && $error['type'] === E_ERROR) {
+    file_put_contents(__DIR__ . "/debug_reconcile.txt", "FATAL ERROR: " . print_r($error, true) . "\n", FILE_APPEND);
+  }
 });
 
 if (!defined("RECONCILE_CHARSET")) {
@@ -165,7 +165,7 @@ try {
   $pdo = db_connect();
   // Enable error reporting for PDO FIRST before any queries
   $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-  
+
   // Use standard connection from config.php
   ensure_reconcile_tables($pdo);
 
@@ -232,7 +232,7 @@ try {
   $saved = 0;
   $batchRunningTotals = [];
   $existingReconCache = [];
-  
+
   // Prepare statement fetch query
   $stmtFetchSql = $pdo->prepare("SELECT amount FROM statement_logs WHERE id = :id");
 
@@ -247,8 +247,8 @@ try {
     $stmtFetchSql->execute([':id' => $statementId]);
     $stmtInfo = $stmtFetchSql->fetch(PDO::FETCH_ASSOC);
     if (!$stmtInfo) {
-        file_put_contents(__DIR__ . "/debug_reconcile.txt", "Error: Statement not found $statementId\n", FILE_APPEND);
-        throw new RuntimeException("Statement log not found for ID: " . $statementId);
+      file_put_contents(__DIR__ . "/debug_reconcile.txt", "Error: Statement not found $statementId\n", FILE_APPEND);
+      throw new RuntimeException("Statement log not found for ID: " . $statementId);
     }
     $statementAmount = (float) $stmtInfo['amount'];
     file_put_contents(__DIR__ . "/debug_reconcile.txt", "Process Item: StmtId=$statementId, Type=$reconcileType, Amount=$statementAmount\n", FILE_APPEND);
@@ -257,14 +257,14 @@ try {
 
     if ($reconcileType === "Suspense" || $reconcileType === "Deposit") {
       // For Suspense/Deposit, orderId can be empty/null
-      $orderId = null; 
+      $orderId = null;
       $order = null;
     } else {
       // For Order type, validate Order ID
       if ($orderId === "") {
         throw new RuntimeException("Invalid item payload: Order ID required for Order reconciliation");
       }
-      
+
       // Validate order
       $orderStmt = $pdo->prepare("
         SELECT id, total_amount, amount_paid, payment_method, payment_status, order_status
@@ -301,7 +301,7 @@ try {
         $existingReconCache[$orderId] = (float) $orderReconSumStmt->fetchColumn();
       }
       $existingReconciled = $existingReconCache[$orderId];
-  
+
       $running = $batchRunningTotals[$orderId] ?? 0.0;
       $proposedTotal = $existingReconciled + $running + $confirmedAmount;
       if ($proposedTotal > (float) $order["total_amount"] + 0.01) {
@@ -311,54 +311,131 @@ try {
       $batchRunningTotals[$orderId] = $runningAfter;
     }
 
-    try {
-      // Ensure order_id is treated as string with correct collation
-      $orderIdStr = (string) $orderId;
-      
-      $insertLogStmt->execute([
+    // Check for existing reconciliation for this statement (1-to-1 rule)
+    $existingStmt = $pdo->prepare("SELECT id, order_id, confirmed_amount, reconcile_type FROM statement_reconcile_logs WHERE statement_log_id = :stmtId");
+    $existingStmt->execute([':stmtId' => $statementId]);
+    $existingLog = $existingStmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($existingLog) {
+      // Optimistic check: if exact same match, skip to save DB calls
+      if (
+        $existingLog['order_id'] == $orderId &&
+        abs((float) $existingLog['confirmed_amount'] - $confirmedAmount) < 0.01 &&
+        $existingLog['reconcile_type'] == $reconcileType
+      ) {
+        $saved++;
+        continue;
+      }
+
+      // If replacing an old order (and it differs), we must revert the OLD order's paid amount first
+      if ($oldOrderId = $existingLog['order_id']) {
+        if ($oldOrderId != $orderId) {
+          // Re-calculate old order's total paid amount by summing valid reconciliations EXCLUDING this one
+          $sumOldStmt = $pdo->prepare("
+                    SELECT COALESCE(SUM(confirmed_amount), 0) 
+                    FROM statement_reconcile_logs 
+                    WHERE order_id = :oldOrderId AND id != :logId
+                ");
+          $sumOldStmt->execute([':oldOrderId' => $oldOrderId, ':logId' => $existingLog['id']]);
+          $recalcPaid = (float) $sumOldStmt->fetchColumn();
+
+          // Get old order details to determine correct status
+          $oldOrderStmt = $pdo->prepare("SELECT id, total_amount, order_status FROM orders WHERE id = :id AND company_id = :companyId");
+          $oldOrderStmt->execute([':id' => $oldOrderId, ':companyId' => $companyId]);
+          $oldOrder = $oldOrderStmt->fetch(PDO::FETCH_ASSOC);
+
+          if ($oldOrder) {
+            // Determine Status for Old Order
+            $oldTargetStatus = "PendingVerification";
+            if ($recalcPaid > 0) {
+              $oldTargetStatus = $recalcPaid >= ((float) $oldOrder['total_amount'] - 0.01) ? "Approved" : "PreApproved";
+            }
+
+            // Restore Old Order Status
+            $oldNextStatus = $oldOrder['order_status'];
+            if ($oldTargetStatus === "PendingVerification" && in_array($oldOrder['order_status'], ["PreApproved", "Delivered", "Approved"])) {
+              $oldNextStatus = "Confirmed";
+            }
+
+            $orderUpdateStmt->execute([
+              ":amountPaid" => $recalcPaid,
+              ":paymentStatus" => $oldTargetStatus,
+              ":orderStatus" => $oldNextStatus,
+              ":orderId" => $oldOrderId,
+              ":companyId" => $companyId
+            ]);
+          }
+        }
+      }
+
+      // UPDATE existing log record
+      $updateLogStmt = $pdo->prepare("
+            UPDATE statement_reconcile_logs 
+            SET batch_id = :batchId, order_id = :orderId, confirmed_amount = :confirmedAmount, reconcile_type = :reconcileType, auto_matched = :autoMatched, note = :note
+            WHERE id = :id
+        ");
+      $updateLogStmt->execute([
         ":batchId" => $batchId,
-        ":statementId" => $statementId,
-        ":orderId" => $orderId, // Can be null for Suspense/Deposit
-        ":statementAmount" => $statementAmount,
+        ":orderId" => $orderId, // Can update to NULL if changing type
         ":confirmedAmount" => $confirmedAmount,
         ":reconcileType" => $reconcileType,
         ":autoMatched" => $autoMatched,
         ":note" => $note,
+        ":id" => $existingLog['id']
       ]);
-      $saved += 1;
-    } catch (PDOException $insertError) {
-      error_log("Failed to insert reconcile log: " . $insertError->getMessage());
-      error_log("SQL State: " . $insertError->getCode());
-      error_log("Order ID: {$orderId} (type: " . gettype($orderId) . "), Statement ID: {$statementId}");
-      error_log("Stack trace: " . $insertError->getTraceAsString());
-      
-      // Check if it's a collation error
-      if (strpos($insertError->getMessage(), "collation") !== false || 
+      $saved++;
+    } else {
+      try {
+        // Ensure order_id is treated as string with correct collation
+        $orderIdStr = (string) $orderId;
+
+        $insertLogStmt->execute([
+          ":batchId" => $batchId,
+          ":statementId" => $statementId,
+          ":orderId" => $orderId, // Can be null for Suspense/Deposit
+          ":statementAmount" => $statementAmount,
+          ":confirmedAmount" => $confirmedAmount,
+          ":reconcileType" => $reconcileType,
+          ":autoMatched" => $autoMatched,
+          ":note" => $note,
+        ]);
+        $saved += 1;
+      } catch (PDOException $insertError) {
+        error_log("Failed to insert reconcile log: " . $insertError->getMessage());
+        error_log("SQL State: " . $insertError->getCode());
+        error_log("Order ID: {$orderId} (type: " . gettype($orderId) . "), Statement ID: {$statementId}");
+        error_log("Stack trace: " . $insertError->getTraceAsString());
+
+        // Check if it's a collation error
+        if (
+          strpos($insertError->getMessage(), "collation") !== false ||
           strpos($insertError->getMessage(), "1267") !== false ||
-          strpos($insertError->getMessage(), "COERCIBLE") !== false) {
-        error_log("COLLATION ERROR DETECTED!");
-        error_log("Connection collation: " . $pdo->query("SELECT @@collation_connection")->fetchColumn());
-        error_log("Order ID collation check:");
-        $orderInfo = $pdo->query("
+          strpos($insertError->getMessage(), "COERCIBLE") !== false
+        ) {
+          error_log("COLLATION ERROR DETECTED!");
+          error_log("Connection collation: " . $pdo->query("SELECT @@collation_connection")->fetchColumn());
+          error_log("Order ID collation check:");
+          $orderInfo = $pdo->query("
           SELECT COLLATION_NAME 
           FROM INFORMATION_SCHEMA.COLUMNS
           WHERE TABLE_SCHEMA = DATABASE()
             AND TABLE_NAME = 'orders'
             AND COLUMN_NAME = 'id'
         ")->fetch(PDO::FETCH_ASSOC);
-        error_log("  orders.id: " . ($orderInfo['COLLATION_NAME'] ?? 'NULL'));
-        
-        $logInfo = $pdo->query("
+          error_log("  orders.id: " . ($orderInfo['COLLATION_NAME'] ?? 'NULL'));
+
+          $logInfo = $pdo->query("
           SELECT COLLATION_NAME 
           FROM INFORMATION_SCHEMA.COLUMNS
           WHERE TABLE_SCHEMA = DATABASE()
             AND TABLE_NAME = 'statement_reconcile_logs'
             AND COLUMN_NAME = 'order_id'
         ")->fetch(PDO::FETCH_ASSOC);
-        error_log("  statement_reconcile_logs.order_id: " . ($logInfo['COLLATION_NAME'] ?? 'NULL'));
+          error_log("  statement_reconcile_logs.order_id: " . ($logInfo['COLLATION_NAME'] ?? 'NULL'));
+        }
+
+        throw new RuntimeException("Failed to insert reconciliation record: " . $insertError->getMessage(), 0, $insertError);
       }
-      
-      throw new RuntimeException("Failed to insert reconciliation record: " . $insertError->getMessage(), 0, $insertError);
     }
 
     // Update order payment status/amount
@@ -371,7 +448,7 @@ try {
     if ($currentPaymentStatus === "Approved" || $currentPaymentStatus === "Paid") {
       $targetStatus = $currentPaymentStatus;
     }
-    
+
     // Determine order status based on payment status
     // STOP AUTO-DELIVERY: Payment received implies Deposit/PreApproved, NOT Delivered.
     $currentStatus = $order["order_status"];
@@ -419,7 +496,7 @@ try {
   error_log("reconcile_save.php PDOException: " . $e->getMessage());
   error_log("SQL State: " . $e->getCode());
   error_log("Trace: " . $e->getTraceAsString());
-  
+
   http_response_code(500);
   $errorMessage = $e->getMessage();
   // If it's a collation error, provide more specific message
@@ -442,7 +519,7 @@ try {
   // Log the full error for debugging
   error_log("reconcile_save.php Exception: " . $e->getMessage());
   error_log("Trace: " . $e->getTraceAsString());
-  
+
   http_response_code(500);
   echo json_encode(
     [

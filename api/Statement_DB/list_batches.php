@@ -7,7 +7,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
   json_response(['ok' => false, 'error' => 'Method not allowed'], 405);
 }
 
-function ensure_statement_bank_columns(PDO $pdo): void {
+function ensure_statement_bank_columns(PDO $pdo): void
+{
   $hasBankId = $pdo->query("SHOW COLUMNS FROM statement_logs LIKE 'bank_account_id'")->fetch();
   if (!$hasBankId) {
     $pdo->exec("ALTER TABLE statement_logs ADD COLUMN bank_account_id INT NULL AFTER amount");
@@ -65,8 +66,9 @@ try {
   );
   ensure_statement_bank_columns($pdo);
 
-  $stmt = $pdo->query(
-    "SELECT 
+  $companyId = isset($_GET['company_id']) ? (int) $_GET['company_id'] : 0;
+
+  $sql = "SELECT 
         sb.id AS batch,
         sb.row_count,
         sb.transfer_min AS transfer_from,
@@ -84,8 +86,11 @@ try {
        GROUP BY batch_id
      ) agg ON agg.batch_id = sb.id
      LEFT JOIN bank_account ba ON ba.id = agg.bank_account_id
-     ORDER BY sb.id DESC"
-  );
+     WHERE sb.company_id = ?
+     ORDER BY sb.id DESC";
+
+  $stmt = $pdo->prepare($sql);
+  $stmt->execute([$companyId]);
 
   $batches = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

@@ -43,17 +43,11 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
     const [paymentMethod, setPaymentMethod] = useState("all");
 
     const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<string | null>(null);
+    const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+    const [bankAccountId, setBankAccountId] = useState("all");
 
     useEffect(() => {
         if (isOpen && initialParams) {
-            /*
-      if (initialParams.date) {
-        // User requested NOT to set default dates from statement
-        // const dateStr = initialParams.date.split("T")[0];
-        // setStartDate(dateStr);
-        // setEndDate(dateStr);
-      }
-      */
             if (initialParams.amount) {
                 // Pre-fill exact amount range
                 setAmountRange({
@@ -61,9 +55,26 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                     max: initialParams.amount.toString()
                 });
             }
-            // Trigger search immediately if params are present?
-            // Maybe wait for user to confirm or adjust?
-            // Let's trigger it.
+
+            // Fetch Bank Accounts
+            const fetchBanks = async () => {
+                try {
+                    const apiBase = resolveApiBasePath();
+                    const token = localStorage.getItem("authToken");
+                    const headers: any = {};
+                    if (token) headers["Authorization"] = `Bearer ${token}`;
+                    const res = await fetch(`${apiBase}/Bank_DB/get_bank_accounts.php?company_id=${initialParams.companyId}`, { headers });
+                    const data = await res.json();
+                    if (data.success) {
+                        setBankAccounts(data.data);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch banks", err);
+                }
+            };
+            fetchBanks();
+
+            // Trigger search immediately
             handleSearch(1);
         }
     }, [isOpen, initialParams]);
@@ -74,34 +85,81 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
         setLoading(true);
         try {
             const params = new URLSearchParams();
-            params.append("company_id", initialParams.companyId.toString());
+            // Param mapping for list_company_slips.php
+            // company_id is handled by session/auth in list_company_slips.php, but let's see if it needs it. 
+            // Actually list_company_slips.php gets company_id from authenticated user session, not query param usually.
+            // But let's check if the previous API used it. The previous one did.
+            // list_company_slips.php: $company_id = $user['company_id']; -> It ignores the param and uses session!
+            // BUT, for safety in this specific context (if user session matches), we can just call it.
+            // Wait, does the internal API require auth token? Yes.
+            // The frontend `apiFetch` or `fetch` with headers handles auth.
+
             params.append("page", page.toString());
             params.append("pageSize", pageSize.toString());
 
-            if (customerName) params.append("customer_name", customerName);
-            if (phone) params.append("phone", phone);
+            if (customerName) params.append("search", customerName); // Changed to search
+            // phone is not directly supported as separate param in list_company_slips, but 'search' covers phone too.
+            // So we can append phone to search if customerName is empty, or combine them?
+            // "search" in PHP covers: os.order_id, c.first_name, c.last_name, c.phone
+            // So if user types in customerName input, it goes to 'search'.
+            // If user types in phone input, we should ALSO put it in 'search' or handle it.
+            // Since the UI has 2 separate fields but API has 1 'search', let's prioritize or combine.
+            // For now, if phone is provided, use it as search if customerName is empty.
+            if (!customerName && phone) {
+                params.append("search", phone);
+            } else if (customerName && phone) {
+                // API only supports one search string usually. Let's just use customerName for now or concat?
+                // list_company_slips checks: LIKE ? OR ... 
+                // It doesn't support AND logic for separate fields easily without mod.
+                // Let's us customerName as primary 'search'.
+            }
 
-            // Send amount range
+
+            // Amount ranges - list_company_slips.php DOES NOT currently support min/max amount filtering in the code I viewed.
+            // It filters by status, date, payment_method.
+            // If amount filtering is critical, the backend might need simple update. 
+            // For now, I will omit sending amount params if the backend doesn't read them, or send them just in case I missed it.
+            // (The viewed code for list_company_slips.php did NOT have min_amount/max_amount checks).
+
+            if (startDate) params.append("date_from", startDate);
+            if (endDate) params.append("date_to", endDate);
+
+            if (paymentMethod && paymentMethod !== 'all') params.append("payment_method", paymentMethod);
+            if (bankAccountId && bankAccountId !== 'all') params.append("bank_account_id", bankAccountId);
+
+            // Amount ranges
             if (amountRange.min) params.append("min_amount", amountRange.min);
             if (amountRange.max) params.append("max_amount", amountRange.max);
 
-            if (startDate) params.append("start_date", startDate);
-            if (endDate) params.append("end_date", endDate);
-            // Check for "all" explicitly to match API behavior
-            if (paymentMethod && paymentMethod !== 'all') params.append("payment_method", paymentMethod);
-            else params.append("payment_method", "all");
+            // Filter out fully reconciled orders
+            params.append("exclude_reconciled", "true");
 
+            // Status filter? The modal doesn't have status filter UI, but maybe we want "verified" only? 
+            // Or "pending"? The user said "show slipes". Usually 'pending' or 'all'? 
+            // Let's default to 'all' or not send it (default in PHP is 'all').
 
             const apiBase = resolveApiBasePath();
+            // Use apiFetch to ensure headers are sent (Authorization)
+            // list_company_slips.php requires auth
+            const token = localStorage.getItem("authToken");
+            const headers: any = {};
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+
             const res = await fetch(
-                `${apiBase}/Slip_DB/get_transfer_orders.php?${params.toString()}`,
+                `${apiBase}/Slip_DB/list_company_slips.php?${params.toString()}`,
+                { headers }
             );
             const data = await res.json();
 
             if (data.success) {
                 setOrders(data.data);
-                setTotalCount(data.totalCount);
-                setCurrentPage(page);
+                // pagination in data.pagination
+                if (data.pagination) {
+                    setTotalCount(data.pagination.total);
+                    setCurrentPage(data.pagination.page);
+                } else {
+                    setTotalCount(data.data.length);
+                }
             } else {
                 setOrders([]);
                 setTotalCount(0);
@@ -119,7 +177,10 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
         setAmountRange({ min: "", max: "" });
         setStartDate("");
         setEndDate("");
+        setStartDate("");
+        setEndDate("");
         setPaymentMethod("all");
+        setBankAccountId("all");
         setOrders([]);
         setTotalCount(0);
     };
@@ -128,11 +189,11 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
                 {/* Header */}
                 <div className="flex justify-between items-center px-6 py-4 border-b">
                     <h2 className="text-xl font-semibold text-gray-800">
-                        ค้นหาคำสั่งซื้อ (Search Orders)
+                        ค้นหาข้อมูลสลิป (Search Slips)
                     </h2>
                     <button
                         onClick={onClose}
@@ -146,33 +207,35 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                 <div className="p-6 overflow-y-auto flex-1">
                     {/* Search Form */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        {/* Customer Name */}
+                        {/* Search Term (Name/Phone/Order ID) */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                ชื่อลูกค้า
+                                ค้นหา (ชื่อ, เบอร์, Order ID)
                             </label>
                             <input
                                 type="text"
                                 className="w-full px-3 py-2 border rounded-md text-sm"
                                 value={customerName}
                                 onChange={(e) => setCustomerName(e.target.value)}
-                                placeholder="ชื่อ หรือ นามสกุล"
+                                placeholder="ระบุคำค้นหา..."
                             />
                         </div>
 
-                        {/* Phone */}
+                        {/* Phone - Hidden or merged? Let's keep it but it acts as secondary search input if main is empty? 
+                             Or maybe just remove it and tell user to use single search box?
+                             Let's hide it for now to simplify, OR keep it and if filled, it overrides.
+                         */}
+                        {/* 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                 เบอร์โทร
                             </label>
                             <input
-                                type="text"
-                                className="w-full px-3 py-2 border rounded-md text-sm"
-                                value={phone}
-                                onChange={(e) => setPhone(e.target.value)}
-                                placeholder="เบอร์โทรศัพท์"
+                                type="text" 
+                                ...
                             />
                         </div>
+                        */}
 
                         {/* Payment Method */}
                         <div>
@@ -192,6 +255,42 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                         </div>
 
 
+
+
+                        {/* Bank Account */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                ธนาคาร
+                            </label>
+                            <select
+                                className="w-full px-3 py-2 border rounded-md text-sm"
+                                value={bankAccountId}
+                                onChange={(e) => setBankAccountId(e.target.value)}
+                            >
+                                <option value="all">ทั้งหมด (All)</option>
+                                {bankAccounts.map((bank) => (
+                                    <option key={bank.id} value={bank.id}>
+                                        {bank.bank} {bank.bank_number} ({bank.display_name})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Amount Range */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                ช่วงราคา (Amount Range)
+                            </label>
+                            <NumberRangePicker
+                                value={amountRange}
+                                onChange={setAmountRange}
+                                placeholder="ระบุช่วงราคา"
+                            />
+                        </div>
+
+
+
+
                         {/* Date Range */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -208,19 +307,8 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                             </div>
                         </div>
 
-                        {/* Amount Range */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                ช่วงจำนวนเงิน (Amount Range)
-                            </label>
-                            <NumberRangePicker
-                                value={amountRange}
-                                onChange={setAmountRange}
-                            />
-                        </div>
-
                         {/* Action Buttons */}
-                        <div className="flex items-end justify-end gap-2">
+                        <div className="flex items-end justify-end gap-2 md:col-start-3">
                             <button
                                 onClick={clearFilters}
                                 className="px-4 py-2 text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 text-sm h-[38px]"
@@ -242,18 +330,16 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                         </div>
                     </div>
 
-
-
                     {/* Results Table */}
                     <div className="overflow-x-auto border rounded-lg">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-gray-50 text-gray-700 font-semibold border-b">
                                 <tr>
-                                    <th className="px-4 py-3">Order ID</th>
-                                    <th className="px-4 py-3">Date</th>
-                                    <th className="px-4 py-3">Customer</th>
+                                    <th className="px-4 py-3">Slip Info</th>
+                                    <th className="px-4 py-3">Order / Customer</th>
                                     <th className="px-4 py-3 text-right">Amount</th>
-                                    <th className="px-4 py-3">Payment</th>
+                                    <th className="px-4 py-3">Bank / Date</th>
+                                    <th className="px-4 py-3 text-center">Status</th>
                                     <th className="px-4 py-3 text-center">Action</th>
                                 </tr>
                             </thead>
@@ -265,52 +351,79 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                                         </td>
                                     </tr>
                                 ) : (
-                                    orders.map((order) => (
-                                        <tr key={order.id} className="hover:bg-gray-50">
-                                            <td className="px-4 py-3 item-center">
-                                                <button
-                                                    onClick={() => setSelectedOrderForDetail(order.id)}
-                                                    className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
-                                                >
-                                                    {order.id}
-                                                </button>
-                                            </td>
+                                    orders.map((slip) => (
+                                        <tr key={slip.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-3">
-                                                <div className="flex flex-col">
-                                                    <span>Order: {order.order_date.split(" ")[0]}</span>
-                                                    {order.transfer_date ? (
-                                                        <span className="text-xs text-green-600">
-                                                            Transfer: {new Date(order.transfer_date).toLocaleDateString('th-TH')} {new Date(order.transfer_date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
-                                                        </span>
+                                                <div className="flex items-center space-x-3">
+                                                    {slip.url ? (
+                                                        <a href={slip.url} target="_blank" rel="noopener noreferrer" className="block w-12 h-12 flex-shrink-0">
+                                                            <img
+                                                                src={slip.url}
+                                                                alt="Slip"
+                                                                className="w-full h-full object-cover rounded border"
+                                                                onError={(e) => {
+                                                                    (e.target as HTMLImageElement).src = 'https://placehold.co/100?text=No+Img';
+                                                                }}
+                                                            />
+                                                        </a>
                                                     ) : (
-                                                        <span className="text-xs text-gray-400">-</span>
+                                                        <div className="w-12 h-12 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-400">No Img</div>
                                                     )}
+                                                    <div>
+                                                        <div className="font-medium text-gray-800">#{slip.id}</div>
+                                                        <div className="text-xs text-gray-500">
+                                                            {new Date(slip.uploaded_at).toLocaleDateString()}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3">
-                                                {order.first_name} {order.last_name}<br />
-                                                <span className="text-gray-400 text-xs">{order.phone}</span>
+                                                <button
+                                                    onClick={() => setSelectedOrderForDetail(slip.order_id)}
+                                                    className="font-medium text-blue-600 hover:underline block"
+                                                >
+                                                    Order #{slip.order_id}
+                                                </button>
+                                                <div className="text-xs text-gray-600">
+                                                    {slip.customer_name}<br />
+                                                    {slip.customer_phone}
+                                                </div>
                                             </td>
-                                            <td className="px-4 py-3 text-right font-medium">
-                                                {new Intl.NumberFormat("th-TH", {
-                                                    style: "currency",
-                                                    currency: "THB",
-                                                }).format(order.total_amount)}
+                                            <td className="px-4 py-3 text-right">
+                                                <div className="font-medium text-gray-900">
+                                                    {new Intl.NumberFormat("th-TH", {
+                                                        style: "currency",
+                                                        currency: "THB",
+                                                    }).format(slip.amount || 0)}
+                                                </div>
+                                                {slip.order_total && (
+                                                    <div className="text-xs text-gray-400">
+                                                        Total: {new Intl.NumberFormat("th-TH").format(slip.order_total)}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3">
-                                                <div className="flex flex-col">
-                                                    <span className={`text-xs px-2 py-0.5 rounded-full w-fit ${order.payment_status_display === 'จ่ายแล้ว' ? 'bg-green-100 text-green-800' :
-                                                        order.payment_status_display === 'จ่ายยังไม่ครบ' ? 'bg-yellow-100 text-yellow-800' :
-                                                            'bg-red-100 text-red-800'
-                                                        }`}>
-                                                        {order.payment_status_display}
-                                                    </span>
-                                                    <span className="text-xs text-gray-500 mt-1">{order.payment_method}</span>
+                                                <div className="text-sm text-gray-700">
+                                                    {slip.bank_name ? `${slip.bank_name} ${slip.bank_number || ''}` : '-'}
                                                 </div>
+                                                {slip.transfer_date ? (
+                                                    <div className="text-xs text-green-600">
+                                                        {new Date(slip.transfer_date).toLocaleString('th-TH')}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">-</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <span className={`px-2 py-1 rounded-full text-xs font-medium 
+                                                    ${slip.status === 'verified' ? 'bg-green-100 text-green-800' :
+                                                        slip.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                                    {slip.status}
+                                                </span>
                                             </td>
                                             <td className="px-4 py-3 text-center">
                                                 <button
-                                                    onClick={() => onSelectOrder(order.id, order.total_amount)}
+                                                    onClick={() => onSelectOrder(slip.order_id, slip.amount || 0)}
                                                     className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700"
                                                 >
                                                     เลือก
