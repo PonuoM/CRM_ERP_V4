@@ -3189,8 +3189,18 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
                 if ($trackingNumber) {
-                    $whereConditions[] = 't.tracking_number LIKE ?';
-                    $params[] = '%' . $trackingNumber . '%';
+                    if (strpos($trackingNumber, ',') !== false) {
+                        $tnArray = array_map('trim', explode(',', $trackingNumber));
+                        $tnArray = array_filter($tnArray);
+                        if (!empty($tnArray)) {
+                            $tnPlaceholders = implode(',', array_fill(0, count($tnArray), '?'));
+                            $whereConditions[] = "t.tracking_number IN ($tnPlaceholders)";
+                            $params = array_merge($params, $tnArray);
+                        }
+                    } else {
+                        $whereConditions[] = 't.tracking_number LIKE ?';
+                        $params[] = '%' . $trackingNumber . '%';
+                    }
                 }
 
                 if ($orderDateStart) {
@@ -5050,91 +5060,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 } catch (Throwable $e) { /* ignore quota errors to not block order update */
                 }
 
-                $hasTrackingUpdate = false;
-                if (isset($in['trackingEntries']) && is_array($in['trackingEntries']) && !empty($in['trackingEntries'])) {
-                    save_order_tracking_entries($pdo, $id, $in['trackingEntries'], true);
-                    $hasTrackingUpdate = true;
-                } elseif (isset($in['trackingNumbers']) && is_array($in['trackingNumbers']) && !empty($in['trackingNumbers'])) {
-                    $legacyEntries = [];
-                    foreach ($in['trackingNumbers'] as $tnRaw) {
-                        $tn = trim((string) $tnRaw);
-                        if ($tn !== '') {
-                            $legacyEntries[] = ['trackingNumber' => $tn];
-                        }
-                    }
-                    if (!empty($legacyEntries)) {
-                        save_order_tracking_entries($pdo, $id, $legacyEntries, true);
-                        $hasTrackingUpdate = true;
-                    }
-                }
-
-                // --- Auto-Sync with Google Sheet Shipping Data ---
-                if ($hasTrackingUpdate) {
-                    try {
-                        $syncService = new ShippingSyncService($pdo);
-                        // We need the tracking numbers to sync.
-                        // Collect them from input or fetch from DB if needed.
-                        // Here we iterate over what was just added/update.
-                        $trackingsToSync = [];
-
-                        if (!empty($in['trackingEntries'])) {
-                            foreach ($in['trackingEntries'] as $entry) {
-                                if (!empty($entry['trackingNumber']))
-                                    $trackingsToSync[] = $entry['trackingNumber'];
-                            }
-                        } elseif (!empty($in['trackingNumbers'])) {
-                            foreach ($in['trackingNumbers'] as $tn) {
-                                if (!empty($tn))
-                                    $trackingsToSync[] = $tn;
-                            }
-                        }
-
-                        foreach (array_unique($trackingsToSync) as $tn) {
-                            $syncService->syncOrderFromSheet($tn);
-                        }
-                    } catch (Throwable $syncErr) {
-                        error_log("Shipping Sync Failed for Order {$id}: " . $syncErr->getMessage());
-                    }
-                }
-                // -------------------------------------------------
-
-                // Auto-update order_status to Shipping when tracking is added and order is Picking or Preparing
-                // Only if order_status is not explicitly set in the request
-                // Auto-update logic when tracking is added
-                if ($hasTrackingUpdate && $orderStatus === null) {
-                    $currentStatus = strtoupper((string) ($updatedOrder['order_status'] ?? $previousStatus));
-                    $currentPaymentMethod = (string) ($updatedOrder['payment_method'] ?? $existingOrder['payment_method'] ?? '');
-
-                    // Special handling for Claim and FreeGift
-                    if ($currentPaymentMethod === 'Claim' || $currentPaymentMethod === 'FreeGift') {
-                        $autoCompleteStmt = $pdo->prepare('UPDATE orders SET order_status = ?, payment_status = ?, amount_paid = 0 WHERE id = ?');
-                        $autoCompleteStmt->execute(['Delivered', 'Approved', $id]);
-
-                        $newStatus = 'Delivered';
-                        $newPaymentStatus = 'Approved';
-
-                        $updatedOrder['order_status'] = 'Delivered';
-                        $updatedOrder['payment_status'] = 'Approved';
-                        $updatedOrder['amount_paid'] = 0;
-
-                        // Update variables to trigger history log and downstream logic
-                        $orderStatus = 'Delivered';
-                        $paymentStatus = 'Approved';
-                    }
-                    // Existing logic: Auto-update to Shipping if Picking/Preparing
-                    elseif (($currentStatus === 'PICKING' || $currentStatus === 'PREPARING')) {
-                        $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ? WHERE id = ?');
-                        $autoShippingStmt->execute(['Shipping', $id]);
-                        $newStatus = 'Shipping';
-                        $updatedOrder['order_status'] = 'Shipping';
-                        // Reload order to get updated status
-                        $orderRowStmt->execute([$id]);
-                        $updatedOrder = $orderRowStmt->fetch(PDO::FETCH_ASSOC);
-                        if ($updatedOrder) {
-                            $newStatus = (string) ($updatedOrder['order_status'] ?? $newStatus);
-                        }
-                    }
-                }
+                // Tracking update logic moved to after box processing to ensure correct box count
 
                 if ($orderStatus !== null) {
                     $normalizedStatus = strtoupper($orderStatus);
@@ -5273,6 +5199,93 @@ function handle_orders(PDO $pdo, ?string $id): void
                     } else {
                         $updCodAmount = $pdo->prepare('UPDATE orders SET cod_amount=NULL WHERE id=?');
                         $updCodAmount->execute([$id]);
+                    }
+                }
+
+                // [MOVED] Tracking Processing Logic
+                $hasTrackingUpdate = false;
+                if (isset($in['trackingEntries']) && is_array($in['trackingEntries']) && !empty($in['trackingEntries'])) {
+                    save_order_tracking_entries($pdo, $id, $in['trackingEntries'], true);
+                    $hasTrackingUpdate = true;
+                } elseif (isset($in['trackingNumbers']) && is_array($in['trackingNumbers']) && !empty($in['trackingNumbers'])) {
+                    $legacyEntries = [];
+                    foreach ($in['trackingNumbers'] as $tnRaw) {
+                        $tn = trim((string) $tnRaw);
+                        if ($tn !== '') {
+                            $legacyEntries[] = ['trackingNumber' => $tn];
+                        }
+                    }
+                    if (!empty($legacyEntries)) {
+                        save_order_tracking_entries($pdo, $id, $legacyEntries, true);
+                        $hasTrackingUpdate = true;
+                    }
+                }
+
+                // --- Auto-Sync with Google Sheet Shipping Data ---
+                if ($hasTrackingUpdate) {
+                    try {
+                        $syncService = new ShippingSyncService($pdo);
+                        // We need the tracking numbers to sync.
+                        // Collect them from input or fetch from DB if needed.
+                        // Here we iterate over what was just added/update.
+                        $trackingsToSync = [];
+
+                        if (!empty($in['trackingEntries'])) {
+                            foreach ($in['trackingEntries'] as $entry) {
+                                if (!empty($entry['trackingNumber']))
+                                    $trackingsToSync[] = $entry['trackingNumber'];
+                            }
+                        } elseif (!empty($in['trackingNumbers'])) {
+                            foreach ($in['trackingNumbers'] as $tn) {
+                                if (!empty($tn))
+                                    $trackingsToSync[] = $tn;
+                            }
+                        }
+
+                        foreach (array_unique($trackingsToSync) as $tn) {
+                            $syncService->syncOrderFromSheet($tn);
+                        }
+                    } catch (Throwable $syncErr) {
+                        error_log("Shipping Sync Failed for Order {$id}: " . $syncErr->getMessage());
+                    }
+                }
+                // -------------------------------------------------
+
+                // Auto-update order_status to Shipping when tracking is added and order is Picking or Preparing
+                // Only if order_status is not explicitly set in the request
+                // Auto-update logic when tracking is added
+                if ($hasTrackingUpdate && $orderStatus === null) {
+                    $currentStatus = strtoupper((string) ($updatedOrder['order_status'] ?? $previousStatus));
+                    $currentPaymentMethod = (string) ($updatedOrder['payment_method'] ?? $existingOrder['payment_method'] ?? '');
+
+                    // Special handling for Claim and FreeGift
+                    if ($currentPaymentMethod === 'Claim' || $currentPaymentMethod === 'FreeGift') {
+                        $autoCompleteStmt = $pdo->prepare('UPDATE orders SET order_status = ?, payment_status = ?, amount_paid = 0 WHERE id = ?');
+                        $autoCompleteStmt->execute(['Delivered', 'Approved', $id]);
+
+                        $newStatus = 'Delivered';
+                        $newPaymentStatus = 'Approved';
+
+                        $updatedOrder['order_status'] = 'Delivered';
+                        $updatedOrder['payment_status'] = 'Approved';
+                        $updatedOrder['amount_paid'] = 0;
+
+                        // Update Variables to trigger history log and downstream logic
+                        $orderStatus = 'Delivered';
+                        $paymentStatus = 'Approved';
+                    }
+                    // Existing logic: Auto-update to Shipping if Picking/Preparing
+                    elseif (($currentStatus === 'PICKING' || $currentStatus === 'PREPARING')) {
+                        $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ? WHERE id = ?');
+                        $autoShippingStmt->execute(['Shipping', $id]);
+                        $newStatus = 'Shipping';
+                        $updatedOrder['order_status'] = 'Shipping';
+                        // Reload order to get updated status
+                        $orderRowStmt->execute([$id]);
+                        $updatedOrder = $orderRowStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($updatedOrder) {
+                            $newStatus = (string) ($updatedOrder['order_status'] ?? $newStatus);
+                        }
                     }
                 }
 

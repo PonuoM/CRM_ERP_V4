@@ -25,7 +25,6 @@ interface ReturnManagementPageProps {
 
 interface ImportRow {
   orderNumber: string;
-  amount: number;
   note?: string;
 }
 
@@ -329,12 +328,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   const handleDownloadTemplate = () => {
     const wb = XLSX.utils.book_new();
-    const headers = [["Order Number", "Amount", "Note (Optional)"]];
+    const headers = [["Tracking Number", "Note (Optional)"]];
     const ws = XLSX.utils.aoa_to_sheet(headers);
 
     // Add some example data? No, keep it clean.
     // Set col width
-    ws["!cols"] = [{ wch: 20 }, { wch: 15 }, { wch: 30 }];
+    ws["!cols"] = [{ wch: 20 }, { wch: 30 }];
 
     XLSX.utils.book_append_sheet(wb, ws, "ReturnTemplate");
     XLSX.writeFile(wb, "Return_Verification_Template.xlsx");
@@ -352,18 +351,19 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       if (cols.length < 2) return; // Skip invalid lines
 
       const rawOrder = cols[0].trim();
-      const rawAmount = cols[1].replace(/,/g, "").trim();
-      const rawNote = cols[2] ? cols[2].trim() : "";
+      // Skip amount column (previously index 1), note is now index 1 or 2 depending on if user kept column B or not?
+      // User said "remove amount from template", so template is now [Tracking, Note].
+      // But user also said "paste Excel", users might still paste 3 columns if they use old template?
+      // To be safe: If 2 columns -> Tracking, Note. If 3 columns -> Tracking, Amount(ignored), Note?
+      // The prompt says "remove column amount from template... import system don't need to store amount".
+      // Assuming user uses NEW template: Column A = Tracking, Column B = Note.
+      const rawNote = cols[1] ? cols[1].trim() : "";
 
       if (rawOrder) {
-        const amount = parseFloat(rawAmount);
-        if (!isNaN(amount)) {
-          parsed.push({
-            orderNumber: rawOrder,
-            amount: amount,
-            note: rawNote,
-          });
-        }
+        parsed.push({
+          orderNumber: rawOrder,
+          note: rawNote,
+        });
       }
     });
 
@@ -375,7 +375,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       setPasteContent("");
     } else {
       alert(
-        "ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบรูปแบบข้อมูล (Order ID [Tab] Amount)",
+        "ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบรูปแบบข้อมูล (Tracking Number [Tab] Note)",
       );
     }
   };
@@ -490,7 +490,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const processImportFile = (file: File, status: "returning" | "returned") => {
     // setImportTargetStatus(status); // Already set before file select
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       const bstr = evt.target?.result;
       const wb = XLSX.read(bstr, { type: "binary" });
       const wsname = wb.SheetNames[0];
@@ -501,24 +501,23 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
       const headerRow = data[0] as string[];
       let orderIdx = -1;
-      let amountIdx = -1;
       let noteIdx = -1;
 
       headerRow.forEach((h, i) => {
         const lower = String(h).toLowerCase();
-        if (
-          lower.includes("order") ||
-          lower.includes("id") ||
-          lower.includes("หมายเลข") ||
-          lower.includes("tracking")
+        // Priority: Tracking Number
+        if (lower.includes("tracking")) {
+          orderIdx = i;
+        }
+        // Fallback: Order ID/Number Check
+        else if (
+          orderIdx === -1 && (
+            lower.includes("order") ||
+            lower.includes("id") ||
+            lower.includes("หมายเลข"))
         )
           orderIdx = i;
-        if (
-          lower.includes("amount") ||
-          lower.includes("price") ||
-          lower.includes("ยอด")
-        )
-          amountIdx = i;
+
         if (
           lower.includes("note") ||
           lower.includes("remark") ||
@@ -527,12 +526,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           noteIdx = i;
       });
 
-      if (orderIdx === -1 || amountIdx === -1) {
-        // Fallback: Use col 0 and 1
+      if (orderIdx === -1) {
         orderIdx = 0;
-        amountIdx = 1;
-        // If col 2 exists, use it as note
-        if (data[0].length > 2) noteIdx = 2;
+        if (data[0].length > 1) noteIdx = 1;
       }
 
       const parsed: ImportRow[] = [];
@@ -540,21 +536,55 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         const row = data[i];
         if (!row || row.length === 0) continue;
         const rawOrder = row[orderIdx];
-        const rawAmount = row[amountIdx];
         const rawNote = noteIdx !== -1 ? row[noteIdx] : "";
 
         if (rawOrder) {
           parsed.push({
             orderNumber: String(rawOrder).trim(),
-            amount: Number(rawAmount || 0),
             note: rawNote ? String(rawNote).trim() : "",
           });
         }
       }
 
       setImportedData(parsed);
-      performMatching(parsed, orders, verifiedOrders);
+      setLoading(true);
+
+      // Fetch matching orders from API
+      let fetchedOrders: Order[] = [];
+      const trackingList = parsed.map((p) => p.orderNumber).filter(Boolean);
+
+      // Chunking to avoid URL length issues (50 per chunk)
+      const chunks = [];
+      for (let i = 0; i < trackingList.length; i += 50) {
+        chunks.push(trackingList.slice(i, i + 50));
+      }
+
+      try {
+        for (const chunk of chunks) {
+          if (chunk.length === 0) continue;
+          const res = await listOrders({
+            companyId: user.companyId,
+            trackingNumber: chunk.join(","),
+            pageSize: 1000,
+          });
+          if (res.ok && res.orders) {
+            fetchedOrders = [...fetchedOrders, ...res.orders];
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch import orders", err);
+      }
+
+      // Merge fetched orders with existing system orders
+      const allOrders = [...fetchedOrders, ...orders];
+      // Deduplicate by ID
+      const uniqueOrders = Array.from(
+        new Map(allOrders.map((o) => [o.id, o])).values(),
+      );
+
+      performMatching(parsed, uniqueOrders, verifiedOrders);
       setMode("verify");
+      setLoading(false);
     };
     reader.readAsBinaryString(file);
   };
@@ -569,26 +599,45 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
     imported.forEach((row) => {
       // Find by Tracking Number OR Order ID
-      const matched = systemOrders.find(
-        (o) =>
-          (Array.isArray(o.trackingNumbers) &&
-            o.trackingNumbers.some((t) => t.includes(row.orderNumber))) ||
-          o.id === row.orderNumber ||
-          // Also check trackingDetails
-          (Array.isArray(o.trackingDetails) &&
-            o.trackingDetails.some((t) =>
-              t.trackingNumber?.includes(row.orderNumber),
-            )),
-      );
+      // Find by Tracking Number OR Order ID
+      const matched = systemOrders.find((o) => {
+        // 1. Check Arrays (trackingNumbers)
+        if (
+          Array.isArray(o.trackingNumbers) &&
+          o.trackingNumbers.some((t) => t.includes(row.orderNumber))
+        )
+          return true;
+
+        // 2. Check Order ID
+        if (o.id === row.orderNumber) return true;
+
+        // 3. Check trackingDetails (Handle both camelCase and snake_case)
+        if (Array.isArray(o.trackingDetails)) {
+          const found = o.trackingDetails.some((t: any) => {
+            const tNum = t.trackingNumber || t.tracking_number;
+            return tNum && tNum.includes(row.orderNumber);
+          });
+          if (found) return true;
+        }
+
+        // 4. Check tracking_numbers string (snake_case from API)
+        const tStr = (o as any).tracking_numbers;
+        if (typeof tStr === 'string' && tStr.includes(row.orderNumber)) {
+          return true;
+        }
+
+        return false;
+      });
 
       if (matched) {
         // Determine Sub Order ID
         let subOrderId = null;
         // Case 1: Matched by Tracking Number
         if (Array.isArray(matched.trackingDetails)) {
-          const detail = matched.trackingDetails.find(
-            (d) => d.trackingNumber === row.orderNumber,
-          );
+          const detail = matched.trackingDetails.find((d: any) => {
+            const tNum = d.trackingNumber || d.tracking_number;
+            return tNum === row.orderNumber;
+          });
           if (detail && detail.order_id) {
             subOrderId = detail.order_id;
           }
@@ -605,14 +654,15 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
         matchedOrderIds.add(matched.id);
         // Defensive: Handle missing totalAmount and snake_case
-        const sysAmount = getOrderAmount(matched);
-        const diff = Math.abs(sysAmount - row.amount);
+        // Defensive: Handle missing totalAmount and snake_case
+        // const sysAmount = getOrderAmount(matched);
+        // const diff = Math.abs(sysAmount - row.amount); // No amount check anymore
         results.push({
           importRow: row,
           matchedOrder: matched,
           matchedSubOrderId: subOrderId,
-          status: diff < 1 ? "matched" : "amount_mismatch",
-          diff: sysAmount - row.amount, // Positive = System > Import
+          status: "matched", // Always match if ID found
+          diff: 0,
         });
       } else {
         // Check if it's already verified
@@ -654,19 +704,19 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Order ID
+              รหัสออเดอร์
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Tracking
+              เลขพัสดุ
             </th>
             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Amount
+              ยอดเงิน
             </th>
             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Date
+              วันที่สั่งซื้อ
             </th>
             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Actions
+              จัดการ
             </th>
           </tr>
         </thead>
@@ -716,7 +766,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 {getOrderAmount(order).toLocaleString()}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {new Date(order.orderDate).toLocaleDateString("th-TH")}
+                {new Date(
+                  order.orderDate || (order as any).order_date,
+                ).toLocaleDateString("th-TH")}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                 <button
@@ -747,11 +799,10 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       return;
 
     const payload = results.map((r) => ({
-      // Use matched Sub Order ID if available, else Matched Main Order ID, else Import Order Number
       sub_order_id:
         r.matchedSubOrderId ||
         (r.matchedOrder ? r.matchedOrder.id : r.importRow.orderNumber),
-      return_amount: r.importRow.amount,
+      return_amount: 0,
       status: importTargetStatus || "returned", // Use selected import status
       note: r.importRow.note || "",
     }));
@@ -805,22 +856,16 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              File Order/Tracking
+              เลขพัสดุที่นำเข้า
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              System Order
-            </th>
-            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Amount
+              ออเดอร์ในระบบ
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Note
-            </th>
-            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Diff
+              หมายเหตุ
             </th>
             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Status
+              สถานะ
             </th>
           </tr>
         </thead>
@@ -853,29 +898,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   "-"
                 )}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                <div>
-                  {res.importRow.amount.toLocaleString()}{" "}
-                  <span className="text-xs text-gray-500">(File)</span>
-                </div>
-                <div className="text-gray-400 text-xs">
-                  {res.matchedOrder
-                    ? getOrderAmount(res.matchedOrder).toLocaleString()
-                    : "-"}{" "}
-                  (Sys)
-                </div>
-              </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {res.importRow.note || "-"}
-              </td>
-              <td
-                className={`px - 6 py - 4 whitespace - nowrap text - sm text - right font - medium ${res.diff !== 0 ? "text-red-600" : "text-gray-400"} `}
-              >
-                {res.diff !== 0
-                  ? res.diff > 0
-                    ? `+ ${res.diff.toLocaleString()} `
-                    : res.diff.toLocaleString()
-                  : "-"}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-center">
                 {res.status === "matched" && (
@@ -960,19 +984,19 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Order ID
+                รหัสออเดอร์
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Tracking & Status
+                เลขพัสดุ & สถานะ
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Note
+                หมายเหตุ
               </th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Date
+                วันที่ตรวจสอบ
               </th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Action
+                จัดการ
               </th>
             </tr>
           </thead>
@@ -1040,7 +1064,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                             >
                               (
                               {v.status === "returning"
-                                ? "อยู่ระหว่างตีกลับ"
+                                ? "ตีกลับ"
                                 : v.status === "returned"
                                   ? "เข้าคลังแล้ว"
                                   : v.status === "delivering"
@@ -1133,27 +1157,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           >
             <Download size={16} /> Template
           </button>
-          <button
-            onClick={() => {
-              setMode("list");
-              fetchOrders();
-            }}
-            className={`px - 4 py - 2 rounded - lg text - sm font - medium border flex items - center gap - 2 ${mode === "list" ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white border-gray-300 text-gray-700"} `}
-          >
-            <FileText size={16} /> รายการตีกลับ
-          </button>
-          <div className="h-8 w-px bg-gray-300 mx-2 self-center"></div>
 
-          {/* Tabs removed from here */ null}
-
-          <div className="h-8 w-px bg-gray-300 mx-2 self-center"></div>
-
-          <button
-            onClick={() => setIsPasteModalOpen(true)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
-          >
-            <Clipboard size={16} /> วางข้อมูล (Excel)
-          </button>
           <input
             type="file"
             accept=".csv,.xlsx,.xls"
@@ -1302,14 +1306,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                     <thead>
                       <tr>
                         <th className="w-10 bg-gray-100 border-r border-b border-gray-300"></th>
-                        <th className="bg-gray-100 border-r border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/3">
-                          A (Tracking / Order ID)
+                        <th className="bg-gray-100 border-r border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/2">
+                          A (เลขพัสดุ / รหัสออเดอร์)
                         </th>
-                        <th className="bg-gray-100 border-r border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/3">
-                          B (Amount)
-                        </th>
-                        <th className="bg-gray-100 border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/3">
-                          C (Note)
+                        <th className="bg-gray-100 border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/2">
+                          B (หมายเหตุ)
                         </th>
                       </tr>
                     </thead>
@@ -1439,19 +1440,19 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 <thead className="bg-gray-100">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Tracking No.
+                      เลขพัสดุ
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Sub Order ID
+                      รหัสย่อย
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Products
+                      รายการสินค้า
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Status
+                      สถานะ
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Note
+                      หมายเหตุ
                     </th>
                   </tr>
                 </thead>
@@ -1530,7 +1531,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               className="text-orange-600 focus:ring-orange-500"
                             />
                             <span className="text-orange-700">
-                              อยู่ระหว่างตีกลับ
+                              ตีกลับ
                             </span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer">
