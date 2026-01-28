@@ -514,9 +514,14 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const res = await fetch(`${apiBase}/Statement_DB/list_batches.php`, {
-        method: "GET",
-      });
+      const res = await fetch(
+        `${apiBase}/Statement_DB/list_batches.php?company_id=${encodeURIComponent(
+          String(user.companyId),
+        )}`,
+        {
+          method: "GET",
+        },
+      );
       const data = await res.json();
       if (!data.ok) {
         setHistoryError(data.error || "ไม่สามารถโหลดประวัติการใส่ข้อมูลได้");

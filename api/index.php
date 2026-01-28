@@ -2182,6 +2182,24 @@ function handle_customers(PDO $pdo, ?string $id): void
                 $newBasketKey = $in['current_basket_key'] ?? $in['currentBasketKey'] ?? null;
                 $oldBasketKey = $current['current_basket_key'];
 
+                // Auto-forward distribution basket on owner change
+                if (!empty($assignedTo) && (string) $assignedTo !== (string) $oldAssigned && $oldBasketKey) {
+                    // Assumption: current_basket_key holds the ID of basket_config
+                    $chkStmt = $pdo->prepare("SELECT target_page, linked_basket_key FROM basket_config WHERE id = ?");
+                    $chkStmt->execute([$oldBasketKey]);
+                    $bCfg = $chkStmt->fetch();
+
+                    if ($bCfg && $bCfg['target_page'] === 'distribution' && !empty($bCfg['linked_basket_key'])) {
+                        // Find the ID of the linked basket
+                        $linkStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ?");
+                        $linkStmt->execute([$bCfg['linked_basket_key']]);
+                        $linkedRow = $linkStmt->fetch();
+                        if ($linkedRow) {
+                            $newBasketKey = $linkedRow['id'];
+                        }
+                    }
+                }
+
                 if ($newBasketKey !== null) {
                     $updateFields[] = 'basket_entered_date=NOW()';
 
