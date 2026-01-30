@@ -203,15 +203,17 @@ try {
         echo "\nDRY RUN COMPLETE - No changes made\n";
         echo "To execute: add &dryrun=0 to URL\n";
         $logger->log("DRY RUN: Processed={$grandTotal['processed']}, Would move={$grandTotal['moved']}");
+        $logger->logEnd($grandTotal['processed'] > 0); // Log if found customers
     } else {
         echo "\nEXECUTION COMPLETE\n";
         $logger->log("EXECUTED: Processed={$grandTotal['processed']}, Moved→53={$grandTotal['moved']}, Skipped={$grandTotal['skipped']}, Errors={$grandTotal['errors']}");
+        $hasWork = ($grandTotal['moved'] > 0 || $grandTotal['errors'] > 0);
+        $logger->logEnd($hasWork); // Log if moved customers or errors
     }
-    $logger->logEnd();
     
 } catch (Exception $e) {
     $logger->logError($e->getMessage());
-    $logger->logEnd();
+    // logError already triggers hasWork=true
     echo "FATAL ERROR: " . $e->getMessage() . "\n";
     echo "Line: " . $e->getLine() . "\n";
     echo "Trace: " . $e->getTraceAsString() . "\n";

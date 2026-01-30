@@ -407,6 +407,7 @@ export interface LineItem {
   parentItemId?: number; // NEW: รหัสรายการแม่ (สำหรับของแถมที่มาจากโปรโมชั่น)
   isPromotionParent?: boolean; // NEW: เป็นรายการแม่ของโปรโมชั่นหรือไม่
   creatorId?: number; // NEW: รหัสผู้สร้างรายการ (สำหรับ upsell)
+  creatorRoleId?: number; // NEW: role_id ของผู้สร้างรายการ (6/7 = Telesale)
   originalQuantity?: number; // NEW: จำนวนเริ่มต้นต่อ 1 หน่วยของ parent (สำหรับคำนวณ)
   sku?: string; // NEW: SKU specific to this line item (useful for promotion items)
   order_id?: string; // NEW: Sub-order ID (e.g., ORD-001-1)

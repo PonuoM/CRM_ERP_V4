@@ -196,15 +196,16 @@ try {
     $results['timestamp'] = date('Y-m-d H:i:s');
     
     // Log results to file
+    $hasWork = ($results['moved_to_39'] > 0 || $results['moved_to_38'] > 0 || $results['errors'] > 0);
     $logger->log("Processed: {$results['processed']}, Moved to 39: {$results['moved_to_39']}, Moved to 38: {$results['moved_to_38']}");
     $logger->log("Skipped (51): {$results['skipped_basket_51']}, Skipped (no owner): {$results['skipped_no_owner']}, Already correct: {$results['already_correct']}");
-    $logger->logEnd();
+    $logger->logEnd($hasWork);
     
     echo json_encode($results, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     
 } catch (Exception $e) {
     $logger->logError($e->getMessage());
-    $logger->logEnd();
+    // logError already triggers hasWork=true
     http_response_code(500);
     echo json_encode(['error' => $e->getMessage()]);
 }

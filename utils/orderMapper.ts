@@ -174,6 +174,7 @@ export const mapOrderFromApi = (r: any): Order => {
             parentItemId: i.parent_item_id ?? i.parentItemId,
             isPromotionParent: Boolean(i.is_promotion_parent ?? i.isPromotionParent),
             creatorId: i.creator_id ?? i.creatorId,
+            creatorRoleId: i.creator_role_id ?? i.creatorRoleId,
             originalQuantity: i.original_quantity ?? i.originalQuantity,
             sku: i.sku,
         }))

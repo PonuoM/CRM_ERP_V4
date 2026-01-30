@@ -19,12 +19,25 @@ interface Metrics {
     efficiencyScore: number;
 }
 
+interface TierMetrics {
+    core: { total: number; active: number; loyal: number; activeRate: number; loyaltyRate: number; };
+    revival: { total: number; revived: number; };
+    new: { total: number; converted: number; conversionRate: number; };
+}
+
+interface TierAggregates {
+    core: { total: number; active: number; loyal: number; activeRate: number; loyaltyRate: number; };
+    revival: { total: number; revived: number; };
+    new: { total: number; converted: number; conversionRate: number; };
+}
+
 interface TelesaleDetail {
     userId: number;
     name: string;
     firstName: string;
     phone: string;
     metrics: Metrics;
+    tierMetrics: TierMetrics;
 }
 
 interface RankingItem {
@@ -48,6 +61,7 @@ interface TeamAverages {
 interface PerformanceData {
     period: { year: number; month: number };
     teamAverages: TeamAverages;
+    tierAggregates: TierAggregates;
     telesaleCount: number;
     rankings: {
         byConversion: RankingItem[];
@@ -55,6 +69,7 @@ interface PerformanceData {
         byActive: RankingItem[];
         byEfficiency: RankingItem[];
         byAht: RankingItem[];
+        byRevival: RankingItem[];
     };
     telesaleDetails: TelesaleDetail[];
 }
@@ -92,6 +107,7 @@ export default function TelesalePerformancePage() {
     const [error, setError] = useState<string | null>(null);
     const [sortField, setSortField] = useState<keyof Metrics>('conversionRate');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+    const [tierFilter, setTierFilter] = useState<'all' | 'core' | 'new' | 'revival'>('all');
 
     // Fetch data
     useEffect(() => {
@@ -131,15 +147,65 @@ export default function TelesalePerformancePage() {
         fetchData();
     }, [year, month]);
 
-    // Sorted telesale details
+    // Sorted and tier-filtered telesale details
     const sortedDetails = useMemo(() => {
         if (!data) return [];
-        return [...data.telesaleDetails].sort((a, b) => {
+
+        // Map telesale details with tier-specific data when filter is applied
+        const mappedDetails = data.telesaleDetails.map(telesale => {
+            if (tierFilter === 'all') {
+                return telesale;
+            }
+
+            // Check if tierMetrics exists
+            if (!telesale.tierMetrics) {
+                return telesale;
+            }
+
+            // Override metrics with tier-specific data
+            let tierCustomers = 0;
+            let tierActive = 0;
+            let tierActiveRate = 0;
+            let tierRetentionRate = 0;
+
+            if (tierFilter === 'core' && telesale.tierMetrics.core) {
+                const core = telesale.tierMetrics.core;
+                tierCustomers = core.total || 0;
+                tierActive = core.active || 0;
+                tierActiveRate = core.activeRate || 0;
+                tierRetentionRate = core.loyaltyRate || 0;
+            } else if (tierFilter === 'new' && telesale.tierMetrics.new) {
+                const newTier = telesale.tierMetrics.new;
+                tierCustomers = newTier.total || 0;
+                tierActive = newTier.converted || 0; // For new, "active" means converted
+                tierActiveRate = newTier.conversionRate || 0;
+                tierRetentionRate = 0; // Not applicable for new
+            } else if (tierFilter === 'revival' && telesale.tierMetrics.revival) {
+                const revival = telesale.tierMetrics.revival;
+                tierCustomers = revival.total || 0;
+                tierActive = revival.revived || 0;
+                tierActiveRate = revival.total > 0 ? (revival.revived / revival.total) * 100 : 0;
+                tierRetentionRate = 0; // Not applicable for revival
+            }
+
+            return {
+                ...telesale,
+                metrics: {
+                    ...telesale.metrics,
+                    totalCustomers: tierCustomers,
+                    activeCustomers: tierActive,
+                    activeRate: tierActiveRate,
+                    retentionRate: tierRetentionRate
+                }
+            };
+        });
+
+        return [...mappedDetails].sort((a, b) => {
             const aVal = a.metrics[sortField];
             const bVal = b.metrics[sortField];
             return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
         });
-    }, [data, sortField, sortDirection]);
+    }, [data, sortField, sortDirection, tierFilter]);
 
     // Handle sort
     const handleSort = (field: keyof Metrics) => {
@@ -188,8 +254,19 @@ export default function TelesalePerformancePage() {
                     </p>
                 </div>
 
-                {/* Period Selector */}
-                <div className="flex gap-2">
+                {/* Period & Tier Selectors */}
+                <div className="flex gap-2 flex-wrap">
+                    {/* Tier Filter */}
+                    <select
+                        value={tierFilter}
+                        onChange={(e) => setTierFilter(e.target.value as 'all' | 'core' | 'new' | 'revival')}
+                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    >
+                        <option value="all">📊 ทุกกลุ่มลูกค้า</option>
+                        <option value="core">🏠 Core Portfolio (ลูกค้าประจำ)</option>
+                        <option value="new">🆕 New & Onboarding (ลูกค้าใหม่)</option>
+                        <option value="revival">⭐ Revival (กู้ชีพ)</option>
+                    </select>
                     <select
                         value={month}
                         onChange={(e) => setMonth(parseInt(e.target.value))}
@@ -211,54 +288,89 @@ export default function TelesalePerformancePage() {
                 </div>
             </div>
 
-            {/* Team Averages Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricCard
-                    title="อัตราปิดการขาย"
-                    value={`${data?.teamAverages.conversionRate || 0}%`}
-                    subtitle="โทร → ออเดอร์"
-                    icon="📞"
-                    tooltip="วิธีคิด: (จำนวนออเดอร์ ÷ จำนวนสาย) × 100\nตัวอย่าง: โทร 100 สาย ได้ 5 ออเดอร์ = 5%"
-                    detail={`${formatNumber(data?.teamAverages.totalCalls || 0)} สาย → ${formatNumber(data?.teamAverages.totalOrders || 0)} ออเดอร์`}
-                />
-                <MetricCard
-                    title="อัตราลูกค้าซื้อซ้ำ"
-                    value={`${data?.teamAverages.retentionRate || 0}%`}
-                    subtitle="Retention Rate"
-                    icon="🔄"
-                    tooltip="วิธีคิด: (ลูกค้าซื้อซ้ำ ÷ ลูกค้าที่เคยซื้อ) × 100\nตัวอย่าง: ลูกค้า 50 คน ซื้อซ้ำ 20 คน = 40%"
-                    detail="ค่าเฉลี่ยทีม"
-                />
-                <MetricCard
-                    title="อัตราลูกค้า Active"
-                    value={`${data?.teamAverages.activeRate || 0}%`}
-                    subtitle="ซื้อใน 90 วันล่าสุด"
-                    icon="👥"
-                    tooltip="วิธีคิด: (ลูกค้าซื้อใน 90วัน ÷ ลูกค้าทั้งหมด) × 100\nตัวอย่าง: ลูกค้า 100 คน ซื้อใน 90 วัน 30 คน = 30%"
-                    detail="ลูกค้ายังสั่งซื้ออยู่"
-                />
-                <MetricCard
-                    title="เวลาโทรเฉลี่ย"
-                    value={`${data?.teamAverages.ahtMinutes || 0} นาที`}
-                    subtitle="AHT (Average Handling Time)"
-                    icon="⏱️"
-                    tooltip="วิธีคิด: เวลารวมทั้งหมด ÷ จำนวนสาย\nตัวอย่าง: โทร 100 นาที จาก 50 สาย = 2 นาที/สาย"
-                    detail="ค่าเฉลี่ยทีม"
-                />
-            </div>
-
-            {/* Team Summary */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                        <p className="text-gray-500 text-sm">ยอดขายรวมทีม</p>
-                        <p className="text-2xl font-bold text-gray-900">{formatCurrency(data?.teamAverages.totalSales || 0)}</p>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-gray-500 text-sm">Efficiency Score เฉลี่ย</p>
-                        <p className="text-xl font-semibold text-gray-900">{formatNumber(data?.teamAverages.efficiencyScore || 0)} บาท/นาที</p>
-                    </div>
-                </div>
+            {/* ========================================== */}
+            {/* TIER SUMMARY TABLE (Compact) */}
+            {/* ========================================== */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                <table className="w-full text-sm">
+                    <thead>
+                        <tr className="bg-gray-50 text-gray-600 text-xs">
+                            <th className="text-left px-3 py-2 font-medium">กลุ่มลูกค้า</th>
+                            <th className="text-right px-3 py-2 font-medium">จำนวน</th>
+                            <th className="text-right px-3 py-2 font-medium">Active %</th>
+                            <th className="text-right px-3 py-2 font-medium">ความภักดี/เปลี่ยนใจ</th>
+                            <th className="text-right px-3 py-2 font-medium">หมายเหตุ</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {/* Core Portfolio Row */}
+                        <tr className="bg-blue-50/50 hover:bg-blue-50">
+                            <td className="px-3 py-2">
+                                <div className="flex items-center gap-1.5">
+                                    <span>🏠</span>
+                                    <span className="font-medium text-blue-800">ลูกค้าประจำ</span>
+                                    <span className="text-[9px] text-blue-600 bg-blue-100 px-1 rounded">1-3 เดือน</span>
+                                </div>
+                            </td>
+                            <td className="text-right px-3 py-2 font-semibold">{formatNumber(data?.tierAggregates?.core?.total || 0)}</td>
+                            <td className="text-right px-3 py-2">
+                                <span className="font-bold text-blue-600">{data?.tierAggregates?.core?.activeRate || 0}%</span>
+                            </td>
+                            <td className="text-right px-3 py-2">
+                                <span className="font-bold text-indigo-600">{data?.tierAggregates?.core?.loyaltyRate || 0}%</span>
+                                <span className="text-[10px] text-gray-400 ml-1">Loyalty</span>
+                            </td>
+                            <td className="text-right px-3 py-2 text-xs text-gray-500">
+                                {formatNumber(data?.tierAggregates?.core?.loyal || 0)} ซื้อซ้ำ
+                            </td>
+                        </tr>
+                        {/* New & Onboarding Row */}
+                        <tr className="bg-green-50/50 hover:bg-green-50">
+                            <td className="px-3 py-2">
+                                <div className="flex items-center gap-1.5">
+                                    <span>🆕</span>
+                                    <span className="font-medium text-green-800">ลูกค้าใหม่</span>
+                                    <span className="text-[9px] text-green-600 bg-green-100 px-1 rounded">หาลูกค้า</span>
+                                </div>
+                            </td>
+                            <td className="text-right px-3 py-2 font-semibold">{formatNumber(data?.tierAggregates?.new?.total || 0)}</td>
+                            <td className="text-right px-3 py-2 text-gray-400">-</td>
+                            <td className="text-right px-3 py-2">
+                                <span className="font-bold text-green-600">{data?.tierAggregates?.new?.conversionRate || 0}%</span>
+                                <span className="text-[10px] text-gray-400 ml-1">เปลี่ยนใจซื้อ</span>
+                            </td>
+                            <td className="text-right px-3 py-2 text-xs text-gray-500">
+                                {formatNumber(data?.tierAggregates?.new?.converted || 0)} คนซื้อแล้ว
+                            </td>
+                        </tr>
+                        {/* Revival Row */}
+                        <tr className="bg-amber-50/50 hover:bg-amber-50">
+                            <td className="px-3 py-2">
+                                <div className="flex items-center gap-1.5">
+                                    <span>⭐</span>
+                                    <span className="font-medium text-amber-800">กู้ชีพลูกค้า</span>
+                                    <span className="text-[9px] text-amber-600 bg-amber-100 px-1 rounded">เก่าเก็บ</span>
+                                </div>
+                            </td>
+                            <td className="text-right px-3 py-2 font-semibold">{formatNumber(data?.tierAggregates?.revival?.total || 0)}</td>
+                            <td className="text-right px-3 py-2 text-gray-400">-</td>
+                            <td className="text-right px-3 py-2 text-gray-400">-</td>
+                            <td className="text-right px-3 py-2">
+                                <span className="font-bold text-amber-600">🏆 {formatNumber(data?.tierAggregates?.revival?.revived || 0)}</span>
+                                <span className="text-[10px] text-gray-400 ml-1">กู้ชีพ</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr className="bg-gray-100 text-xs text-gray-600">
+                            <td className="px-3 py-2 font-medium">📊 ภาพรวมทีม</td>
+                            <td className="text-right px-3 py-2">{formatNumber(data?.teamAverages.totalCalls || 0)} สาย</td>
+                            <td className="text-right px-3 py-2">{data?.teamAverages.conversionRate || 0}% ปิดขาย</td>
+                            <td className="text-right px-3 py-2">{data?.teamAverages.ahtMinutes?.toFixed(1) || 0} นาที/สาย</td>
+                            <td className="text-right px-3 py-2 font-semibold text-gray-800">{formatCurrency(data?.teamAverages.totalSales || 0)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
 
             {/* Rankings Section */}

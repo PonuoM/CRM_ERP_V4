@@ -195,7 +195,11 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
 
     const totalPurchase = customerOrders.reduce(
       (sum, order) => {
-        const orderTotal = order.items.reduce((itemSum, item) => itemSum + (item.quantity * item.pricePerUnit - item.discount), 0);
+        const orderTotal = order.items.reduce((itemSum, item) => {
+          // ไม่รวมของแถม (isFreebie) ในยอดขาย
+          if (item.isFreebie) return itemSum;
+          return itemSum + (item.quantity * item.pricePerUnit - (item.discount || 0));
+        }, 0);
         return sum + orderTotal;
       },
       0,
@@ -230,7 +234,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
 
   const getThaiBuddhistDate = (isoDate: string) => {
     const date = new Date(isoDate);
-    return date.toLocaleDateString("th-TH", {
+    return date.toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -425,62 +429,123 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                   </thead>
                   <tbody>
                     {customerDetails.orders.length > 0 ? (
-                      customerDetails.orders.map((order) => {
-                        const creator = users.find((u) => {
-                          if (!order.creatorId) return false;
-                          if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
-                            return u.id === order.creatorId;
-                          }
-                          return String(u.id) === String(order.creatorId);
-                        });
-                        const creatorName = creator
-                          ? `${creator.firstName} ${creator.lastName}`
-                          : "N/A";
+                      customerDetails.orders.map((order, orderIndex) => {
                         const isHighlighted = highlightedOrderId === String(order.id);
+                        // สลับสีตาม order index เพื่อให้เห็นกลุ่มออเดอร์ชัดเจน
+                        const orderBgColor = isHighlighted
+                          ? 'bg-yellow-50'
+                          : orderIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+
                         return (
-                          <tr
-                            key={order.id}
-                            id={`order-${order.id}`}
-                            className={`border-t ${isHighlighted ? 'bg-yellow-50 border-yellow-400 ring-2 ring-yellow-200' : 'bg-white'}`}
-                          >
-                            <td className="px-6 py-4 text-gray-800 font-mono text-sm">
-                              {order.id}
-                            </td>
-                            <td className="px-6 py-4 text-gray-800">
-                              {getThaiBuddhistDate(order.orderDate)}
-                            </td>
-                            <td className="px-6 py-4 text-gray-800">
-                              {order.items.map(item => item.productName).join(', ')}
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-800">
-                              {order.items.reduce((sum, item) => sum + item.quantity, 0)}
-                            </td>
-                            <td className="px-6 py-4 text-right font-semibold text-gray-800">
-                              {order.items.reduce((sum, item) => sum + (item.quantity * item.pricePerUnit - item.discount), 0).toLocaleString()}
-                            </td>
-                            <td className="px-6 py-4 text-gray-800">
-                              {creatorName}
-                            </td>
-                            <td className="px-6 py-4 text-gray-800">
-                              {creator?.role || "N/A"}
-                            </td>
-                            <td className="px-6 py-4 text-gray-800">
-                              {order.salesChannel || "-"}
-                            </td>
-                            <td className="px-6 py-4 text-gray-800">
-                              {order.salesChannel && order.salesChannel.toLowerCase() !== 'โทร' && order.salesChannel.toLowerCase() !== 'phone'
-                                ? getPageName(order.salesChannelPageId)
-                                : "-"}
-                            </td>
-                            <td className="px-6 py-4 text-gray-800">
-                              {order.orderStatus || "-"}
-                            </td>
-                            <td className="px-6 py-4 text-gray-800 font-mono text-sm">
-                              {order.trackingNumbers && order.trackingNumbers.length > 0
-                                ? order.trackingNumbers.join(', ')
-                                : "-"}
-                            </td>
-                          </tr>
+                          <React.Fragment key={order.id}>
+                            {/* แถวย่อย - แต่ละรายการสินค้า */}
+                            {order.items.map((item, itemIndex) => {
+                              // หา creator ของ item นี้ (รองรับ Upsell ที่มีหลายคนขาย)
+                              const itemCreatorId = item.creatorId || order.creatorId;
+                              const itemCreator = users.find((u) => {
+                                if (!itemCreatorId) return false;
+                                if (typeof u.id === 'number' && typeof itemCreatorId === 'number') {
+                                  return u.id === itemCreatorId;
+                                }
+                                return String(u.id) === String(itemCreatorId);
+                              });
+                              const itemCreatorName = itemCreator
+                                ? `${itemCreator.firstName} ${itemCreator.lastName}`
+                                : "N/A";
+
+                              return (
+                                <tr
+                                  key={`${order.id}-item-${itemIndex}`}
+                                  id={itemIndex === 0 ? `order-${order.id}` : undefined}
+                                  className={`${itemIndex === 0 ? 'border-t-2 border-gray-300' : 'border-t border-gray-100'} ${orderBgColor} ${item.isFreebie ? 'text-green-700' : ''}`}
+                                >
+                                  {/* Order ID - แสดงเฉพาะแถวแรก, แถวอื่นเว้นว่าง */}
+                                  <td className="px-6 py-2 text-gray-800 font-mono text-sm">
+                                    {itemIndex === 0 ? order.id : ''}
+                                  </td>
+                                  {/* วันที่ - แสดงเฉพาะแถวแรก */}
+                                  <td className="px-6 py-2 text-gray-800">
+                                    {itemIndex === 0 ? getThaiBuddhistDate(order.orderDate) : ''}
+                                  </td>
+                                  {/* สินค้า */}
+                                  <td className="px-6 py-2 text-gray-800">
+                                    <span className={item.isFreebie ? 'text-green-600' : ''}>
+                                      {item.productName}
+                                      {item.isFreebie && <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">แถม</span>}
+                                    </span>
+                                  </td>
+                                  {/* จำนวน */}
+                                  <td className="px-6 py-2 text-center text-gray-800">
+                                    {item.quantity}
+                                  </td>
+                                  {/* ราคา */}
+                                  <td className="px-6 py-2 text-right font-medium text-gray-800">
+                                    {item.isFreebie
+                                      ? <span className="text-green-600 text-sm">ฟรี</span>
+                                      : (item.quantity * item.pricePerUnit - (item.discount || 0)).toLocaleString()
+                                    }
+                                  </td>
+                                  {/* พนักงาน - แสดงทุกแถว (รองรับ Upsell) */}
+                                  <td className="px-6 py-2 text-gray-800">
+                                    {itemCreatorName}
+                                  </td>
+                                  {/* แผนก - แสดงทุกแถว */}
+                                  <td className="px-6 py-2 text-gray-800">
+                                    {itemCreator?.role || "N/A"}
+                                  </td>
+                                  {/* ช่องทางขาย - แสดงทุกแถว (role 6/7 = โทร) */}
+                                  <td className="px-6 py-2 text-gray-800">
+                                    {(() => {
+                                      // Role 6 หรือ 7 = Telesale → แสดง "โทร"
+                                      const roleId = item.creatorRoleId;
+                                      if (roleId === 6 || roleId === 7) {
+                                        return "โทร";
+                                      }
+                                      return order.salesChannel || "-";
+                                    })()}
+                                  </td>
+                                  {/* เพจ - แสดงทุกแถว (ถ้าไม่ใช่โทร) */}
+                                  <td className="px-6 py-2 text-gray-800">
+                                    {(() => {
+                                      const roleId = item.creatorRoleId;
+                                      // Role 6/7 = โทร → ไม่มีเพจ
+                                      if (roleId === 6 || roleId === 7) {
+                                        return "-";
+                                      }
+                                      if (order.salesChannel && order.salesChannel.toLowerCase() !== 'โทร' && order.salesChannel.toLowerCase() !== 'phone') {
+                                        return getPageName(order.salesChannelPageId);
+                                      }
+                                      return "-";
+                                    })()}
+                                  </td>
+                                  {/* สถานะ - แสดงเฉพาะแถวแรก */}
+                                  <td className="px-6 py-2 text-gray-800">
+                                    {itemIndex === 0 ? (order.orderStatus || "-") : ''}
+                                  </td>
+                                  {/* Tracking - แสดงตาม boxNumber ของ item */}
+                                  <td className="px-6 py-2 text-gray-800 font-mono text-sm">
+                                    {(() => {
+                                      // หา tracking ที่ตรงกับ box_number ของ item
+                                      const td = order.trackingDetails || [];
+                                      const itemBox = item.boxNumber;
+                                      const matchedTracking = td.find(t => t.boxNumber === itemBox);
+                                      if (matchedTracking?.trackingNumber) {
+                                        return matchedTracking.trackingNumber;
+                                      }
+                                      // Fallback: ถ้าไม่เจอ แสดง tracking แรก (เฉพาะแถวแรก)
+                                      if (itemIndex === 0 && td.length > 0) {
+                                        return td[0].trackingNumber || "-";
+                                      }
+                                      if (itemIndex === 0) {
+                                        return order.trackingNumbers?.join(', ') || "-";
+                                      }
+                                      return '';
+                                    })()}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </React.Fragment>
                         );
                       })
                     ) : (
@@ -521,7 +586,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
           <p>อัปเดตล่าสุด: 22/12/2568 10:13 • เวอร์ชั่น 0.1.1</p>
         </footer>
       </div>
-    </div>
+    </div >
   );
 };
 export default CustomerSearchPage;

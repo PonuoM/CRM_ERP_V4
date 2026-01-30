@@ -852,8 +852,11 @@ const App: React.FC = () => {
         const isDashboard = activePage === 'Dashboard';
         const isAdmin = sessionUser?.role === UserRole.Admin;
         // Optimized: Skip loading customers global list. ManageCustomersPage handles its own pagination.
-        // We need customers for Search page and Dashboard V2 (basket-based dashboard)
-        const shouldSkipCustomers = activePage !== 'Search' && activePage !== 'Dashboard V2';
+        // We need customers for Search page (only for non-system roles like Telesale/Supervisor) and Dashboard V2 (basket-based dashboard)
+        // System roles (is_system=1 in roles table) on Search page should NOT preload all 70k+ customers - they use API search instead
+        const isSystemRole = sessionUser?.isSystem === true;
+        const shouldSkipCustomers = (activePage === 'Search' && isSystemRole) ||
+          (activePage !== 'Search' && activePage !== 'Dashboard V2');
 
         const [
           u,
@@ -1074,6 +1077,7 @@ const App: React.FC = () => {
               color: t.color ?? undefined,
             }))
             : [],
+          isSystem: r.is_system === 1 || r.is_system === true,
         });
 
         const tagsByCustomer: Record<string, Tag[]> = {};

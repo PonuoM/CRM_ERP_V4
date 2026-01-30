@@ -132,7 +132,12 @@ try {
             handle_customer_blocks($pdo, $id);
             break;
         case 'customers':
-            handle_customers($pdo, $id);
+            try {
+                handle_customers($pdo, $id);
+            } catch (Throwable $e) {
+                file_put_contents(__DIR__ . '/customers_error.log', date('Y-m-d H:i:s') . " CUSTOMERS FATAL: " . $e->getMessage() . "\nFile: " . $e->getFile() . ":" . $e->getLine() . "\n" . $e->getTraceAsString() . "\n\n", FILE_APPEND);
+                json_response(['error' => 'INTERNAL_ERROR', 'message' => $e->getMessage(), 'file' => basename($e->getFile()), 'line' => $e->getLine()], 500);
+            }
             break;
         case 'products':
             handle_products($pdo, $id);
@@ -759,17 +764,17 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
             } else {
                 $companyId = $_GET['companyId'] ?? null;
                 $status = $_GET['status'] ?? null;
-                $sql = 'SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users';
+                $sql = 'SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.phone, u.role, u.company_id, u.team_id, u.supervisor_id, u.status, u.created_at, u.updated_at, u.last_login, u.login_count, r.is_system FROM users u LEFT JOIN roles r ON u.role = r.name';
                 $params = [];
                 $conditions = [];
 
                 if ($companyId) {
-                    $conditions[] = 'company_id = ?';
+                    $conditions[] = 'u.company_id = ?';
                     $params[] = $companyId;
                 }
 
                 if ($status) {
-                    $conditions[] = 'status = ?';
+                    $conditions[] = 'u.status = ?';
                     $params[] = $status;
                 }
 
@@ -777,7 +782,7 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
                     $sql .= ' WHERE ' . implode(' AND ', $conditions);
                 }
 
-                $sql .= ' ORDER BY id';
+                $sql .= ' ORDER BY u.id';
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $users = $stmt->fetchAll();
@@ -1121,6 +1126,73 @@ function attach_call_status_to_customers(PDO $pdo, array &$customers): void
         // If call_history table doesn't exist or error, silently continue
         error_log("attach_call_status_to_customers error: " . $e->getMessage());
     }
+}
+
+/**
+ * Build dynamic customer search conditions
+ * - Splits search term by space for name matching (ชื่อ นามสกุล)
+ * - Normalizes phone numbers (strips leading 0)
+ * - Searches: first_name, last_name, phone, customer_id, facebook_name, line_id
+ * @return array ['conditions' => string[], 'params' => array]
+ */
+function build_customer_search_conditions(string $q, string $tableAlias = ''): array {
+    $conditions = [];
+    $params = [];
+    
+    if ($q === '') {
+        return ['conditions' => [], 'params' => []];
+    }
+    
+    $prefix = $tableAlias ? "$tableAlias." : '';
+    
+    // Split by space for multiple term support (e.g., "สมชาย ใจดี")
+    $terms = array_filter(array_map('trim', preg_split('/\s+/', $q)));
+    
+    if (count($terms) === 0) {
+        return ['conditions' => [], 'params' => []];
+    }
+    
+    // Searchable columns
+    $searchCols = [
+        "{$prefix}first_name",
+        "{$prefix}last_name", 
+        "{$prefix}phone",
+        "{$prefix}customer_id",
+        "{$prefix}facebook_name",
+        "{$prefix}line_id"
+    ];
+    
+    // Normalize phone for matching (strip leading 0)
+    $normalizedPhone = preg_replace('/^0+/', '', preg_replace('/\D/', '', $q));
+    
+    // Build conditions for each term
+    foreach ($terms as $term) {
+        $termConditions = [];
+        
+        // Normal text match for each column
+        foreach ($searchCols as $col) {
+            $termConditions[] = "$col LIKE ?";
+            $params[] = "%$term%";
+        }
+        
+        // For phone: also match without leading 0
+        $termPhoneNormalized = preg_replace('/^0+/', '', preg_replace('/\D/', '', $term));
+        if ($termPhoneNormalized !== '' && $termPhoneNormalized !== $term) {
+            $termConditions[] = "{$prefix}phone LIKE ?";
+            $params[] = "%$termPhoneNormalized%";
+        }
+        
+        $conditions[] = '(' . implode(' OR ', $termConditions) . ')';
+    }
+    
+    // If multiple terms, all must match (AND between terms)
+    // This handles "สมชาย ใจดี" → must match both
+    $finalCondition = implode(' AND ', $conditions);
+    
+    return [
+        'conditions' => [$finalCondition],
+        'params' => $params
+    ];
 }
 
 function handle_customers(PDO $pdo, ?string $id): void
@@ -1467,11 +1539,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $params[] = $companyId;
                         }
                         if ($q !== '') {
-                            $sql .= ' AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)';
-                            $params[] = "%$q%";
-                            $params[] = "%$q%";
-                            $params[] = "%$q%";
-                            $params[] = "%$q%";
+                            $searchResult = build_customer_search_conditions($q, 'c');
+                            if (!empty($searchResult['conditions'])) {
+                                $sql .= ' AND ' . $searchResult['conditions'][0];
+                                $params = array_merge($params, $searchResult['params']);
+                            }
                         }
                         $sql .= ' ORDER BY c.date_assigned DESC';
                         $stmt = $pdo->prepare($sql);
@@ -1570,11 +1642,11 @@ function handle_customers(PDO $pdo, ?string $id): void
 
 
                         if ($q !== '') {
-                            $where[] = '(first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR customer_id LIKE ?)';
-                            $params[] = "%$q%";
-                            $params[] = "%$q%";
-                            $params[] = "%$q%";
-                            $params[] = "%$q%";
+                            $searchResult = build_customer_search_conditions($q, '');
+                            if (!empty($searchResult['conditions'])) {
+                                $where[] = $searchResult['conditions'][0];
+                                $params = array_merge($params, $searchResult['params']);
+                            }
                         }
                         if ($companyId) {
                             $where[] = 'company_id = ?';
@@ -1625,8 +1697,16 @@ function handle_customers(PDO $pdo, ?string $id): void
                         }
 
                         if ($phone && $phone !== '') {
-                            $where[] = 'phone LIKE ?';
-                            $params[] = "%$phone%";
+                            // Normalize: search both with and without leading 0
+                            $phoneNormalized = preg_replace('/^0+/', '', preg_replace('/\D/', '', $phone));
+                            if ($phoneNormalized !== '' && $phoneNormalized !== $phone) {
+                                $where[] = '(phone LIKE ? OR phone LIKE ?)';
+                                $params[] = "%$phone%";
+                                $params[] = "%$phoneNormalized%";
+                            } else {
+                                $where[] = 'phone LIKE ?';
+                                $params[] = "%$phone%";
+                            }
                         }
 
                         if ($grade && $grade !== '') {
@@ -3512,10 +3592,13 @@ function handle_orders(PDO $pdo, ?string $id): void
                                            oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
                                            oi.creator_id, oi.parent_order_id,
                                            p.sku as product_sku,
-                                           pr.sku as promotion_sku
+                                           pr.sku as promotion_sku,
+                                           r.id as creator_role_id
                                     FROM order_items oi
                                     LEFT JOIN products p ON oi.product_id = p.id
                                     LEFT JOIN promotions pr ON oi.promotion_id = pr.id
+                                    LEFT JOIN users u ON oi.creator_id = u.id
+                                    LEFT JOIN roles r ON u.role = r.name
                                     WHERE oi.parent_order_id IN ($parentPlaceholders) OR oi.order_id IN ($parentPlaceholders)
                                     ORDER BY oi.order_id, oi.id";
 

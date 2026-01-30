@@ -36,8 +36,13 @@ function sanitize_value($val) {
 function normalize_phone($phone) {
     if (!$phone) return null;
     $digits = preg_replace('/\D/', '', $phone);
+    // Handle +66 or 66 prefix (Thai country code)
     if (strlen($digits) > 10 && strpos($digits, '66') === 0) {
         $digits = '0' . substr($digits, 2);
+    }
+    // Add leading 0 for 9-digit Thai mobile numbers (starting with 6, 8, or 9)
+    if (strlen($digits) === 9 && preg_match('/^[689]/', $digits)) {
+        $digits = '0' . $digits;
     }
     return $digits ?: null;
 }
@@ -166,23 +171,56 @@ if (count($orderIds) > 0) {
 
 // ========================================
 // STEP 5: Pre-fetch existing customers by phone (batch)
+// Uses FUZZY matching: search both 9-digit and 10-digit formats
 // ========================================
 $allPhones = [];
+$phoneVariants = []; // Maps normalized phone -> [variant1, variant2]
+
 foreach ($grouped as $orderId => $group) {
     if (isset($existingOrders[$orderId])) continue;
     $phone = normalize_phone($group['rows'][0]['customerPhone'] ?? null);
-    if ($phone) $allPhones[$phone] = true;
+    if ($phone) {
+        $allPhones[$phone] = true;
+        
+        // Generate phone variants for fuzzy matching
+        $variants = [$phone];
+        // If 10 digits starting with 0, also search without leading 0
+        if (strlen($phone) === 10 && $phone[0] === '0') {
+            $variants[] = substr($phone, 1); // 9-digit version
+        }
+        // If 9 digits starting with 6,8,9, also search with leading 0
+        if (strlen($phone) === 9 && preg_match('/^[689]/', $phone)) {
+            $variants[] = '0' . $phone; // 10-digit version
+        }
+        $phoneVariants[$phone] = $variants;
+    }
 }
 
 $existingCustomers = [];
 if (count($allPhones) > 0) {
-    $chunks = array_chunk(array_keys($allPhones), 500);
+    // Collect all phone variants to search
+    $allSearchPhones = [];
+    foreach ($phoneVariants as $originalPhone => $variants) {
+        foreach ($variants as $v) {
+            $allSearchPhones[$v] = $originalPhone; // Map variant -> original
+        }
+    }
+    
+    $chunks = array_chunk(array_keys($allSearchPhones), 500);
     foreach ($chunks as $chunk) {
         $placeholders = implode(',', array_fill(0, count($chunk), '?'));
         $stmt = $pdo->prepare("SELECT customer_id, phone, assigned_to FROM customers WHERE phone IN ($placeholders) AND company_id = ?");
         $stmt->execute(array_merge($chunk, [$user['company_id']]));
         while ($c = $stmt->fetch()) {
+            // Store by the DB phone
             $existingCustomers[$c['phone']] = $c;
+            // Also store by original phone from CSV (for quick lookup later)
+            if (isset($allSearchPhones[$c['phone']])) {
+                $originalPhone = $allSearchPhones[$c['phone']];
+                if (!isset($existingCustomers[$originalPhone])) {
+                    $existingCustomers[$originalPhone] = $c;
+                }
+            }
         }
     }
 }
