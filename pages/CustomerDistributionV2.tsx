@@ -35,6 +35,28 @@ interface AgentWithBaskets extends User {
     totalCustomers: number;
 }
 
+interface ResetCandidate {
+    id: number;
+    code: string;
+    first_name: string;
+    last_name: string;
+    assigned_count: number;
+    selected?: boolean;
+}
+
+interface SummaryStats {
+    totalSuccess: number;
+    totalFailed: number;
+    agentStats: Record<number, { name: string; success: number; failed: number }>;
+    missingTotal: number;
+}
+
+interface AssignHistory {
+    first_name: string;
+    last_name: string;
+    created_at: string;
+}
+
 const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ currentUser }) => {
     // Data
     const [baskets, setBaskets] = useState<BasketConfig[]>([]);
@@ -54,7 +76,76 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [totalToDistribute, setTotalToDistribute] = useState<string>('');
     const [preview, setPreview] = useState<DistributionPreview[]>([]);
     const [showPreview, setShowPreview] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+
+    // Manual Reset State
+    const [resetModalOpen, setResetModalOpen] = useState(false);
+    const [resetTargetCount, setResetTargetCount] = useState<string>('');
+    const [resetCandidates, setResetCandidates] = useState<ResetCandidate[]>([]);
+    const [resetting, setResetting] = useState(false);
+    const [findingCandidates, setFindingCandidates] = useState(false);
+    const [allResetSelected, setAllResetSelected] = useState(false);
+    const [resetPage, setResetPage] = useState(1);
+    const [resetTotal, setResetTotal] = useState(0);
+    const [resetTotalPages, setResetTotalPages] = useState(1);
+    const [resetOptions, setResetOptions] = useState<{ assigned_count: number; customer_count: number }[]>([]);
+    const RESET_PAGE_SIZE = 50;
+
+    // Summary Modal State
+    const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+    const [summaryStats, setSummaryStats] = useState<SummaryStats>({
+        totalSuccess: 0,
+        totalFailed: 0,
+        agentStats: {},
+        missingTotal: 0
+    });
+
+    // Confirmation Modal State
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: React.ReactNode;
+        onConfirm: () => void;
+        confirmLabel?: string;
+        confirmColor?: 'blue' | 'red' | 'orange';
+        variant?: 'default' | 'danger' | 'warning';
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => { }
+    });
+
+    const closeConfirmModal = () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+    };
+
+
+
+
+
+    // History Modal State
+    const [historyModalOpen, setHistoryModalOpen] = useState(false);
+    const [historyData, setHistoryData] = useState<AssignHistory[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [viewingCustomer, setViewingCustomer] = useState<{ name: string, code: string } | null>(null);
+
+    const handleViewHistory = async (customer: ResetCandidate) => {
+        setViewingCustomer({ name: `${customer.first_name} ${customer.last_name}`, code: customer.code });
+        setHistoryModalOpen(true);
+        setHistoryLoading(true);
+        try {
+            const res = await apiFetch(`Distribution/reset.php?action=get_assign_history&companyId=${currentUser?.companyId}&customer_id=${customer.id}`);
+            if (res.ok) {
+                setHistoryData(res.history || []);
+            }
+        } catch (e) {
+            console.error(e);
+            setHistoryData([]);
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
 
     // Fetch basket configurations
     const fetchBaskets = useCallback(async () => {
@@ -106,6 +197,23 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             console.error('Failed to fetch dashboard baskets:', error);
         }
     }, [currentUser?.companyId]);
+
+    // Fetch Reset Options (Summary)
+    const fetchResetOptions = useCallback(async () => {
+        if (!resetModalOpen) return;
+        try {
+            const res = await apiFetch(`Distribution/reset.php?action=get_reset_summary&companyId=${currentUser?.companyId}`);
+            if (res.ok) {
+                setResetOptions(res.summary || []);
+            }
+        } catch (e) {
+            console.error("Failed to fetch reset summary", e);
+        }
+    }, [resetModalOpen, currentUser?.companyId]);
+
+    useEffect(() => {
+        fetchResetOptions();
+    }, [fetchResetOptions]);
 
     // Auto-set target basket for Upsell Distribution
     useEffect(() => {
@@ -361,46 +469,305 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setShowPreview(true);
     };
 
-    // Execute distribution
-    const handleExecuteDistribution = async () => {
-        setDistributing(true);
+    // Close Summary Modal & Cleanup
+    const closeSummaryModal = () => {
+        setSummaryModalOpen(false);
+        setSummaryStats({
+            totalSuccess: 0,
+            totalFailed: 0,
+            agentStats: {},
+            missingTotal: 0
+        });
+
+        // Cleanup functions
+        setShowPreview(false);
+        setPreview([]);
+        setSelectedAgents([]);
+        fetchCustomers();
+        fetchAllBasketCounts();
+        fetchAgents();
+    };
+
+    // Distribute More (Retry Loop)
+    const handleDistributeMore = async () => {
+        if (summaryStats.missingTotal <= 0) return;
+
         try {
-            const assignments: { customer_id: string | number; agent_id: number }[] = [];
-            for (const item of preview) {
-                for (const customer of item.customers) {
-                    assignments.push({
-                        customer_id: customer.id,
-                        agent_id: item.agentId
+            // Calculate skip based on total failed so far (assuming we skip the bad ones)
+            const skipCount = summaryStats.totalFailed;
+
+            // Identify needy agents
+            const expectedPerAgent = selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0;
+            const needyAgents: number[] = [];
+
+            selectedAgents.forEach(agentId => {
+                const currentSuccess = summaryStats.agentStats[agentId]?.success || 0;
+                if (currentSuccess < expectedPerAgent) {
+                    // Add agent to list multiple times for each missing slot
+                    for (let i = 0; i < (expectedPerAgent - currentSuccess); i++) {
+                        needyAgents.push(agentId);
+                    }
+                }
+            });
+
+            if (needyAgents.length === 0) {
+                setMessage({ type: 'warning', text: 'โควต้าครบแล้ว' });
+                return;
+            }
+
+            // Fetch
+            const fetchResult = await apiFetch(`basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=${needyAgents.length}&skip=${skipCount}`);
+
+            const newCandidates = fetchResult?.data || [];
+            if (newCandidates.length === 0) {
+                setMessage({ type: 'warning', text: 'ไม่พบรายชื่อเพิ่มเติมในระบบ' });
+                return;
+            }
+
+            // Map
+            const newAssignments: { customer_id: string | number; agent_id: number }[] = [];
+            for (let i = 0; i < newCandidates.length; i++) {
+                if (i < needyAgents.length) {
+                    newAssignments.push({
+                        customer_id: newCandidates[i].customer_id,
+                        agent_id: needyAgents[i]
                     });
                 }
             }
 
+            if (newAssignments.length > 0) {
+                await handleExecuteDistribution(newAssignments, true);
+            }
+
+        } catch (e) {
+            console.error(e);
+            setMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการแจกเพิ่ม' });
+        }
+    };
+
+    // Execute distribution
+    const handleExecuteDistribution = async (
+        assignmentsToUse: { customer_id: string | number; agent_id: number }[] = [],
+        isRetry = false
+    ) => {
+        setDistributing(true);
+        try {
+            // Use provided assignments or build from preview
+            let assignments = assignmentsToUse;
+            if (assignments.length === 0 && !isRetry) {
+                for (const item of preview) {
+                    for (const customer of item.customers) {
+                        assignments.push({
+                            customer_id: customer.id,
+                            agent_id: item.agentId
+                        });
+                    }
+                }
+            }
+
             const result = await apiFetch(
-                `basket_config.php?action=bulk_assign&companyId=${currentUser?.companyId}`,
+                `Distribution/index.php?action=distribute&companyId=${currentUser?.companyId}`,
                 {
                     method: 'POST',
                     body: JSON.stringify({
                         assignments,
                         source_basket_key: activeBasket,
                         target_basket_key: targetBasket || undefined,
-                        triggered_by: currentUser?.userId
+                        triggered_by: (currentUser as any)?.id
                     })
                 }
             );
 
-            const totalAssigned = result?.assigned || assignments.length;
-            setMessage({ type: 'success', text: `แจกงานสำเร็จ ${totalAssigned} รายชื่อ` });
-            setShowPreview(false);
-            setPreview([]);
-            setSelectedAgents([]);
-            fetchCustomers();
-            fetchAllBasketCounts();
-            fetchAgents();
+            // Handle Response
+            const totalSuccess = result?.total_success || 0;
+            const totalFailed = result?.total_failed || 0;
+            const agentStatsResponse = result?.agent_stats || {};
+
+            // Update Summary Stats
+            setSummaryStats(prev => {
+                const newStats = isRetry ? { ...prev } : {
+                    totalSuccess: 0,
+                    totalFailed: 0,
+                    agentStats: {},
+                    missingTotal: 0
+                };
+
+                newStats.totalSuccess += totalSuccess;
+                newStats.totalFailed += totalFailed;
+
+                // Init/Update Agent Stats
+                assignments.forEach(a => {
+                    if (!newStats.agentStats[a.agent_id]) {
+                        const agent = agents.find(ag => ag.id === a.agent_id);
+                        newStats.agentStats[a.agent_id] = {
+                            name: agent ? `${agent.firstName} ${agent.lastName}` : `Agent ${a.agent_id}`,
+                            success: 0,
+                            failed: 0
+                        };
+                    }
+                    // We assume attempt = fail first, effectively counting "Attempts"
+                    newStats.agentStats[a.agent_id].failed++;
+                });
+
+                // Correct with Success counts
+                Object.entries(agentStatsResponse).forEach(([idStr, successCount]) => {
+                    const id = parseInt(idStr);
+                    if (newStats.agentStats[id]) {
+                        const sc = successCount as number;
+                        newStats.agentStats[id].success += sc;
+                        newStats.agentStats[id].failed -= sc; // Convert attempt to success
+                    }
+                });
+
+                // Calculate Missing
+                const expectedPerAgent = selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0;
+                let missing = 0;
+                if (expectedPerAgent > 0) {
+                    selectedAgents.forEach(id => {
+                        const current = newStats.agentStats[id]?.success || 0;
+                        if (current < expectedPerAgent) {
+                            missing += (expectedPerAgent - current);
+                        }
+                    });
+                }
+                newStats.missingTotal = missing;
+
+                return newStats;
+            });
+
+            setMessage({ type: 'success', text: isRetry ? `แจกเพิ่มสำเร็จ ${totalSuccess} รายการ` : `แจกงานสำเร็จ ${totalSuccess} รายการ` });
+            setSummaryModalOpen(true);
+
         } catch (error) {
             console.error('Distribution failed:', error);
             setMessage({ type: 'error', text: 'แจกงานไม่สำเร็จ' });
         } finally {
             setDistributing(false);
+        }
+    };
+
+    // Manual Reset Functions
+    // Manual Reset Functions
+    const handleCheckCandidates = async (page = 1) => {
+        if (!resetTargetCount) return;
+        setFindingCandidates(true);
+        setResetCandidates([]);
+        setAllResetSelected(false);
+        setResetPage(page);
+
+        try {
+            const res = await apiFetch(`Distribution/reset.php?action=get_candidates&target_count=${resetTargetCount}&companyId=${currentUser?.companyId}&page=${page}&limit=${RESET_PAGE_SIZE}`);
+            if (res?.ok) {
+                const candidates = (res.candidates || []).map((c: any) => ({ ...c, selected: false }));
+                setResetCandidates(candidates);
+                setResetTotal(res.total || 0);
+                setResetTotalPages(res.total_pages || 1);
+
+                if (candidates.length === 0 && page === 1) {
+                    setMessage({ type: 'warning', text: `ไม่พบลูกค้าที่แจกไปแล้วครบ ${resetTargetCount} คน` });
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            setMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการค้นหา' });
+        } finally {
+            setFindingCandidates(false);
+            setAllResetSelected(false);
+        }
+    };
+
+    const changeResetPage = (newPage: number) => {
+        if (newPage >= 1 && newPage <= resetTotalPages) {
+            handleCheckCandidates(newPage);
+        }
+    };
+
+    const toggleResetCandidate = (id: number) => {
+        setResetCandidates(prev => prev.map(c =>
+            c.id === id ? { ...c, selected: !c.selected } : c
+        ));
+    };
+
+    const toggleAllResetCandidates = () => {
+        const newValue = !allResetSelected;
+        setAllResetSelected(newValue);
+        setResetCandidates(prev => prev.map(c => ({ ...c, selected: newValue })));
+    };
+
+    const executeManualReset = async (payload: any, mode: 'selected' | 'all') => {
+        setResetting(true);
+        try {
+            const res = await apiFetch(`Distribution/reset.php?action=manual_reset&companyId=${currentUser?.companyId}`, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            if (res?.ok) {
+                setMessage({ type: 'success', text: `Reset สำเร็จ ${res.total_reset} รายการ` });
+                if (mode === 'all') {
+                    setResetModalOpen(false);
+                    setResetCandidates([]);
+                    setResetTargetCount('');
+                } else {
+                    // Refresh current page
+                    handleCheckCandidates(resetPage);
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            setMessage({ type: 'error', text: 'Reset ไม่สำเร็จ' });
+        } finally {
+            setResetting(false);
+            closeConfirmModal();
+        }
+    };
+
+    const handleManualReset = (mode: 'selected' | 'all' = 'selected') => {
+        let payload: any = {
+            mode,
+            triggered_by: (currentUser as any)?.id,
+            companyId: currentUser?.companyId
+        };
+
+        if (mode === 'selected') {
+            const selected = resetCandidates.filter(c => c.selected);
+            if (selected.length === 0) return;
+
+            payload.customer_ids = selected.map(c => c.id);
+
+            setConfirmModal({
+                isOpen: true,
+                title: 'ยืนยันการ Reset รอบแจก',
+                message: (
+                    <div>
+                        <p>ยืนยันการ Reset สำหรับลูกค้าที่เลือก <span className="font-bold text-red-600">{selected.length}</span> คน?</p>
+                        <p className="text-sm text-gray-500 mt-2">ข้อมูลการแจกในรอบปัจจุบันจะถูกลบ และเริ่มนับรอบใหม่</p>
+                    </div>
+                ),
+                confirmLabel: 'ยืนยัน Reset',
+                confirmColor: 'orange',
+                onConfirm: () => executeManualReset(payload, mode)
+            });
+
+        } else {
+            if (!resetTargetCount || resetTotal === 0) return;
+
+            payload.target_count = resetTargetCount;
+
+            setConfirmModal({
+                isOpen: true,
+                title: '⚠️ ยืนยัน Reset ทั้งหมด',
+                variant: 'danger',
+                message: (
+                    <div className="space-y-3">
+                        <p className="font-semibold text-red-700">คำเตือน: การกระทำนี้ไม่สามารถย้อนกลับได้</p>
+                        <p>คุณกำลังจะ Reset ลูกค้าทั้งหมด <span className="font-bold text-xl">{resetTotal.toLocaleString()}</span> คน</p>
+                        <p>ที่แจกไปแล้ว <span className="font-bold">{resetTargetCount}</span> ครั้ง</p>
+                    </div>
+                ),
+                confirmLabel: 'ยืนยัน Reset ทั้งหมด',
+                confirmColor: 'red',
+                onConfirm: () => executeManualReset(payload, mode)
+            });
         }
     };
 
@@ -486,22 +853,270 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     }
 
     return (
-        <div className="p-6">
+        <div className="p-6 relative">
             {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-800 mb-2">แจกงาน V2</h1>
-                <p className="text-gray-600">แจกลูกค้าจากถังต่างๆ ให้ Telesale</p>
+            <div className="mb-6 flex justify-between items-start">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-800 mb-2">แจกงาน V2</h1>
+                    <p className="text-gray-600">แจกลูกค้าจากถังต่างๆ ให้ Telesale</p>
+                </div>
+                <button
+                    onClick={() => setResetModalOpen(true)}
+                    className="px-3 py-1.5 text-sm bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1"
+                >
+                    <RefreshCw size={14} />
+                    Manual Reset
+                </button>
             </div>
 
-            {/* Message */}
-            {message && (
-                <div className={`mb-4 p-4 rounded-lg flex items-center gap-2 ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                    <AlertCircle size={20} />
-                    {message.text}
-                    <button onClick={() => setMessage(null)} className="ml-auto">×</button>
+
+            {/* Manual Reset Modal */}
+            {resetModalOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+                        <div className="p-6 border-b flex justify-between items-center bg-orange-50 rounded-t-xl">
+                            <h3 className="text-lg font-bold text-orange-800 flex items-center gap-2">
+                                <span className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm">!</span>
+                                Manual Reset (ล้างรอบด้วยตนเอง)
+                            </h3>
+                            <button onClick={() => setResetModalOpen(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto flex-1">
+                            <div className="flex gap-4 mb-6 items-end">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        ระบุจำนวน Telesale ที่ลูกค้าถูกแจกไปแล้ว (คน)
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <select
+                                            value={resetTargetCount}
+                                            onChange={(e) => setResetTargetCount(e.target.value)}
+                                            className="flex-1 border rounded-lg p-2.5 focus:ring-2 focus:ring-orange-500 outline-none bg-white"
+                                        >
+                                            <option value="">-- เลือกเงื่อนไข --</option>
+                                            {resetOptions.map(opt => (
+                                                <option key={opt.assigned_count} value={opt.assigned_count}>
+                                                    รอบที่ {opt.assigned_count} (ลูกค้า {opt.customer_count} รายชื่อ)
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            onClick={() => handleCheckCandidates()}
+                                            disabled={!resetTargetCount || findingCandidates}
+                                            className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2 font-medium"
+                                        >
+                                            {findingCandidates ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
+                                            ค้นหา
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {resetCandidates.length > 0 && (
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h4 className="font-semibold text-gray-700">พบ {resetCandidates.length} รายชื่อ</h4>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={toggleAllResetCandidates}
+                                                className="text-sm text-blue-600 hover:underline"
+                                            >
+                                                {allResetSelected ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="border rounded-lg overflow-hidden max-h-[400px] overflow-y-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-gray-50 sticky top-0">
+                                                <th className="p-3 text-left text-gray-600 font-medium">รหัสลูกค้า</th>
+                                                <th className="p-3 text-left text-gray-600 font-medium">ชื่อ-นามสกุล</th>
+                                                <th className="p-3 text-center text-gray-600 font-medium">แจกไปแล้ว (คน)</th>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {resetCandidates.map(c => (
+                                                    <tr key={c.id} className="hover:bg-orange-50">
+                                                        <td className="p-3 text-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={c.selected || false}
+                                                                onChange={() => toggleResetCandidate(c.id)}
+                                                                className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                                            />
+                                                        </td>
+                                                        <td className="p-3 text-gray-900 font-mono">{c.code}</td>
+                                                        <td className="p-3 text-gray-900">{c.first_name} {c.last_name}</td>
+                                                        <td className="p-3 text-center text-gray-600 bg-gray-50">
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <span>{c.assigned_count}</span>
+                                                                <button
+                                                                    onClick={() => handleViewHistory(c)}
+                                                                    className="text-gray-400 hover:text-blue-600 p-1 rounded-full hover:bg-white transition-colors"
+                                                                    title="ดูประวัติการแจก"
+                                                                >
+                                                                    <Eye size={14} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {resetTotalPages > 1 && (
+                                <div className="flex justify-center items-center gap-4 mt-4 py-2">
+                                    <button
+                                        onClick={() => changeResetPage(resetPage - 1)}
+                                        disabled={resetPage === 1 || findingCandidates}
+                                        className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
+                                    >
+                                        <ChevronDown size={20} className="rotate-90" />
+                                    </button>
+                                    <span className="text-sm text-gray-600">
+                                        หน้า {resetPage} / {resetTotalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => changeResetPage(resetPage + 1)}
+                                        disabled={resetPage === resetTotalPages || findingCandidates}
+                                        className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
+                                    >
+                                        <ChevronDown size={20} className="-rotate-90" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t bg-gray-50 rounded-b-xl flex justify-between items-center">
+                            <button
+                                onClick={() => handleManualReset('all')}
+                                disabled={!resetTotal || resetTotal === 0 || resetting}
+                                className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {resetting ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                                Reset ทั้งหมด ({resetTotal.toLocaleString()})
+                            </button>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setResetModalOpen(false)}
+                                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                                >
+                                    ปิด
+                                </button>
+                                <button
+                                    onClick={() => handleManualReset('selected')}
+                                    disabled={resetCandidates.filter(c => c.selected).length === 0 || resetting}
+                                    className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 shadow-sm flex items-center gap-2 font-medium"
+                                >
+                                    {resetting ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                                    Reset ที่เลือก ({resetCandidates.filter(c => c.selected).length})
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
+
+            {/* Summary Modal (Distribution Result) */}
+            {
+                summaryModalOpen && (
+                    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[80vh] flex flex-col animate-in fade-in duration-200">
+                            {/* Header */}
+                            <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+                                <h3 className="text-xl font-bold text-gray-800">สรุปผลการแจกงาน</h3>
+                                <button onClick={closeSummaryModal} className="text-gray-500 hover:text-gray-700">✕</button>
+                            </div>
+
+                            {/* Body - Stats Table */}
+                            <div className="p-6 overflow-y-auto flex-1">
+                                {/* Top Summary Cards */}
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-center">
+                                        <div className="text-3xl font-bold text-green-600">{summaryStats.totalSuccess}</div>
+                                        <div className="text-sm text-green-800">แจกสำเร็จ (รายการ)</div>
+                                    </div>
+                                    <div className="bg-red-50 p-4 rounded-lg border border-red-100 text-center">
+                                        <div className="text-3xl font-bold text-red-600">{summaryStats.totalFailed}</div>
+                                        <div className="text-sm text-red-800">แจกไม่สำเร็จ (รายการ)</div>
+                                    </div>
+                                </div>
+
+                                {/* Table */}
+                                <div className="border rounded-lg overflow-hidden">
+                                    <table className="w-full text-sm border-collapse">
+                                        <thead className="bg-gray-100">
+                                            <tr>
+                                                <th className="p-3 text-left font-semibold text-gray-600">พนักงาน</th>
+                                                <th className="p-3 text-center text-green-700 font-semibold">สำเร็จ</th>
+                                                <th className="p-3 text-center text-red-700 font-semibold">ไม่สำเร็จ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {Object.values(summaryStats.agentStats).map((stat, idx) => (
+                                                <tr key={idx} className="hover:bg-gray-50">
+                                                    <td className="p-3 font-medium text-gray-800">{stat.name}</td>
+                                                    <td className="p-3 text-center text-green-600 font-bold">{stat.success}</td>
+                                                    <td className="p-3 text-center text-red-500 font-medium">{stat.failed > 0 ? stat.failed : '-'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Missing Alert */}
+                                {summaryStats.missingTotal > 0 && (
+                                    <div className="mt-6 p-4 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-3">
+                                        <AlertCircle className="text-orange-600 shrink-0 mt-0.5" />
+                                        <div>
+                                            <h4 className="font-bold text-orange-800">ยังแจกไม่ครบตามเป้าหมาย</h4>
+                                            <p className="text-sm text-orange-700">ขาดอีกประมาณ <span className="font-bold">{summaryStats.missingTotal}</span> รายชื่อ</p>
+                                            <p className="text-xs text-orange-600 mt-1">ต้องการค้นหาลูกค้าเพิ่มเติมและแจกต่อหรือไม่?</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="p-6 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+                                <button
+                                    onClick={closeSummaryModal}
+                                    className="px-6 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+                                >
+                                    ปิด (เสร็จสิ้น)
+                                </button>
+                                {summaryStats.missingTotal > 0 && (
+                                    <button
+                                        onClick={handleDistributeMore}
+                                        disabled={distributing}
+                                        className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-bold flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50"
+                                    >
+                                        {distributing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
+                                        แจกเพิ่มส่วนที่ขาด
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+            {/* Message */}
+            {
+                message && (
+                    <div className={`mb-4 p-4 rounded-lg flex items-center gap-2 ${message.type === 'success' ? 'bg-green-100 text-green-700' :
+                        message.type === 'warning' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-red-100 text-red-700'
+                        }`}>
+                        <AlertCircle size={20} />
+                        {message.text}
+                        <button onClick={() => setMessage(null)} className="ml-auto">×</button>
+                    </div>
+                )
+            }
 
             {/* Stats Cards - All Baskets in Grid */}
             <div className="grid grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
@@ -574,6 +1189,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     </div>
                 </div>
             </div>
+
+
+
 
 
             {/* Section 2: Target Employees - Table Layout */}
@@ -870,7 +1488,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                         ยกเลิก
                                     </button>
                                     <button
-                                        onClick={handleExecuteDistribution}
+                                        onClick={() => handleExecuteDistribution()}
                                         disabled={distributing}
                                         className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
                                     >
@@ -878,6 +1496,101 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                         ยืนยันแจกงาน
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Confirmation Modal */}
+            {
+                confirmModal.isOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-xl max-w-md w-full animate-in zoom-in-95 duration-200 overflow-hidden">
+                            <div className={`p-4 border-b flex items-center gap-3 ${confirmModal.variant === 'danger' ? 'bg-red-50 border-red-100' :
+                                confirmModal.variant === 'warning' ? 'bg-orange-50 border-orange-100' :
+                                    'bg-gray-50'
+                                }`}>
+                                {confirmModal.variant === 'danger' && <AlertCircle className="text-red-600" />}
+                                {confirmModal.variant === 'warning' && <AlertCircle className="text-orange-600" />}
+                                <h3 className={`font-bold ${confirmModal.variant === 'danger' ? 'text-red-800' :
+                                    confirmModal.variant === 'warning' ? 'text-orange-800' :
+                                        'text-gray-800'
+                                    }`}>
+                                    {confirmModal.title}
+                                </h3>
+                            </div>
+
+                            <div className="p-6 text-gray-700">
+                                {confirmModal.message}
+                            </div>
+
+                            <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
+                                <button
+                                    onClick={closeConfirmModal}
+                                    className="px-4 py-2 border rounded-lg hover:bg-gray-100 text-gray-700 font-medium"
+                                >
+                                    ยกเลิก
+                                </button>
+                                <button
+                                    onClick={confirmModal.onConfirm}
+                                    className={`px-4 py-2 rounded-lg text-white font-medium shadow-sm flex items-center gap-2 ${confirmModal.confirmColor === 'red' ? 'bg-red-600 hover:bg-red-700' :
+                                        confirmModal.confirmColor === 'orange' ? 'bg-orange-600 hover:bg-orange-700' :
+                                            'bg-blue-600 hover:bg-blue-700'
+                                        }`}
+                                >
+                                    {confirmModal.confirmLabel || 'ยืนยัน'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* History Modal */}
+            {
+                historyModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+                                <div>
+                                    <h3 className="font-bold text-gray-800">ประวัติการแจกงาน</h3>
+                                    <p className="text-xs text-gray-500">{viewingCustomer?.code} - {viewingCustomer?.name}</p>
+                                </div>
+                                <button onClick={() => setHistoryModalOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto p-0">
+                                {historyLoading ? (
+                                    <div className="py-8 flex justify-center">
+                                        <Loader2 className="animate-spin text-blue-500" />
+                                    </div>
+                                ) : historyData.length === 0 ? (
+                                    <div className="py-8 text-center text-gray-400 text-sm">ไม่พบประวัติ</div>
+                                ) : (
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-50 text-gray-500 font-medium sticky top-0">
+                                            <tr>
+                                                <th className="p-3 text-left pl-6">พนักงานที่ได้รับ</th>
+                                                <th className="p-3 text-right pr-6">วันที่ได้รับ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {historyData.map((h, i) => (
+                                                <tr key={i}>
+                                                    <td className="p-3 pl-6 text-gray-800">{h.first_name} {h.last_name}</td>
+                                                    <td className="p-3 pr-6 text-right text-gray-500">
+                                                        {new Date(h.created_at).toLocaleDateString('th-TH', {
+                                                            day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit'
+                                                        })}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+                            <div className="p-3 border-t bg-gray-50 text-right">
+                                <button onClick={() => setHistoryModalOpen(false)} className="px-3 py-1.5 bg-white border rounded text-sm hover:bg-gray-50">ปิด</button>
                             </div>
                         </div>
                     </div>

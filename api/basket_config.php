@@ -341,9 +341,11 @@ function handleBasketCustomers($pdo, $companyId)
     $countStmt->execute($params);
     $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 
-    // Then get data WITH limit
-    $sql .= " ORDER BY c.last_order_date DESC LIMIT ?";
+    // Then get data WITH limit AND offset
+    $offset = intval($_GET['skip'] ?? $_GET['offset'] ?? 0);
+    $sql .= " ORDER BY c.last_order_date DESC LIMIT ? OFFSET ?";
     $params[] = $limit;
+    $params[] = $offset;
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
@@ -409,7 +411,7 @@ function handleBulkAssign($pdo, $companyId)
                 $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
                 $idStmt->execute([$linkedBasketKey]);
                 $targetBasketId = $idStmt->fetchColumn();
-                
+
                 error_log("[Distribution V2 DEBUG] Resolved target basket ID: " . ($targetBasketId ?: 'NULL'));
             }
         }
@@ -425,7 +427,7 @@ function handleBulkAssign($pdo, $companyId)
             FROM customers 
             WHERE customer_id = ? AND company_id = ?
         ");
-        
+
         if ($targetBasketId) {
             // Update WITH current_basket_key (ID) AND basket_entered_date if target is resolved
             $stmt = $pdo->prepare("
@@ -477,25 +479,25 @@ function handleBulkAssign($pdo, $companyId)
                 $oldBasketKey = $oldData['current_basket_key'] ?? null;
                 $oldAgentId = $oldData['assigned_to'] ?? null;
                 $previousAgentsJson = $oldData['previous_assigned_to'] ?? null;
-                
+
                 // Build updated previous_assigned_to array
                 $previousAgents = $previousAgentsJson ? json_decode($previousAgentsJson, true) : [];
                 if (!is_array($previousAgents)) {
                     $previousAgents = [];
                 }
-                
+
                 // PREVENT DUPLICATE ASSIGNMENT: Skip if this agent was previously assigned to this customer
-                if (in_array((int)$agentId, $previousAgents)) {
+                if (in_array((int) $agentId, $previousAgents)) {
                     $errors[] = "Customer $customerId was previously assigned to agent $agentId - skipping";
                     continue;
                 }
-                
+
                 // Add NEW agent (the one being assigned) to the history
                 // This tracks "which agents has this customer been assigned to"
-                $previousAgents[] = (int)$agentId;
-                
+                $previousAgents[] = (int) $agentId;
+
                 $newPreviousAgentsJson = json_encode($previousAgents);
-                
+
                 if ($targetBasketId) {
                     $stmt->execute([$agentId, $targetBasketId, $newPreviousAgentsJson, $customerId, $companyId]);
                 } else {
@@ -504,11 +506,11 @@ function handleBulkAssign($pdo, $companyId)
 
                 if ($stmt->rowCount() > 0) {
                     $successCount++;
-                    
+
                     // Log basket transition (triggered_by = agent receiving customer)
                     $logStmt->execute([
-                        $customerId, 
-                        $oldBasketKey ?: null, 
+                        $customerId,
+                        $oldBasketKey ?: null,
                         $targetBasketId ?: null,
                         $agentId
                     ]);
@@ -583,7 +585,7 @@ function handleReclaimCustomers($pdo, $companyId)
             // If linked_basket_key exists, move to that Distribution basket
             // Otherwise, just unassign them (keep in same basket)
             $targetBasketId = $dashboardBasketId; // Default: keep in same basket
-            
+
             if ($linkedBasketKey) {
                 // Find the Distribution basket ID from linked_basket_key (Basket config is GLOBAL)
                 $linkIdStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");

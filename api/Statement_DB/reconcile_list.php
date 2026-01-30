@@ -115,6 +115,20 @@ try {
     $stmtParams[":bankEx"] = $bankAccountId;
   }
 
+  // Add Amount filtering
+  $amountFilter = "";
+  $minAmount = isset($_GET["min_amount"]) && $_GET["min_amount"] !== "" ? (float) $_GET["min_amount"] : null;
+  $maxAmount = isset($_GET["max_amount"]) && $_GET["max_amount"] !== "" ? (float) $_GET["max_amount"] : null;
+
+  if ($minAmount !== null) {
+    $amountFilter .= " AND sl.amount >= :minAmount";
+    $stmtParams[":minAmount"] = $minAmount;
+  }
+  if ($maxAmount !== null) {
+    $amountFilter .= " AND sl.amount <= :maxAmount";
+    $stmtParams[":maxAmount"] = $maxAmount;
+  }
+
   $statementSql = "
     SELECT
       sl.id,
@@ -129,6 +143,7 @@ try {
     INNER JOIN statement_batchs sb ON sb.id = sl.batch_id
     WHERE sb.company_id = :companyId
       {$bankFilter}
+      {$amountFilter}
       AND sl.transfer_at BETWEEN :startDate AND :endDate
       AND NOT EXISTS (
         SELECT 1

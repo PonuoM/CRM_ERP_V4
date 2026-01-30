@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import StatementSearchModal from "../components/StatementSearchModal";
+
 import {
   User,
   Order,
@@ -199,6 +201,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
   );
 
   // Statement reconciliation state
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [filters, setFilters] = useState<{
     bankAccountId: string;
@@ -1498,6 +1501,41 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
     );
   };
 
+  const handleManualStatementSelect = (statement: StatementLog) => {
+    // Find matches for the selected statement against the current COD document
+    // This part constructs a new candidate object manually
+    const doc = selectedCodDocument;
+    let amountDiff = 0;
+    let timeDiff = 0;
+
+    if (doc) {
+      amountDiff = Math.abs(statement.amount - doc.total_input_amount);
+      timeDiff = doc.document_datetime ? secondsDiff(statement.transfer_at, doc.document_datetime) : Number.MAX_SAFE_INTEGER;
+    }
+
+    const manualCandidate: StatementCandidate = {
+      statement: statement,
+      amountDiff: amountDiff,
+      timeDiff: timeDiff,
+      level: 'exact', // Force it to look 'valid' or maybe add a 'manual' type to interface if strict
+      score: -1 // High priority
+    };
+
+    // Check if this statement is already in the candidates list
+    const existingIdx = statementCandidates.findIndex(c => c.statement.id === statement.id);
+
+    if (existingIdx >= 0) {
+      // Select existing
+      setSelectedStatementCandidate(statementCandidates[existingIdx]);
+    } else {
+      // Add to list and select
+      setStatementCandidates(prev => [manualCandidate, ...prev]);
+      setSelectedStatementCandidate(manualCandidate);
+    }
+
+    setIsSearchModalOpen(false);
+  };
+
   const renderCodTab = () => {
     const doc = selectedCodDocument;
     const levelBadges: Record<StatementCandidate["level"], string> = {
@@ -1541,6 +1579,14 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                 className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
                 {codDocLoading ? "กำลังโหลด..." : "รีเฟรช"}
+              </button>
+              <button
+                onClick={() => setIsSearchModalOpen(true)}
+                disabled={!selectedCodDocument} // Only enabled if a doc is selected? Or allow general search? Best if doc selected for context.
+                className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+              >
+                <Search className="w-3 h-3 mr-1" />
+                ค้นหา Manual
               </button>
             </div>
           </div>
@@ -1830,6 +1876,15 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
 
   return (
     <>
+      <StatementSearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+        onSelect={handleManualStatementSelect}
+        companyId={user.companyId}
+        initialAmount={selectedCodDocument?.total_input_amount}
+        initialDate={selectedCodDocument?.document_datetime}
+        bankAccounts={bankAccounts}
+      />
       {toastVisible && statusMessage && (
         <div
           className="fixed top-6 right-6 z-50 flex items-center gap-3 rounded-md border border-green-200 bg-white px-4 py-3 text-sm font-medium text-green-800 shadow-lg"
