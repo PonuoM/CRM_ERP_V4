@@ -156,6 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Marketing User Management": "จัดการผู้ใช้การตลาด-เพจ",
     "Google Sheet Import": "อัพสถานะ Aiport",
     "Product Analysis": "วิเคราะห์ผลิตภัณฑ์",
+    "Telesale Performance": "ประสิทธิภาพ Telesale",
   };
 
   const t = (s: string): string => TH[s] ?? s;

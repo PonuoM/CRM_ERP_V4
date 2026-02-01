@@ -95,25 +95,28 @@ try {
     }
     
     // ========================================
-    // 2. Get Order Data (Conversion) - Using order_items.creator_id
-    //    This ensures sales are attributed to the actual seller,
-    //    even when multiple telesales contribute to one order (พ่วง)
+    // 2. Get Order Data (Conversion) - Using orders.created_by
+    //    This matches the "รายงาน Telesale" report logic:
+    //    - Filter by order_date
+    //    - Exclude Cancelled orders
+    //    - Exclude freebies (is_freebie = 0 or NULL)
+    //    - Attribute sales to order creator, not item creator
     // ========================================
     $sqlOrders = "
         SELECT 
             u.id AS user_id,
-            COUNT(DISTINCT oi.parent_order_id) AS total_orders,
-            COALESCE(SUM(oi.quantity * oi.price_per_unit), 0) AS total_sales
+            COUNT(DISTINCT o.id) AS total_orders,
+            COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS total_sales
         FROM users u
-        LEFT JOIN order_items oi ON oi.creator_id = u.id
-        LEFT JOIN orders o ON oi.parent_order_id = o.id
+        LEFT JOIN orders o ON o.creator_id = u.id
             AND o.company_id = ?
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
-            AND o.order_status NOT IN ('Cancelled')
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+        LEFT JOIN order_items oi ON oi.parent_order_id = o.id
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
         WHERE u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND u.status = 'active'
-            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             $userFilter
         GROUP BY u.id
     ";
@@ -178,7 +181,7 @@ try {
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
             WHERE o.company_id = ?
-                AND o.order_status NOT IN ('Cancelled')
+                AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
                 AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             GROUP BY oi.creator_id, o.customer_id
             HAVING COUNT(DISTINCT o.id) > 1
@@ -233,13 +236,13 @@ try {
         SELECT 
             u.id AS user_id,
             COUNT(DISTINCT CASE WHEN oi.basket_key_at_sale IN ($coreKeysIn) THEN o.customer_id END) AS core_total,
-            COUNT(DISTINCT CASE WHEN oi.basket_key_at_sale IN ($coreKeysIn) AND o.order_status NOT IN ('Cancelled') THEN o.customer_id END) AS core_active,
+            COUNT(DISTINCT CASE WHEN oi.basket_key_at_sale IN ($coreKeysIn) AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt') THEN o.customer_id END) AS core_active,
             COUNT(DISTINCT CASE 
                 WHEN oi.basket_key_at_sale IN ($coreKeysIn) 
                 AND (SELECT COUNT(*) FROM orders o2 
                      JOIN order_items oi2 ON oi2.parent_order_id = o2.id 
                      WHERE oi2.creator_id = u.id AND o2.customer_id = o.customer_id 
-                     AND o2.order_status NOT IN ('Cancelled')) > 1 
+                     AND o2.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')) > 1 
                 THEN o.customer_id 
             END) AS core_loyal
         FROM users u
@@ -248,7 +251,7 @@ try {
         LEFT JOIN orders o ON oi.parent_order_id = o.id
             AND o.company_id = ?
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
-            AND o.order_status NOT IN ('Cancelled')
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
         WHERE u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND u.status = 'active'
@@ -268,14 +271,14 @@ try {
         SELECT 
             u.id AS user_id,
             COUNT(DISTINCT CASE WHEN oi.basket_key_at_sale IN ($revivalKeysIn) THEN o.customer_id END) AS revival_total,
-            COUNT(DISTINCT CASE WHEN oi.basket_key_at_sale IN ($revivalKeysIn) AND o.order_status NOT IN ('Cancelled') THEN o.customer_id END) AS revival_count
+            COUNT(DISTINCT CASE WHEN oi.basket_key_at_sale IN ($revivalKeysIn) AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt') THEN o.customer_id END) AS revival_count
         FROM users u
         LEFT JOIN order_items oi ON oi.creator_id = u.id
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
         LEFT JOIN orders o ON oi.parent_order_id = o.id
             AND o.company_id = ?
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
-            AND o.order_status NOT IN ('Cancelled')
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
         WHERE u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND u.status = 'active'
@@ -295,14 +298,14 @@ try {
         SELECT 
             u.id AS user_id,
             COUNT(DISTINCT CASE WHEN oi.basket_key_at_sale IN ($newKeysIn) THEN o.customer_id END) AS new_total,
-            COUNT(DISTINCT CASE WHEN oi.basket_key_at_sale IN ($newKeysIn) AND o.order_status NOT IN ('Cancelled') THEN o.customer_id END) AS new_converted
+            COUNT(DISTINCT CASE WHEN oi.basket_key_at_sale IN ($newKeysIn) AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt') THEN o.customer_id END) AS new_converted
         FROM users u
         LEFT JOIN order_items oi ON oi.creator_id = u.id
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
         LEFT JOIN orders o ON oi.parent_order_id = o.id
             AND o.company_id = ?
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
-            AND o.order_status NOT IN ('Cancelled')
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
         WHERE u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND u.status = 'active'
