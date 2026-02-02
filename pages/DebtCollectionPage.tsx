@@ -34,6 +34,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   const [trackModalOpen, setTrackModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [detailSelectedOrder, setDetailSelectedOrder] = useState<Order | null>(null);
   const [closingCase, setClosingCase] = useState(false);
 
   // Fetch Summary Statistics (Global)
@@ -104,7 +105,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   };
 
   const handleViewDetail = (order: Order) => {
-    setSelectedOrder(order);
+    setDetailSelectedOrder(order);
     setDetailModalOpen(true);
   };
 
@@ -534,18 +535,19 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
           currentUser={user}
           onSuccess={handleTrackSuccess}
           isCompletedView={activeTab === 'completed'}
+          onViewDetail={handleViewDetail}
         />
       )}
 
       {/* Order Detail Modal */}
-      {selectedOrder && detailModalOpen && (
+      {detailSelectedOrder && detailModalOpen && (
         <OrderDetailModal
           isOpen={detailModalOpen}
           onClose={() => {
             setDetailModalOpen(false);
-            setSelectedOrder(null);
+            setDetailSelectedOrder(null);
           }}
-          orderId={selectedOrder.id}
+          orderId={detailSelectedOrder.id}
         />
       )}
     </div>

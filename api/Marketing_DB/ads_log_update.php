@@ -33,8 +33,8 @@ if (empty($data["id"])) {
 // Authenticate user via Token
 $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 if (!$auth && function_exists('getallheaders')) {
-    $headers = getallheaders();
-    $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+  $headers = getallheaders();
+  $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
 }
 
 $currentUser = null;
@@ -54,7 +54,7 @@ try {
     ");
     $stmt->execute([$token]);
     $currentUser = $stmt->fetch();
-    
+
     if ($currentUser) {
       $currentUserId = $currentUser['id'];
       $userRole = $currentUser['role'];
@@ -66,29 +66,29 @@ try {
   // The system seems to require auth.
 
   if (!$currentUserId) {
-     // Legacy support or direct call without token?
-     // If $data['user_id'] is sent but no token, we can't verify role.
-     // So we must require token for Admin bypass.
-     // If normal user, maybe they are using session?
-      if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-      }
-      if (isset($_SESSION['user'])) {
-          $currentUserId = $_SESSION['user']['id'];
-          $userRole = $_SESSION['user']['role'];
-      }
+    // Legacy support or direct call without token?
+    // If $data['user_id'] is sent but no token, we can't verify role.
+    // So we must require token for Admin bypass.
+    // If normal user, maybe they are using session?
+    if (session_status() === PHP_SESSION_NONE) {
+      session_start();
+    }
+    if (isset($_SESSION['user'])) {
+      $currentUserId = $_SESSION['user']['id'];
+      $userRole = $_SESSION['user']['role'];
+    }
   }
 
   if (!$currentUserId && isset($data['user_id'])) {
-      // Temporary: trust provided user_id if no other auth (NOT SECURE but matches original code behavior for simple user check)
-      // modifying original behavior: Original code trusted $data['user_id']. 
-      // We will use $data['user_id'] as the "claimed" user, but we need rolw for bypass.
-      $currentUserId = $data['user_id'];
+    // Temporary: trust provided user_id if no other auth (NOT SECURE but matches original code behavior for simple user check)
+    // modifying original behavior: Original code trusted $data['user_id']. 
+    // We will use $data['user_id'] as the "claimed" user, but we need rolw for bypass.
+    $currentUserId = $data['user_id'];
   }
 
   if (!$currentUserId) {
-      json_response(["success" => false, "error" => "User authentication required"], 401);
-      exit();
+    json_response(["success" => false, "error" => "User authentication required"], 401);
+    exit();
   }
 
 
@@ -112,11 +112,14 @@ try {
   }
 
   // Check permissions:
-  // 1. Owner can update their own record
-  // 2. Super Admin / Admin Control can update any record
-  $isOwner = ($record["user_id"] == $currentUserId);
+  // Relaxes ownership check to allow shared management of Ads Data (One record per Page+Date)
+  // $isOwner = ($record["user_id"] == $currentUserId);
   $isAdmin = in_array($userRole, ['Super Admin', 'Admin Control']);
 
+  // Allow update if Admin OR (implicitly) if they are a valid user (assuming frontend filters page access)
+  // If we want to be stricter, we could check if user has access to $record['page_id']
+  // For now, removing strict ownership check as requested ("doesn't matter who").
+  /*
   if (!$isOwner && !$isAdmin) {
     json_response(
       [
@@ -127,6 +130,7 @@ try {
     );
     exit();
   }
+  */
 
   // Build dynamic update query
   $updateFields = [];

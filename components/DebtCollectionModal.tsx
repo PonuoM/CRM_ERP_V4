@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
-import { X, DollarSign, FileText, AlertCircle, Clock, CheckCircle2, XCircle, AlertTriangle, AlertOctagon } from 'lucide-react';
+import { X, DollarSign, FileText, AlertCircle, Clock, CheckCircle2, XCircle, AlertTriangle, AlertOctagon, Paperclip, Trash2, Image as ImageIcon } from 'lucide-react';
 import { createDebtCollection, getDebtCollectionHistory, updateDebtCollection, DebtCollectionRecord } from '../services/api';
+import resolveApiBasePath from '../utils/apiBasePath';
 import { User, Order } from '../types';
 
 interface DebtCollectionModalProps {
@@ -11,6 +12,7 @@ interface DebtCollectionModalProps {
     currentUser: User;
     onSuccess: () => void;
     isCompletedView?: boolean;
+    onViewDetail?: (order: Order) => void;
 }
 
 const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
@@ -20,10 +22,12 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
     currentUser,
     onSuccess,
     isCompletedView = false,
+    onViewDetail
 }) => {
     const [resultStatus, setResultStatus] = useState<1 | 2 | 3>(1);
     const [amountCollected, setAmountCollected] = useState<string>('0');
     const [note, setNote] = useState('');
+    const [evidenceImages, setEvidenceImages] = useState<File[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -132,6 +136,7 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                 result_status: resultStatus,
                 is_complete: closeCase ? 1 : 0, // Use checkbox state
                 note: note.trim() || undefined,
+                evidence_images: evidenceImages
             });
 
             if (response.ok) {
@@ -151,6 +156,7 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
         setResultStatus(1);
         setAmountCollected('0');
         setNote('');
+        setEvidenceImages([]);
         setError(null);
         setHistory([]);
         setCloseCase(false);
@@ -194,7 +200,17 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                                 <div className="grid grid-cols-2 gap-3 text-sm">
                                     <div>
                                         <span className="text-gray-600">Order ID:</span>
-                                        <span className="ml-2 font-medium">{order.id}</span>
+                                        {onViewDetail ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => onViewDetail(order)}
+                                                className="ml-2 font-medium text-blue-600 hover:underline hover:text-blue-800"
+                                            >
+                                                {order.id}
+                                            </button>
+                                        ) : (
+                                            <span className="ml-2 font-medium">{order.id}</span>
+                                        )}
                                     </div>
                                     <div>
                                         <span className="text-gray-600">ยอดหนี้คงเหลือ:</span>
@@ -303,6 +319,58 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                                 />
                             </div>
 
+                            {/* Image Upload */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    <Paperclip size={16} className="inline mr-1" />
+                                    รูปภาพหลักฐาน (ถ้ามี)
+                                </label>
+
+                                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:bg-gray-50 transition-colors">
+                                    <div className="space-y-1 text-center">
+                                        <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
+                                        <div className="flex text-sm text-gray-600 justify-center">
+                                            <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                                                <span>อัปโหลดรูปภาพ</span>
+                                                <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/*"
+                                                    onChange={(e) => {
+                                                        if (e.target.files) {
+                                                            const newFiles = Array.from(e.target.files);
+                                                            setEvidenceImages(prev => [...prev, ...newFiles]);
+                                                        }
+                                                    }}
+                                                />
+                                            </label>
+                                        </div>
+                                        <p className="text-xs text-gray-500">
+                                            PNG, JPG, GIF up to 10MB
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Preview Selected Images */}
+                                {evidenceImages.length > 0 && (
+                                    <div className="mt-4 grid grid-cols-3 gap-2">
+                                        {evidenceImages.map((file, index) => (
+                                            <div key={index} className="relative group border rounded-lg overflow-hidden h-20 bg-gray-100">
+                                                <img
+                                                    src={URL.createObjectURL(file)}
+                                                    alt="preview"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEvidenceImages(prev => prev.filter((_, i) => i !== index))}
+                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Close Case Checkbox */}
                             <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                                 <label className="flex items-center cursor-pointer">
@@ -398,6 +466,34 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                                     {record.note && (
                                         <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded border break-words">
                                             {record.note}
+                                        </div>
+                                    )}
+
+                                    {/* History Images */}
+                                    {record.images && record.images.length > 0 && (
+                                        <div className="mt-2 grid grid-cols-3 gap-1">
+                                            {record.images.map((img, idx) => {
+                                                const basePath = resolveApiBasePath().replace(/\/api$/, '');
+                                                const imgUrl = `${basePath}/${img}`;
+                                                return (
+                                                    <a
+                                                        key={idx}
+                                                        href={imgUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="block aspect-square rounded overflow-hidden border border-gray-200 hover:opacity-80 transition-opacity"
+                                                    >
+                                                        <img
+                                                            src={imgUrl}
+                                                            alt="evidence"
+                                                            className="w-full h-full object-cover"
+                                                            onError={(e) => {
+                                                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=No+Image';
+                                                            }}
+                                                        />
+                                                    </a>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                     <div className="text-xs text-gray-400 mt-1">
