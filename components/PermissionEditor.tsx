@@ -18,6 +18,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'home.sales_overview', label: 'Sales Overview (ภาพรวมยอดขาย)' },
             { key: 'home.product_analysis', label: 'Product Analysis (วิเคราะห์ผลิตภัณฑ์)' },
             { key: 'home.telesale_performance', label: 'Telesale Performance (ประสิทธิภาพ Telesale)' },
+            { key: 'nav.attendance_management', label: 'Attendance Management (จัดการวันมาทำงาน)' },
             { key: 'accounting.report', label: 'Accounting Report (รายงานบัญชี)' },
         ]
     },

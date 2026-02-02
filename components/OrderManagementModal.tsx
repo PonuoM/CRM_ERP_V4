@@ -582,14 +582,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     return dt.toLocaleString("th-TH", {
       year: "numeric",
-
       month: "2-digit",
-
       day: "2-digit",
-
       hour: "2-digit",
-
       minute: "2-digit",
+      hour12: false,
     });
   };
 
@@ -2494,7 +2491,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                 <p className="font-medium text-gray-800">
                   {currentOrder.orderDate
-                    ? new Date(currentOrder.orderDate).toLocaleString("th-TH")
+                    ? new Date(currentOrder.orderDate).toLocaleString("th-TH", { hour12: false })
                     : "-"}
                 </p>
               </div>
@@ -3931,7 +3928,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
                             <span className="flex items-center">
                               <CheckCircle size={14} className="mr-1.5 text-green-500" />
-                              ตรวจสอบแล้วเมื่อ {new Date(currentOrder.verificationInfo.verifiedAt).toLocaleString('th-TH')}
+                              ตรวจสอบแล้วเมื่อ {new Date(currentOrder.verificationInfo.verifiedAt).toLocaleString('th-TH', { hour12: false })}
                             </span>
                             <span>โดย {currentOrder.verificationInfo.verifiedByName}</span>
                           </div>
@@ -4492,6 +4489,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       {lightboxSlip.createdAt
                         ? new Date(lightboxSlip.createdAt).toLocaleString(
                           "th-TH",
+                          { hour12: false },
                         )
                         : "-"}
                     </span>

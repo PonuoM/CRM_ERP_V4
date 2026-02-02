@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, UserRole } from '../types';
-import { BarChart2, Calendar, Users, Package, TrendingUp, ChevronDown, XCircle, Gift } from 'lucide-react';
+import { BarChart2, Calendar, Users, Package, TrendingUp, ChevronDown, XCircle, Gift, ArrowUpRight } from 'lucide-react';
 import APP_BASE_PATH from '../appBasePath';
 
 interface ProductAnalysisPageProps {
@@ -87,11 +87,19 @@ interface FreebieSummary {
     totalOrders: number;
 }
 
+interface UpsellSummary {
+    grossRevenue: number;
+    netRevenue: number;
+    totalQuantity: number;
+    totalOrders: number;
+}
+
 interface AnalysisData {
     ok: boolean;
     year: number;
     month: number;
     summary: Summary;
+    upsellSummary?: UpsellSummary;
     orderStatusBreakdown: OrderStatusBreakdown[];
     topProductsByValue: TopProduct[];
     topProductsByQuantity: TopProduct[];
@@ -397,7 +405,7 @@ export const ProductAnalysisPage: React.FC<ProductAnalysisPageProps> = ({ curren
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="bg-white rounded-xl shadow-sm p-4">
                     <div className="flex items-center gap-3">
                         <div className="bg-green-100 p-2 rounded-lg">
@@ -472,6 +480,23 @@ export const ProductAnalysisPage: React.FC<ProductAnalysisPageProps> = ({ curren
                         </div>
                     </div>
                 </div>
+                {/* Upsell Summary Card - Compact version */}
+                {(data?.upsellSummary?.netRevenue ?? 0) > 0 && (
+                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl shadow-sm p-4 border border-indigo-200">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-indigo-100 p-2 rounded-lg">
+                                <ArrowUpRight className="w-5 h-5 text-indigo-600" />
+                            </div>
+                            <div>
+                                <p className="text-indigo-600 text-xs font-medium">Upsell</p>
+                                <p className="text-xl font-bold text-indigo-700">{formatCurrency(data?.upsellSummary?.netRevenue || 0)}</p>
+                                <p className="text-indigo-500 text-[10px]">
+                                    {formatNumber(data?.upsellSummary?.totalOrders || 0)} รายการ
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Order Status Breakdown Toggle Button */}

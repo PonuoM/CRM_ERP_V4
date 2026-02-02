@@ -95,30 +95,28 @@ try {
     }
     
     // ========================================
-    // 2. Get Order Data (Conversion) - Using orders.created_by
-    //    This matches the "รายงาน Telesale" report logic:
-    //    - Filter by order_date
-    //    - Exclude Cancelled orders
-    //    - Exclude freebies (is_freebie = 0 or NULL)
-    //    - Attribute sales to order creator, not item creator
+    // 2. Get Order Data (Conversion) - Using order_items.creator_id
+    //    This includes BOTH regular sales AND upsell items
+    //    - Regular sale: o.creator_id = user, oi.creator_id = user
+    //    - Upsell: o.creator_id = other_user, oi.creator_id = user
     // ========================================
     $sqlOrders = "
         SELECT 
-            u.id AS user_id,
+            oi.creator_id AS user_id,
             COUNT(DISTINCT o.id) AS total_orders,
             COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS total_sales
-        FROM users u
-        LEFT JOIN orders o ON o.creator_id = u.id
-            AND o.company_id = ?
+        FROM order_items oi
+        JOIN orders o ON oi.parent_order_id = o.id
+        JOIN users u ON oi.creator_id = u.id
+        WHERE o.company_id = ?
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
             AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
-        LEFT JOIN order_items oi ON oi.parent_order_id = o.id
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-        WHERE u.company_id = ?
+            AND u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND u.status = 'active'
             $userFilter
-        GROUP BY u.id
+        GROUP BY oi.creator_id
     ";
     
     $orderParams = array_merge([$companyId, $year, $month, $companyId], $userParams);
@@ -133,92 +131,235 @@ try {
     }
     
     // ========================================
-    // 3. Get Retention Data (Customers) - Using order_items.creator_id
-    //    Loyalty = customers who bought from THIS telesale more than once
-    //    (not just any repeat customer in the system)
+    // 2a. Get Sales Targets for this month
     // ========================================
-    $sqlRetention = "
+    $sqlTargets = "
+        SELECT user_id, target_amount
+        FROM sales_targets
+        WHERE month = ? AND year = ?
+    ";
+    
+    $stmt = $pdo->prepare($sqlTargets);
+    $stmt->execute([$month, $year]);
+    $targetData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $targetsByUser = [];
+    foreach ($targetData as $row) {
+        $targetsByUser[$row['user_id']] = floatval($row['target_amount']);
+    }
+    
+    // ========================================
+    // 2b. Get Upsell Data - Items added by this user to orders created by OTHER users
+    //     This is separate from regular sales to show upsell contribution
+    // ========================================
+    $sqlUpsell = "
         SELECT 
-            u.id AS user_id,
-            COUNT(DISTINCT c.customer_id) AS total_customers,
-            SUM(CASE WHEN c.last_order_date >= DATE_SUB(NOW(), INTERVAL 90 DAY) THEN 1 ELSE 0 END) AS active_customers
-        FROM users u
-        LEFT JOIN customers c ON c.assigned_to = u.id 
-            AND c.company_id = ?
-            AND c.order_count >= 1
-        WHERE u.company_id = ?
+            oi.creator_id AS user_id,
+            COUNT(DISTINCT o.id) AS upsell_orders,
+            COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS upsell_sales,
+            COALESCE(SUM(oi.quantity), 0) AS upsell_quantity
+        FROM order_items oi
+        JOIN orders o ON oi.parent_order_id = o.id
+        JOIN users u ON oi.creator_id = u.id
+        WHERE o.company_id = ?
+            AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND o.creator_id != oi.creator_id  -- Key: Order was created by someone else
+            AND u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND u.status = 'active'
             $userFilter
-        GROUP BY u.id
+        GROUP BY oi.creator_id
     ";
     
-    $retentionParams = array_merge([$companyId, $companyId], $userParams);
+    $upsellParams = array_merge([$companyId, $year, $month, $companyId], $userParams);
+    $stmt = $pdo->prepare($sqlUpsell);
+    $stmt->execute($upsellParams);
+    $upsellData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Index by user_id
+    $upsellByUser = [];
+    foreach ($upsellData as $row) {
+        $upsellByUser[$row['user_id']] = $row;
+    }
+    
+    // ========================================
+    // 3. NEW METRICS: AOV, New Customers, Win-back, Retention (all month-based)
+    //    Using oi.creator_id to include upsell
+    // ========================================
+    
+    // 3a. AOV (Average Order Value) - ยอดเฉลี่ยต่อออเดอร์ (รวม upsell)
+    $sqlAOV = "
+        SELECT 
+            oi.creator_id AS user_id,
+            COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)) / 
+                NULLIF(COUNT(DISTINCT o.id), 0), 0) AS aov
+        FROM order_items oi
+        JOIN orders o ON oi.parent_order_id = o.id
+        JOIN users u ON oi.creator_id = u.id
+        WHERE o.company_id = ?
+            AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND u.company_id = ?
+            AND u.role LIKE '%telesale%'
+            AND u.status = 'active'
+            $userFilter
+        GROUP BY oi.creator_id
+    ";
+    
+    $aovParams = array_merge([$companyId, $year, $month, $companyId], $userParams);
+    $stmt = $pdo->prepare($sqlAOV);
+    $stmt->execute($aovParams);
+    $aovData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $aovByUser = [];
+    foreach ($aovData as $row) {
+        $aovByUser[$row['user_id']] = $row;
+    }
+    
+    // 3b. New Customers - ลูกค้าใหม่ในเดือนนี้ (จาก orders.customer_type)
+    $sqlNewCustomers = "
+        SELECT 
+            oi.creator_id AS user_id,
+            COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' THEN o.customer_id END) AS new_customers,
+            COUNT(DISTINCT o.customer_id) AS total_customers_month
+        FROM order_items oi
+        JOIN orders o ON oi.parent_order_id = o.id
+        JOIN users u ON oi.creator_id = u.id
+        WHERE o.company_id = ?
+            AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND u.company_id = ?
+            AND u.role LIKE '%telesale%'
+            AND u.status = 'active'
+            $userFilter
+        GROUP BY oi.creator_id
+    ";
+    
+    $newCustParams = array_merge([$companyId, $year, $month, $companyId], $userParams);
+    $stmt = $pdo->prepare($sqlNewCustomers);
+    $stmt->execute($newCustParams);
+    $newCustData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $newCustByUser = [];
+    foreach ($newCustData as $row) {
+        $newCustByUser[$row['user_id']] = $row;
+    }
+    
+    // 3c. Win-back - ลูกค้าเก่าที่กลับมา (basket_key_at_sale IN 48,49,50)
+    //     Basket 48 = ถังกลาง 6-12 เดือน
+    //     Basket 49 = ถังกลาง 1-3 ปี  
+    //     Basket 50 = ถังโบราณ เก่าเก็บ >3 ปี
+    $sqlWinback = "
+        SELECT 
+            oi.creator_id AS user_id,
+            COUNT(DISTINCT CASE 
+                WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ('48', '49', '50') 
+                THEN o.customer_id 
+            END) AS winback_customers,
+            COUNT(DISTINCT o.id) AS total_orders_month
+        FROM order_items oi
+        JOIN orders o ON oi.parent_order_id = o.id
+        JOIN users u ON oi.creator_id = u.id
+        WHERE o.company_id = ?
+            AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND u.company_id = ?
+            AND u.role LIKE '%telesale%'
+            AND u.status = 'active'
+            $userFilter
+        GROUP BY oi.creator_id
+    ";
+    
+    $winbackParams = array_merge([$companyId, $year, $month, $companyId], $userParams);
+    $stmt = $pdo->prepare($sqlWinback);
+    $stmt->execute($winbackParams);
+    $winbackData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $winbackByUser = [];
+    foreach ($winbackData as $row) {
+        $winbackByUser[$row['user_id']] = $row;
+    }
+    
+    // 3d. Retention - ลูกค้าซื้อซ้ำ (Basket-Based)
+    //     ลูกค้าใน basket 39,40 ของ Telesale = ลูกค้าที่อยู่ในช่วง 90 วันหลังขายได้
+    //     ซื้อซ้ำ = ลูกค้าใน basket 39,40 ที่มีออเดอร์ในเดือนนี้
+    
+    // Step 1: นับลูกค้าทั้งหมดใน basket 39,40 ของแต่ละ Telesale
+    $sqlBasketTotal = "
+        SELECT 
+            c.assigned_to AS user_id,
+            COUNT(*) AS total_customers_basket
+        FROM customers c
+        JOIN users u ON c.assigned_to = u.id
+        WHERE c.current_basket_key IN ('39', '40')
+            AND c.company_id = ?
+            AND u.company_id = ?
+            AND u.role LIKE '%telesale%'
+            AND u.status = 'active'
+            $userFilter
+        GROUP BY c.assigned_to
+    ";
+    
+    $basketTotalParams = array_merge([$companyId, $companyId], $userParams);
+    $stmt = $pdo->prepare($sqlBasketTotal);
+    $stmt->execute($basketTotalParams);
+    $basketTotalData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $basketTotalByUser = [];
+    foreach ($basketTotalData as $row) {
+        $basketTotalByUser[$row['user_id']] = $row;
+    }
+    
+    // Step 2: นับลูกค้าใน basket 39,40 ที่ซื้อในเดือนนี้ (= ซื้อซ้ำ)
+    $sqlRetention = "
+        SELECT 
+            c.assigned_to AS user_id,
+            COUNT(DISTINCT o.customer_id) AS repeat_customers
+        FROM customers c
+        JOIN orders o ON c.customer_id = o.customer_id
+        JOIN users u ON c.assigned_to = u.id
+        WHERE c.current_basket_key IN ('39', '40')
+            AND c.company_id = ?
+            AND o.company_id = ?
+            AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND u.company_id = ?
+            AND u.role LIKE '%telesale%'
+            AND u.status = 'active'
+            $userFilter
+        GROUP BY c.assigned_to
+    ";
+    
+    $retentionParams = array_merge([$companyId, $companyId, $year, $month, $companyId], $userParams);
     $stmt = $pdo->prepare($sqlRetention);
     $stmt->execute($retentionParams);
     $retentionData = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Index by user_id
     $retentionByUser = [];
     foreach ($retentionData as $row) {
-        $retentionByUser[$row['user_id']] = $row;
+        $userId = $row['user_id'];
+        $totalInBasket = $basketTotalByUser[$userId]['total_customers_basket'] ?? 0;
+        $retentionByUser[$userId] = [
+            'repeat_customers' => $row['repeat_customers'],
+            'total_customers' => $totalInBasket
+        ];
     }
     
-    // ========================================
-    // 3a. Get Loyalty Data (Customers who bought from THIS telesale >1 times)
-    //     Based on order_items.creator_id, not is_repeat_customer flag
-    // ========================================
-    $sqlLoyalty = "
-        SELECT 
-            u.id AS user_id,
-            COUNT(DISTINCT loyal.customer_id) AS repeat_customers
-        FROM users u
-        LEFT JOIN (
-            SELECT 
-                oi.creator_id,
-                o.customer_id,
-                COUNT(DISTINCT o.id) AS orders_from_this_telesale
-            FROM order_items oi
-            JOIN orders o ON oi.parent_order_id = o.id
-            WHERE o.company_id = ?
-                AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
-                AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            GROUP BY oi.creator_id, o.customer_id
-            HAVING COUNT(DISTINCT o.id) > 1
-        ) AS loyal ON loyal.creator_id = u.id
-        WHERE u.company_id = ?
-            AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
-            $userFilter
-        GROUP BY u.id
-    ";
-    
-    $loyaltyParams = array_merge([$companyId, $companyId], $userParams);
-    $stmt = $pdo->prepare($sqlLoyalty);
-    $stmt->execute($loyaltyParams);
-    $loyaltyData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Index by user_id and merge into retentionByUser
-    foreach ($loyaltyData as $row) {
-        if (isset($retentionByUser[$row['user_id']])) {
-            $retentionByUser[$row['user_id']]['repeat_customers'] = $row['repeat_customers'];
-        } else {
-            $retentionByUser[$row['user_id']] = [
-                'user_id' => $row['user_id'],
-                'total_customers' => 0,
-                'active_customers' => 0,
-                'repeat_customers' => $row['repeat_customers']
+    // Fill in users who have customers in basket but no orders this month
+    foreach ($basketTotalByUser as $userId => $data) {
+        if (!isset($retentionByUser[$userId])) {
+            $retentionByUser[$userId] = [
+                'repeat_customers' => 0,
+                'total_customers' => $data['total_customers_basket']
             ];
         }
     }
-    
-    // Ensure all users have repeat_customers key
-    foreach ($retentionByUser as $userId => &$data) {
-        if (!isset($data['repeat_customers'])) {
-            $data['repeat_customers'] = 0;
-        }
-    }
-    unset($data);
+
     
     // ========================================
     // 3b. TIER-SPECIFIC METRICS (Based on basket_key_at_sale from order_items)
@@ -327,7 +468,13 @@ try {
     
     foreach ($callsByUser as $userId => $callInfo) {
         $orders = $ordersByUser[$userId] ?? ['total_orders' => 0, 'total_sales' => 0];
-        $retention = $retentionByUser[$userId] ?? ['total_customers' => 0, 'repeat_customers' => 0, 'active_customers' => 0];
+        $retention = $retentionByUser[$userId] ?? ['total_customers' => 0, 'repeat_customers' => 0];
+        $upsell = $upsellByUser[$userId] ?? ['upsell_orders' => 0, 'upsell_sales' => 0, 'upsell_quantity' => 0];
+        
+        // NEW: Get data from new metrics queries
+        $aovData = $aovByUser[$userId] ?? ['aov' => 0];
+        $newCustData = $newCustByUser[$userId] ?? ['new_customers' => 0, 'total_customers_month' => 0];
+        $winbackData = $winbackByUser[$userId] ?? ['winback_customers' => 0, 'total_orders_month' => 0];
         
         // Tier data
         $tierCore = $tierCoreByUser[$userId] ?? ['core_total' => 0, 'core_active' => 0, 'core_loyal' => 0];
@@ -340,15 +487,26 @@ try {
         $totalMinutes = floatval($callInfo['total_minutes']);
         $avgDuration = floatval($callInfo['avg_duration_minutes']);
         
+        // Upsell metrics (items added to other users' orders)
+        $upsellOrders = intval($upsell['upsell_orders']);
+        $upsellSales = floatval($upsell['upsell_sales']);
+        $upsellQuantity = intval($upsell['upsell_quantity']);
+        
+        // NEW METRICS from month-based queries
         $totalCustomers = intval($retention['total_customers']);
         $repeatCustomers = intval($retention['repeat_customers']);
-        $activeCustomers = intval($retention['active_customers']);
+        $aov = floatval($aovData['aov']);
+        $newCustomers = intval($newCustData['new_customers']);
+        $totalCustomersMonth = intval($newCustData['total_customers_month']);
+        $winbackCustomers = intval($winbackData['winback_customers']);
         
         // Calculate rates
+        // Include upsell in efficiency calculation
+        $combinedSales = $totalSales + $upsellSales;
         $conversionRate = $totalCalls > 0 ? round(($totalOrders / $totalCalls) * 100, 2) : 0;
         $retentionRate = $totalCustomers > 0 ? round(($repeatCustomers / $totalCustomers) * 100, 2) : 0;
-        $activeRate = $totalCustomers > 0 ? round(($activeCustomers / $totalCustomers) * 100, 2) : 0;
-        $efficiencyScore = $totalMinutes > 0 ? round($totalSales / $totalMinutes, 2) : 0;
+        $newCustomerRate = $totalCustomersMonth > 0 ? round(($newCustomers / $totalCustomersMonth) * 100, 2) : 0;
+        $efficiencyScore = $totalMinutes > 0 ? round($combinedSales / $totalMinutes, 2) : 0;
         
         // Tier-specific rates
         $coreTotal = intval($tierCore['core_total']);
@@ -372,16 +530,29 @@ try {
             'metrics' => [
                 'totalCalls' => $totalCalls,
                 'totalOrders' => $totalOrders,
-                'totalSales' => $totalSales,
+                'totalSales' => $totalSales,  // ยอดขายปกติ (ไม่รวม upsell เพราะแสดงแยกคอลัมน์)
                 'conversionRate' => $conversionRate,
                 'totalMinutes' => $totalMinutes,
                 'ahtMinutes' => $avgDuration,
                 'totalCustomers' => $totalCustomers,
                 'repeatCustomers' => $repeatCustomers,
-                'activeCustomers' => $activeCustomers,
                 'retentionRate' => $retentionRate,
-                'activeRate' => $activeRate,
-                'efficiencyScore' => $efficiencyScore
+                // NEW METRICS
+                'aov' => $aov,                        // ยอดเฉลี่ยต่อออเดอร์
+                'newCustomers' => $newCustomers,      // ลูกค้าใหม่ในเดือนนี้
+                'newCustomerRate' => $newCustomerRate, // อัตราลูกค้าใหม่ %
+                'winbackCustomers' => $winbackCustomers, // ลูกค้าเก่าที่กลับมา
+                'efficiencyScore' => $efficiencyScore,
+                'combinedSales' => $combinedSales,  // ยอดขายรวม upsell สำหรับประสิทธิภาพ
+                // Upsell: Sales from items added to OTHER users' orders
+                'upsellOrders' => $upsellOrders,
+                'upsellSales' => $upsellSales,
+                'upsellQuantity' => $upsellQuantity,
+                // Target: Monthly sales target
+                'targetAmount' => $targetsByUser[$userId] ?? 0,
+                'targetProgress' => ($targetsByUser[$userId] ?? 0) > 0 
+                    ? round(($combinedSales / $targetsByUser[$userId]) * 100, 1) 
+                    : 0
             ],
             'tierMetrics' => [
                 'core' => [
@@ -411,12 +582,15 @@ try {
     $teamAverages = [
         'conversionRate' => 0,
         'retentionRate' => 0,
-        'activeRate' => 0,
+        'aov' => 0,
+        'newCustomerRate' => 0,
         'ahtMinutes' => 0,
         'efficiencyScore' => 0,
         'totalCalls' => 0,
         'totalOrders' => 0,
-        'totalSales' => 0
+        'totalSales' => 0,
+        'newCustomers' => 0,
+        'winbackCustomers' => 0
     ];
     
     // Tier aggregates
@@ -429,12 +603,15 @@ try {
     if ($totalTelesales > 0) {
         $sumConversion = 0;
         $sumRetention = 0;
-        $sumActive = 0;
+        $sumAov = 0;
+        $sumNewCustomerRate = 0;
         $sumAht = 0;
         $sumEfficiency = 0;
         $totalCalls = 0;
         $totalOrders = 0;
         $totalSales = 0;
+        $totalNewCustomers = 0;
+        $totalWinbackCustomers = 0;
         
         // Tier sums
         $coreTotalSum = 0; $coreActiveSum = 0; $coreLoyalSum = 0;
@@ -444,12 +621,15 @@ try {
         foreach ($telesaleDetails as $ts) {
             $sumConversion += $ts['metrics']['conversionRate'];
             $sumRetention += $ts['metrics']['retentionRate'];
-            $sumActive += $ts['metrics']['activeRate'];
+            $sumAov += $ts['metrics']['aov'];
+            $sumNewCustomerRate += $ts['metrics']['newCustomerRate'];
             $sumAht += $ts['metrics']['ahtMinutes'];
             $sumEfficiency += $ts['metrics']['efficiencyScore'];
             $totalCalls += $ts['metrics']['totalCalls'];
             $totalOrders += $ts['metrics']['totalOrders'];
             $totalSales += $ts['metrics']['totalSales'];
+            $totalNewCustomers += $ts['metrics']['newCustomers'];
+            $totalWinbackCustomers += $ts['metrics']['winbackCustomers'];
             
             // Tier sums
             $coreTotalSum += $ts['tierMetrics']['core']['total'];
@@ -464,12 +644,15 @@ try {
         $teamAverages = [
             'conversionRate' => round($sumConversion / $totalTelesales, 2),
             'retentionRate' => round($sumRetention / $totalTelesales, 2),
-            'activeRate' => round($sumActive / $totalTelesales, 2),
+            'aov' => round($sumAov / $totalTelesales, 2),
+            'newCustomerRate' => round($sumNewCustomerRate / $totalTelesales, 2),
             'ahtMinutes' => round($sumAht / $totalTelesales, 2),
             'efficiencyScore' => round($sumEfficiency / $totalTelesales, 2),
             'totalCalls' => $totalCalls,
             'totalOrders' => $totalOrders,
-            'totalSales' => $totalSales
+            'totalSales' => $totalSales,
+            'newCustomers' => $totalNewCustomers,
+            'winbackCustomers' => $totalWinbackCustomers
         ];
         
         // Tier aggregates
@@ -506,10 +689,10 @@ try {
     usort($byRetention, function($a, $b) { return $b['metrics']['retentionRate'] <=> $a['metrics']['retentionRate']; });
     $byRetention = array_slice($byRetention, 0, 10);
     
-    // By Active Rate (desc)
-    $byActive = $telesaleDetails;
-    usort($byActive, function($a, $b) { return $b['metrics']['activeRate'] <=> $a['metrics']['activeRate']; });
-    $byActive = array_slice($byActive, 0, 10);
+    // By Active Rate (desc) - REPLACED WITH AOV
+    $byAov = $telesaleDetails;
+    usort($byAov, function($a, $b) { return $b['metrics']['aov'] <=> $a['metrics']['aov']; });
+    $byAov = array_slice($byAov, 0, 10);
     
     // By Efficiency Score (desc) - High sales per minute
     $byEfficiency = $telesaleDetails;
@@ -548,14 +731,15 @@ try {
         ];
     }
     
-    $rankingsActive = [];
-    foreach ($byActive as $ts) {
-        $rankingsActive[] = [
+    // REPLACED: Active Rate → AOV (Average Order Value)
+    $rankingsAov = [];
+    foreach ($byAov as $ts) {
+        $rankingsAov[] = [
             'userId' => $ts['userId'],
             'name' => $ts['name'],
-            'value' => $ts['metrics']['activeRate'],
-            'total' => $ts['metrics']['totalCustomers'],
-            'active' => $ts['metrics']['activeCustomers']
+            'value' => $ts['metrics']['aov'],
+            'sales' => $ts['metrics']['combinedSales'],
+            'orders' => $ts['metrics']['totalOrders']
         ];
     }
     
@@ -565,7 +749,7 @@ try {
             'userId' => $ts['userId'],
             'name' => $ts['name'],
             'value' => $ts['metrics']['efficiencyScore'],
-            'sales' => $ts['metrics']['totalSales'],
+            'sales' => $ts['metrics']['combinedSales'],  // ยอดรวม upsell
             'minutes' => $ts['metrics']['totalMinutes']
         ];
     }
@@ -599,6 +783,37 @@ try {
         }
     }
     
+    // ========================================
+    // 7. Get Previous Month Sales for Comparison
+    // ========================================
+    $prevMonth = $month - 1;
+    $prevYear = $year;
+    if ($prevMonth < 1) {
+        $prevMonth = 12;
+        $prevYear = $year - 1;
+    }
+    
+    $sqlPrevMonth = "
+        SELECT COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS prev_sales
+        FROM order_items oi
+        JOIN orders o ON oi.parent_order_id = o.id
+        JOIN users u ON oi.creator_id = u.id
+        WHERE o.company_id = ?
+            AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND u.company_id = ?
+            AND u.role LIKE '%telesale%'
+            AND u.status = 'active'
+            $userFilter
+    ";
+    
+    $prevParams = array_merge([$companyId, $prevYear, $prevMonth, $companyId], $userParams);
+    $stmt = $pdo->prepare($sqlPrevMonth);
+    $stmt->execute($prevParams);
+    $prevResult = $stmt->fetch(PDO::FETCH_ASSOC);
+    $previousMonthSales = floatval($prevResult['prev_sales'] ?? 0);
+    
     json_response([
         'success' => true,
         'data' => [
@@ -609,10 +824,11 @@ try {
             'teamAverages' => $teamAverages,
             'tierAggregates' => $tierAggregates,
             'telesaleCount' => $totalTelesales,
+            'previousMonthSales' => $previousMonthSales,
             'rankings' => [
                 'byConversion' => $rankingsConversion,
                 'byRetention' => $rankingsRetention,
-                'byActive' => $rankingsActive,
+                'byAov' => $rankingsAov,  // เปลี่ยนจาก Active เป็น AOV
                 'byEfficiency' => $rankingsEfficiency,
                 'byAht' => $rankingsAht,
                 'byRevival' => $rankingsRevival

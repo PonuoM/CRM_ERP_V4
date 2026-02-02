@@ -79,7 +79,8 @@ try {
             'details' => []
         ];
         
-        // Query: Find customers in distribution baskets with Pending orders from non-Telesale
+        // Query: Find customers in distribution baskets whose LATEST order is Pending from non-Telesale
+        // Fix: Use latest order logic to prevent 52↔53 loop when customer has both Pending and Picking orders
         $basketPlaceholders = implode(',', array_fill(0, count($DISTRIBUTION_BASKETS), '?'));
         
         $sql = "
@@ -88,24 +89,35 @@ try {
                 c.first_name,
                 c.last_name,
                 c.current_basket_key,
-                o.id AS order_id,
-                o.order_date,
-                o.creator_id,
+                latest_order.id AS order_id,
+                latest_order.order_date,
+                latest_order.creator_id,
                 u.first_name AS creator_first_name,
                 u.role_id AS creator_role
             FROM customers c
-            INNER JOIN orders o ON c.customer_id = o.customer_id
-            INNER JOIN users u ON o.creator_id = u.id
+            -- Join with LATEST non-cancelled order only
+            INNER JOIN (
+                SELECT o1.*
+                FROM orders o1
+                INNER JOIN (
+                    SELECT customer_id, MAX(id) as max_id
+                    FROM orders
+                    WHERE order_status != 'Cancelled'
+                      AND order_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    GROUP BY customer_id
+                ) o2 ON o1.customer_id = o2.customer_id AND o1.id = o2.max_id
+            ) latest_order ON c.customer_id = latest_order.customer_id
+            INNER JOIN users u ON latest_order.creator_id = u.id
             WHERE c.company_id = ?
               -- ลูกค้าไม่มีเจ้าของ
               AND (c.assigned_to IS NULL OR c.assigned_to = 0)
               -- อยู่ในถัง Distribution (41,42,43,44,45,52) หรือ ยังไม่มี basket
               AND (c.current_basket_key IN ($basketPlaceholders) OR c.current_basket_key IS NULL)
-              -- มี Order สถานะ Pending
-              AND o.order_status = 'Pending'
+              -- Order ล่าสุดสถานะ Pending เท่านั้น (ถ้า Picking/Shipping ให้ upsell_exit_handler จัดการ)
+              AND latest_order.order_status = 'Pending'
               -- Order สร้างโดย Non-Telesale (ไม่ใช่ role 6, 7)
               AND u.role_id NOT IN (6, 7)
-            ORDER BY o.order_date DESC
+            ORDER BY latest_order.order_date DESC
         ";
         
         $params = array_merge([$companyId], $DISTRIBUTION_BASKETS);

@@ -56,6 +56,9 @@ try {
                (strpos($currentUserRole, 'super') !== false && !$isSupervisor);
     
     // Build employee filter based on role
+    // IMPORTANT: Using oi.creator_id to include BOTH regular sales AND upsell items
+    // Regular sale: o.creator_id = user, oi.creator_id = user
+    // Upsell: o.creator_id = other_user, oi.creator_id = user (we still count these)
     $employeeFilter = '';
     $employeeParams = [];
     
@@ -64,11 +67,11 @@ try {
         if (!$isAdmin && !$isSupervisor && $userId != $currentUserId) {
             json_response(['ok' => false, 'error' => 'Access denied to view other users data'], 403);
         }
-        $employeeFilter = ' AND o.creator_id = ?';
+        $employeeFilter = ' AND oi.creator_id = ?';
         $employeeParams[] = $userId;
     } elseif (!$isAdmin && !$isSupervisor) {
-        // Regular Telesale can only see their own data
-        $employeeFilter = ' AND o.creator_id = ?';
+        // Regular Telesale can only see their own data (including upsell they created)
+        $employeeFilter = ' AND oi.creator_id = ?';
         $employeeParams[] = $currentUserId;
     } elseif ($isSupervisor && !$isAdmin) {
         // Supervisor can see self + team members (users where supervisor_id = current user)
@@ -87,11 +90,11 @@ try {
         
         if (!empty($teamUserIds)) {
             $placeholders = implode(',', array_fill(0, count($teamUserIds), '?'));
-            $employeeFilter = " AND o.creator_id IN ($placeholders)";
+            $employeeFilter = " AND oi.creator_id IN ($placeholders)";
             $employeeParams = $teamUserIds;
         } else {
             // No team members found, show only self
-            $employeeFilter = ' AND o.creator_id = ?';
+            $employeeFilter = ' AND oi.creator_id = ?';
             $employeeParams[] = $currentUserId;
         }
     }
@@ -117,7 +120,7 @@ try {
             p.name,
             p.sku,
             p.category,
-            SUM(oi.quantity * oi.price_per_unit) as total_value,
+            SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)) as total_value,
             SUM(oi.quantity) as total_quantity
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
@@ -147,7 +150,7 @@ try {
             p.sku,
             p.category,
             SUM(oi.quantity) as total_quantity,
-            SUM(oi.quantity * oi.price_per_unit) as total_value
+            SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)) as total_value
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN products p ON oi.product_id = p.id
@@ -175,7 +178,7 @@ try {
                 ELSE 'อื่นๆ'
             END as category_group,
             COALESCE(o.customer_type, 'ไม่ระบุ') as customer_type,
-            SUM(oi.quantity * oi.price_per_unit) as revenue,
+            SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)) as revenue,
             SUM(oi.quantity) as quantity,
             COUNT(DISTINCT o.id) as order_count
         FROM order_items oi
@@ -205,7 +208,7 @@ try {
             p.category,
             MONTH(o.order_date) as month,
             SUM(oi.quantity) as quantity,
-            SUM(oi.quantity * oi.price_per_unit) as revenue
+            SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)) as revenue
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN products p ON oi.product_id = p.id
@@ -309,7 +312,7 @@ try {
             p.sku,
             p.category,
             o.customer_type,
-            SUM(oi.quantity * oi.price_per_unit) as revenue,
+            SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)) as revenue,
             SUM(oi.quantity) as quantity
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
@@ -428,6 +431,49 @@ try {
     $stmt->execute($statusParams);
     $orderStatusBreakdown = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
+    // ========================================
+    // Upsell Stats: Items added by this user to orders created by OTHER users
+    // ========================================
+    $upsellSummary = [
+        'grossRevenue' => 0,
+        'netRevenue' => 0,
+        'totalQuantity' => 0,
+        'totalOrders' => 0
+    ];
+    
+    // Only calculate upsell when filtering by specific user
+    if ($userId > 0 || (!$isAdmin && !$isSupervisor)) {
+        $targetUserId = $userId > 0 ? $userId : $currentUserId;
+        
+        $sqlUpsell = "
+            SELECT 
+                SUM(oi.quantity * oi.price_per_unit) as gross_revenue,
+                SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)) as net_revenue,
+                SUM(oi.quantity) as total_quantity,
+                COUNT(DISTINCT o.id) as total_orders
+            FROM order_items oi
+            JOIN orders o ON oi.parent_order_id = o.id
+            WHERE o.company_id = ?
+            $dateFilter
+            $statusFilter
+            AND oi.creator_id = ?
+            AND o.creator_id != ?
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        ";
+        
+        $upsellParams = array_merge([$companyId], $dateParams, [$targetUserId, $targetUserId]);
+        $stmt = $pdo->prepare($sqlUpsell);
+        $stmt->execute($upsellParams);
+        $upsellRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $upsellSummary = [
+            'grossRevenue' => (float)($upsellRow['gross_revenue'] ?? 0),
+            'netRevenue' => (float)($upsellRow['net_revenue'] ?? 0),
+            'totalQuantity' => (int)($upsellRow['total_quantity'] ?? 0),
+            'totalOrders' => (int)($upsellRow['total_orders'] ?? 0)
+        ];
+    }
+    
     json_response([
         'ok' => true,
         'year' => $year,
@@ -447,6 +493,8 @@ try {
             'totalOrders' => (int)($summary['total_orders'] ?? 0),
             'totalCustomers' => (int)($summary['total_customers'] ?? 0)
         ],
+        // Upsell: Items added by this user to orders created by OTHER users
+        'upsellSummary' => $upsellSummary,
         'orderStatusBreakdown' => array_map(function($row) {
             $statusLabels = [
                 'Cancelled' => 'ยกเลิก',

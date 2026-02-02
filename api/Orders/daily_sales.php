@@ -62,8 +62,11 @@ try {
     }
 
     // Add user filter for non-admin users
+    // IMPORTANT: Using oi.creator_id to include BOTH regular sales AND upsell items
+    // Regular sale: o.creator_id = user, oi.creator_id = user
+    // Upsell: o.creator_id = other_user, oi.creator_id = user (we still count these)
     if ($userId > 0) {
-        $whereClause .= " AND o.creator_id = ?";
+        $whereClause .= " AND oi.creator_id = ?";
         $params[] = $userId;
     }
 
@@ -75,7 +78,7 @@ try {
     switch ($groupBy) {
         case 'role':
             $selectGroup = "COALESCE(u.role, 'ไม่ระบุ') as group_name, u.role as group_id";
-            $joinClause = "LEFT JOIN users u ON o.creator_id = u.id";
+            $joinClause = "LEFT JOIN users u ON oi.creator_id = u.id";
             $groupByField = "u.role";
             break;
 
@@ -87,22 +90,25 @@ try {
 
         case 'seller':
         default:
-            $selectGroup = "CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as group_name, o.creator_id as group_id";
-            $joinClause = "LEFT JOIN users u ON o.creator_id = u.id";
-            $groupByField = "o.creator_id";
+            $selectGroup = "CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as group_name, oi.creator_id as group_id";
+            $joinClause = "LEFT JOIN users u ON oi.creator_id = u.id";
+            $groupByField = "oi.creator_id";
             break;
     }
 
     // Query for daily sales grouped by the selected field
+    // Using order_items to include upsell and net_total for accurate revenue
     $sql = "
         SELECT 
             $selectGroup,
             DAY(o.order_date) as day_of_month,
-            SUM(o.total_amount) as total_sales,
-            COUNT(*) as order_count
-        FROM orders o
+            SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)) as total_sales,
+            COUNT(DISTINCT o.id) as order_count
+        FROM order_items oi
+        JOIN orders o ON oi.parent_order_id = o.id
         $joinClause
         $whereClause
+        AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
         GROUP BY $groupByField, DAY(o.order_date)
         ORDER BY $groupByField, DAY(o.order_date)
     ";

@@ -52,28 +52,37 @@ try {
             c.last_name,
             c.phone,
             c.current_basket_key,
-            o.order_status, 
-            o.id as order_id,
-            o.order_date,
+            latest_order.order_status, 
+            latest_order.id as order_id,
+            latest_order.order_date,
             u.role_id as creator_role,
-            DATEDIFF(NOW(), o.order_date) as days_ago
+            DATEDIFF(NOW(), latest_order.order_date) as days_ago
         FROM customers c
-        INNER JOIN orders o ON (o.customer_id = c.customer_id OR o.customer_id = c.customer_ref_id)
-        INNER JOIN users u ON o.creator_id = u.id
+        -- Join with LATEST non-cancelled order only (fix 52↔53 loop)
+        INNER JOIN (
+            SELECT o1.*
+            FROM orders o1
+            INNER JOIN (
+                SELECT customer_id, MAX(id) as max_id
+                FROM orders
+                WHERE order_status != 'Cancelled'
+                  AND order_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                GROUP BY customer_id
+            ) o2 ON o1.customer_id = o2.customer_id AND o1.id = o2.max_id
+        ) latest_order ON (latest_order.customer_id = c.customer_id OR latest_order.customer_id = c.customer_ref_id)
+        INNER JOIN users u ON latest_order.creator_id = u.id
         WHERE 1=1
           -- ลูกค้าไม่มีเจ้าของ
           AND (c.assigned_to IS NULL OR c.assigned_to = 0)
-          -- Order สร้างภายใน 7 วันที่ผ่านมา
-          AND o.order_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
           -- Order Creator ไม่ใช่ Telesale (role 6, 7)
           AND u.role_id NOT IN (6, 7)
-          -- Order สถานะ = Picking (เพิ่งเปลี่ยนจาก Pending)
-          AND o.order_status = 'Picking'
+          -- Order ล่าสุด สถานะ = Picking (ถ้า Pending ให้ process_upsell_distribution จัดการ)
+          AND latest_order.order_status = 'Picking'
           -- ยังไม่ได้อยู่ในถัง 52 แล้ว
           -- เป้าหมาย: ลูกค้าที่อยู่ในถัง 53 (Upsell Virtual) จะย้ายไป 52 (ลูกค้าใหม่)
           -- หรือลูกค้าที่ไม่มี basket (จาก Order ที่ลูกค้าใหม่ถูกสร้างโดย Admin)
           AND (c.current_basket_key = 53 OR c.current_basket_key IS NULL OR c.current_basket_key = 0)
-        ORDER BY o.order_date DESC
+        ORDER BY latest_order.order_date DESC
     ";
     
     $stmt = $pdo->query($exitSql);

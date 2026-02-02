@@ -157,6 +157,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Google Sheet Import": "อัพสถานะ Aiport",
     "Product Analysis": "วิเคราะห์ผลิตภัณฑ์",
     "Telesale Performance": "ประสิทธิภาพ Telesale",
+    "Attendance Management": "จัดการวันมาทำงาน",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -175,6 +176,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Accounting Report", icon: FileText, key: "accounting.report" },
         { label: "Product Analysis", icon: BarChart2, key: "home.product_analysis" },
         { label: "Telesale Performance", icon: BarChart2, key: "home.telesale_performance" },
+        { label: "Attendance Management", icon: Clock, key: "nav.attendance_management" },
       ]
     },
     {

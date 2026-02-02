@@ -7,6 +7,7 @@ import {
   Users as UsersIcon,
   ChevronDown,
   RefreshCw,
+  ArrowUpRight,
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { MonthlyOrdersChart } from "@/components/Charts";
@@ -227,7 +228,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
         </div>
 
         {/* KPI cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
           <StatCard
             title="ยอดขายรายเดือน"
             value={loading ? renderLoadingSpinner() : `฿${monthlySales.toLocaleString()}`}
@@ -252,6 +253,25 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
             subtext="ทั้งหมด"
             icon={UsersIcon}
           />
+          {/* Upsell Card - Shows sales from items added to other users' orders */}
+          {(orderStats?.upsellRevenue > 0 || orderStats?.upsellOrders > 0) && (
+            <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-purple-600 font-medium mb-1">ยอด Upsell</p>
+                  <p className="text-xl font-bold text-purple-700">
+                    ฿{(orderStats?.upsellRevenue || 0).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-purple-500 mt-1">
+                    {orderStats?.upsellOrders || 0} ออเดอร์ • {orderStats?.upsellQuantity || 0} ชิ้น
+                  </p>
+                </div>
+                <div className="bg-purple-100 p-2 rounded-lg">
+                  <ArrowUpRight className="w-5 h-5 text-purple-600" />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Charts/sections (placeholders for layout) */}

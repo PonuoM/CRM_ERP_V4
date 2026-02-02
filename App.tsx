@@ -150,6 +150,7 @@ import OrderTabSettingsPage from "./pages/OrderTabSettingsPage";
 import BasketSettingsPage from "./pages/BasketSettingsPage";
 import CustomerDistributionV2 from "./pages/CustomerDistributionV2";
 import TelesalePerformancePage from "./pages/TelesalePerformancePage";
+import AttendanceManagementPage from "./pages/AttendanceManagementPage";
 import { db } from "./db/db";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
@@ -7230,6 +7231,11 @@ const App: React.FC = () => {
       case "home.telesale_performance":
       case "วิเคราะห์ประสิทธิภาพ Telesale":
         return <TelesalePerformancePage />;
+
+      case "Attendance Management":
+      case "nav.attendance_management":
+      case "จัดการวันมาทำงาน":
+        return <AttendanceManagementPage />;
 
       // PROCESSED: Customers
       case "Add Customer":
