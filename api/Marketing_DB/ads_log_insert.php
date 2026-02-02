@@ -30,14 +30,13 @@ foreach ($required_fields as $field) {
 try {
     $pdo = db_connect();
 
-    // Check if record already exists
+    // Check if record already exists (UPDATED: Uniqueness based on Page + Date only, ignores user)
     $checkStmt = $pdo->prepare("
         SELECT id FROM marketing_ads_log
-        WHERE page_id = ? AND user_id = ? AND date = ?
+        WHERE page_id = ? AND date = ?
     ");
     $checkStmt->execute([
         $data['page_id'],
-        $data['user_id'],
         $data['date']
     ]);
 

@@ -1204,19 +1204,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       params.append('date_to', selectedDate);
       params.append('company_id', String(currentUser.companyId));
       params.append('limit', '100000');
-      if (!hasSystemAccess) {
-        params.append('user_id', String(currentUser.id));
-      }
+      // Update: Remove user_id filter to check uniqueness across ALL users for this page+date
+      // if (!hasSystemAccess) {
+      //   params.append('user_id', String(currentUser.id));
+      // }
       const existingLogsResult = await apiFetch(`Marketing_DB/ads_log_get.php?${params.toString()}`);
       const existingLogs = existingLogsResult.data || [];
 
       // สร้าง Map ของ existing logs โดยใช้ page_id เป็น key
       const existingLogsMap = new Map();
       existingLogs.forEach((log) => {
-        // ตรวจสอบว่า log เป็นของผู้ใช้ปัจจุบันก่อนเพิ่มลง map
-        if (log.user_id === currentUser.id) {
-          existingLogsMap.set(log.page_id, log);
-        }
+        // Update: Map ALL existing logs regardless of user_id
+        existingLogsMap.set(log.page_id, log);
       });
 
       const savePromises = adsInputData.map(async (row) => {
@@ -1535,9 +1534,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       // If I omit user_id, I might get everyone's logs (good for admin).
       // If I pass user_id, I get only mine.
       // If hasSystemAccess, likely want ALL.
-      if (!hasSystemAccess) {
-        params.append('user_id', String(currentUser.id));
-      }
+      // Update: Remove user_id filter so users see if ANYONE has valid data for this page/date
+      // if (!hasSystemAccess) {
+      //   params.append('user_id', String(currentUser.id));
+      // }
 
       const res = await apiFetch(`Marketing_DB/ads_log_get.php?${params.toString()}`);
 

@@ -10,49 +10,54 @@ if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
 
 try {
   require_once "../config.php";
-  
+
   // Get input
   $input = json_input();
-  
+
   if (empty($input['logs']) || !is_array($input['logs'])) {
     throw new Exception("Invalid data format");
   }
 
   $conn = db_connect();
-  
+
   // Start transaction
   $conn->beginTransaction();
-  
-  $stmt = $conn->prepare("
-    INSERT INTO marketing_product_ads_log (user_id, product_id, date, ads_cost, impressions, reach, clicks) 
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE 
-    ads_cost = VALUES(ads_cost),
-    impressions = VALUES(impressions),
-    reach = VALUES(reach),
-    clicks = VALUES(clicks)
-  ");
 
-  foreach ($input['logs'] as $log) {
-    if (empty($log['product_id']) || empty($log['date'])) {
-      continue;
-    }
+  // Check if record exists for this Product + Date (Any User)
+  $checkParams = [$log['product_id'], $log['date']];
+  $checkSql = "SELECT id, user_id FROM marketing_product_ads_log WHERE product_id = ? AND date = ?";
+  $checkStmt = $conn->prepare($checkSql);
+  $checkStmt->execute($checkParams);
+  $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
-    $params = [
-      $log['user_id'] ?? $input['user_id'], // Fallback if not in log item
+  if ($existing) {
+    // Update existing record
+    $updateSql = "UPDATE marketing_product_ads_log SET ads_cost = ?, impressions = ?, reach = ?, clicks = ? WHERE id = ?";
+    $updateStmt = $conn->prepare($updateSql);
+    $updateStmt->execute([
+      !empty($log['ads_cost']) ? $log['ads_cost'] : 0,
+      !empty($log['impressions']) ? $log['impressions'] : 0,
+      !empty($log['reach']) ? $log['reach'] : 0,
+      !empty($log['clicks']) ? $log['clicks'] : 0,
+      $existing['id']
+    ]);
+  } else {
+    // Insert new record
+    $insertSql = "INSERT INTO marketing_product_ads_log (user_id, product_id, date, ads_cost, impressions, reach, clicks) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    $insertStmt = $conn->prepare($insertSql);
+    $insertStmt->execute([
+      $log['user_id'] ?? $input['user_id'],
       $log['product_id'],
       $log['date'],
       !empty($log['ads_cost']) ? $log['ads_cost'] : null,
       !empty($log['impressions']) ? $log['impressions'] : null,
       !empty($log['reach']) ? $log['reach'] : null,
       !empty($log['clicks']) ? $log['clicks'] : null
-    ];
-    
-    $stmt->execute($params);
+    ]);
   }
-  
+
   $conn->commit();
-  
+
   echo json_encode(["success" => true]);
 
 } catch (Exception $e) {

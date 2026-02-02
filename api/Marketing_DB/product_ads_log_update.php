@@ -33,8 +33,8 @@ if (empty($data["id"])) {
 // Authenticate user via Token
 $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 if (!$auth && function_exists('getallheaders')) {
-    $headers = getallheaders();
-    $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+  $headers = getallheaders();
+  $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
 }
 
 $currentUser = null;
@@ -54,7 +54,7 @@ try {
     ");
     $stmt->execute([$token]);
     $currentUser = $stmt->fetch();
-    
+
     if ($currentUser) {
       $currentUserId = $currentUser['id'];
       $userRole = $currentUser['role'];
@@ -62,23 +62,23 @@ try {
   }
 
   if (!$currentUserId) {
-      if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-      }
-      if (isset($_SESSION['user'])) {
-          $currentUserId = $_SESSION['user']['id'];
-          $userRole = $_SESSION['user']['role'];
-      }
+    if (session_status() === PHP_SESSION_NONE) {
+      session_start();
+    }
+    if (isset($_SESSION['user'])) {
+      $currentUserId = $_SESSION['user']['id'];
+      $userRole = $_SESSION['user']['role'];
+    }
   }
 
   if (!$currentUserId && isset($data['user_id'])) {
-      // Temporary fallback
-      $currentUserId = $data['user_id'];
+    // Temporary fallback
+    $currentUserId = $data['user_id'];
   }
 
   if (!$currentUserId) {
-      json_response(["success" => false, "error" => "User authentication required"], 401);
-      exit();
+    json_response(["success" => false, "error" => "User authentication required"], 401);
+    exit();
   }
 
   // Check if record exists AND belongs to the user
@@ -100,11 +100,11 @@ try {
   }
 
   // Check permissions:
-  // 1. Owner can update their own record
-  // 2. Super Admin / Admin Control can update any record
-  $isOwner = ($record["user_id"] == $currentUserId);
+  // Relaxes ownership check to allow shared management of Product Ads Data
+  // $isOwner = ($record["user_id"] == $currentUserId);
   $isAdmin = in_array($userRole, ['Super Admin', 'Admin Control']);
 
+  /*
   if (!$isOwner && !$isAdmin) {
     json_response(
       [
@@ -115,6 +115,7 @@ try {
     );
     exit();
   }
+  */
 
   // Build dynamic update query
   $updateFields = [];
