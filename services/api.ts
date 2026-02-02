@@ -25,6 +25,11 @@ const base = `${apiBasePath.replace(/\/$/, "")}/index.php/`; // works with or wi
 export async function apiFetch(path: string, init?: RequestInit) {
   const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
   const headers: any = { "Content-Type": "application/json", ...(init?.headers || {}) };
+
+  // If body is FormData, let browser set Content-Type with boundary
+  if (init?.body instanceof FormData) {
+    delete headers["Content-Type"];
+  }
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -1917,6 +1922,7 @@ export interface DebtCollectionRecord {
   first_name?: string;
   last_name?: string;
   slip_url?: string;
+  images?: string[];
 }
 
 export async function createDebtCollection(data: {
@@ -1927,10 +1933,35 @@ export async function createDebtCollection(data: {
   is_complete: 0 | 1;
   note?: string;
   slip_id?: number;
+  evidence_images?: File[];
 }): Promise<{ ok: boolean; data?: DebtCollectionRecord; id?: number; error?: string }> {
+  let body: string | FormData;
+  const headers: Record<string, string> = {};
+
+  if (data.evidence_images && data.evidence_images.length > 0) {
+    const formData = new FormData();
+    formData.append('order_id', data.order_id);
+    formData.append('user_id', data.user_id.toString());
+    formData.append('amount_collected', data.amount_collected.toString());
+    formData.append('result_status', data.result_status.toString());
+    formData.append('is_complete', data.is_complete.toString());
+    if (data.note) formData.append('note', data.note);
+    if (data.slip_id) formData.append('slip_id', data.slip_id.toString());
+
+    data.evidence_images.forEach((file) => {
+      formData.append('evidence_images[]', file);
+    });
+    body = formData;
+    // Don't set Content-Type header for FormData, browser does it with boundary
+  } else {
+    body = JSON.stringify(data);
+    headers['Content-Type'] = 'application/json';
+  }
+
   return apiFetch('Finance/debt_collection.php', {
     method: 'POST',
-    body: JSON.stringify(data),
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
+    body: body,
   });
 }
 
