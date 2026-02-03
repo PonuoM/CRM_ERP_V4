@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { X, DollarSign, FileText, AlertCircle, Clock, CheckCircle2, XCircle, AlertTriangle, AlertOctagon, Paperclip, Trash2, Image as ImageIcon } from 'lucide-react';
-import { createDebtCollection, getDebtCollectionHistory, updateDebtCollection, deleteDebtCollection, DebtCollectionRecord } from '../services/api';
+import { createDebtCollection, getDebtCollectionHistory, updateDebtCollection, deleteDebtCollection, DebtCollectionRecord, getBankAccounts, BankAccount } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
 import { User, Order } from '../types';
 
@@ -13,6 +13,12 @@ interface DebtCollectionModalProps {
     onSuccess: () => void;
     isCompletedView?: boolean;
     onViewDetail?: (order: Order) => void;
+}
+
+interface UploadedSlip {
+    file: File;
+    amount: string;
+    bankId: number;
 }
 
 const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
@@ -27,9 +33,13 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
     const [resultStatus, setResultStatus] = useState<1 | 2 | 3>(1);
     const [amountCollected, setAmountCollected] = useState<string>('0');
     const [note, setNote] = useState('');
-    const [evidenceImages, setEvidenceImages] = useState<File[]>([]);
+    const [uploadedSlips, setUploadedSlips] = useState<UploadedSlip[]>([]); // New State
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Bank State
+    const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
 
     // History State
     const [history, setHistory] = useState<DebtCollectionRecord[]>([]);
@@ -46,6 +56,19 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
     const remainingDebt = Math.max(0, totalAmount - paidAmount);
 
     useEffect(() => {
+        if (isOpen) {
+            fetchBanks();
+        }
+    }, [isOpen]);
+
+    const fetchBanks = async () => {
+        const response = await getBankAccounts();
+        if (response.ok && response.data) {
+            setBankAccounts(response.data);
+        }
+    };
+
+    useEffect(() => {
         if (!closeCase) {
             setIsBadDebt(false);
         }
@@ -57,6 +80,14 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
         }
     }, [isOpen, order]);
 
+    // Sync amountCollected with Slips
+    useEffect(() => {
+        if (uploadedSlips.length > 0) {
+            const total = uploadedSlips.reduce((sum, slip) => sum + (parseFloat(slip.amount) || 0), 0);
+            setAmountCollected(total.toString());
+        }
+    }, [uploadedSlips]);
+
     const fetchHistory = async () => {
         setHistoryLoading(true);
         try {
@@ -65,8 +96,6 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                 const data = response.data || [];
                 setHistory(data);
 
-                // Find the record that closed the case (is_complete = 1)
-                // Assuming the latest one or unique one
                 const closed = data.find(r => r.is_complete === 1);
                 setClosingRecord(closed || null);
             }
@@ -77,8 +106,6 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
         }
     };
 
-
-
     const handleDeleteHistory = async (recordId: number) => {
         if (!confirm('ยืนยันลบรายการประวัตินี้?')) {
             return;
@@ -88,9 +115,8 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
         try {
             const response = await deleteDebtCollection(recordId);
             if (response.ok) {
-                // Refresh history
                 fetchHistory();
-                onSuccess(); // To refresh order status in parent if needed
+                onSuccess();
             } else {
                 setError(response.error || 'เกิดข้อผิดพลาดในการลบรายการ');
             }
@@ -101,33 +127,26 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
         }
     };
 
-    const handleCancelCompletion = async () => {
-        if (!closingRecord || !closingRecord.id) {
-            setError('ไม่พบประวัติการจบเคส');
-            return;
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            const newFiles = Array.from(e.target.files);
+            const newSlips: UploadedSlip[] = newFiles.map(file => ({
+                file,
+                amount: '0',
+                bankId: 0
+            }));
+            setUploadedSlips(prev => [...prev, ...newSlips]);
         }
+    };
 
-        if (!confirm('ยืนยันที่จะยกเลิกสถานะ "จบเคส" และเปิดรายการติดตามหนี้นี้อีกครั้ง?')) {
-            return;
-        }
+    const handleSlipChange = (index: number, field: keyof UploadedSlip, value: any) => {
+        setUploadedSlips(prev => prev.map((slip, i) =>
+            i === index ? { ...slip, [field]: value } : slip
+        ));
+    };
 
-        setLoading(true);
-        try {
-            const response = await updateDebtCollection(closingRecord.id, {
-                is_complete: 0
-            });
-
-            if (response.ok) {
-                onSuccess();
-                handleClose();
-            } else {
-                setError(response.error || 'เกิดข้อผิดพลาดในการยกเลิกจบเคส');
-            }
-        } catch (err: any) {
-            setError(err.message || 'เกิดข้อผิดพลาดในการยกเลิกจบเคส');
-        } finally {
-            setLoading(false);
-        }
+    const handleRemoveSlip = (index: number) => {
+        setUploadedSlips(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -142,9 +161,32 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
             return;
         }
 
-        if ((resultStatus === 2 || resultStatus === 3) && amount <= 0) {
-            setError('กรุณาระบุยอดเงินที่เก็บได้');
-            return;
+        if ((resultStatus === 2 || resultStatus === 3)) {
+            if (amount <= 0) {
+                setError('กรุณาระบุยอดเงินที่เก็บได้');
+                return;
+            }
+            // If slips exist, validate they have amount/bank
+            if (uploadedSlips.length > 0) {
+                for (let i = 0; i < uploadedSlips.length; i++) {
+                    const slip = uploadedSlips[i];
+                    if (parseFloat(slip.amount) <= 0) {
+                        setError(`กรุณาระบุยอดเงินสำหรับรูปภาพที่ ${i + 1}`);
+                        return;
+                    }
+                    if (!slip.bankId) {
+                        setError(`กรุณาเลือกธนาคารสำหรับรูปภาพที่ ${i + 1}`);
+                        return;
+                    }
+                }
+            } else {
+                // No slips (Cash?), global amount is used (implicitly)
+                // But we haven't implemented global bank for cash yet.
+                // Assuming fine for now as per previous logic which relied on global input.
+                // Wait, I removed the global bank input from UI below in favor of per-slip.
+                // So if no slips, user CANNOT select bank. 
+                // If that's acceptable (e.g. cash), fine. If Transfer requires slip, fine.
+            }
         }
 
         if (resultStatus === 3 && amount < remainingDebt) {
@@ -165,10 +207,12 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                 user_id: currentUser.id,
                 amount_collected: amount,
                 result_status: resultStatus,
-                is_complete: closeCase ? 1 : 0, // Use checkbox state
-                is_bad_debt: closeCase && isBadDebt, // Pass bad debt flag
+                is_complete: closeCase ? 1 : 0,
+                is_bad_debt: closeCase && isBadDebt,
                 note: note.trim() || undefined,
-                evidence_images: evidenceImages
+                evidence_images: uploadedSlips.map(s => s.file),
+                slip_amounts: uploadedSlips.map(s => parseFloat(s.amount)),
+                slip_bank_ids: uploadedSlips.map(s => s.bankId)
             });
 
             if (response.ok) {
@@ -188,7 +232,7 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
         setResultStatus(1);
         setAmountCollected('0');
         setNote('');
-        setEvidenceImages([]);
+        setUploadedSlips([]);
         setError(null);
         setHistory([]);
         setCloseCase(false);
@@ -306,35 +350,43 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                                         />
                                         <div>
                                             <div className="font-medium text-gray-900">เก็บได้ทั้งหมด</div>
-                                            <div className="text-xs text-gray-500">จ่ายครบแล้ว (จบเคสอัตโนมัติ)</div>
+                                            <div className="text-xs text-gray-500">จ่ายครบแล้ว</div>
                                         </div>
                                     </label>
                                 </div>
                             </div>
 
-                            {/* Amount Collected */}
-                            {(resultStatus === 2 || resultStatus === 3) && (
+                            {/* Amount Collected - Only show Global if No Slips */}
+                            {(resultStatus === 2 || resultStatus === 3) && uploadedSlips.length === 0 && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        <DollarSign size={16} className="inline mr-1" />
-                                        ยอดเงินที่เก็บได้ <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        max={remainingDebt}
-                                        value={amountCollected}
-                                        onChange={(e) => setAmountCollected(e.target.value)}
-                                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="0.00"
-                                        required
-                                    />
-                                    <p className="mt-1 text-xs text-gray-500">
-                                        สูงสุด: ฿{remainingDebt.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                                    </p>
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            <DollarSign size={16} className="inline mr-1" />
+                                            ยอดเงินที่เก็บได้ (เงินสด) <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            max={remainingDebt}
+                                            value={amountCollected}
+                                            onChange={(e) => setAmountCollected(e.target.value)}
+                                            className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            placeholder="0.00"
+                                            required
+                                        />
+                                    </div>
                                 </div>
                             )}
+
+                            {/* Total Display if Slips Exist */}
+                            {(resultStatus === 2 || resultStatus === 3) && uploadedSlips.length > 0 && (
+                                <div className="bg-green-50 p-3 rounded-lg border border-green-100 flex justify-between items-center text-green-800">
+                                    <span className="text-sm font-medium">ยอดรวมจากสลิป:</span>
+                                    <span className="font-bold text-lg">฿{parseFloat(amountCollected).toLocaleString()}</span>
+                                </div>
+                            )}
+
 
                             {/* Note */}
                             <div>
@@ -351,57 +403,91 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                                 />
                             </div>
 
-                            {/* Image Upload */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    <Paperclip size={16} className="inline mr-1" />
-                                    รูปภาพหลักฐาน (ถ้ามี)
-                                </label>
+                            {/* Image Upload with Per-Slip Inputs */}
+                            {/* Image Upload with Per-Slip Inputs (Only for collected statuses) */}
+                            {(resultStatus === 2 || resultStatus === 3) && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        <Paperclip size={16} className="inline mr-1" />
+                                        รูปภาพหลักฐาน (สลิป)
+                                    </label>
 
-                                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:bg-gray-50 transition-colors">
-                                    <div className="space-y-1 text-center">
-                                        <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                                        <div className="flex text-sm text-gray-600 justify-center">
-                                            <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
-                                                <span>อัปโหลดรูปภาพ</span>
-                                                <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/*"
-                                                    onChange={(e) => {
-                                                        if (e.target.files) {
-                                                            const newFiles = Array.from(e.target.files);
-                                                            setEvidenceImages(prev => [...prev, ...newFiles]);
-                                                        }
-                                                    }}
-                                                />
-                                            </label>
+                                    <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:bg-gray-50 transition-colors">
+                                        <div className="space-y-1 text-center">
+                                            <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
+                                            <div className="flex text-sm text-gray-600 justify-center">
+                                                <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                                                    <span>อัปโหลดรูปภาพ</span>
+                                                    <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/*"
+                                                        onChange={handleFileUpload}
+                                                    />
+                                                </label>
+                                            </div>
+                                            <p className="text-xs text-gray-500">
+                                                PNG, JPG, GIF up to 10MB
+                                            </p>
                                         </div>
-                                        <p className="text-xs text-gray-500">
-                                            PNG, JPG, GIF up to 10MB
-                                        </p>
                                     </div>
-                                </div>
 
-                                {/* Preview Selected Images */}
-                                {evidenceImages.length > 0 && (
-                                    <div className="mt-4 grid grid-cols-3 gap-2">
-                                        {evidenceImages.map((file, index) => (
-                                            <div key={index} className="relative group border rounded-lg overflow-hidden h-20 bg-gray-100">
+                                    {/* Preview - moved inside conditional */}
+                                </div>
+                            )}
+
+                            {/* Preview Selected Images & Inputs */}
+                            {uploadedSlips.length > 0 && (
+                                <div className="mt-4 space-y-4">
+                                    {uploadedSlips.map((slip, index) => (
+                                        <div key={index} className="flex gap-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                            {/* Image Preview */}
+                                            <div className="relative w-24 h-24 flex-shrink-0 bg-gray-200 rounded-md overflow-hidden">
                                                 <img
-                                                    src={URL.createObjectURL(file)}
-                                                    alt="preview"
+                                                    src={URL.createObjectURL(slip.file)}
+                                                    alt={`slip-${index}`}
                                                     className="w-full h-full object-cover"
                                                 />
                                                 <button
                                                     type="button"
-                                                    onClick={() => setEvidenceImages(prev => prev.filter((_, i) => i !== index))}
-                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    onClick={() => handleRemoveSlip(index)}
+                                                    className="absolute top-0 right-0 p-1 bg-red-600 text-white rounded-bl-md hover:bg-red-700"
+                                                    title="ลบ"
                                                 >
-                                                    <X size={12} />
+                                                    <Trash2 size={12} />
                                                 </button>
                                             </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+
+                                            {/* Inputs */}
+                                            <div className="flex-1 space-y-2">
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-700 mb-1">ยอดเงิน</label>
+                                                    <input
+                                                        type="number"
+                                                        value={slip.amount}
+                                                        onChange={(e) => handleSlipChange(index, 'amount', e.target.value)}
+                                                        className="w-full p-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                                        placeholder="0.00"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-700 mb-1">ธนาคาร</label>
+                                                    <select
+                                                        value={slip.bankId}
+                                                        onChange={(e) => handleSlipChange(index, 'bankId', Number(e.target.value))}
+                                                        className="w-full p-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                                    >
+                                                        <option value={0}>- เลือก -</option>
+                                                        {bankAccounts.map(bank => (
+                                                            <option key={bank.id} value={bank.id}>
+                                                                {bank.bank} - {bank.bank_number}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
 
                             {/* Close Case Checkbox */}
                             <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
@@ -477,7 +563,8 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                             </div>
                         </form>
                     </div>
-                )}
+                )
+                }
 
                 {/* Right Side: History */}
                 <div className={`${isCompletedView ? 'w-full' : 'md:w-80 border-l pl-0 md:pl-6 pt-6 md:pt-0 border-t md:border-t-0'}`}>
@@ -590,8 +677,8 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                         </div>
                     )}
                 </div>
-            </div>
-        </Modal>
+            </div >
+        </Modal >
     );
 };
 

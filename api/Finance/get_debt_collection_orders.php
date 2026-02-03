@@ -125,11 +125,28 @@ try {
     }
 
     if ($customerName) {
-        $whereConditions[] = "(c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT(c.first_name, ' ', c.last_name) LIKE ?)";
+        $orConds = [
+            "c.first_name LIKE ?",
+            "c.last_name LIKE ?",
+            "CONCAT(c.first_name, ' ', c.last_name) LIKE ?",
+            "o.id LIKE ?",
+            "c.phone LIKE ?"
+        ];
+
         $nameLike = '%' . $customerName . '%';
-        $params[] = $nameLike;
-        $params[] = $nameLike;
-        $params[] = $nameLike;
+        // Add params for standard checks
+        for ($i = 0; $i < 5; $i++)
+            $params[] = $nameLike;
+
+        // Specialized Phone Search (strip non-digits)
+        $cleanPhone = preg_replace('/\D/', '', $customerName);
+        // Only trigger this if we have enough digits to avoid matching everything
+        if (strlen($cleanPhone) >= 3) {
+            $orConds[] = "REPLACE(REPLACE(REPLACE(REPLACE(c.phone, '-', ''), ' ', ''), '(', ''), ')', '') LIKE ?";
+            $params[] = '%' . $cleanPhone . '%';
+        }
+
+        $whereConditions[] = "(" . implode(' OR ', $orConds) . ")";
     }
 
     if ($customerPhone) {
@@ -139,8 +156,23 @@ try {
     }
 
     if ($orderId) {
-        $whereConditions[] = "o.id LIKE ?";
-        $params[] = '%' . $orderId . '%';
+        $orConds = ["o.id LIKE ?"];
+        $orderIdLike = '%' . $orderId . '%';
+        $params[] = $orderIdLike;
+
+        // Also check phone for short numeric inputs (which frontend sends as orderId)
+        // Standard phone check
+        $orConds[] = "c.phone LIKE ?";
+        $params[] = $orderIdLike;
+
+        // Robust phone check
+        $cleanPhone = preg_replace('/\D/', '', $orderId);
+        if (strlen($cleanPhone) >= 3) {
+            $orConds[] = "REPLACE(REPLACE(REPLACE(REPLACE(c.phone, '-', ''), ' ', ''), '(', ''), ')', '') LIKE ?";
+            $params[] = '%' . $cleanPhone . '%';
+        }
+
+        $whereConditions[] = "(" . implode(' OR ', $orConds) . ")";
     }
 
     // New Filters
