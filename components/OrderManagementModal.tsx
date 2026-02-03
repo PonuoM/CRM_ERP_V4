@@ -1787,8 +1787,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 ? Number(currentOrder.bankAccountId)
                 : undefined,
 
-              transferDate: new Date().toISOString(),
-
               amount: Number(
                 calculatedTotals.totalAmount || currentOrder.amountPaid || 0,
               ),
@@ -1820,8 +1818,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                 transferDate:
                   (res as any).transfer_date ??
-                  (res as any).transferDate ??
-                  new Date().toISOString(),
+                  (res as any).transferDate,
 
                 uploadedBy:
                   typeof res.uploadedBy !== "undefined"
