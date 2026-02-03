@@ -7605,6 +7605,13 @@ const App: React.FC = () => {
 
     switch (modalState.type) {
       case "manageOrder":
+        const isManageOrdersPage = activePage === 'Manage Orders' || activePage === 'จัดการคำสั่งซื้อ';
+
+        // Strict Page-Based Permission:
+        // - Manage Orders Page -> 'manager' (Can verify, bypass lock)
+        // - Orders Page (Telesale View) -> 'seller' (Cannot verify, respects lock)
+        const modalPermission: 'seller' | 'manager' = isManageOrdersPage ? 'manager' : 'seller';
+
         return (
           <OrderManagementModal
             order={modalState.data as Order}
@@ -7618,6 +7625,7 @@ const App: React.FC = () => {
             users={users}
             onEditCustomer={(customer) => openModal("editCustomer", customer)}
             products={products}
+            permission={modalPermission}
           />
         );
       case "createOrder":
