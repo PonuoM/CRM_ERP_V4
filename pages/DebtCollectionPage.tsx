@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { User, Order, Customer, ModalType } from '../types';
 import DebtCollectionModal from '../components/DebtCollectionModal';
 import OrderDetailModal from '../components/OrderDetailModal';
-import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle, XCircle } from 'lucide-react';
+import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle, XCircle, AlertOctagon } from 'lucide-react';
 import { getDebtCollectionOrders, getDebtCollectionSummary, closeDebtCase, DebtCollectionSummary, getDebtCollectionHistory, updateDebtCollection } from '../services/api';
+import DateRangePicker from '../components/DateRangePicker';
 
 interface DebtCollectionPageProps {
   user: User;
@@ -37,6 +38,13 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   const [detailSelectedOrder, setDetailSelectedOrder] = useState<Order | null>(null);
   const [closingCase, setClosingCase] = useState(false);
 
+  // Filter State
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterDaysOverdue, setFilterDaysOverdue] = useState('');
+  const [filterTrackingStatus, setFilterTrackingStatus] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+
   // Fetch Summary Statistics (Global)
   const fetchSummary = async () => {
     if (!user?.companyId) return;
@@ -66,7 +74,18 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
         // companyId: user.companyId, // Filtered by user auth in API usually, or pass if needed
         page: currentPage,
         pageSize: itemsPerPage,
-        status: activeTab // Filter by tab status
+        status: activeTab, // Filter by tab status
+
+        // Search filters
+        // Identify if search term is name, phone, or order ID
+        customerName: isNaN(Number(searchTerm)) && !searchTerm.startsWith('OD') ? searchTerm : undefined,
+        customerPhone: !isNaN(Number(searchTerm)) && searchTerm.length > 5 ? searchTerm : undefined,
+        orderId: searchTerm.startsWith('OD') || (!isNaN(Number(searchTerm)) && searchTerm.length <= 5) ? searchTerm : undefined,
+
+        minDaysOverdue: filterDaysOverdue ? Number(filterDaysOverdue) : undefined,
+        trackingStatus: filterTrackingStatus || undefined,
+        startDate: filterStartDate || undefined,
+        endDate: filterEndDate || undefined
       });
 
       if (response.ok) {
@@ -87,12 +106,12 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   useEffect(() => {
     fetchOrders();
     fetchSummary();
-  }, [user?.companyId, currentPage, itemsPerPage, activeTab]);
+  }, [user?.companyId, currentPage, itemsPerPage, activeTab, searchTerm, filterDaysOverdue, filterTrackingStatus, filterStartDate, filterEndDate]);
 
-  // Reset page when tab changes
+  // Reset page when tab changes OR FILTER changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab]);
+  }, [activeTab, searchTerm, filterDaysOverdue, filterTrackingStatus, filterStartDate, filterEndDate]);
 
   const handlePageChange = (page: number) => {
     const next = Math.min(Math.max(page, 1), totalPages);
@@ -256,6 +275,86 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
         </nav>
       </div>
 
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border mb-6 space-y-4">
+        <div className="flex flex-col md:flex-row gap-4">
+          {/* Search */}
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">ค้นหา</label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="ชื่อลูกค้า, เบอร์โทร, Order ID"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <div className="absolute left-3 top-2.5 text-gray-400">
+                <FileText size={16} />
+              </div>
+            </div>
+          </div>
+
+          {/* Date Range (Delivery Date) */}
+          <div className="w-full md:w-auto flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">ช่วงวันที่ส่ง</label>
+            <DateRangePicker
+              value={{ start: filterStartDate, end: filterEndDate }}
+              onApply={(range) => {
+                setFilterStartDate(range.start);
+                setFilterEndDate(range.end);
+              }}
+            />
+          </div>
+
+          {/* Days Overdue */}
+          <div className="w-full md:w-48">
+            <label className="block text-sm font-medium text-gray-700 mb-1">ค้างชำระ (วัน)</label>
+            <select
+              value={filterDaysOverdue}
+              onChange={(e) => setFilterDaysOverdue(e.target.value)}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="3">เกิน 3 วัน</option>
+              <option value="7">เกิน 7 วัน</option>
+              <option value="15">เกิน 15 วัน</option>
+              <option value="30">เกิน 30 วัน</option>
+            </select>
+          </div>
+
+          {/* Tracking Status */}
+          <div className="w-full md:w-48">
+            <label className="block text-sm font-medium text-gray-700 mb-1">สถานะการติดตาม</label>
+            <select
+              value={filterTrackingStatus}
+              onChange={(e) => setFilterTrackingStatus(e.target.value)}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="never">ยังไม่เคยติดตาม</option>
+              <option value="tracked">ติดตามแล้ว</option>
+            </select>
+          </div>
+
+        </div>
+
+        <div className="flex justify-end pt-2 border-t mt-2">
+          <button
+            onClick={() => {
+              setSearchTerm('');
+              setFilterDaysOverdue('');
+              setFilterTrackingStatus('');
+              setFilterStartDate('');
+              setFilterEndDate('');
+            }}
+            className="text-sm text-gray-500 hover:text-gray-700 underline"
+          >
+            ล้างตัวกรองทั้งหมด
+          </button>
+        </div>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg shadow-sm border border-red-200 p-6">
@@ -377,9 +476,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       ติดตาม
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {activeTab === 'completed' ? 'ยกเลิก' : 'จบเคส'}
-                    </th>
+
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -392,12 +489,20 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                     return (
                       <tr key={order.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <button
-                            onClick={() => handleViewDetail(order)}
-                            className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                          >
-                            {order.id}
-                          </button>
+                          <div className="flex flex-col items-start gap-1">
+                            <button
+                              onClick={() => handleViewDetail(order)}
+                              className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                            >
+                              {order.id}
+                            </button>
+                            {(order as any).paymentStatus === 'BadDebt' || (order as any).orderStatus === 'BadDebt' || (order as any).order_status === 'BadDebt' ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">
+                                <AlertOctagon size={10} className="mr-1" />
+                                หนี้สูญ
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                           {customerInfo ? `${customerInfo.firstName} ${customerInfo.lastName}` : '-'}
@@ -447,27 +552,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                             ติดตาม
                           </button>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-center">
-                          {activeTab === 'completed' ? (
-                            <button
-                              onClick={() => handleCancelCase(order)}
-                              disabled={closingCase}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <XCircle size={14} />
-                              ยกเลิก
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleCloseCase(order)}
-                              disabled={closingCase}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <CheckCircle size={14} />
-                              จบเคส
-                            </button>
-                          )}
-                        </td>
+
                       </tr>
                     );
                   })}

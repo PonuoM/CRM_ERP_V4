@@ -1934,6 +1934,7 @@ export async function createDebtCollection(data: {
   note?: string;
   slip_id?: number;
   evidence_images?: File[];
+  is_bad_debt?: boolean;
 }): Promise<{ ok: boolean; data?: DebtCollectionRecord; id?: number; error?: string }> {
   let body: string | FormData;
   const headers: Record<string, string> = {};
@@ -1945,6 +1946,7 @@ export async function createDebtCollection(data: {
     formData.append('amount_collected', data.amount_collected.toString());
     formData.append('result_status', data.result_status.toString());
     formData.append('is_complete', data.is_complete.toString());
+    if (data.is_bad_debt) formData.append('is_bad_debt', '1');
     if (data.note) formData.append('note', data.note);
     if (data.slip_id) formData.append('slip_id', data.slip_id.toString());
 
@@ -2000,6 +2002,12 @@ export async function closeDebtCase(data: {
   return createDebtCollection({
     ...data,
     is_complete: 1, // Mark as closed
+  });
+}
+
+export async function deleteDebtCollection(id: number): Promise<{ ok: boolean; error?: string }> {
+  return apiFetch(`Finance/debt_collection.php?id=${id}`, {
+    method: 'DELETE',
   });
 }
 

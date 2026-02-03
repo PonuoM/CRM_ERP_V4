@@ -214,6 +214,12 @@ function handlePost($pdo)
     $imgStmt->execute([$newId]);
     $record['images'] = $imgStmt->fetchAll(PDO::FETCH_COLUMN);
 
+    // Update Bad Debt Status if requested
+    if (!empty($input['is_bad_debt'])) {
+        $upd = $pdo->prepare("UPDATE orders SET order_status = 'BadDebt' WHERE id = ?");
+        $upd->execute([$orderId]);
+    }
+
     json_response(['ok' => true, 'data' => $record, 'id' => $newId], 201);
 }
 

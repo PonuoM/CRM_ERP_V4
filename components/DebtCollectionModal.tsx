@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { X, DollarSign, FileText, AlertCircle, Clock, CheckCircle2, XCircle, AlertTriangle, AlertOctagon, Paperclip, Trash2, Image as ImageIcon } from 'lucide-react';
-import { createDebtCollection, getDebtCollectionHistory, updateDebtCollection, DebtCollectionRecord } from '../services/api';
+import { createDebtCollection, getDebtCollectionHistory, updateDebtCollection, deleteDebtCollection, DebtCollectionRecord } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
 import { User, Order } from '../types';
 
@@ -38,11 +38,18 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
 
     // Close Case State
     const [closeCase, setCloseCase] = useState(false);
+    const [isBadDebt, setIsBadDebt] = useState(false);
 
     // Calculate remaining debt
     const totalAmount = order.totalAmount || 0;
     const paidAmount = order.amountPaid || order.codAmount || 0;
     const remainingDebt = Math.max(0, totalAmount - paidAmount);
+
+    useEffect(() => {
+        if (!closeCase) {
+            setIsBadDebt(false);
+        }
+    }, [closeCase]);
 
     useEffect(() => {
         if (isOpen && order) {
@@ -67,6 +74,30 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
             console.error("Failed to fetch history:", err);
         } finally {
             setHistoryLoading(false);
+        }
+    };
+
+
+
+    const handleDeleteHistory = async (recordId: number) => {
+        if (!confirm('ยืนยันลบรายการประวัตินี้?')) {
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const response = await deleteDebtCollection(recordId);
+            if (response.ok) {
+                // Refresh history
+                fetchHistory();
+                onSuccess(); // To refresh order status in parent if needed
+            } else {
+                setError(response.error || 'เกิดข้อผิดพลาดในการลบรายการ');
+            }
+        } catch (err: any) {
+            setError(err.message || 'เกิดข้อผิดพลาดในการลบรายการ');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -135,6 +166,7 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                 amount_collected: amount,
                 result_status: resultStatus,
                 is_complete: closeCase ? 1 : 0, // Use checkbox state
+                is_bad_debt: closeCase && isBadDebt, // Pass bad debt flag
                 note: note.trim() || undefined,
                 evidence_images: evidenceImages
             });
@@ -388,6 +420,26 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                                 <p className="ml-6 mt-1 text-xs text-gray-500">
                                     เมื่อจบเคส รายการนี้จะถูกย้ายออกจากรายการติดตามหนี้ปัจจุบัน
                                 </p>
+
+                                {closeCase && (
+                                    <div className="mt-3 ml-6 pt-3 border-t border-blue-200">
+                                        <label className="flex items-center cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={isBadDebt}
+                                                onChange={(e) => setIsBadDebt(e.target.checked)}
+                                                className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                                            />
+                                            <span className="ml-2 font-medium text-red-700 flex items-center gap-2">
+                                                <AlertOctagon size={16} />
+                                                เป็นหนี้สูญ (Bad Debt)
+                                            </span>
+                                        </label>
+                                        <p className="ml-6 mt-1 text-xs text-red-500">
+                                            หากเลือก ระบบจะเปลี่ยนสถานะออเดอร์เป็น "BadDebt"
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Error Message */}
@@ -444,6 +496,15 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                         <div className={`space-y-4 overflow-y-auto pr-2 ${isCompletedView ? 'max-h-[60vh]' : 'max-h-[500px]'}`}>
                             {history.map((record) => (
                                 <div key={record.id} className="relative pl-4 border-l-2 border-gray-200 pb-1 last:pb-0">
+                                    <button
+                                        onClick={() => record.id && handleDeleteHistory(record.id)}
+                                        disabled={loading}
+                                        className="absolute right-0 top-0 text-gray-400 hover:text-red-500 p-1 bg-white rounded-full border border-gray-100 shadow-sm z-10"
+                                        title="ลบประวัติ"
+                                        type="button"
+                                    >
+                                        <Trash2 size={13} />
+                                    </button>
                                     <div className="absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full bg-gray-300"></div>
                                     <div className="text-xs text-gray-500 mb-1">
                                         {record.created_at ? new Date(record.created_at).toLocaleString('th-TH', {
@@ -519,20 +580,7 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                                 >
                                     ยกเลิก
                                 </button>
-                                {closingRecord && (
-                                    <button
-                                        onClick={handleCancelCompletion}
-                                        disabled={loading}
-                                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
-                                    >
-                                        {loading ? (
-                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                        ) : (
-                                            <AlertOctagon size={16} />
-                                        )}
-                                        ยกเลิกการจบเคส
-                                    </button>
-                                )}
+
                             </div>
                         </div>
                     )}
