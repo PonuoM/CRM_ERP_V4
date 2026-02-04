@@ -761,6 +761,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       "cancelled",
       "baddebt",
       "claiming",
+      "preapproved",
     ];
 
     // Return TRUE if NOT locked (Modifiable)
