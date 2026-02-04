@@ -81,6 +81,8 @@ interface OrderManagementModalProps {
   users?: User[];
   onEditCustomer?: (customer: Customer) => void;
   products?: Product[];
+  backdropClassName?: string;
+  permission?: 'seller' | 'manager';
 }
 
 const InfoCard: React.FC<{
@@ -229,6 +231,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   onEditCustomer,
   products = [],
   backdropClassName,
+  permission,
 }) => {
   const [currentOrder, setCurrentOrder] = useState<Order>(order);
   const [isEditing, setIsEditing] = useState(false);
@@ -468,10 +471,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     return sanitizeAddressPart(previous ?? "");
   };
 
+  // Assuming OrderManagementModalProps and the component definition are elsewhere in the file
+  // and we are inserting the 'permission' prop into them.
+  // For the purpose of this edit, we'll just show the relevant lines being changed.
+
   // ตรวจสอบว่า order เสร็จสิ้นแล้วหรือไม่ (ไม่สามารถแก้ไขได้)
   const isOrderCompleted = currentOrder.orderStatus === OrderStatus.Delivered;
 
-  const canVerifySlip = !!currentUser;
+  const canVerifySlip = !!currentUser && permission === 'manager';
   const canCancelVerification = canVerifySlip;
   const canEditPayAfterSlips =
     currentOrder?.paymentMethod === PaymentMethod.PayAfter;
@@ -738,8 +745,36 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   }, [order.id]);
 
   const isModifiable = useMemo(() => {
-    return true;
-  }, []);
+    // Manager override: Bypass lock
+    if (permission === 'manager') return true;
+
+    // Lock if status is Preparing, Picking, Shipping, Delivered, Returned, Cancelled, BadDebt, Claiming
+    // Normalize validation to avoid whitespace/case issues
+    const currentStatus = String(currentOrder.orderStatus || '').trim().toLowerCase();
+
+    const lockedStatusesLower = [
+      "preparing",
+      "picking",
+      "shipping",
+      "delivered",
+      "returned",
+      "cancelled",
+      "baddebt",
+      "claiming",
+      "preapproved",
+    ];
+
+    // Return TRUE if NOT locked (Modifiable)
+    // If currentStatus is in locked list -> Locked -> Return FALSE
+    const isLockedStatus = lockedStatusesLower.includes(currentStatus);
+
+    // Debug log (can be seen in browser console if needed)
+    // console.log('Check Lock:', { currentStatus, isLockedStatus, permission });
+
+    return !isLockedStatus;
+  }, [currentOrder.orderStatus, permission]);
+
+  const isLocked = !isModifiable;
 
   const showInputs = isModifiable && isEditing;
 
@@ -1753,8 +1788,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 ? Number(currentOrder.bankAccountId)
                 : undefined,
 
-              transferDate: new Date().toISOString(),
-
               amount: Number(
                 calculatedTotals.totalAmount || currentOrder.amountPaid || 0,
               ),
@@ -1786,8 +1819,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                 transferDate:
                   (res as any).transfer_date ??
-                  (res as any).transferDate ??
-                  new Date().toISOString(),
+                  (res as any).transferDate,
 
                 uploadedBy:
                   typeof res.uploadedBy !== "undefined"
@@ -1884,12 +1916,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     slipPreview || currentOrder.slipUrl || slips.length > 0,
   );
 
-  // [PREVENTION] Lock editing if order is processed (Preparing or higher) or Verified
-  // RESTRICTION: Applies to Admin, Telesale, Supervisor.
-  // EXEMPTION: Backoffice, Finance, AdminControl, SuperAdmin can still edit.
-  const isLocked = useMemo(() => {
-    return false;
-  }, []);
+
 
 
 
@@ -2451,7 +2478,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
             {!isEditing ? (
               <button
                 onClick={() => setIsEditing(true)}
-                className="flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                disabled={isLocked}
+                className={`flex items-center px-3 py-1.5 text-white text-sm rounded-md transition-colors ${isLocked ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
               >
                 <Edit2 size={14} className="mr-1.5" />
                 แก้ไขออเดอร์
@@ -3788,28 +3816,26 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             </div>
                           )}
 
-                          {!isLocked && (
-                            <div className="mt-3 flex justify-end">
-                              <div className="flex items-center space-x-2">
-                                <label
-                                  htmlFor={slipUploadInputId}
-                                  className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                                >
-                                  <Image size={16} className="mr-2" />
-                                  อัปโหลดสลิปเพิ่มเติม
-                                </label>
-                                <input
-                                  id={slipUploadInputId}
-                                  type="file"
-                                  accept="image/*"
-                                  multiple
-                                  onChange={handleSlipUpload}
-                                  className="hidden"
-                                  disabled={isLocked}
-                                />
-                              </div>
+                          <div className="mt-3 flex justify-end">
+                            <div className="flex items-center space-x-2">
+                              <label
+                                htmlFor={slipUploadInputId}
+                                className={`inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-gray-50"}`}
+                              >
+                                <Image size={16} className="mr-2" />
+                                อัปโหลดสลิปเพิ่มเติม
+                              </label>
+                              <input
+                                id={slipUploadInputId}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={handleSlipUpload}
+                                className="hidden"
+                                disabled={isLocked}
+                              />
                             </div>
-                          )}
+                          </div>
                         </div>
 
                         {/* Validation Summary */}
@@ -4345,8 +4371,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       e.target.value as OrderStatus,
                     )
                   }
-                  disabled={isLocked}
-                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                  disabled={isLocked || permission === 'seller'}
+                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${isLocked || permission === 'seller' ? "bg-gray-100 cursor-not-allowed" : ""}`}
                 >
                   {Object.values(OrderStatus)
 
@@ -4389,8 +4415,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                     handleFieldChange("trackingNumbers", deduped);
                   }}
-                  disabled={isLocked}
-                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                  disabled={isLocked || permission === 'seller'}
+                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${isLocked || permission === 'seller' ? "bg-gray-100 cursor-not-allowed" : ""}`}
                   placeholder="TH123, TH456"
                 />
               </div>

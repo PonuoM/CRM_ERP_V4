@@ -1925,44 +1925,100 @@ export interface DebtCollectionRecord {
   images?: string[];
 }
 
+export interface BankAccount {
+  id: number;
+  bank: string;
+  bank_number: string;
+  company_id: number;
+  is_active: number;
+}
+
+// Helper functions for direct fetch calls (assuming API_BASE_URL and getAuthHeaders are defined elsewhere or need to be added)
+// For consistency with other apiFetch calls, these might be better integrated into apiFetch if possible.
+// For now, defining them based on the provided snippet's assumption.
+const API_BASE_URL = typeof window === "undefined" ? "/api" : resolveApiBasePath();
+const getAuthHeaders = () => {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+};
+
+export async function getBankAccounts(): Promise<{ ok: boolean; data?: BankAccount[]; error?: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/Bank_DB/get_bank_accounts.php`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    const result = await response.json();
+    return result.success ? { ok: true, data: result.data } : { ok: false, error: result.message };
+  } catch (error: any) {
+    return { ok: false, error: error.message };
+  }
+}
+
 export async function createDebtCollection(data: {
   order_id: string;
   user_id: number;
   amount_collected: number;
   result_status: 1 | 2 | 3;
   is_complete: 0 | 1;
+  is_bad_debt?: boolean;
+  bank_account_id?: number; // Global or Fallback
   note?: string;
   slip_id?: number;
   evidence_images?: File[];
+  slip_amounts?: number[]; // Per-slip
+  slip_bank_ids?: number[]; // Per-slip
 }): Promise<{ ok: boolean; data?: DebtCollectionRecord; id?: number; error?: string }> {
-  let body: string | FormData;
-  const headers: Record<string, string> = {};
+  try {
+    const headers: any = {
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    };
 
-  if (data.evidence_images && data.evidence_images.length > 0) {
-    const formData = new FormData();
-    formData.append('order_id', data.order_id);
-    formData.append('user_id', data.user_id.toString());
-    formData.append('amount_collected', data.amount_collected.toString());
-    formData.append('result_status', data.result_status.toString());
-    formData.append('is_complete', data.is_complete.toString());
-    if (data.note) formData.append('note', data.note);
-    if (data.slip_id) formData.append('slip_id', data.slip_id.toString());
+    let body: any;
 
-    data.evidence_images.forEach((file) => {
-      formData.append('evidence_images[]', file);
+    if (data.evidence_images && data.evidence_images.length > 0) {
+      const formData = new FormData();
+      formData.append('order_id', data.order_id);
+      formData.append('user_id', data.user_id.toString());
+      formData.append('amount_collected', data.amount_collected.toString());
+      formData.append('result_status', data.result_status.toString());
+      formData.append('is_complete', data.is_complete.toString());
+      if (data.is_bad_debt) formData.append('is_bad_debt', '1');
+      if (data.bank_account_id) formData.append('bank_account_id', data.bank_account_id.toString());
+      if (data.note) formData.append('note', data.note);
+      if (data.slip_id) formData.append('slip_id', data.slip_id.toString());
+
+      data.evidence_images.forEach((file, index) => {
+        formData.append('evidence_images[]', file);
+        // Append corresponding details if available
+        if (data.slip_amounts && data.slip_amounts[index] !== undefined) {
+          formData.append('slip_amounts[]', data.slip_amounts[index].toString());
+        }
+        if (data.slip_bank_ids && data.slip_bank_ids[index] !== undefined) {
+          formData.append('slip_bank_ids[]', data.slip_bank_ids[index].toString());
+        }
+      });
+
+      body = formData;
+      // Do not set Content-Type for FormData, browser sets it with boundary
+    } else {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(data);
+    }
+
+    const response = await fetch(`${API_BASE_URL}/Finance/debt_collection.php`, {
+      method: 'POST',
+      headers,
+      body,
     });
-    body = formData;
-    // Don't set Content-Type header for FormData, browser does it with boundary
-  } else {
-    body = JSON.stringify(data);
-    headers['Content-Type'] = 'application/json';
+    return await response.json();
+  } catch (error: any) {
+    return { ok: false, error: error.message };
   }
-
-  return apiFetch('Finance/debt_collection.php', {
-    method: 'POST',
-    headers: Object.keys(headers).length > 0 ? headers : undefined,
-    body: body,
-  });
 }
 
 export async function getDebtCollectionHistory(params: {
@@ -2000,6 +2056,12 @@ export async function closeDebtCase(data: {
   return createDebtCollection({
     ...data,
     is_complete: 1, // Mark as closed
+  });
+}
+
+export async function deleteDebtCollection(id: number): Promise<{ ok: boolean; error?: string }> {
+  return apiFetch(`Finance/debt_collection.php?id=${id}`, {
+    method: 'DELETE',
   });
 }
 

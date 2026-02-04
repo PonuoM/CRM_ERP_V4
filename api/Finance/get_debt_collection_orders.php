@@ -102,11 +102,12 @@ try {
 
         if (!empty($ruleConditions)) {
             // Apply rules: (Rule1) OR (Rule2) ...
-            $whereConditions[] = "(" . implode(' OR ', $ruleConditions) . ")";
+            // Also explicitly include BadDebt orders as per request, regardless of rules
+            $whereConditions[] = "(" . implode(' OR ', $ruleConditions) . " OR o.order_status = 'BadDebt')";
         }
     } else {
         // Fallback if no rules found (safe default)
-        $whereConditions[] = "o.order_status IN ('Preparing', 'Picking', 'Shipping')";
+        $whereConditions[] = "(o.order_status IN ('Preparing', 'Picking', 'Shipping') OR o.order_status = 'BadDebt')";
     }
 
     // Status Filter
@@ -124,11 +125,28 @@ try {
     }
 
     if ($customerName) {
-        $whereConditions[] = "(c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT(c.first_name, ' ', c.last_name) LIKE ?)";
+        $orConds = [
+            "c.first_name LIKE ?",
+            "c.last_name LIKE ?",
+            "CONCAT(c.first_name, ' ', c.last_name) LIKE ?",
+            "o.id LIKE ?",
+            "c.phone LIKE ?"
+        ];
+
         $nameLike = '%' . $customerName . '%';
-        $params[] = $nameLike;
-        $params[] = $nameLike;
-        $params[] = $nameLike;
+        // Add params for standard checks
+        for ($i = 0; $i < 5; $i++)
+            $params[] = $nameLike;
+
+        // Specialized Phone Search (strip non-digits)
+        $cleanPhone = preg_replace('/\D/', '', $customerName);
+        // Only trigger this if we have enough digits to avoid matching everything
+        if (strlen($cleanPhone) >= 3) {
+            $orConds[] = "REPLACE(REPLACE(REPLACE(REPLACE(c.phone, '-', ''), ' ', ''), '(', ''), ')', '') LIKE ?";
+            $params[] = '%' . $cleanPhone . '%';
+        }
+
+        $whereConditions[] = "(" . implode(' OR ', $orConds) . ")";
     }
 
     if ($customerPhone) {
@@ -138,8 +156,52 @@ try {
     }
 
     if ($orderId) {
-        $whereConditions[] = "o.id LIKE ?";
-        $params[] = '%' . $orderId . '%';
+        $orConds = ["o.id LIKE ?"];
+        $orderIdLike = '%' . $orderId . '%';
+        $params[] = $orderIdLike;
+
+        // Also check phone for short numeric inputs (which frontend sends as orderId)
+        // Standard phone check
+        $orConds[] = "c.phone LIKE ?";
+        $params[] = $orderIdLike;
+
+        // Robust phone check
+        $cleanPhone = preg_replace('/\D/', '', $orderId);
+        if (strlen($cleanPhone) >= 3) {
+            $orConds[] = "REPLACE(REPLACE(REPLACE(REPLACE(c.phone, '-', ''), ' ', ''), '(', ''), ')', '') LIKE ?";
+            $params[] = '%' . $cleanPhone . '%';
+        }
+
+        $whereConditions[] = "(" . implode(' OR ', $orConds) . ")";
+    }
+
+    // New Filters
+    $minDaysOverdue = isset($_GET['minDaysOverdue']) ? (int) $_GET['minDaysOverdue'] : null;
+    if ($minDaysOverdue) {
+        // o.delivery_date must be older than X days ago
+        // delivery_date <= DATE_SUB(NOW(), INTERVAL X DAY)
+        $whereConditions[] = "o.delivery_date <= DATE_SUB(NOW(), INTERVAL ? DAY)";
+        $params[] = $minDaysOverdue;
+    }
+
+    $startDate = $_GET['startDate'] ?? null;
+    $endDate = $_GET['endDate'] ?? null;
+    if ($startDate) {
+        $val = strpos($startDate, 'T') !== false ? $startDate : $startDate . ' 00:00:00';
+        $whereConditions[] = "o.delivery_date >= ?";
+        $params[] = $val;
+    }
+    if ($endDate) {
+        $val = strpos($endDate, 'T') !== false ? $endDate : $endDate . ' 23:59:59';
+        $whereConditions[] = "o.delivery_date <= ?";
+        $params[] = $val;
+    }
+
+    $trackingStatus = $_GET['trackingStatus'] ?? null; // 'never', 'tracked'
+    if ($trackingStatus === 'never') {
+        $whereConditions[] = "(SELECT COUNT(*) FROM debt_collection dc WHERE dc.order_id = o.id) = 0";
+    } elseif ($trackingStatus === 'tracked') {
+        $whereConditions[] = "(SELECT COUNT(*) FROM debt_collection dc WHERE dc.order_id = o.id) > 0";
     }
 
     $whereClause = !empty($whereConditions) ? 'WHERE ' . implode(' AND ', $whereConditions) : '';
@@ -185,6 +247,7 @@ try {
         // Fetch Orders
         $sql = "SELECT 
                     o.id, o.customer_id, o.order_date, o.delivery_date, o.total_amount, o.amount_paid, o.cod_amount,
+                    o.order_status, o.payment_status,
                     c.first_name, c.last_name, c.phone,
                     (SELECT COUNT(*) FROM debt_collection dc WHERE dc.order_id = o.id) as tracking_count,
                     (SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection dc WHERE dc.order_id = o.id) as total_debt_collected
@@ -217,6 +280,8 @@ try {
             return [
                 'id' => $order['id'],
                 'customerId' => $order['customer_id'],
+                'orderStatus' => $order['order_status'],
+                'paymentStatus' => $order['payment_status'],
                 'orderDate' => $order['order_date'],
                 'deliveryDate' => $order['delivery_date'],
                 'daysPassed' => (int) $daysPassed,

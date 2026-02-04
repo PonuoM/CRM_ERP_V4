@@ -58,8 +58,21 @@ try {
     json_response(['ok' => false, 'error' => $e->getMessage()], 500);
 }
 
+
+function ensureSchema($pdo)
+{
+    // Ensure debt_collection_images has order_slip_id
+    $check = $pdo->query("SHOW COLUMNS FROM debt_collection_images LIKE 'order_slip_id'");
+    if ($check->rowCount() == 0) {
+        $pdo->exec("ALTER TABLE debt_collection_images ADD COLUMN order_slip_id INT NULL AFTER debt_collection_id");
+        $pdo->exec("ALTER TABLE debt_collection_images ADD INDEX idx_order_slip_id (order_slip_id)");
+    }
+}
+
 function handleGet($pdo, $id)
 {
+    ensureSchema($pdo); // Ensure schema exists
+
     if ($id) {
         $stmt = $pdo->prepare("
             SELECT dc.*, 
@@ -77,8 +90,13 @@ function handleGet($pdo, $id)
             json_response(['ok' => false, 'error' => 'Record not found'], 404);
         }
 
-        // Fetch Images
-        $imgStmt = $pdo->prepare("SELECT image_path FROM debt_collection_images WHERE debt_collection_id = ?");
+        // Fetch Images: Join order_slips to get URL, fallback to image_path for old records
+        $imgStmt = $pdo->prepare("
+            SELECT COALESCE(os.url, dci.image_path) as image_url 
+            FROM debt_collection_images dci 
+            LEFT JOIN order_slips os ON dci.order_slip_id = os.id
+            WHERE dci.debt_collection_id = ?
+        ");
         $imgStmt->execute([$id]);
         $record['images'] = $imgStmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -122,9 +140,14 @@ function handleGet($pdo, $id)
     $stmt->execute($params);
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Fetch images for all records (optimized approach could use WHERE IN)
+    // Fetch images for all records
     foreach ($records as &$rec) {
-        $imgStmt = $pdo->prepare("SELECT image_path FROM debt_collection_images WHERE debt_collection_id = ?");
+        $imgStmt = $pdo->prepare("
+            SELECT os.url as image_url 
+            FROM debt_collection_images dci 
+            LEFT JOIN order_slips os ON dci.order_slip_id = os.id
+            WHERE dci.debt_collection_id = ?
+        ");
         $imgStmt->execute([$rec['id']]);
         $rec['images'] = $imgStmt->fetchAll(PDO::FETCH_COLUMN);
     }
@@ -134,6 +157,8 @@ function handleGet($pdo, $id)
 
 function handlePost($pdo)
 {
+    ensureSchema($pdo);
+
     // Check for JSON input first
     $input = json_decode(file_get_contents('php://input'), true);
     if (!$input) {
@@ -154,7 +179,8 @@ function handlePost($pdo)
     $resultStatus = (int) $input['result_status']; // 1, 2, 3
     $isComplete = isset($input['is_complete']) ? (int) $input['is_complete'] : 0;
     $note = $input['note'] ?? null;
-    $slipId = isset($input['slip_id']) ? (int) $input['slip_id'] : null;
+    $bankAccountId = isset($input['bank_account_id']) ? (int) $input['bank_account_id'] : null;
+    $slipId = isset($input['slip_id']) ? (int) $input['slip_id'] : null; // Kept for debt_collection table
 
     $stmt = $pdo->prepare("
         INSERT INTO debt_collection 
@@ -167,7 +193,8 @@ function handlePost($pdo)
 
     // Handle File Uploads
     if (!empty($_FILES['evidence_images']['name'][0])) {
-        $uploadDir = '../../uploads/debt_collection/';
+        // Use standard slips directory
+        $uploadDir = '../../uploads/slips/';
         if (!is_dir($uploadDir)) {
             mkdir($uploadDir, 0777, true);
         }
@@ -175,7 +202,16 @@ function handlePost($pdo)
         $files = $_FILES['evidence_images'];
         $count = count($files['name']);
 
-        $insertImg = $pdo->prepare("INSERT INTO debt_collection_images (debt_collection_id, image_path) VALUES (?, ?)");
+        // Get per-slip details
+        $slipAmounts = $_POST['slip_amounts'] ?? [];
+        $slipBankIds = $_POST['slip_bank_ids'] ?? [];
+
+        // Stmt to insert into order_slips
+        // We use the collected amount and selected bank for the slip record
+        // If multiple images are uploaded, they all get linked to this transaction info
+        $insertSlip = $pdo->prepare("INSERT INTO order_slips (order_id, url, upload_by, amount, bank_account_id, transfer_date, created_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())");
+        // Stmt to insert mapping
+        $insertMapping = $pdo->prepare("INSERT INTO debt_collection_images (debt_collection_id, order_slip_id) VALUES (?, ?)");
 
         for ($i = 0; $i < $count; $i++) {
             if ($files['error'][$i] === UPLOAD_ERR_OK) {
@@ -185,13 +221,35 @@ function handlePost($pdo)
                 $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
                 if (in_array($ext, $allowed)) {
-                    $newName = 'evidence_' . $newId . '_' . uniqid() . '.' . $ext;
+                    // Naming convention similar to slips: slip_{orderId}_{timestamp}_{uniqid}.ext
+                    $newName = 'slip_' . $orderId . '_evidence_' . date('Ymd_His') . '_' . uniqid() . '.' . $ext;
                     $targetPath = $uploadDir . $newName;
 
                     if (move_uploaded_file($tmpName, $targetPath)) {
-                        // Store relative path for frontend usage
-                        $dbPath = 'uploads/debt_collection/' . $newName;
-                        $insertImg->execute([$newId, $dbPath]);
+                        // DB Path (relative)
+                        $dbPath = 'uploads/slips/' . $newName;
+
+                        // Per-slip values
+                        // Use specific amount/bank if available, otherwise fallback (though frontend validation should ensure they exist)
+                        $thisSlipAmount = isset($slipAmounts[$i]) ? (float) $slipAmounts[$i] : 0; // or $amountCollected fallback? Better 0 if not specified
+                        // Handle legacy/fallback: if only 1 image and no array, use global? 
+                        // But we updated frontend to send arrays. 
+                        // If arrays are empty but global exists (legacy request?), use global.
+                        if (empty($slipAmounts) && $count === 1) {
+                            $thisSlipAmount = $amountCollected;
+                        }
+
+                        $thisSlipBankId = isset($slipBankIds[$i]) ? (int) $slipBankIds[$i] : null;
+                        if (empty($slipBankIds) && $count === 1 && isset($input['bank_account_id'])) {
+                            $thisSlipBankId = (int) $input['bank_account_id'];
+                        }
+
+                        // 1. Insert into order_slips
+                        $insertSlip->execute([$orderId, $dbPath, $userId, $thisSlipAmount, $thisSlipBankId]);
+                        $newSlipId = $pdo->lastInsertId();
+
+                        // 2. Insert into debt_collection_images mapping
+                        $insertMapping->execute([$newId, $newSlipId]);
                     }
                 }
             }
@@ -210,9 +268,20 @@ function handlePost($pdo)
     $record = $stmt->fetch(PDO::FETCH_ASSOC);
 
     // Fetch images for response
-    $imgStmt = $pdo->prepare("SELECT image_path FROM debt_collection_images WHERE debt_collection_id = ?");
+    $imgStmt = $pdo->prepare("
+        SELECT os.url as image_url 
+        FROM debt_collection_images dci 
+        LEFT JOIN order_slips os ON dci.order_slip_id = os.id
+        WHERE dci.debt_collection_id = ?
+    ");
     $imgStmt->execute([$newId]);
     $record['images'] = $imgStmt->fetchAll(PDO::FETCH_COLUMN);
+
+    // Update Bad Debt Status if requested
+    if (!empty($input['is_bad_debt'])) {
+        $upd = $pdo->prepare("UPDATE orders SET order_status = 'BadDebt' WHERE id = ?");
+        $upd->execute([$orderId]);
+    }
 
     json_response(['ok' => true, 'data' => $record, 'id' => $newId], 201);
 }
