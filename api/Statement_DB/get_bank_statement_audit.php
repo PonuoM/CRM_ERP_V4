@@ -32,7 +32,7 @@ try {
   $startDate = date("Y-m-d 00:00:00", strtotime($startDateRaw));
   $endDate = date("Y-m-d 23:59:59", strtotime($endDateRaw));
 
-  // Query: Statement Logs LEFT JOIN Reconcile Logs LEFT JOIN Orders
+  // Query: Statement Logs LEFT JOIN Reconcile Logs LEFT JOIN Orders LEFT JOIN COD Documents
   $sql = "
     SELECT 
       sl.id,
@@ -40,6 +40,9 @@ try {
       sl.amount as statement_amount,
       sl.channel,
       sl.description,
+      -- COD document info (if this statement was matched to a COD document)
+      cd.id as cod_document_id,
+      cd.document_number as cod_document_number,
       -- Aggregate reconcile logs
       JSON_ARRAYAGG(
          IF(srl.id IS NOT NULL, 
@@ -50,7 +53,8 @@ try {
               'confirmed_at', srl.confirmed_at,
               'confirmed_action', srl.confirmed_action,
               'reconcile_type', srl.reconcile_type,
-              'note', srl.note
+              'note', srl.note,
+              'confirmed_payment_method', srl.confirmed_payment_method
             ),
             NULL
          )
@@ -58,10 +62,11 @@ try {
     FROM statement_logs sl
     INNER JOIN statement_batchs sb ON sl.batch_id = sb.id
     LEFT JOIN statement_reconcile_logs srl ON sl.id = srl.statement_log_id
+    LEFT JOIN cod_documents cd ON cd.matched_statement_log_id = sl.id
     WHERE sb.company_id = :companyId
       AND sl.bank_account_id = :bankAccountId
       AND sl.transfer_at BETWEEN :startDate AND :endDate
-    GROUP BY sl.id
+    GROUP BY sl.id, cd.id, cd.document_number
     ORDER BY sl.transfer_at ASC
 
   ";
@@ -317,6 +322,20 @@ try {
       }
     }
 
+    // Determine payment method from reconcile items (especially for COD)
+    $paymentMethods = [];
+    foreach ($reconcileItems as $item) {
+      if (!empty($item['confirmed_payment_method'])) {
+        $paymentMethods[] = $item['confirmed_payment_method'];
+      }
+    }
+    $paymentMethods = array_unique($paymentMethods);
+    $derivedPaymentMethod = !empty($paymentMethods) ? implode(', ', $paymentMethods) : null;
+
+    // For COD documents, use document_number as display instead of order_id
+    $isCodDocument = !empty($row['cod_document_id']);
+    $displayOrderId = $isCodDocument ? $row['cod_document_number'] : $orderDisplay;
+
     $results[] = [
       'id' => $row['id'],
       'reconcile_id' => !empty($reconcileItems) ? $reconcileItems[0]['reconcile_id'] : null, // Just use first for now or null
@@ -329,16 +348,20 @@ try {
       'channel' => $row['channel'],
       'description' => $row['description'],
       'order_id' => !empty($orderIds) ? implode(',', array_unique($orderIds)) : null, // Return as CSV for raw
-      'order_display' => $orderDisplay,
+      'order_display' => $displayOrderId,
       'order_amount' => in_array($primaryType, ['Suspense', 'Deposit']) ? null : ($totalConfirmed > 0 ? $totalConfirmed : null),
-      'payment_method' => null, // Aggregated, hard to pick one. Can fetch from orderIds if needed but frontend might not need it for multi-match.
+      'payment_method' => $derivedPaymentMethod,
       'status' => $status,
       'diff' => $diff,
       'suggested_order_id' => $suggestedOrderId,
       'suggested_order_info' => $suggestedOrderInfo,
       'suggested_order_amount' => $suggestedOrderAmount,
       'suggested_payment_method' => $suggestedPaymentMethod,
-      'reconcile_items' => $reconcileItems // Pass full details if frontend wants to show breakdown
+      'reconcile_items' => $reconcileItems, // Pass full details if frontend wants to show breakdown
+      // COD document info
+      'cod_document_id' => $row['cod_document_id'] ?? null,
+      'cod_document_number' => $row['cod_document_number'] ?? null,
+      'is_cod_document' => $isCodDocument,
     ];
   }
 

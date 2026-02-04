@@ -296,7 +296,7 @@ try {
        reconcile_type, confirmed_at, confirmed_order_id, confirmed_order_amount, confirmed_payment_method, confirmed_action)
     VALUES
       (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :autoMatched,
-       'Order', NOW(), :orderId, :confirmedAmount, 'COD', 'Confirmed')
+       'Order', NULL, :confirmedOrderId, :confirmedOrderAmount, 'COD', NULL)
   ");
 
   $orderUpdateStmt = $pdo->prepare("
@@ -429,6 +429,8 @@ try {
         ":statementAmount" => $statementAmount,
         ":confirmedAmount" => $totalConfirmedForParent,
         ":autoMatched" => 0,
+        ":confirmedOrderId" => $parentOrderId,
+        ":confirmedOrderAmount" => $totalConfirmedForParent,
       ]);
       $saved += 1;
     } catch (PDOException $insertError) {

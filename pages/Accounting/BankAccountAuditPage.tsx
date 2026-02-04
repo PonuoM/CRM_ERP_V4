@@ -22,6 +22,11 @@ interface AuditLog {
     confirmed_at?: string | null;
     confirmed_action?: string | null;
     note?: string | null;
+    // COD document info
+    cod_document_id?: number | null;
+    cod_document_number?: string | null;
+    is_cod_document?: boolean;
+    reconcile_items?: any[];
 }
 
 interface BankAccount {
@@ -59,6 +64,16 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     // New state for search modal
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
     const [selectedLogForSearch, setSelectedLogForSearch] = useState<AuditLog | null>(null);
+
+    // State for COD document detail modal
+    const [isCodDetailModalOpen, setIsCodDetailModalOpen] = useState(false);
+    const [selectedCodLog, setSelectedCodLog] = useState<AuditLog | null>(null);
+
+    // Function to open COD document detail modal
+    const openCodDetailModal = (log: AuditLog) => {
+        setSelectedCodLog(log);
+        setIsCodDetailModalOpen(true);
+    };
 
     useEffect(() => {
         fetchBanks();
@@ -517,6 +532,16 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                 <td className="px-4 py-3 whitespace-nowrap">
                                                     {log.status === 'Suspense' ? (
                                                         <span className="text-orange-500 italic font-medium">พักรับ (Suspense)</span>
+                                                    ) : log.is_cod_document && log.cod_document_number ? (
+                                                        // COD Document - show document number and open detail modal
+                                                        <span
+                                                            className="font-medium text-emerald-600 hover:underline cursor-pointer inline-flex items-center gap-1 max-w-[11rem] truncate align-middle"
+                                                            onClick={() => openCodDetailModal(log)}
+                                                            title={`COD Document: ${log.cod_document_number} (${log.reconcile_items?.length || 0} orders)`}
+                                                        >
+                                                            <i className="fa-solid fa-box-open text-xs"></i>
+                                                            {log.cod_document_number}
+                                                        </span>
                                                     ) : log.order_id ? (
                                                         <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!)}>
                                                             {log.order_display || log.order_id}
@@ -677,6 +702,83 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                         companyId: currentUser.companyId || (currentUser as any).company_id
                     }}
                 />
+            )}
+
+            {/* COD Document Detail Modal */}
+            {isCodDetailModalOpen && selectedCodLog && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setIsCodDetailModalOpen(false)}>
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="px-6 py-4 bg-emerald-600 text-white flex justify-between items-center">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                                <i className="fa-solid fa-box-open"></i>
+                                รายละเอียด COD Document
+                            </h3>
+                            <button
+                                onClick={() => setIsCodDetailModalOpen(false)}
+                                className="text-white hover:text-gray-200 text-xl font-bold"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto max-h-[60vh]">
+                            <div className="mb-4 space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">เลขที่เอกสาร:</span>
+                                    <span className="font-semibold text-emerald-700">{selectedCodLog.cod_document_number}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">ยอด Statement:</span>
+                                    <span className="font-semibold">{formatCurrency(selectedCodLog.statement_amount)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">ยอด Confirmed:</span>
+                                    <span className="font-semibold text-blue-600">{formatCurrency(selectedCodLog.order_amount)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">วิธีชำระเงิน:</span>
+                                    <span className="font-semibold">{selectedCodLog.payment_method || 'COD'}</span>
+                                </div>
+                            </div>
+
+                            <div className="border-t pt-4">
+                                <h4 className="font-semibold text-gray-700 mb-3">รายการ Orders ที่รวมอยู่ในเอกสารนี้:</h4>
+                                {selectedCodLog.reconcile_items && selectedCodLog.reconcile_items.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {selectedCodLog.reconcile_items.map((item: any, idx: number) => (
+                                            <div
+                                                key={idx}
+                                                className="flex justify-between items-center bg-gray-50 px-4 py-2 rounded border hover:bg-gray-100 transition-colors"
+                                            >
+                                                <span
+                                                    className="text-indigo-600 font-medium cursor-pointer hover:underline"
+                                                    onClick={() => {
+                                                        setIsCodDetailModalOpen(false);
+                                                        if (item.order_id) {
+                                                            openOrderModal(item.order_id);
+                                                        }
+                                                    }}
+                                                >
+                                                    {item.order_id}
+                                                </span>
+                                                <span className="text-gray-700">{formatCurrency(item.confirmed_amount)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-gray-400 italic">ไม่พบรายการ</p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 bg-gray-50 border-t flex justify-end">
+                            <button
+                                onClick={() => setIsCodDetailModalOpen(false)}
+                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+                            >
+                                ปิด
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </>
     );
