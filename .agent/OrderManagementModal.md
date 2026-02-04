@@ -31,7 +31,7 @@ Usage in `App.tsx`: permission is determined by the active page context (e.g., `
 
 ### 2. Slip Management
 - **View**: Displays uploaded slips in a list.
-- **Upload**: Allows uploading new keys/slips.
+- **Upload**: Allows uploading new keys/slips. **Transfer Date** defaults to empty (requiring user input) instead of current datetime.
 - **Verification**: `isSlipLocked` and `canVerifySlip` logic prevents modification of verified slips unless authorized. Use checkboxes to toggle "Verified" status.
 - **Lightbox**: Click on a slip to view it in full size.
 
