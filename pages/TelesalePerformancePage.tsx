@@ -5,42 +5,54 @@ import resolveApiBasePath from '@/utils/apiBasePath';
 // Interfaces
 // ==========================================
 interface Metrics {
-    totalCalls: number;
+    // Orders & Conversion
     totalOrders: number;
-    totalSales: number;
     conversionRate: number;
+
+    // Sales
+    totalSales: number;           // ยอดขายปกติ
+    upsellOrders: number;
+    upsellSales: number;
+    combinedSales: number;        // ยอดขายรวม ★
+
+    // Customers 3 months
+    customers90Days: number;
+
+    // AOV by category
+    aovFertilizer: number;
+    aovBio: number;
+
+    // ลูกค้าใหม่ (38,46,47)
+    newCustCount: number;
+    newCustOrders: number;
+    newCustSales: number;
+    newCustRate: number;
+
+    // ลูกค้าเก่า (39,40)
+    coreCustCount: number;
+    coreCustOrders: number;
+    coreCustSales: number;
+    coreCustRate: number;
+
+    // ลูกค้าขุด (48,49,50)
+    revivalCustCount: number;
+    revivalCustOrders: number;
+    revivalCustSales: number;
+    revivalCustRate: number;
+
+    // Target
+    targetAmount: number;
+    targetProgress: number;
+
+    // Call metrics
+    totalCalls: number;
+    answeredCalls: number;
     totalMinutes: number;
-    ahtMinutes: number;
-    totalCustomers: number;
-    repeatCustomers: number;
-    retentionRate: number;
-    // NEW METRICS
-    aov: number;                // ยอดเฉลี่ยต่อออเดอร์
-    newCustomers: number;       // ลูกค้าใหม่
-    newCustomerRate: number;    // อัตราลูกค้าใหม่ %
-    winbackCustomers: number;   // ลูกค้าเก่าที่กลับมา
-    efficiencyScore: number;
-    combinedSales: number;      // ยอดขายรวม upsell
-    // Upsell: Items added by this telesale to other users' orders
-    upsellOrders?: number;
-    upsellSales?: number;
-    upsellQuantity?: number;
-    // Target: Monthly sales target
-    targetAmount?: number;
-    targetProgress?: number;
-}
+    avgMinutesPerCall: number;
 
-
-interface TierMetrics {
-    core: { total: number; active: number; loyal: number; activeRate: number; loyaltyRate: number; };
-    revival: { total: number; revived: number; };
-    new: { total: number; converted: number; conversionRate: number; };
-}
-
-interface TierAggregates {
-    core: { total: number; active: number; loyal: number; activeRate: number; loyaltyRate: number; };
-    revival: { total: number; revived: number; };
-    new: { total: number; converted: number; conversionRate: number; };
+    // Attendance
+    workingDays: number;
+    avgMinutesPerDay: number;
 }
 
 interface TelesaleDetail {
@@ -49,7 +61,6 @@ interface TelesaleDetail {
     firstName: string;
     phone: string;
     metrics: Metrics;
-    tierMetrics: TierMetrics;
 }
 
 interface RankingItem {
@@ -59,33 +70,33 @@ interface RankingItem {
     [key: string]: unknown;
 }
 
-interface TeamAverages {
-    conversionRate: number;
-    retentionRate: number;
-    aov: number;              // ยอดเฉลี่ยต่อออเดอร์
-    newCustomerRate: number;  // อัตราลูกค้าใหม่
-    ahtMinutes: number;
-    efficiencyScore: number;
-    totalCalls: number;
+interface TeamTotals {
     totalOrders: number;
     totalSales: number;
-    newCustomers: number;
-    winbackCustomers: number;
+    upsellSales: number;
+    combinedSales: number;
+    totalCalls: number;
+    answeredCalls: number;
+    totalMinutes: number;
+    newCustCount: number;
+    coreCustCount: number;
+    revivalCustCount: number;
+    newCustOrders: number;
+    coreCustOrders: number;
+    revivalCustOrders: number;
+    conversionRate: number;
 }
 
 interface PerformanceData {
     period: { year: number; month: number };
-    teamAverages: TeamAverages;
-    tierAggregates: TierAggregates;
+    teamTotals: TeamTotals;
     telesaleCount: number;
     previousMonthSales?: number;
     rankings: {
         byConversion: RankingItem[];
-        byRetention: RankingItem[];
-        byAov: RankingItem[];  // เปลี่ยนจาก byActive
-        byEfficiency: RankingItem[];
-        byAht: RankingItem[];
-        byRevival: RankingItem[];
+        bySales: RankingItem[];
+        byCoreRate: RankingItem[];
+        byUpsell: RankingItem[];
     };
     telesaleDetails: TelesaleDetail[];
 }
@@ -106,13 +117,102 @@ const formatCurrency = (num: number): string => {
     }).format(num);
 };
 
+// Removed formatCurrencyShort - always show full numbers
+const formatMoney = (num: number): string => {
+    return `฿${formatNumber(Math.round(num))}`;
+};
+
 const THAI_MONTHS = [
     '', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
     'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
 ];
 
 // ==========================================
-// Component
+// Sub-components
+// ==========================================
+
+// Ranking Card
+function RankingCard({
+    title,
+    items,
+    valuePrefix = '',
+    valueSuffix = '',
+    extraInfo,
+    bgColor = 'bg-white'
+}: {
+    title: string;
+    items: RankingItem[];
+    valuePrefix?: string;
+    valueSuffix?: string;
+    extraInfo?: (item: RankingItem) => string;
+    bgColor?: string;
+}) {
+    if (items.length === 0) return null;
+
+    return (
+        <div className={`${bgColor} rounded-xl shadow-sm border border-gray-200 overflow-hidden`}>
+            <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-800 text-sm">{title}</h3>
+            </div>
+            <div className="divide-y divide-gray-50">
+                {items.slice(0, 5).map((item, idx) => (
+                    <div key={item.userId} className="px-4 py-2 flex items-center gap-3">
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-400 text-yellow-900' :
+                            idx === 1 ? 'bg-gray-300 text-gray-700' :
+                                idx === 2 ? 'bg-amber-600 text-white' :
+                                    'bg-gray-100 text-gray-500'
+                            }`}>{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-800 text-sm truncate">{item.name}</div>
+                            {extraInfo && <div className="text-xs text-gray-500">{extraInfo(item)}</div>}
+                        </div>
+                        <div className="text-right font-bold text-gray-700">
+                            {valuePrefix}{formatNumber(Math.round(item.value))}{valueSuffix}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+// Sortable Header Component
+function SortableHeader({
+    label,
+    field,
+    currentField,
+    direction,
+    onClick,
+    tooltip,
+    className = ''
+}: {
+    label: string;
+    field: keyof Metrics;
+    currentField: keyof Metrics;
+    direction: 'asc' | 'desc';
+    onClick: (field: keyof Metrics) => void;
+    tooltip?: string;
+    className?: string;
+}) {
+    const isActive = currentField === field;
+    return (
+        <th
+            className={`px-2 py-2 text-center text-gray-600 font-medium cursor-pointer hover:bg-gray-100 whitespace-nowrap text-xs ${className}`}
+            onClick={() => onClick(field)}
+            title={tooltip}
+        >
+            <div className="flex items-center justify-center gap-1">
+                <span>{label}</span>
+                {isActive && (
+                    <span className="text-blue-500">{direction === 'desc' ? '▼' : '▲'}</span>
+                )}
+            </div>
+        </th>
+    );
+}
+
+// ==========================================
+// Main Component
 // ==========================================
 export default function TelesalePerformancePage() {
     const currentDate = new Date();
@@ -121,9 +221,16 @@ export default function TelesalePerformancePage() {
     const [data, setData] = useState<PerformanceData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [sortField, setSortField] = useState<keyof Metrics>('conversionRate');
+    const [sortField, setSortField] = useState<keyof Metrics>('combinedSales');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-    const [tierFilter, setTierFilter] = useState<'all' | 'core' | 'new' | 'revival'>('all');
+
+    // Daily KPI State (separate from monthly view)
+    const [dailyDate, setDailyDate] = useState(() => {
+        const today = new Date();
+        return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    });
+    const [dailyData, setDailyData] = useState<PerformanceData | null>(null);
+    const [dailyLoading, setDailyLoading] = useState(false);
 
     // Target Modal State
     const [showTargetModal, setShowTargetModal] = useState(false);
@@ -133,8 +240,7 @@ export default function TelesalePerformancePage() {
     const [targetLoading, setTargetLoading] = useState(false);
     const [savingTarget, setSavingTarget] = useState<number | null>(null);
 
-
-    // Fetch data
+    // Fetch data with debounce to prevent excessive API calls
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
@@ -143,8 +249,11 @@ export default function TelesalePerformancePage() {
                 const token = localStorage.getItem('authToken');
                 const API_BASE = resolveApiBasePath();
 
+                // Monthly data fetch
+                const url = `${API_BASE}/User_DB/telesale_performance.php?year=${year}&month=${month}`;
+
                 const response = await fetch(
-                    `${API_BASE}/User_DB/telesale_performance.php?year=${year}&month=${month}`,
+                    url,
                     {
                         headers: {
                             'Authorization': `Bearer ${token}`,
@@ -169,68 +278,62 @@ export default function TelesalePerformancePage() {
                 setLoading(false);
             }
         };
-        fetchData();
+
+        // Debounce: wait 500ms before fetching to avoid rapid API calls
+        const debounceTimer = setTimeout(() => {
+            fetchData();
+        }, 500);
+
+        // Cleanup: cancel previous timer if deps change before 500ms
+        return () => clearTimeout(debounceTimer);
     }, [year, month]);
 
-    // Sorted and tier-filtered telesale details
+    // Fetch Daily KPI Data (separate from monthly)
+    useEffect(() => {
+        const fetchDailyData = async () => {
+            setDailyLoading(true);
+            try {
+                const token = localStorage.getItem('authToken');
+                const API_BASE = resolveApiBasePath();
+                const url = `${API_BASE}/User_DB/telesale_performance.php?year=${year}&month=${month}&date=${dailyDate}`;
+
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success) {
+                        setDailyData(result.data);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching daily data:', err);
+            } finally {
+                setDailyLoading(false);
+            }
+        };
+
+        // Debounce daily fetch
+        const debounceTimer = setTimeout(() => {
+            fetchDailyData();
+        }, 500);
+
+        return () => clearTimeout(debounceTimer);
+    }, [dailyDate, year, month]);
+
+    // Sorted telesale details
     const sortedDetails = useMemo(() => {
         if (!data) return [];
-
-        // Map telesale details with tier-specific data when filter is applied
-        const mappedDetails = data.telesaleDetails.map(telesale => {
-            if (tierFilter === 'all') {
-                return telesale;
-            }
-
-            // Check if tierMetrics exists
-            if (!telesale.tierMetrics) {
-                return telesale;
-            }
-
-            // Override metrics with tier-specific data
-            let tierCustomers = 0;
-            let tierActive = 0;
-            let tierActiveRate = 0;
-            let tierRetentionRate = 0;
-
-            if (tierFilter === 'core' && telesale.tierMetrics.core) {
-                const core = telesale.tierMetrics.core;
-                tierCustomers = core.total || 0;
-                tierActive = core.active || 0;
-                tierActiveRate = core.activeRate || 0;
-                tierRetentionRate = core.loyaltyRate || 0;
-            } else if (tierFilter === 'new' && telesale.tierMetrics.new) {
-                const newTier = telesale.tierMetrics.new;
-                tierCustomers = newTier.total || 0;
-                tierActive = newTier.converted || 0; // For new, "active" means converted
-                tierActiveRate = newTier.conversionRate || 0;
-                tierRetentionRate = 0; // Not applicable for new
-            } else if (tierFilter === 'revival' && telesale.tierMetrics.revival) {
-                const revival = telesale.tierMetrics.revival;
-                tierCustomers = revival.total || 0;
-                tierActive = revival.revived || 0;
-                tierActiveRate = revival.total > 0 ? (revival.revived / revival.total) * 100 : 0;
-                tierRetentionRate = 0; // Not applicable for revival
-            }
-
-            return {
-                ...telesale,
-                metrics: {
-                    ...telesale.metrics,
-                    totalCustomers: tierCustomers,
-                    newCustomers: tierActive, // แทนที่ activeCustomers ด้วย newCustomers
-                    newCustomerRate: tierActiveRate // แทนที่ activeRate ด้วย newCustomerRate
-                    // retentionRate ยังคงใช้ค่าเดิม
-                }
-            };
-        });
-
-        return [...mappedDetails].sort((a, b) => {
-            const aVal = a.metrics[sortField];
-            const bVal = b.metrics[sortField];
+        return [...data.telesaleDetails].sort((a, b) => {
+            const aVal = a.metrics[sortField] ?? 0;
+            const bVal = b.metrics[sortField] ?? 0;
             return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
         });
-    }, [data, sortField, sortDirection, tierFilter]);
+    }, [data, sortField, sortDirection]);
 
     // Handle sort
     const handleSort = (field: keyof Metrics) => {
@@ -298,7 +401,7 @@ export default function TelesalePerformancePage() {
 
     // Save all targets
     const saveAllTargets = async () => {
-        setSavingTarget(-1); // Use -1 to indicate "saving all"
+        setSavingTarget(-1);
         try {
             const token = localStorage.getItem('authToken');
             const API_BASE = resolveApiBasePath();
@@ -341,7 +444,6 @@ export default function TelesalePerformancePage() {
         fetchTargets(newMonth, newYear);
     };
 
-
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -361,25 +463,24 @@ export default function TelesalePerformancePage() {
     }
 
     return (
-        <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
+        <div className="p-4 space-y-4 bg-gray-50 min-h-screen">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                         📊 วิเคราะห์ประสิทธิภาพ Telesale
                     </h1>
-                    <p className="text-gray-500 text-sm mt-1">
-                        ข้อมูล {THAI_MONTHS[month]} {year} • Telesale {data?.telesaleCount || 0} คน
+                    <p className="text-gray-500 text-sm">
+                        {THAI_MONTHS[month]} {year} • Telesale {data?.telesaleCount || 0} คน
                     </p>
                 </div>
 
-                {/* Period Selectors */}
-                <div className="flex gap-2 flex-wrap">
-                    {/* Month Selector */}
+                {/* Period Selectors - Monthly Only */}
+                <div className="flex gap-2 flex-wrap items-center">
                     <select
                         value={month}
                         onChange={(e) => setMonth(parseInt(e.target.value))}
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                     >
                         {THAI_MONTHS.slice(1).map((name, idx) => (
                             <option key={idx + 1} value={idx + 1}>{name}</option>
@@ -388,7 +489,7 @@ export default function TelesalePerformancePage() {
                     <select
                         value={year}
                         onChange={(e) => setYear(parseInt(e.target.value))}
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                     >
                         {yearOptions.map(y => (
                             <option key={y} value={y}>{y}</option>
@@ -396,120 +497,109 @@ export default function TelesalePerformancePage() {
                     </select>
                     <button
                         onClick={openTargetModal}
-                        className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2 font-medium"
+                        className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2 font-medium text-sm"
                     >
                         🎯 ตั้งเป้า
                     </button>
                 </div>
             </div>
 
-            {/* ========================================== */}
             {/* TEAM SALES HERO BANNER */}
-            {/* ========================================== */}
-            <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+            <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
-                        <div className="text-sm text-gray-500 mb-1">ยอดขายรวมทีม {THAI_MONTHS[month]} {year}</div>
-                        <div className="text-4xl font-bold tracking-tight text-gray-800">
-                            ฿{formatNumber(data?.teamAverages.totalSales || 0)}
+                        <div className="text-sm text-gray-500 mb-1">ยอดขายรวมทีม {THAI_MONTHS[month]}</div>
+                        <div className="text-3xl font-bold text-gray-800 tracking-tight">
+                            ฿{formatNumber(data?.teamTotals.combinedSales || 0)}
                         </div>
-                        {/* Month over month comparison */}
+                        <div className="text-sm text-gray-500 mt-1">
+                            ปกติ ฿{formatNumber(data?.teamTotals.totalSales || 0)} + Upsell ฿{formatNumber(data?.teamTotals.upsellSales || 0)}
+                        </div>
+                        {/* Month comparison */}
                         {data?.previousMonthSales !== undefined && (
                             <div className="mt-2 flex items-center gap-2">
                                 {(() => {
                                     const prev = data.previousMonthSales || 0;
-                                    const curr = data.teamAverages.totalSales || 0;
+                                    const curr = data.teamTotals.combinedSales || 0;
                                     const diff = curr - prev;
                                     const pct = prev > 0 ? ((diff / prev) * 100).toFixed(1) : '∞';
                                     const isUp = diff >= 0;
                                     return (
-                                        <>
-                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-sm font-medium ${isUp ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                                }`}>
-                                                {isUp ? '📈' : '📉'} {isUp ? '+' : ''}{pct}%
-                                            </span>
-                                            <span className="text-sm text-gray-500">
-                                                เทียบเดือนก่อน (฿{formatNumber(prev)})
-                                            </span>
-                                        </>
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${isUp ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                            {isUp ? '+' : ''}{pct}% vs เดือนก่อน
+                                        </span>
                                     );
                                 })()}
                             </div>
                         )}
                     </div>
-                    <div className="flex gap-6">
-                        <div className="text-center px-4 py-2 bg-gray-50 rounded-lg">
-                            <div className="text-3xl font-bold text-gray-700">{formatNumber(data?.teamAverages.totalOrders || 0)}</div>
-                            <div className="text-sm text-gray-500">ออเดอร์</div>
+                    <div className="flex gap-4 text-center">
+                        <div className="px-4 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                            <div className="text-2xl font-bold text-gray-800">{formatNumber(data?.teamTotals.totalOrders || 0)}</div>
+                            <div className="text-xs text-gray-500">ออเดอร์</div>
                         </div>
-                        <div className="text-center px-4 py-2 bg-gray-50 rounded-lg">
-                            <div className="text-3xl font-bold text-gray-700">{formatNumber(data?.teamAverages.totalCalls || 0)}</div>
-                            <div className="text-sm text-gray-500">สายโทร</div>
+                        <div className="px-4 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                            <div className="text-2xl font-bold text-gray-800">{formatNumber(data?.teamTotals.totalCalls || 0)}</div>
+                            <div className="text-xs text-gray-500">สายโทร</div>
                         </div>
-                        <div className="text-center px-4 py-2 bg-gray-50 rounded-lg">
-                            <div className="text-3xl font-bold text-gray-700">{data?.telesaleCount || 0}</div>
-                            <div className="text-sm text-gray-500">พนักงาน</div>
+                        <div className="px-4 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                            <div className="text-2xl font-bold text-gray-800">{data?.teamTotals.conversionRate || 0}%</div>
+                            <div className="text-xs text-gray-500">ปิดการขาย</div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* ========================================== */}
-            {/* CUSTOMER SEGMENT SUMMARY - Simple Cards */}
-            {/* ========================================== */}
+            {/* Customer Segment Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Orders & Conversion Card */}
+                {/* ลูกค้าใหม่ */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-                    <div className="flex items-center gap-2 mb-3">
-                        <span className="text-2xl">📞</span>
-                        <div>
-                            <div className="font-semibold text-gray-800">ผลโทรเดือนนี้</div>
-                            <div className="text-xs text-gray-500">สายโทร → ออเดอร์</div>
-                        </div>
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-gray-700">ลูกค้าใหม่</span>
                     </div>
                     <div className="flex justify-between items-end">
                         <div>
-                            <div className="text-3xl font-bold text-gray-600">{formatNumber(data?.teamAverages.totalCalls || 0)}</div>
-                            <div className="text-sm text-gray-500">สายโทร</div>
-                        </div>
-                        <div className="text-center">
-                            <div className="text-xl font-bold text-blue-600">{data?.teamAverages.conversionRate || 0}%</div>
-                            <div className="text-xs text-gray-400">ปิดการขาย</div>
+                            <div className="text-3xl font-bold text-gray-800">{formatNumber(data?.teamTotals.newCustCount || 0)}</div>
+                            <div className="text-xs text-gray-500">ถือครอง</div>
                         </div>
                         <div className="text-right">
-                            <div className="text-3xl font-bold text-green-600">{formatNumber(data?.teamAverages.totalOrders || 0)}</div>
-                            <div className="text-sm text-gray-500">ออเดอร์</div>
+                            <div className="text-xl font-bold text-gray-600">{formatNumber(data?.teamTotals.newCustOrders || 0)}</div>
+                            <div className="text-xs text-gray-500">ออเดอร์</div>
                         </div>
                     </div>
                 </div>
 
-                {/* New Customers Card - Uses teamAverages.newCustomers (same as table) */}
+                {/* ลูกค้าเก่า 3 เดือน */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-                    <div className="flex items-center gap-2 mb-3">
-                        <span className="text-2xl">🆕</span>
-                        <div>
-                            <div className="font-semibold text-gray-800">ลูกค้าใหม่</div>
-                            <div className="text-xs text-gray-500">ซื้อครั้งแรก (New Customer)</div>
-                        </div>
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-gray-700">ลูกค้าเก่า 3 เดือน</span>
                     </div>
-                    <div className="text-center">
-                        <div className="text-4xl font-bold text-green-600">{formatNumber(data?.teamAverages.newCustomers || 0)}</div>
-                        <div className="text-sm text-gray-500">คนซื้อครั้งแรกเดือนนี้</div>
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <div className="text-3xl font-bold text-gray-800">{formatNumber(data?.teamTotals.coreCustCount || 0)}</div>
+                            <div className="text-xs text-gray-500">ถือครอง</div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-xl font-bold text-gray-600">{formatNumber(data?.teamTotals.coreCustOrders || 0)}</div>
+                            <div className="text-xs text-gray-500">ซื้อซ้ำ</div>
+                        </div>
                     </div>
                 </div>
 
-                {/* Win-back Card - Uses teamAverages.winbackCustomers (same as table) */}
+                {/* ลูกค้าขุด */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-                    <div className="flex items-center gap-2 mb-3">
-                        <span className="text-2xl">💚</span>
-                        <div>
-                            <div className="font-semibold text-gray-800">กลับมาซื้อ</div>
-                            <div className="text-xs text-gray-500">หายไป 6+ เดือน กลับมาแล้ว</div>
-                        </div>
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-gray-700">ลูกค้าขุด</span>
                     </div>
-                    <div className="text-center">
-                        <div className="text-4xl font-bold text-amber-500">{formatNumber(data?.teamAverages.winbackCustomers || 0)}</div>
-                        <div className="text-sm text-gray-500">🏆 กู้ชีพสำเร็จเดือนนี้</div>
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <div className="text-3xl font-bold text-gray-800">{formatNumber(data?.teamTotals.revivalCustCount || 0)}</div>
+                            <div className="text-xs text-gray-500">ถือครอง</div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-xl font-bold text-gray-600">{formatNumber(data?.teamTotals.revivalCustOrders || 0)}</div>
+                            <div className="text-xs text-gray-500">กู้สำเร็จ</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -517,37 +607,29 @@ export default function TelesalePerformancePage() {
             {/* Rankings Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <RankingCard
-                    title="🏆 อัตราปิดการขายสูงสุด"
+                    title="ยอดขายรวมสูงสุด"
+                    items={data?.rankings.bySales || []}
+                    valuePrefix="฿"
+                    extraInfo={(item) => `Upsell: ฿${formatNumber(item.upsell as number)}`}
+                />
+                <RankingCard
+                    title="อัตราปิดการขายสูงสุด"
                     items={data?.rankings.byConversion || []}
-                    valueLabel="%"
-                    valueKey="value"
+                    valueSuffix="%"
                     extraInfo={(item) => `${item.calls} สาย → ${item.orders} ออเดอร์`}
-                    tooltip="วิธีคิด: (จำนวนออเดอร์ ÷ จำนวนสายโทร) × 100 เช่น 7 ออเดอร์ ÷ 100 สาย = 7%"
                 />
                 <RankingCard
-                    title="🔄 ลูกค้าซื้อซ้ำสูงสุด"
-                    items={data?.rankings.byRetention || []}
-                    valueLabel="%"
-                    valueKey="value"
-                    extraInfo={(item) => `${item.repeat}/${item.total} ซื้อซ้ำ`}
-                    tooltip="ลูกค้าในถัง 39,40 (90 วันหลังขาย) ที่ซื้อซ้ำเดือนนี้ เช่น 59 ซื้อ ÷ 99 คนในถัง = 59.6%"
+                    title="ลูกค้าเก่าซื้อซ้ำสูงสุด"
+                    items={data?.rankings.byCoreRate || []}
+                    valueSuffix="%"
+                    extraInfo={(item) => `${item.orders}/${item.count} ซื้อซ้ำ`}
                 />
                 <RankingCard
-                    title="💰 เฉลี่ยต่อบิลสูงสุด"
-                    items={(data?.rankings.byAov || []).map(item => ({ ...item, value: Math.round(item.value) }))}
+                    title="Upsell สูงสุด"
+                    items={data?.rankings.byUpsell || []}
                     valuePrefix="฿"
-                    valueKey="value"
-                    extraInfo={(item) => `฿${formatNumber(item.sales as number)} / ${item.orders} ออเดอร์`}
-                    tooltip="ยอดเฉลี่ยต่อบิล - ยอดขายรวม ÷ จำนวนออเดอร์ เช่น ฿12,000 ต่อบิล"
-                />
-                <RankingCard
-                    title="⚡ ประสิทธิภาพสูงสุด"
-                    items={(data?.rankings.byEfficiency || []).map(item => ({ ...item, value: Math.round(item.value) }))}
-                    valuePrefix="฿"
-                    valueSuffix="/นาที"
-                    valueKey="value"
-                    extraInfo={(item) => `฿${formatNumber(item.sales as number)} / ${item.minutes} นาที`}
-                    tooltip="วิธีคิด: ยอดขายรวม ÷ เวลาโทรรวม เช่น ฿8,400/นาที"
+                    extraInfo={(item) => `${item.orders} ออเดอร์`}
+                    bgColor="bg-gray-50"
                 />
             </div>
 
@@ -556,185 +638,301 @@ export default function TelesalePerformancePage() {
                 <div className="p-4 border-b border-gray-200">
                     <h2 className="text-lg font-semibold text-gray-800">📋 รายละเอียด Telesale</h2>
                 </div>
-                <div className="overflow-x-auto overflow-y-visible">
-                    <table className="w-full text-sm">
-                        <thead className="bg-gray-50 relative" style={{ overflow: 'visible' }}>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                        <thead className="bg-gray-50 sticky top-0">
                             <tr>
-                                <th className="px-4 py-3 text-left text-gray-600 font-medium">#</th>
-                                <th className="px-4 py-3 text-left text-gray-600 font-medium">ชื่อ</th>
-                                <SortableHeader
-                                    label="สาย"
-                                    field="totalCalls"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="จำนวนสายโทรทั้งหมดในเดือนนี้"
-                                />
-                                <SortableHeader
-                                    label="ออเดอร์"
-                                    field="totalOrders"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="จำนวนออเดอร์ที่สร้างในเดือนนี้ (ไม่นับยกเลิก)"
-                                />
-                                <SortableHeader
-                                    label="ปิดการขาย %"
-                                    field="conversionRate"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="วิธีคิด: (จำนวนออเดอร์ ÷ จำนวนสาย) × 100\nตัวอย่าง: 5 ออเดอร์ ÷ 100 สาย = 5%"
-                                />
-                                <SortableHeader
-                                    label="ยอดขาย"
-                                    field="totalSales"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="ยอดขายรวมในเดือนนี้ (บาท)"
-                                />
-                                <SortableHeader
-                                    label="ลูกค้า"
-                                    field="totalCustomers"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="จำนวนลูกค้าที่เคยสั่งซื้อที่ assign ให้"
-                                />
-                                <SortableHeader
-                                    label="เฉลี่ย/บิล"
-                                    field="aov"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="ยอดเฉลี่ยต่อออเดอร์ (บาท)"
-                                />
-                                <SortableHeader
-                                    label="ลูกค้าใหม่"
-                                    field="newCustomers"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="จำนวนลูกค้าใหม่ (customer_type = 'New Customer')"
-                                />
-                                <SortableHeader
-                                    label="💚 กลับมาซื้อ"
-                                    field="winbackCustomers"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="ลูกค้าเก่าที่กลับมา (ถัง 6-12 เดือน, 1-3 ปี, >3 ปี)"
-                                />
-                                <SortableHeader
-                                    label="ซื้อซ้ำ %"
-                                    field="retentionRate"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="ลูกค้าซื้อซ้ำ (Reorder Customer) ÷ ลูกค้าทั้งหมด × 100"
-                                />
-                                <SortableHeader
-                                    label="เวลาโทร (นาที)"
-                                    field="ahtMinutes"
-                                    currentField={sortField}
-                                    direction={sortDirection}
-                                    onClick={handleSort}
-                                    tooltip="วิธีคิด: เวลารวม ÷ จำนวนสาย\nตัวอย่าง: 100 นาที ÷ 50 สาย = 2 นาที/สาย"
-                                />
-                                {/* Upsell Column Header */}
-                                <th className="px-4 py-3 text-right text-gray-600 font-medium">
-                                    <div className="flex items-center justify-end gap-1">
-                                        <span className="text-purple-600">Upsell</span>
-                                        <span className="text-gray-400 cursor-help" title="ยอดขายจากสินค้าที่เพิ่มในบิลของคนอื่น">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                        </span>
-                                    </div>
+                                <th className="px-2 py-2 text-left text-gray-600 font-medium whitespace-nowrap">#</th>
+                                <th className="px-2 py-2 text-left text-gray-600 font-medium whitespace-nowrap sticky left-0 bg-gray-50 z-10">ชื่อ</th>
+                                <SortableHeader label="ออเดอร์" field="totalOrders" currentField={sortField} direction={sortDirection} onClick={handleSort} />
+                                <SortableHeader label="ปิดการขาย %" field="conversionRate" currentField={sortField} direction={sortDirection} onClick={handleSort} />
+                                <SortableHeader label="ยอดขาย" field="totalSales" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="ยอดขายปกติ (ไม่รวม Upsell)" />
+                                <SortableHeader label="ลค.3เดือน" field="customers90Days" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="ลูกค้า 3 เดือน (basket 39,40)" />
+                                <SortableHeader label="ขายปุ๋ย/ออเดอร์" field="aovFertilizer" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="เฉลี่ย/บิล สินค้าปุ๋ย" />
+                                <SortableHeader label="ขายชีวภัณฑ์/ออเดอร์" field="aovBio" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="เฉลี่ย/บิล สินค้าชีวภัณฑ์" />
+                                {/* ลูกค้าใหม่ */}
+                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap bg-gray-100 border-l-2 border-gray-300" colSpan={3}>
+                                    ลูกค้าใหม่
                                 </th>
-                                {/* Target Progress Column Header */}
-                                <th className="px-4 py-3 text-center text-gray-600 font-medium">
-                                    <div className="flex items-center justify-center gap-1">
-                                        <span className="text-green-600">🎯 เป้า</span>
-                                    </div>
+                                {/* ลูกค้าเก่า */}
+                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap bg-gray-100 border-l-2 border-gray-300" colSpan={3}>
+                                    ลูกค้าเก่า
                                 </th>
+                                {/* ลูกค้าขุด */}
+                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap bg-gray-100 border-l-2 border-gray-300" colSpan={3}>
+                                    ลูกค้าขุด
+                                </th>
+                                {/* Upsell */}
+                                <th className="px-2 py-2 text-center text-blue-600 font-medium whitespace-nowrap bg-blue-50 border-l-2 border-gray-300" colSpan={2}>
+                                    Upsell
+                                </th>
+                                {/* ยอดรวม */}
+                                <th className="px-2 py-2 text-center text-blue-700 font-bold whitespace-nowrap bg-blue-100 border-l-2 border-gray-300">
+                                    ยอดรวม
+                                </th>
+                                {/* เป้า */}
+                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap border-l-2 border-gray-300">🎯 เป้า</th>
+                                {/* สาย - กลุ่มโทรศัพท์ */}
+                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap border-l-2 border-gray-300">สาย</th>
+                                <SortableHeader label="นาที" field="totalMinutes" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="เวลาโทรรวม (นาที)" />
+                                <SortableHeader label="ได้คุย" field="answeredCalls" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="สายที่คุยได้ ≥40 วินาที" />
+                                <SortableHeader label="วันงาน" field="workingDays" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="วันที่ทำงาน" />
+                                <SortableHeader label="นาที/สาย" field="avgMinutesPerCall" currentField={sortField} direction={sortDirection} onClick={handleSort} />
+                                <SortableHeader label="นาที/วัน" field="avgMinutesPerDay" currentField={sortField} direction={sortDirection} onClick={handleSort} />
+                            </tr>
+                            {/* Sub-headers for grouped columns */}
+                            <tr className="text-[10px]">
+                                <th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                                {/* ลูกค้าใหม่ sub-headers */}
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100 border-l-2 border-gray-300">จำนวน</th>
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">ออเดอร์</th>
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">%</th>
+                                {/* ลูกค้าเก่า sub-headers */}
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100 border-l-2 border-gray-300">จำนวน</th>
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">ออเดอร์</th>
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">%</th>
+                                {/* ลูกค้าขุด sub-headers */}
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100 border-l-2 border-gray-300">จำนวน</th>
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">ออเดอร์</th>
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">%</th>
+                                {/* Upsell sub-headers */}
+                                <th className="px-1 py-1 text-center text-blue-600 bg-blue-50 border-l-2 border-gray-300">ออเดอร์</th>
+                                <th className="px-1 py-1 text-center text-blue-600 bg-blue-50">บาท</th>
+                                {/* ยอดรวม */}
+                                <th className="border-l-2 border-gray-300"></th>
+                                {/* เป้า */}
+                                <th className="border-l-2 border-gray-300"></th>
+                                {/* สาย */}
+                                <th className="border-l-2 border-gray-300"></th>
+                                {/* Remaining columns */}
+                                <th></th><th></th><th></th><th></th><th></th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {sortedDetails.map((ts, idx) => (
                                 <tr key={ts.userId} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-gray-500">{idx + 1}</td>
-                                    <td className="px-4 py-3 font-medium text-gray-800">{ts.firstName}</td>
-                                    <td className="px-4 py-3 text-center">{formatNumber(ts.metrics.totalCalls)}</td>
-                                    <td className="px-4 py-3 text-center">{formatNumber(ts.metrics.totalOrders)}</td>
-                                    <td className="px-4 py-3 text-center">
-                                        <RateBadge value={ts.metrics.conversionRate} avg={data?.teamAverages.conversionRate || 0} />
+                                    <td className="px-2 py-2 text-gray-500">{idx + 1}</td>
+                                    <td className="px-2 py-2 font-medium text-gray-800 whitespace-nowrap sticky left-0 bg-white z-10">{ts.firstName}</td>
+                                    <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.totalOrders)}</td>
+                                    <td className="px-2 py-2 text-center">
+                                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${ts.metrics.conversionRate >= 10 ? 'bg-green-100 text-green-700' :
+                                            ts.metrics.conversionRate >= 5 ? 'bg-yellow-100 text-yellow-700' :
+                                                'bg-gray-100 text-gray-600'
+                                            }`}>
+                                            {ts.metrics.conversionRate}%
+                                        </span>
                                     </td>
-                                    <td className="px-4 py-3 text-right">{formatCurrency(ts.metrics.totalSales)}</td>
-                                    <td className="px-4 py-3 text-center">{formatNumber(ts.metrics.totalCustomers)}</td>
-                                    <td className="px-4 py-3 text-right">{formatCurrency(Math.ceil(ts.metrics.aov || 0))}</td>
-                                    <td className="px-4 py-3 text-center">{formatNumber(ts.metrics.newCustomers)}</td>
-                                    {/* กลับมาซื้อ Column */}
-                                    <td className="px-4 py-3 text-center">
-                                        {ts.metrics.winbackCustomers > 0 ? (
-                                            <span className="inline-flex items-center px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 font-medium">
-                                                {formatNumber(ts.metrics.winbackCustomers)}
-                                            </span>
-                                        ) : (
-                                            <span className="text-gray-400">0</span>
-                                        )}
+                                    <td className="px-2 py-2 text-right font-medium">{formatMoney(ts.metrics.totalSales)}</td>
+                                    <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.customers90Days)}</td>
+                                    <td className="px-2 py-2 text-right text-xs">{ts.metrics.aovFertilizer > 0 ? formatMoney(ts.metrics.aovFertilizer) : '-'}</td>
+                                    <td className="px-2 py-2 text-right text-xs">{ts.metrics.aovBio > 0 ? formatMoney(ts.metrics.aovBio) : '-'}</td>
+                                    {/* ลูกค้าใหม่ */}
+                                    <td className="px-2 py-2 text-center border-l-2 border-gray-200">{formatNumber(ts.metrics.newCustCount)}</td>
+                                    <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.newCustOrders)}</td>
+                                    <td className="px-2 py-2 text-center">
+                                        <span className={`text-xs ${ts.metrics.newCustRate > 0 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                                            {ts.metrics.newCustRate}%
+                                        </span>
                                     </td>
-                                    <td className="px-4 py-3 text-center">
-                                        <RateBadge value={ts.metrics.retentionRate} avg={data?.teamAverages.retentionRate || 0} />
+                                    {/* ลูกค้าเก่า */}
+                                    <td className="px-2 py-2 text-center border-l-2 border-gray-200">{formatNumber(ts.metrics.coreCustCount)}</td>
+                                    <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.coreCustOrders)}</td>
+                                    <td className="px-2 py-2 text-center">
+                                        <span className={`text-xs ${ts.metrics.coreCustRate > 0 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                                            {ts.metrics.coreCustRate}%
+                                        </span>
                                     </td>
-                                    <td className="px-4 py-3 text-center">{ts.metrics.ahtMinutes.toFixed(1)}</td>
-                                    {/* Upsell Column */}
-                                    <td className="px-4 py-3 text-right">
-                                        {(ts.metrics.upsellSales ?? 0) > 0 ? (
-                                            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-lg">
-                                                <span className="text-purple-600 font-medium">
-                                                    {formatCurrency(ts.metrics.upsellSales ?? 0)}
-                                                </span>
-                                                <span className="text-purple-400 text-xs">
-                                                    ({ts.metrics.upsellOrders ?? 0})
-                                                </span>
-                                            </div>
-                                        ) : (
-                                            <span className="text-gray-400">-</span>
-                                        )}
+                                    {/* ลูกค้าขุด */}
+                                    <td className="px-2 py-2 text-center border-l-2 border-gray-200">{formatNumber(ts.metrics.revivalCustCount)}</td>
+                                    <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.revivalCustOrders)}</td>
+                                    <td className="px-2 py-2 text-center">
+                                        <span className={`text-xs ${ts.metrics.revivalCustRate > 0 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                                            {ts.metrics.revivalCustRate}%
+                                        </span>
                                     </td>
-                                    {/* Target Progress Cell */}
-                                    <td className="px-4 py-3">
-                                        {(ts.metrics.targetAmount ?? 0) > 0 ? (
+                                    {/* Upsell */}
+                                    <td className="px-2 py-2 text-center bg-blue-50/30 border-l-2 border-gray-200">
+                                        {ts.metrics.upsellOrders > 0 ? (
+                                            <span className="text-blue-600 font-medium">{formatNumber(ts.metrics.upsellOrders)}</span>
+                                        ) : '-'}
+                                    </td>
+                                    <td className="px-2 py-2 text-right bg-blue-50/30">
+                                        {ts.metrics.upsellSales > 0 ? (
+                                            <span className="text-blue-600 font-medium">{formatMoney(ts.metrics.upsellSales)}</span>
+                                        ) : '-'}
+                                    </td>
+                                    {/* ยอดรวม */}
+                                    <td className="px-2 py-2 text-right bg-blue-100 font-bold text-blue-800 border-l-2 border-gray-200">
+                                        {formatCurrency(ts.metrics.combinedSales)}
+                                    </td>
+                                    {/* เป้า */}
+                                    <td className="px-2 py-2 border-l-2 border-gray-200">
+                                        {ts.metrics.targetAmount > 0 ? (
                                             <div className="flex flex-col items-center gap-0.5">
-                                                <span className="text-[10px] text-gray-500">
-                                                    {formatNumber(ts.metrics.combinedSales)}/{formatNumber(ts.metrics.targetAmount ?? 0)}
-                                                </span>
-                                                <div className="w-24 bg-gray-200 rounded-full h-2 overflow-hidden">
+                                                <div className="w-16 bg-gray-200 rounded-full h-1.5 overflow-hidden">
                                                     <div
-                                                        className={`h-2 rounded-full transition-all ${(ts.metrics.targetProgress ?? 0) >= 100 ? 'bg-green-500' :
-                                                            (ts.metrics.targetProgress ?? 0) >= 80 ? 'bg-yellow-500' :
+                                                        className={`h-1.5 rounded-full transition-all ${ts.metrics.targetProgress >= 100 ? 'bg-green-500' :
+                                                            ts.metrics.targetProgress >= 80 ? 'bg-yellow-500' :
                                                                 'bg-red-500'
                                                             }`}
-                                                        style={{ width: `${Math.min(ts.metrics.targetProgress ?? 0, 100)}%` }}
+                                                        style={{ width: `${Math.min(ts.metrics.targetProgress, 100)}%` }}
                                                     />
                                                 </div>
-                                                <span className={`text-[10px] font-medium ${(ts.metrics.targetProgress ?? 0) >= 100 ? 'text-green-600' :
-                                                    (ts.metrics.targetProgress ?? 0) >= 80 ? 'text-yellow-600' :
+                                                <span className={`text-[10px] font-medium ${ts.metrics.targetProgress >= 100 ? 'text-green-600' :
+                                                    ts.metrics.targetProgress >= 80 ? 'text-yellow-600' :
                                                         'text-red-600'
                                                     }`}>
-                                                    {ts.metrics.targetProgress?.toFixed(0)}%
+                                                    {ts.metrics.targetProgress.toFixed(0)}%
                                                 </span>
                                             </div>
                                         ) : (
-                                            <span className="text-gray-400 text-xs">ยังไม่ตั้งเป้า</span>
+                                            <span className="text-gray-400 text-[10px]">-</span>
                                         )}
                                     </td>
+                                    {/* สาย */}
+                                    <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.totalCalls)}</td>
+                                    <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes.toFixed(0)}</td>
+                                    <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.answeredCalls)}</td>
+                                    <td className="px-2 py-2 text-center">{ts.metrics.workingDays.toFixed(1)}</td>
+                                    <td className="px-2 py-2 text-center">{ts.metrics.avgMinutesPerCall.toFixed(1)}</td>
+                                    <td className={`px-2 py-2 text-center font-medium ${ts.metrics.avgMinutesPerDay >= 100 ? 'bg-green-100 text-green-700' :
+                                        ts.metrics.avgMinutesPerDay >= 80 ? 'bg-red-50 text-red-600' :
+                                            ts.metrics.avgMinutesPerDay >= 60 ? 'bg-red-100 text-red-700' :
+                                                ts.metrics.avgMinutesPerDay >= 40 ? 'bg-red-200 text-red-800' :
+                                                    'bg-red-300 text-red-900'
+                                        }`}>{ts.metrics.avgMinutesPerDay.toFixed(0)}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            {/* ================================================ */}
+            {/* DAILY KPI TABLE - Separate Section */}
+            {/* ================================================ */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <h2 className="text-lg font-bold text-gray-800">ตรวจสอบ KPI รายวัน</h2>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                const d = new Date(dailyDate);
+                                d.setDate(d.getDate() - 1);
+                                setDailyDate(d.toISOString().split('T')[0]);
+                            }}
+                            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition-colors"
+                            title="วันก่อนหน้า"
+                        >
+                            ←
+                        </button>
+                        <input
+                            type="date"
+                            value={dailyDate}
+                            onChange={(e) => setDailyDate(e.target.value)}
+                            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                        <button
+                            onClick={() => {
+                                const d = new Date(dailyDate);
+                                d.setDate(d.getDate() + 1);
+                                setDailyDate(d.toISOString().split('T')[0]);
+                            }}
+                            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition-colors"
+                            title="วันถัดไป"
+                        >
+                            →
+                        </button>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    {dailyLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                        </div>
+                    ) : (
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="bg-gray-50 text-gray-700">
+                                    <th className="px-2 py-2 text-left font-medium" rowSpan={2}>#</th>
+                                    <th className="px-2 py-2 text-left font-medium" rowSpan={2}>ชื่อ</th>
+                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>สายที่โทร<br /><span className="text-xs text-gray-500 font-normal">ทั้งหมด</span></th>
+                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>นาทีที่โทร<br /><span className="text-xs text-gray-500 font-normal">ทั้งหมด</span></th>
+                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap cursor-help" rowSpan={2} title="นับเฉพาะสายที่คุยได้ตั้งแต่ 40 วินาทีขึ้นไป">ได้คุย<br /><span className="text-xs text-gray-500 font-normal">(≥40 วินาที)</span></th>
+                                    {/* ลูกค้าใหม่ Group */}
+                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-green-100" colSpan={2}>ลูกค้าใหม่</th>
+                                    {/* ลูกค้าเก่า Group */}
+                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-blue-100" colSpan={2}>ลูกค้าเก่า</th>
+                                    {/* ลูกค้าขุด Group */}
+                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-orange-100" colSpan={2}>ลูกค้าขุด</th>
+                                    {/* Upsell Group */}
+                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-purple-100" colSpan={2}>Upsell</th>
+                                    {/* รวม */}
+                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300" rowSpan={2}>รวม<br /><span className="text-xs text-gray-500 font-normal">ออเดอร์</span></th>
+                                    <th className="px-2 py-2 text-center font-medium" rowSpan={2}>ยอดขาย<br /><span className="text-xs text-gray-500 font-normal">รวม</span></th>
+                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>% ปิด</th>
+                                </tr>
+                                <tr className="bg-gray-50 text-gray-600 text-xs">
+                                    {/* ลูกค้าใหม่ sub */}
+                                    <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-green-50">ออเดอร์</th>
+                                    <th className="px-1 py-1 text-center bg-green-50">ยอดขาย</th>
+                                    {/* ลูกค้าเก่า sub */}
+                                    <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-blue-50">ออเดอร์</th>
+                                    <th className="px-1 py-1 text-center bg-blue-50">ยอดขาย</th>
+                                    {/* ลูกค้าขุด sub */}
+                                    <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-orange-50">ออเดอร์</th>
+                                    <th className="px-1 py-1 text-center bg-orange-50">ยอดขาย</th>
+                                    {/* Upsell sub */}
+                                    <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-purple-50">ออเดอร์</th>
+                                    <th className="px-1 py-1 text-center bg-purple-50">ยอดขาย</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {dailyData?.telesaleDetails.map((ts, idx) => {
+                                    const totalOrders = ts.metrics.newCustOrders + ts.metrics.coreCustOrders + ts.metrics.revivalCustOrders + ts.metrics.upsellOrders;
+                                    const closeRate = ts.metrics.totalCalls > 0
+                                        ? ((totalOrders / ts.metrics.totalCalls) * 100).toFixed(1)
+                                        : '0.0';
+                                    return (
+                                        <tr key={ts.userId} className="hover:bg-gray-50">
+                                            <td className="px-2 py-2 text-gray-500">{idx + 1}</td>
+                                            <td className="px-2 py-2 font-medium text-gray-800">{ts.name}</td>
+                                            <td className="px-2 py-2 text-center">{ts.metrics.totalCalls || '-'}</td>
+                                            <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes > 0 ? ts.metrics.totalMinutes.toFixed(0) : '-'}</td>
+                                            <td className="px-2 py-2 text-center">{ts.metrics.answeredCalls || '-'}</td>
+                                            {/* ลูกค้าใหม่ */}
+                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-green-50/30">{ts.metrics.newCustOrders || '-'}</td>
+                                            <td className="px-2 py-2 text-center bg-green-50/30 text-green-700">{ts.metrics.newCustSales > 0 ? `฿${formatMoney(ts.metrics.newCustSales)}` : '-'}</td>
+                                            {/* ลูกค้าเก่า */}
+                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-blue-50/30">{ts.metrics.coreCustOrders || '-'}</td>
+                                            <td className="px-2 py-2 text-center bg-blue-50/30 text-blue-700">{ts.metrics.coreCustSales > 0 ? `฿${formatMoney(ts.metrics.coreCustSales)}` : '-'}</td>
+                                            {/* ลูกค้าขุด */}
+                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-orange-50/30">{ts.metrics.revivalCustOrders || '-'}</td>
+                                            <td className="px-2 py-2 text-center bg-orange-50/30 text-orange-700">{ts.metrics.revivalCustSales > 0 ? `฿${formatMoney(ts.metrics.revivalCustSales)}` : '-'}</td>
+                                            {/* Upsell */}
+                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-purple-50/30">{ts.metrics.upsellOrders || '-'}</td>
+                                            <td className="px-2 py-2 text-center bg-purple-50/30 text-purple-700">{ts.metrics.upsellSales > 0 ? `฿${formatMoney(ts.metrics.upsellSales)}` : '-'}</td>
+                                            {/* รวม */}
+                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 font-bold">{totalOrders || '-'}</td>
+                                            <td className="px-2 py-2 text-center font-medium text-green-600">{ts.metrics.combinedSales > 0 ? `฿${formatMoney(ts.metrics.combinedSales)}` : '-'}</td>
+                                            <td className={`px-2 py-2 text-center font-medium ${parseFloat(closeRate) >= 5 ? 'text-green-600' :
+                                                parseFloat(closeRate) >= 2 ? 'text-yellow-600' :
+                                                    'text-red-600'
+                                                }`}>{parseFloat(closeRate) > 0 ? `${closeRate}%` : '-'}</td>
+                                        </tr>
+                                    );
+                                })}
+                                {(!dailyData || dailyData.telesaleDetails.length === 0) && (
+                                    <tr>
+                                        <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
+                                            ไม่มีข้อมูลสำหรับวันที่เลือก
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
 
@@ -775,10 +973,6 @@ export default function TelesalePerformancePage() {
 
                         {/* Modal Body */}
                         <div className="px-6 py-4 overflow-y-auto max-h-[50vh]">
-                            <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mb-4">
-                                <span className="text-orange-700 font-medium">Supervisor Telesale ({targetTelesales.length} คน)</span>
-                            </div>
-
                             {targetLoading ? (
                                 <div className="flex items-center justify-center py-8">
                                     <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
@@ -787,39 +981,30 @@ export default function TelesalePerformancePage() {
                                 <div className="space-y-3">
                                     {targetTelesales.map((ts) => (
                                         <div key={ts.user_id} className="flex items-center gap-3 py-2 border-b border-gray-100">
-                                            {/* Avatar */}
-                                            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold">
+                                            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold text-sm">
                                                 {ts.first_name?.charAt(0).toUpperCase() || 'U'}
                                             </div>
-                                            {/* Name */}
                                             <div className="flex-1">
-                                                <div className="font-medium text-gray-800">{ts.first_name} {ts.last_name}</div>
-                                                <div className="text-xs text-gray-500">ID: {ts.user_id}</div>
+                                                <div className="font-medium text-gray-800 text-sm">{ts.first_name} {ts.last_name}</div>
                                             </div>
-                                            {/* Target Input */}
                                             <div className="flex items-center gap-2">
-                                                <span className="text-gray-400">฿</span>
                                                 <input
                                                     type="number"
-                                                    value={ts.target_amount || ''}
+                                                    value={ts.target_amount}
                                                     onChange={(e) => {
-                                                        const newVal = parseFloat(e.target.value) || 0;
-                                                        setTargetTelesales(prev =>
-                                                            prev.map(t => t.user_id === ts.user_id ? { ...t, target_amount: newVal } : t)
-                                                        );
+                                                        const val = parseFloat(e.target.value) || 0;
+                                                        setTargetTelesales(prev => prev.map(t =>
+                                                            t.user_id === ts.user_id ? { ...t, target_amount: val } : t
+                                                        ));
                                                     }}
+                                                    onBlur={() => saveTarget(ts.user_id, ts.target_amount)}
+                                                    className="w-28 px-2 py-1 border border-gray-300 rounded text-right text-sm"
                                                     placeholder="0"
-                                                    className="w-24 px-2 py-1 border border-gray-300 rounded-lg text-right focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                                 />
+                                                {savingTarget === ts.user_id && (
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-green-500"></div>
+                                                )}
                                             </div>
-                                            {/* Save Button */}
-                                            <button
-                                                onClick={() => saveTarget(ts.user_id, ts.target_amount)}
-                                                disabled={savingTarget === ts.user_id}
-                                                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
-                                            >
-                                                {savingTarget === ts.user_id ? '...' : 'บันทึก'}
-                                            </button>
                                         </div>
                                     ))}
                                 </div>
@@ -827,188 +1012,24 @@ export default function TelesalePerformancePage() {
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
+                        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
                             <button
                                 onClick={() => setShowTargetModal(false)}
-                                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm"
                             >
-                                ปิด
+                                ยกเลิก
                             </button>
                             <button
                                 onClick={saveAllTargets}
-                                disabled={savingTarget === -1}
-                                className="px-5 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 font-medium flex items-center gap-2"
+                                disabled={savingTarget !== null}
+                                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm font-medium"
                             >
-                                {savingTarget === -1 ? (
-                                    <>
-                                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
-                                        กำลังบันทึก...
-                                    </>
-                                ) : (
-                                    <>💾 บันทึกทั้งหมด</>
-                                )}
+                                {savingTarget === -1 ? 'กำลังบันทึก...' : 'บันทึกทั้งหมด'}
                             </button>
                         </div>
                     </div>
                 </div>
             )}
         </div>
-    );
-}
-
-// ==========================================
-// Sub-components
-// ==========================================
-interface MetricCardProps {
-    title: string;
-    value: string;
-    subtitle: string;
-    icon: string;
-    detail: string;
-    tooltip: string;
-}
-
-function MetricCard({ title, value, subtitle, icon, detail, tooltip }: MetricCardProps) {
-    return (
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative group">
-            <div className="flex items-start justify-between">
-                <div>
-                    <div className="flex items-center gap-1">
-                        <p className="text-sm font-medium text-gray-500">{title}</p>
-                        <span className="text-gray-400 cursor-help" title={tooltip}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </span>
-                    </div>
-                    <p className="text-3xl font-bold mt-1 text-gray-900">{value}</p>
-                    <p className="text-xs mt-1 text-gray-400">{subtitle}</p>
-                </div>
-                <span className="text-2xl">{icon}</span>
-            </div>
-            <p className="text-xs mt-3 text-gray-400">{detail}</p>
-            {/* Tooltip popup */}
-            <div className="absolute hidden group-hover:block bottom-full left-0 mb-2 w-64 bg-gray-800 text-white text-xs rounded-lg p-3 shadow-lg z-10 whitespace-pre-line">
-                {tooltip}
-                <div className="absolute top-full left-4 w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-gray-800"></div>
-            </div>
-        </div>
-    );
-}
-
-interface RankingCardProps {
-    title: string;
-    items: RankingItem[];
-    valuePrefix?: string;
-    valueSuffix?: string;
-    valueLabel?: string;  // Legacy support
-    valueKey: string;
-    extraInfo: (item: RankingItem) => string;
-    tooltip?: string;
-}
-
-function RankingCard({ title, items, valuePrefix, valueSuffix, valueLabel, extraInfo, tooltip }: RankingCardProps) {
-    return (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between relative group">
-                <h3 className="font-semibold text-gray-800">{title}</h3>
-                {tooltip && (
-                    <>
-                        <span className="text-gray-400 cursor-help">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </span>
-                        <div className="absolute hidden group-hover:block top-full right-0 mt-2 w-64 bg-gray-800 text-white text-xs rounded-lg p-3 shadow-lg z-50 whitespace-pre-line text-left">
-                            {tooltip}
-                            <div className="absolute bottom-full right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-gray-800"></div>
-                        </div>
-                    </>
-                )}
-            </div>
-            <div className="divide-y divide-gray-100">
-                {items.slice(0, 5).map((item, idx) => (
-                    <div key={item.userId} className="px-4 py-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-100 text-yellow-700' :
-                                idx === 1 ? 'bg-gray-100 text-gray-600' :
-                                    idx === 2 ? 'bg-orange-100 text-orange-700' :
-                                        'bg-gray-50 text-gray-500'
-                                }`}>
-                                {idx + 1}
-                            </span>
-                            <span className="text-sm text-gray-800">{item.name}</span>
-                        </div>
-                        <div className="text-right">
-                            <span className="font-semibold text-gray-800">
-                                {valuePrefix || ''}{formatNumber(item.value)}{valueSuffix || valueLabel || ''}
-                            </span>
-                            <p className="text-xs text-gray-400">{extraInfo(item)}</p>
-                        </div>
-                    </div>
-                ))}
-                {items.length === 0 && (
-                    <div className="px-4 py-4 text-center text-gray-400 text-sm">
-                        ไม่มีข้อมูล
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-interface SortableHeaderProps {
-    label: string;
-    field: keyof Metrics;
-    currentField: keyof Metrics;
-    direction: 'asc' | 'desc';
-    onClick: (field: keyof Metrics) => void;
-    tooltip?: string;
-}
-
-function SortableHeader({ label, field, currentField, direction, onClick, tooltip }: SortableHeaderProps) {
-    const isActive = currentField === field;
-    return (
-        <th
-            className="px-4 py-3 text-center text-gray-600 font-medium cursor-pointer hover:bg-gray-100 select-none relative group"
-            onClick={() => onClick(field)}
-        >
-            <div className="flex items-center justify-center gap-1">
-                {label}
-                {tooltip && (
-                    <span className="text-gray-400 cursor-help">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </span>
-                )}
-                {isActive && (
-                    <span className="text-blue-500">
-                        {direction === 'desc' ? '↓' : '↑'}
-                    </span>
-                )}
-            </div>
-            {tooltip && (
-                <div className="absolute hidden group-hover:block top-full left-1/2 transform -translate-x-1/2 mt-2 w-56 bg-gray-800 text-white text-xs rounded-lg p-2 shadow-lg z-50 whitespace-pre-line text-left">
-                    {tooltip}
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-gray-800"></div>
-                </div>
-            )}
-        </th>
-    );
-}
-
-interface RateBadgeProps {
-    value: number;
-    avg: number;
-}
-
-function RateBadge({ value, avg }: RateBadgeProps) {
-    const isAboveAvg = value >= avg;
-    return (
-        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${isAboveAvg ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-            }`}>
-            {value.toFixed(1)}%
-        </span>
     );
 }
