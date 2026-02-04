@@ -1862,6 +1862,13 @@ export async function validateTrackingBulk(items: { orderId: string; trackingNum
   });
 }
 
+export async function validateReturnCandidates(candidates: { trackingNumber: string; index: number }[], mode: string) {
+  return apiFetch('Orders/validate_return_candidates.php', {
+    method: 'POST',
+    body: JSON.stringify({ candidates, mode })
+  });
+}
+
 /**
  * Log CSV export to database
  */
@@ -2134,6 +2141,8 @@ export async function getReturnOrders() {
     }
   });
 }
+
+
 
 
 
