@@ -547,7 +547,7 @@ const App: React.FC = () => {
       'Marketing Dashboard': 'marketing.dashboard',
       'Ads Input': 'marketing.ads_input',
       'Accounting Report': 'accounting.report',
-      'Return Management': 'nav.return_management',
+      'จัดการตีกลับ': 'nav.return_management',
     };
 
     // Check if current page needs permission check
@@ -7547,7 +7547,7 @@ const App: React.FC = () => {
             onBulkUpdateTracking={handleBulkUpdateTracking}
           />
         );
-      case "Return Management":
+      case "จัดการตีกลับ":
         return <ReturnManagementPage user={currentUser} />;
 
       // PROCESSED: System / Roles

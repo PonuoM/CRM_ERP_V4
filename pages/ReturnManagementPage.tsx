@@ -1,23 +1,35 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Order, OrderStatus } from "../types";
-import { listOrders, saveReturnOrders, getReturnOrders } from "../services/api";
+import { listOrders, saveReturnOrders, getReturnOrders, getOrder } from "../services/api";
 import * as XLSX from "xlsx";
 import {
   Search,
-  Upload,
+  Plus,
+  Filter,
   RefreshCw,
-  FileText,
   CheckCircle,
+  X,
+  Upload,
+  Download,
+  Calendar,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  MoreVertical,
+  Edit2,
+  Trash2,
+  FileText,
   AlertCircle,
+  Clock,
+  ThumbsUp,
+  AlertTriangle,
+  Copy,
   XCircle,
   ArrowLeftRight,
-  Download,
-  Clipboard,
-  X,
-  Copy,
-  Clock,
 } from "lucide-react";
 import OrderDetailModal from "../components/OrderDetailModal";
+import BulkReturnImport from "../components/BulkReturnImport";
+import Spinner from "../components/Spinner";
 
 interface ReturnManagementPageProps {
   user: User;
@@ -54,6 +66,11 @@ interface VerifiedOrder {
   status: string;
   note: string;
   created_at: string;
+  // Extra fields joined
+  total_amount?: number;
+  order_date?: string;
+  main_order_id?: string;
+  updated_at?: string;
 }
 
 const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
@@ -66,8 +83,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const [matchResults, setMatchResults] = useState<MatchResult[]>([]);
   // Tabs state
   const [activeTab, setActiveTab] = useState<
-    "pending" | "checking" | "verified"
-  >("pending");
+    "pending" | "returning" | "returned" | "good" | "damaged" | "lost" | "delivered"
+  >("returning");
   const [verifiedOrders, setVerifiedOrders] = useState<VerifiedOrder[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,8 +100,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   // Import Status Selection
   const [importTargetStatus, setImportTargetStatus] = useState<
-    "returning" | "returned" | null
-  >(null);
+    "returning" | "returned"
+  >("returning");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [isImportStatusModalOpen, setIsImportStatusModalOpen] = useState(false);
 
@@ -98,33 +115,25 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     trackingNumber: string;
 
     subOrderId: string | null;
-    status: "pending" | "returned" | "returning" | "delivered" | "delivering" | "other";
+    status: "pending" | "returned" | "returning" | "delivered" | "delivering" | "other" | "lost" | "good" | "damaged";
     collectedAmount?: number;
     note: string;
     items: any[];
+    originalStatus: string; // Track initial status for constraints
   }
   const [manageRows, setManageRows] = useState<ManageRow[]>([]);
 
-  // Update preview when content changes
-  useEffect(() => {
-    if (!pasteContent) {
-      setPreviewRows([]);
-      return;
-    }
-    const rows = pasteContent
-      .trim()
-      .split(/\r?\n/)
-      .map((row) => row.split("\t"));
-    setPreviewRows(rows);
-  }, [pasteContent]);
+  // State for Bulk Import Modal
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [bulkImportMode, setBulkImportMode] = useState<"returning" | "returned" | "good" | "damaged" | "lost">("returning");
 
-  // Auto-focus on open
-  useEffect(() => {
-    if (isPasteModalOpen) {
-      // Slight delay to allow render
-      setTimeout(() => pasteInputRef.current?.focus(), 100);
-    }
-  }, [isPasteModalOpen]);
+  // Pagination State
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    totalPages: 1
+  });
 
   useEffect(() => {
     if (managingOrder) {
@@ -187,6 +196,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               status: "pending",
               collectedAmount: 0,
               note: "",
+              originalStatus: "pending",
               items: relevantItems,
             });
           }
@@ -205,6 +215,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               status: "pending",
               collectedAmount: 0,
               note: "",
+              originalStatus: "pending",
               items: [], // Cannot determine specific items without subOrderId mapping
             });
           }
@@ -221,13 +232,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               status: "pending",
               collectedAmount: 0,
               note: "",
+              originalStatus: "pending",
               items: [],
             });
           }
         });
       }
-
-
 
       // Remove duplicates based on tracking number if any
       const uniqueRows = rows.filter(
@@ -249,9 +259,13 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             ...row,
             status: verified.status as any,
             note: verified.note || "",
+            originalStatus: verified.status as any, // Store the status from DB
           };
         }
-        return row;
+        return {
+          ...row,
+          originalStatus: "pending", // If not found in verifiedOrders, treat as pending
+        };
       });
 
       setManageRows(mergedRows);
@@ -259,42 +273,43 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   }, [managingOrder, verifiedOrders]);
 
   useEffect(() => {
-    fetchOrders();
-    fetchVerifiedOrders(); // Always fetch to support filtering logic in Pending tab
-  }, [user.companyId, activeTab]);
+    // Reset to page 1 when tab changes, then fetch
+    setPagination(prev => ({ ...prev, page: 1 }));
+  }, [activeTab]);
+
+  useEffect(() => {
+    fetchVerifiedOrders();
+  }, [user.companyId, activeTab, pagination.page]);
 
   const fetchVerifiedOrders = async () => {
     try {
-      const res = await getReturnOrders();
+      setLoading(true);
+
+      const res = await getReturnOrders({
+        status: activeTab,
+        page: pagination.page,
+        limit: pagination.limit
+      });
+
       if (res && res.status === "success") {
         setVerifiedOrders(res.data);
+        if (res.pagination) {
+          setPagination(prev => ({
+            ...prev,
+            total: res.pagination.total,
+            totalPages: res.pagination.totalPages
+          }));
+        }
       }
     } catch (err) {
       console.error("Failed to fetch verified orders", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      let mode = "pending";
-      if (activeTab === "checking") mode = "partial";
-      if (activeTab === "verified") mode = "verified";
-
-      const res = await listOrders({
-        companyId: user.companyId,
-        orderStatus: OrderStatus.Returned,
-        returnMode: mode,
-        pageSize: 1000,
-      });
-      if (res.ok) {
-        setOrders(Array.isArray(res.orders) ? res.orders : []);
-      }
-    } catch (err) {
-      console.error("Failed to fetch returned orders", err);
-    } finally {
-      setLoading(false);
-    }
+    // Legacy fetch for Pending/Checking logic (kept as is)
   };
 
   const handleSearchByTracking = async () => {
@@ -357,7 +372,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       // To be safe: If 2 columns -> Tracking, Note. If 3 columns -> Tracking, Amount(ignored), Note?
       // The prompt says "remove column amount from template... import system don't need to store amount".
       // Assuming user uses NEW template: Column A = Tracking, Column B = Note.
-      const rawNote = cols[1] ? cols[1].trim() : "";
+      const rawNote = cols[1] ? cols[1].at(0) === '=' ? cols[1].trim().substring(1) : cols[1].trim() : ""; // Handle Excel formula paste
 
       if (rawOrder) {
         parsed.push({
@@ -369,7 +384,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
     if (parsed.length > 0) {
       setImportedData(parsed);
-      performMatching(parsed, orders, verifiedOrders);
+      performMatching(parsed, orders, verifiedOrders, importTargetStatus || "returned");
       setMode("verify");
       setIsPasteModalOpen(false);
       setPasteContent("");
@@ -406,9 +421,10 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       // Prepare payload for all actioned items
       const payload = actionRows.map((r) => ({
         sub_order_id: r.subOrderId || managingOrder?.id || "", // Fallback to main ID if sub is missing
-        status: r.status, // Send status 'returned' or 'delivered'
+        status: r.status || "returned", // Use row status directly (Manual Manage Mode)
         collected_amount: r.collectedAmount || 0,
         note: r.note || "",
+        tracking_number: r.trackingNumber // Essential for new flow
       }));
 
       const res = await saveReturnOrders(payload);
@@ -436,35 +452,34 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       // Format 1: 241225-0001 (Main)
       // Format 2: 241225-0001-1 (Sub/Box)
       // Logic: Extract the main order ID from sub_order_id by removing the last part
-      const parts = v.sub_order_id.split("-");
-      const mainOrderId =
-        parts.length > 1 ? parts.slice(0, -1).join("-") : v.sub_order_id;
+      const subOrderId = v.sub_order_id || "";
+      const parts = subOrderId.split("-");
+      // Check if last part looks like a box number (numeric)
+      const lastPart = parts[parts.length - 1];
+      const isBoxNumber = /^\d+$/.test(lastPart) && parts.length > 2;
+      const mainOrderId = isBoxNumber
+        ? parts.slice(0, -1).join("-")
+        : subOrderId;
 
-      // First, try to find the order by the main order ID
-      const res = await listOrders({
-        companyId: user.companyId,
-        orderId: mainOrderId,
-        pageSize: 1,
-      });
+      // Use getOrder for single order lookup (path-based: /orders/{id})
+      const res = await getOrder(mainOrderId);
 
-      if (res.ok && res.orders.length > 0) {
-        setManagingOrder(res.orders[0]);
-      } else {
-        // If not found by main order ID, try with tracking number if available
-        if (v.tracking_number) {
-          const res2 = await listOrders({
-            companyId: user.companyId,
-            trackingNumber: v.tracking_number,
-            pageSize: 1,
-          });
-          if (res2.ok && res2.orders.length > 0) {
-            setManagingOrder(res2.orders[0]);
-          } else {
-            alert("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
-          }
+      if (res && res.ok && res.order) {
+        setManagingOrder(res.order);
+      } else if (v.tracking_number) {
+        // Fallback: try with tracking number if not found by ID
+        const res2 = await listOrders({
+          companyId: user.companyId,
+          trackingNumber: v.tracking_number,
+          pageSize: 1,
+        });
+        if (res2.ok && res2.orders.length > 0) {
+          setManagingOrder(res2.orders[0]);
         } else {
           alert("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
         }
+      } else {
+        alert("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
       }
     } catch (err) {
       console.error(err);
@@ -481,7 +496,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     // If no status selected, default to 'returned' or handle error (Should not happen with new flow)
     const targetStatus = importTargetStatus || "returned";
 
-    processImportFile(file, targetStatus);
+    processImportFile(file, targetStatus as "returning" | "returned");
 
     // Reset input
     e.target.value = "";
@@ -582,7 +597,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         new Map(allOrders.map((o) => [o.id, o])).values(),
       );
 
-      performMatching(parsed, uniqueOrders, verifiedOrders);
+      performMatching(parsed, uniqueOrders, verifiedOrders, status);
       setMode("verify");
       setLoading(false);
     };
@@ -593,107 +608,100 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     imported: ImportRow[],
     systemOrders: Order[],
     verifiedList: VerifiedOrder[],
+    targetStatus: "returning" | "returned"
   ) => {
     const results: MatchResult[] = [];
     const matchedOrderIds = new Set<string>();
 
     imported.forEach((row) => {
-      // Find by Tracking Number OR Order ID
-      // Find by Tracking Number OR Order ID
+      // Find matches in System Orders (for Tracking/ID validation)
       const matched = systemOrders.find((o) => {
-        // 1. Check Arrays (trackingNumbers)
-        if (
-          Array.isArray(o.trackingNumbers) &&
-          o.trackingNumbers.some((t) => t.includes(row.orderNumber))
-        )
-          return true;
-
-        // 2. Check Order ID
+        // ... (Logic same as before, check tracking/ID)
         if (o.id === row.orderNumber) return true;
-
-        // 3. Check trackingDetails (Handle both camelCase and snake_case)
+        if (Array.isArray(o.trackingNumbers) && o.trackingNumbers.some(t => t.includes(row.orderNumber))) return true;
+        const rawT = (o as any).tracking_numbers;
+        if (typeof rawT === 'string' && rawT.includes(row.orderNumber)) return true;
         if (Array.isArray(o.trackingDetails)) {
-          const found = o.trackingDetails.some((t: any) => {
-            const tNum = t.trackingNumber || t.tracking_number;
-            return tNum && tNum.includes(row.orderNumber);
-          });
-          if (found) return true;
+          return o.trackingDetails.some((d: any) =>
+            (d.trackingNumber?.includes(row.orderNumber)) || (d.tracking_number?.includes(row.orderNumber))
+          );
         }
-
-        // 4. Check tracking_numbers string (snake_case from API)
-        const tStr = (o as any).tracking_numbers;
-        if (typeof tStr === 'string' && tStr.includes(row.orderNumber)) {
-          return true;
-        }
-
         return false;
       });
 
-      if (matched) {
-        // Determine Sub Order ID
-        let subOrderId = null;
-        // Case 1: Matched by Tracking Number
-        if (Array.isArray(matched.trackingDetails)) {
-          const detail = matched.trackingDetails.find((d: any) => {
-            const tNum = d.trackingNumber || d.tracking_number;
-            return tNum === row.orderNumber;
-          });
-          if (detail && detail.order_id) {
-            subOrderId = detail.order_id;
-          }
-        }
-        // Case 2: Matched by Sub Order ID directly (if input matches an item's order_id)
-        if (!subOrderId && Array.isArray(matched.items)) {
-          const item = matched.items.find(
-            (i) => i.order_id === row.orderNumber,
-          );
-          if (item) {
-            subOrderId = item.order_id;
-          }
-        }
+      // Find Existing Return Record (in order_returns)
+      const existingReturn = verifiedList.find(v =>
+        v.tracking_number === row.orderNumber ||
+        v.sub_order_id === row.orderNumber ||
+        v.sub_order_id?.startsWith(row.orderNumber + "-")
+      );
 
-        matchedOrderIds.add(matched.id);
-        // Defensive: Handle missing totalAmount and snake_case
-        // Defensive: Handle missing totalAmount and snake_case
-        // const sysAmount = getOrderAmount(matched);
-        // const diff = Math.abs(sysAmount - row.amount); // No amount check anymore
-        results.push({
-          importRow: row,
-          matchedOrder: matched,
-          matchedSubOrderId: subOrderId,
-          status: "matched", // Always match if ID found
-          diff: 0,
-        });
-      } else {
-        // Check if it's already verified
-        const alreadyVerified = verifiedList.find(
-          (v) =>
-            v.tracking_number === row.orderNumber ||
-            v.sub_order_id === row.orderNumber ||
-            v.sub_order_id?.startsWith(row.orderNumber + "-"),
-        );
+      // Branch Logic based on Target Status
+      if (targetStatus === 'returning') {
+        // Rule: Must match System Order AND NOT exist in Returns (or exist but be cancelled/reset?)
+        // Requirement: "ต้องไม่มีข้อมูลใน order_returns"
 
-        if (alreadyVerified) {
+        if (existingReturn) {
           results.push({
             importRow: row,
-            matchedSubOrderId: alreadyVerified.sub_order_id,
-            status: "already_verified",
-            diff: 0, // Assume 0 or calculate if verified amount differs? Assume 0 for status check.
+            matchedSubOrderId: existingReturn.sub_order_id,
+            status: "already_verified", // Interpret as "Already in Returns"
+            diff: 0
+          });
+        } else if (matched) {
+          // Valid New Return
+          // Resolve SubOrder
+          let subOrderId = matched.id; // Default
+          // Try to find specific sub order from tracking
+          // ... (Keep existing resolution logic)
+          if (Array.isArray(matched.trackingDetails)) {
+            const detail = matched.trackingDetails.find((d: any) => (d.trackingNumber || d.tracking_number) === row.orderNumber);
+            if (detail && detail.order_id) subOrderId = detail.order_id;
+          }
+
+          results.push({
+            importRow: row,
+            matchedOrder: matched,
+            matchedSubOrderId: subOrderId,
+            status: "matched", // Ready to Return
+            diff: 0
           });
         } else {
           results.push({
             importRow: row,
-            status: "unmatched_file",
-            diff: 0,
+            status: "unmatched_system",
+            diff: 0
           });
+        }
+
+      } else if (targetStatus === 'returned') {
+        // Rule: Must EXIST in Returns AND Status == 'returning'
+        if (!existingReturn) {
+          results.push({
+            importRow: row,
+            status: "unmatched_file", // "Not found in Returns"
+            diff: 0
+          });
+        } else {
+          if (existingReturn.status === 'returning') {
+            results.push({
+              importRow: row,
+              matchedSubOrderId: existingReturn.sub_order_id,
+              status: "matched", // Ready to Complete
+              diff: 0
+            });
+          } else {
+            // Status mismatch (e.g. already returned)
+            results.push({
+              importRow: row,
+              matchedSubOrderId: existingReturn.sub_order_id,
+              status: "already_verified", // "Wrong Status"
+              diff: 0
+            });
+          }
         }
       }
     });
-
-    // Optionally: Find system orders NOT in file?
-    // "unmatched_system" logic if needed. User focused on verifying the file content.
-    // I will include them? Maybe confusing if file is partial.
-    // I'll stick to File-centric view for now as requested ("ตรวจสอบว่าคำสั่งซื้อนี้ถูกตีกลับจริง").
 
     setMatchResults(results);
   };
@@ -939,24 +947,21 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   );
 
   const VerifiedListTable = () => {
-    // Group verified orders by Order ID (extracted from sub_order_id prefix)
+    // Filter client-side REMOVED -> Now handled by API
+    // const filteredItems = verifiedOrders.filter(...) 
+
+    // Group strictly by main_order_id
     const grouped = verifiedOrders.reduce(
       (acc, v) => {
-        // Extract order ID from sub_order_id by taking the prefix before the last "-"
-        // This assumes sub_order_id format like "ORD123-1", "ORD123-2" where "ORD123" is the order ID
-        const parts = v.sub_order_id.split("-");
-        const orderId =
-          parts.length > 1 ? parts.slice(0, -1).join("-") : v.sub_order_id;
-
-        // Find the matching parent order
-        const parent = orders.find((o) => o.id === orderId);
-        const key = orderId;
+        // Use main_order_id directly. If missing, treat as orphan (use tracking number as key)
+        const key = v.main_order_id || v.tracking_number;
 
         if (!acc[key]) {
           acc[key] = {
             displayId: key,
-            parentOrder: parent,
-            items: [] as typeof verifiedOrders,
+            items: [],
+            totalAmount: v.total_amount || 0,
+            orderDate: v.order_date || "",
           };
         }
         acc[key].items.push(v);
@@ -964,164 +969,134 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       },
       {} as Record<
         string,
-        { displayId: string; parentOrder?: Order; items: typeof verifiedOrders }
+        { displayId: string; items: typeof verifiedOrders; totalAmount: number; orderDate: string }
       >,
     );
 
     const sortedGroups = Object.values(grouped).sort((a, b) => {
-      const maxA = Math.max(
-        ...a.items.map((i) => new Date(i.created_at).getTime()),
-      );
-      const maxB = Math.max(
-        ...b.items.map((i) => new Date(i.created_at).getTime()),
-      );
+      // Sort by latest item in group
+      const maxA = Math.max(...a.items.map((i) => new Date(i.updated_at || i.created_at).getTime()));
+      const maxB = Math.max(...b.items.map((i) => new Date(i.updated_at || i.created_at).getTime()));
       return maxB - maxA;
     });
 
     return (
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                รหัสออเดอร์
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                เลขพัสดุ & สถานะ
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                หมายเหตุ
-              </th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                วันที่ตรวจสอบ
-              </th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                จัดการ
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {sortedGroups.map((group) => {
-              const { displayId, parentOrder, items } = group;
-              // Only show if parentOrder exists (meaning it matches the current filter/tab)
-              if (!parentOrder) return null;
+      <div className="space-y-4">
+        {/* Pagination Controls */}
+        <div className="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border mb-4">
+          <span className="text-sm text-gray-600">
+            แสดง {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} จาก {pagination.total} รายการ
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+              disabled={pagination.page === 1}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <span className="px-3 py-1 bg-gray-100 rounded text-sm font-medium">
+              หน้า {pagination.page} / {pagination.totalPages}
+            </span>
+            <button
+              onClick={() => setPagination(prev => ({ ...prev, page: Math.min(pagination.totalPages, prev.page + 1) }))}
+              disabled={pagination.page >= pagination.totalPages}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </div>
 
-              // Representative item (first one) for shared data if needed
-              const rep = items[0];
-
-              return (
-                <tr key={displayId} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600 align-top">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="cursor-pointer hover:underline"
-                        onClick={() => setSelectedOrderId(displayId)}
-                      >
-                        {displayId}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigator.clipboard.writeText(displayId);
-                        }}
-                        className="text-gray-400 hover:text-gray-600"
-                        title="Copy Order ID"
-                      >
-                        <Copy size={12} />
-                      </button>
-                    </div>
-                    {/* Optional: Show count of returned items */}
-                    <div className="text-xs text-gray-400 mt-1">
-                      {items.length} รายการ
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 align-top">
-                    <div className="flex flex-col gap-1">
-                      {(() => {
-                        // Display each sub order ID with its status
-                        return items.map((v, i) => (
-                          <div
-                            key={i}
-                            className="flex flex-col border-b last:border-0 pb-1 last:pb-0"
-                          >
-                            <span className="font-medium">
-                              {v.tracking_number || v.sub_order_id}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              Sub Order: {v.sub_order_id}
-                            </span>
-                            <span
-                              className={`text-xs ${v.status === "returning"
-                                ? "text-orange-600"
-                                : v.status === "returned"
-                                  ? "text-red-600"
-                                  : v.status === "delivering"
-                                    ? "text-blue-600"
-                                    : v.status === "delivered"
-                                      ? "text-green-600"
-                                      : "text-gray-500"
-                                }`}
-                            >
-                              (
-                              {v.status === "returning"
-                                ? "ตีกลับ"
-                                : v.status === "returned"
-                                  ? "เข้าคลังแล้ว"
-                                  : v.status === "delivering"
-                                    ? "อยู่ระหว่างจัดส่ง"
-                                    : v.status === "delivered"
-                                      ? "จัดส่งสำเร็จ"
-                                      : v.status}
-                              )
-                            </span>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 align-top">
-                    {items
-                      .map((i) => i.note)
-                      .filter((n) => n)
-                      .map((n, idx) => (
-                        <div key={idx} className="block text-xs mb-1 last:mb-0">
-                          - {n}
-                        </div>
-                      ))}
-                    {items.every((i) => !i.note) && "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500 align-top">
-                    {new Date(rep.created_at).toLocaleDateString("th-TH")}
-                    <div className="text-xs text-gray-400">
-                      {new Date(rep.created_at).toLocaleTimeString("th-TH", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium align-top">
-                    <button
-                      onClick={() => handleManageVerified(rep)}
-                      className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1 rounded border border-indigo-200"
-                    >
-                      จัดการ
-                    </button>
-                  </td>
+        {sortedGroups.map((group) => (
+          <div key={group.displayId} className="bg-white shadow rounded-lg overflow-hidden border">
+            <div className="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
+              <div>
+                <span className="font-semibold text-gray-700">Order: {group.displayId}</span>
+                {group.orderDate && <span className="text-xs text-gray-500 ml-2">({new Date(group.orderDate).toLocaleDateString('th-TH')})</span>}
+              </div>
+              <div className="text-sm text-gray-600">
+                <span className="mr-4">{group.items.length} รายการ</span>
+                <span>ยอดบิล: {group.totalAmount.toLocaleString()}</span>
+              </div>
+            </div>
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tracking No.
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Sub Order ID
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    สถานะ
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    หมายเหตุ
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    วันที่อัปเดต
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    จัดการ
+                  </th>
                 </tr>
-              );
-            })}
-            {verifiedOrders.length === 0 && (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-6 py-12 text-center text-gray-500"
-                >
-                  ไม่พบรายการที่ตรวจสอบแล้ว
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {group.items.map((item, idx) => (
+                  <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {item.tracking_number}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {item.sub_order_id || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${item.status.toLowerCase() === 'returning' ? 'bg-orange-100 text-orange-800' :
+                        item.status.toLowerCase() === 'returned' ? 'bg-blue-100 text-blue-800' :
+                          item.status.toLowerCase() === 'good' ? 'bg-green-100 text-green-800' :
+                            item.status.toLowerCase() === 'damaged' ? 'bg-red-100 text-red-800' :
+                              item.status.toLowerCase() === 'lost' ? 'bg-gray-100 text-gray-800' :
+                                'bg-gray-100 text-gray-800'
+                        }`}>
+                        {(() => {
+                          const s = item.status.toLowerCase();
+                          switch (s) {
+                            case 'returning': return 'กำลังตีกลับ';
+                            case 'returned': return 'เข้าคลัง';
+                            case 'good': return 'สภาพดี';
+                            case 'damaged': return 'ชำรุด';
+                            case 'lost': return 'สูญหาย';
+                            case 'pending': return 'รอการดำเนินการ';
+                            default: return item.status;
+                          }
+                        })()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {item.note || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                      {new Date(item.updated_at || item.created_at).toLocaleString('th-TH')}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                      <button
+                        onClick={() => handleManageVerified(item)} // This uses item, assuming handleManageVerified takes VerifiedOrder
+                        className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1 rounded"
+                      >
+                        ตรวจสอบ
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+        {sortedGroups.length === 0 && (
+          <div className="text-center py-10 text-gray-500 bg-white rounded-lg shadow">ไม่พบข้อมูล</div>
+        )}
       </div>
     );
   };
@@ -1174,41 +1149,56 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         </div>
       </div>
 
-      {/* Tabs Row - Moved Here */}
-      {mode === "list" && (
-        <div className="mb-6">
-          <div className="inline-flex bg-gray-100 p-1 rounded-lg">
-            <button
-              onClick={() => setActiveTab("pending")}
-              className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === "pending"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-            >
-              <Clock size={18} />
-              ยังไม่ตรวจสอบ (Pending)
-            </button>
-            <button
-              onClick={() => setActiveTab("checking")}
-              className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === "checking"
-                ? "border-yellow-500 text-yellow-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-            >
-              <AlertCircle size={18} />
-              อยู่ระหว่างตรวจสอบ (Checking)
-            </button>
-            <button
-              onClick={() => setActiveTab("verified")}
-              className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === "verified"
-                ? "border-green-600 text-green-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-            >    ตรวจสอบแล้ว (Verified)
-            </button>
+      {/* Loading Overlay */}
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-xl flex flex-col items-center gap-4 min-w-[300px] px-8">
+            <Spinner size="lg" />
+            <span className="text-gray-700 font-medium">กำลังโหลดข้อมูล...</span>
           </div>
         </div>
       )}
+
+      {/* Tabs Row - Moved Here */}
+      {mode === "list" && (
+        <div className="mb-6">
+          <div className="flex border-b overflow-x-auto">
+            {[
+              { id: "pending", label: "รอการดำเนินการ (Pending)", color: "gray" },
+              { id: "returning", label: "กำลังตีกลับ (Returning)", color: "orange" },
+              { id: "returned", label: "เข้าคลัง (Returned)", color: "blue" },
+              { id: "good", label: "สภาพดี (Good)", color: "green" },
+              { id: "damaged", label: "ชำรุด (Damaged)", color: "red" },
+              { id: "lost", label: "สูญหาย (Lost)", color: "gray" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                className={`px-4 py-2 font-medium text-sm focus:outline-none whitespace-nowrap ${activeTab === tab.id
+                  ? `border-b-2 border-${tab.color}-500 text-${tab.color}-600`
+                  : "text-gray-500 hover:text-gray-700"
+                  }`}
+                onClick={() => setActiveTab(tab.id as any)}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <div className="flex-1 min-w-[20px]"></div>
+            {/* Search Box */}
+            <div className="p-2">
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verified List Content */}
+      <div className="mt-6">
+        {mode === "verify" ? (
+          <VerificationList />
+        ) : (
+          <VerifiedListTable />
+        )}
+      </div>
 
       {/* Import Status Modal */}
       {isImportStatusModalOpen && (
@@ -1230,161 +1220,97 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               <p className="text-sm text-gray-600 mb-2">
                 กรุณาเลือกสถานะสำหรับรายการที่นำเข้า:
               </p>
-              <button
-                onClick={() => {
-                  setImportTargetStatus("returning");
-                  setIsImportStatusModalOpen(false);
-                  setTimeout(() => fileInputRef.current?.click(), 100);
-                }}
-                className="w-full py-3 bg-orange-100 text-orange-800 rounded-lg hover:bg-orange-200 font-medium flex items-center justify-center gap-2"
-              >
-                <RefreshCw size={18} /> Import ตีกลับ (Returning)
-              </button>
-              <button
-                onClick={() => {
-                  setImportTargetStatus("returned");
-                  setIsImportStatusModalOpen(false);
-                  setTimeout(() => fileInputRef.current?.click(), 100);
-                }}
-                className="w-full py-3 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 font-medium flex items-center justify-center gap-2"
-              >
-                <CheckCircle size={18} /> Import เข้าคลังแล้ว (Returned)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {mode === "verify" && importedData.length > 0 ? (
-        <VerificationList />
-      ) : activeTab === "verified" ? (
-        <VerifiedListTable />
-      ) : (
-        <SystemList />
-      )}
-
-      {/* Paste Modal */}
-      {isPasteModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
-                <Clipboard size={20} className="text-indigo-600" />
-                วางข้อมูลจาก Excel
-              </h3>
-              <button
-                onClick={() => setIsPasteModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="p-6 flex-1 flex flex-col overflow-hidden relative">
-              {/* Instructions */}
-              <p className="text-sm text-gray-600 mb-2">
-                คัดลอกข้อมูลจาก Excel (คอลัมน์ A: Order/Tracking ID, คอลัมน์ B:
-                ยอดเงิน) แล้วกด <b>Ctrl+V</b>
-              </p>
-
-              {/* Hidden Textarea for Paste Capture */}
-              <textarea
-                ref={pasteInputRef}
-                className="opacity-0 absolute top-0 left-0 w-full h-full -z-10"
-                value={pasteContent}
-                onChange={(e) => setPasteContent(e.target.value)}
-                autoFocus
-              ></textarea>
-
-              {/* Excel-like Grid View */}
-              <div
-                className="flex-1 border border-gray-300 rounded-lg overflow-auto bg-gray-50 relative cursor-text"
-                onClick={() => pasteInputRef.current?.focus()}
-              >
-                {previewRows.length > 0 ? (
-                  <table className="border-collapse w-full min-w-[500px]">
-                    <thead>
-                      <tr>
-                        <th className="w-10 bg-gray-100 border-r border-b border-gray-300"></th>
-                        <th className="bg-gray-100 border-r border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/2">
-                          A (เลขพัสดุ / รหัสออเดอร์)
-                        </th>
-                        <th className="bg-gray-100 border-b border-gray-300 px-2 py-1 text-xs font-semibold text-gray-500 w-1/2">
-                          B (หมายเหตุ)
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewRows.map((row, rIdx) => (
-                        <tr key={rIdx} className="bg-white">
-                          <td className="bg-gray-50 border-r border-b border-gray-300 text-center text-xs text-gray-500 font-mono w-10 sticky left-0">
-                            {rIdx + 1}
-                          </td>
-                          {row.map((cell, cIdx) => (
-                            <td
-                              key={cIdx}
-                              className="border-r border-b border-gray-200 px-2 py-1 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]"
-                            >
-                              {cell}
-                            </td>
-                          ))}
-                          {row.length < 2 &&
-                            Array.from({ length: 2 - row.length }).map(
-                              (_, i) => (
-                                <td
-                                  key={`empty - ${i} `}
-                                  className="border-r border-b border-gray-200 px-2 py-1 text-sm bg-gray-50/20"
-                                ></td>
-                              ),
-                            )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                    <div className="grid grid-cols-4 gap-0.5 opacity-50 mb-4 p-4 border border-dashed border-gray-300 rounded bg-white">
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-blue-100"></div>
-                      <div className="w-8 h-4 bg-blue-100"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-blue-100"></div>
-                      <div className="w-8 h-4 bg-blue-100"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                      <div className="w-8 h-4 bg-gray-200"></div>
-                    </div>
-                    <p>คลิกที่นี่แล้วกด Ctrl+V เพื่อวางข้อมูล</p>
-                  </div>
-                )}
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    setBulkImportMode("returning");
+                    setIsImportStatusModalOpen(false);
+                    setIsBulkImportOpen(true);
+                  }}
+                  className="w-full py-3 bg-orange-100 text-orange-800 rounded-lg hover:bg-orange-200 font-medium flex items-center justify-center gap-2"
+                >
+                  <RefreshCw size={18} /> Import ตีกลับ (Returning)
+                </button>
+                <button
+                  onClick={() => {
+                    setBulkImportMode("returned");
+                    setIsImportStatusModalOpen(false);
+                    setIsBulkImportOpen(true);
+                  }}
+                  className="w-full py-3 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 font-medium flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={18} /> Import เข้าคลังแล้ว (Returned)
+                </button>
+                <button
+                  onClick={() => {
+                    setBulkImportMode("good");
+                    setIsImportStatusModalOpen(false);
+                    setIsBulkImportOpen(true);
+                  }}
+                  className="w-full py-3 bg-emerald-100 text-emerald-800 rounded-lg hover:bg-emerald-200 font-medium flex items-center justify-center gap-2"
+                >
+                  <ThumbsUp size={18} /> Import สภาพดี (Good)
+                </button>
+                <button
+                  onClick={() => {
+                    setBulkImportMode("damaged");
+                    setIsImportStatusModalOpen(false);
+                    setIsBulkImportOpen(true);
+                  }}
+                  className="w-full py-3 bg-rose-100 text-rose-800 rounded-lg hover:bg-rose-200 font-medium flex items-center justify-center gap-2"
+                >
+                  <AlertTriangle size={18} /> Import เสียหาย (Damaged)
+                </button>
+                <button
+                  onClick={() => {
+                    setBulkImportMode("lost");
+                    setIsImportStatusModalOpen(false);
+                    setIsBulkImportOpen(true);
+                  }}
+                  className="w-full py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 font-medium flex items-center justify-center gap-2"
+                >
+                  <X size={18} /> Import สูญหาย (Lost)
+                </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Footer Buttons */}
-            <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
-              <button
-                onClick={() => setIsPasteModalOpen(false)}
-                className="px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-100"
-              >
-                ยกเลิก
-              </button>
-              <button
-                onClick={handlePasteVerification}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
-              >
-                ตรวจสอบข้อมูล
-              </button>
+      {/* Bulk Import Modal */}
+      {isBulkImportOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setIsBulkImportOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-10"
+            >
+              <X size={24} />
+            </button>
+            <div className="flex-1 overflow-hidden p-1">
+              <BulkReturnImport
+                key={bulkImportMode}
+                mode={bulkImportMode}
+                onImport={async (items) => {
+                  try {
+                    await saveReturnOrders(items);
+                    alert("Import Successful!");
+                    setIsBulkImportOpen(false);
+
+                    // Refresh lists
+                    fetchVerifiedOrders();
+                  } catch (err) {
+                    console.error(err);
+                    alert("Import failed");
+                  }
+                }}
+              />
             </div>
           </div>
         </div>
       )}
+
+
 
       {/* Order Detail Modal */}
       <OrderDetailModal
@@ -1457,170 +1383,208 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {manageRows.map((row, idx) => (
-                    <tr
-                      key={idx}
-                      className={
-                        row.status === "returned"
-                          ? "bg-red-50"
-                          : row.status === "delivered"
-                            ? "bg-green-50"
-                            : row.status === "returning"
-                              ? "bg-orange-50"
-                              : row.status === "delivering"
-                                ? "bg-blue-50"
-                                : ""
-                      }
-                    >
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        {row.trackingNumber}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500 font-mono">
-                        {row.subOrderId || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {row.items && row.items.length > 0 ? (
-                          <ul className="list-disc list-inside text-xs">
-                            {row.items.map((item: any, i: number) => (
-                              <li
-                                key={i}
-                                className="whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]"
-                              >
-                                {item.name ||
-                                  item.productName ||
-                                  item.product_name ||
-                                  "Unknown Product"}
-                                <span className="text-gray-500 ml-1">
-                                  x{item.quantity || 1}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <span className="text-gray-400 italic text-xs">
-                            - No items -
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <div className="flex flex-col gap-2">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={"status-" + idx}
-                              checked={row.status === "pending"}
-                              onChange={() => {
-                                const newRows = [...manageRows];
-                                newRows[idx].status = "pending";
-                                setManageRows(newRows);
-                              }}
-                              className="text-gray-600 focus:ring-gray-500"
-                            />
-                            <span className="text-gray-600">รอดำเนินการ</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={"status-" + idx}
-                              checked={row.status === "returning"}
-                              onChange={() => {
-                                const newRows = [...manageRows];
-                                newRows[idx].status = "returning";
-                                setManageRows(newRows);
-                              }}
-                              className="text-orange-600 focus:ring-orange-500"
-                            />
-                            <span className="text-orange-700">
-                              ตีกลับ
+                  {manageRows.map((row, idx) => {
+                    // Manual override: No rules. Always allow changing status.
+                    return (
+                      <tr
+                        key={idx}
+                        className={
+                          row.status === "returned"
+                            ? "bg-red-50"
+                            : row.status === "delivered"
+                              ? "bg-green-50"
+                              : row.status === "returning"
+                                ? "bg-orange-50"
+                                : row.status === "delivering"
+                                  ? "bg-blue-50"
+                                  : row.status === "good"
+                                    ? "bg-green-100"
+                                    : row.status === "damaged"
+                                      ? "bg-red-100"
+                                      : row.status === "lost"
+                                        ? "bg-gray-200"
+                                        : ""
+                        }
+                      >
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                          {row.trackingNumber}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500 font-mono">
+                          {row.subOrderId || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {row.items && row.items.length > 0 ? (
+                            <ul className="list-disc list-inside text-xs">
+                              {row.items.map((item: any, i: number) => (
+                                <li
+                                  key={i}
+                                  className="whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]"
+                                >
+                                  {item.name ||
+                                    item.productName ||
+                                    item.product_name ||
+                                    "Unknown Product"}
+                                  <span className="text-gray-500 ml-1">
+                                    x{item.quantity || 1}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="text-gray-400 italic text-xs">
+                              - No items -
                             </span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={"status-" + idx}
-                              checked={row.status === "returned"}
-                              onChange={() => {
-                                const newRows = [...manageRows];
-                                newRows[idx].status = "returned";
-                                setManageRows(newRows);
-                              }}
-                              className="text-red-600 focus:ring-red-500"
-                            />
-                            <span className="text-red-700">
-                              รับของคืนแล้ว (เข้าคลัง)
-                            </span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={"status-" + idx}
-                              checked={row.status === "delivered"}
-                              onChange={() => {
-                                const newRows = [...manageRows];
-                                newRows[idx].status = "delivered";
-                                setManageRows(newRows);
-                              }}
-                              className="text-green-600 focus:ring-green-500"
-                            />
-                            <span className="text-green-700">
-                              ส่งสำเร็จ (Delivered)
-                            </span>
-                          </label>
-                          {row.status === "delivered" && (
-                            <div className="ml-6 mt-1 flex items-center gap-2">
-                              <span className="text-xs text-gray-500">
-                                ยอดที่เก็บได้:
-                              </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <div className="flex flex-col gap-2">
+                            <label className="flex items-center gap-2 cursor-pointer">
                               <input
-                                type="number"
-                                value={row.collectedAmount || ""}
-                                onChange={(e) => {
+                                type="radio"
+                                name={"status-" + idx}
+                                checked={row.status === "pending"}
+                                onChange={() => {
                                   const newRows = [...manageRows];
-                                  newRows[idx].collectedAmount = parseFloat(
-                                    e.target.value,
-                                  );
+                                  newRows[idx].status = "pending";
                                   setManageRows(newRows);
                                 }}
-                                className="w-24 px-2 py-1 text-sm border border-green-300 rounded focus:ring-green-500 focus:border-green-500"
-                                placeholder="บาท"
+                                className="text-gray-600 focus:ring-gray-500"
                               />
-                            </div>
-                          )}
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={"status-" + idx}
-                              checked={row.status === "other"}
-                              onChange={() => {
-                                const newRows = [...manageRows];
-                                newRows[idx].status = "other";
-                                setManageRows(newRows);
-                              }}
-                              className="text-gray-600 focus:ring-gray-500"
-                            />
-                            <span className="text-gray-700">
-                              อื่นๆ (Others)
-                            </span>
-                          </label>
+                              <span className="text-gray-600">
+                                รอดำเนินการ
+                              </span>
+                            </label>
+                            {/* Returning Status */}
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={"status-" + idx}
+                                checked={row.status === "returning"}
+                                onChange={() => {
+                                  const newRows = [...manageRows];
+                                  newRows[idx].status = "returning";
+                                  setManageRows(newRows);
+                                }}
+                                className="text-orange-600 focus:ring-orange-500"
+                              />
+                              <span className="text-orange-700">กำลังตีกลับ</span>
+                            </label>
 
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm align-top">
-                        <input
-                          type="text"
-                          value={row.note}
-                          onChange={(e) => {
-                            const newRows = [...manageRows];
-                            newRows[idx].note = e.target.value;
-                            setManageRows(newRows);
-                          }}
-                          placeholder="เพิ่มหมายเหตุ..."
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
-                          disabled={row.status === "pending"}
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                            {/* Returned Status Group */}
+                            <div className="flex flex-col">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={"status-" + idx}
+                                  checked={row.status === "returned"}
+                                  onChange={() => {
+                                    const newRows = [...manageRows];
+                                    newRows[idx].status = "returned";
+                                    setManageRows(newRows);
+                                  }}
+                                  className="text-red-600 focus:ring-red-500"
+                                />
+                                <span className="text-red-700">
+                                  รับของคืนแล้ว (เข้าคลัง)
+                                </span>
+                              </label>
+
+                              {/* Sub-options for Returned */}
+                              <div className="ml-6 flex flex-col gap-1 mt-1 border-l-2 border-gray-200 pl-2">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={"status-" + idx}
+                                    checked={row.status === "good"}
+                                    onChange={() => {
+                                      const newRows = [...manageRows];
+                                      newRows[idx].status = "good";
+                                      setManageRows(newRows);
+                                    }}
+                                    className="text-emerald-600 focus:ring-emerald-500"
+                                  />
+                                  <span className="text-emerald-700 text-sm">
+                                    สภาพดี (Good)
+                                  </span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={"status-" + idx}
+                                    checked={row.status === "damaged"}
+                                    onChange={() => {
+                                      const newRows = [...manageRows];
+                                      newRows[idx].status = "damaged";
+                                      setManageRows(newRows);
+                                    }}
+                                    className="text-rose-600 focus:ring-rose-500"
+                                  />
+                                  <span className="text-rose-700 text-sm">
+                                    เสียหาย (Damaged)
+                                  </span>
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* Lost Status */}
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={"status-" + idx}
+                                checked={row.status === "lost"}
+                                onChange={() => {
+                                  const newRows = [...manageRows];
+                                  newRows[idx].status = "lost";
+                                  setManageRows(newRows);
+                                }}
+                                className="text-gray-600 focus:ring-gray-500"
+                              />
+                              <span className="text-gray-700">
+                                สูญหาย (Lost)
+                              </span>
+                            </label>
+
+
+
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={"status-" + idx}
+                                checked={row.status === "delivered"}
+                                onChange={() => {
+                                  const newRows = [...manageRows];
+                                  newRows[idx].status = "delivered";
+                                  setManageRows(newRows);
+                                }}
+                                className="text-green-600 focus:ring-green-500"
+                              />
+                              <span className="text-green-700">
+                                ส่งสำเร็จ (Delivered)
+                              </span>
+                            </label>
+
+                            <div className="border-t my-1"></div>
+
+
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm align-top">
+                          <input
+                            type="text"
+                            value={row.note}
+                            onChange={(e) => {
+                              const newRows = [...manageRows];
+                              newRows[idx].note = e.target.value;
+                              setManageRows(newRows);
+                            }}
+                            placeholder="เพิ่มหมายเหตุ..."
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
+                            disabled={row.status === "pending"}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1640,8 +1604,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 {loading ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
               </button>
             </div>
-          </div>
-        </div>
+          </div >
+        </div >
       )}
 
       {/* Confirmation Modal */}

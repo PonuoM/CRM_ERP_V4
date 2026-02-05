@@ -2,6 +2,7 @@
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
+header('Content-Type: application/json');
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -26,89 +27,142 @@ $conn = db_connect();
 $conn->beginTransaction();
 
 try {
-    // We now update order_boxes instead of inserting into order_returns.
-    // We match by sub_order_id.
-
-    // We now update order_boxes instead of inserting into order_returns.
-    // We match by sub_order_id.
-
-    // Prepare statement with placeholder for return_created_at
-    $stmt = $conn->prepare("UPDATE order_boxes SET return_status = ?, return_note = ?, collected_amount = ?, return_created_at = ?, status = 'RETURNED' WHERE sub_order_id = ?");
-
     $successCount = 0;
+    $errors = [];
+    $mainOrderIdsToUpdate = [];
 
     foreach ($data['returns'] as $item) {
-        $subOrderId = isset($item['sub_order_id']) ? $item['sub_order_id'] : '';
-        $rawStatus = isset($item['status']) ? $item['status'] : 'returned';
+        $trackingNumber = isset($item['tracking_number']) ? trim($item['tracking_number']) : '';
+        $subOrderId = isset($item['sub_order_id']) ? trim($item['sub_order_id']) : '';
+        $targetStatus = isset($item['status']) ? $item['status'] : ''; // returning, returned, lost, good, damaged
         $note = isset($item['note']) ? $item['note'] : '';
-        $collectedAmount = isset($item['collected_amount']) ? (float) $item['collected_amount'] : 0;
 
-        if (empty($subOrderId))
+        if (empty($trackingNumber) && empty($subOrderId)) {
+            $errors[] = "Missing Tracking Number or Sub Order ID";
             continue;
-
-        // Determine DB values based on status
-        if ($rawStatus === 'pending') {
-            $statusParam = null;
-            $noteParam = null;
-            $collectedAmountParam = 0;
-            $createdAtParam = null;
-        } else {
-            $statusParam = $rawStatus;
-            $noteParam = $note;
-            $collectedAmountParam = $collectedAmount;
-            $createdAtParam = date('Y-m-d H:i:s');
         }
 
-        // PDO execution
-        if ($stmt->execute([$statusParam, $noteParam, $collectedAmountParam, $createdAtParam, $subOrderId])) {
-            // Check if any row was actually updated
-            if ($stmt->rowCount() > 0) {
-                $successCount++;
-            } else {
-                // FALLBACK: If sub_order_id not found, maybe it's a Main Order ID?
-                // Try updating all boxes for this order_id
-                $stmtFallback = $conn->prepare("UPDATE order_boxes SET return_status = ?, return_note = ?, collected_amount = ?, return_created_at = ?, status = 'RETURNED' WHERE order_id = ?");
-                if ($stmtFallback->execute([$statusParam, $noteParam, $collectedAmountParam, $createdAtParam, $subOrderId])) {
-                    if ($stmtFallback->rowCount() > 0) {
-                        $successCount++;
+        // 1. Resolve Tracking / SubOrderId
+        // If tracking is provided, resolve to sub_order_id if possible
+        if (!empty($trackingNumber)) {
+            // Find Sub Order ID from Tracking
+            $stmtTrack = $conn->prepare("SELECT order_id, parent_order_id, box_number FROM order_tracking_numbers WHERE tracking_number = ? LIMIT 1");
+            $stmtTrack->execute([$trackingNumber]);
+            $trackRow = $stmtTrack->fetch(PDO::FETCH_ASSOC);
+
+            if ($trackRow) {
+                // Construct Sub Order ID: {MainID}-{BoxNum}
+                // If box_number is 0 or null, assume it's main order? But requirements say "linked to sub_order_id"
+                if (!empty($trackRow['parent_order_id']) && !empty($trackRow['box_number'])) {
+                    $resolvedSubId = $trackRow['parent_order_id'] . '-' . $trackRow['box_number'];
+                    if (empty($subOrderId)) {
+                        $subOrderId = $resolvedSubId;
+                    }
+                } else if (!empty($trackRow['order_id'])) {
+                    // Fallback if order_tracking stores sub_order_id in order_id column?
+                    // Check if order_id looks like a sub order
+                    if (empty($subOrderId)) {
+                        $subOrderId = $trackRow['order_id'];
                     }
                 }
             }
         }
-    }
 
-    // Update Main Order Status to 'Returned'
-    // Extract unique Main Order IDs from successful updates
-    // We can infer main order ID from sub_order_id or just use the ones we processed.
+        // Normalize inputs
+        $trackingNumber = $trackingNumber ?: $subOrderId; // Fallback if tracking missing but subID exists? No, tracking is key.
 
-    $mainOrderIds = [];
-    foreach ($data['returns'] as $item) {
-        $subOrderId = isset($item['sub_order_id']) ? $item['sub_order_id'] : '';
-        if (empty($subOrderId))
-            continue;
+        // Requirement: "Import Returning -> Check if tracking no linked to sub_order_id"
+        // If we can't find sub_order_id, maybe we should error for "returning" flow?
+        // But for "returned" flow, maybe tracking is enough if it exists in order_returns?
 
-        // Extract Main Order ID logic
-        $parts = explode('-', $subOrderId);
-        if (count($parts) >= 3) {
-            array_pop($parts);
-            $mainId = implode('-', $parts);
+        $stmtCheck = $conn->prepare("SELECT id, status FROM order_returns WHERE tracking_number = ? LIMIT 1");
+        $stmtCheck->execute([$trackingNumber]);
+        $currentReturn = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+        // Unified Unconditional Upsert Logic
+        if ($currentReturn) {
+            // Update Existing
+            $stmtUpdate = $conn->prepare("UPDATE order_returns SET status = ?, note = COALESCE(?, note), updated_at = NOW() WHERE id = ?");
+            // Use provided note, or keep existing if empty string?
+            // Actually, if note is provided in payload (even empty), user might intend to clear it?
+            // User requested "Manual note", so if payload has note, use it.
+            // strict update:
+            $noteToUse = $note;
+            // If payload note is empty string, do we overwrite?
+            // Let's assume yes, or use logic: if (!empty($note)) update.
+            // Simple approach: Always update status. Update note if provided (not null).
+
+            if ($stmtUpdate->execute([$targetStatus, $note, $currentReturn['id']])) {
+                $successCount++;
+            }
         } else {
-            $mainId = $subOrderId;
+            // Insert New
+            $stmtInsert = $conn->prepare("INSERT INTO order_returns (tracking_number, status, note, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())");
+            if ($stmtInsert->execute([$trackingNumber, $targetStatus, $note])) {
+                $successCount++;
+
+                // Auto-create 'pending' siblings logic (Only on new insert)
+                // 1. Identify Main Order ID
+                $mainOrderId = null;
+                if (!empty($trackRow['parent_order_id'])) {
+                    $mainOrderId = $trackRow['parent_order_id'];
+                } elseif (!empty($trackRow['order_id'])) {
+                    $mainOrderId = $trackRow['order_id'];
+                } else {
+                    $parts = explode('-', $subOrderId);
+                    if (count($parts) >= 2) {
+                        if (count($parts) > 1) {
+                            array_pop($parts);
+                            $mainOrderId = implode('-', $parts);
+                        }
+                    }
+                }
+
+                // 2. Find siblings
+                if ($mainOrderId) {
+                    $stmtSiblings = $conn->prepare("SELECT tracking_number FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
+                    $stmtSiblings->execute([$mainOrderId, $mainOrderId]);
+                    $siblings = $stmtSiblings->fetchAll(PDO::FETCH_ASSOC);
+
+                    foreach ($siblings as $sib) {
+                        $sibTrack = $sib['tracking_number'];
+                        if ($sibTrack === $trackingNumber)
+                            continue; // Skip self
+
+                        // Check existence
+                        $stmtExist = $conn->prepare("SELECT id FROM order_returns WHERE tracking_number = ? LIMIT 1");
+                        $stmtExist->execute([$sibTrack]);
+                        if (!$stmtExist->fetch()) {
+                            // Insert as Pending
+                            $stmtPend = $conn->prepare("INSERT INTO order_returns (tracking_number, status, note, created_at, updated_at) VALUES (?, 'pending', '', NOW(), NOW())");
+                            $stmtPend->execute([$sibTrack]);
+                        }
+                    }
+                }
+
+            }
         }
-        $mainOrderIds[] = $mainId;
     }
 
-    $mainOrderIds = array_unique($mainOrderIds);
 
-    if (!empty($mainOrderIds)) {
-        $placeholders = str_repeat('?,', count($mainOrderIds) - 1) . '?';
-        $updateSql = "UPDATE orders SET order_status = 'Returned' WHERE id IN ($placeholders)";
-        $updateStmt = $conn->prepare($updateSql);
-        $updateStmt->execute(array_values($mainOrderIds));
+    // Update Main Order Statuses
+    $mainOrderIdsToUpdate = array_unique($mainOrderIdsToUpdate);
+    if (!empty($mainOrderIdsToUpdate)) {
+        $placeholders = str_repeat('?,', count($mainOrderIdsToUpdate) - 1) . '?';
+        // Only update if not already Returned? Or just force set?
+        // Requirement: "อัปเดตข้อมูล orders.order_status = 'Returned'"
+        $stmtOrder = $conn->prepare("UPDATE orders SET order_status = 'Returned' WHERE id IN ($placeholders)");
+        $stmtOrder->execute(array_values($mainOrderIdsToUpdate));
     }
 
     $conn->commit();
-    echo json_encode(["status" => "success", "message" => "Saved $successCount items successfully"]);
+
+    echo json_encode([
+        "status" => "success",
+        "message" => "Processed $successCount items.",
+        "errors" => $errors, // Return errors for feedback
+        "success_count" => $successCount
+    ]);
 
 } catch (Exception $e) {
     if (isset($conn))

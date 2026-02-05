@@ -1135,60 +1135,61 @@ function attach_call_status_to_customers(PDO $pdo, array &$customers): void
  * - Searches: first_name, last_name, phone, customer_id, facebook_name, line_id
  * @return array ['conditions' => string[], 'params' => array]
  */
-function build_customer_search_conditions(string $q, string $tableAlias = ''): array {
+function build_customer_search_conditions(string $q, string $tableAlias = ''): array
+{
     $conditions = [];
     $params = [];
-    
+
     if ($q === '') {
         return ['conditions' => [], 'params' => []];
     }
-    
+
     $prefix = $tableAlias ? "$tableAlias." : '';
-    
+
     // Split by space for multiple term support (e.g., "สมชาย ใจดี")
     $terms = array_filter(array_map('trim', preg_split('/\s+/', $q)));
-    
+
     if (count($terms) === 0) {
         return ['conditions' => [], 'params' => []];
     }
-    
+
     // Searchable columns
     $searchCols = [
         "{$prefix}first_name",
-        "{$prefix}last_name", 
+        "{$prefix}last_name",
         "{$prefix}phone",
         "{$prefix}customer_id",
         "{$prefix}facebook_name",
         "{$prefix}line_id"
     ];
-    
+
     // Normalize phone for matching (strip leading 0)
     $normalizedPhone = preg_replace('/^0+/', '', preg_replace('/\D/', '', $q));
-    
+
     // Build conditions for each term
     foreach ($terms as $term) {
         $termConditions = [];
-        
+
         // Normal text match for each column
         foreach ($searchCols as $col) {
             $termConditions[] = "$col LIKE ?";
             $params[] = "%$term%";
         }
-        
+
         // For phone: also match without leading 0
         $termPhoneNormalized = preg_replace('/^0+/', '', preg_replace('/\D/', '', $term));
         if ($termPhoneNormalized !== '' && $termPhoneNormalized !== $term) {
             $termConditions[] = "{$prefix}phone LIKE ?";
             $params[] = "%$termPhoneNormalized%";
         }
-        
+
         $conditions[] = '(' . implode(' OR ', $termConditions) . ')';
     }
-    
+
     // If multiple terms, all must match (AND between terms)
     // This handles "สมชาย ใจดี" → must match both
     $finalCondition = implode(' AND ', $conditions);
-    
+
     return [
         'conditions' => [$finalCondition],
         'params' => $params
