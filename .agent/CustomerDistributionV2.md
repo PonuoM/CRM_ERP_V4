@@ -55,7 +55,35 @@
    - *ข้อจำกัด*: สามารถดึงคืนได้เฉพาะถังที่มีการผูกกับ Distribution Basket เท่านั้น (Linked Basket)
 3. **ยืนยัน**: เมื่อกดยืนยัน ระบบจะปลด `agent_id` ของลูกค้าเหล่านั้นออก และย้ายกลับเข้าถังกลาง
 
-## 5. ระบบล้างรอบ (Manual Round Reset) [NEW]
+## 5. ระบบโอนรายชื่อ (Transfer System) [NEW]
+
+ฟีเจอร์สำหรับโอนรายชื่อลูกค้าจากพนักงานคนหนึ่งไปยังพนักงานอีกคน
+
+### วิธีใช้งาน
+1. กดปุ่ม **"ดึงคืน"** ในแถวของพนักงานต้นทาง
+2. ในแต่ละถัง จะมีปุ่ม **"โอน"** สีฟ้า (ข้างปุ่ม "คืนหมด")
+3. กดปุ่ม "โอน" → **Transfer Modal** จะเปิดขึ้นมา
+4. เลือกพนักงานปลายทางจากรายการ
+5. กด **"ยืนยันโอน"**
+
+### เงื่อนไขการโอน
+| ประเภทถัง | คืนหมด | โอน |
+|-----------|--------|-----|
+| มี linked_basket_key | ✅ ได้ | ✅ ได้ |
+| ไม่มี linked_basket_key (เช่น ส่วนตัว 1-2 เดือน) | ❌ ไม่ได้ | ✅ ได้ |
+
+### การทำงานในฐานข้อมูล
+- อัปเดต `assigned_to` เป็น agent ปลายทาง
+- อัปเดต `date_assigned` เป็นวันที่โอน
+- เพิ่ม agent ปลายทางลงใน `previous_assigned_to` (JSON array)
+- บันทึก log ใน `basket_transition_log` (transition_type = 'transfer')
+- **หมายเหตุ**: ไม่มีการป้องกันโอนซ้ำ - เป็นการบังคับโอน
+
+### API Endpoint
+- **POST** `basket_config.php?action=transfer_customers`
+  - Body: `{ from_agent_id, to_agent_id, basket_key, count }`
+
+## 6. ระบบล้างรอบ (Manual Round Reset) [NEW]
 
 ฟีเจอร์สำหรับ "ล้างประวัติการถือครอง" เพื่อให้สามารถแจกซ้ำพนักงานเดิมได้อีกครั้ง (เริ่มนับรอบใหม่)
 
@@ -68,20 +96,20 @@
    - **Reset Selected**: เลือกติ๊กถูกรายบุคคลแล้วกด Reset (ยืนยันด้วย Modal สีส้ม)
    - **Reset All**: กดปุ่มแดงเพื่อล้าง *ทั้งหมด* ตามจำนวนที่ค้นหาเจอ (ยืนยันด้วย Modal สีแดง)
 
-## 6. สรุปผลการแจก (Summary Modal) [NEW]
+## 7. สรุปผลการแจก (Summary Modal) [NEW]
 หลังการแจกระบบจะแสดง Modal สรุปผล:
 - **ยอดรวม**: สำเร็จ / ล้มเหลว
 - **รายพนักงาน**: ตารางแสดงยอดที่พนักงานแต่ละคนได้รับจริง
 - **Retry Loop**: หากแจกไม่ครบโควต้า (Shortfall) จะมีปุ่ม **"แจกเพิ่มส่วนที่ขาด"** เพื่อให้ระบบค้นหาลูกค้าใหม่มาเติมให้ครบโดยอัตโนมัติ
 
-## 7. การทำงานเชิงเทคนิค (Technical Implementation)
+## 8. การทำงานเชิงเทคนิค (Technical Implementation)
 
-### 7.1 Main Component
+### 8.1 Main Component
 - **File**: `pages/CustomerDistributionV2.tsx`
 - **State Management**: ใช้ `useState` และ `useEffect` จัดการข้อมูล Baskets, Agents, และ Customers
 - **UI Components**: ใช้ Modal ที่เขียนขึ้นเองแทน `window.confirm` เพื่อความสวยงาม (ConfirmationModal)
 
-### 7.2 Key API Endpoints
+### 8.2 Key API Endpoints
 - **GET** `basket_config.php`: ดึงการตั้งค่าถัง
 - **POST** `Distribution/index.php`: `distribute` (Logic การแจกใหม่)
 - **POST** `Distribution/reset.php`:
@@ -89,17 +117,17 @@
   - `manual_reset`: สั่งล้างข้อมูล (`mode='selected'` หรือ `'all'`)
   - `get_assign_history`: ดึงประวัติการแจกของลูกค้า
 
-### 7.3 Data Logic
+### 8.3 Data Logic
 - **Round Robin Logic**:
   - ใช้ตาราง `customer_assign_check` (เก็บประวัติการแจกในรอบปัจจุบัน)
   - ใช้ฟิลด์ `current_round` ในตาราง `customers` (นับรอบการวน)
   - **Pruning**: ก่อนแจกจะเช็ค `customer_assign_check` ว่าเคยแจกพนักงานคนนี้ในรอบ `current_round` หรือไม่
   - **Auto Increment**: เมื่อแจกครบทุกคน (หรือครบตามจำนวน Sale), ระบบจะเคลียร์ `customer_assign_check` และ +1 ให้ `current_round` อัตโนมัติ
 
-### 7.4 Database Schema Changes
+### 8.4 Database Schema Changes
 - **Tables**: `customer_assign_check`
 - **Columns**: `customers.current_round` (INT DEFAULT 1)
 
-## 8. ข้อควรระวัง (Notes)
+## 9. ข้อควรระวัง (Notes)
 - **Upsell Basket**: ถัง Upsell มักจะมี Logic พิเศษที่เชื่อมโยงกับถังหลัก
 - **Concurrency**: ข้อมูลจำนวนลูกค้า "พร้อมแจก" อาจเปลี่ยนแปลงได้ถ้ามี Admin หลายคนทำงานพร้อมกัน
