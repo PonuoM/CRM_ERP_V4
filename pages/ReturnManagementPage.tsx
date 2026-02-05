@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import OrderDetailModal from "../components/OrderDetailModal";
 import BulkReturnImport from "../components/BulkReturnImport";
+import Spinner from "../components/Spinner";
 
 interface ReturnManagementPageProps {
   user: User;
@@ -125,6 +126,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   // State for Bulk Import Modal
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [bulkImportMode, setBulkImportMode] = useState<"returning" | "returned" | "good" | "damaged" | "lost">("returning");
+
+  // Pagination State
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    totalPages: 1
+  });
 
   useEffect(() => {
     if (managingOrder) {
@@ -230,8 +239,6 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         });
       }
 
-
-
       // Remove duplicates based on tracking number if any
       const uniqueRows = rows.filter(
         (v, i, a) =>
@@ -266,24 +273,45 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   }, [managingOrder, verifiedOrders]);
 
   useEffect(() => {
-    fetchVerifiedOrders(); // Main source of truth for new flow
-  }, [user.companyId, activeTab]);
+    // Reset to page 1 when tab changes, then fetch
+    setPagination(prev => ({ ...prev, page: 1 }));
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'pending') {
+      fetchVerifiedOrders();
+    }
+  }, [user.companyId, activeTab, pagination.page]);
 
   const fetchVerifiedOrders = async () => {
     try {
-      const res = await getReturnOrders();
+      setLoading(true);
+
+      const res = await getReturnOrders({
+        status: activeTab,
+        page: pagination.page,
+        limit: pagination.limit
+      });
+
       if (res && res.status === "success") {
         setVerifiedOrders(res.data);
+        if (res.pagination) {
+          setPagination(prev => ({
+            ...prev,
+            total: res.pagination.total,
+            totalPages: res.pagination.totalPages
+          }));
+        }
       }
     } catch (err) {
       console.error("Failed to fetch verified orders", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchOrders = async () => {
-    // Legacy listOrders usage might be less relevant if we rely on verifiedOrders (from order_returns)
-    // But we still need listOrders for "Import -> Search System" flow.
-    // We don't need to fetch 'orders' on load for the main list anymore, as we show 'verifiedOrders'.
+    // Legacy fetch for Pending/Checking logic (kept as is)
   };
 
   const handleSearchByTracking = async () => {
@@ -923,14 +951,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   );
 
   const VerifiedListTable = () => {
-    // Filter based on active tab
-    const filteredItems = verifiedOrders.filter((v) => {
-      // Direct status match for all tabs
-      return v.status?.toLowerCase() === activeTab;
-    });
+    // Filter client-side REMOVED -> Now handled by API
+    // const filteredItems = verifiedOrders.filter(...) 
 
-    // Group strictly by main_order_id from API (or fallback to tracking if missing)
-    const grouped = filteredItems.reduce(
+    // Group strictly by main_order_id
+    const grouped = verifiedOrders.reduce(
       (acc, v) => {
         // Use main_order_id directly. If missing, treat as orphan (use tracking number as key)
         const key = v.main_order_id || v.tracking_number;
@@ -961,6 +986,32 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
     return (
       <div className="space-y-4">
+        {/* Pagination Controls */}
+        <div className="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border mb-4">
+          <span className="text-sm text-gray-600">
+            แสดง {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} จาก {pagination.total} รายการ
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+              disabled={pagination.page === 1}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <span className="px-3 py-1 bg-gray-100 rounded text-sm font-medium">
+              หน้า {pagination.page} / {pagination.totalPages}
+            </span>
+            <button
+              onClick={() => setPagination(prev => ({ ...prev, page: Math.min(pagination.totalPages, prev.page + 1) }))}
+              disabled={pagination.page >= pagination.totalPages}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </div>
+
         {sortedGroups.map((group) => (
           <div key={group.displayId} className="bg-white shadow rounded-lg overflow-hidden border">
             <div className="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
@@ -1006,11 +1057,25 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                       {item.sub_order_id || "-"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${item.status.toLowerCase() === 'returning' ? 'bg-yellow-100 text-yellow-800' :
-                        item.status.toLowerCase() === 'returned' ? 'bg-green-100 text-green-800' :
-                          'bg-gray-100 text-gray-800'
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${item.status.toLowerCase() === 'returning' ? 'bg-orange-100 text-orange-800' :
+                        item.status.toLowerCase() === 'returned' ? 'bg-blue-100 text-blue-800' :
+                          item.status.toLowerCase() === 'good' ? 'bg-green-100 text-green-800' :
+                            item.status.toLowerCase() === 'damaged' ? 'bg-red-100 text-red-800' :
+                              item.status.toLowerCase() === 'lost' ? 'bg-gray-100 text-gray-800' :
+                                'bg-gray-100 text-gray-800'
                         }`}>
-                        {item.status}
+                        {(() => {
+                          const s = item.status.toLowerCase();
+                          switch (s) {
+                            case 'returning': return 'กำลังตีกลับ';
+                            case 'returned': return 'เข้าคลัง';
+                            case 'good': return 'สภาพดี';
+                            case 'damaged': return 'ชำรุด';
+                            case 'lost': return 'สูญหาย';
+                            case 'pending': return 'รอการดำเนินการ';
+                            default: return item.status;
+                          }
+                        })()}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -1087,6 +1152,17 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Loading Overlay */}
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-xl flex flex-col items-center gap-4 min-w-[300px] px-8">
+            <Spinner size="lg" />
+            <span className="text-gray-700 font-medium">กำลังโหลดข้อมูล...</span>
+          </div>
+        </div>
+      )}
 
       {/* Tabs Row - Moved Here */}
       {mode === "list" && (
