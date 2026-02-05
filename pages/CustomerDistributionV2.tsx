@@ -777,6 +777,51 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [reclaimInputs, setReclaimInputs] = useState<Record<string, number>>({});
     const [reclaiming, setReclaiming] = useState(false);
 
+    // Transfer Logic
+    const [transferModalOpen, setTransferModalOpen] = useState(false);
+    const [transferBasketKey, setTransferBasketKey] = useState<string>('');
+    const [transferCount, setTransferCount] = useState<number>(0);
+    const [selectedTransferAgent, setSelectedTransferAgent] = useState<number | null>(null);
+    const [transferring, setTransferring] = useState(false);
+
+    const openTransferModal = (basketKey: string, count: number) => {
+        setTransferBasketKey(basketKey);
+        setTransferCount(count);
+        setSelectedTransferAgent(null);
+        setTransferModalOpen(true);
+    };
+
+    const handleExecuteTransfer = async () => {
+        if (!reclaimingAgent || !selectedTransferAgent || transferCount <= 0) return;
+
+        setTransferring(true);
+        try {
+            const result = await apiFetch(
+                `basket_config.php?action=transfer_customers&companyId=${currentUser?.companyId}`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        from_agent_id: reclaimingAgent.id,
+                        to_agent_id: selectedTransferAgent,
+                        basket_key: transferBasketKey,
+                        count: transferCount
+                    })
+                }
+            );
+
+            setMessage({ type: 'success', text: `โอนลูกค้าสำเร็จ ${result?.transferred || transferCount} รายชื่อ` });
+            setTransferModalOpen(false);
+            setReclaimModalOpen(false);
+            fetchAgents(); // Refresh agent stats
+            fetchAllBasketCounts(); // Refresh basket pools
+        } catch (error) {
+            console.error('Transfer failed:', error);
+            setMessage({ type: 'error', text: 'โอนลูกค้าไม่สำเร็จ' });
+        } finally {
+            setTransferring(false);
+        }
+    };
+
     const openReclaimModal = (agent: AgentWithBaskets) => {
         setReclaimingAgent(agent);
         // Initialize inputs with 0
@@ -1389,35 +1434,44 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                     // by checking if linked_basket_key exists in basket config
                                     const hasLinkedDistribution = !!basket.linked_basket_key;
 
-                                    // Treat as disabled if empty OR no linked distribution basket
-                                    const isDisabled = isEmpty || !hasLinkedDistribution;
+                                    // Reclaim requires linked distribution basket
+                                    const isReclaimDisabled = isEmpty || !hasLinkedDistribution;
+                                    // Transfer only requires non-empty basket (no need for linked distribution)
+                                    const isTransferDisabled = isEmpty;
 
                                     return (
-                                        <div key={basket.basket_key} className={`flex items-center gap-4 ${isDisabled ? 'opacity-50' : ''}`}>
+                                        <div key={basket.basket_key} className={`flex items-center gap-4 ${isEmpty ? 'opacity-50' : ''}`}>
                                             <div className="flex-1">
                                                 <div className="flex justify-between mb-1">
-                                                    <label className={`text-sm font-medium ${isDisabled ? 'text-gray-400' : ''}`}>
+                                                    <label className={`text-sm font-medium ${isEmpty ? 'text-gray-400' : ''}`}>
                                                         {basket.basket_name}
-                                                        {!hasLinkedDistribution && <span className="text-xs text-gray-400 ml-2">(ไม่มีถัง Distribution)</span>}
+                                                        {!hasLinkedDistribution && <span className="text-xs text-gray-400 ml-2">(โอนได้ แต่ดึงคืนไม่ได้)</span>}
                                                     </label>
-                                                    <span className={`text-xs ${isDisabled ? 'text-gray-400' : 'text-gray-500'}`}>มีอยู่ {currentHolding}</span>
+                                                    <span className={`text-xs ${isEmpty ? 'text-gray-400' : 'text-gray-500'}`}>มีอยู่ {currentHolding}</span>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <input
                                                         type="number"
                                                         value={reclaimInputs[basket.basket_key] || ''}
                                                         onChange={(e) => handleReclaimInput(basket.basket_key, e.target.value, currentHolding)}
-                                                        className={`w-full border rounded p-2 text-sm ${isDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                                        className={`w-full border rounded p-2 text-sm ${isEmpty ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                                         min={0}
                                                         max={currentHolding}
-                                                        disabled={isDisabled}
+                                                        disabled={isEmpty}
                                                     />
                                                     <button
                                                         onClick={() => handleReclaimAll(basket.basket_key, currentHolding)}
-                                                        className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200'}`}
-                                                        disabled={isDisabled}
+                                                        className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isReclaimDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200'}`}
+                                                        disabled={isReclaimDisabled}
                                                     >
                                                         คืนหมด
+                                                    </button>
+                                                    <button
+                                                        onClick={() => openTransferModal(basket.basket_key, reclaimInputs[basket.basket_key] || currentHolding)}
+                                                        className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isTransferDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}`}
+                                                        disabled={isTransferDisabled}
+                                                    >
+                                                        โอน
                                                     </button>
                                                 </div>
                                             </div>
@@ -1447,6 +1501,69 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                 >
                                     {reclaiming ? <Loader2 className="animate-spin" size={16} /> : null}
                                     ยืนยันดึงคืน
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Transfer Modal */}
+            {
+                transferModalOpen && reclaimingAgent && (
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
+                        <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+                            <h3 className="text-xl font-bold mb-2">โอนลูกค้า</h3>
+                            <p className="text-sm text-gray-500 mb-4">
+                                โอนลูกค้า <span className="font-semibold text-blue-600">{transferCount}</span> รายชื่อ
+                                จาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}
+                            </p>
+                            <p className="text-xs text-gray-400 mb-4">
+                                ถัง: {dashboardBaskets.find(b => b.basket_key === transferBasketKey)?.basket_name || transferBasketKey}
+                            </p>
+
+                            <div className="mb-6">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">เลือก Telesale ที่จะโอนให้</label>
+                                <div className="max-h-60 overflow-y-auto border rounded-lg divide-y">
+                                    {agents
+                                        .filter(a => a.id !== reclaimingAgent.id)
+                                        .map(agent => (
+                                            <button
+                                                key={agent.id}
+                                                onClick={() => setSelectedTransferAgent(agent.id)}
+                                                className={`w-full text-left p-3 hover:bg-gray-50 flex items-center justify-between transition-colors ${selectedTransferAgent === agent.id
+                                                    ? 'bg-blue-50 border-l-4 border-blue-500'
+                                                    : ''
+                                                    }`}
+                                            >
+                                                <span className="font-medium">{agent.firstName} {agent.lastName}</span>
+                                                <span className="text-xs text-gray-400">
+                                                    มี {agent.basketCounts?.[transferBasketKey] || 0} รายชื่อ
+                                                </span>
+                                            </button>
+                                        ))}
+                                </div>
+                                {agents.filter(a => a.id !== reclaimingAgent.id).length === 0 && (
+                                    <div className="text-center py-4 text-gray-400 text-sm">
+                                        ไม่พบ Telesale อื่น
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t">
+                                <button
+                                    onClick={() => setTransferModalOpen(false)}
+                                    className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
+                                >
+                                    ยกเลิก
+                                </button>
+                                <button
+                                    onClick={handleExecuteTransfer}
+                                    disabled={transferring || !selectedTransferAgent}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                >
+                                    {transferring ? <Loader2 className="animate-spin" size={16} /> : null}
+                                    ยืนยันโอน
                                 </button>
                             </div>
                         </div>
