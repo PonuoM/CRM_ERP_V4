@@ -25,6 +25,8 @@ interface AuditLog {
     // COD document info
     cod_document_id?: number | null;
     cod_document_number?: string | null;
+    cod_total_amount?: number | null;
+    cod_status?: string | null;
     is_cod_document?: boolean;
     reconcile_items?: any[];
 }
@@ -311,12 +313,42 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
         setLoading(true);
         try {
-            // Process in parallel
-            await Promise.all(selectedIds.map(async (id) => {
-                const log = logs.find(l => l.id === id);
-                if (!log || !log.order_id || !log.reconcile_id) return;
+            // Separate COD documents from regular orders
+            const codDocumentIds = new Set<number>();
+            const regularLogs: AuditLog[] = [];
 
-                await apiFetch('Statement_DB/confirm_reconcile.php', {
+            selectedIds.forEach(id => {
+                const log = logs.find(l => l.id === id);
+                if (!log) return;
+
+                if (log.is_cod_document && log.cod_document_id) {
+                    // COD document - collect unique document IDs
+                    codDocumentIds.add(log.cod_document_id);
+                } else if (log.order_id && log.reconcile_id) {
+                    // Regular order
+                    regularLogs.push(log);
+                }
+            });
+
+            // Process COD documents with dedicated API
+            const codPromises = Array.from(codDocumentIds).map(async (codDocId) => {
+                const res = await apiFetch('Statement_DB/confirm_cod_document.php', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        cod_document_id: codDocId,
+                        company_id: currentUser.companyId || (currentUser as any).company_id,
+                        user_id: currentUser.id
+                    })
+                });
+                if (!res.ok) {
+                    throw new Error(res.error || `Failed to confirm COD document ${codDocId}`);
+                }
+                return res;
+            });
+
+            // Process regular orders with existing API
+            const regularPromises = regularLogs.map(async (log) => {
+                const res = await apiFetch('Statement_DB/confirm_reconcile.php', {
                     method: 'POST',
                     body: JSON.stringify({
                         id: log.reconcile_id,
@@ -325,13 +357,20 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                         payment_method: log.payment_method
                     })
                 });
-            }));
+                if (!res.ok) {
+                    throw new Error(res.error || `Failed to confirm order ${log.order_id}`);
+                }
+                return res;
+            });
+
+            // Wait for all confirmations
+            await Promise.all([...codPromises, ...regularPromises]);
 
             setSelectedIds([]);
             fetchAuditLogs();
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            alert("เกิดข้อผิดพลาดในการบันทึก");
+            alert("เกิดข้อผิดพลาดในการบันทึก: " + (error?.message || "Unknown error"));
         } finally {
             setLoading(false);
         }
@@ -731,8 +770,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                     <span className="font-semibold">{formatCurrency(selectedCodLog.statement_amount)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-500">ยอด Confirmed:</span>
-                                    <span className="font-semibold text-blue-600">{formatCurrency(selectedCodLog.order_amount)}</span>
+                                    <span className="text-gray-500">ยอด COD Document:</span>
+                                    <span className="font-semibold text-blue-600">{formatCurrency(selectedCodLog.cod_total_amount || selectedCodLog.order_amount)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-500">วิธีชำระเงิน:</span>

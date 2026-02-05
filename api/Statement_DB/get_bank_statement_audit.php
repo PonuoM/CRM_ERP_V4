@@ -43,6 +43,8 @@ try {
       -- COD document info (if this statement was matched to a COD document)
       cd.id as cod_document_id,
       cd.document_number as cod_document_number,
+      cd.total_input_amount as cod_total_amount,
+      cd.status as cod_status,
       -- Aggregate reconcile logs
       JSON_ARRAYAGG(
          IF(srl.id IS NOT NULL, 
@@ -66,7 +68,7 @@ try {
     WHERE sb.company_id = :companyId
       AND sl.bank_account_id = :bankAccountId
       AND sl.transfer_at BETWEEN :startDate AND :endDate
-    GROUP BY sl.id, cd.id, cd.document_number
+    GROUP BY sl.id, cd.id, cd.document_number, cd.total_input_amount, cd.status
     ORDER BY sl.transfer_at ASC
 
   ";
@@ -220,6 +222,10 @@ try {
     $reconcileTypes = array_unique($reconcileTypes);
 
     $primaryType = 'Unmatched';
+    // For COD documents without reconcile logs, use cod_total_amount for comparison
+    $isCodDocument = !empty($row['cod_document_id']);
+    $codTotalAmountForCalc = !empty($row['cod_total_amount']) ? (float) $row['cod_total_amount'] : 0;
+    
     if (count($reconcileItems) > 0) {
       if (in_array('Suspense', $reconcileTypes)) {
         $primaryType = 'Suspense';
@@ -231,7 +237,15 @@ try {
         $primaryType = 'Order';
         // Check Amount Logic
         $stmtAmt = (float) $row['statement_amount'];
-        $diff = $stmtAmt - $totalConfirmed;
+        
+        // For COD documents, use cod_total_amount for accurate comparison
+        // This accounts for forced records that may not be in reconcile logs
+        $compareAmount = $totalConfirmed;
+        if ($isCodDocument && $codTotalAmountForCalc > 0) {
+          $compareAmount = $codTotalAmountForCalc;
+        }
+        
+        $diff = $stmtAmt - $compareAmount;
 
         if (abs($diff) < 0.01) {
           $status = 'Exact';
@@ -240,6 +254,19 @@ try {
         } else {
           $status = 'Short';
         }
+      }
+    } elseif ($isCodDocument && $codTotalAmountForCalc > 0) {
+      // COD document matched but no reconcile logs yet - use cod_total_amount for status
+      $primaryType = 'Order';
+      $stmtAmt = (float) $row['statement_amount'];
+      $diff = $stmtAmt - $codTotalAmountForCalc;
+      
+      if (abs($diff) < 0.01) {
+        $status = 'Exact';
+      } elseif ($diff > 0) {
+        $status = 'Over';
+      } else {
+        $status = 'Short';
       }
     }
 
@@ -336,6 +363,18 @@ try {
     $isCodDocument = !empty($row['cod_document_id']);
     $displayOrderId = $isCodDocument ? $row['cod_document_number'] : $orderDisplay;
 
+    // For COD documents, use cod_total_amount if no reconcile logs yet
+    $codTotalAmount = !empty($row['cod_total_amount']) ? (float) $row['cod_total_amount'] : null;
+    $displayOrderAmount = null;
+    if (!in_array($primaryType, ['Suspense', 'Deposit'])) {
+      // For COD documents, always use cod_total_amount (includes forced records)
+      if ($isCodDocument && $codTotalAmount !== null) {
+        $displayOrderAmount = $codTotalAmount;
+      } elseif ($totalConfirmed > 0) {
+        $displayOrderAmount = $totalConfirmed;
+      }
+    }
+
     $results[] = [
       'id' => $row['id'],
       'reconcile_id' => !empty($reconcileItems) ? $reconcileItems[0]['reconcile_id'] : null, // Just use first for now or null
@@ -349,7 +388,7 @@ try {
       'description' => $row['description'],
       'order_id' => !empty($orderIds) ? implode(',', array_unique($orderIds)) : null, // Return as CSV for raw
       'order_display' => $displayOrderId,
-      'order_amount' => in_array($primaryType, ['Suspense', 'Deposit']) ? null : ($totalConfirmed > 0 ? $totalConfirmed : null),
+      'order_amount' => $displayOrderAmount,
       'payment_method' => $derivedPaymentMethod,
       'status' => $status,
       'diff' => $diff,
@@ -361,6 +400,8 @@ try {
       // COD document info
       'cod_document_id' => $row['cod_document_id'] ?? null,
       'cod_document_number' => $row['cod_document_number'] ?? null,
+      'cod_total_amount' => $codTotalAmount,
+      'cod_status' => $row['cod_status'] ?? null,
       'is_cod_document' => $isCodDocument,
     ];
   }

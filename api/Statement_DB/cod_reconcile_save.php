@@ -65,7 +65,7 @@ function ensure_reconcile_tables(PDO $pdo): void
       auto_matched TINYINT(1) NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
-      UNIQUE KEY uniq_statement_log (statement_log_id),
+      UNIQUE KEY uniq_statement_order (statement_log_id, order_id),
       KEY idx_statement_reconcile_order (order_id),
       KEY idx_statement_reconcile_batch (batch_id),
       KEY idx_statement_reconcile_order_statement (order_id, statement_log_id),
@@ -80,6 +80,15 @@ function ensure_reconcile_tables(PDO $pdo): void
     $pdo->exec("ALTER TABLE statement_reconcile_logs DROP INDEX uniq_order_log");
   } catch (PDOException $e) {
     // Ignore if the index does not exist.
+  }
+
+  // Migration: Change unique key from statement_log_id only to (statement_log_id, order_id)
+  // This allows one statement to be matched to multiple orders (for COD documents)
+  try {
+    $pdo->exec("ALTER TABLE statement_reconcile_logs DROP INDEX uniq_statement_log");
+    $pdo->exec("ALTER TABLE statement_reconcile_logs ADD UNIQUE KEY uniq_statement_order (statement_log_id, order_id)");
+  } catch (PDOException $e) {
+    // Ignore if the index does not exist or already changed.
   }
 
 }
@@ -234,20 +243,42 @@ try {
     throw new RuntimeException("Statement log {$statementLogId} already reconciled");
   }
 
-  // 3. Get all COD records for this document
-  $codRecordsStmt = $pdo->prepare("
+  // 3. Get ALL COD records for this document (including forced records without order_id)
+  // This is needed to calculate correct proportions for the statement amount
+  $allCodRecordsStmt = $pdo->prepare("
     SELECT * FROM cod_records
-    WHERE document_id = :docId AND order_id IS NOT NULL AND order_id != ''
+    WHERE document_id = :docId
     ORDER BY id
   ");
-  $codRecordsStmt->execute([":docId" => $codDocumentId]);
-  $codRecords = $codRecordsStmt->fetchAll(PDO::FETCH_ASSOC);
+  $allCodRecordsStmt->execute([":docId" => $codDocumentId]);
+  $allCodRecords = $allCodRecordsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+  // Filter to only records with valid order_id for reconciliation
+  $codRecords = array_filter($allCodRecords, function($rec) {
+    $orderId = trim((string) ($rec["order_id"] ?? ""));
+    return $orderId !== "";
+  });
+  $codRecords = array_values($codRecords); // Re-index
 
   if (empty($codRecords)) {
     throw new RuntimeException("No COD records with order_id found for this document");
   }
 
-  error_log("cod_reconcile_save: Found " . count($codRecords) . " COD records");
+  // Calculate total COD amount from ALL records (including forced)
+  // This ensures forced amounts are distributed proportionally to valid orders
+  $totalCodAmountAll = 0.0;
+  foreach ($allCodRecords as $rec) {
+    $totalCodAmountAll += (float) ($rec["cod_amount"] ?? 0);
+  }
+
+  // Calculate total COD amount from records WITH order_id only
+  $totalCodAmountWithOrders = 0.0;
+  foreach ($codRecords as $rec) {
+    $totalCodAmountWithOrders += (float) ($rec["cod_amount"] ?? 0);
+  }
+
+  error_log("cod_reconcile_save: Found " . count($allCodRecords) . " total COD records, " . count($codRecords) . " with order_id");
+  error_log("cod_reconcile_save: Total COD amount (all): {$totalCodAmountAll}, with orders: {$totalCodAmountWithOrders}");
 
   // 4. Get bank account info
   $bankAccountId = $codDoc["bank_account_id"] ? (int) $codDoc["bank_account_id"] : (int) $stmtInfo["bank_account_id"];
@@ -325,9 +356,12 @@ try {
   $batchRunningTotals = [];
   $existingReconCache = [];
   $statementAmount = (float) $stmtInfo["amount"];
-  $totalCodAmount = (float) $codDoc["total_input_amount"];
+  
+  // Use totalCodAmountWithOrders for proportion calculation
+  // This distributes the FULL statement amount to orders with valid order_id
+  // Forced amounts (no order_id) are effectively distributed proportionally to all orders
 
-  // Calculate proportional amounts first
+  // Calculate proportional amounts - distribute FULL statement to orders with order_id
   $allocatedAmounts = [];
   $totalAllocated = 0.0;
   $validIndices = [];
@@ -338,7 +372,8 @@ try {
     }
     $validIndices[] = $idx;
     $codAmount = (float) $codRecord["cod_amount"];
-    $proportion = $totalCodAmount > 0 ? ($codAmount / $totalCodAmount) : (1.0 / count($validIndices));
+    // Use totalCodAmountWithOrders as denominator so FULL statement amount is distributed
+    $proportion = $totalCodAmountWithOrders > 0 ? ($codAmount / $totalCodAmountWithOrders) : (1.0 / count($codRecords));
     $allocatedAmounts[$idx] = round($statementAmount * $proportion, 2);
     $totalAllocated += $allocatedAmounts[$idx];
   }
@@ -346,7 +381,7 @@ try {
   // Adjust last valid record to account for rounding differences
   if (count($validIndices) > 0 && abs($totalAllocated - $statementAmount) > 0.01) {
     $lastIdx = $validIndices[count($validIndices) - 1];
-    $allocatedAmounts[$lastIdx] = $statementAmount - ($totalAllocated - $allocatedAmounts[$lastIdx]);
+    $allocatedAmounts[$lastIdx] = round($statementAmount - ($totalAllocated - $allocatedAmounts[$lastIdx]), 2);
   }
 
   error_log("cod_reconcile_save: Allocated amounts calculated. Total: " . array_sum($allocatedAmounts) . ", Expected: {$statementAmount}");
@@ -486,6 +521,15 @@ try {
       ":orderId" => $parentOrderId,
       ":companyId" => $companyId,
     ]);
+  }
+
+  // 6b. Also update forced COD records (without order_id) to 'matched' status
+  foreach ($allCodRecords as $rec) {
+    $orderId = trim((string) ($rec["order_id"] ?? ""));
+    if ($orderId === "") {
+      // This is a forced record - update its status too
+      $codRecordUpdateStmt->execute([":recordId" => $rec["id"]]);
+    }
   }
 
   // 7. Update COD document

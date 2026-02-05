@@ -63,7 +63,7 @@ function ensure_reconcile_tables(PDO $pdo): void
       auto_matched TINYINT(1) NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
-      UNIQUE KEY uniq_statement_log (statement_log_id),
+      UNIQUE KEY uniq_statement_order (statement_log_id, order_id),
       KEY idx_statement_reconcile_order (order_id),
       KEY idx_statement_reconcile_batch (batch_id),
       KEY idx_statement_reconcile_type (reconcile_type),
@@ -78,6 +78,15 @@ function ensure_reconcile_tables(PDO $pdo): void
     $pdo->exec("ALTER TABLE statement_reconcile_logs DROP INDEX uniq_order_log");
   } catch (PDOException $e) {
     // Ignore if the index does not exist.
+  }
+
+  // Migration: Change unique key from statement_log_id only to (statement_log_id, order_id)
+  // This allows one statement to be matched to multiple orders (for COD documents)
+  try {
+    $pdo->exec("ALTER TABLE statement_reconcile_logs DROP INDEX uniq_statement_log");
+    $pdo->exec("ALTER TABLE statement_reconcile_logs ADD UNIQUE KEY uniq_statement_order (statement_log_id, order_id)");
+  } catch (PDOException $e) {
+    // Ignore if the index does not exist or already changed.
   }
 }
 

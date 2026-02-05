@@ -7747,6 +7747,74 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 json_response(['error' => 'NOT_FOUND'], 404);
             }
 
+            // NEW: Handle adding items to existing document
+            $itemsProvided = isset($in['items']) && is_array($in['items']) && count($in['items']) > 0;
+            if ($itemsProvided) {
+                // Check if document is still editable (not yet matched with statement)
+                if (!empty($doc['matched_statement_log_id']) || $doc['status'] === 'verified') {
+                    json_response(['error' => 'DOCUMENT_ALREADY_VERIFIED', 'message' => 'ไม่สามารถแก้ไขเอกสารที่จับคู่กับ Statement แล้ว'], 400);
+                }
+
+                $items = $in['items'];
+                $addedInputTotal = 0.0;
+                $addedOrderTotal = 0.0;
+                $createdBy = $in['created_by'] ?? null;
+
+                $itemStmt = $pdo->prepare('INSERT INTO cod_records 
+                    (document_id, tracking_number, order_id, cod_amount, order_amount, 
+                     received_amount, difference, status, company_id, created_by) 
+                    VALUES (?,?,?,?,?,?,?,?,?,?)');
+
+                foreach ($items as $it) {
+                    $trackingNumber = trim((string)($it['tracking_number'] ?? ''));
+                    if ($trackingNumber === '') continue;
+
+                    $codAmount = (float)($it['cod_amount'] ?? 0);
+                    $orderAmount = (float)($it['order_amount'] ?? 0);
+                    $forceImport = (bool)($it['force_import'] ?? false);
+                    
+                    // Determine status
+                    if ($forceImport) {
+                        $status = 'forced';
+                        $orderId = null; // No order association for forced imports
+                    } else {
+                        $status = $it['status'] ?? 'pending';
+                        $orderId = isset($it['order_id']) && $it['order_id'] !== '' ? trim((string)$it['order_id']) : null;
+                    }
+                    
+                    $difference = $codAmount - $orderAmount;
+
+                    $itemStmt->execute([
+                        $id, // document_id
+                        $trackingNumber,
+                        $orderId,
+                        $codAmount,
+                        $orderAmount,
+                        $orderAmount, // received_amount
+                        $difference,
+                        $status,
+                        $doc['company_id'],
+                        $createdBy
+                    ]);
+
+                    $addedInputTotal += $codAmount;
+                    $addedOrderTotal += $orderAmount;
+                }
+
+                // Update document totals
+                if ($addedInputTotal > 0 || $addedOrderTotal > 0) {
+                    $updateTotalsStmt = $pdo->prepare('UPDATE cod_documents SET 
+                        total_input_amount = total_input_amount + ?,
+                        total_order_amount = total_order_amount + ?,
+                        updated_at = NOW()
+                        WHERE id = ?');
+                    $updateTotalsStmt->execute([$addedInputTotal, $addedOrderTotal, $id]);
+                }
+
+                json_response(['ok' => true, 'added_count' => count($items), 'added_input_total' => $addedInputTotal]);
+            }
+
+            // Existing logic for updating document metadata (statement matching, etc.)
             $updates = [];
             $params = [];
             $statementProvided = false;

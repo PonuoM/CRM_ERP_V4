@@ -61,6 +61,17 @@ interface RowData {
   amountPaid?: number;
   returnCondition?: "ชำรุด" | "ปกติ";
   manualStatus?: "ศูนย์หาย" | "ไม่สำเร็จ" | "หายศูนย์" | "";
+  forceImport?: boolean; // NEW: Skip order update, just record for total matching
+}
+
+interface ExistingDocument {
+  id: number;
+  document_number: string;
+  document_datetime: string;
+  total_input_amount: number;
+  total_order_amount: number;
+  status: string;
+  matched_statement_log_id: number | null;
 }
 
 interface BankAccount {
@@ -114,7 +125,6 @@ const getBaseOrderId = (orderId?: string) => {
 
 const CODManagementPage: React.FC<CODManagementPageProps> = ({
   user,
-  orders,
   customers,
   users,
   onOrdersPaidUpdate,
@@ -133,6 +143,12 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [isLoadingBanks, setIsLoadingBanks] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // NEW: Import mode and existing documents
+  const [importMode, setImportMode] = useState<'new' | 'existing'>('new');
+  const [existingDocuments, setExistingDocuments] = useState<ExistingDocument[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
+  const [isLoadingExistingDocs, setIsLoadingExistingDocs] = useState(false);
 
   useEffect(() => {
     const fetchBanks = async () => {
@@ -155,6 +171,30 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     };
     fetchBanks();
   }, [user?.companyId]);
+
+  // NEW: Fetch existing pending documents for "add to existing" mode
+  useEffect(() => {
+    const fetchExistingDocs = async () => {
+      if (!user?.companyId || importMode !== 'existing') return;
+      try {
+        setIsLoadingExistingDocs(true);
+        const qs = new URLSearchParams({ companyId: String(user.companyId) });
+        const data = await apiFetch(`cod_documents?${qs.toString()}`);
+        if (Array.isArray(data)) {
+          // Filter only pending documents (not yet matched with statement)
+          const pendingDocs = data.filter((doc: ExistingDocument) =>
+            !doc.matched_statement_log_id && doc.status !== 'verified'
+          );
+          setExistingDocuments(pendingDocs);
+        }
+      } catch (error) {
+        console.error('Failed to load existing documents', error);
+      } finally {
+        setIsLoadingExistingDocs(false);
+      }
+    };
+    fetchExistingDocs();
+  }, [user?.companyId, importMode]);
 
   const handleInputChange = (index: number, field: 'trackingNumber' | 'codAmount', value: string) => {
     const newRows = [...rows];
@@ -209,6 +249,13 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     setRows(rows.filter((_, i) => i !== index).map((row, i) => ({ ...row, id: i + 1 })));
   };
 
+  // NEW: Toggle force import for pending rows
+  const handleToggleForceImport = (index: number) => {
+    const newRows = [...rows];
+    newRows[index].forceImport = !newRows[index].forceImport;
+    setRows(newRows);
+  };
+
 
   // Removed client-side trackingLookup to use Server-Side API
 
@@ -228,7 +275,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         trackingNumber: row.trackingNumber.trim()
       }));
 
-      // 3. Call API
+      // 3. Call API to validate against orders
       const response = await apiFetch('validate_cod_tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -243,10 +290,39 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         if (normalized) resultMap.set(normalized, res);
       });
 
+      // NEW: Check cod_records for already imported tracking numbers
+      const alreadyImportedMap = new Map<string, { cod_amount: number; status: string }>();
+      if (user?.companyId) {
+        try {
+          await Promise.all(
+            items.map(async (item) => {
+              const normalized = normalizeTrackingNumber(item.trackingNumber);
+              const qs = new URLSearchParams({
+                companyId: String(user.companyId),
+                trackingNumber: normalized,
+              });
+              const existingRecords = await apiFetch(`cod_records?${qs.toString()}`);
+              if (Array.isArray(existingRecords) && existingRecords.length > 0) {
+                const record = existingRecords.find(
+                  (r: any) => normalizeTrackingNumber(r?.tracking_number || "") === normalized
+                );
+                if (record) {
+                  alreadyImportedMap.set(normalized, {
+                    cod_amount: parseFloat(record.cod_amount) || 0,
+                    status: record.status || 'unknown'
+                  });
+                }
+              }
+            })
+          );
+        } catch (err) {
+          console.warn("Failed to check existing cod_records", err);
+        }
+      }
+
       // 4. Update rows
       const validatedRows = [...rows];
 
-      // Clear previous statuses for processed rows (or all?)
       // We iterate ORIGINAL rows to preserve order
       rows.forEach((row, index) => {
         const trimmedTracking = row.trackingNumber.trim();
@@ -257,10 +333,27 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
         const normalized = normalizeTrackingNumber(trimmedTracking);
         const apiResult = resultMap.get(normalized);
+        const alreadyImported = alreadyImportedMap.get(normalized);
 
         const codAmountValue = parseAmount(row.codAmount);
         // If amount is invalid in input
         const isAmountValid = Number.isFinite(codAmountValue) && codAmountValue >= 0;
+
+        // NEW: Check if already imported to cod_records
+        if (alreadyImported) {
+          const importedAmount = alreadyImported.cod_amount;
+          const importStatus = alreadyImported.status === 'forced' ? '(ข้าม)' : '';
+          validatedRows[index] = {
+            ...row,
+            status: 'matched' as ValidationStatus,
+            message: `ซ้ำแล้ว ฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${importStatus}`,
+            orderId: apiResult?.orderId,
+            orderAmount: apiResult?.expectedAmount || importedAmount,
+            difference: 0,
+            amountPaid: importedAmount, // Mark as already paid to skip during import
+          };
+          return;
+        }
 
         if (!apiResult || apiResult.status === 'pending') {
           // Not found in DB
@@ -426,25 +519,36 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
 
   const handleImport = async () => {
+    // NEW: Include forceImport rows (pending status with forceImport checked)
     const readyRows = rows.filter(
-      (row) => row.status === "matched" || row.status === "unmatched",
+      (row) => row.status === "matched" || row.status === "unmatched" ||
+        (row.status === "pending" && row.forceImport)
     );
     if (readyRows.length === 0) {
-      alert("ไม่มีรายการที่พร้อมนำเข้า (สถานะ matched หรือ unmatched)");
+      alert("ไม่มีรายการที่พร้อมนำเข้า (สถานะ matched, unmatched หรือติ๊กข้าม)");
       return;
     }
 
-    if (!documentNumber.trim()) {
-      alert("กรุณากรอกเลขที่เอกสาร");
-      return;
-    }
-    if (!documentDate || !documentTime) {
-      alert("กรุณากรอกวันที่และเวลาเอกสาร");
-      return;
-    }
-    if (!bankAccountId) {
-      alert("กรุณาเลือกบัญชีธนาคาร");
-      return;
+    // Validation based on import mode
+    if (importMode === 'new') {
+      if (!documentNumber.trim()) {
+        alert("กรุณากรอกเลขที่เอกสาร");
+        return;
+      }
+      if (!documentDate || !documentTime) {
+        alert("กรุณากรอกวันที่และเวลาเอกสาร");
+        return;
+      }
+      if (!bankAccountId) {
+        alert("กรุณาเลือกบัญชีธนาคาร");
+        return;
+      }
+    } else {
+      // existing mode
+      if (!selectedDocumentId) {
+        alert("กรุณาเลือกเอกสารที่ต้องการเพิ่มรายการ");
+        return;
+      }
     }
 
     const uniqueRowsByTracking = new Map<string, RowData>();
@@ -502,7 +606,9 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       .map((normalized) => uniqueRowsByTracking.get(normalized)!)
       .filter(Boolean);
 
+    // For non-forceImport rows, skip if already paid
     const finalRowsToImport = rowsToImport.filter(row => {
+      if (row.forceImport) return true; // Always include force import
       if (!row.orderId) return true;
       // Use amountPaid from validation result
       if ((row.amountPaid || 0) > 0) {
@@ -517,6 +623,9 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       return;
     }
 
+    // Count forced imports
+    const forcedCount = finalRowsToImport.filter(r => r.forceImport).length;
+
     const skipMessages: string[] = [];
     if (duplicateRowsInUpload.length > 0) {
       skipMessages.push(`${duplicateRowsInUpload.length} รายการซ้ำในไฟล์อัปโหลด`);
@@ -528,11 +637,17 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       skipMessages.push(`${rowsToImport.length - finalRowsToImport.length} รายการถูกข้าม (จ่ายแล้ว)`);
     }
 
+    const targetDocName = importMode === 'new'
+      ? documentNumber
+      : existingDocuments.find(d => d.id === selectedDocumentId)?.document_number || String(selectedDocumentId);
+
     const confirmMessage = [
-      `ยืนยันนำเข้า COD จำนวน ${finalRowsToImport.length} รายการ สำหรับเอกสาร ${documentNumber}?`,
+      importMode === 'new'
+        ? `ยืนยันสร้างเอกสาร COD ใหม่ (${documentNumber})?`
+        : `ยืนยันเพิ่ม ${finalRowsToImport.length} รายการในเอกสาร ${targetDocName}?`,
       skipMessages.length > 0 ? `ข้าม: ${skipMessages.join(" / ")}` : "",
       `ยอดรวมนำเข้า: ฿${totalInputAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}`,
-      `ยอดรวมออเดอร์ที่ตรง: ฿${totalMatchedOrderAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}`,
+      forcedCount > 0 ? `⚠️ รายการติ๊กข้าม (ไม่อัพเดท Order): ${forcedCount} รายการ` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -551,33 +666,56 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     const documentDateTime = `${documentDate} ${documentTime || "00:00"}:00`;
 
     try {
-      await apiFetch("cod_documents", {
-        method: "POST",
-        body: JSON.stringify({
-          document_number: documentNumber.trim(),
-          document_datetime: documentDateTime,
-          bank_account_id: bankAccountId === "" ? null : bankAccountId,
-          company_id: user.companyId,
-          created_by: user.id,
-          total_input_amount: totalInputAmount,
-          total_order_amount: totalMatchedOrderAmount,
-          items: payloadRows.map(({ row, codAmount, orderAmount }) => ({
-            tracking_number: row.trackingNumber.trim(),
-            cod_amount: codAmount,
-            order_amount: orderAmount,
-            order_id: row.orderId || null,
-            difference: row.difference ?? codAmount - orderAmount,
-            status: row.status,
-          })),
-        }),
-      });
+      if (importMode === 'new') {
+        // POST - Create new document
+        await apiFetch("cod_documents", {
+          method: "POST",
+          body: JSON.stringify({
+            document_number: documentNumber.trim(),
+            document_datetime: documentDateTime,
+            bank_account_id: bankAccountId === "" ? null : bankAccountId,
+            company_id: user.companyId,
+            created_by: user.id,
+            total_input_amount: totalInputAmount,
+            total_order_amount: totalMatchedOrderAmount,
+            items: payloadRows.map(({ row, codAmount, orderAmount }) => ({
+              tracking_number: row.trackingNumber.trim(),
+              cod_amount: codAmount,
+              order_amount: orderAmount,
+              order_id: row.forceImport ? null : (row.orderId || null),
+              difference: row.difference ?? codAmount - orderAmount,
+              status: row.forceImport ? 'forced' : row.status,
+              force_import: row.forceImport || false,
+            })),
+          }),
+        });
+      } else {
+        // PATCH - Add to existing document
+        await apiFetch(`cod_documents/${selectedDocumentId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            created_by: user.id,
+            items: payloadRows.map(({ row, codAmount, orderAmount }) => ({
+              tracking_number: row.trackingNumber.trim(),
+              cod_amount: codAmount,
+              order_amount: orderAmount,
+              order_id: row.forceImport ? null : (row.orderId || null),
+              difference: row.difference ?? codAmount - orderAmount,
+              status: row.forceImport ? 'forced' : row.status,
+              force_import: row.forceImport || false,
+            })),
+          }),
+        });
+      }
 
+      // Update orders - only for non-forceImport rows
       const totalsByOrder = new Map<
         string,
         { totalPaid: number; totalExpected: number }
       >();
 
       payloadRows.forEach(({ row, codAmount, orderAmount }) => {
+        if (row.forceImport) return; // Skip order update for forced imports
         const baseId = getBaseOrderId(row.orderId);
         if (!baseId) return;
         const agg =
@@ -630,17 +768,24 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
             totals.totalExpected,
           )}`,
       );
+      const forcedSummary = forcedCount > 0 ? `\n⚠️ ${forcedCount} รายการติ๊กข้าม (ไม่อัพเดท Order)` : '';
       const successMessage = summaryLines.length
-        ? `นำเข้าเอกสาร ${documentNumber} สำเร็จ (รวม ${finalRowsToImport.length} รายการ)\n${summaryLines.join("\n")}`
-        : `นำเข้าเอกสาร ${documentNumber} สำเร็จ (รวม ${finalRowsToImport.length} รายการ)`;
+        ? `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (รวม ${finalRowsToImport.length} รายการ)\n${summaryLines.join("\n")}${forcedSummary}`
+        : `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (รวม ${finalRowsToImport.length} รายการ)${forcedSummary}`;
       alert(successMessage);
       setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
       setIsVerified(false);
       setDocumentNumber("");
       setDocumentTime(getCurrentTime());
-    } catch (error) {
+      setSelectedDocumentId(null);
+      setImportMode('new');
+    } catch (error: any) {
       console.error("COD import failed", error);
-      alert("เกิดข้อผิดพลาดในการนำเข้า COD กรุณาลองใหม่");
+      if (error?.data?.error === 'DOCUMENT_ALREADY_VERIFIED') {
+        alert("ไม่สามารถแก้ไขเอกสารที่จับคู่กับ Statement แล้ว");
+      } else {
+        alert("เกิดข้อผิดพลาดในการนำเข้า COD กรุณาลองใหม่");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -715,64 +860,132 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       <p className="text-gray-600 mb-6">คัดลอกข้อมูลจากไฟล์ Excel/CSV (2 คอลัมน์: Tracking Number, COD Amount) แล้ววางลงในตารางด้านล่าง</p>
 
       <div className="bg-white p-4 rounded-lg shadow mb-4">
-        <div className="grid gap-4 md:grid-cols-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">เลขที่เอกสาร</label>
-            <input
-              type="text"
-              value={documentNumber}
-              onChange={(e) => setDocumentNumber(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="เช่น JAT25-11-2025-1556"
-            />
-            <p className="text-xs text-gray-500 mt-1">แนะนำ: ชื่อขนส่ง+วันที่+เวลา</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">วันที่เอกสาร</label>
+        {/* NEW: Import Mode Selection */}
+        <div className="mb-4 pb-4 border-b border-gray-200">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">โหมดนำเข้า</label>
+          <div className="flex gap-4">
+            <label className="flex items-center cursor-pointer">
               <input
-                type="date"
-                value={documentDate}
-                onChange={(e) => setDocumentDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                type="radio"
+                name="importMode"
+                value="new"
+                checked={importMode === 'new'}
+                onChange={() => {
+                  setImportMode('new');
+                  setSelectedDocumentId(null);
+                }}
+                className="mr-2"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">เวลา</label>
+              <span className="text-sm">สร้างเอกสารใหม่</span>
+            </label>
+            <label className="flex items-center cursor-pointer">
               <input
-                type="time"
-                value={documentTime}
-                onChange={(e) => setDocumentTime(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                type="radio"
+                name="importMode"
+                value="existing"
+                checked={importMode === 'existing'}
+                onChange={() => setImportMode('existing')}
+                className="mr-2"
               />
-            </div>
+              <span className="text-sm">เพิ่มในเอกสารเดิม</span>
+            </label>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">บัญชีธนาคาร</label>
+        </div>
+
+        {/* Existing document selector - show when mode is 'existing' */}
+        {importMode === 'existing' && (
+          <div className="mb-4 pb-4 border-b border-gray-200">
+            <label className="block text-sm font-semibold text-gray-700 mb-1">เลือกเอกสาร (ที่ยังไม่จับคู่กับ Statement)</label>
             <select
-              value={bankAccountId}
-              onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : "")}
+              value={selectedDocumentId || ''}
+              onChange={(e) => setSelectedDocumentId(e.target.value ? Number(e.target.value) : null)}
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={isLoadingBanks}
+              disabled={isLoadingExistingDocs}
             >
-              <option value="">-- เลือก --</option>
-              {bankAccounts.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {`${b.bank} - ${b.bank_number}`}
+              <option value="">-- เลือกเอกสาร --</option>
+              {existingDocuments.map((doc) => (
+                <option key={doc.id} value={doc.id}>
+                  {doc.document_number} (฿{doc.total_input_amount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })})
                 </option>
               ))}
             </select>
-            {isLoadingBanks && <p className="text-xs text-gray-500 mt-1">กำลังโหลดบัญชี...</p>}
-            {!isLoadingBanks && bankAccounts.length === 0 && (
-              <p className="text-xs text-orange-600 mt-1">ไม่พบบัญชีที่ใช้งาน</p>
+            {isLoadingExistingDocs && <p className="text-xs text-gray-500 mt-1">กำลังโหลดเอกสาร...</p>}
+            {!isLoadingExistingDocs && existingDocuments.length === 0 && (
+              <p className="text-xs text-orange-600 mt-1">ไม่พบเอกสารที่ยังไม่จับคู่กับ Statement</p>
             )}
           </div>
+        )}
+
+        {/* Document fields - only show for 'new' mode */}
+        {importMode === 'new' && (
+          <div className="grid gap-4 md:grid-cols-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">เลขที่เอกสาร</label>
+              <input
+                type="text"
+                value={documentNumber}
+                onChange={(e) => setDocumentNumber(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="เช่น JAT25-11-2025-1556"
+              />
+              <p className="text-xs text-gray-500 mt-1">แนะนำ: ชื่อขนส่ง+วันที่+เวลา</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">วันที่เอกสาร</label>
+                <input
+                  type="date"
+                  value={documentDate}
+                  onChange={(e) => setDocumentDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">เวลา</label>
+                <input
+                  type="time"
+                  value={documentTime}
+                  onChange={(e) => setDocumentTime(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">บัญชีธนาคาร</label>
+              <select
+                value={bankAccountId}
+                onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : "")}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isLoadingBanks}
+              >
+                <option value="">-- เลือก --</option>
+                {bankAccounts.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {`${b.bank} - ${b.bank_number}`}
+                  </option>
+                ))}
+              </select>
+              {isLoadingBanks && <p className="text-xs text-gray-500 mt-1">กำลังโหลดบัญชี...</p>}
+              {!isLoadingBanks && bankAccounts.length === 0 && (
+                <p className="text-xs text-orange-600 mt-1">ไม่พบบัญชีที่ใช้งาน</p>
+              )}
+            </div>
+            <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">ยอดรวม</p>
+              <div className="mt-1 text-sm text-gray-700">ยอดนำเข้า: ฿{totalInputAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+              <div className="text-sm text-gray-700">ยอดออเดอร์ตรง: ฿{totalMatchedOrderAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Summary for existing mode */}
+        {importMode === 'existing' && (
           <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">ยอดรวม</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide">ยอดรวมที่จะเพิ่ม</p>
             <div className="mt-1 text-sm text-gray-700">ยอดนำเข้า: ฿{totalInputAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
             <div className="text-sm text-gray-700">ยอดออเดอร์ตรง: ฿{totalMatchedOrderAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow mb-4">
@@ -805,17 +1018,28 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               onClick={handleImport}
               disabled={
                 !isVerified ||
-                validCount + unmatchedCount === 0 ||
                 isSubmitting ||
-                !documentNumber.trim() ||
-                !documentDate ||
-                !documentTime ||
-                !bankAccountId
+                // For 'new' mode: require document details
+                (importMode === 'new' && (
+                  !documentNumber.trim() ||
+                  !documentDate ||
+                  !documentTime ||
+                  !bankAccountId
+                )) ||
+                // For 'existing' mode: require selected document
+                (importMode === 'existing' && !selectedDocumentId) ||
+                // Require at least one importable row (matched, unmatched, or pending+forceImport)
+                (validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length === 0)
               }
               className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
             >
               <UploadCloud size={16} className="mr-2" />
-              {isSubmitting ? "กำลังนำเข้า..." : `นำเข้าข้อมูล (${validCount + unmatchedCount})`}
+              {isSubmitting
+                ? "กำลังนำเข้า..."
+                : importMode === 'new'
+                  ? `สร้างเอกสารใหม่ (${validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length})`
+                  : `เพิ่มในเอกสาร (${validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length})`
+              }
             </button>
           </div>
         </div>
@@ -832,12 +1056,13 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               <th className="px-6 py-3 text-right">COD จากออเดอร์</th>
               <th className="px-6 py-3 text-right">ส่วนต่าง</th>
               <th className="px-6 py-3">สถานะ</th>
+              <th className="px-2 py-3 w-16 text-center" title="ติ๊กเพื่อนำเข้าโดยไม่อัพเดท Order">ข้าม</th>
               <th className="px-2 py-3 w-12"></th>
             </tr>
           </thead>
           <tbody className="text-gray-600">
             {rows.map((row, index) => (
-              <tr key={row.id} className={`border-b ${row.status === 'matched' ? 'bg-green-50' : row.status === 'unmatched' ? 'bg-yellow-50' : row.status === 'pending' ? 'bg-orange-50' : row.status === 'returned' ? 'bg-red-50' : ''}`}>
+              <tr key={row.id} className={`border-b ${row.status === 'matched' ? 'bg-green-50' : row.status === 'unmatched' ? 'bg-yellow-50' : row.status === 'pending' ? 'bg-orange-50' : row.status === 'returned' ? 'bg-red-50' : ''} ${row.forceImport ? 'ring-2 ring-purple-300' : ''}`}>
                 <td className="px-2 py-1 text-center text-gray-400">{index + 1}</td>
                 <td className="px-6 py-1">
                   <input
@@ -886,6 +1111,21 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                 </td>
                 <td className="px-6 py-1 text-xs font-medium">
                   {getStatusIndicator(row.status, row.message)}
+                </td>
+                {/* NEW: Force import checkbox for pending/unmatched rows */}
+                <td className="px-2 py-1 text-center">
+                  {(row.status === 'pending' || row.status === 'unmatched') && row.trackingNumber.trim() ? (
+                    <label className="cursor-pointer" title="นำเข้าโดยไม่อัพเดท Order (เพื่อให้ยอดรวมตรงกับ Statement)">
+                      <input
+                        type="checkbox"
+                        checked={row.forceImport || false}
+                        onChange={() => handleToggleForceImport(index)}
+                        className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                      />
+                    </label>
+                  ) : (
+                    <span className="text-gray-300">-</span>
+                  )}
                 </td>
                 <td className="px-2 py-1 text-center">
                   <button onClick={() => removeRow(index)} className="text-gray-400 hover:text-red-500 p-1">
