@@ -2133,11 +2133,12 @@ export async function getTelesaleUpsellList(params: {
   return apiFetch(`Orders/get_upsell_orders.php?${queryParams.toString()}`);
 }
 
-export async function getReturnOrders(params?: { status?: string; page?: number; limit?: number }) {
+export async function getReturnOrders(params?: { status?: string; page?: number; limit?: number; companyId?: number }) {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);
   if (params?.page) qs.set('page', String(params.page));
   if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.companyId) qs.set('companyId', String(params.companyId));
 
   return apiFetch(`Orders/get_return_orders.php?${qs.toString()}`, {
     method: "GET",

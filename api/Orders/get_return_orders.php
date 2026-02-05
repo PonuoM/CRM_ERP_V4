@@ -23,6 +23,7 @@ try {
     $status = isset($_GET['status']) ? $_GET['status'] : '';
     $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
     $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 50;
+    $companyId = isset($_GET['companyId']) ? (int) $_GET['companyId'] : 0;
     $offset = ($page - 1) * $limit;
 
     // Build Query
@@ -37,13 +38,24 @@ try {
         $params = array_merge($params, $statuses);
     }
 
+    // Filter by company_id if provided
+    if ($companyId > 0) {
+        $whereClauses[] = "o.company_id = ?";
+        $params[] = $companyId;
+    }
+
     $whereSql = "";
     if (count($whereClauses) > 0) {
         $whereSql = "WHERE " . implode(' AND ', $whereClauses);
     }
 
-    // Count Total
-    $countSql = "SELECT COUNT(*) as total FROM order_returns ort " . $whereSql;
+    // Count Total (with JOINs for company_id filtering)
+    $countSql = "
+        SELECT COUNT(DISTINCT ort.id) as total 
+        FROM order_returns ort
+        LEFT JOIN order_tracking_numbers otn ON ort.tracking_number = otn.tracking_number
+        LEFT JOIN orders o ON o.id = otn.parent_order_id OR o.id = otn.order_id 
+        " . $whereSql;
     $stmtCount = $conn->prepare($countSql);
     $stmtCount->execute($params);
     $totalRow = $stmtCount->fetch(PDO::FETCH_ASSOC);

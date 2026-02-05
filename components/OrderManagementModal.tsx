@@ -2924,6 +2924,16 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 )}
               </div>
             </div>
+
+            {/* Notes Section */}
+            {currentOrder.notes && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <p className="text-xs text-gray-500 mb-1">หมายเหตุ</p>
+                <p className="text-sm text-gray-700 bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
+                  {currentOrder.notes}
+                </p>
+              </div>
+            )}
           </InfoCard>
 
           <InfoCard icon={Package} title="รายการสินค้า">
@@ -3146,8 +3156,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               <input
                                 type="number"
                                 value={item.pricePerUnit ?? (item as any).price_per_unit}
-                                readOnly
-                                className="w-20 border rounded px-1 text-right bg-gray-100 text-gray-500 cursor-not-allowed"
+                                readOnly={permission !== 'manager'}
+                                onChange={(e) => {
+                                  if (permission === 'manager') {
+                                    handleItemChange(
+                                      index,
+                                      "pricePerUnit",
+                                      Math.max(0, Number(e.target.value)),
+                                    );
+                                  }
+                                }}
+                                className={`w-20 border rounded px-1 text-right ${permission === 'manager' ? 'bg-white' : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
                               />
                             ) : (
                               `฿${isFreebie ? 0 : itemPrice.toLocaleString()} `

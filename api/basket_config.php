@@ -61,6 +61,12 @@ try {
         exit;
     }
 
+    // Handle transfer customers (move from one agent to another)
+    if ($action === 'transfer_customers') {
+        handleTransferCustomers($pdo, $companyId);
+        exit;
+    }
+
     switch ($method) {
         case 'GET':
             if ($id) {
@@ -647,6 +653,130 @@ function handleReclaimCustomers($pdo, $companyId)
         echo json_encode([
             'ok' => true,
             'reclaimed' => $totalReclaimed
+        ]);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => $e->getMessage()]);
+    }
+}
+
+/**
+ * Handle transferring customers from one agent to another
+ * POST: { from_agent_id: 123, to_agent_id: 456, basket_key: 'new_lead', count: 10 }
+ */
+function handleTransferCustomers($pdo, $companyId)
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'POST required']);
+        return;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $fromAgentId = $input['from_agent_id'] ?? null;
+    $toAgentId = $input['to_agent_id'] ?? null;
+    $basketKey = $input['basket_key'] ?? null;
+    $count = intval($input['count'] ?? 0);
+
+    if (!$fromAgentId || !$toAgentId || !$basketKey || $count <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'from_agent_id, to_agent_id, basket_key, and count are required']);
+        return;
+    }
+
+    // Get basket ID from key (Basket config is GLOBAL - always company_id = 1)
+    $basketStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
+    $basketStmt->execute([$basketKey]);
+    $basketId = $basketStmt->fetchColumn();
+
+    if (!$basketId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid basket_key']);
+        return;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        // Select customers to transfer (from the specified agent and basket)
+        $selectStmt = $pdo->prepare("
+            SELECT customer_id, previous_assigned_to 
+            FROM customers 
+            WHERE company_id = ? 
+            AND assigned_to = ?
+            AND current_basket_key = ?
+            LIMIT ?
+        ");
+        $selectStmt->execute([$companyId, $fromAgentId, $basketId, $count]);
+        $customers = $selectStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($customers)) {
+            $pdo->rollBack();
+            echo json_encode(['ok' => true, 'transferred' => 0, 'message' => 'No customers found to transfer']);
+            return;
+        }
+
+        $transferredCount = 0;
+        $skippedCount = 0;
+
+        $updateStmt = $pdo->prepare("
+            UPDATE customers 
+            SET assigned_to = ?,
+                date_assigned = NOW(),
+                previous_assigned_to = ?
+            WHERE customer_id = ? AND company_id = ?
+        ");
+
+        $logStmt = $pdo->prepare("
+            INSERT INTO basket_transition_log 
+            (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at) 
+            VALUES (?, ?, ?, 'transfer', ?, ?, NOW())
+        ");
+
+        foreach ($customers as $customer) {
+            $customerId = $customer['customer_id'];
+            $previousAgentsJson = $customer['previous_assigned_to'] ?? null;
+
+            // Build updated previous_assigned_to array
+            $previousAgents = $previousAgentsJson ? json_decode($previousAgentsJson, true) : [];
+            if (!is_array($previousAgents)) {
+                $previousAgents = [];
+            }
+
+            // Check if target agent was already assigned to this customer (prevent re-assignment)
+            if (in_array((int) $toAgentId, $previousAgents)) {
+                $skippedCount++;
+                continue;
+            }
+
+            // Add target agent to history
+            $previousAgents[] = (int) $toAgentId;
+            $newPreviousAgentsJson = json_encode($previousAgents);
+
+            $updateStmt->execute([$toAgentId, $newPreviousAgentsJson, $customerId, $companyId]);
+
+            if ($updateStmt->rowCount() > 0) {
+                $transferredCount++;
+
+                // Log transfer
+                $logStmt->execute([
+                    $customerId,
+                    $basketId,
+                    $basketId,
+                    $fromAgentId,
+                    "Transferred from agent $fromAgentId to agent $toAgentId"
+                ]);
+            }
+        }
+
+        $pdo->commit();
+
+        echo json_encode([
+            'ok' => true,
+            'transferred' => $transferredCount,
+            'skipped' => $skippedCount,
+            'message' => $skippedCount > 0 ? "$skippedCount รายชื่อถูกข้ามเนื่องจากเคยแจกให้ปลายทางแล้ว" : null
         ]);
 
     } catch (Exception $e) {
