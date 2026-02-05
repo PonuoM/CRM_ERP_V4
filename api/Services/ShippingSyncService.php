@@ -1,9 +1,11 @@
 <?php
 
-class ShippingSyncService {
+class ShippingSyncService
+{
     private $pdo;
 
-    public function __construct($pdo) {
+    public function __construct($pdo)
+    {
         $this->pdo = $pdo;
     }
 
@@ -14,7 +16,8 @@ class ShippingSyncService {
      * @param string $trackingNumber The tracking number to sync (e.g. from Bulk Tracking update)
      * @return array Result of the sync operation
      */
-    public function syncOrderFromSheet($trackingNumber) {
+    public function syncOrderFromSheet($trackingNumber)
+    {
         $trackingNumber = trim($trackingNumber);
         if (empty($trackingNumber)) {
             return ['success' => false, 'message' => 'Empty tracking number'];
@@ -56,7 +59,7 @@ class ShippingSyncService {
         }
 
         return [
-            'success' => true, 
+            'success' => true,
             'updated_orders' => $updatedOrders,
             'sheet_data' => $sheetRecord
         ];
@@ -69,7 +72,8 @@ class ShippingSyncService {
      * @param array $sheetRecords Array of imported sheet records
      * @return array Summary of sync
      */
-    public function syncFromSheetImport(array $sheetRecords) {
+    public function syncFromSheetImport(array $sheetRecords)
+    {
         $syncedCount = 0;
         $details = [];
 
@@ -77,7 +81,7 @@ class ShippingSyncService {
             // $record['order_number'] is the Tracking Number
             $trackingNumber = $record['order_number'];
             $result = $this->syncOrderFromSheet($trackingNumber);
-            
+
             if ($result['success'] && !empty($result['updated_orders'])) {
                 $syncedCount++;
                 $details[] = [
@@ -94,7 +98,8 @@ class ShippingSyncService {
         ];
     }
 
-    private function updateOrder($orderId, $sheetRecord) {
+    private function updateOrder($orderId, $sheetRecord)
+    {
         try {
             // Extract data from sheet record
             $sheetStatus = $sheetRecord['order_status'];      // e.g. "Shipping"
@@ -104,7 +109,7 @@ class ShippingSyncService {
             // 1. Update Order Status if present in sheet
             // Only update if current status is different? Or always overwrite?
             // Requirement: "Update order_status column"
-            
+
             $updateFields = [];
             $params = [];
 
@@ -120,20 +125,19 @@ class ShippingSyncService {
                 $params[] = $deliveryDate;
             }
 
-            // 2. Append delivery_status to notes
-            // We need to fetch current notes first to avoid duplication or easy appending
+            // 2. Update note_system with delivery_status (instead of appending to notes)
             if (!empty($deliveryStatus)) {
-                // Check if notes already contains this status to prevent spamming
-                $stmt = $this->pdo->prepare("SELECT notes FROM orders WHERE id = ?");
+                // Check if note_system already contains this status to prevent spamming
+                $stmt = $this->pdo->prepare("SELECT note_system FROM orders WHERE id = ?");
                 $stmt->execute([$orderId]);
-                $currentNotes = $stmt->fetchColumn();
+                $currentNoteSystem = $stmt->fetchColumn();
 
                 $noteEntry = "[Auto-Sync] Delivery Status: " . $deliveryStatus;
-                
-                if (strpos($currentNotes, $noteEntry) === false) {
-                   $newNotes = $currentNotes ? $currentNotes . "\n" . $noteEntry : $noteEntry;
-                   $updateFields[] = "notes = ?";
-                   $params[] = $newNotes;
+
+                if (strpos($currentNoteSystem ?? '', $noteEntry) === false) {
+                    $newNoteSystem = $currentNoteSystem ? $currentNoteSystem . "\n" . $noteEntry : $noteEntry;
+                    $updateFields[] = "note_system = ?";
+                    $params[] = $newNoteSystem;
                 }
             }
 
@@ -144,7 +148,7 @@ class ShippingSyncService {
             // Execute Update
             $sql = "UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?";
             $params[] = $orderId;
-            
+
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
 
