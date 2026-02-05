@@ -744,13 +744,7 @@ function handleTransferCustomers($pdo, $companyId)
                 $previousAgents = [];
             }
 
-            // Check if target agent was already assigned to this customer (prevent re-assignment)
-            if (in_array((int) $toAgentId, $previousAgents)) {
-                $skippedCount++;
-                continue;
-            }
-
-            // Add target agent to history
+            // Add target agent to history (allow forced transfer - no duplicate check)
             $previousAgents[] = (int) $toAgentId;
             $newPreviousAgentsJson = json_encode($previousAgents);
 
