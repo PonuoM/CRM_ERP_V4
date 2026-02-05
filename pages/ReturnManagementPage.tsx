@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Order, OrderStatus } from "../types";
-import { listOrders, saveReturnOrders, getReturnOrders } from "../services/api";
+import { listOrders, saveReturnOrders, getReturnOrders, getOrder } from "../services/api";
 import * as XLSX from "xlsx";
 import {
   Search,
@@ -278,9 +278,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab !== 'pending') {
-      fetchVerifiedOrders();
-    }
+    fetchVerifiedOrders();
   }, [user.companyId, activeTab, pagination.page]);
 
   const fetchVerifiedOrders = async () => {
@@ -456,34 +454,32 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       // Logic: Extract the main order ID from sub_order_id by removing the last part
       const subOrderId = v.sub_order_id || "";
       const parts = subOrderId.split("-");
-      const mainOrderId =
-        parts.length > 1 ? parts.slice(0, -1).join("-") : v.sub_order_id;
+      // Check if last part looks like a box number (numeric)
+      const lastPart = parts[parts.length - 1];
+      const isBoxNumber = /^\d+$/.test(lastPart) && parts.length > 2;
+      const mainOrderId = isBoxNumber
+        ? parts.slice(0, -1).join("-")
+        : subOrderId;
 
-      // First, try to find the order by the main order ID
-      const res = await listOrders({
-        companyId: user.companyId,
-        orderId: mainOrderId,
-        pageSize: 1,
-      });
+      // Use getOrder for single order lookup (path-based: /orders/{id})
+      const res = await getOrder(mainOrderId);
 
-      if (res.ok && res.orders.length > 0) {
-        setManagingOrder(res.orders[0]);
-      } else {
-        // If not found by main order ID, try with tracking number if available
-        if (v.tracking_number) {
-          const res2 = await listOrders({
-            companyId: user.companyId,
-            trackingNumber: v.tracking_number,
-            pageSize: 1,
-          });
-          if (res2.ok && res2.orders.length > 0) {
-            setManagingOrder(res2.orders[0]);
-          } else {
-            alert("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
-          }
+      if (res && res.ok && res.order) {
+        setManagingOrder(res.order);
+      } else if (v.tracking_number) {
+        // Fallback: try with tracking number if not found by ID
+        const res2 = await listOrders({
+          companyId: user.companyId,
+          trackingNumber: v.tracking_number,
+          pageSize: 1,
+        });
+        if (res2.ok && res2.orders.length > 0) {
+          setManagingOrder(res2.orders[0]);
         } else {
           alert("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
         }
+      } else {
+        alert("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
       }
     } catch (err) {
       console.error(err);

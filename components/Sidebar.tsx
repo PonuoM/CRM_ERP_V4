@@ -222,7 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: Truck,
       children: [
         { label: "Bulk Tracking", icon: FileUp, key: "nav.bulk_tracking" },
-        { label: "Return Management", icon: ArrowLeftRight, key: "nav.return_management" },
+        { label: "จัดการตีกลับ", icon: ArrowLeftRight, key: "nav.return_management" },
         { label: "COD Management", icon: FileText, key: "nav.cod_management" },
         { label: "Google Sheet Import", icon: FileUp, key: "nav.google_sheet_import" },
       ]
