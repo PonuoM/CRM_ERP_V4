@@ -145,12 +145,38 @@ class ShippingSyncService
                 return ['success' => false, 'message' => 'No fields to update'];
             }
 
+            // Get old status before update for comparison
+            $oldStatusStmt = $this->pdo->prepare("SELECT order_status FROM orders WHERE id = ?");
+            $oldStatusStmt->execute([$orderId]);
+            $oldStatus = $oldStatusStmt->fetchColumn();
+
             // Execute Update
             $sql = "UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?";
             $params[] = $orderId;
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
+
+            // 🔥 HOOK: Trigger Event-Driven Basket Routing when status changes
+            if (!empty($sheetStatus) && $oldStatus !== $sheetStatus) {
+                try {
+                    require_once __DIR__ . '/BasketRoutingServiceV2.php';
+                    $router = new BasketRoutingServiceV2($this->pdo);
+                    $routingResult = $router->handleOrderStatusChange(
+                        $orderId,
+                        $sheetStatus,
+                        0 // System-triggered (no user)
+                    );
+                    
+                    if ($routingResult && $routingResult['success']) {
+                        error_log("[ShippingSyncService] Basket routing triggered for order #$orderId: " . 
+                            "Basket {$routingResult['from_basket']} → {$routingResult['to_basket']}");
+                    }
+                } catch (Exception $routeError) {
+                    // Log but don't fail the sync
+                    error_log("[ShippingSyncService] Basket routing error for order #$orderId: " . $routeError->getMessage());
+                }
+            }
 
             return ['success' => true];
 

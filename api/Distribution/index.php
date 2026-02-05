@@ -87,8 +87,11 @@ function handleDistribute($pdo, $companyId)
     $updateSql .= " WHERE customer_id = ? AND company_id = ?";
     $updateStmt = $pdo->prepare($updateSql);
 
-    // Log Stmt
-    $logStmt = $pdo->prepare("INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at) VALUES (?, ?, ?, 'redistribute', ?, 'Dist V2 Pruning', NOW())");
+    // Get customer old data Stmt (before update)
+    $getOldStmt = $pdo->prepare("SELECT current_basket_key, assigned_to FROM customers WHERE customer_id = ?");
+    
+    // Log Stmt with assigned_to columns (use placeholders for Thai strings)
+    $logStmt = $pdo->prepare("INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
 
     // Cleanup Logic Stmts
     $countChecksStmt = $pdo->prepare("SELECT COUNT(*) FROM customer_assign_check WHERE customer_id = ?");
@@ -116,6 +119,12 @@ function handleDistribute($pdo, $companyId)
                 continue;
             }
 
+            // 1.5 Get old data before update
+            $getOldStmt->execute([$customerId]);
+            $oldData = $getOldStmt->fetch(PDO::FETCH_ASSOC);
+            $oldBasketKey = $oldData['current_basket_key'] ?? $sourceBasketKey;
+            $oldAssignedTo = $oldData['assigned_to'] ?? null;
+
             // 2. Perform Assignment
             $insertCheckStmt->execute([$customerId, $agentId, $companyId]);
 
@@ -125,9 +134,8 @@ function handleDistribute($pdo, $companyId)
                 $updateStmt->execute([$agentId, $customerId, $companyId]);
             }
 
-            // 3. Log
-            // Need old basket key? Assuming sourceBasketKey is close enough for log or fetch if critical
-            $logStmt->execute([$customerId, $sourceBasketKey, $targetBasketId, $triggeredBy]);
+            // 3. Log with assigned_to_old and assigned_to_new
+            $logStmt->execute([$customerId, $oldBasketKey, $targetBasketId, $oldAssignedTo, $agentId, 'distribute', $triggeredBy, 'Distributed from Distribution V2']);
 
             // 4. Lazy Cleanup (Check Round Completion)
             $countChecksStmt->execute([$customerId]);

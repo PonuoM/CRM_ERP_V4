@@ -4287,8 +4287,42 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 $pdo->commit();
 
-                // Return updated order
+                // 🔥 HOOK: Event-Driven Basket Routing on order_status change
+                $newOrderStatus = $data['orderStatus'] ?? $data['order_status'] ?? null;
+                $basketRoutingDebug = ['status_received' => $newOrderStatus, 'triggered' => false];
+                
+                if ($newOrderStatus) {
+                    try {
+                        require_once __DIR__ . '/Services/BasketRoutingServiceV2.php';
+                        $authUser = get_authenticated_user($pdo);
+                        $triggeredBy = $authUser ? (int)($authUser['id'] ?? 0) : 0;
+                        
+                        $basketRoutingDebug['triggered'] = true;
+                        $basketRoutingDebug['triggered_by'] = $triggeredBy;
+                        
+                        $router = new BasketRoutingServiceV2($pdo);
+                        $routingResult = $router->handleOrderStatusChange(
+                            $id, // Pass string order ID directly
+                            $newOrderStatus,
+                            $triggeredBy
+                        );
+                        
+                        $basketRoutingDebug['result'] = $routingResult;
+                        
+                        if ($routingResult && isset($routingResult['success']) && $routingResult['success']) {
+                            error_log("[API/orders PUT] Basket routing triggered for order #$id: " . 
+                                "Basket {$routingResult['from_basket']} → {$routingResult['to_basket']}");
+                        }
+                    } catch (Exception $routeError) {
+                        // Log but don't fail the order update
+                        error_log("[API/orders PUT] Basket routing error for order #$id: " . $routeError->getMessage());
+                        $basketRoutingDebug['error'] = $routeError->getMessage();
+                    }
+                }
+
+                // Return updated order with debug info
                 $o = get_order($pdo, $id);
+                $o['basket_routing'] = $basketRoutingDebug;
                 json_response($o);
 
             } catch (Exception $e) {
@@ -4862,7 +4896,34 @@ function handle_orders(PDO $pdo, ?string $id): void
                     error_log('Upsell assignment failed: ' . $e->getMessage());
                 }
 
-                json_response(['ok' => true, 'id' => $in['id']]);
+                // 🔥 HOOK: Event-Driven Basket Routing on new order creation
+                $newOrderStatus = $in['orderStatus'] ?? 'Pending';
+                $basketRoutingDebug = null;
+                try {
+                    require_once __DIR__ . '/Services/BasketRoutingServiceV2.php';
+                    $triggeredBy = $in['creatorId'] ?? 0;
+                    
+                    $router = new BasketRoutingServiceV2($pdo);
+                    $routingResult = $router->handleOrderStatusChange(
+                        $mainOrderId, // Pass string order ID directly
+                        $newOrderStatus,
+                        (int) $triggeredBy
+                    );
+                    
+                    $basketRoutingDebug = $routingResult;
+                    
+                    if ($routingResult && isset($routingResult['success']) && $routingResult['success']) {
+                        error_log("[API/orders POST] Basket routing triggered for new order #$mainOrderId: " . 
+                            "Basket {$routingResult['from_basket']} → {$routingResult['to_basket']}");
+                    }
+                } catch (Exception $routeError) {
+                    // Log but don't fail the order creation
+                    error_log("[API/orders POST] Basket routing error for order #$mainOrderId: " . $routeError->getMessage());
+                    $basketRoutingDebug = ['error' => $routeError->getMessage()];
+                }
+
+                // 🔍 DEBUG: Include routing result in response
+                json_response(['ok' => true, 'id' => $in['id'], 'basket_routing' => $basketRoutingDebug]);
             } catch (Throwable $e) {
                 $pdo->rollBack();
                 error_log('Order creation failed: ' . $e->getMessage());
@@ -4971,7 +5032,7 @@ function handle_orders(PDO $pdo, ?string $id): void
 
             $pdo->beginTransaction();
             try {
-                $lockStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id, total_amount, payment_method, cod_amount, creator_id FROM orders WHERE id = ? FOR UPDATE');
+                $lockStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id, total_amount, payment_method, cod_amount, creator_id, basket_key_at_sale FROM orders WHERE id = ? FOR UPDATE');
                 $lockStmt->execute([$id]);
                 $existingOrder = $lockStmt->fetch(PDO::FETCH_ASSOC);
                 if (!$existingOrder) {
@@ -5382,8 +5443,9 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $pdo->prepare('DELETE FROM order_item_allocations WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
                     $pdo->prepare('DELETE FROM order_items WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
 
-                    // 2. Prepare insert statement (same as POST)
-                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+                    // 2. Prepare insert statement (same as POST) - include basket_key_at_sale
+                    $orderBasketKey = $existingOrder['basket_key_at_sale'] ?? null;
+                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id, basket_key_at_sale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
 
                     $computeNetValues = function (array $item): array {
                         $quantity = isset($item['quantity']) ? (int) $item['quantity'] : 0;
@@ -5447,6 +5509,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 null,
                                 1,
                                 $itemCreatorId,
+                                $orderBasketKey,
                             ]);
                             $dbId = (int) $pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -5479,6 +5542,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 null,
                                 0,
                                 $itemCreatorId,
+                                $orderBasketKey,
                             ]);
                             $dbId = (int) $pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -5514,6 +5578,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $resolved,
                                 0,
                                 $itemCreatorId,
+                                $orderBasketKey,
                             ]);
                             $dbId = (int) $pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -5570,7 +5635,39 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 $pdo->commit();
 
-                $response = ['ok' => true];
+                // 🔥 HOOK: Event-Driven Basket Routing V2 on order_status change (PATCH)
+                $basketRoutingDebug = ['status_received' => $orderStatus, 'new_status' => $newStatus, 'triggered' => false];
+                if ($orderStatus || $newStatus) {
+                    $effectiveStatus = $orderStatus ?? $newStatus; // Use explicit status or auto-updated status
+                    try {
+                        require_once __DIR__ . '/Services/BasketRoutingServiceV2.php';
+                        $authUser = get_authenticated_user($pdo);
+                        $triggeredBy = $authUser ? (int)($authUser['id'] ?? 0) : 0;
+                        
+                        $basketRoutingDebug['triggered'] = true;
+                        $basketRoutingDebug['triggered_by'] = $triggeredBy;
+                        $basketRoutingDebug['effective_status'] = $effectiveStatus;
+                        
+                        $router = new BasketRoutingServiceV2($pdo);
+                        $routingResult = $router->handleOrderStatusChange(
+                            $id,
+                            $effectiveStatus,
+                            $triggeredBy
+                        );
+                        
+                        $basketRoutingDebug['result'] = $routingResult;
+                        
+                        if ($routingResult && isset($routingResult['success']) && $routingResult['success']) {
+                            error_log("[API/orders PATCH] Basket routing triggered for order #$id: " . 
+                                "Basket {$routingResult['from_basket']} → {$routingResult['to_basket']}");
+                        }
+                    } catch (Exception $routeError) {
+                        error_log("[API/orders PATCH] Basket routing error for order #$id: " . $routeError->getMessage());
+                        $basketRoutingDebug['error'] = $routeError->getMessage();
+                    }
+                }
+
+                $response = ['ok' => true, 'basket_routing' => $basketRoutingDebug];
                 if (!empty($allocationSummary)) {
                     $response['autoAllocated'] = $allocationSummary;
                 }

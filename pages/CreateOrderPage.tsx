@@ -6864,6 +6864,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     <option value="Reorder Customer">
                                       ลูกค้ารีออเดอร์
                                     </option>
+                                    <option value="Upsell">
+                                      Upsell
+                                    </option>
+                                    <option value="Mined Lead">
+                                      รายชื่อขุด
+                                    </option>
                                   </select>
                                 </div>
                               </div>
@@ -6965,6 +6971,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     </option>
                                     <option value="Reorder Customer">
                                       ลูกค้ารีออเดอร์
+                                    </option>
+                                    <option value="Upsell">
+                                      Upsell
+                                    </option>
+                                    <option value="Mined Lead">
+                                      รายชื่อขุด
                                     </option>
                                   </select>
                                 </div>
