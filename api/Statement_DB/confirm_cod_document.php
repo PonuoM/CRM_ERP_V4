@@ -77,7 +77,30 @@ try {
     $updateStmt->execute([':statementLogId' => $statementLogId]);
     $updatedCount = $updateStmt->rowCount();
 
-    // 4. Optionally update cod_documents verified_at if not already set
+    // 4. Update order payment_status to 'Approved' and order_status to 'Delivered'
+    // This is the final confirmation step after Bank Audit verification
+    $orderIdsUpdated = [];
+    foreach ($reconcileLogs as $log) {
+        $orderId = $log['order_id'];
+        if (!empty($orderId) && !in_array($orderId, $orderIdsUpdated)) {
+            // Get parent order id (remove sub-order suffix like -1, -2)
+            $parentOrderId = preg_replace('/-\d+$/', '', $orderId);
+            
+            // Update order to Approved status
+            $updateOrderStmt = $pdo->prepare("
+                UPDATE orders 
+                SET payment_status = 'Approved',
+                    order_status = 'Delivered',
+                    updated_at = NOW()
+                WHERE id = :orderId
+                  AND payment_status IN ('PreApproved', 'Pending')
+            ");
+            $updateOrderStmt->execute([':orderId' => $parentOrderId]);
+            $orderIdsUpdated[] = $orderId;
+        }
+    }
+
+    // 5. Optionally update cod_documents verified_at if not already set
     if (empty($codDoc['verified_at'])) {
         $updateDocStmt = $pdo->prepare("
             UPDATE cod_documents 

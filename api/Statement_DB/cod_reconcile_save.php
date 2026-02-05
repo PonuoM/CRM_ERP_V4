@@ -493,21 +493,26 @@ try {
     $accumulatedPaid = $existingReconciled + $running;
     $amountToSave = min((float) $order["total_amount"], max((float) $order["amount_paid"], $accumulatedPaid));
 
-    $targetStatus = $amountToSave >= ((float) $order["total_amount"] - 0.01) ? "Approved" : "PreApproved";
+    // Finance Approval stage: Always set PreApproved
+    // Final Approved status will be set by Bank Audit confirmation (confirm_cod_document.php)
     $currentPaymentStatus = $order["payment_status"];
     if ($currentPaymentStatus === "Approved" || $currentPaymentStatus === "Paid") {
+      // Don't downgrade if already approved
       $targetStatus = $currentPaymentStatus;
+    } else {
+      // Set to PreApproved (รอตรวจสอบ) - Bank Audit will change to Approved
+      $targetStatus = "PreApproved";
     }
 
     // Determine order status based on payment status
     // If payment is Approved/Paid, set order status to Delivered (เสร็จสิ้น)
-    // Otherwise, follow the same logic as Transfer orders
+    // Otherwise, set to Preparing (รอตรวจสอบ)
     $currentStatus = $order["order_status"];
-    if ($targetStatus === "Approved" || $targetStatus === "Paid") {
-      // Payment approved - set to Delivered (เสร็จสิ้น)
+    if ($currentPaymentStatus === "Approved" || $currentPaymentStatus === "Paid") {
+      // Already approved - keep Delivered
       $nextOrderStatus = "Delivered";
-    } else if (in_array($currentStatus, ["Pending", "AwaitingVerification", "Confirmed"], true)) {
-      // Payment not fully approved yet - set to Preparing
+    } else if (in_array($currentStatus, ["Pending", "AwaitingVerification", "Confirmed", "Delivered"], true)) {
+      // Payment not approved yet - set to Preparing (COD waiting for Bank Audit verification)
       $nextOrderStatus = "Preparing";
     } else {
       // Keep current status
