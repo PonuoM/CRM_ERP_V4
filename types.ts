@@ -7,6 +7,7 @@ export enum UserRole {
   AdminControl = "Admin Control",
   SuperAdmin = "Super Admin",
   Marketing = "Marketing",
+  CEO = "CEO",
 }
 
 export enum TagType {

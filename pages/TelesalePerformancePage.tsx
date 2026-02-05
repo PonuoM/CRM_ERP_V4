@@ -903,19 +903,19 @@ export default function TelesalePerformancePage() {
                                             <td className="px-2 py-2 text-center">{ts.metrics.answeredCalls || '-'}</td>
                                             {/* ลูกค้าใหม่ */}
                                             <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-green-50/30">{ts.metrics.newCustOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center bg-green-50/30 text-green-700">{ts.metrics.newCustSales > 0 ? `฿${formatMoney(ts.metrics.newCustSales)}` : '-'}</td>
+                                            <td className="px-2 py-2 text-center bg-green-50/30 text-green-700">{ts.metrics.newCustSales > 0 ? `${formatMoney(ts.metrics.newCustSales)}` : '-'}</td>
                                             {/* ลูกค้าเก่า */}
                                             <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-blue-50/30">{ts.metrics.coreCustOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center bg-blue-50/30 text-blue-700">{ts.metrics.coreCustSales > 0 ? `฿${formatMoney(ts.metrics.coreCustSales)}` : '-'}</td>
+                                            <td className="px-2 py-2 text-center bg-blue-50/30 text-blue-700">{ts.metrics.coreCustSales > 0 ? `${formatMoney(ts.metrics.coreCustSales)}` : '-'}</td>
                                             {/* ลูกค้าขุด */}
                                             <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-orange-50/30">{ts.metrics.revivalCustOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center bg-orange-50/30 text-orange-700">{ts.metrics.revivalCustSales > 0 ? `฿${formatMoney(ts.metrics.revivalCustSales)}` : '-'}</td>
+                                            <td className="px-2 py-2 text-center bg-orange-50/30 text-orange-700">{ts.metrics.revivalCustSales > 0 ? `${formatMoney(ts.metrics.revivalCustSales)}` : '-'}</td>
                                             {/* Upsell */}
                                             <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-purple-50/30">{ts.metrics.upsellOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center bg-purple-50/30 text-purple-700">{ts.metrics.upsellSales > 0 ? `฿${formatMoney(ts.metrics.upsellSales)}` : '-'}</td>
+                                            <td className="px-2 py-2 text-center bg-purple-50/30 text-purple-700">{ts.metrics.upsellSales > 0 ? `${formatMoney(ts.metrics.upsellSales)}` : '-'}</td>
                                             {/* รวม */}
                                             <td className="px-2 py-2 text-center border-l-2 border-gray-200 font-bold">{totalOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center font-medium text-green-600">{ts.metrics.combinedSales > 0 ? `฿${formatMoney(ts.metrics.combinedSales)}` : '-'}</td>
+                                            <td className="px-2 py-2 text-center font-medium text-green-600">{ts.metrics.combinedSales > 0 ? `${formatMoney(ts.metrics.combinedSales)}` : '-'}</td>
                                             <td className={`px-2 py-2 text-center font-medium ${parseFloat(closeRate) >= 5 ? 'text-green-600' :
                                                 parseFloat(closeRate) >= 2 ? 'text-yellow-600' :
                                                     'text-red-600'

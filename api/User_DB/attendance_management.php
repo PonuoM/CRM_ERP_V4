@@ -38,9 +38,13 @@ try {
     
     $method = $_SERVER['REQUEST_METHOD'];
     
-    // Determine if user is admin or supervisor
+    // Determine if user is admin, supervisor, or CEO
     $isAdmin = strpos($userRole, 'admin') !== false;
     $isSupervisor = strpos($userRole, 'supervisor') !== false;
+    $isCEO = strpos($userRole, 'ceo') !== false;
+    
+    // CEO gets admin-level access
+    if ($isCEO) $isAdmin = true;
     
     // Build supervisor filter
     $supervisorFilter = "";
