@@ -1127,12 +1127,6 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               <Search size={16} />
             </button>
           </div>
-          <button
-            onClick={handleDownloadTemplate}
-            className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-          >
-            <Download size={16} /> Template
-          </button>
 
           <input
             type="file"
