@@ -27,12 +27,13 @@ try {
     $currentUserId = $user['id'];
     $currentUserRole = strtolower($user['role'] ?? '');
     
-    // Role check - Admin or Supervisor only
+    // Role check - Admin, CEO, or Supervisor only
     $isAdmin = strpos($currentUserRole, 'admin') !== false && strpos($currentUserRole, 'supervisor') === false;
     $isSupervisor = strpos($currentUserRole, 'supervisor') !== false;
+    $isCEO = strpos($currentUserRole, 'ceo') !== false;
     
-    if (!$isAdmin && !$isSupervisor) {
-        json_response(['success' => false, 'message' => 'Access denied. Admin or Supervisor only.'], 403);
+    if (!$isAdmin && !$isSupervisor && !$isCEO) {
+        json_response(['success' => false, 'message' => 'Access denied. Admin, CEO, or Supervisor only.'], 403);
         exit;
     }
     
@@ -57,11 +58,11 @@ try {
         $dateParams = [$year, $month];
     }
     
-    // Build user filter for Supervisor
+    // Build user filter for Supervisor (Admin and CEO see all)
     $userFilter = "";
     $userParams = [];
     
-    if ($isSupervisor && !$isAdmin) {
+    if ($isSupervisor && !$isAdmin && !$isCEO) {
         // Supervisor sees only their team
         $userFilter = " AND u.supervisor_id = ?";
         $userParams = [$currentUserId];
@@ -70,14 +71,14 @@ try {
     // ========================================
     // TIER DEFINITIONS (Basket Keys) - UPDATED
     // ========================================
-    // ลูกค้าใหม่ (New)
-    $TIER_NEW_KEYS = [38, 46, 47];
+    // ลูกค้าใหม่ (New) - basket_key 48 ย้ายมาอยู่กลุ่มนี้
+    $TIER_NEW_KEYS = [38, 46, 47, 48];
     
     // ลูกค้าเก่า 3 เดือน (Core)
     $TIER_CORE_KEYS = [39, 40];
     
-    // ลูกค้าขุด (Revival/Win-back)
-    $TIER_REVIVAL_KEYS = [48, 49, 50];
+    // ลูกค้าขุด (Revival/Win-back) - basket_key 48 ย้ายไปกลุ่มลูกค้าใหม่
+    $TIER_REVIVAL_KEYS = [49, 50];
     
     // SQL IN clause helpers
     $newKeysIn = implode(',', $TIER_NEW_KEYS);
@@ -646,9 +647,9 @@ try {
             $teamTotals['revivalCustOrders'] += $ts['metrics']['revivalCustOrders'];
         }
         
-        // Calculate team conversion rate
-        $teamTotals['conversionRate'] = $teamTotals['totalCalls'] > 0 
-            ? round(($teamTotals['totalOrders'] / $teamTotals['totalCalls']) * 100, 2) 
+        // Calculate team conversion rate (ได้คุย / ออเดอร์)
+        $teamTotals['conversionRate'] = $teamTotals['answeredCalls'] > 0 
+            ? round(($teamTotals['totalOrders'] / $teamTotals['answeredCalls']) * 100, 2) 
             : 0;
     }
     

@@ -50,10 +50,13 @@ try {
     $currentUserRole = strtolower($authUser['role'] ?? '');
     $currentUserId = (int)($authUser['id'] ?? 0);
     $isSupervisor = strpos($currentUserRole, 'supervisor') !== false;
+    $isCEO = strpos($currentUserRole, 'ceo') !== false;
     // Check for admin roles - must exclude 'supervisor' which contains 'super'
+    // CEO gets admin-level access to see all data
     $isAdmin = (strpos($currentUserRole, 'admin') !== false) || 
                ($currentUserRole === 'super admin') ||
-               (strpos($currentUserRole, 'super') !== false && !$isSupervisor);
+               (strpos($currentUserRole, 'super') !== false && !$isSupervisor) ||
+               $isCEO;
     
     // Build employee filter based on role
     // IMPORTANT: Using oi.creator_id to include BOTH regular sales AND upsell items

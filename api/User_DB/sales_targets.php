@@ -22,12 +22,13 @@ try {
     $currentUserId = $user['id'];
     $currentUserRole = strtolower($user['role'] ?? '');
     
-    // Role check - Admin or Supervisor only
+    // Role check - Admin, CEO, or Supervisor only
     $isAdmin = strpos($currentUserRole, 'admin') !== false && strpos($currentUserRole, 'supervisor') === false;
     $isSupervisor = strpos($currentUserRole, 'supervisor') !== false;
+    $isCEO = strpos($currentUserRole, 'ceo') !== false;
     
-    if (!$isAdmin && !$isSupervisor) {
-        json_response(['success' => false, 'message' => 'Access denied. Admin or Supervisor only.'], 403);
+    if (!$isAdmin && !$isSupervisor && !$isCEO) {
+        json_response(['success' => false, 'message' => 'Access denied. Admin, CEO, or Supervisor only.'], 403);
         exit;
     }
     
@@ -38,11 +39,11 @@ try {
         $year = isset($_GET['year']) ? intval($_GET['year']) : intval(date('Y'));
         $month = isset($_GET['month']) ? intval($_GET['month']) : intval(date('m'));
         
-        // Build user filter for Supervisor
+        // Build user filter for Supervisor (Admin and CEO see all)
         $userFilter = "";
         $userParams = [];
         
-        if ($isSupervisor && !$isAdmin) {
+        if ($isSupervisor && !$isAdmin && !$isCEO) {
             $userFilter = " AND u.supervisor_id = ?";
             $userParams = [$currentUserId];
         }

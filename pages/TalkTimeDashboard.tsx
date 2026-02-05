@@ -392,11 +392,14 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
 
     const userRole = user?.role || "";
     // Check if user has system access based on role
-    // Super Admin and Admin Control have is_system = 1
+    // Super Admin, Admin Control, and CEO have is_system = 1
     const isSystem = userRole === UserRole.SuperAdmin ||
         userRole === UserRole.AdminControl ||
+        userRole === UserRole.CEO ||
         String(userRole) === "Super Admin" ||
-        String(userRole) === "Admin Control";
+        String(userRole) === "Admin Control" ||
+        String(userRole) === "CEO" ||
+        String(userRole).toLowerCase() === "ceo";
     const isSupervisor = userRole === UserRole.Supervisor || String(userRole) === "Supervisor Telesale";
     const isTelesale = userRole === UserRole.Telesale || String(userRole) === "Telesale";
 
