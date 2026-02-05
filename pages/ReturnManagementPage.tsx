@@ -288,7 +288,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       const res = await getReturnOrders({
         status: activeTab,
         page: pagination.page,
-        limit: pagination.limit
+        limit: pagination.limit,
+        companyId: user.companyId
       });
 
       if (res && res.status === "success") {
