@@ -57,6 +57,7 @@ interface FilterOptions {
   order_id: string;
   customer_name: string;
   phone: string;
+  tracking_number: string;
   start_date: string;
   end_date: string;
 }
@@ -163,6 +164,7 @@ const SlipUpload: React.FC = () => {
       order_id: "",
       customer_name: "",
       phone: "",
+      tracking_number: "",
       start_date: firstDayOfMonth.toISOString().split("T")[0],
       end_date: now.toISOString().split("T")[0],
     };
@@ -175,6 +177,7 @@ const SlipUpload: React.FC = () => {
       order_id: "",
       customer_name: "",
       phone: "",
+      tracking_number: "",
       sale_month: (now.getMonth() + 1).toString(),
       sale_year: now.getFullYear().toString(),
       start_date: "",
@@ -653,6 +656,8 @@ const SlipUpload: React.FC = () => {
       if (activeFilters.customer_name)
         queryParams.append("customer_name", activeFilters.customer_name);
       if (activeFilters.phone) queryParams.append("phone", activeFilters.phone);
+      if (activeFilters.tracking_number)
+        queryParams.append("tracking_number", activeFilters.tracking_number);
       if (activeFilters.start_date)
         queryParams.append("start_date", activeFilters.start_date);
       if (activeFilters.end_date)
@@ -758,6 +763,7 @@ const SlipUpload: React.FC = () => {
       order_id: "",
       customer_name: "",
       phone: "",
+      tracking_number: "",
       start_date: firstDayOfMonth.toISOString().split("T")[0],
       end_date: now.toISOString().split("T")[0],
     };
@@ -1042,6 +1048,22 @@ const SlipUpload: React.FC = () => {
                   value={inputFilters.phone}
                   onChange={(e) => handleFilterChange("phone", e.target.value)}
                   placeholder="เบอร์โทร"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              {/* Tracking Number Filter */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  เลข Tracking
+                </label>
+                <input
+                  type="text"
+                  value={inputFilters.tracking_number}
+                  onChange={(e) =>
+                    handleFilterChange("tracking_number", e.target.value)
+                  }
+                  placeholder="เลข Tracking"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
               </div>

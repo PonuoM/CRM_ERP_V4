@@ -53,6 +53,12 @@ if (!empty($_GET["phone"])) {
   $bindParams[] = "%" . $filters["phone"] . "%";
 }
 
+if (!empty($_GET["tracking_number"])) {
+  $filters["tracking_number"] = trim($_GET["tracking_number"]);
+  $conditions[] = "otn.tracking_number LIKE ?";
+  $bindParams[] = "%" . $filters["tracking_number"] . "%";
+}
+
 if (!empty($_GET["start_date"])) {
   $filters["start_date"] = trim($_GET["start_date"]);
   // If input contains time, compare as datetime, otherwise compare as date
@@ -318,6 +324,7 @@ try {
     $customerPkColumn = "id";
   }
   $customerJoin = "LEFT JOIN customers c ON c.$customerPkColumn = o.customer_id";
+  $trackingJoin = "LEFT JOIN order_tracking_numbers otn ON otn.parent_order_id = o.id";
 
   // First query to get total count for pagination calculation
   // Must match the HAVING clause from main query
@@ -327,6 +334,7 @@ try {
                    SELECT o.id, o.total_amount, o.payment_status
                    FROM orders o
                    {$customerJoin}
+                   {$trackingJoin}
                    LEFT JOIN order_slips os ON os.order_id = o.id
                    WHERE {$whereClause}
                    AND o.id NOT REGEXP '^.+-[0-9]+$'
@@ -383,6 +391,7 @@ try {
   $sql .= "
             FROM orders o
             {$customerJoin}
+            {$trackingJoin}
             LEFT JOIN order_slips os ON os.order_id = o.id
             WHERE {$whereClause}
             AND o.id NOT REGEXP '^.+-[0-9]+$'
