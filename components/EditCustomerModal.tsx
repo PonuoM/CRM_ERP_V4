@@ -3,6 +3,11 @@ import { Customer } from '../types';
 import Modal from './Modal';
 import { Facebook, MessageSquare, Phone, Cake } from 'lucide-react';
 import resolveApiBasePath from '../utils/apiBasePath';
+import DatePicker, { registerLocale } from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import { th } from 'date-fns/locale';
+
+registerLocale('th', th);
 
 interface EditCustomerModalProps {
   customer: Customer;
@@ -567,18 +572,73 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
         <div>
           <label className={`${commonLabelClass} flex items-center`}>
             <Cake size={16} className="text-pink-500 mr-2" />
-            <span className="bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent font-medium">วันเกิด</span>
+            <span className="bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent font-medium">วันเกิด (พ.ศ.)</span>
           </label>
           <div className="relative">
-            <input
-              type="date"
-              name="birthDate"
-              value={formData.birthDate || ''}
-              onChange={handleChange}
+            <DatePicker
+              wrapperClassName="w-full"
+              selected={formData.birthDate ? new Date(formData.birthDate) : null}
+              onChange={(date: Date | null) => {
+                const syntheticEvent = {
+                  target: {
+                    name: 'birthDate',
+                    value: date ? date.toISOString().split('T')[0] : '',
+                  },
+                } as React.ChangeEvent<HTMLInputElement>;
+                handleChange(syntheticEvent);
+              }}
+              dateFormat="dd MMMM yyyy"
+              locale="th"
+              showYearDropdown
+              showMonthDropdown
+              dropdownMode="select"
+              yearDropdownItemNumber={100}
+              scrollableYearDropdown
+              maxDate={new Date()}
+              minDate={new Date(1920, 0, 1)}
+              placeholderText="เลือกวันเกิด"
               className="w-full px-4 py-2.5 pl-10 border-2 border-pink-200 rounded-xl text-gray-700 bg-gradient-to-r from-pink-50 to-rose-50 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
               disabled={isSaving}
+              renderCustomHeader={({
+                date,
+                changeYear,
+                changeMonth,
+                decreaseMonth,
+                increaseMonth,
+                prevMonthButtonDisabled,
+                nextMonthButtonDisabled,
+              }) => (
+                <div className="flex items-center justify-between px-2 py-2">
+                  <button type="button" onClick={decreaseMonth} disabled={prevMonthButtonDisabled} className="p-1 hover:bg-pink-100 rounded">
+                    ◀
+                  </button>
+                  <div className="flex gap-2">
+                    <select
+                      value={date.getMonth()}
+                      onChange={({ target: { value } }) => changeMonth(Number(value))}
+                      className="px-2 py-1 border border-pink-200 rounded text-sm"
+                    >
+                      {["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"].map((month, i) => (
+                        <option key={i} value={i}>{month}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={date.getFullYear()}
+                      onChange={({ target: { value } }) => changeYear(Number(value))}
+                      className="px-2 py-1 border border-pink-200 rounded text-sm"
+                    >
+                      {Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                        <option key={year} value={year}>พ.ศ. {year + 543}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button type="button" onClick={increaseMonth} disabled={nextMonthButtonDisabled} className="p-1 hover:bg-pink-100 rounded">
+                    ▶
+                  </button>
+                </div>
+              )}
             />
-            <Cake size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-400" />
+            <Cake size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-400 pointer-events-none" />
           </div>
         </div>
       </div>

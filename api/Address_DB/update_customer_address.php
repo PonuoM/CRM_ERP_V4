@@ -53,12 +53,12 @@ try {
     // recipient_first_name and recipient_last_name are used for primary address (profile address) in customers table
     // Additional addresses use recipient_first_name and recipient_last_name in customer_address table
     $existingColumns = [];
-    $columnsToCheck = ['recipient_first_name', 'recipient_last_name', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'facebook_name', 'line_id'];
-    
+    $columnsToCheck = ['recipient_first_name', 'recipient_last_name', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'facebook_name', 'line_id', 'birth_date'];
+
     // Use INFORMATION_SCHEMA to check for existing columns
     $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
     $checkColumnsSql = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'customers' AND COLUMN_NAME IN (?,?,?,?,?,?,?,?,?)";
+                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'customers' AND COLUMN_NAME IN (?,?,?,?,?,?,?,?,?,?)";
     $checkColumns = $pdo->prepare($checkColumnsSql);
     $params = array_merge([$dbName], $columnsToCheck);
     $checkColumns->execute($params);
@@ -82,6 +82,7 @@ try {
         'postal_code' => 'postal_code',
         'facebook_name' => 'facebook_name',
         'line_id' => 'line_id',
+        'birth_date' => 'birth_date',
     ];
 
     foreach ($fieldMap as $inputKey => $column) {
@@ -147,7 +148,7 @@ try {
             $allMatch = true;
             foreach ($requestedFields as $column => $value) {
                 $currentValue = $updatedCustomer[$column] ?? '';
-                if ((string)$currentValue !== (string)$value) {
+                if ((string) $currentValue !== (string) $value) {
                     $allMatch = false;
                     break;
                 }

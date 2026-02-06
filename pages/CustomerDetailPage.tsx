@@ -1062,6 +1062,20 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                   </p>
                 </div>
               </InfoItem>
+              <InfoItem label="🎂 วันเกิด">
+                <div className="flex items-center space-x-2">
+                  <span className="text-pink-400">🎂</span>
+                  <p className="text-sm font-medium text-gray-800">
+                    {customer.birthDate
+                      ? new Date(customer.birthDate).toLocaleDateString("th-TH", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })
+                      : "-"}
+                  </p>
+                </div>
+              </InfoItem>
               <InfoItem
                 label="ที่อยู่"
                 value={formatAddress(customer.address)}

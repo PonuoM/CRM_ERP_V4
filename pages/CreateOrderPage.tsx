@@ -1756,6 +1756,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [lineId, setLineId] = useState("");
 
+  const [birthDate, setBirthDate] = useState("");
+
   const [salesChannel, setSalesChannel] = useState("");
 
   const [salesChannelPageId, setSalesChannelPageId] = useState<number | null>(
@@ -2136,6 +2138,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setFacebookName(selectedCustomer.facebookName || "");
 
     setLineId(selectedCustomer.lineId || "");
+
+    setBirthDate(selectedCustomer.birthDate || "");
   }, [selectedCustomer]);
 
   // Load districts when province is selected
@@ -3177,6 +3181,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       lineId: apiData.line_id ?? apiData.lineId,
 
+      birthDate: apiData.birth_date ?? apiData.birthDate,
+
       street: sanitizeAddressValue(apiData.street),
 
       subdistrict: sanitizeAddressValue(apiData.subdistrict),
@@ -3987,491 +3993,563 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const handleSave = async () => {
-    // Check for incomplete address fields and list missing ones
-    const fieldLabels: Record<string, string> = {
-      recipientFirstName: "ชื่อผู้รับ",
-      street: "บ้านเลขที่, ถนน",
-      subdistrict: "ตำบล/แขวง",
-      district: "อำเภอ/เขต",
-      province: "จังหวัด",
-      postalCode: "รหัสไปรษณีย์",
-    };
+    // Prevent double submission
+    if (isSaving) return;
+    setIsSaving(true);
 
-    const missingFields = Object.entries(shippingAddress)
-      .filter(
-        ([key, val]) =>
-          key !== "recipientLastName" && (val as string).trim() === "",
-      )
-      .map(([key]) => fieldLabels[key] || key);
-
-    if (missingFields.length > 0) {
-      highlightField("shippingAddress");
-
-      alert(
-        `กรุณากรอกที่อยู่จัดส่งให้ครบถ้วน\nช่องที่ยังไม่ได้กรอก: ${missingFields.join(", ")}`,
-      );
-
-      return;
-    }
-
-    // Validate address relationships
     try {
-      const addressValidationResponse = await fetch(
-        `${resolveApiBasePath()}/Address_DB/check_exist.php`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            province: shippingAddress.province,
-            district: shippingAddress.district,
-            subdistrict: shippingAddress.subdistrict,
-            postalCode: shippingAddress.postalCode,
-          }),
-        },
-      );
+      // Check for incomplete address fields and list missing ones
+      const fieldLabels: Record<string, string> = {
+        recipientFirstName: "ชื่อผู้รับ",
+        street: "บ้านเลขที่, ถนน",
+        subdistrict: "ตำบล/แขวง",
+        district: "อำเภอ/เขต",
+        province: "จังหวัด",
+        postalCode: "รหัสไปรษณีย์",
+      };
 
-      const addressValidationResult = await addressValidationResponse.json();
+      const missingFields = Object.entries(shippingAddress)
+        .filter(
+          ([key, val]) =>
+            key !== "recipientLastName" && (val as string).trim() === "",
+        )
+        .map(([key]) => fieldLabels[key] || key);
+
+      if (missingFields.length > 0) {
+        highlightField("shippingAddress");
+
+        alert(
+          `กรุณากรอกที่อยู่จัดส่งให้ครบถ้วน\nช่องที่ยังไม่ได้กรอก: ${missingFields.join(", ")}`,
+        );
+
+        return;
+      }
+
+      // Validate address relationships
+      try {
+        const addressValidationResponse = await fetch(
+          `${resolveApiBasePath()}/Address_DB/check_exist.php`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              province: shippingAddress.province,
+              district: shippingAddress.district,
+              subdistrict: shippingAddress.subdistrict,
+              postalCode: shippingAddress.postalCode,
+            }),
+          },
+        );
+
+        const addressValidationResult = await addressValidationResponse.json();
+
+        if (
+          !addressValidationResult.success ||
+          !addressValidationResult.valid
+        ) {
+          highlightField("shippingAddress");
+          alert(
+            addressValidationResult.message ||
+            "ที่อยู่ไม่สัมพันธ์กัน กรุณาตรวจสอบและระบุที่อยู่อีกครั้ง",
+          );
+          return;
+        }
+      } catch (error) {
+        console.error("Error validating address:", error);
+        alert("เกิดข้อผิดพลาดในการตรวจสอบที่อยู่ กรุณาลองใหม่อีกครั้ง");
+        return;
+      }
+
+
+      // Validate Customer Status
+      if (!customerStatus) {
+        alert("กรุณาเลือกสถานะลูกค้า");
+        customerStatusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        customerStatusRef.current?.focus();
+        return;
+      }
+
+      if (!orderData.deliveryDate) {
+        highlightField("deliveryDate");
+
+        alert("กรุณาเลือกวันที่จัดส่ง");
+
+        return;
+      }
+
+      // ตรวจสอบวันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป
+
+      const getMaxDeliveryDate = (): string => {
+        const now = new Date(); // Use local system time as base
+        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 7);
+
+        // Use toThaiIsoString to get the date in Thai timezone context
+        return toThaiIsoString(nextMonth).split("T")[0];
+      };
+
+      const maxDeliveryDate = getMaxDeliveryDate();
+
+      if (orderData.deliveryDate > maxDeliveryDate) {
+        highlightField("deliveryDate");
+
+        const maxDate = new Date(maxDeliveryDate);
+
+        const maxDateStr = `${maxDate.getDate()}/${maxDate.getMonth() + 1}/${maxDate.getFullYear()}`;
+
+        alert(
+          `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
+        );
+
+        return;
+      }
 
       if (
-        !addressValidationResult.success ||
-        !addressValidationResult.valid
+        !orderData.items ||
+        orderData.items.length === 0 ||
+        orderData.items.every((i) => !i.productName)
       ) {
-        highlightField("shippingAddress");
-        alert(
-          addressValidationResult.message ||
-          "ที่อยู่ไม่สัมพันธ์กัน กรุณาตรวจสอบและระบุที่อยู่อีกครั้ง",
+        highlightField("items");
+
+        alert("กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ");
+
+        return;
+      }
+
+      if (!orderData.paymentMethod) {
+        highlightField("paymentMethod");
+        alert("กรุณาเลือกวิธีการชำระเงิน");
+        return;
+      }
+      if (orderData.paymentMethod === PaymentMethod.Transfer) {
+        if (transferSlipUploads.length === 0) {
+          highlightField("transferSlips");
+          alert("กรุณาอัปโหลดสลิปการโอนอย่างน้อย 1 รูป");
+          return;
+        }
+        const slipsMissingMeta = transferSlipUploads.some(
+          (s) =>
+            !s.bankAccountId ||
+            !s.transferDate ||
+            typeof s.amount !== "number" ||
+            Number(s.amount) <= 0,
         );
+        if (slipsMissingMeta) {
+          alert("กรุณาระบุธนาคารและวันเวลาโอนให้ครบทุกสลิป");
+          return;
+        }
+      }
+      if (!salesChannel) {
+        highlightField("salesChannel");
+
+        alert("กรุณาเลือกช่องทางการสั่งซื้อ");
+
         return;
       }
-    } catch (error) {
-      console.error("Error validating address:", error);
-      alert("เกิดข้อผิดพลาดในการตรวจสอบที่อยู่ กรุณาลองใหม่อีกครั้ง");
-      return;
-    }
 
+      const selectedPlatform = platforms.find((p) => p.name === salesChannel);
 
-    // Validate Customer Status
-    if (!customerStatus) {
-      alert("กรุณาเลือกสถานะลูกค้า");
-      customerStatusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      customerStatusRef.current?.focus();
-      return;
-    }
+      // Check if platform requires page selection
 
-    if (!orderData.deliveryDate) {
-      highlightField("deliveryDate");
+      // - Platform name is not "โทร"
 
-      alert("กรุณาเลือกวันที่จัดส่ง");
+      // - Platform has showPagesFrom set (or uses its own pages by default)
 
-      return;
-    }
+      const hasShowPagesFrom =
+        selectedPlatform?.showPagesFrom &&
+        selectedPlatform.showPagesFrom.trim() !== "";
 
-    // ตรวจสอบวันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป
+      const usesOwnPages =
+        !selectedPlatform?.showPagesFrom || selectedPlatform.showPagesFrom === "";
 
-    const getMaxDeliveryDate = (): string => {
-      const now = new Date(); // Use local system time as base
-      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 7);
+      const shouldHavePage =
+        selectedPlatform &&
+        selectedPlatform.name !== "โทร" &&
+        (hasShowPagesFrom || usesOwnPages);
 
-      // Use toThaiIsoString to get the date in Thai timezone context
-      return toThaiIsoString(nextMonth).split("T")[0];
-    };
+      if (shouldHavePage && !salesChannelPageId) {
+        highlightField("salesChannelPage");
 
-    const maxDeliveryDate = getMaxDeliveryDate();
+        alert("กรุณาเลือกเพจของช่องทางการสั่งซื้อ");
 
-    if (orderData.deliveryDate > maxDeliveryDate) {
-      highlightField("deliveryDate");
-
-      const maxDate = new Date(maxDeliveryDate);
-
-      const maxDateStr = `${maxDate.getDate()}/${maxDate.getMonth() + 1}/${maxDate.getFullYear()}`;
-
-      alert(
-        `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
-      );
-
-      return;
-    }
-
-    if (
-      !orderData.items ||
-      orderData.items.length === 0 ||
-      orderData.items.every((i) => !i.productName)
-    ) {
-      highlightField("items");
-
-      alert("กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ");
-
-      return;
-    }
-
-    if (!orderData.paymentMethod) {
-      highlightField("paymentMethod");
-      alert("กรุณาเลือกวิธีการชำระเงิน");
-      return;
-    }
-    if (orderData.paymentMethod === PaymentMethod.Transfer) {
-      if (transferSlipUploads.length === 0) {
-        highlightField("transferSlips");
-        alert("กรุณาอัปโหลดสลิปการโอนอย่างน้อย 1 รูป");
         return;
       }
-      const slipsMissingMeta = transferSlipUploads.some(
-        (s) =>
-          !s.bankAccountId ||
-          !s.transferDate ||
-          typeof s.amount !== "number" ||
-          Number(s.amount) <= 0,
-      );
-      if (slipsMissingMeta) {
-        alert("กรุณาระบุธนาคารและวันเวลาโอนให้ครบทุกสลิป");
-        return;
-      }
-    }
-    if (!salesChannel) {
-      highlightField("salesChannel");
 
-      alert("กรุณาเลือกช่องทางการสั่งซื้อ");
-
-      return;
-    }
-
-    const selectedPlatform = platforms.find((p) => p.name === salesChannel);
-
-    // Check if platform requires page selection
-
-    // - Platform name is not "โทร"
-
-    // - Platform has showPagesFrom set (or uses its own pages by default)
-
-    const hasShowPagesFrom =
-      selectedPlatform?.showPagesFrom &&
-      selectedPlatform.showPagesFrom.trim() !== "";
-
-    const usesOwnPages =
-      !selectedPlatform?.showPagesFrom || selectedPlatform.showPagesFrom === "";
-
-    const shouldHavePage =
-      selectedPlatform &&
-      selectedPlatform.name !== "โทร" &&
-      (hasShowPagesFrom || usesOwnPages);
-
-    if (shouldHavePage && !salesChannelPageId) {
-      highlightField("salesChannelPage");
-
-      alert("กรุณาเลือกเพจของช่องทางการสั่งซื้อ");
-
-      return;
-    }
-
-    if (orderData.paymentMethod === PaymentMethod.COD && !isCodValid) {
-      highlightField("cod");
-
-      alert("ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดสุทธิ");
-
-      return;
-    }
-
-    // ตรวจสอบจำนวนกล่องสำหรับ COD
-
-    if (orderData.paymentMethod === PaymentMethod.COD) {
-      const parentItems = (orderData.items || []).filter(
-        (it) => !it.parentItemId,
-      );
-
-      const maxBoxes = parentItems.length || 1;
-
-      if (numBoxes > maxBoxes) {
+      if (orderData.paymentMethod === PaymentMethod.COD && !isCodValid) {
         highlightField("cod");
 
-        alert(
-          `จำนวนกล่อง (${numBoxes}) ต้องไม่เกินจำนวนรายการสินค้า (${maxBoxes} รายการ)`,
-        );
+        alert("ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดสุทธิ");
 
         return;
       }
 
-      // ตรวจสอบว่าทุกกล่องมีสินค้าอย่างน้อย 1 รายการ
+      // ตรวจสอบจำนวนกล่องสำหรับ COD
 
-      const boxesWithItems = new Set<number>();
+      if (orderData.paymentMethod === PaymentMethod.COD) {
+        const parentItems = (orderData.items || []).filter(
+          (it) => !it.parentItemId,
+        );
 
-      parentItems.forEach((item) => {
-        if (
-          item.boxNumber &&
-          item.boxNumber >= 1 &&
-          item.boxNumber <= numBoxes
-        ) {
-          boxesWithItems.add(item.boxNumber);
-        }
-      });
+        const maxBoxes = parentItems.length || 1;
 
-      // ตรวจสอบว่าทุกกล่องตั้งแต่ 1 ถึง numBoxes มีสินค้า
-
-      for (let boxNum = 1; boxNum <= numBoxes; boxNum++) {
-        if (!boxesWithItems.has(boxNum)) {
+        if (numBoxes > maxBoxes) {
           highlightField("cod");
 
           alert(
-            `กล่องที่ ${boxNum} ไม่มีสินค้า กรุณาเพิ่มสินค้าในกล่องนี้หรือลดจำนวนกล่อง`,
+            `จำนวนกล่อง (${numBoxes}) ต้องไม่เกินจำนวนรายการสินค้า (${maxBoxes} รายการ)`,
           );
 
           return;
         }
-      }
-    }
 
-    // Ensure boxNumber & quantities of promotion children follow their promotion parent
-    const normalizedItems = (orderData.items || []).map((item) => {
-      if (!item.parentItemId) {
-        return item;
-      }
+        // ตรวจสอบว่าทุกกล่องมีสินค้าอย่างน้อย 1 รายการ
 
-      const parent = (orderData.items || []).find(
-        (p) => p.id === item.parentItemId && p.isPromotionParent,
-      );
-      if (!parent) {
-        return item;
-      }
+        const boxesWithItems = new Set<number>();
 
-      const parentBox = parent.boxNumber || 1;
-      const parentQty = parent.quantity || 1;
+        parentItems.forEach((item) => {
+          if (
+            item.boxNumber &&
+            item.boxNumber >= 1 &&
+            item.boxNumber <= numBoxes
+          ) {
+            boxesWithItems.add(item.boxNumber);
+          }
+        });
 
-      const patched: LineItem = { ...item };
+        // ตรวจสอบว่าทุกกล่องตั้งแต่ 1 ถึง numBoxes มีสินค้า
 
-      // Force child boxNumber to match parent
-      patched.boxNumber = parentBox;
+        for (let boxNum = 1; boxNum <= numBoxes; boxNum++) {
+          if (!boxesWithItems.has(boxNum)) {
+            highlightField("cod");
 
-      // Scale child quantity by parent quantity (e.g. promo x2)
-      patched.quantity = (item.quantity || 0) * parentQty;
+            alert(
+              `กล่องที่ ${boxNum} ไม่มีสินค้า กรุณาเพิ่มสินค้าในกล่องนี้หรือลดจำนวนกล่อง`,
+            );
 
-      return patched;
-    });
-
-    const finalOrderData: Partial<Order> = {
-      ...orderData,
-      items: normalizedItems,
-
-      // For PayAfter, force the first box to carry the full amount, others 0
-      boxes:
-        orderData.paymentMethod === PaymentMethod.PayAfter &&
-          orderData.boxes &&
-          orderData.boxes.length > 0
-          ? orderData.boxes.map((box, index) => ({
-            ...box,
-            codAmount: index === 0 ? totalAmount : 0,
-          }))
-          : orderData.boxes,
-
-      shippingAddress,
-
-      totalAmount,
-
-      paymentStatus:
-        typeof orderData.paymentStatus !== "undefined"
-          ? orderData.paymentStatus
-          : orderData.paymentMethod === PaymentMethod.Transfer &&
-            transferSlipUploads.length > 0
-            ? PaymentStatus.PendingVerification
-            : PaymentStatus.Unpaid,
-
-      orderStatus: OrderStatus.Pending,
-
-      salesChannel: salesChannel,
-
-      // @ts-ignore - backend supports this field; added in schema
-
-      salesChannelPageId: (() => {
-        const selectedPlatform = platforms.find((p) => p.name === salesChannel);
-
-        if (!selectedPlatform || selectedPlatform.name === "โทร")
-          return undefined;
-
-        const hasShowPagesFrom =
-          selectedPlatform?.showPagesFrom &&
-          selectedPlatform.showPagesFrom.trim() !== "";
-
-        const usesOwnPages =
-          !selectedPlatform?.showPagesFrom ||
-          selectedPlatform.showPagesFrom === "";
-
-        // Only set pageId if platform should have pages (has showPagesFrom or uses own pages)
-
-        return hasShowPagesFrom || usesOwnPages
-          ? salesChannelPageId || undefined
-          : undefined;
-      })(),
-
-      warehouseId: warehouseId || undefined,
-      customerStatus: customerStatus,
-    };
-
-    const payload: Parameters<typeof onSave>[0] = { order: finalOrderData };
-
-    if (transferSlipUploads.length > 0) {
-      (payload as any).slipUploads = transferSlipUploads.map((slip) => ({
-        dataUrl: slip.dataUrl,
-        bankAccountId: slip.bankAccountId,
-        transferDate: slip.transferDate,
-        amount: slip.amount,
-      }));
-    }
-
-    // Add bank account and transfer date for transfer payment
-    if (orderData.paymentMethod === PaymentMethod.Transfer) {
-      const firstSlip = transferSlipUploads[0];
-      if (firstSlip?.bankAccountId) {
-        (payload as any).bankAccountId = firstSlip.bankAccountId;
-      } else if (selectedBankAccountId) {
-        (payload as any).bankAccountId = selectedBankAccountId;
-      }
-      if (firstSlip?.transferDate) {
-        (payload as any).transferDate = firstSlip.transferDate;
-      } else if (transferDate) {
-        (payload as any).transferDate = transferDate;
-      }
-    }
-
-    if (isCreatingNewCustomer) {
-      if (!newCustomerFirstName.trim() || !newCustomerPhone.trim()) {
-        highlightField("newCustomerFirstName");
-
-        alert("กรุณากรอกชื่อและเบอร์โทรศัพท์สำหรับลูกค้าใหม่");
-
-        return;
+            return;
+          }
+        }
       }
 
-      if (newCustomerPhoneError) {
-        highlightField("newCustomerPhone");
+      // Ensure boxNumber & quantities of promotion children follow their promotion parent
+      const normalizedItems = (orderData.items || []).map((item) => {
+        if (!item.parentItemId) {
+          return item;
+        }
 
-        alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${newCustomerPhoneError}`);
+        const parent = (orderData.items || []).find(
+          (p) => p.id === item.parentItemId && p.isPromotionParent,
+        );
+        if (!parent) {
+          return item;
+        }
 
-        return;
-      }
+        const parentBox = parent.boxNumber || 1;
+        const parentQty = parent.quantity || 1;
 
-      if (newCustomerBackupPhoneError) {
-        alert(`เบอร์สำรองไม่ถูกต้อง: ${newCustomerBackupPhoneError}`);
+        const patched: LineItem = { ...item };
 
-        return;
-      }
+        // Force child boxNumber to match parent
+        patched.boxNumber = parentBox;
 
-      (payload as any).newCustomer = {
-        firstName: newCustomerFirstName,
+        // Scale child quantity by parent quantity (e.g. promo x2)
+        patched.quantity = (item.quantity || 0) * parentQty;
 
-        lastName: newCustomerLastName,
+        return patched;
+      });
 
-        phone: newCustomerPhone,
+      const finalOrderData: Partial<Order> = {
+        ...orderData,
+        items: normalizedItems,
 
-        backupPhone: newCustomerBackupPhone || undefined,
+        // For PayAfter, force the first box to carry the full amount, others 0
+        boxes:
+          orderData.paymentMethod === PaymentMethod.PayAfter &&
+            orderData.boxes &&
+            orderData.boxes.length > 0
+            ? orderData.boxes.map((box, index) => ({
+              ...box,
+              codAmount: index === 0 ? totalAmount : 0,
+            }))
+            : orderData.boxes,
 
-        facebookName: facebookName,
+        shippingAddress,
 
-        lineId: lineId,
+        totalAmount,
 
-        address: normalizeAddress(shippingAddress),
+        paymentStatus:
+          typeof orderData.paymentStatus !== "undefined"
+            ? orderData.paymentStatus
+            : orderData.paymentMethod === PaymentMethod.Transfer &&
+              transferSlipUploads.length > 0
+              ? PaymentStatus.PendingVerification
+              : PaymentStatus.Unpaid,
 
-        province: sanitizeAddressValue(shippingAddress.province),
+        orderStatus: OrderStatus.Pending,
 
-        assignedTo: null,
+        salesChannel: salesChannel,
 
-        dateAssigned: new Date().toISOString(),
+        // @ts-ignore - backend supports this field; added in schema
 
-        ownershipExpires: new Date(
-          new Date().setDate(new Date().getDate() + 90),
-        ).toISOString(),
+        salesChannelPageId: (() => {
+          const selectedPlatform = platforms.find((p) => p.name === salesChannel);
 
-        lifecycleStatus: CustomerLifecycleStatus.New,
+          if (!selectedPlatform || selectedPlatform.name === "โทร")
+            return undefined;
 
-        behavioralStatus: CustomerBehavioralStatus.Warm,
+          const hasShowPagesFrom =
+            selectedPlatform?.showPagesFrom &&
+            selectedPlatform.showPagesFrom.trim() !== "";
 
-        grade: CustomerGrade.D,
+          const usesOwnPages =
+            !selectedPlatform?.showPagesFrom ||
+            selectedPlatform.showPagesFrom === "";
+
+          // Only set pageId if platform should have pages (has showPagesFrom or uses own pages)
+
+          return hasShowPagesFrom || usesOwnPages
+            ? salesChannelPageId || undefined
+            : undefined;
+        })(),
+
+        warehouseId: warehouseId || undefined,
+        customerStatus: customerStatus,
       };
-    } else {
-      if (!selectedCustomer) {
-        highlightField("customerSelector");
 
-        alert("กรุณาเลือกลูกค้า");
+      const payload: Parameters<typeof onSave>[0] = { order: finalOrderData };
 
-        return;
+      if (transferSlipUploads.length > 0) {
+        (payload as any).slipUploads = transferSlipUploads.map((slip) => ({
+          dataUrl: slip.dataUrl,
+          bankAccountId: slip.bankAccountId,
+          transferDate: slip.transferDate,
+          amount: slip.amount,
+        }));
       }
 
-      // Validate edited phone if it's changed
-
-      if (editedCustomerPhoneError) {
-        highlightField("editedCustomerPhone");
-
-        alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${editedCustomerPhoneError}`);
-
-        return;
+      // Add bank account and transfer date for transfer payment
+      if (orderData.paymentMethod === PaymentMethod.Transfer) {
+        const firstSlip = transferSlipUploads[0];
+        if (firstSlip?.bankAccountId) {
+          (payload as any).bankAccountId = firstSlip.bankAccountId;
+        } else if (selectedBankAccountId) {
+          (payload as any).bankAccountId = selectedBankAccountId;
+        }
+        if (firstSlip?.transferDate) {
+          (payload as any).transferDate = firstSlip.transferDate;
+        } else if (transferDate) {
+          (payload as any).transferDate = transferDate;
+        }
       }
 
-      if (editedCustomerBackupPhoneError) {
-        alert(`เบอร์สำรองไม่ถูกต้อง: ${editedCustomerBackupPhoneError}`);
+      if (isCreatingNewCustomer) {
+        if (!newCustomerFirstName.trim() || !newCustomerPhone.trim()) {
+          highlightField("newCustomerFirstName");
 
-        return;
-      }
+          alert("กรุณากรอกชื่อและเบอร์โทรศัพท์สำหรับลูกค้าใหม่");
 
-      const hasSocialsChanged =
-        facebookName !== (selectedCustomer?.facebookName || "") ||
-        lineId !== (selectedCustomer?.lineId || "");
+          return;
+        }
 
-      if (hasSocialsChanged) {
-        // Social media changes will be handled via the new API endpoint
+        if (newCustomerPhoneError) {
+          highlightField("newCustomerPhone");
 
-        (payload as any).updateCustomerSocials = true;
-      }
+          alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${newCustomerPhoneError}`);
 
-      // Check if customer name or phone has been changed
+          return;
+        }
 
-      const hasNameChanged =
-        editedCustomerFirstName.trim() !==
-        (selectedCustomer?.firstName || "").trim() ||
-        editedCustomerLastName.trim() !==
-        (selectedCustomer?.lastName || "").trim();
+        if (newCustomerBackupPhoneError) {
+          alert(`เบอร์สำรองไม่ถูกต้อง: ${newCustomerBackupPhoneError}`);
 
-      const hasPhoneChanged =
-        editedCustomerPhone.trim() !== (selectedCustomer?.phone || "").trim();
+          return;
+        }
 
-      const hasBackupPhoneChanged =
-        editedCustomerBackupPhone.trim() !==
-        (selectedCustomer?.backupPhone || "").trim();
+        (payload as any).newCustomer = {
+          firstName: newCustomerFirstName,
 
-      const hasCustomerTypeChanged =
-        editedCustomerType !==
-        (selectedCustomer?.customerType || "New Customer");
+          lastName: newCustomerLastName,
 
-      if (
-        hasNameChanged ||
-        hasPhoneChanged ||
-        hasBackupPhoneChanged ||
-        hasCustomerTypeChanged
-      ) {
-        (payload as any).updateCustomerInfo = {
-          firstName: editedCustomerFirstName.trim(),
+          phone: newCustomerPhone,
 
-          lastName: editedCustomerLastName.trim(),
+          backupPhone: newCustomerBackupPhone || undefined,
 
-          phone: editedCustomerPhone.trim(),
+          facebookName: facebookName,
 
-          backupPhone: editedCustomerBackupPhone.trim() || null,
+          lineId: lineId,
+
+          birthDate: birthDate || undefined,
+
+          address: normalizeAddress(shippingAddress),
+
+          province: sanitizeAddressValue(shippingAddress.province),
+
+          assignedTo: null,
+
+          dateAssigned: new Date().toISOString(),
+
+          ownershipExpires: new Date(
+            new Date().setDate(new Date().getDate() + 90),
+          ).toISOString(),
+
+          lifecycleStatus: CustomerLifecycleStatus.New,
+
+          behavioralStatus: CustomerBehavioralStatus.Warm,
+
+          grade: CustomerGrade.D,
         };
-      }
+      } else {
+        if (!selectedCustomer) {
+          highlightField("customerSelector");
 
-      // Handle address saving
+          alert("กรุณาเลือกลูกค้า");
 
-      if (selectedAddressOption === "new") {
-        if (updateProfileAddress) {
-          // Update profile address in customers table via new API
+          return;
+        }
 
-          // This will be handled after the order is saved
+        // Validate edited phone if it's changed
+
+        if (editedCustomerPhoneError) {
+          highlightField("editedCustomerPhone");
+
+          alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${editedCustomerPhoneError}`);
+
+          return;
+        }
+
+        if (editedCustomerBackupPhoneError) {
+          alert(`เบอร์สำรองไม่ถูกต้อง: ${editedCustomerBackupPhoneError}`);
+
+          return;
+        }
+
+        const hasSocialsChanged =
+          facebookName !== (selectedCustomer?.facebookName || "") ||
+          lineId !== (selectedCustomer?.lineId || "") ||
+          birthDate !== (selectedCustomer?.birthDate || "");
+
+        if (hasSocialsChanged) {
+          // Social media changes will be handled via the new API endpoint
+
+          (payload as any).updateCustomerSocials = true;
+        }
+
+        // Check if customer name or phone has been changed
+
+        const hasNameChanged =
+          editedCustomerFirstName.trim() !==
+          (selectedCustomer?.firstName || "").trim() ||
+          editedCustomerLastName.trim() !==
+          (selectedCustomer?.lastName || "").trim();
+
+        const hasPhoneChanged =
+          editedCustomerPhone.trim() !== (selectedCustomer?.phone || "").trim();
+
+        const hasBackupPhoneChanged =
+          editedCustomerBackupPhone.trim() !==
+          (selectedCustomer?.backupPhone || "").trim();
+
+        const hasCustomerTypeChanged =
+          editedCustomerType !==
+          (selectedCustomer?.customerType || "New Customer");
+
+        if (
+          hasNameChanged ||
+          hasPhoneChanged ||
+          hasBackupPhoneChanged ||
+          hasCustomerTypeChanged
+        ) {
+          (payload as any).updateCustomerInfo = {
+            firstName: editedCustomerFirstName.trim(),
+
+            lastName: editedCustomerLastName.trim(),
+
+            phone: editedCustomerPhone.trim(),
+
+            backupPhone: editedCustomerBackupPhone.trim() || null,
+          };
+        }
+
+        // Handle address saving
+
+        if (selectedAddressOption === "new") {
+          if (updateProfileAddress) {
+            // Update profile address in customers table via new API
+
+            // This will be handled after the order is saved
+
+            (payload as any).updateCustomerAddress = true;
+          } else {
+            // Save new address to customer_address table
+
+            (payload as any).newCustomerAddress = {
+              customer_id: selectedCustomer.id,
+
+              recipient_first_name: sanitizeAddressValue(
+                shippingAddress.recipientFirstName,
+              ),
+
+              recipient_last_name: sanitizeAddressValue(
+                shippingAddress.recipientLastName,
+              ),
+
+              address: sanitizeAddressValue(shippingAddress.street),
+
+              province: sanitizeAddressValue(shippingAddress.province),
+
+              district: sanitizeAddressValue(shippingAddress.district),
+
+              sub_district: sanitizeAddressValue(shippingAddress.subdistrict),
+
+              zip_code: sanitizeAddressValue(shippingAddress.postalCode),
+            };
+          }
+        } else if (selectedAddressOption === "profile") {
+          // Always update profile address when selected, even if not modified
+
+          // This allows editing the primary address directly
 
           (payload as any).updateCustomerAddress = true;
-        } else {
-          // Save new address to customer_address table
+        }
+      }
 
-          (payload as any).newCustomerAddress = {
+      // Add customerType to payload (moved from customer payload to order payload)
+      (payload as any).customerType = isCreatingNewCustomer
+        ? newCustomerType
+        : editedCustomerType;
+
+      let savedOrderId: string | undefined;
+
+      try {
+        savedOrderId = await onSave(payload);
+      } catch (error) {
+        console.error("create order failed", error);
+
+        alert("เกิดข้อผิดพลาดในการบันทึกคำสั่งซื้อ กรุณาลองใหม่อีกครั้ง");
+
+        return;
+      }
+
+      if (!savedOrderId) {
+        return;
+      }
+
+      // Handle customer address update if checkbox is checked
+
+      // Primary address (profile address) uses recipient_first_name and recipient_last_name from customers table
+
+      // Additional addresses use recipient_first_name and recipient_last_name from customer_address table
+
+      if ((payload as any).updateCustomerAddress && selectedCustomer) {
+        try {
+          const updateData = {
             customer_id: selectedCustomer.id,
+
+            // Include recipient name for primary address in customers table
 
             recipient_first_name: sanitizeAddressValue(
               shippingAddress.recipientFirstName,
@@ -4481,276 +4559,219 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
               shippingAddress.recipientLastName,
             ),
 
-            address: sanitizeAddressValue(shippingAddress.street),
+            street: sanitizeAddressValue(shippingAddress.street),
 
-            province: sanitizeAddressValue(shippingAddress.province),
+            subdistrict: sanitizeAddressValue(shippingAddress.subdistrict),
 
             district: sanitizeAddressValue(shippingAddress.district),
 
-            sub_district: sanitizeAddressValue(shippingAddress.subdistrict),
+            province: sanitizeAddressValue(shippingAddress.province),
 
-            zip_code: sanitizeAddressValue(shippingAddress.postalCode),
+            postal_code: sanitizeAddressValue(shippingAddress.postalCode),
           };
-        }
-      } else if (selectedAddressOption === "profile") {
-        // Always update profile address when selected, even if not modified
 
-        // This allows editing the primary address directly
-
-        (payload as any).updateCustomerAddress = true;
-      }
-    }
-
-    // Add customerType to payload (moved from customer payload to order payload)
-    (payload as any).customerType = isCreatingNewCustomer
-      ? newCustomerType
-      : editedCustomerType;
-
-    let savedOrderId: string | undefined;
-
-    try {
-      savedOrderId = await onSave(payload);
-    } catch (error) {
-      console.error("create order failed", error);
-
-      alert("เกิดข้อผิดพลาดในการบันทึกคำสั่งซื้อ กรุณาลองใหม่อีกครั้ง");
-
-      return;
-    }
-
-    if (!savedOrderId) {
-      return;
-    }
-
-    // Handle customer address update if checkbox is checked
-
-    // Primary address (profile address) uses recipient_first_name and recipient_last_name from customers table
-
-    // Additional addresses use recipient_first_name and recipient_last_name from customer_address table
-
-    if ((payload as any).updateCustomerAddress && selectedCustomer) {
-      try {
-        const updateData = {
-          customer_id: selectedCustomer.id,
-
-          // Include recipient name for primary address in customers table
-
-          recipient_first_name: sanitizeAddressValue(
-            shippingAddress.recipientFirstName,
-          ),
-
-          recipient_last_name: sanitizeAddressValue(
-            shippingAddress.recipientLastName,
-          ),
-
-          street: sanitizeAddressValue(shippingAddress.street),
-
-          subdistrict: sanitizeAddressValue(shippingAddress.subdistrict),
-
-          district: sanitizeAddressValue(shippingAddress.district),
-
-          province: sanitizeAddressValue(shippingAddress.province),
-
-          postal_code: sanitizeAddressValue(shippingAddress.postalCode),
-        };
-
-        const response = await fetch(
-          `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(updateData),
-          },
-        );
-
-        const result = await response.json();
-
-        if (result.success) {
-          console.log("Customer address updated successfully:", result.data);
-
-          // Update the selectedCustomer state with the latest data from database
-
-          // Primary address (profile address) uses recipient_first_name and recipient_last_name from customers table
-
-          // Additional addresses use recipient_first_name and recipient_last_name from customer_address table
-
-          if (result.data && selectedCustomer) {
-            const updatedCustomer = {
-              ...selectedCustomer,
-
-              address: {
-                // Get recipient name from customers table (primary address)
-
-                recipientFirstName:
-                  sanitizeAddressValue(result.data.recipient_first_name) ||
-                  shippingAddress.recipientFirstName ||
-                  selectedCustomer.address?.recipientFirstName,
-
-                recipientLastName:
-                  sanitizeAddressValue(result.data.recipient_last_name) ||
-                  shippingAddress.recipientLastName ||
-                  selectedCustomer.address?.recipientLastName,
-
-                street:
-                  sanitizeAddressValue(result.data.street) ||
-                  sanitizeAddressValue(selectedCustomer.address?.street),
-
-                subdistrict:
-                  sanitizeAddressValue(result.data.subdistrict) ||
-                  sanitizeAddressValue(selectedCustomer.address?.subdistrict),
-
-                district:
-                  sanitizeAddressValue(result.data.district) ||
-                  sanitizeAddressValue(selectedCustomer.address?.district),
-
-                province:
-                  sanitizeAddressValue(result.data.province) ||
-                  sanitizeAddressValue(selectedCustomer.address?.province),
-
-                postalCode:
-                  sanitizeAddressValue(result.data.postal_code) ||
-                  sanitizeAddressValue(selectedCustomer.address?.postalCode),
+          const response = await fetch(
+            `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
               },
-            };
+              body: JSON.stringify(updateData),
+            },
+          );
 
-            setSelectedCustomer(updatedCustomer);
+          const result = await response.json();
+
+          if (result.success) {
+            console.log("Customer address updated successfully:", result.data);
+
+            // Update the selectedCustomer state with the latest data from database
+
+            // Primary address (profile address) uses recipient_first_name and recipient_last_name from customers table
+
+            // Additional addresses use recipient_first_name and recipient_last_name from customer_address table
+
+            if (result.data && selectedCustomer) {
+              const updatedCustomer = {
+                ...selectedCustomer,
+
+                address: {
+                  // Get recipient name from customers table (primary address)
+
+                  recipientFirstName:
+                    sanitizeAddressValue(result.data.recipient_first_name) ||
+                    shippingAddress.recipientFirstName ||
+                    selectedCustomer.address?.recipientFirstName,
+
+                  recipientLastName:
+                    sanitizeAddressValue(result.data.recipient_last_name) ||
+                    shippingAddress.recipientLastName ||
+                    selectedCustomer.address?.recipientLastName,
+
+                  street:
+                    sanitizeAddressValue(result.data.street) ||
+                    sanitizeAddressValue(selectedCustomer.address?.street),
+
+                  subdistrict:
+                    sanitizeAddressValue(result.data.subdistrict) ||
+                    sanitizeAddressValue(selectedCustomer.address?.subdistrict),
+
+                  district:
+                    sanitizeAddressValue(result.data.district) ||
+                    sanitizeAddressValue(selectedCustomer.address?.district),
+
+                  province:
+                    sanitizeAddressValue(result.data.province) ||
+                    sanitizeAddressValue(selectedCustomer.address?.province),
+
+                  postalCode:
+                    sanitizeAddressValue(result.data.postal_code) ||
+                    sanitizeAddressValue(selectedCustomer.address?.postalCode),
+                },
+              };
+
+              setSelectedCustomer(updatedCustomer);
+            }
+          } else {
+            console.error("Failed to update customer address:", result.message);
+
+            alert("ไม่สามารถอัพเดตที่อยู่หลักได้: " + result.message);
           }
-        } else {
-          console.error("Failed to update customer address:", result.message);
+        } catch (error) {
+          console.error("Error updating customer address:", error);
 
-          alert("ไม่สามารถอัพเดตที่อยู่หลักได้: " + result.message);
+          alert("เกิดข้อผิดพลาดในการอัพเดตที่อยู่หลัก");
         }
-      } catch (error) {
-        console.error("Error updating customer address:", error);
-
-        alert("เกิดข้อผิดพลาดในการอัพเดตที่อยู่หลัก");
       }
-    }
 
-    // Handle customer social media update if changed
+      // Handle customer social media update if changed
 
-    if ((payload as any).updateCustomerSocials && selectedCustomer) {
-      try {
-        const updateData = {
-          customer_id: selectedCustomer.id,
+      if ((payload as any).updateCustomerSocials && selectedCustomer) {
+        try {
+          const updateData = {
+            customer_id: selectedCustomer.id,
 
-          facebook_name: facebookName,
+            facebook_name: facebookName,
 
-          line_id: lineId,
-        };
+            line_id: lineId,
 
-        const response = await fetch(
-          `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
+            birth_date: birthDate || undefined,
+          };
+
+          const response = await fetch(
+            `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(updateData),
+            },
+          );
+
+          const result = await response.json();
+
+          if (result.success) {
+            console.log(
+              "Customer social media updated successfully:",
+
+              result.data,
+            );
+
+            // Update the selectedCustomer state with the latest social media data from database
+
+            if (result.data && selectedCustomer) {
+              const updatedCustomer = {
+                ...selectedCustomer,
+
+                facebookName:
+                  result.data.facebook_name || selectedCustomer.facebookName,
+
+                lineId: result.data.line_id || selectedCustomer.lineId,
+              };
+
+              setSelectedCustomer(updatedCustomer);
+            }
+          } else {
+            console.error(
+              "Failed to update customer social media:",
+
+              result.message,
+            );
+
+            alert("ไม่สามารถอัพเดตข้อมูลโซเชียลมีเดียได้: " + result.message);
+          }
+        } catch (error) {
+          console.error("Error updating customer social media:", error);
+
+          alert("เกิดข้อผิดพลาดในการอัพเดตข้อมูลโซเชียลมีเดีย");
+        }
+      }
+
+      // Note: updateCustomerInfo is now handled in App.tsx handleCreateOrder
+
+      // No need to handle it here since it's sent in the payload
+
+      // If we need to save a new customer address (not updating the profile), make a separate API call
+
+      if (
+        selectedAddressOption === "new" &&
+        !updateProfileAddress &&
+        (payload as any).newCustomerAddress
+      ) {
+        console.log("Selected customer ID:", selectedCustomer?.id);
+
+        console.log(
+          "Saving new customer address:",
+
+          (payload as any).newCustomerAddress,
+        );
+
+        fetch(
+          `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=save_customer_address`,
+
           {
             method: "POST",
+
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify(updateData),
+
+            body: JSON.stringify((payload as any).newCustomerAddress),
           },
-        );
+        )
+          .then((response) => response.json())
 
-        const result = await response.json();
+          .then((data) => {
+            console.log("Customer address save response:", data);
 
-        if (result.success) {
-          console.log(
-            "Customer social media updated successfully:",
+            if (!data.success) {
+              console.error("Error saving customer address:", data.message);
 
-            result.data,
-          );
+              alert("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + data.message);
+            } else {
+              console.log(
+                "Customer address saved successfully with ID:",
 
-          // Update the selectedCustomer state with the latest social media data from database
+                data.id,
+              );
+            }
+          })
 
-          if (result.data && selectedCustomer) {
-            const updatedCustomer = {
-              ...selectedCustomer,
+          .catch((error) => {
+            console.error("Error saving customer address:", error);
 
-              facebookName:
-                result.data.facebook_name || selectedCustomer.facebookName,
-
-              lineId: result.data.line_id || selectedCustomer.lineId,
-            };
-
-            setSelectedCustomer(updatedCustomer);
-          }
-        } else {
-          console.error(
-            "Failed to update customer social media:",
-
-            result.message,
-          );
-
-          alert("ไม่สามารถอัพเดตข้อมูลโซเชียลมีเดียได้: " + result.message);
-        }
-      } catch (error) {
-        console.error("Error updating customer social media:", error);
-
-        alert("เกิดข้อผิดพลาดในการอัพเดตข้อมูลโซเชียลมีเดีย");
+            alert("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + error.message);
+          });
       }
+
+      setCreatedOrderId(savedOrderId ?? null);
+
+      setShowSuccessModal(true);
+    } finally {
+      setIsSaving(false);
     }
-
-    // Note: updateCustomerInfo is now handled in App.tsx handleCreateOrder
-
-    // No need to handle it here since it's sent in the payload
-
-    // If we need to save a new customer address (not updating the profile), make a separate API call
-
-    if (
-      selectedAddressOption === "new" &&
-      !updateProfileAddress &&
-      (payload as any).newCustomerAddress
-    ) {
-      console.log("Selected customer ID:", selectedCustomer?.id);
-
-      console.log(
-        "Saving new customer address:",
-
-        (payload as any).newCustomerAddress,
-      );
-
-      fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=save_customer_address`,
-
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify((payload as any).newCustomerAddress),
-        },
-      )
-        .then((response) => response.json())
-
-        .then((data) => {
-          console.log("Customer address save response:", data);
-
-          if (!data.success) {
-            console.error("Error saving customer address:", data.message);
-
-            alert("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + data.message);
-          } else {
-            console.log(
-              "Customer address saved successfully with ID:",
-
-              data.id,
-            );
-          }
-        })
-
-        .catch((error) => {
-          console.error("Error saving customer address:", error);
-
-          alert("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + error.message);
-        });
-    }
-
-    setCreatedOrderId(savedOrderId ?? null);
-
-    setShowSuccessModal(true);
   };
 
   const handleCodBoxAmountChange = (index: number, amount: number) => {
@@ -6990,6 +7011,72 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             </div>
                           </div>
                         )}
+
+                        {/* Birthday Input */}
+                        <div className="mt-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                            🎂 <span className="ml-1 bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent font-medium">วันเกิด (พ.ศ.)</span>
+                          </label>
+                          <div className="relative">
+                            <DatePicker
+                              wrapperClassName="w-full"
+                              selected={birthDate ? new Date(birthDate) : null}
+                              onChange={(date: Date | null) => {
+                                setBirthDate(date ? date.toISOString().split('T')[0] : '');
+                              }}
+                              dateFormat="dd MMMM yyyy"
+                              locale="th"
+                              showYearDropdown
+                              showMonthDropdown
+                              dropdownMode="select"
+                              yearDropdownItemNumber={100}
+                              scrollableYearDropdown
+                              maxDate={new Date()}
+                              minDate={new Date(1920, 0, 1)}
+                              placeholderText="เลือกวันเกิด"
+                              className="w-full px-4 py-2.5 pl-10 border-2 border-pink-200 rounded-xl text-gray-700 bg-gradient-to-r from-pink-50 to-rose-50 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none transition-all"
+                              renderCustomHeader={({
+                                date,
+                                changeYear,
+                                changeMonth,
+                                decreaseMonth,
+                                increaseMonth,
+                                prevMonthButtonDisabled,
+                                nextMonthButtonDisabled,
+                              }) => (
+                                <div className="flex items-center justify-between px-2 py-2">
+                                  <button type="button" onClick={decreaseMonth} disabled={prevMonthButtonDisabled} className="p-1 hover:bg-pink-100 rounded">
+                                    ◀
+                                  </button>
+                                  <div className="flex gap-2">
+                                    <select
+                                      value={date.getMonth()}
+                                      onChange={({ target: { value } }) => changeMonth(Number(value))}
+                                      className="px-2 py-1 border border-pink-200 rounded text-sm"
+                                    >
+                                      {["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"].map((month, i) => (
+                                        <option key={i} value={i}>{month}</option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      value={date.getFullYear()}
+                                      onChange={({ target: { value } }) => changeYear(Number(value))}
+                                      className="px-2 py-1 border border-pink-200 rounded text-sm"
+                                    >
+                                      {Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                                        <option key={year} value={year}>พ.ศ. {year + 543}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <button type="button" onClick={increaseMonth} disabled={nextMonthButtonDisabled} className="p-1 hover:bg-pink-100 rounded">
+                                    ▶
+                                  </button>
+                                </div>
+                              )}
+                            />
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-400 pointer-events-none">🎂</span>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -9426,12 +9513,23 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 <button
                   onClick={handleSave}
                   disabled={
+                    isSaving ||
                     !isCodValid ||
                     (isCreatingNewCustomer && !!newCustomerPhoneError)
                   }
-                  className="w-full md:w-auto px-8 py-4 md:py-2.5 bg-green-600 text-white text-lg md:text-base font-bold md:font-semibold rounded-xl md:rounded-lg hover:bg-green-700 shadow-lg shadow-green-200 md:shadow-none disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed transition-all"
+                  className="w-full md:w-auto px-8 py-4 md:py-2.5 bg-green-600 text-white text-lg md:text-base font-bold md:font-semibold rounded-xl md:rounded-lg hover:bg-green-700 shadow-lg shadow-green-200 md:shadow-none disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                 >
-                  บันทึกคำสั่งซื้อ
+                  {isSaving ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      กำลังบันทึก...
+                    </>
+                  ) : (
+                    "บันทึกคำสั่งซื้อ"
+                  )}
                 </button>
               </div>
             )
