@@ -13,7 +13,7 @@ import CustomerTable from "@/components/CustomerTable";
 import RegionFilter from "@/components/RegionFilter";
 import FilterDropdown from "@/components/FilterDropdown";
 import Spinner from "@/components/Spinner";
-import { RefreshCw, Search, Filter, ChevronDown, ChevronLeft, ChevronRight, Phone, ShoppingCart, Plus, FileText, Eye, Calendar, X, Settings, RotateCcw } from "lucide-react";
+import { RefreshCw, Search, Filter, ChevronDown, ChevronLeft, ChevronRight, Phone, ShoppingCart, Plus, FileText, Eye, Calendar, X, Settings, RotateCcw, Cake } from "lucide-react";
 import {
     filterCustomersByRegion,
 } from "@/utils/basketUtils";
@@ -354,7 +354,8 @@ const CustomerRow = React.memo(({
     callCount,
     daysUntilAppointment,
     hasUpsell,
-    upsellDone
+    upsellDone,
+    showBirthday
 }: {
     customer: Customer;
     onViewCustomer: (c: Customer) => void;
@@ -366,6 +367,7 @@ const CustomerRow = React.memo(({
     daysUntilAppointment?: number;
     hasUpsell?: boolean;
     upsellDone?: boolean;
+    showBirthday?: boolean;
 }) => {
     const daysSince = getDaysSince(customer.lastOrderDate);
 
@@ -402,6 +404,20 @@ const CustomerRow = React.memo(({
             <td className="px-4 py-3 text-gray-600">
                 {customer.dateAssigned ? formatThaiDate(new Date(customer.dateAssigned)) : "-"}
             </td>
+            {showBirthday && (
+                <td className="px-4 py-3">
+                    {customer.birthDate ? (
+                        <div className="flex items-center gap-1">
+                            <Cake size={14} className="text-pink-400" />
+                            <span className="text-gray-700">
+                                {new Date(customer.birthDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                            </span>
+                        </div>
+                    ) : (
+                        <span className="text-gray-400">-</span>
+                    )}
+                </td>
+            )}
             <td className="px-4 py-3">
                 {customer.lastOrderDate ? (
                     <div>
@@ -546,8 +562,11 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // Advanced Settings Panel toggle
     const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
 
+    // Sort by upcoming birthday
+    const [sortByBirthday, setSortByBirthday] = useState(false);
+
     // Check if any filters are active (including search)
-    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || filterByAppointment || filterByOverdueAppointment || hideContactedDays !== null || activeSearchTerm;
+    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || filterByAppointment || filterByOverdueAppointment || hideContactedDays !== null || activeSearchTerm || sortByBirthday;
 
     // Clear all filters (including search)
     const clearAllFilters = () => {
@@ -558,6 +577,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         setHideContactedDays(null);
         setSearchTerm("");
         setActiveSearchTerm("");
+        setSortByBirthday(false);
     };
 
     // Reset page when filter/basket changes
@@ -1026,6 +1046,33 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 return aDays - bDays; // Earliest appointment first
             }
 
+            // Sort by upcoming birthday if enabled
+            if (sortByBirthday) {
+                const today = new Date();
+                const currentYear = today.getFullYear();
+                const todayDayOfYear = Math.floor((today.getTime() - new Date(currentYear, 0, 0).getTime()) / 86400000);
+
+                const getDaysUntilBirthday = (birthDate: string | undefined): number => {
+                    if (!birthDate) return 9999;
+                    const birth = new Date(birthDate);
+                    if (isNaN(birth.getTime())) return 9999;
+
+                    // Calculate birthday this year
+                    const birthdayThisYear = new Date(currentYear, birth.getMonth(), birth.getDate());
+                    let birthdayDayOfYear = Math.floor((birthdayThisYear.getTime() - new Date(currentYear, 0, 0).getTime()) / 86400000);
+
+                    // If birthday already passed this year, consider next year
+                    if (birthdayDayOfYear < todayDayOfYear) {
+                        birthdayDayOfYear += 365;
+                    }
+                    return birthdayDayOfYear - todayDayOfYear;
+                };
+
+                const aDays = getDaysUntilBirthday(a.birthDate);
+                const bDays = getDaysUntilBirthday(b.birthDate);
+                return aDays - bDays; // Nearest birthday first
+            }
+
             switch (sortBy) {
                 case "lastOrder":
                     const dateA = a.lastOrderDate ? new Date(a.lastOrderDate).getTime() : 0;
@@ -1050,7 +1097,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return customers;
-    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, filterByAppointment, filterByOverdueAppointment, appointmentInfoMap, hideContactedDays]);
+    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, filterByAppointment, filterByOverdueAppointment, appointmentInfoMap, hideContactedDays, sortByBirthday]);
 
     // Manual sync - just refresh to get fresh data from API via App.tsx
     const handleManualSync = () => {
@@ -1249,6 +1296,21 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                         )}
                     </div>
 
+                    {/* Sort by Upcoming Birthday Button */}
+                    <button
+                        onClick={() => setSortByBirthday(!sortByBirthday)}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all border ${sortByBirthday
+                            ? "bg-pink-100 border-pink-400 text-pink-700"
+                            : "bg-gray-50 hover:bg-gray-100 text-gray-600 border-gray-200"
+                            }`}
+                    >
+                        <Cake size={18} />
+                        <span className="font-medium">วันเกิดใกล้ถึง</span>
+                        {sortByBirthday && (
+                            <span className="text-xs text-pink-600 font-medium">(กำลังเรียง)</span>
+                        )}
+                    </button>
+
                     {/* Advanced Settings Button */}
                     <div className="relative">
                         <button
@@ -1360,6 +1422,9 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">เบอร์โทร</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">จังหวัด</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">วันที่ได้รับ</th>
+                                    {sortByBirthday && (
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-pink-600 uppercase tracking-wider">🎂 วันเกิด</th>
+                                    )}
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ซื้อล่าสุด</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">หมายเหตุล่าสุด</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[200px]">TAG</th>
@@ -1380,6 +1445,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                                             hasAppointment={appointmentInfoMap.get(String(customer.id))?.hasAppointment}
                                             callCount={(customer as any).call_count_by_owner || 0}
                                             daysUntilAppointment={appointmentInfoMap.get(String(customer.id))?.daysUntil}
+                                            showBirthday={sortByBirthday}
                                         />
                                     ))}
                             </tbody>

@@ -285,6 +285,8 @@ export interface Customer {
   next_appointment_notes?: string;
   // Distribution history - array of agent IDs this customer was assigned to
   previous_assigned_to?: number[] | string | null;
+  // Personal info
+  birthDate?: string; // วันเกิด (YYYY-MM-DD)
 }
 
 export interface SalesImportRow {
