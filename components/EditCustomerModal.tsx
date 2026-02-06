@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Customer } from '../types';
 import Modal from './Modal';
-import { Facebook, MessageSquare, Phone } from 'lucide-react';
+import { Facebook, MessageSquare, Phone, Cake } from 'lucide-react';
 import resolveApiBasePath from '../utils/apiBasePath';
 
 interface EditCustomerModalProps {
@@ -562,6 +562,24 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
             className={commonInputClass}
             disabled={isSaving}
           />
+        </div>
+
+        <div>
+          <label className={`${commonLabelClass} flex items-center`}>
+            <Cake size={16} className="text-pink-500 mr-2" />
+            <span className="bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent font-medium">วันเกิด</span>
+          </label>
+          <div className="relative">
+            <input
+              type="date"
+              name="birthDate"
+              value={formData.birthDate || ''}
+              onChange={handleChange}
+              className="w-full px-4 py-2.5 pl-10 border-2 border-pink-200 rounded-xl text-gray-700 bg-gradient-to-r from-pink-50 to-rose-50 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+              disabled={isSaving}
+            />
+            <Cake size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-400" />
+          </div>
         </div>
       </div>
 

@@ -2256,7 +2256,8 @@ function handle_customers(PDO $pdo, ?string $id): void
                     'waiting_basket_start_date=COALESCE(?, waiting_basket_start_date)',
                     'is_blocked=COALESCE(?, is_blocked)',
                     'followup_bonus_remaining=COALESCE(?, followup_bonus_remaining)',
-                    'current_basket_key=COALESCE(?, current_basket_key)'
+                    'current_basket_key=COALESCE(?, current_basket_key)',
+                    'birth_date=COALESCE(?, birth_date)'
                 ];
 
                 // Detect Basket Transition
@@ -2328,6 +2329,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     array_key_exists('followup_bonus_remaining', $in) ? (int) $in['followup_bonus_remaining'] : null,
                     // Check both snake_case and camelCase
                     $newBasketKey,
+                    $in['birthDate'] ?? $in['birth_date'] ?? null,
                 ];
 
                 if ($newCustomerRefId) {
@@ -4290,27 +4292,27 @@ function handle_orders(PDO $pdo, ?string $id): void
                 // 🔥 HOOK: Event-Driven Basket Routing on order_status change
                 $newOrderStatus = $data['orderStatus'] ?? $data['order_status'] ?? null;
                 $basketRoutingDebug = ['status_received' => $newOrderStatus, 'triggered' => false];
-                
+
                 if ($newOrderStatus) {
                     try {
                         require_once __DIR__ . '/Services/BasketRoutingServiceV2.php';
                         $authUser = get_authenticated_user($pdo);
-                        $triggeredBy = $authUser ? (int)($authUser['id'] ?? 0) : 0;
-                        
+                        $triggeredBy = $authUser ? (int) ($authUser['id'] ?? 0) : 0;
+
                         $basketRoutingDebug['triggered'] = true;
                         $basketRoutingDebug['triggered_by'] = $triggeredBy;
-                        
+
                         $router = new BasketRoutingServiceV2($pdo);
                         $routingResult = $router->handleOrderStatusChange(
                             $id, // Pass string order ID directly
                             $newOrderStatus,
                             $triggeredBy
                         );
-                        
+
                         $basketRoutingDebug['result'] = $routingResult;
-                        
+
                         if ($routingResult && isset($routingResult['success']) && $routingResult['success']) {
-                            error_log("[API/orders PUT] Basket routing triggered for order #$id: " . 
+                            error_log("[API/orders PUT] Basket routing triggered for order #$id: " .
                                 "Basket {$routingResult['from_basket']} → {$routingResult['to_basket']}");
                         }
                     } catch (Exception $routeError) {
@@ -4902,18 +4904,18 @@ function handle_orders(PDO $pdo, ?string $id): void
                 try {
                     require_once __DIR__ . '/Services/BasketRoutingServiceV2.php';
                     $triggeredBy = $in['creatorId'] ?? 0;
-                    
+
                     $router = new BasketRoutingServiceV2($pdo);
                     $routingResult = $router->handleOrderStatusChange(
                         $mainOrderId, // Pass string order ID directly
                         $newOrderStatus,
                         (int) $triggeredBy
                     );
-                    
+
                     $basketRoutingDebug = $routingResult;
-                    
+
                     if ($routingResult && isset($routingResult['success']) && $routingResult['success']) {
-                        error_log("[API/orders POST] Basket routing triggered for new order #$mainOrderId: " . 
+                        error_log("[API/orders POST] Basket routing triggered for new order #$mainOrderId: " .
                             "Basket {$routingResult['from_basket']} → {$routingResult['to_basket']}");
                     }
                 } catch (Exception $routeError) {
@@ -5642,23 +5644,23 @@ function handle_orders(PDO $pdo, ?string $id): void
                     try {
                         require_once __DIR__ . '/Services/BasketRoutingServiceV2.php';
                         $authUser = get_authenticated_user($pdo);
-                        $triggeredBy = $authUser ? (int)($authUser['id'] ?? 0) : 0;
-                        
+                        $triggeredBy = $authUser ? (int) ($authUser['id'] ?? 0) : 0;
+
                         $basketRoutingDebug['triggered'] = true;
                         $basketRoutingDebug['triggered_by'] = $triggeredBy;
                         $basketRoutingDebug['effective_status'] = $effectiveStatus;
-                        
+
                         $router = new BasketRoutingServiceV2($pdo);
                         $routingResult = $router->handleOrderStatusChange(
                             $id,
                             $effectiveStatus,
                             $triggeredBy
                         );
-                        
+
                         $basketRoutingDebug['result'] = $routingResult;
-                        
+
                         if ($routingResult && isset($routingResult['success']) && $routingResult['success']) {
-                            error_log("[API/orders PATCH] Basket routing triggered for order #$id: " . 
+                            error_log("[API/orders PATCH] Basket routing triggered for order #$id: " .
                                 "Basket {$routingResult['from_basket']} → {$routingResult['to_basket']}");
                         }
                     } catch (Exception $routeError) {
@@ -7863,22 +7865,23 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     VALUES (?,?,?,?,?,?,?,?,?,?)');
 
                 foreach ($items as $it) {
-                    $trackingNumber = trim((string)($it['tracking_number'] ?? ''));
-                    if ($trackingNumber === '') continue;
+                    $trackingNumber = trim((string) ($it['tracking_number'] ?? ''));
+                    if ($trackingNumber === '')
+                        continue;
 
-                    $codAmount = (float)($it['cod_amount'] ?? 0);
-                    $orderAmount = (float)($it['order_amount'] ?? 0);
-                    $forceImport = (bool)($it['force_import'] ?? false);
-                    
+                    $codAmount = (float) ($it['cod_amount'] ?? 0);
+                    $orderAmount = (float) ($it['order_amount'] ?? 0);
+                    $forceImport = (bool) ($it['force_import'] ?? false);
+
                     // Determine status
                     if ($forceImport) {
                         $status = 'forced';
                         $orderId = null; // No order association for forced imports
                     } else {
                         $status = $it['status'] ?? 'pending';
-                        $orderId = isset($it['order_id']) && $it['order_id'] !== '' ? trim((string)$it['order_id']) : null;
+                        $orderId = isset($it['order_id']) && $it['order_id'] !== '' ? trim((string) $it['order_id']) : null;
                     }
-                    
+
                     $difference = $codAmount - $orderAmount;
 
                     $itemStmt->execute([

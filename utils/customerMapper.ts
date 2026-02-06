@@ -100,5 +100,7 @@ export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]>
         last_call_date_by_owner: r.last_call_date_by_owner ?? undefined,
         call_count_by_owner: r.call_count_by_owner ?? 0,
         last_call_result_by_owner: r.last_call_result_by_owner ?? undefined,
+        // Personal info
+        birthDate: r.birth_date ?? undefined,
     } as any; // Cast as any to allow extra fields like aiScore
 }

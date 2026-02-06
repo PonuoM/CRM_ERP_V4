@@ -3844,6 +3844,7 @@ const App: React.FC = () => {
           facebookName: updatedCustomer.facebookName,
           lineId: updatedCustomer.lineId,
           address: updatedCustomer.address,
+          birthDate: updatedCustomer.birthDate,
         });
 
         // แสดง popup แจ้งเตือนเมื่อแก้ไขสำเร็จ
