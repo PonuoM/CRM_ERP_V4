@@ -7022,7 +7022,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               wrapperClassName="w-full"
                               selected={birthDate ? new Date(birthDate) : null}
                               onChange={(date: Date | null) => {
-                                setBirthDate(date ? date.toISOString().split('T')[0] : '');
+                                setBirthDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '');
                               }}
                               dateFormat="dd MMMM yyyy"
                               locale="th"

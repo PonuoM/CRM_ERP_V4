@@ -765,10 +765,20 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             (hideContactedDays !== null) ||
             deferredSelectedRegions.length > 0 ||
             deferredSelectedTagIds.length > 0 ||
+            sortByBirthday ||
             (deferredQuickFilter && deferredQuickFilter !== "all");
 
         // No filter active = no highlights needed (clean look)
         if (!hasActiveFilter) return matches;
+
+        // Helper to check if customer has birthday today
+        const isBirthdayToday = (birthDate: string | undefined): boolean => {
+            if (!birthDate) return false;
+            const birth = new Date(birthDate);
+            if (isNaN(birth.getTime())) return false;
+            const today = new Date();
+            return birth.getDate() === today.getDate() && birth.getMonth() === today.getMonth();
+        };
 
         // Check each basket for matches using the SAME filter logic as filteredCustomers
         basketGroups.forEach((customers, basketKey) => {
@@ -857,6 +867,11 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 }
             }
 
+            // Apply Birthday Today Filter
+            if (sortByBirthday) {
+                filtered = filtered.filter(c => isBirthdayToday(c.birthDate));
+            }
+
             // If any customers remain after filtering, this basket has matches
             if (filtered.length > 0) {
                 matches.add(basketKey);
@@ -864,7 +879,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return matches;
-    }, [basketGroups, activeSearchTerm, filterByAppointment, filterByOverdueAppointment, hideContactedDays, deferredSelectedRegions, deferredSelectedTagIds, deferredQuickFilter, lastCallMap, appointmentInfoMap]);
+    }, [basketGroups, activeSearchTerm, filterByAppointment, filterByOverdueAppointment, hideContactedDays, deferredSelectedRegions, deferredSelectedTagIds, deferredQuickFilter, lastCallMap, appointmentInfoMap, sortByBirthday]);
 
     // Count total overdue appointments for display (ONLY for current user's customers)
     const overdueAppointmentCount = useMemo(() => {
@@ -1005,6 +1020,17 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 const appointmentInfo = appointmentInfoMap.get(String(c.id));
                 // Include if customer has ANY overdue appointment
                 return appointmentInfo?.hasOverdue === true;
+            });
+        }
+
+        // Apply Birthday Today Filter - show only customers with birthdays today
+        if (sortByBirthday) {
+            const today = new Date();
+            customers = customers.filter(c => {
+                if (!c.birthDate) return false;
+                const birth = new Date(c.birthDate);
+                if (isNaN(birth.getTime())) return false;
+                return birth.getDate() === today.getDate() && birth.getMonth() === today.getMonth();
             });
         }
 

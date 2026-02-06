@@ -582,7 +582,7 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
                 const syntheticEvent = {
                   target: {
                     name: 'birthDate',
-                    value: date ? date.toISOString().split('T')[0] : '',
+                    value: date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '',
                   },
                 } as React.ChangeEvent<HTMLInputElement>;
                 handleChange(syntheticEvent);
