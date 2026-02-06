@@ -21,6 +21,7 @@ import {
   createOrderSlipWithPayment,
   apiFetch,
   updateOrderSlip,
+  updateOrder,
 } from "../services/api";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { processImage } from "@/utils/imageProcessing";
@@ -495,6 +496,17 @@ const SlipUpload: React.FC = () => {
           transfer_date: "",
         }));
         setSlipItems([]);
+
+        // Update payment status to PendingVerification and reset amountPaid
+        try {
+          await updateOrder(slipFormData.order_id, {
+            paymentStatus: "PendingVerification",
+            amountPaid: 0,
+          });
+        } catch (err) {
+          console.error("Failed to update payment status:", err);
+        }
+
         fetchOrders();
       } else {
         showMessage("error", "??????????????????????");
