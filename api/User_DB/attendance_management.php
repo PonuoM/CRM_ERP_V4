@@ -46,12 +46,12 @@ try {
     // CEO gets admin-level access
     if ($isCEO) $isAdmin = true;
     
-    // Build supervisor filter
+    // Build supervisor filter - include supervisor themselves + their subordinates
     $supervisorFilter = "";
     $supervisorParams = [];
     if ($isSupervisor && !$isAdmin) {
-        $supervisorFilter = " AND u.supervisor_id = ?";
-        $supervisorParams = [$currentUserId];
+        $supervisorFilter = " AND (u.supervisor_id = ? OR u.id = ?)";
+        $supervisorParams = [$currentUserId, $currentUserId];
     }
     
     // Thai day names
@@ -88,7 +88,7 @@ try {
                 ORDER BY u.first_name, u.last_name
             ");
             // Reorder params: company_id first, then dates
-            $stmt->execute([$startDate, $endDate, $companyId, ...$supervisorParams]);
+            $stmt->execute(array_merge([$startDate, $endDate, $companyId], $supervisorParams));
             $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             foreach ($records as &$r) {
@@ -200,8 +200,8 @@ try {
             throw new Exception('Hours must be between 0 and 12');
         }
         
-        // Calculate attendance_value
-        $attendanceValue = round($hours / 8, 2);
+        // Calculate attendance_value with 4 decimal precision for HH:MM accuracy
+        $attendanceValue = round($hours / 8, 4);
         if ($attendanceValue > 1.5) $attendanceValue = 1.5;
         
         // Determine status: 8=full, 4=half, 0=leave, else=partial
