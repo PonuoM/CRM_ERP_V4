@@ -1861,7 +1861,19 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     if (inputEl) inputEl.value = "";
 
+    // อัปเดต database ทันทีเมื่ออัปโหลดสลิปสำเร็จ (ไม่ต้องรอกดบันทึก)
+    try {
+      await patchOrder(currentOrder.id, {
+        paymentStatus: PaymentStatus.PendingVerification,
+        amountPaid: 0,
+      });
+    } catch (err) {
+      console.error("Failed to update payment status after slip upload:", err);
+    }
+
+    // อัปเดต local state ด้วย
     handleFieldChange("paymentStatus", PaymentStatus.PendingVerification);
+    handleFieldChange("amountPaid", 0);
   };
 
   const removeSlip = () => {
@@ -3612,121 +3624,148 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                           {index + 1}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                          {canEditSlips && !isLocked ? (
-                                            <select
-                                              value={slip.bankAccountId || ""}
-                                              onChange={async (e) => {
-                                                const nextBankId =
-                                                  e.target.value === ""
-                                                    ? undefined
-                                                    : Number(e.target.value);
-                                                setSlips((prev) =>
-                                                  prev.map((s) =>
-                                                    s.id === slip.id
-                                                      ? {
-                                                        ...s,
-                                                        bankAccountId: nextBankId,
-                                                      }
-                                                      : s,
-                                                  ),
-                                                );
-                                                try {
-                                                  // Auto-save change to database
-                                                  await updateOrderSlip(slip.id, {
-                                                    bankAccountId: nextBankId,
-                                                    companyId:
-                                                      currentOrder.companyId,
-                                                  });
-                                                } catch (error) {
-                                                  console.error(
-                                                    "Failed to update slip bank account:",
-                                                    error,
+                                          {(() => {
+                                            // manager: edit ได้เสมอ
+                                            // seller + PendingVerification: edit ได้
+                                            // seller + อื่นๆ: แสดง input แต่ disabled
+                                            const canEdit = permission === 'manager' ||
+                                              (permission === 'seller' && currentOrder.paymentStatus === PaymentStatus.PendingVerification);
+                                            const showDisabledInput = permission === 'seller' && currentOrder.paymentStatus !== PaymentStatus.PendingVerification;
+
+                                            return (
+                                              <select
+                                                value={slip.bankAccountId || ""}
+                                                disabled={showDisabledInput}
+                                                onChange={async (e) => {
+                                                  if (!canEdit) return;
+                                                  const nextBankId =
+                                                    e.target.value === ""
+                                                      ? undefined
+                                                      : Number(e.target.value);
+                                                  setSlips((prev) =>
+                                                    prev.map((s) =>
+                                                      s.id === slip.id
+                                                        ? {
+                                                          ...s,
+                                                          bankAccountId: nextBankId,
+                                                        }
+                                                        : s,
+                                                    ),
                                                   );
-                                                }
-                                              }}
-                                              className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                            >
-                                              <option value="">เลือกธนาคาร</option>
-                                              {bankAccounts.map((ba) => (
-                                                <option key={ba.id} value={ba.id}>
-                                                  {ba.bank} {ba.bank_number}
-                                                </option>
-                                              ))}
-                                            </select>
-                                          ) : (
-                                            <span>{bankLabel || "-"}</span>
-                                          )}
+                                                  try {
+                                                    await updateOrderSlip(slip.id, {
+                                                      bankAccountId: nextBankId,
+                                                      companyId: currentOrder.companyId,
+                                                    });
+                                                  } catch (error) {
+                                                    console.error(
+                                                      "Failed to update slip bank account:",
+                                                      error,
+                                                    );
+                                                  }
+                                                }}
+                                                className={`w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${showDisabledInput ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                              >
+                                                <option value="">เลือกธนาคาร</option>
+                                                {bankAccounts.map((ba) => (
+                                                  <option key={ba.id} value={ba.id}>
+                                                    {ba.bank} {ba.bank_number}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            );
+                                          })()}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                                          {canEditSlips && !isLocked ? (
-                                            <input
-                                              type="datetime-local"
-                                              value={toLocalDatetimeString(
-                                                slip.transferDate,
-                                              )}
-                                              onChange={(e) => {
-                                                const nextDate = e.target.value
-                                                  ? fromLocalDatetimeString(
-                                                    e.target.value,
-                                                  )
-                                                  : undefined;
-                                                setSlips((prev) =>
-                                                  prev.map((s) =>
-                                                    s.id === slip.id
-                                                      ? {
-                                                        ...s,
-                                                        transferDate: nextDate,
-                                                      }
-                                                      : s,
-                                                  ),
-                                                );
-                                              }}
-                                              className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                            />
-                                          ) : (
-                                            <span>{transferLabel || "-"}</span>
-                                          )}
+                                          {(() => {
+                                            const canEdit = permission === 'manager' ||
+                                              (permission === 'seller' && currentOrder.paymentStatus === PaymentStatus.PendingVerification);
+                                            const showDisabledInput = permission === 'seller' && currentOrder.paymentStatus !== PaymentStatus.PendingVerification;
+
+                                            return (
+                                              <input
+                                                type="datetime-local"
+                                                value={toLocalDatetimeString(slip.transferDate)}
+                                                disabled={showDisabledInput}
+                                                onChange={async (e) => {
+                                                  if (!canEdit) return;
+                                                  const nextDate = e.target.value
+                                                    ? fromLocalDatetimeString(e.target.value)
+                                                    : undefined;
+                                                  setSlips((prev) =>
+                                                    prev.map((s) =>
+                                                      s.id === slip.id
+                                                        ? {
+                                                          ...s,
+                                                          transferDate: nextDate,
+                                                        }
+                                                        : s,
+                                                    ),
+                                                  );
+                                                  try {
+                                                    await updateOrderSlip(slip.id, {
+                                                      transferDate: nextDate,
+                                                      companyId: currentOrder.companyId,
+                                                    });
+                                                  } catch (error) {
+                                                    console.error(
+                                                      "Failed to update slip transfer date:",
+                                                      error,
+                                                    );
+                                                  }
+                                                }}
+                                                className={`w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${showDisabledInput ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                              />
+                                            );
+                                          })()}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
-                                          {canEditSlips && !isLocked ? (
-                                            <input
-                                              type="number"
-                                              step="0.01"
-                                              min="0"
-                                              value={
-                                                typeof slip.amount === "number" &&
-                                                  !Number.isNaN(slip.amount)
-                                                  ? slip.amount
-                                                  : ""
-                                              }
-                                              onChange={(e) => {
-                                                const nextAmount =
-                                                  e.target.value === ""
-                                                    ? undefined
-                                                    : Number(e.target.value);
-                                                setSlips((prev) =>
-                                                  prev.map((s) =>
-                                                    s.id === slip.id
-                                                      ? { ...s, amount: nextAmount }
-                                                      : s,
-                                                  ),
-                                                );
-                                              }}
-                                              className="w-24 text-right border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                            />
-                                          ) : (
-                                            <span className="text-gray-900 font-medium">
-                                              {typeof slip.amount === "number"
-                                                ? slip.amount.toLocaleString(
-                                                  undefined,
-                                                  {
-                                                    minimumFractionDigits: 2,
-                                                    maximumFractionDigits: 2,
-                                                  },
-                                                )
-                                                : "-"}
-                                            </span>
-                                          )}
+                                          {(() => {
+                                            const canEdit = permission === 'manager' ||
+                                              (permission === 'seller' && currentOrder.paymentStatus === PaymentStatus.PendingVerification);
+                                            const showDisabledInput = permission === 'seller' && currentOrder.paymentStatus !== PaymentStatus.PendingVerification;
+
+                                            return (
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                disabled={showDisabledInput}
+                                                value={
+                                                  typeof slip.amount === "number" &&
+                                                    !Number.isNaN(slip.amount)
+                                                    ? slip.amount
+                                                    : ""
+                                                }
+                                                onChange={async (e) => {
+                                                  if (!canEdit) return;
+                                                  const nextAmount =
+                                                    e.target.value === ""
+                                                      ? undefined
+                                                      : Number(e.target.value);
+                                                  setSlips((prev) =>
+                                                    prev.map((s) =>
+                                                      s.id === slip.id
+                                                        ? { ...s, amount: nextAmount }
+                                                        : s,
+                                                    ),
+                                                  );
+                                                  try {
+                                                    await updateOrderSlip(slip.id, {
+                                                      amount: nextAmount,
+                                                      companyId: currentOrder.companyId,
+                                                    });
+                                                  } catch (error) {
+                                                    console.error(
+                                                      "Failed to update slip amount:",
+                                                      error,
+                                                    );
+                                                  }
+                                                }}
+                                                className={`w-24 text-right border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${showDisabledInput ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                              />
+                                            );
+                                          })()}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-center">
                                           <button
@@ -3770,35 +3809,37 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                             return null;
                                           })()}
                                         </td>
-                                        {canVerifySlip && (
-                                          <td className="px-3 py-2 whitespace-nowrap text-center">
-                                            {isSlipLocked ? (
-                                              // สลิปถูกตรวจสอบแล้ว - แสดงติ๊กถูก
-                                              <div className="flex items-center justify-center">
-                                                <CheckCircle className="w-5 h-5 text-green-600" />
-                                              </div>
-                                            ) : (
-                                              // สลิปยังไม่ถูกตรวจสอบ - แสดง checkbox
-                                              <input
-                                                type="checkbox"
-                                                checked={isChecked}
-                                                disabled={!isComplete || isLocked}
-                                                onChange={(e) => {
-                                                  if (!isComplete) return;
-                                                  const checked = e.target.checked;
-                                                  setSlips((prev) =>
-                                                    prev.map((s) =>
-                                                      s.id === slip.id
-                                                        ? { ...s, checked }
-                                                        : s,
-                                                    ),
-                                                  );
-                                                }}
-                                                className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded cursor-pointer"
-                                              />
-                                            )}
-                                          </td>
-                                        )}
+                                        {
+                                          canVerifySlip && (
+                                            <td className="px-3 py-2 whitespace-nowrap text-center">
+                                              {isSlipLocked ? (
+                                                // สลิปถูกตรวจสอบแล้ว - แสดงติ๊กถูก
+                                                <div className="flex items-center justify-center">
+                                                  <CheckCircle className="w-5 h-5 text-green-600" />
+                                                </div>
+                                              ) : (
+                                                // สลิปยังไม่ถูกตรวจสอบ - แสดง checkbox
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isChecked}
+                                                  disabled={!isComplete || isLocked}
+                                                  onChange={(e) => {
+                                                    if (!isComplete) return;
+                                                    const checked = e.target.checked;
+                                                    setSlips((prev) =>
+                                                      prev.map((s) =>
+                                                        s.id === slip.id
+                                                          ? { ...s, checked }
+                                                          : s,
+                                                      ),
+                                                    );
+                                                  }}
+                                                  className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded cursor-pointer"
+                                                />
+                                              )}
+                                            </td>
+                                          )
+                                        }
                                       </tr>
                                     );
                                   })}
@@ -3882,17 +3923,28 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                 ส่วนต่าง:
                               </span>
                               {(() => {
-                                const checkedTotal = slips
-                                  .filter((s: any) => s.checked)
-                                  .reduce(
-                                    (sum, s) => sum + (Number(s.amount) || 0),
-                                    0,
-                                  );
-                                const diff =
-                                  checkedTotal - calculatedTotals.totalAmount;
+                                // หาก payment_status = PendingVerification ใช้ยอดจาก checked slips
+                                // หาก payment_status != PendingVerification ใช้ amountPaid
+                                const isPendingVerification = currentOrder.paymentStatus === PaymentStatus.PendingVerification;
+
+                                let compareAmount: number;
+                                if (isPendingVerification) {
+                                  // ใช้ยอดรวมจากสลิปที่เลือก
+                                  compareAmount = slips
+                                    .filter((s: any) => s.checked)
+                                    .reduce(
+                                      (sum, s) => sum + (Number(s.amount) || 0),
+                                      0,
+                                    );
+                                } else {
+                                  // ใช้ amountPaid ที่บันทึกไว้แล้ว
+                                  compareAmount = Number(currentOrder.amountPaid) || 0;
+                                }
+
+                                const diff = compareAmount - calculatedTotals.totalAmount;
                                 return (
                                   <span
-                                    className={`text - sm font - bold ${diff < 0 ? "text-red-600" : diff > 0 ? "text-blue-600" : "text-green-600"} `}
+                                    className={`text-sm font-bold ${diff < 0 ? "text-red-600" : diff > 0 ? "text-blue-600" : "text-green-600"}`}
                                   >
                                     {diff > 0 ? "+" : ""}
                                     {diff.toLocaleString()}
