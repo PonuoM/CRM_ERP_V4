@@ -156,11 +156,12 @@ try {
     $statusCounts = $stmtStatus->fetchAll(PDO::FETCH_KEY_PAIR);
 
     // 3. Payment Method Counts (Filtered) - Needed for SalesDashboard
-    // Mapping: 'COD' -> 'COD', 'Transfer' -> 'Transfer' (or whatever DB values are)
+    // Exclude cancelled/returned/baddebt orders to match active order counts
     $stmtPayment = $pdo->prepare("
         SELECT payment_method, COUNT(*) as count 
         FROM orders o
         $filterWhere 
+        AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
         GROUP BY payment_method
     ");
     $stmtPayment->execute($filterParamsWithUser);
@@ -216,6 +217,60 @@ try {
         $monthlyCounts[$row['month_key']] = (int)$row['count'];
     }
 
+    // ========================================
+    // 5. Monthly SALES for Chart Toggle
+    // Uses same logic as telesale_performance for consistency
+    // ========================================
+    $salesParams = [$companyId];
+    $salesUserFilter = "";
+    if ($userId > 0) {
+        $salesUserFilter = " AND oi.creator_id = ?";
+    }
+
+    if ($year) {
+        $salesSql = "
+            SELECT 
+                DATE_FORMAT(o.order_date, '%Y-%m') as month_key, 
+                COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as sales
+            FROM order_items oi
+            JOIN orders o ON oi.parent_order_id = o.id
+            WHERE o.company_id = ? 
+              AND YEAR(o.order_date) = ?
+              AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+              AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+              $salesUserFilter
+            GROUP BY month_key 
+            ORDER BY month_key ASC
+        ";
+        $salesParams[] = $year;
+        if ($userId > 0) $salesParams[] = $userId;
+    } else {
+        $salesSql = "
+            SELECT 
+                DATE_FORMAT(o.order_date, '%Y-%m') as month_key, 
+                COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as sales
+            FROM order_items oi
+            JOIN orders o ON oi.parent_order_id = o.id
+            WHERE o.company_id = ? 
+              AND o.order_date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+              AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+              AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+              $salesUserFilter
+            GROUP BY month_key 
+            ORDER BY month_key ASC
+        ";
+        if ($userId > 0) $salesParams[] = $userId;
+    }
+
+    $stmtMonthlySales = $pdo->prepare($salesSql);
+    $stmtMonthlySales->execute($salesParams);
+    $monthlySalesRaw = $stmtMonthlySales->fetchAll(PDO::FETCH_ASSOC);
+    
+    $monthlySales = [];
+    foreach ($monthlySalesRaw as $row) {
+        $monthlySales[$row['month_key']] = (float)$row['sales'];
+    }
+
     echo json_encode([
         'ok' => true,
         'filter' => [
@@ -230,6 +285,7 @@ try {
             'statusCounts' => $statusCounts,
             'paymentMethodCounts' => $paymentMethodCounts,
             'monthlyCounts' => $monthlyCounts,
+            'monthlySales' => $monthlySales,  // ★ NEW: Monthly sales for chart toggle
             // Upsell: sales from items added to OTHER users' orders
             'upsellRevenue' => $upsellRevenue,
             'upsellOrders' => $upsellOrders,

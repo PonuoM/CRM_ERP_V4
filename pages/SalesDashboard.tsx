@@ -12,8 +12,9 @@ import {
 import StatCard from "@/components/StatCard";
 import { MonthlyOrdersChart } from "@/components/Charts";
 import DailySalesChart from "@/components/DailySalesChart";
-import { getOrderStats, getCustomerStats, getDailySales } from "@/services/api";
+import { getOrderStats, getCustomerStats, getDailySales, getTelesalePerformance } from "@/services/api";
 import Spinner from "@/components/Spinner";
+import { Phone, Clock, Users, Target } from "lucide-react";
 
 interface SalesDashboardProps {
   user?: any; // Accepting user for companyId
@@ -60,6 +61,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
   const [orderStats, setOrderStats] = useState<any>(null);
   const [customerStats, setCustomerStats] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [initialLoading, setInitialLoading] = useState<boolean>(true); // Full-page loading state
 
   // Daily Sales Chart State
   const [dailySalesData, setDailySalesData] = useState<any>(null);
@@ -67,6 +69,18 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
   const [dailySalesLoading, setDailySalesLoading] = useState<boolean>(false);
   const [dailySalesGroupBy, setDailySalesGroupBy] = useState<'role' | 'page' | 'seller'>('seller');
   const [dailySalesStatus, setDailySalesStatus] = useState<'all' | 'confirmed' | 'delivered'>('all');
+
+  // Performance metrics state (for Telesale/Supervisor personal dashboard)
+  const [perfData, setPerfData] = useState<any>(null);
+  const [perfLoading, setPerfLoading] = useState<boolean>(false);
+
+  // Check if user should see personal performance metrics
+  // Show for Admin, Supervisor, CEO, Telesale roles
+  const roleLower = user?.role?.toLowerCase() || '';
+  const showPersonalMetrics = roleLower.includes('telesale') ||
+    roleLower.includes('supervisor') ||
+    roleLower.includes('admin') ||
+    roleLower.includes('ceo');
 
   const fetchStats = async () => {
     if (!user?.companyId) return;
@@ -130,15 +144,63 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
     }
   };
 
+  // Fetch Personal Performance Metrics
+  const fetchPerformanceMetrics = async () => {
+    if (!showPersonalMetrics) return;
+
+    setPerfLoading(true);
+    try {
+      const result = await getTelesalePerformance({
+        year: parseInt(year),
+        month: parseInt(month),
+      });
+
+      if (result.success && result.data) {
+        // API returns: { data: { telesaleDetails: [...], teamTotals: {...} } }
+        const details = result.data.telesaleDetails || [];
+
+        // Find current user's data from the telesaleDetails list
+        const myData = details.find((d: any) => d.userId === user?.id);
+        if (myData) {
+          setPerfData(myData);
+        } else if (details.length > 0) {
+          // For admins/supervisors viewing team: use teamTotals as aggregate
+          // Wrap teamTotals in metrics structure for consistency
+          const teamTotals = result.data.teamTotals;
+          if (teamTotals) {
+            setPerfData({ metrics: teamTotals, name: 'ทีมรวม' });
+          } else {
+            setPerfData(details[0]);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Performance metrics fetch error", error);
+    } finally {
+      setPerfLoading(false);
+    }
+  };
+
   // Auto-refresh chart when page loads or when filters change
   useEffect(() => {
-    fetchStats();
+    const loadAllData = async () => {
+      setInitialLoading(true);
+      await Promise.all([
+        fetchStats(),
+        fetchDailySales(),
+        fetchPerformanceMetrics(),
+      ]);
+      setInitialLoading(false);
+    };
+    loadAllData();
   }, [user?.companyId, month, year]);
 
-  // Auto-refresh daily sales when filters or groupBy change
+  // Auto-refresh daily sales when groupBy or status filter changes (not initial load)
   useEffect(() => {
-    fetchDailySales();
-  }, [user?.companyId, month, year, dailySalesGroupBy, dailySalesStatus]);
+    if (!initialLoading) {
+      fetchDailySales();
+    }
+  }, [dailySalesGroupBy, dailySalesStatus]);
 
   const { monthlySales, monthlyOrders, customersCount, performancePct } =
     useMemo(() => {
@@ -181,7 +243,16 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
   return (
     <>
       <style>{legendStyles}</style>
-      <div className="p-6">
+
+      {/* Full-page Loading Overlay */}
+      {initialLoading && (
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 border-4 border-green-200 border-t-green-600 rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-600 font-medium">กำลังโหลดข้อมูล...</p>
+        </div>
+      )}
+
+      <div className={`p-6 transition-opacity duration-300 ${initialLoading ? 'opacity-0' : 'opacity-100'}`}>
         {/* Filters (layout only) */}
         <div className="bg-white border rounded-lg p-4 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -231,21 +302,29 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
           <StatCard
             title="ยอดขายรายเดือน"
-            value={loading ? renderLoadingSpinner() : `฿${monthlySales.toLocaleString()}`}
+            value={loading ? renderLoadingSpinner() : `฿${(
+              perfData?.metrics
+                ? (perfData.metrics.newCustSales || 0) + (perfData.metrics.coreCustSales || 0) + (perfData.metrics.revivalCustSales || 0)
+                : monthlySales
+            ).toLocaleString()}`}
             subtext="อัปเดตล่าสุด"
             icon={DollarSign}
           />
           <StatCard
             title="จำนวนออเดอร์"
-            value={loading ? renderLoadingSpinner() : monthlyOrders.toString()}
+            value={loading ? renderLoadingSpinner() : (
+              perfData?.metrics
+                ? (perfData.metrics.newCustOrders || 0) + (perfData.metrics.coreCustOrders || 0) + (perfData.metrics.revivalCustOrders || 0)
+                : monthlyOrders
+            ).toString()}
             subtext="ช่วงนี้"
             icon={ShoppingCart}
           />
           <StatCard
-            title="ประสิทธิภาพ"
-            value={loading ? renderLoadingSpinner() : `${performancePct.toFixed(2)}%`}
-            subtext="เทียบเป้าหมาย"
-            icon={TrendingUp}
+            title="อัตราปิดการขาย"
+            value={loading ? renderLoadingSpinner() : `${(perfData?.metrics?.conversionRate || 0).toFixed(1)}%`}
+            subtext="รับสาย / ออเดอร์"
+            icon={Target}
           />
           <StatCard
             title="ลูกค้า"
@@ -274,6 +353,111 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
           )}
         </div>
 
+        {/* ========================================
+            Personal Performance Metrics Section
+            (Call Metrics + Customer Segments)
+            Only shown for Telesale/Supervisor roles
+           ======================================== */}
+        {showPersonalMetrics && perfData && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {/* Call Metrics Card */}
+            <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl border border-blue-200 p-5 shadow-sm">
+              <h3 className="text-md font-semibold text-blue-800 mb-4 flex items-center gap-2">
+                <Phone className="w-5 h-5" />
+                สถิติการโทร
+              </h3>
+              {perfLoading ? (
+                <Spinner />
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-700">{perfData.metrics?.totalCalls || 0}</div>
+                    <div className="text-xs text-blue-600">สายทั้งหมด</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{perfData.metrics?.answeredCalls || 0}</div>
+                    <div className="text-xs text-green-600">รับสาย</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-cyan-700">{(perfData.metrics?.totalMinutes || 0).toFixed(0)}</div>
+                    <div className="text-xs text-cyan-600">นาที (รวม)</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-indigo-700">{(perfData.metrics?.avgMinutesPerCall || 0).toFixed(1)}</div>
+                    <div className="text-xs text-indigo-600">เฉลี่ย/สาย</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Customer Segments Card */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <h3 className="text-md font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                ลูกค้าตามกลุ่ม
+              </h3>
+              {perfLoading ? (
+                <Spinner />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-xs text-gray-500 border-b">
+                        <th className="text-left py-2 font-medium">กลุ่ม</th>
+                        <th className="text-right py-2 font-medium">จำนวน</th>
+                        <th className="text-right py-2 font-medium">ออเดอร์</th>
+                        <th className="text-right py-2 font-medium">ยอดขาย</th>
+                        <th className="text-right py-2 font-medium">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* New Customer */}
+                      <tr className="border-b hover:bg-green-50">
+                        <td className="py-2">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                            ลูกค้าใหม่
+                          </span>
+                        </td>
+                        <td className="text-right py-2 font-medium">{perfData.metrics?.newCustCount || 0}</td>
+                        <td className="text-right py-2">{perfData.metrics?.newCustOrders || 0}</td>
+                        <td className="text-right py-2">฿{(perfData.metrics?.newCustSales || 0).toLocaleString()}</td>
+                        <td className="text-right py-2 text-green-600">{(perfData.metrics?.newCustRate || 0).toFixed(0)}%</td>
+                      </tr>
+                      {/* Core Customer */}
+                      <tr className="border-b hover:bg-blue-50">
+                        <td className="py-2">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                            ลูกค้าเก่า
+                          </span>
+                        </td>
+                        <td className="text-right py-2 font-medium">{perfData.metrics?.coreCustCount || 0}</td>
+                        <td className="text-right py-2">{perfData.metrics?.coreCustOrders || 0}</td>
+                        <td className="text-right py-2">฿{(perfData.metrics?.coreCustSales || 0).toLocaleString()}</td>
+                        <td className="text-right py-2 text-blue-600">{(perfData.metrics?.coreCustRate || 0).toFixed(0)}%</td>
+                      </tr>
+                      {/* Revival Customer */}
+                      <tr className="hover:bg-amber-50">
+                        <td className="py-2">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                            ลูกค้าขุด
+                          </span>
+                        </td>
+                        <td className="text-right py-2 font-medium">{perfData.metrics?.revivalCustCount || 0}</td>
+                        <td className="text-right py-2">{perfData.metrics?.revivalCustOrders || 0}</td>
+                        <td className="text-right py-2">฿{(perfData.metrics?.revivalCustSales || 0).toLocaleString()}</td>
+                        <td className="text-right py-2 text-amber-600">{(perfData.metrics?.revivalCustRate || 0).toFixed(0)}%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Charts/sections (placeholders for layout) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 h-full overflow-hidden">
@@ -296,7 +480,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
               </button>
             </div>
             <div className="w-full">
-              <MonthlyOrdersChart key={chartKey} data={orderStats?.monthlyCounts} loading={loading} year={year} />
+              <MonthlyOrdersChart key={chartKey} data={orderStats?.monthlyCounts} salesData={orderStats?.monthlySales} loading={loading} year={year} />
             </div>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -328,6 +512,19 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
                     <span className="text-gray-600">ส่งของแถม</span>
                     <span className="font-medium">{paymentCounts['FreeGift'] || 0}</span>
                   </div>
+                  {/* Cancelled orders separated */}
+                  {(orderStats?.statusCounts?.['Cancelled'] || 0) > 0 && (
+                    <>
+                      <div className="border-t border-gray-200 my-2"></div>
+                      <div className="flex items-center justify-between text-red-600">
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                          ยกเลิก
+                        </span>
+                        <span className="font-medium">{orderStats?.statusCounts?.['Cancelled'] || 0}</span>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>

@@ -2148,8 +2148,25 @@ export async function getReturnOrders(params?: { status?: string; page?: number;
   });
 }
 
+// Telesale Performance API - for personal dashboard metrics
+export async function getTelesalePerformance(params: {
+  year: number;
+  month: number;
+}): Promise<any> {
+  const token = localStorage.getItem("authToken");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
+  const qs = new URLSearchParams({
+    year: String(params.year),
+    month: String(params.month),
+  });
 
-
+  const res = await fetch(`${apiBasePath}/User_DB/telesale_performance.php?${qs.toString()}`, {
+    method: "GET",
+    headers,
+  });
+  return res.json();
+}
 
 

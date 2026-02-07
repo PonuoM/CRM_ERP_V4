@@ -309,6 +309,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       children: [
         { label: "Marketing Dashboard", icon: BarChart2, key: "marketing.dashboard" },
         { label: "Ads Input", icon: Pencil, key: "marketing.ads_input" },
+        { label: "Ads Input V2", icon: Pencil, key: "marketing.ads_input_v2" },
         { label: "Ads History", icon: Calendar, key: "marketing.ads_history" },
         { label: "Marketing User Management", icon: Users, key: "marketing.user_management" },
       ]

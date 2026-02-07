@@ -63,9 +63,9 @@ try {
     $userParams = [];
     
     if ($isSupervisor && !$isAdmin && !$isCEO) {
-        // Supervisor sees only their team
-        $userFilter = " AND u.supervisor_id = ?";
-        $userParams = [$currentUserId];
+        // Supervisor sees their team AND themselves
+        $userFilter = " AND (u.supervisor_id = ? OR u.id = ?)";
+        $userParams = [$currentUserId, $currentUserId];
     }
     
     // ========================================
@@ -86,6 +86,44 @@ try {
     $revivalKeysIn = implode(',', $TIER_REVIVAL_KEYS);
     
     // ========================================
+    // PRE-COMPUTATION: Visible User IDs
+    // Active users always show; inactive users show if they had orders in the period
+    // This ensures historical performance data is preserved after deactivation
+    // ========================================
+    if ($isDaily) {
+        $visibleYear = intval(substr($specificDate, 0, 4));
+        $visibleMonth = intval(substr($specificDate, 5, 2));
+    } else {
+        $visibleYear = $year;
+        $visibleMonth = $month;
+    }
+    
+    $sqlVisibleUsers = "
+        SELECT u.id FROM users u 
+        WHERE u.company_id = ? AND u.role LIKE '%telesale%' AND u.status = 'active' $userFilter
+        UNION
+        SELECT DISTINCT u.id FROM users u
+        JOIN order_items oi ON oi.creator_id = u.id
+        JOIN orders o ON oi.parent_order_id = o.id
+        WHERE u.company_id = ? AND u.role LIKE '%telesale%' AND u.status != 'active'
+            AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            $userFilter
+    ";
+    $visibleParams = array_merge([$companyId], $userParams, [$companyId, $visibleYear, $visibleMonth], $userParams);
+    $stmt = $pdo->prepare($sqlVisibleUsers);
+    $stmt->execute($visibleParams);
+    $visibleIds = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id');
+    
+    if (empty($visibleIds)) {
+        $visibleIdsIn = '0';
+    } else {
+        $visibleIdsIn = implode(',', array_map('intval', $visibleIds));
+    }
+    $visibleFilter = "u.id IN ($visibleIdsIn)";
+    
+    // ========================================
     // 1. Get Call Data from onecall_log
     // ========================================
     $sqlCalls = "
@@ -103,7 +141,7 @@ try {
             AND $dateFilterCalls
         WHERE u.company_id = ?
             AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
+            AND $visibleFilter
             $userFilter
         GROUP BY u.id, u.first_name, u.last_name, u.phone
     ";
@@ -121,7 +159,7 @@ try {
     
     // ========================================
     // 2. Get Order Data - REGULAR (not upsell)
-    //    Where o.creator_id = oi.creator_id
+    //    Exclude basket_key_at_sale = 51 (Upsell bucket)
     // ========================================
     $sqlOrdersRegular = "
         SELECT 
@@ -135,10 +173,10 @@ try {
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND o.creator_id = oi.creator_id  -- NOT upsell
+            AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale != 51)  -- NOT upsell
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
+            AND $visibleFilter
             $userFilter
         GROUP BY oi.creator_id
     ";
@@ -154,7 +192,7 @@ try {
     }
     
     // ========================================
-    // 2b. Get Upsell Data - Items added to OTHER users' orders
+    // 2b. Get Upsell Data - Items tagged as basket_key_at_sale = 51
     // ========================================
     $sqlUpsell = "
         SELECT 
@@ -168,10 +206,10 @@ try {
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND o.creator_id != oi.creator_id  -- IS upsell
+            AND oi.basket_key_at_sale = 51  -- IS upsell (basket 51)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
+            AND $visibleFilter
             $userFilter
         GROUP BY oi.creator_id
     ";
@@ -227,7 +265,7 @@ try {
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
+            AND $visibleFilter
             $userFilter
         GROUP BY oi.creator_id, category_type
     ";
@@ -254,17 +292,19 @@ try {
     }
     
     // ========================================
-    // 4. Customer Segment Counts (from current_basket_key)
+    // 4. Customer Segment Counts (from current_basket_key) - OPTIMIZED: Single Query
     // ========================================
+    $allSegmentKeysIn = implode(',', array_merge($TIER_NEW_KEYS, $TIER_CORE_KEYS, $TIER_REVIVAL_KEYS));
     
-    // 4a. ลูกค้าใหม่ (basket 38,46,47)
-    $sqlNewCustomersCount = "
+    $sqlCustomerCounts = "
         SELECT 
             c.assigned_to AS user_id,
-            COUNT(*) AS customer_count
+            SUM(CASE WHEN c.current_basket_key IN ($newKeysIn) THEN 1 ELSE 0 END) AS new_count,
+            SUM(CASE WHEN c.current_basket_key IN ($coreKeysIn) THEN 1 ELSE 0 END) AS core_count,
+            SUM(CASE WHEN c.current_basket_key IN ($revivalKeysIn) THEN 1 ELSE 0 END) AS revival_count
         FROM customers c
         JOIN users u ON c.assigned_to = u.id
-        WHERE c.current_basket_key IN ($newKeysIn)
+        WHERE c.current_basket_key IN ($allSegmentKeysIn)
             AND c.company_id = ?
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
@@ -274,75 +314,37 @@ try {
     ";
     
     $custParams = array_merge([$companyId, $companyId], $userParams);
-    $stmt = $pdo->prepare($sqlNewCustomersCount);
+    $stmt = $pdo->prepare($sqlCustomerCounts);
     $stmt->execute($custParams);
-    $newCustCountData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $custCountData = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $newCustCountByUser = [];
-    foreach ($newCustCountData as $row) {
-        $newCustCountByUser[$row['user_id']] = intval($row['customer_count']);
-    }
-    
-    // 4b. ลูกค้าเก่า 3 เดือน (basket 39,40)
-    $sqlCoreCustomersCount = "
-        SELECT 
-            c.assigned_to AS user_id,
-            COUNT(*) AS customer_count
-        FROM customers c
-        JOIN users u ON c.assigned_to = u.id
-        WHERE c.current_basket_key IN ($coreKeysIn)
-            AND c.company_id = ?
-            AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
-            $userFilter
-        GROUP BY c.assigned_to
-    ";
-    
-    $stmt = $pdo->prepare($sqlCoreCustomersCount);
-    $stmt->execute($custParams);
-    $coreCustCountData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
     $coreCustCountByUser = [];
-    foreach ($coreCustCountData as $row) {
-        $coreCustCountByUser[$row['user_id']] = intval($row['customer_count']);
-    }
-    
-    // 4c. ลูกค้าขุด (basket 48,49,50)
-    $sqlRevivalCustomersCount = "
-        SELECT 
-            c.assigned_to AS user_id,
-            COUNT(*) AS customer_count
-        FROM customers c
-        JOIN users u ON c.assigned_to = u.id
-        WHERE c.current_basket_key IN ($revivalKeysIn)
-            AND c.company_id = ?
-            AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
-            $userFilter
-        GROUP BY c.assigned_to
-    ";
-    
-    $stmt = $pdo->prepare($sqlRevivalCustomersCount);
-    $stmt->execute($custParams);
-    $revivalCustCountData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
     $revivalCustCountByUser = [];
-    foreach ($revivalCustCountData as $row) {
-        $revivalCustCountByUser[$row['user_id']] = intval($row['customer_count']);
+    foreach ($custCountData as $row) {
+        $newCustCountByUser[$row['user_id']] = intval($row['new_count']);
+        $coreCustCountByUser[$row['user_id']] = intval($row['core_count']);
+        $revivalCustCountByUser[$row['user_id']] = intval($row['revival_count']);
     }
     
     // ========================================
-    // 5. Customer Segment Orders (from basket_key_at_sale)
+    // 5. Customer Segment Orders (from basket_key_at_sale) - OPTIMIZED: Single Query
     // ========================================
-    
-    // 5a. ลูกค้าใหม่ซื้อ (orders from basket_key_at_sale 38,46,47)
-    $sqlNewCustomersOrders = "
+    $sqlSegmentOrders = "
         SELECT 
             oi.creator_id AS user_id,
-            COUNT(DISTINCT o.id) AS order_count,
-            COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS sales_total
+            -- New Customer orders
+            COUNT(DISTINCT CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($newKeysIn) THEN o.id END) AS new_orders,
+            COALESCE(SUM(CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($newKeysIn) 
+                THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) AS new_sales,
+            -- Core Customer orders
+            COUNT(DISTINCT CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($coreKeysIn) THEN o.id END) AS core_orders,
+            COALESCE(SUM(CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($coreKeysIn) 
+                THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) AS core_sales,
+            -- Revival Customer orders
+            COUNT(DISTINCT CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($revivalKeysIn) THEN o.id END) AS revival_orders,
+            COALESCE(SUM(CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($revivalKeysIn) 
+                THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) AS revival_sales
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN users u ON oi.creator_id = u.id
@@ -350,88 +352,32 @@ try {
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($newKeysIn)
+            AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($allSegmentKeysIn)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
+            AND $visibleFilter
             $userFilter
         GROUP BY oi.creator_id
     ";
     
     $segmentParams = array_merge([$companyId], $dateParams, [$companyId], $userParams);
-    $stmt = $pdo->prepare($sqlNewCustomersOrders);
+    $stmt = $pdo->prepare($sqlSegmentOrders);
     $stmt->execute($segmentParams);
-    $newCustOrdersData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $segmentOrdersData = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $newCustOrdersByUser = [];
     $newCustSalesByUser = [];
-    foreach ($newCustOrdersData as $row) {
-        $newCustOrdersByUser[$row['user_id']] = intval($row['order_count']);
-        $newCustSalesByUser[$row['user_id']] = floatval($row['sales_total']);
-    }
-    
-    // 5b. ลูกค้าเก่าซื้อซ้ำ (orders from basket_key_at_sale 39,40)
-    $sqlCoreCustomersOrders = "
-        SELECT 
-            oi.creator_id AS user_id,
-            COUNT(DISTINCT o.id) AS order_count,
-            COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS sales_total
-        FROM order_items oi
-        JOIN orders o ON oi.parent_order_id = o.id
-        JOIN users u ON oi.creator_id = u.id
-        WHERE o.company_id = ?
-            AND $dateFilterOrders
-            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
-            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($coreKeysIn)
-            AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
-            $userFilter
-        GROUP BY oi.creator_id
-    ";
-    
-    $stmt = $pdo->prepare($sqlCoreCustomersOrders);
-    $stmt->execute($segmentParams);
-    $coreCustOrdersData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
     $coreCustOrdersByUser = [];
     $coreCustSalesByUser = [];
-    foreach ($coreCustOrdersData as $row) {
-        $coreCustOrdersByUser[$row['user_id']] = intval($row['order_count']);
-        $coreCustSalesByUser[$row['user_id']] = floatval($row['sales_total']);
-    }
-    
-    // 5c. ลูกค้าขุดซื้อซ้ำ (orders from basket_key_at_sale 48,49,50)
-    $sqlRevivalCustomersOrders = "
-        SELECT 
-            oi.creator_id AS user_id,
-            COUNT(DISTINCT o.id) AS order_count,
-            COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS sales_total
-        FROM order_items oi
-        JOIN orders o ON oi.parent_order_id = o.id
-        JOIN users u ON oi.creator_id = u.id
-        WHERE o.company_id = ?
-            AND $dateFilterOrders
-            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
-            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($revivalKeysIn)
-            AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
-            $userFilter
-        GROUP BY oi.creator_id
-    ";
-    
-    $stmt = $pdo->prepare($sqlRevivalCustomersOrders);
-    $stmt->execute($segmentParams);
-    $revivalCustOrdersData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
     $revivalCustOrdersByUser = [];
     $revivalCustSalesByUser = [];
-    foreach ($revivalCustOrdersData as $row) {
-        $revivalCustOrdersByUser[$row['user_id']] = intval($row['order_count']);
-        $revivalCustSalesByUser[$row['user_id']] = floatval($row['sales_total']);
+    foreach ($segmentOrdersData as $row) {
+        $newCustOrdersByUser[$row['user_id']] = intval($row['new_orders']);
+        $newCustSalesByUser[$row['user_id']] = floatval($row['new_sales']);
+        $coreCustOrdersByUser[$row['user_id']] = intval($row['core_orders']);
+        $coreCustSalesByUser[$row['user_id']] = floatval($row['core_sales']);
+        $revivalCustOrdersByUser[$row['user_id']] = intval($row['revival_orders']);
+        $revivalCustSalesByUser[$row['user_id']] = floatval($row['revival_sales']);
     }
     
     // ========================================
@@ -449,7 +395,7 @@ try {
             WHERE DATE(a.work_date) = ?
                 AND u.company_id = ?
                 AND u.role LIKE '%telesale%'
-                AND u.status = 'active'
+                AND $visibleFilter
                 $userFilter
             GROUP BY a.user_id
         ";
@@ -467,7 +413,7 @@ try {
             WHERE a.work_date BETWEEN ? AND ?
                 AND u.company_id = ?
                 AND u.role LIKE '%telesale%'
-                AND u.status = 'active'
+                AND $visibleFilter
                 $userFilter
             GROUP BY a.user_id
         ";
@@ -674,7 +620,7 @@ try {
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
-            AND u.status = 'active'
+            AND $visibleFilter
             $userFilter
     ";
     

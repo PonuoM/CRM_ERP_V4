@@ -2011,10 +2011,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   }, [products, productFilterUser, marketingUserProducts]);
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">{getHeaderTitle()}</h2>
-      </div>
+    <div className={`p-6 ${activeTab === 'dashboard' ? 'h-[calc(100vh-80px)] overflow-hidden flex flex-col' : 'space-y-6'}`}>
+      {activeTab !== 'dashboard' && (
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">{getHeaderTitle()}</h2>
+        </div>
+      )}
 
 
 
@@ -2595,8 +2597,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       {/* Dashboard Tab */}
       {
         activeTab === "dashboard" && (
-          <section className="bg-white rounded-lg shadow p-5">
-            <div className="flex items-center justify-between mb-4">
+          <section className="bg-white rounded-lg shadow p-5 flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <div>
                 <h3 className="text-lg font-semibold text-gray-800">
                   แดชบอร์ดข้อมูล Ads
@@ -2618,7 +2620,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             </div>
 
             {/* Marketing Date Range Picker and Page Filter */}
-            <div className="mb-4">
+            <div className="mb-4 flex-shrink-0">
               <div className="flex gap-4 items-end">
                 <div className="flex-1">
                   <label className={labelClass}>เลือกช่วงวันที่</label>
@@ -2677,12 +2679,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 <div className="flex-1">
                   <label className={labelClass}>เลือกพนักงาน</label>
                   <MultiSelectUserFilter
-                    users={marketingUsersList.map(u => ({
-                      id: u.id,
-                      firstName: u.first_name,
-                      lastName: u.last_name || '',
-                      username: u.username
-                    }))}
+                    users={marketingUsersList
+                      .filter(u => marketingPageUsers.some((mpu: any) => mpu.user_id === u.id))
+                      .map(u => ({
+                        id: u.id,
+                        firstName: u.first_name,
+                        lastName: u.last_name || '',
+                        username: u.username
+                      }))
+                    }
                     selectedUsers={dashboardSelectedUsers}
                     onChange={setDashboardSelectedUsers}
                   />
@@ -2757,9 +2762,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </button>
                         <button
                           onClick={() => {
+                            const today = new Date();
+                            const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                            setTempStart(dateStr);
+                            setTempEnd(dateStr);
+                            setDateRange({ start: dateStr, end: dateStr });
+                            setDatePickerOpen(false);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                          วันนี้
+                        </button>
+                        <button
+                          onClick={() => {
                             const yesterday = new Date();
                             yesterday.setDate(yesterday.getDate() - 1);
-                            const dateStr = yesterday.toISOString().slice(0, 10);
+                            const dateStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
                             setTempStart(dateStr);
                             setTempEnd(dateStr);
                             setDateRange({ start: dateStr, end: dateStr });
@@ -2791,6 +2810,21 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         >
                           <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                           เดือนนี้
+                        </button>
+                        <button
+                          onClick={() => {
+                            const now = new Date();
+                            const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                            const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+                            const startStr = `${firstDayLastMonth.getFullYear()}-${String(firstDayLastMonth.getMonth() + 1).padStart(2, '0')}-${String(firstDayLastMonth.getDate()).padStart(2, '0')}`;
+                            const endStr = `${lastDayLastMonth.getFullYear()}-${String(lastDayLastMonth.getMonth() + 1).padStart(2, '0')}-${String(lastDayLastMonth.getDate()).padStart(2, '0')}`;
+                            setTempStart(startStr);
+                            setTempEnd(endStr);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>
+                          เดือนที่แล้ว
                         </button>
                         <button
                           onClick={() => {
@@ -2834,7 +2868,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             </div>
 
             {/* Dashboard Header with Toggle and Export */}
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <div className="flex bg-gray-100 rounded p-1">
                   <button
@@ -2867,27 +2901,126 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto overflow-y-auto flex-1">
                 <table className="w-full text-sm">
                   {adsInputMode === 'page' ? (
                     /* Page Dashboard Table */
                     <>
-                      <thead className="bg-gray-50 text-gray-700">
+                      <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10 shadow-sm">
                         <tr>
-                          <th className="px-3 py-2 text-left">เพจ</th>
-                          <th className="px-3 py-2 text-left">ประเภทเพจ</th>
-                          <th className="px-3 py-2 text-left">พนักงาน</th>
-                          <th className="px-3 py-2 text-right">ค่าแอด</th>
-                          <th className="px-3 py-2 text-right">ยอดขาย</th>
-                          <th className="px-3 py-2 text-right">ยอดขาย ลค.ใหม่</th>
-                          <th className="px-3 py-2 text-right">รีออเดอร์</th>
-                          <th className="px-3 py-2 text-right">จำนวนลูกค้า</th>
-                          <th className="px-3 py-2 text-right">ทัก/คลิก</th>
-                          <th className="px-3 py-2 text-right">ROAS</th>
-                          <th className="px-3 py-2 text-right">ราคาต่อทัก</th>
-                          <th className="px-3 py-2 text-right">%Ads/ยอด ลค.ใหม่</th>
-                          <th className="px-3 py-2 text-right">%Ads</th>
-                          <th className="px-3 py-2 text-right">%ปิดการขาย</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">เพจ</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">ประเภทเพจ</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">พนักงาน</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ค่าแอด
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">💰 ค่าแอด (Ads Cost)</p>
+                                <p>ยอดรวมค่าโฆษณาที่กรอกเข้าระบบ</p>
+                                <p className="mt-1 text-gray-300">= SUM ค่าแอดทุกวันในช่วงที่เลือก</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ยอดขาย
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">📊 ยอดขาย (Sales)</p>
+                                <p>ยอดรวม total_amount จากตาราง orders</p>
+                                <p className="mt-1 text-gray-300">ไม่รวม order ที่ถูกยกเลิก (Cancelled)</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ยอดขาย ลค.ใหม่
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">🆕 ยอดขาย ลูกค้าใหม่</p>
+                                <p>ยอดขายเฉพาะลูกค้าที่สั่งครั้งแรก</p>
+                                <p className="mt-1 text-gray-300">= SUM(total_amount) เฉพาะ customer_type = 'New Customer'</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              รีออเดอร์
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">🔄 รีออเดอร์ (Reorder Sales)</p>
+                                <p>ยอดขายเฉพาะลูกค้าที่เคยสั่งมาก่อน</p>
+                                <p className="mt-1 text-gray-300">= SUM(total_amount) เฉพาะ customer_type = 'Reorder Customer'</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">จำนวนลูกค้า</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ทัก/คลิก
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">👆 ทัก/คลิก (Clicks)</p>
+                                <p>จำนวนทัก/คลิกรวมที่กรอกเข้าระบบ</p>
+                                <p className="mt-1 text-gray-300">= SUM คลิกทุกวันในช่วงที่เลือก</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ROAS
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">📈 ROAS (Return On Ad Spend)</p>
+                                <p>ผลตอบแทนจากค่าโฆษณา</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= ยอดขาย ÷ ค่าแอด</p>
+                                <p className="mt-1 text-gray-300">ตัวอย่าง: ยอดขาย 10,000 ÷ ค่าแอด 5,000 = ROAS 2.00</p>
+                                <p className="text-gray-300">→ ลง 1 บาท ได้คืน 2 บาท</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ราคาต่อทัก
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">💬 ราคาต่อทัก (Cost per Click)</p>
+                                <p>ค่าใช้จ่ายต่อ 1 ทัก/คลิก</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= ค่าแอด ÷ ทัก/คลิก</p>
+                                <p className="mt-1 text-gray-300">ตัวอย่าง: ค่าแอด 10,000 ÷ คลิก 100 = 100 บาท/ทัก</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              %Ads/ยอด ลค.ใหม่
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">📉 %Ads/ยอดขาย ลูกค้าใหม่</p>
+                                <p>สัดส่วนค่าแอดเทียบยอดขายลูกค้าใหม่</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขาย ลค.ใหม่) × 100</p>
+                                <p className="mt-1 text-gray-300">ตัวอย่าง: ค่าแอด 5,000 ÷ ยอดขาย ลค.ใหม่ 10,000 = 50%</p>
+                                <p className="text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              %Ads
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">📉 %Ads (Ads Cost Ratio)</p>
+                                <p>สัดส่วนค่าแอดเทียบยอดขายทั้งหมด</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขาย) × 100</p>
+                                <p className="mt-1 text-gray-300">ตัวอย่าง: ค่าแอด 5,000 ÷ ยอดขาย 20,000 = 25%</p>
+                                <p className="text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              %ปิดการขาย
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">🎯 %ปิดการขาย (Close Rate)</p>
+                                <p>อัตราการปิดการขายเทียบจำนวนคลิก</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= (จำนวน orders ÷ ทัก/คลิก) × 100</p>
+                                <p className="mt-1 text-gray-300">ตัวอย่าง: orders 50 ÷ คลิก 200 = 25%</p>
+                                <p className="text-gray-300">→ ยิ่งสูงยิ่งดี</p>
+                              </div>
+                            </div>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3017,21 +3150,81 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   ) : (
                     /* Create Product Dashboard Table */
                     <>
-                      <thead className="bg-gray-50 text-gray-700">
+                      <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10 shadow-sm">
                         <tr>
-                          <th className="px-3 py-2 text-left">SKU</th>
-                          <th className="px-3 py-2 text-left">สินค้า</th>
-                          <th className="px-3 py-2 text-right">ค่าแอด</th>
-                          <th className="px-3 py-2 text-right">ยอดขาย</th>
-                          <th className="px-3 py-2 text-right">ยอดขาย ลค.ใหม่</th>
-                          <th className="px-3 py-2 text-right">รีออเดอร์</th>
-                          <th className="px-3 py-2 text-right">จำนวนลูกค้า</th>
-                          <th className="px-3 py-2 text-right">ทัก/คลิก</th>
-                          <th className="px-3 py-2 text-right">ROAS</th>
-                          <th className="px-3 py-2 text-right">ราคาต่อทัก</th>
-                          <th className="px-3 py-2 text-right">%Ads/ยอด ลค.ใหม่</th>
-                          <th className="px-3 py-2 text-right">%Ads</th>
-                          <th className="px-3 py-2 text-right">%ปิดการขาย</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">SKU</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">สินค้า</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ค่าแอด
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">💰 ค่าแอด (Ads Cost)</p>
+                                <p>ยอดรวมค่าโฆษณาที่กรอกเข้าระบบ</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ยอดขาย
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">📊 ยอดขาย (Sales)</p>
+                                <p>ยอดรวม total_amount (ไม่รวม Cancelled)</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">ยอดขาย ลค.ใหม่</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">รีออเดอร์</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">จำนวนลูกค้า</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">ทัก/คลิก</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ROAS
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">📈 ROAS (Return On Ad Spend)</p>
+                                <p className="text-yellow-300 font-medium">= ยอดขาย ÷ ค่าแอด</p>
+                                <p className="mt-1 text-gray-300">→ ลง 1 บาท ได้คืนกี่บาท (ยิ่งสูงยิ่งดี)</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              ราคาต่อทัก
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">💬 ราคาต่อทัก (Cost per Click)</p>
+                                <p className="text-yellow-300 font-medium">= ค่าแอด ÷ ทัก/คลิก</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              %Ads/ยอด ลค.ใหม่
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">📉 %Ads/ยอดขาย ลค.ใหม่</p>
+                                <p className="text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขาย ลค.ใหม่) × 100</p>
+                                <p className="mt-1 text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              %Ads
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">📉 %Ads (Ads Cost Ratio)</p>
+                                <p className="text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขาย) × 100</p>
+                                <p className="mt-1 text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              %ปิดการขาย
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">🎯 %ปิดการขาย (Close Rate)</p>
+                                <p className="text-yellow-300 font-medium">= (จำนวน orders ÷ ทัก/คลิก) × 100</p>
+                                <p className="mt-1 text-gray-300">→ ยิ่งสูงยิ่งดี</p>
+                              </div>
+                            </div>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>

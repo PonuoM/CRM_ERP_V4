@@ -92,7 +92,7 @@ try {
     $logWhereClause = implode(" AND ", $logWhereConditions);
 
     // Build WHERE conditions for orders
-    $orderWhereConditions = ["1=1"];
+    $orderWhereConditions = ["order_status != 'Cancelled'"];
     $orderParams = [];
 
     if ($dateFrom && $dateTo) {

@@ -3593,7 +3593,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $itemSql = "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, 
                                            oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number, 
                                            oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
-                                           oi.creator_id, oi.parent_order_id,
+                                           oi.creator_id, oi.parent_order_id, oi.basket_key_at_sale,
                                            p.sku as product_sku,
                                            pr.sku as promotion_sku,
                                            r.id as creator_role_id
@@ -10790,11 +10790,15 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
 
                 $pdo->beginTransaction();
                 try {
-                    // Fetch current_basket_key from customer for upsell statistics
+                    // Fetch current_basket_key from customer for basket_key_at_sale snapshot
                     $upsellBasketKey = null;
                     $basketStmt = $pdo->prepare('SELECT current_basket_key FROM customers WHERE customer_id = ?');
                     $basketStmt->execute([$order['customer_id']]);
                     $upsellBasketKey = $basketStmt->fetchColumn() ?: null;
+                    // Default to basket 38 (ลูกค้าใหม่) if customer not found or has no basket
+                    if ($upsellBasketKey === null) {
+                        $upsellBasketKey = 38;
+                    }
 
                     $insertedItems = [];
                     // Initialize with existing total amount

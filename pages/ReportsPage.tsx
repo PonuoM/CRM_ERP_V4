@@ -220,6 +220,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               discount: it.discount || 0,
               isFreebie: !!it.is_freebie,
               boxNumber: it.box_number || 1,
+              basketKeyAtSale: it.basket_key_at_sale || null,
             })) : [],
             shippingCost: Number(r.shipping_cost) || 0,
             billDiscount: Number(r.bill_discount) || 0,
@@ -763,7 +764,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
             'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
             'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
-            'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด')
+            'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
+            'ตะกร้าขาย': (item as any).basketKeyAtSale || '-'
           });
         });
       } else {
@@ -800,7 +802,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
           'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
           'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
-          'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด')
+          'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
+          'ตะกร้าขาย': '-'
         });
       }
     });
@@ -917,8 +920,16 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const companyFilter = currentUser && !isSuperAdmin && currentUser.companyId
           ? `&companyId=${currentUser.companyId}`
           : '';
-        const startDateStr = filterStartDate.toISOString().split('T')[0];
-        const endDateStr = filterEndDate.toISOString().split('T')[0];
+        // Use local date format to avoid timezone issues (toISOString converts to UTC)
+        const formatLocalDate = (d: Date) => {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+        const startDateStr = formatLocalDate(filterStartDate);
+        const endDateStr = formatLocalDate(filterEndDate);
+
 
         // Fetch orders with date filter
         const ordersResponse = await apiFetch(`orders?pageSize=5000${companyFilter}&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}`);
@@ -1178,7 +1189,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 'วันที่จัดส่ง Airport': order.airport_delivery_date ? new Date(order.airport_delivery_date).toLocaleDateString('th-TH') : '-',
                 'สถานะจาก Airport': order.airport_delivery_status || '-',
                 'สถานะออเดอร์': getOrderStatusThai(order.order_status || ''),
-                'สถานะสลิป': getSlipStatus(order)
+                'สถานะสลิป': getSlipStatus(order),
+                'ตะกร้าขาย': item.basket_key_at_sale || '-'
               });
             });
           });

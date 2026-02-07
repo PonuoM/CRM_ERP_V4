@@ -151,6 +151,7 @@ import BasketSettingsPage from "./pages/BasketSettingsPage";
 import CustomerDistributionV2 from "./pages/CustomerDistributionV2";
 import TelesalePerformancePage from "./pages/TelesalePerformancePage";
 import AttendanceManagementPage from "./pages/AttendanceManagementPage";
+import AdsInputV2 from "./pages/AdsInputV2";
 import { db } from "./db/db";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
@@ -546,6 +547,7 @@ const App: React.FC = () => {
       'Pages': 'data.pages',
       'Marketing Dashboard': 'marketing.dashboard',
       'Ads Input': 'marketing.ads_input',
+      'Ads Input V2': 'marketing.ads_input_v2',
       'Accounting Report': 'accounting.report',
       'จัดการตีกลับ': 'nav.return_management',
     };
@@ -7568,6 +7570,9 @@ const App: React.FC = () => {
       case "Ads History":
       case "ประวัติการกรอก Ads":
         return <MarketingPage currentUser={currentUser} view="adsHistory" />;
+      case "Ads Input V2":
+      case "กรอกค่า Ads V2":
+        return <AdsInputV2 currentUser={currentUser} />;
       case "Marketing User Management":
       case "จัดการผู้ใช้การตลาด-เพจ":
         return <MarketingPage currentUser={currentUser} view="userManagement" />;

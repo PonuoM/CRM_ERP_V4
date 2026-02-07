@@ -1,18 +1,24 @@
-import React from "react";
+import React, { useState } from "react";
 import { CustomerGrade, OrderStatus } from "../types";
 import ReactApexChart from "react-apexcharts";
 
 interface MonthlyOrdersChartProps {
-  data?: Record<string, number>;
+  data?: Record<string, number>;        // monthlyCounts (orders)
+  salesData?: Record<string, number>;   // monthlySales (revenue) ★ NEW
   loading?: boolean;
   year?: string; // Selected year
 }
 
-export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, loading, year }) => {
+export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, salesData, loading, year }) => {
+  const [viewMode, setViewMode] = useState<'orders' | 'sales'>('orders');
+
   // Process data to show all 12 months of selected year
   const processData = () => {
     const targetYear = year || String(new Date().getFullYear());
     const monthLabels = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+    // Choose data source based on view mode
+    const sourceData = viewMode === 'orders' ? data : salesData;
 
     // Generate all 12 months for the selected year
     const labels: string[] = [];
@@ -21,7 +27,7 @@ export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, lo
     for (let m = 1; m <= 12; m++) {
       const monthKey = `${targetYear}-${String(m).padStart(2, '0')}`;
       labels.push(monthLabels[m - 1]);
-      values.push(data?.[monthKey] || 0);
+      values.push(sourceData?.[monthKey] || 0);
     }
 
     return { labels, values };
@@ -30,8 +36,22 @@ export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, lo
   const { labels, values } = processData();
 
   const series = [
-    { name: "ออเดอร์", data: values },
+    { name: viewMode === 'orders' ? "ออเดอร์" : "ยอดขาย", data: values },
   ];
+
+  // Format number for display
+  const formatValue = (val: number) => {
+    if (viewMode === 'sales') {
+      // Format as currency (short form for chart labels)
+      if (val >= 1000000) {
+        return `${(val / 1000000).toFixed(1)}M`;
+      } else if (val >= 1000) {
+        return `${(val / 1000).toFixed(0)}K`;
+      }
+      return val.toLocaleString();
+    }
+    return Math.round(val).toString();
+  };
 
   const options: any = {
     chart: { type: "bar", toolbar: { show: false } },
@@ -41,19 +61,30 @@ export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, lo
         columnWidth: '60%',
       }
     },
-    colors: ["#3B82F6"],
+    colors: [viewMode === 'orders' ? "#3B82F6" : "#10B981"], // Blue for orders, Green for sales
     xaxis: {
       categories: labels,
     },
     yaxis: {
       labels: {
-        formatter: (val: number) => Math.round(val).toString()
+        formatter: (val: number) => formatValue(val)
       }
     },
     dataLabels: {
       enabled: true,
+      formatter: (val: number) => formatValue(val),
       style: {
-        fontSize: '10px',
+        fontSize: '9px',
+      }
+    },
+    tooltip: {
+      y: {
+        formatter: (val: number) => {
+          if (viewMode === 'sales') {
+            return `฿${val.toLocaleString()}`;
+          }
+          return `${val} ออเดอร์`;
+        }
       }
     },
     grid: { borderColor: "#E5E7EB" },
@@ -68,8 +99,31 @@ export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, lo
       }
     }
   };
+
   return (
     <div className="bg-white p-2 pt-0 rounded-lg shadow-sm border border-gray-200 h-full overflow-hidden">
+      {/* Toggle Buttons */}
+      <div className="flex justify-end gap-1 mb-2 pt-2 pr-2">
+        <button
+          onClick={() => setViewMode('orders')}
+          className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${viewMode === 'orders'
+              ? 'bg-blue-500 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+        >
+          ออเดอร์
+        </button>
+        <button
+          onClick={() => setViewMode('sales')}
+          className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${viewMode === 'sales'
+              ? 'bg-emerald-500 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+        >
+          ยอดขาย
+        </button>
+      </div>
+
       <div
         className="w-full overflow-hidden"
         style={{ maxWidth: "100%", width: "100%" }}
@@ -91,6 +145,7 @@ export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, lo
     </div>
   );
 };
+
 
 import Spinner from "./Spinner";
 

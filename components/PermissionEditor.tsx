@@ -78,6 +78,7 @@ const PERMISSION_GROUPS_DEF = {
         items: [
             { key: 'marketing.dashboard', label: 'Marketing Dashboard (แดชบอร์ด)' },
             { key: 'marketing.ads_input', label: 'Ads Input (กรอกค่า Ads)' },
+            { key: 'marketing.ads_input_v2', label: 'Ads Input V2 (กรอกค่า Ads V2)' },
             { key: 'marketing.ads_history', label: 'Ads History (ประวัติการกรอก Ads)' },
             { key: 'marketing.user_management', label: 'Marketing User Management (จัดการผู้ใช้การตลาด-เพจ)' },
         ]
