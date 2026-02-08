@@ -55,10 +55,12 @@ try {
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
   $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
+  $userIds = isset($_GET["user_ids"]) ? (string)$_GET["user_ids"] : null;
 
   // Build WHERE clause
   $whereClause = "WHERE MONTH(timestamp) = ? AND YEAR(timestamp) = ?";
   $params = [$month, $year];
+  $phones = []; // Collected normalized phones for per-person avg calculation
 
   // If a specific user is selected, add filter for that user
   if (!empty($userId)) {
@@ -72,10 +74,37 @@ try {
       if (!empty($normalized)) {
         $whereClause .= " AND phone_telesale = ?";
         $params[] = $normalized;
+        $phones[] = $normalized;
       }
     } else {
        // User found but no phone?
        $whereClause .= " AND 1=0";
+    }
+  } elseif (!empty($userIds)) {
+    // Filter by specific user IDs (supervisor team scope)
+    $idList = array_filter(array_map('intval', explode(',', $userIds)));
+    if (empty($idList)) {
+      $whereClause .= " AND 1=0";
+    } else {
+      $inPlaceholders = implode(',', array_fill(0, count($idList), '?'));
+      $uStmt = $pdo->prepare("SELECT phone FROM users WHERE id IN ($inPlaceholders) AND phone IS NOT NULL AND phone != ''");
+      $uStmt->execute($idList);
+
+      $phones = [];
+      while ($row = $uStmt->fetch(PDO::FETCH_ASSOC)) {
+          $norm = normalize_phone_to_66($row['phone']);
+          if ($norm) $phones[] = $norm;
+      }
+
+      if (empty($phones)) {
+           $whereClause .= " AND 1=0";
+      } else {
+           $inParams = implode(',', array_fill(0, count($phones), '?'));
+           $whereClause .= " AND phone_telesale IN ($inParams)";
+           foreach ($phones as $p) {
+               $params[] = $p;
+           }
+      }
     }
   } elseif (!empty($companyId)) {
     // Filter by Company Users
@@ -106,6 +135,13 @@ try {
   $stmt->execute($params);
   $totalCalls = $stmt->fetch(PDO::FETCH_ASSOC)["total_calls"];
 
+  // Calculate answered calls (duration >= 40 seconds = connected/talked)
+  $stmt = $pdo->prepare(
+    "SELECT COUNT(*) as answered_calls FROM onecall_log $whereClause AND duration >= 40"
+  );
+  $stmt->execute($params);
+  $answeredCalls = $stmt->fetch(PDO::FETCH_ASSOC)["answered_calls"];
+
   // Calculate total duration in seconds and convert to minutes directly in SQL
   $stmt = $pdo->prepare(
     "SELECT SUM(duration) / 60 as total_duration_minutes FROM onecall_log $whereClause",
@@ -115,39 +151,41 @@ try {
     $stmt->fetch(PDO::FETCH_ASSOC)["total_duration_minutes"] ?: 0,
   );
 
-  // Calculate business days (excluding weekends)
-  $businessDays = 0;
-  $currentDay = intval(date("d"));
-  $currentMonth = intval(date("m"));
-  $currentYear = intval(date("Y"));
+  // Calculate average minutes per call: average-of-per-person-averages
+  // Each person: their_minutes / their_answered_calls → then average across all people
+  $avgMinutesPerCall = 0;
+  if (!empty($phones)) {
+    $phIn = implode(',', array_fill(0, count($phones), '?'));
+    $perPersonSql = "SELECT phone_telesale,
+        SUM(duration) / 60.0 AS person_minutes,
+        SUM(CASE WHEN duration >= 40 THEN 1 ELSE 0 END) AS person_answered
+      FROM onecall_log
+      WHERE MONTH(timestamp) = ? AND YEAR(timestamp) = ?
+        AND phone_telesale IN ($phIn)
+      GROUP BY phone_telesale";
+    $ppParams = array_merge([$month, $year], $phones);
+    $ppStmt = $pdo->prepare($perPersonSql);
+    $ppStmt->execute($ppParams);
 
-  // If we're in the same month, count only days up to today
-  $daysInMonth =
-    $month == $currentMonth && $year == $currentYear
-      ? $currentDay
-      : cal_days_in_month(CAL_GREGORIAN, $month, $year);
-
-  for ($day = 1; $day <= $daysInMonth; $day++) {
-    $dayOfWeek = date("N", mktime(0, 0, 0, $month, $day, $year));
-    // 6 = Saturday, 7 = Sunday
-    if ($dayOfWeek < 6) {
-      $businessDays++;
+    $personAvgs = [];
+    while ($row = $ppStmt->fetch(PDO::FETCH_ASSOC)) {
+      if ($row['person_answered'] > 0) {
+        $personAvgs[] = $row['person_minutes'] / $row['person_answered'];
+      }
+    }
+    if (!empty($personAvgs)) {
+      $avgMinutesPerCall = round(array_sum($personAvgs) / count($personAvgs), 2);
     }
   }
-
-  // Calculate average minutes per business day
-  $avgMinutesPerDay =
-    $businessDays > 0 ? round($totalMinutes / $businessDays, 2) : 0;
 
   // Return success response with stats
   json_response([
     "success" => true,
     "data" => [
       "totalCalls" => $totalCalls,
-      "answeredCalls" => 0, // Always 0 as requested
+      "answeredCalls" => $answeredCalls,
       "totalMinutes" => $totalMinutes,
-      "avgMinutes" => $avgMinutesPerDay,
-      "businessDays" => $businessDays,
+      "avgMinutes" => $avgMinutesPerCall,
     ],
   ]);
 } catch (PDOException $e) {

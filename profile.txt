@@ -1,0 +1,2 @@
+Query_ID	Duration	Query
+1	0.40517800	SELECT SQL_NO_CACHE * FROM v_telesale_call_overview_monthly WHERE month_key = '2026-02'

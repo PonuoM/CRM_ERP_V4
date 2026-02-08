@@ -35,11 +35,13 @@ try {
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
   $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
+  $userIds = isset($_GET["user_ids"]) ? (string)$_GET["user_ids"] : null;
   $threshold = 40; // seconds
 
   $userFirstName = null;
   $additionalWhere = "";
   $userPhone = null;
+  $companyPhoneParams = [];
 
   if (!empty($userId)) {
     // Get user's phone, normalize to '66' format, and match onecall_log.phone_telesale
@@ -51,6 +53,35 @@ try {
       if (!empty($normalized)) {
         $userPhone = $normalized;
         $additionalWhere = " AND phone_telesale = :userphone";
+      }
+    }
+  } elseif (!empty($userIds)) {
+    // Filter by specific user IDs (supervisor team scope)
+    $idList = array_filter(array_map('intval', explode(',', $userIds)));
+    if (empty($idList)) {
+      $additionalWhere = " AND 1=0";
+    } else {
+      $inPlaceholders = implode(',', array_fill(0, count($idList), '?'));
+      $uStmt = $pdo->prepare("SELECT phone FROM users WHERE id IN ($inPlaceholders) AND phone IS NOT NULL AND phone != ''");
+      $uStmt->execute($idList);
+
+      $phones = [];
+      while ($row = $uStmt->fetch(PDO::FETCH_ASSOC)) {
+          $norm = normalize_phone_to_66($row['phone']);
+          if ($norm) $phones[] = $norm;
+      }
+
+      if (empty($phones)) {
+          $additionalWhere = " AND 1=0";
+      } else {
+          $phPlaceholders = [];
+          foreach ($phones as $i => $p) {
+              $key = ":ph$i";
+              $phPlaceholders[] = $key;
+              $companyPhoneParams[$key] = $p;
+          }
+          $inQuery = implode(',', $phPlaceholders);
+          $additionalWhere = " AND phone_telesale IN ($inQuery)";
       }
     }
   } elseif (!empty($companyId)) {
@@ -72,13 +103,10 @@ try {
          foreach ($phones as $i => $p) {
              $key = ":ph$i";
              $phPlaceholders[] = $key;
-             $params[$key] = $p; // Note: $params defined below, need to merge later or define earlier?
-             // Original code defines $params AFTER this block.
+             $companyPhoneParams[$key] = $p;
          }
          $inQuery = implode(',', $phPlaceholders);
          $additionalWhere = " AND phone_telesale IN ($inQuery)";
-         // I need to carry over the phone params.
-         $companyPhoneParams = $params; // temp storage
     }
   }
 

@@ -33,7 +33,7 @@ try {
   $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
 
   // Query to get users with Telesale and Supervisor Telesale roles
-  $sql = "SELECT id, first_name, last_name, role, company_id
+  $sql = "SELECT id, first_name, last_name, role, company_id, supervisor_id
        FROM users
       WHERE role IN ('Telesale', 'Supervisor Telesale')";
   $params = [];
@@ -57,6 +57,7 @@ try {
       "role" => $user["role"],
       // include company for client-side filtering
       "company_id" => isset($user["company_id"]) ? (int)$user["company_id"] : null,
+      "supervisor_id" => isset($user["supervisor_id"]) ? (int)$user["supervisor_id"] : null,
     ];
   }, $users);
 

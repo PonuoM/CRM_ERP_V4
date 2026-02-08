@@ -628,14 +628,43 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   }, [user]);
 
   // Only show employees from the same company as current user
+  // For Supervisor: further restrict to self + team members
   const usersForFilter = useMemo(() => {
     if (!Array.isArray(users)) return [] as any[];
-    if (currentCompanyId == null) return users;
-    return users.filter((u) => {
-      const cid = typeof u.company_id === "number" ? u.company_id : u.companyId;
-      return cid === currentCompanyId;
-    });
-  }, [users, currentCompanyId]);
+    let filtered = users;
+    if (currentCompanyId != null) {
+      filtered = filtered.filter((u) => {
+        const cid = typeof u.company_id === "number" ? u.company_id : u.companyId;
+        return cid === currentCompanyId;
+      });
+    }
+    // Supervisor: show only self + team members
+    if (user?.role === UserRole.Supervisor) {
+      const myId = String(user.id);
+      filtered = filtered.filter((u) => {
+        return String(u.id) === myId ||
+          String(u.supervisor_id ?? u.supervisorId ?? "") === myId;
+      });
+    }
+    // Telesale: show only self
+    if (user?.role === UserRole.Telesale) {
+      filtered = filtered.filter((u) => String(u.id) === String(user.id));
+    }
+    return filtered;
+  }, [users, currentCompanyId, user]);
+
+  // Scoped user IDs for role-based filtering (used when no specific user is selected)
+  const teamUserIds = useMemo(() => {
+    if (user?.role === UserRole.Telesale) {
+      return [String(user.id)];
+    }
+    if (user?.role === UserRole.Supervisor) {
+      const ids = usersForFilter.map((u) => String(u.id));
+      if (!ids.includes(String(user.id))) ids.push(String(user.id));
+      return ids;
+    }
+    return null;
+  }, [user, usersForFilter]);
 
   // Ensure selected user stays within the filtered list
   useEffect(() => {
@@ -671,8 +700,11 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
       const companyParam = currentCompanyId ? `&company_id=${currentCompanyId}` : "";
+      const userIdsParam = (!selectedUserId && teamUserIds)
+        ? `&user_ids=${encodeURIComponent(teamUserIds.join(","))}`
+        : "";
       const response = await fetch(
-        `${apiBase}/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}${userParam}${companyParam}`,
+        `${apiBase}/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
       );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -694,8 +726,11 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
       const companyParam = currentCompanyId ? `&company_id=${currentCompanyId}` : "";
+      const userIdsParam = (!selectedUserId && teamUserIds)
+        ? `&user_ids=${encodeURIComponent(teamUserIds.join(","))}`
+        : "";
       const resp = await fetch(
-        `${apiBase}/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}${userParam}${companyParam}`,
+        `${apiBase}/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -717,8 +752,11 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
       const companyParam = currentCompanyId ? `&company_id=${currentCompanyId}` : "";
+      const userIdsParam = (!selectedUserId && teamUserIds)
+        ? `&user_ids=${encodeURIComponent(teamUserIds.join(","))}`
+        : "";
       const resp = await fetch(
-        `${apiBase}/Onecall_DB/get_daily_calls.php?month=${month}&year=${year}${userParam}${companyParam}`,
+        `${apiBase}/Onecall_DB/get_daily_calls.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -740,8 +778,11 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
       const companyParam = currentCompanyId ? `&company_id=${currentCompanyId}` : "";
+      const userIdsParam = (!selectedUserId && teamUserIds)
+        ? `&user_ids=${encodeURIComponent(teamUserIds.join(","))}`
+        : "";
       const resp = await fetch(
-        `${apiBase}/Onecall_DB/get_talk_summary.php?month=${month}&year=${year}${userParam}${companyParam}`,
+        `${apiBase}/Onecall_DB/get_talk_summary.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -1133,7 +1174,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
     fetchUsers();
   }, []);
 
-  // Update dashboard stats when component mounts or when month/year changes
+  // Update dashboard stats when component mounts or when month/year/team changes
   useEffect(() => {
     if (month && year) {
       fetchDashboardStats();
@@ -1141,7 +1182,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       fetchDailySeries();
       fetchTalkSummary();
     }
-  }, [month, year, selectedUserId]);
+  }, [month, year, selectedUserId, teamUserIds]);
 
   // Handle Onecall login
   const handleOnecallLogin = (username: string, password: string) => {

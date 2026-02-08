@@ -35,6 +35,7 @@ try {
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
   $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
+  $userIds = isset($_GET["user_ids"]) ? (string)$_GET["user_ids"] : null;
 
   $params = [":year" => $year, ":month" => $month];
   $userPhone = null;
@@ -68,6 +69,35 @@ try {
         "data" => $empty,
       ]);
       exit();
+    }
+  } elseif (!empty($userIds)) {
+    // Filter by specific user IDs (supervisor team scope)
+    $idList = array_filter(array_map('intval', explode(',', $userIds)));
+    if (empty($idList)) {
+        $where .= " AND 1=0";
+    } else {
+        $inPlaceholders = implode(',', array_fill(0, count($idList), '?'));
+        $uStmt = $pdo->prepare("SELECT phone FROM users WHERE id IN ($inPlaceholders) AND phone IS NOT NULL AND phone != ''");
+        $uStmt->execute($idList);
+
+        $phones = [];
+        while ($row = $uStmt->fetch(PDO::FETCH_ASSOC)) {
+            $norm = normalize_phone_to_66($row['phone']);
+            if ($norm) $phones[] = $norm;
+        }
+
+        if (empty($phones)) {
+            $where .= " AND 1=0";
+        } else {
+            $phPlaceholders = [];
+            foreach ($phones as $i => $p) {
+                $key = ":ph$i";
+                $phPlaceholders[] = $key;
+                $params[$key] = $p;
+            }
+            $inQuery = implode(',', $phPlaceholders);
+            $where .= " AND phone_telesale IN ($inQuery)";
+        }
     }
   } elseif (!empty($companyId)) {
     // Filter by Company

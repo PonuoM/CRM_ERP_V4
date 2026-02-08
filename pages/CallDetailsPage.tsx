@@ -46,14 +46,15 @@ const CallDetailsPage: React.FC<CallDetailsPageProps> = ({ currentUser }) => {
             const su = JSON.parse(s);
             if (su && typeof su.company_id === "number") return su.company_id as number;
           }
-        } catch {}
+        } catch { }
         return undefined as number | undefined;
       })();
 
       const companyQs = companyId != null ? `&companyId=${encodeURIComponent(String(companyId))}` : "";
+      const supervisorQs = currentUser ? `&currentUserId=${encodeURIComponent(String(currentUser.id))}&role=${encodeURIComponent(currentUser.role)}` : "";
       const apiBase = resolveApiBasePath();
       const response = await fetch(
-        `${apiBase}/Onecall_DB/get_call_overview.php?month=${selectedMonth}${companyQs}`,
+        `${apiBase}/Onecall_DB/get_call_overview.php?month=${selectedMonth}${companyQs}${supervisorQs}`,
         {
           method: "GET",
           headers: {

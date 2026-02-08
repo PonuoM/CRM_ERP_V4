@@ -34,6 +34,7 @@ try {
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
   $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
+  $userIds = isset($_GET["user_ids"]) ? (string)$_GET["user_ids"] : null;
 
   // Get employee summary data from the call overview view
   $monthKey = sprintf("%04d-%02d", $year, $month);
@@ -57,6 +58,20 @@ try {
   if (!empty($userId)) {
     $sql .= " AND user_id = :user_id";
     $params[":user_id"] = $userId;
+  } elseif (!empty($userIds)) {
+    // Filter by specific user IDs (supervisor team scope)
+    $idList = array_filter(array_map('intval', explode(',', $userIds)));
+    if (empty($idList)) {
+      $sql .= " AND 1=0";
+    } else {
+      $inPlaceholders = [];
+      foreach ($idList as $i => $uid) {
+        $key = ":uid$i";
+        $inPlaceholders[] = $key;
+        $params[$key] = $uid;
+      }
+      $sql .= " AND user_id IN (" . implode(',', $inPlaceholders) . ")";
+    }
   } elseif (!empty($companyId)) {
     // Filter by Company Users using subquery
     $sql .= " AND user_id IN (SELECT id FROM users WHERE company_id = :comp_id)";
