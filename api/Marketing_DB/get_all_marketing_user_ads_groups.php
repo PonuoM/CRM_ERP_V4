@@ -11,24 +11,16 @@ if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
 try {
   require_once "../config.php";
   
-  $userId = $_GET['user_id'] ?? null;
-
-  if (!$userId) {
-    throw new Exception("Missing user_id parameter");
-  }
-
   $conn = db_connect();
   
-  // Get products that belong to ads_groups assigned to this user
-  // via the marketing_user_ads_group table
-  $sql = "SELECT DISTINCT p.* 
+  $sql = "SELECT mua.user_id, mua.ads_group, 
+                 u.first_name, u.last_name, u.username
           FROM marketing_user_ads_group mua
-          JOIN products p ON p.ads_group = mua.ads_group
-          WHERE mua.user_id = ?
-          AND (p.deleted_at IS NULL)";
+          JOIN users u ON mua.user_id = u.id
+          ORDER BY mua.ads_group, u.first_name";
           
   $stmt = $conn->prepare($sql);
-  $stmt->execute([$userId]);
+  $stmt->execute();
   $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
   
   echo json_encode(["success" => true, "data" => $data]);

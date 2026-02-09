@@ -924,20 +924,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   useEffect(() => {
     loadMarketingPageUsers();
     loadMarketingUsers();
-    loadMarketingUserProducts();
+    loadMarketingUserAdsGroups();
   }, [roles]); // Add roles dependency to ensure we can check is_system
 
-  const [marketingUserProducts, setMarketingUserProducts] = useState<any[]>([]);
+  const [marketingUserAdsGroups, setMarketingUserAdsGroups] = useState<any[]>([]);
 
-  const loadMarketingUserProducts = async () => {
+  const loadMarketingUserAdsGroups = async () => {
     try {
-      const res = await fetch(`${API_BASE}/Marketing_DB/get_all_marketing_user_products.php`);
+      const res = await fetch(`${API_BASE}/Marketing_DB/get_all_marketing_user_ads_groups.php`);
       const data = await res.json();
       if (data.success) {
-        setMarketingUserProducts(data.data || []);
+        setMarketingUserAdsGroups(data.data || []);
       }
     } catch (e) {
-      console.error("Failed to load marketing user products:", e);
+      console.error("Failed to load marketing user ads groups:", e);
     }
   };
 
@@ -961,7 +961,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
 
       // Reload mappings when entering tab
-      loadMarketingUserProducts();
+      loadMarketingUserAdsGroups();
     }
   }, [activeTab, currentUser.companyId]);
 
@@ -978,8 +978,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     setExpandedProducts(newExpanded);
   };
 
-  const handleAddUserToProduct = (productId: number) => {
-    setSelectedProductForUser(products.find(p => p.id === productId));
+  const handleAddUserToProduct = (_productId: number) => {
+    // No longer used - ads_group assignment is used instead
   };
 
   // User Management Section Expand/Collapse State
@@ -1595,68 +1595,52 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     });
   };
 
-  // Connect page user to internal user
-  const [selectedProductForUser, setSelectedProductForUser] = useState<any | null>(null);
+  // Connect user to ads_group
+  const [selectedAdsGroupForUser, setSelectedAdsGroupForUser] = useState<string | null>(null);
 
-  const fetchUserProducts = async (userId: number) => {
-    try {
-      const res = await fetch(`${API_BASE}/Marketing_DB/get_user_products.php?user_id=${userId}`);
-      const data = await res.json();
-      if (data.success) {
-        return data.data || [];
-      } else {
-        console.error("Failed to load user products:", data.error);
-        return [];
-      }
-    } catch (error) {
-      console.error("Error loading user products:", error);
-      return [];
-    }
-  };
-
-  const handleRemoveUserFromProduct = async (userId: number, productId: number) => {
-    if (!confirm("คุณต้องการลบสิทธิ์การเข้าถึงสินค้านี้ของผู้ใช้ใช่หรือไม่?")) return;
+  const handleRemoveUserFromAdsGroup = async (userId: number, adsGroup: string) => {
+    if (!confirm("คุณต้องการลบสิทธิ์การเข้าถึงกลุ่ม Ads นี้ของผู้ใช้ใช่หรือไม่?")) return;
 
     try {
-      const response = await fetch(`${API_BASE}/Marketing_DB/remove_user_from_product.php`, {
+      const response = await fetch(`${API_BASE}/Marketing_DB/remove_user_from_ads_group.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, product_id: productId }),
+        body: JSON.stringify({ user_id: userId, ads_group: adsGroup }),
       });
       const result = await response.json();
       if (result.success) {
         alert("ลบสิทธิ์สำเร็จ");
-        loadMarketingUserProducts();
+        loadMarketingUserAdsGroups();
       } else {
         alert("เกิดข้อผิดพลาด: " + result.error);
       }
     } catch (error) {
-      console.error("Error removing user from product:", error);
+      console.error("Error removing user from ads group:", error);
       alert("เกิดข้อผิดพลาดในการลบสิทธิ์");
     }
   };
 
-  const handleSubmitUserToProduct = async (userId: number) => {
-    if (!selectedProductForUser) return;
+  const handleSubmitUserToAdsGroup = async (userId: number) => {
+    if (!selectedAdsGroupForUser) return;
     try {
-      const response = await fetch(`${API_BASE}/Marketing_DB/add_user_to_product.php`, {
+      const response = await fetch(`${API_BASE}/Marketing_DB/add_user_to_ads_group.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: userId,
-          product_id: selectedProductForUser.id
+          ads_group: selectedAdsGroupForUser
         })
       });
       const result = await response.json();
       if (result.success) {
-        alert("เพิ่มผู้ใช้ไปยังสินค้าเรียบร้อยแล้ว");
-        setSelectedProductForUser(null);
-        loadMarketingUserProducts();
+        alert("เพิ่มผู้ใช้ไปยังกลุ่ม Ads เรียบร้อยแล้ว");
+        setSelectedAdsGroupForUser(null);
+        loadMarketingUserAdsGroups();
       } else {
         alert("เกิดข้อผิดพลาด: " + result.error);
       }
     } catch (error) {
-      console.error("Error adding user to product:", error);
+      console.error("Error adding user to ads group:", error);
       alert("เกิดข้อผิดพลาดในการเพิ่มผู้ใช้");
     }
   };
@@ -1785,8 +1769,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     if (!selectedDate) return;
     setIsLoadingData(true);
     try {
-      // 1. Get user products
-      const products = await fetchUserProducts(currentUser.id);
+      // 1. Get user products (fetch locally for this tab)
+      const userProductsRes = await fetch(`${API_BASE}/Marketing_DB/get_user_products.php?user_id=${currentUser.id}`);
+      const userProductsData = await userProductsRes.json();
+      const products = userProductsData.success && Array.isArray(userProductsData.data) ? userProductsData.data : [];
 
       // 2. Get existing logs
       // Try to use history first as it supports date range and user filter properly
@@ -1999,16 +1985,30 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     });
   }, [pages, pageFilterName, pageFilterType, pageFilterStatus, pageFilterUser, marketingPageUsers]);
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      const matchesUser =
-        productFilterUser === "All" ||
-        marketingUserProducts.some(
-          (u) => u.product_id === product.id && u.user_id === Number(productFilterUser)
-        );
-      return matchesUser;
+  // Get unique ads_groups from products
+  const uniqueAdsGroups = useMemo(() => {
+    const groups = new Map<string, any[]>();
+    products.forEach((product: any) => {
+      const adsGroup = product.ads_group || product.adsGroup;
+      if (adsGroup) {
+        if (!groups.has(adsGroup)) {
+          groups.set(adsGroup, []);
+        }
+        groups.get(adsGroup)!.push(product);
+      }
     });
-  }, [products, productFilterUser, marketingUserProducts]);
+    return groups;
+  }, [products]);
+
+  const filteredAdsGroups = useMemo(() => {
+    const allGroups = Array.from(uniqueAdsGroups.keys());
+    if (productFilterUser === "All") return allGroups;
+    return allGroups.filter(group =>
+      marketingUserAdsGroups.some(
+        (u: any) => u.ads_group === group && u.user_id === Number(productFilterUser)
+      )
+    );
+  }, [uniqueAdsGroups, productFilterUser, marketingUserAdsGroups]);
 
   return (
     <div className={`p-6 ${activeTab === 'dashboard' ? 'h-[calc(100vh-80px)] overflow-hidden flex flex-col' : 'space-y-6'}`}>
@@ -2228,7 +2228,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               )}
             </section>
 
-            {/* Managed Products List */}
+            {/* Managed Ads Groups List */}
             <section className="bg-white rounded-lg shadow p-5 mt-6">
               <div
                 className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4"
@@ -2238,7 +2238,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   onClick={() => setShowManagedProducts(!showManagedProducts)}
                 >
                   <h3 className="text-lg font-semibold text-gray-800">
-                    รายการสินค้า (Managed Products)
+                    กลุ่ม Ads (Managed Ads Groups)
                   </h3>
                   {showManagedProducts ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
                 </div>
@@ -2266,9 +2266,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 <>
                   {loading ? (
                     <div className="text-center py-4">กำลังโหลด...</div>
-                  ) : filteredProducts.length === 0 ? (
+                  ) : filteredAdsGroups.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
-                      ไม่พบสินค้า
+                      ไม่พบกลุ่ม Ads (กรุณาตั้ง 'กลุ่ม Ads' ในหน้าจัดการสินค้า)
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -2276,74 +2276,96 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <thead className="bg-gray-50 text-gray-700">
                           <tr>
                             <th className="px-3 py-2 text-left w-10"></th>
-                            <th className="px-3 py-2 text-left">SKU</th>
-                            <th className="px-3 py-2 text-left">ชื่อสินค้า</th>
+                            <th className="px-3 py-2 text-left">กลุ่ม Ads</th>
+                            <th className="px-3 py-2 text-left">จำนวนสินค้า</th>
                             <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
                             <th className="px-3 py-2 text-left">จัดการ</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredProducts.map((product) => (
-                            <React.Fragment key={product.id}>
-                              <tr
-                                className="border-b cursor-pointer hover:bg-gray-50"
-                                onClick={() => toggleProductExpand(product.id)}
-                              >
-                                <td className="px-3 py-2 text-center w-10">
-                                  {expandedProducts.has(product.id) ? (
-                                    <ChevronDown className="w-4 h-4 text-gray-500" />
-                                  ) : (
-                                    <ChevronRight className="w-4 h-4 text-gray-500" />
-                                  )}
-                                </td>
-                                <td className="px-3 py-2">{product.sku}</td>
-                                <td className="px-3 py-2 font-medium">{product.name}</td>
-                                <td className="px-3 py-2">
-                                  {marketingUserProducts.filter(m => m.product_id === product.id).length}
-                                </td>
-                                <td className="px-3 py-2">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAddUserToProduct(product.id);
-                                    }}
-                                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                                  >
-                                    +เพิ่มผู้ใช้
-                                  </button>
-                                </td>
-                              </tr>
-                              {expandedProducts.has(product.id) && (
-                                <tr>
-                                  <td colSpan={5} className="px-3 py-4 bg-gray-50">
-                                    <div className="space-y-2">
-                                      <h4 className="font-medium text-gray-700">ผู้ใช้ที่ดูแลสินค้านี้:</h4>
-                                      {marketingUserProducts
-                                        .filter(m => m.product_id === product.id)
-                                        .map(m => (
-                                          <div key={m.user_id} className="flex items-center justify-between bg-white p-3 rounded border">
-                                            <div>
-                                              <span className="font-medium">{m.first_name} {m.last_name}</span>
-                                              <span className="text-sm text-gray-600 ml-2">({m.username})</span>
-                                            </div>
-                                            <button
-                                              onClick={() => handleRemoveUserFromProduct(m.user_id, product.id)}
-                                              className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                                            >
-                                              ลบ
-                                            </button>
-                                          </div>
-                                        ))
-                                      }
-                                      {marketingUserProducts.filter(m => m.product_id === product.id).length === 0 && (
-                                        <div className="text-gray-500">ยังไม่มีผู้ใช้ดูแลสินค้านี้</div>
-                                      )}
-                                    </div>
+                          {filteredAdsGroups.map((adsGroup) => {
+                            const groupProducts = uniqueAdsGroups.get(adsGroup) || [];
+                            const isExpanded = expandedProducts.has(adsGroup as any);
+                            return (
+                              <React.Fragment key={adsGroup}>
+                                <tr
+                                  className="border-b cursor-pointer hover:bg-gray-50"
+                                  onClick={() => {
+                                    const newExpanded = new Set(expandedProducts);
+                                    if (newExpanded.has(adsGroup as any)) {
+                                      newExpanded.delete(adsGroup as any);
+                                    } else {
+                                      newExpanded.add(adsGroup as any);
+                                    }
+                                    setExpandedProducts(newExpanded);
+                                  }}
+                                >
+                                  <td className="px-3 py-2 text-center w-10">
+                                    {isExpanded ? (
+                                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                                    ) : (
+                                      <ChevronRight className="w-4 h-4 text-gray-500" />
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 font-medium">{adsGroup}</td>
+                                  <td className="px-3 py-2">{groupProducts.length} สินค้า</td>
+                                  <td className="px-3 py-2">
+                                    {marketingUserAdsGroups.filter((m: any) => m.ads_group === adsGroup).length}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedAdsGroupForUser(adsGroup);
+                                      }}
+                                      className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                                    >
+                                      +เพิ่มผู้ใช้
+                                    </button>
                                   </td>
                                 </tr>
-                              )}
-                            </React.Fragment>
-                          ))}
+                                {isExpanded && (
+                                  <tr>
+                                    <td colSpan={5} className="px-3 py-4 bg-gray-50">
+                                      <div className="space-y-2">
+                                        <h4 className="font-medium text-gray-700">ผู้ใช้ที่ดูแลกลุ่ม Ads นี้:</h4>
+                                        {marketingUserAdsGroups
+                                          .filter((m: any) => m.ads_group === adsGroup)
+                                          .map((m: any) => (
+                                            <div key={m.user_id} className="flex items-center justify-between bg-white p-3 rounded border">
+                                              <div>
+                                                <span className="font-medium">{m.first_name} {m.last_name}</span>
+                                                <span className="text-sm text-gray-600 ml-2">({m.username})</span>
+                                              </div>
+                                              <button
+                                                onClick={() => handleRemoveUserFromAdsGroup(m.user_id, adsGroup)}
+                                                className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                                              >
+                                                ลบ
+                                              </button>
+                                            </div>
+                                          ))
+                                        }
+                                        {marketingUserAdsGroups.filter((m: any) => m.ads_group === adsGroup).length === 0 && (
+                                          <div className="text-gray-500">ยังไม่มีผู้ใช้ดูแลกลุ่ม Ads นี้</div>
+                                        )}
+                                        <div className="mt-3 pt-3 border-t">
+                                          <h4 className="font-medium text-gray-500 text-xs mb-1">สินค้าในกลุ่มนี้:</h4>
+                                          <div className="flex flex-wrap gap-1">
+                                            {groupProducts.map((p: any) => (
+                                              <span key={p.id} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                                                {p.sku} - {p.name}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -4162,16 +4184,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         )
       }
 
-      {/* Add User to Product Modal */}
+      {/* Add User to Ads Group Modal */}
       {
-        selectedProductForUser && (
+        selectedAdsGroupForUser && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังสินค้า: {selectedProductForUser.name}</h3>
+              <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังกลุ่ม Ads: {selectedAdsGroupForUser}</h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {(() => {
                   const availableUsers = marketingUsersList.filter(user =>
-                    !marketingUserProducts.some(m => m.user_id === user.id && m.product_id === selectedProductForUser.id)
+                    !marketingUserAdsGroups.some((m: any) => m.user_id === user.id && m.ads_group === selectedAdsGroupForUser)
                   );
 
                   const admins = availableUsers.filter(u => u.role !== 'Marketing');
@@ -4192,7 +4214,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <div
                           key={user.id}
                           className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
-                          onClick={() => handleSubmitUserToProduct(user.id)}
+                          onClick={() => handleSubmitUserToAdsGroup(user.id)}
                         >
                           <div>
                             <div className="font-medium">{user.first_name} {user.last_name}</div>
@@ -4211,7 +4233,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <div
                           key={user.id}
                           className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
-                          onClick={() => handleSubmitUserToProduct(user.id)}
+                          onClick={() => handleSubmitUserToAdsGroup(user.id)}
                         >
                           <div>
                             <div className="font-medium">{user.first_name} {user.last_name}</div>
@@ -4225,7 +4247,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 })()}
               </div>
               <button
-                onClick={() => setSelectedProductForUser(null)}
+                onClick={() => setSelectedAdsGroupForUser(null)}
                 className="mt-4 w-full px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
               >
                 ยกเลิก

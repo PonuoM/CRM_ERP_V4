@@ -38,11 +38,13 @@ interface AdsRow {
     existingId?: number; // id of existing record (for display purposes)
     lastUpdatedBy?: string; // who last updated (display name)
     lastUpdatedByUserId?: number; // user_id of who last updated
+    adsGroup?: string; // ads_group name (product mode only)
+    productIds?: number[]; // product ids in this group (product mode only)
 }
 
 const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
     // --- State ---
-    const [selectedDate, setSelectedDate] = useState<string>(formatDateLocal(new Date()));
+    const [selectedDate, setSelectedDate] = useState<string>("");
     const [userPages, setUserPages] = useState<PageInfo[]>([]);
     const [rows, setRows] = useState<AdsRow[]>([]);
     const [originalRows, setOriginalRows] = useState<AdsRow[]>([]); // snapshot for change detection
@@ -122,8 +124,16 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
     // --- Load existing ads data when date or pages change ---
     const loadExistingData = useCallback(async () => {
         if (!selectedDate) return;
-        if (mode === "page" && userPages.length === 0) return;
-        if (mode === "product" && userProducts.length === 0) return;
+        if (mode === "page" && userPages.length === 0) {
+            setRows([]);
+            setOriginalRows([]);
+            return;
+        }
+        if (mode === "product" && userProducts.length === 0) {
+            setRows([]);
+            setOriginalRows([]);
+            return;
+        }
 
         setLoadingData(true);
         setSaveResult(null);
@@ -165,7 +175,19 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
                 setRows(newRows);
                 setOriginalRows(JSON.parse(JSON.stringify(newRows)));
             } else {
-                // Product mode
+                // Product mode — group products by ads_group
+                // Only show products that have an ads_group set
+                const groupedProducts = new Map<string, any[]>();
+                for (const product of userProducts) {
+                    const adsGroup = product.ads_group || product.adsGroup;
+                    if (!adsGroup) continue; // skip products without ads_group
+                    if (!groupedProducts.has(adsGroup)) {
+                        groupedProducts.set(adsGroup, []);
+                    }
+                    groupedProducts.get(adsGroup)!.push(product);
+                }
+
+                // Fetch existing ads logs for this date
                 const params = new URLSearchParams();
                 params.append("start_date", selectedDate);
                 params.append("end_date", selectedDate);
@@ -175,24 +197,34 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
                 const result = await response.json();
                 const existingLogs: any[] = result.success && Array.isArray(result.data) ? result.data : [];
 
-                const logsMap = new Map<number, any>();
+                // Build map: ads_group -> log (for grouped rows)
+                const adsGroupLogsMap = new Map<string, any>();
                 for (const log of existingLogs) {
-                    logsMap.set(Number(log.product_id), log);
+                    if (log.ads_group) {
+                        adsGroupLogsMap.set(log.ads_group, log);
+                    }
                 }
 
-                const newRows: AdsRow[] = userProducts.map((product: any) => {
-                    const existing = logsMap.get(Number(product.id));
-                    return {
-                        pageId: product.id,
-                        pageName: product.name,
-                        platform: product.sku || "-",
+                // Build rows: one per ads_group
+                const newRows: AdsRow[] = [];
+                for (const [adsGroup, products] of groupedProducts.entries()) {
+                    const existing = adsGroupLogsMap.get(adsGroup);
+                    const productNames = products.map((p: any) => p.name).join(', ');
+                    newRows.push({
+                        pageId: products[0].id, // use first product id as reference
+                        pageName: adsGroup,
+                        platform: `${products.length} สินค้า`,
                         adsCost: existing?.ads_cost ? String(existing.ads_cost) : "",
                         impressions: existing?.impressions ? String(existing.impressions) : "",
                         reach: existing?.reach ? String(existing.reach) : "",
                         clicks: existing?.clicks ? String(existing.clicks) : "",
                         existingId: existing?.id,
-                    };
-                });
+                        lastUpdatedBy: existing?.user_fullname || (existing?.user_id ? `ID: ${existing.user_id}` : undefined),
+                        lastUpdatedByUserId: existing?.user_id ? Number(existing.user_id) : undefined,
+                        adsGroup: adsGroup,
+                        productIds: products.map((p: any) => p.id),
+                    });
+                }
                 setRows(newRows);
                 setOriginalRows(JSON.parse(JSON.stringify(newRows)));
             }
@@ -272,15 +304,23 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
             }
 
             // Build records for upsert
-            const records = dataRows.map((r) => ({
-                [mode === "page" ? "page_id" : "product_id"]: r.pageId,
-                user_id: currentUser.id,
-                date: selectedDate,
-                ads_cost: r.adsCost ? parseFloat(r.adsCost) : null,
-                impressions: r.impressions ? parseInt(r.impressions) : null,
-                reach: r.reach ? parseInt(r.reach) : null,
-                clicks: r.clicks ? parseInt(r.clicks) : null,
-            }));
+            const records = dataRows.map((r) => {
+                const base: any = {
+                    user_id: currentUser.id,
+                    date: selectedDate,
+                    ads_cost: r.adsCost ? parseFloat(r.adsCost) : null,
+                    impressions: r.impressions ? parseInt(r.impressions) : null,
+                    reach: r.reach ? parseInt(r.reach) : null,
+                    clicks: r.clicks ? parseInt(r.clicks) : null,
+                };
+                if (mode === "page") {
+                    base.page_id = r.pageId;
+                } else {
+                    // Product mode: use ads_group for grouping
+                    base.ads_group = r.adsGroup;
+                }
+                return base;
+            });
 
             const endpoint = mode === "page"
                 ? "Marketing_DB/ads_log_upsert.php"
@@ -311,12 +351,6 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
         }
     };
 
-    // --- Date navigation ---
-    const navigateDate = (delta: number) => {
-        const d = new Date(selectedDate + "T00:00:00");
-        d.setDate(d.getDate() + delta);
-        setSelectedDate(formatDateLocal(d));
-    };
 
     // Format display date in Thai
     const displayDate = useMemo(() => {
@@ -374,14 +408,6 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                 <div className="flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => navigateDate(-1)}
-                            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-                            title="วันก่อนหน้า"
-                        >
-                            ←
-                        </button>
-
                         <div className="flex items-center gap-2">
                             <Calendar className="w-5 h-5 text-blue-500" />
                             <input
@@ -391,21 +417,6 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
                                 onChange={(e) => setSelectedDate(e.target.value)}
                             />
                         </div>
-
-                        <button
-                            onClick={() => navigateDate(1)}
-                            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-                            title="วันถัดไป"
-                        >
-                            →
-                        </button>
-
-                        <button
-                            onClick={() => setSelectedDate(formatDateLocal(new Date()))}
-                            className="px-3 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
-                        >
-                            วันนี้
-                        </button>
 
                         <span className="text-sm text-gray-600 font-medium hidden sm:inline">{displayDate}</span>
                     </div>
@@ -461,10 +472,10 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
                                 <thead>
                                     <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
                                         <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: '140px', maxWidth: '140px' }}>
-                                            {mode === "page" ? "เพจ" : "สินค้า"}
+                                            {mode === "page" ? "เพจ" : "กลุ่ม Ads"}
                                         </th>
                                         <th className="px-2 py-3 text-left font-semibold text-gray-700 w-20">
-                                            {mode === "page" ? "แพลตฟอร์ม" : "SKU"}
+                                            {mode === "page" ? "แพลตฟอร์ม" : "จำนวนสินค้า"}
                                         </th>
                                         <th className="px-2 py-3 text-center font-semibold text-gray-700 w-16">
                                             ไม่มียอด
@@ -621,7 +632,7 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
                                                 <div className="flex flex-col items-center gap-2">
                                                     <AlertCircle className="w-8 h-8" />
                                                     <span>
-                                                        {mode === "page" ? "ไม่มีเพจที่คุณมีสิทธิ์จัดการ" : "ไม่พบรายการสินค้า"}
+                                                        {mode === "page" ? "ไม่มีเพจที่คุณมีสิทธิ์จัดการ" : "ไม่พบกลุ่ม Ads (กรุณาตั้ง 'กลุ่ม Ads' ในหน้าจัดการสินค้า)"}
                                                     </span>
                                                 </div>
                                             </td>

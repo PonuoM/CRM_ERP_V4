@@ -28,8 +28,16 @@ try {
     $errors = [];
 
     foreach ($records as $i => $record) {
-        if (empty($record['product_id']) || empty($record['user_id']) || empty($record['date'])) {
-            $errors[] = "Record #{$i}: Missing required fields (product_id, user_id, date)";
+        // Require either ads_group or product_id, plus user_id and date
+        $hasAdsGroup = !empty($record['ads_group']);
+        $hasProductId = !empty($record['product_id']);
+
+        if (!$hasAdsGroup && !$hasProductId) {
+            $errors[] = "Record #{$i}: Missing required field (ads_group or product_id)";
+            continue;
+        }
+        if (empty($record['user_id']) || empty($record['date'])) {
+            $errors[] = "Record #{$i}: Missing required fields (user_id, date)";
             continue;
         }
 
@@ -47,28 +55,53 @@ try {
             continue;
         }
 
-        // UPSERT: unique key = (product_id, date)
-        $stmt = $pdo->prepare("
-            INSERT INTO marketing_product_ads_log (product_id, user_id, date, ads_cost, impressions, reach, clicks)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-                user_id = VALUES(user_id),
-                ads_cost = VALUES(ads_cost),
-                impressions = VALUES(impressions),
-                reach = VALUES(reach),
-                clicks = VALUES(clicks),
-                updated_at = CURRENT_TIMESTAMP
-        ");
+        if ($hasAdsGroup) {
+            // UPSERT by ads_group + date
+            $stmt = $pdo->prepare("
+                INSERT INTO marketing_product_ads_log (ads_group, product_id, user_id, date, ads_cost, impressions, reach, clicks)
+                VALUES (?, NULL, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    user_id = VALUES(user_id),
+                    ads_cost = VALUES(ads_cost),
+                    impressions = VALUES(impressions),
+                    reach = VALUES(reach),
+                    clicks = VALUES(clicks),
+                    updated_at = CURRENT_TIMESTAMP
+            ");
 
-        $stmt->execute([
-            intval($record['product_id']),
-            intval($record['user_id']),
-            $record['date'],
-            $adsCost,
-            $impressions,
-            $reach,
-            $clicks,
-        ]);
+            $stmt->execute([
+                $record['ads_group'],
+                intval($record['user_id']),
+                $record['date'],
+                $adsCost,
+                $impressions,
+                $reach,
+                $clicks,
+            ]);
+        } else {
+            // Legacy: UPSERT by product_id + date
+            $stmt = $pdo->prepare("
+                INSERT INTO marketing_product_ads_log (product_id, user_id, date, ads_cost, impressions, reach, clicks)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    user_id = VALUES(user_id),
+                    ads_cost = VALUES(ads_cost),
+                    impressions = VALUES(impressions),
+                    reach = VALUES(reach),
+                    clicks = VALUES(clicks),
+                    updated_at = CURRENT_TIMESTAMP
+            ");
+
+            $stmt->execute([
+                intval($record['product_id']),
+                intval($record['user_id']),
+                $record['date'],
+                $adsCost,
+                $impressions,
+                $reach,
+                $clicks,
+            ]);
+        }
 
         $rowCount = $stmt->rowCount();
         if ($rowCount === 1) {

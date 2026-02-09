@@ -90,8 +90,7 @@ try {
             $updateOrderStmt = $pdo->prepare("
                 UPDATE orders 
                 SET payment_status = 'Approved',
-                    order_status = 'Delivered',
-                    updated_at = NOW()
+                    order_status = 'Delivered'
                 WHERE id = :orderId
                   AND payment_status IN ('PreApproved', 'Pending')
             ");
@@ -106,8 +105,7 @@ try {
             UPDATE cod_documents 
             SET verified_at = NOW(),
                 verified_by = :userId,
-                status = 'verified',
-                updated_at = NOW()
+                status = 'verified'
             WHERE id = :docId
         ");
         $updateDocStmt->execute([

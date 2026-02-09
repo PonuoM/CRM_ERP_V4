@@ -1058,7 +1058,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               : (order.recipient_first_name || order.recipient_last_name
                 ? `${order.recipient_first_name || ''} ${order.recipient_last_name || ''}`.trim()
                 : '-');
-            const customerPhone = customer?.phone || order.shipping_phone || '-';
+            const customerPhone = order.customer_phone || order.phone || customer?.phone || '-';
 
             // Determine region from province
             const province = order.province || customer?.province || '';

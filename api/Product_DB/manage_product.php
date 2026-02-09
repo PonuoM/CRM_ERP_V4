@@ -27,7 +27,7 @@ try {
     $conn->beginTransaction();
 
     if ($action === 'create') {
-        $sql = "INSERT INTO products (sku, name, description, category, unit, cost, price, stock, company_id, shop, status) VALUES (:sku, :name, :description, :category, :unit, :cost, :price, :stock, :company_id, :shop, 'Active')";
+        $sql = "INSERT INTO products (sku, name, description, category, unit, cost, price, stock, company_id, shop, ads_group, status) VALUES (:sku, :name, :description, :category, :unit, :cost, :price, :stock, :company_id, :shop, :ads_group, 'Active')";
         $stmt = $conn->prepare($sql);
         $stmt->bindParam(':sku', $data->sku);
         $stmt->bindParam(':name', $data->name);
@@ -39,6 +39,8 @@ try {
         $stmt->bindParam(':stock', $data->stock);
         $stmt->bindParam(':company_id', $data->companyId);
         $stmt->bindParam(':shop', $data->shop);
+        $adsGroup = $data->adsGroup ?? null;
+        $stmt->bindParam(':ads_group', $adsGroup);
         
         if ($stmt->execute()) {
             $productId = $conn->lastInsertId();
@@ -72,7 +74,7 @@ try {
             throw new Exception("Product ID is required for update.");
         }
 
-        $sql = "UPDATE products SET sku = :sku, name = :name, description = :description, category = :category, unit = :unit, cost = :cost, price = :price, stock = :stock, shop = :shop WHERE id = :id";
+        $sql = "UPDATE products SET sku = :sku, name = :name, description = :description, category = :category, unit = :unit, cost = :cost, price = :price, stock = :stock, shop = :shop, ads_group = :ads_group WHERE id = :id";
         $stmt = $conn->prepare($sql);
         $stmt->bindParam(':sku', $data->sku);
         $stmt->bindParam(':name', $data->name);
@@ -83,6 +85,8 @@ try {
         $stmt->bindParam(':price', $data->price);
         $stmt->bindParam(':stock', $data->stock);
         $stmt->bindParam(':shop', $data->shop);
+        $adsGroup = $data->adsGroup ?? null;
+        $stmt->bindParam(':ads_group', $adsGroup);
         $stmt->bindParam(':id', $data->id);
         
         if ($stmt->execute()) {

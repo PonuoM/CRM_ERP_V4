@@ -130,6 +130,15 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
     return shops;
   }, [products, companyId]);
 
+  // ดึงรายการกลุ่ม Ads ที่มีอยู่แล้ว
+  const existingAdsGroups = useMemo(() => {
+    return products
+      .filter(p => p.companyId === companyId && p.adsGroup && getProductStatus(p) !== 'Inactive' && !p.sku?.startsWith('UNKNOWN-PRODUCT-COMPANY'))
+      .map(p => p.adsGroup!)
+      .filter((g, i, self) => self.indexOf(g) === i)
+      .sort();
+  }, [products, companyId]);
+
   // ดึงรายการหมวดหมู่ที่มีอยู่แล้ว (รวม default และจาก DB, กรอง active/non-unknown)
   const existingCategories = useMemo(() => {
     const dbCategories = products
@@ -158,6 +167,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
     price: product?.price.toString() || '0',
     stock: product?.stock.toString() || '0',
     shop: product?.shop || '',
+    adsGroup: product?.adsGroup || '',
   });
 
   const [formData, setFormData] = useState(getInitialState);
@@ -258,6 +268,10 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
     setFormData(prev => ({ ...prev, unit: value }));
   };
 
+  const handleAdsGroupChange = (value: string) => {
+    setFormData(prev => ({ ...prev, adsGroup: value }));
+  };
+
   const handleSave = async () => {
     if (!formData.sku || !formData.name || !formData.unit || !formData.cost || !formData.price || !formData.stock) {
       alert('กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบถ้วน');
@@ -285,6 +299,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
       stock: parseInt(formData.stock, 10) || 0,
       companyId,
       shop: formData.shop || undefined,
+      adsGroup: formData.adsGroup || undefined,
       lots: activeTab === 'lots' ? lots : [],
     };
 
@@ -403,6 +418,14 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
                             onChange={handleShopChange}
                             options={existingShops}
                             placeholder="เลือกหรือพิมพ์ชื่อร้านค้า"
+                          />
+                        </FormField>
+                        <FormField label="กลุ่ม Ads" icon={BarChart3} hint="ตั้งชื่อกลุ่มเพื่อรวมสินค้าที่มีขนาดต่างกัน เช่น 'ปุ๋ยสิงห์ทอง'">
+                          <CreatableSelect
+                            value={formData.adsGroup || ''}
+                            onChange={handleAdsGroupChange}
+                            options={existingAdsGroups}
+                            placeholder="เลือกหรือพิมพ์ชื่อกลุ่ม Ads"
                           />
                         </FormField>
                       </div>

@@ -836,6 +836,7 @@ const App: React.FC = () => {
       name: r.name,
       description: r.description ?? undefined,
       category: r.category,
+      adsGroup: r.ads_group ?? r.adsGroup ?? undefined,
       unit: r.unit,
       cost: Number(r.cost || 0),
       price: Number(r.price || 0),
@@ -2449,7 +2450,10 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
-      const productsData = await listProducts(currentUser.companyId);
+      const productsData = await listProducts({
+        companyId: currentUser.companyId,
+        include: activePage === 'Products' ? 'inactive' : undefined,
+      });
       const mappedProducts = Array.isArray(productsData)
         ? productsData.map(mapProductFromApi)
         : [];
