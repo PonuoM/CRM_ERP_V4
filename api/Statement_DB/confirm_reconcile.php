@@ -48,6 +48,21 @@ try {
     ]);
 
     if ($result) {
+        // Update order status to Delivered (final confirmation after Bank Audit)
+        if (!empty($orderId)) {
+            // Get parent order id (remove sub-order suffix like -1, -2)
+            $parentOrderId = preg_replace('/-\d+$/', '', $orderId);
+            
+            $updateOrderStmt = $pdo->prepare("
+                UPDATE orders 
+                SET payment_status = 'Approved',
+                    order_status = 'Delivered'
+                WHERE id = :orderId
+                  AND order_status NOT IN ('Cancelled', 'Returned')
+            ");
+            $updateOrderStmt->execute([':orderId' => $parentOrderId]);
+        }
+
         echo json_encode(['ok' => true, 'message' => 'Confirmed successfully']);
     } else {
         throw new Exception("Failed to update database");

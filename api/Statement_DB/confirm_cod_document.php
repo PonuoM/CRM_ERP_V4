@@ -92,7 +92,7 @@ try {
                 SET payment_status = 'Approved',
                     order_status = 'Delivered'
                 WHERE id = :orderId
-                  AND payment_status IN ('PreApproved', 'Pending')
+                  AND order_status NOT IN ('Cancelled', 'Returned')
             ");
             $updateOrderStmt->execute([':orderId' => $parentOrderId]);
             $orderIdsUpdated[] = $orderId;
