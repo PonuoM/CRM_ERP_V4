@@ -5241,9 +5241,13 @@ function handle_orders(PDO $pdo, ?string $id): void
                         if ($num <= 0) {
                             $num = 1;
                         }
-                        $collectionAmount = (float) ($box['collectionAmount'] ?? $box['codAmount'] ?? $box['cod_amount'] ?? 0);
+                        $collectionAmount = (float) ($box['collectionAmount'] ?? $box['collection_amount'] ?? $box['codAmount'] ?? $box['cod_amount'] ?? 0);
                         if ($collectionAmount < 0) {
                             $collectionAmount = 0.0;
+                        }
+                        $codAmountBox = (float) ($box['codAmount'] ?? $box['cod_amount'] ?? $collectionAmount);
+                        if ($codAmountBox < 0) {
+                            $codAmountBox = 0.0;
                         }
                         $collectedAmount = (float) ($box['collectedAmount'] ?? $box['collected_amount'] ?? 0);
                         if ($collectedAmount < 0) {
@@ -5253,11 +5257,15 @@ function handle_orders(PDO $pdo, ?string $id): void
                         if ($waivedAmount < 0) {
                             $waivedAmount = 0.0;
                         }
+                        // Preserve box status from frontend for RETURNED check
+                        $boxStatus = $box['status'] ?? null;
                         $normalizedBoxes[$num] = [
                             'box_number' => $num,
                             'collection_amount' => $collectionAmount,
+                            'cod_amount' => $codAmountBox,
                             'collected_amount' => $collectedAmount,
                             'waived_amount' => $waivedAmount,
+                            'status' => $boxStatus,
                         ];
                     }
 
@@ -5271,15 +5279,22 @@ function handle_orders(PDO $pdo, ?string $id): void
                     }
 
                     if ($effectivePaymentMethod !== 'COD') {
-                        // Allow multiple boxes for non-COD, but force amount logic:
-                        // Box 1 gets the total amount, others get 0
+                        // For non-COD: use per-box cod_amount from frontend
+                        // If box is RETURNED, preserve existing collection_amount from DB
+                        $selectExistingBox = $pdo->prepare('SELECT collection_amount, status FROM order_boxes WHERE order_id=? AND box_number=? LIMIT 1');
                         foreach ($normalizedBoxes as $num => &$boxData) {
-                            if ($num === 1) {
-                                $boxData['collection_amount'] = $totalAmount;
+                            $selectExistingBox->execute([$id, $num]);
+                            $existingBoxRow = $selectExistingBox->fetch(PDO::FETCH_ASSOC);
+                            $dbStatus = $existingBoxRow ? strtoupper($existingBoxRow['status'] ?? '') : '';
+
+                            if ($dbStatus === 'RETURNED') {
+                                // RETURNED box: update cod_amount but preserve collection_amount from DB
+                                $boxData['collection_amount'] = (float) ($existingBoxRow['collection_amount'] ?? 0);
                             } else {
-                                $boxData['collection_amount'] = 0.0;
+                                // Non-RETURNED box: set collection_amount = cod_amount (from frontend)
+                                $boxData['collection_amount'] = $boxData['cod_amount'];
                             }
-                            $boxData['collected_amount'] = 0.0; // Paid via transfer usually means 0 to collect on delivery
+                            $boxData['collected_amount'] = 0.0;
                             $boxData['waived_amount'] = 0.0;
                         }
                         unset($boxData); // Break reference
@@ -5319,7 +5334,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $updateBox->execute([
                                 $effectivePaymentMethod,
                                 $box['collection_amount'],
-                                $box['collection_amount'],
+                                $box['cod_amount'] ?? $box['collection_amount'],
                                 $box['collected_amount'],
                                 $box['waived_amount'],
                                 $subOrderId,
@@ -5333,7 +5348,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $num,
                                 $effectivePaymentMethod,
                                 $box['collection_amount'],
-                                $box['collection_amount'],
+                                $box['cod_amount'] ?? $box['collection_amount'],
                                 $box['collected_amount'],
                                 $box['waived_amount'],
                             ]);

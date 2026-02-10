@@ -4266,15 +4266,24 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         ...orderData,
         items: normalizedItems,
 
-        // For PayAfter, force the first box to carry the full amount, others 0
+        // For PayAfter/Transfer, calculate codAmount per box based on items in each box
         boxes:
-          orderData.paymentMethod === PaymentMethod.PayAfter &&
+          (orderData.paymentMethod === PaymentMethod.PayAfter ||
+            orderData.paymentMethod === PaymentMethod.Transfer) &&
             orderData.boxes &&
             orderData.boxes.length > 0
-            ? orderData.boxes.map((box, index) => ({
-              ...box,
-              codAmount: index === 0 ? totalAmount : 0,
-            }))
+            ? (() => {
+              const boxAmounts: Record<number, number> = {};
+              (normalizedItems || []).forEach((item) => {
+                const bn = item.boxNumber || 1;
+                const itemNet = ((item.pricePerUnit || 0) * (item.quantity || 0)) - (item.discount || 0);
+                boxAmounts[bn] = (boxAmounts[bn] || 0) + itemNet;
+              });
+              return orderData.boxes.map((box) => ({
+                ...box,
+                codAmount: Math.round((boxAmounts[box.boxNumber] || 0) * 100) / 100,
+              }));
+            })()
             : orderData.boxes,
 
         shippingAddress,

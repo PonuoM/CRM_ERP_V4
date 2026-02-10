@@ -2296,11 +2296,35 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       });
     }
 
+    // For Transfer/PayAfter, calculate codAmount per box based on items in that box
+    // If box status is 'RETURNED', only update codAmount (preserve collectionAmount)
+    const finalBoxes = (
+      currentOrder.paymentMethod === PaymentMethod.Transfer ||
+      currentOrder.paymentMethod === PaymentMethod.PayAfter
+    ) ? (() => {
+      const boxAmounts: Record<number, number> = {};
+      (currentOrder.items || []).forEach((item) => {
+        const bn = item.boxNumber || 1;
+        const itemNet = ((item.pricePerUnit || 0) * (item.quantity || 0)) - (item.discount || 0);
+        boxAmounts[bn] = (boxAmounts[bn] || 0) + itemNet;
+      });
+      return boxes.map((box: any) => {
+        const calcAmount = Math.round((boxAmounts[box.boxNumber] || 0) * 100) / 100;
+        const isReturned = (box.status || '').toUpperCase() === 'RETURNED';
+        return {
+          ...box,
+          codAmount: calcAmount,
+          // If box is RETURNED, keep original collectionAmount unchanged
+          collectionAmount: isReturned ? box.collectionAmount : calcAmount,
+        };
+      });
+    })() : boxes;
+
     const updatedOrder = {
       ...currentOrder,
       totalAmount: calculatedTotals.totalAmount,
       updatedBy: currentUser.id,
-      boxes: boxes, // Add generated boxes array
+      boxes: finalBoxes, // Add generated boxes array
     };
 
 

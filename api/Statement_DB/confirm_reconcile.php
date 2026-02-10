@@ -18,15 +18,25 @@ try {
         throw new Exception("Missing reconcile log ID");
     }
 
-    $id = (int)$input['id'];
+    $id = (int) $input['id'];
     $orderId = $input['order_id'] ?? null;
-    $orderAmount = isset($input['order_amount']) ? (float)$input['order_amount'] : null;
+    $orderAmount = isset($input['order_amount']) ? (float) $input['order_amount'] : null;
     $paymentMethod = $input['payment_method'] ?? null;
+
+    $pdo = db_connect();
+
+    // Fallback: if payment_method is null, look it up from the orders table
+    if (empty($paymentMethod) && !empty($orderId)) {
+        $pmStmt = $pdo->prepare("SELECT payment_method FROM orders WHERE id = :id LIMIT 1");
+        $pmStmt->execute([':id' => preg_replace('/-\d+$/', '', $orderId)]);
+        $pmRow = $pmStmt->fetch(PDO::FETCH_ASSOC);
+        if ($pmRow) {
+            $paymentMethod = $pmRow['payment_method'];
+        }
+    }
 
     // Check if the record exists and is not already confirmed? 
     // Usually valid to re-confirm or confirm for the first time.
-
-    $pdo = db_connect();
 
     // Update with snapshot
     $sql = "UPDATE statement_reconcile_logs 
@@ -37,7 +47,7 @@ try {
                 confirmed_order_amount = :orderAmount,
                 confirmed_payment_method = :paymentMethod
             WHERE id = :id";
-    
+
     $stmt = $pdo->prepare($sql);
     $result = $stmt->execute([
         ':orderId' => $orderId,
@@ -52,13 +62,13 @@ try {
         if (!empty($orderId)) {
             // Get parent order id (remove sub-order suffix like -1, -2)
             $parentOrderId = preg_replace('/-\d+$/', '', $orderId);
-            
+
             // GUARD: Check if order has tracking (already shipped) before setting Delivered
             $trackingCheckStmt = $pdo->prepare(
                 "SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = :orderId"
             );
             $trackingCheckStmt->execute([':orderId' => $parentOrderId]);
-            $hasTracking = (int)$trackingCheckStmt->fetchColumn() > 0;
+            $hasTracking = (int) $trackingCheckStmt->fetchColumn() > 0;
 
             if ($hasTracking) {
                 // Has tracking = already shipped → safe to set Delivered

@@ -258,3 +258,57 @@ ADD COLUMN `collected_amount` decimal(10,2) DEFAULT 0 COMMENT 'ยอดเง�
   - เมื่อไม่พบ match ใน `verifiedOrders` → ตรวจ `managingOrder.boxes` แทน
   - ถ้า box มี `return_status` → pre-fill สถานะและ note ให้ถูกต้อง
   - แก้ปัญหาที่ค้นหาจาก Tracking No. แล้วสถานะแสดงเป็น "pending" ทั้งหมด
+
+## 14. อัปเดต: การอัปเดตออเดอร์จาก Modal กับผลกระทบต่อระบบตีกลับ (10/02/2026)
+
+### Per-Box `cod_amount` Calculation (Transfer / PayAfter)
+
+**ก่อนหน้านี้**: เมื่อสร้างหรือแก้ไขออเดอร์ที่ `paymentMethod` เป็น `Transfer` หรือ `PayAfter` ระบบจะกำหนด `codAmount` ทั้งหมดไปที่กล่องแรก (Box 1 = totalAmount, Box อื่น = 0)
+
+**แก้ไขใหม่**: คำนวณ `codAmount` ต่อกล่องจาก items ที่อยู่ในกล่องนั้น:
+```
+codAmount = Σ (pricePerUnit × quantity - discount) ของ items ในกล่อง
+```
+
+**ไฟล์ที่แก้ไข**:
+- **`pages/CreateOrderPage.tsx`**: คำนวณ `codAmount` ต่อกล่อง (POST สร้างใหม่)
+- **`components/OrderManagementModal.tsx`**: คำนวณ `codAmount` + ตรวจสอบ RETURNED status (PUT อัปเดต)
+- **`api/index.php`** (PUT handler): แยก `cod_amount` กับ `collection_amount` เป็นคนละค่า
+
+### การป้องกัน RETURNED Box (OrderManagementModal → PUT)
+
+เมื่ออัปเดตออเดอร์ผ่าน Modal หากกล่องมี `order_boxes.status = 'RETURNED'`:
+
+| ฟิลด์ | พฤติกรรม |
+|---|---|
+| `cod_amount` | ✅ อัปเดตตามค่าที่คำนวณจาก items |
+| `collection_amount` | ❌ **ไม่อัปเดต** — ใช้ค่าเดิมจาก DB |
+| `return_status` | ❌ **ไม่ถูกแตะต้อง** — UPDATE query ไม่ include ฟิลด์นี้ |
+| `return_note` | ❌ **ไม่ถูกแตะต้อง** — UPDATE query ไม่ include ฟิลด์นี้ |
+| `status` | ❌ **ไม่ถูกแตะต้อง** — ใช้ `COALESCE(status, 'PENDING')` |
+
+หากกล่อง `status != 'RETURNED'`:
+- อัปเดตทั้ง `cod_amount` และ `collection_amount` ตามค่าใหม่ที่คำนวณจาก items
+
+### Backend PUT Handler (`api/index.php`) — Non-COD Box Logic
+
+**ก่อนหน้านี้** (เดิม):
+```php
+// Force: Box 1 = $totalAmount, Box อื่น = 0
+if ($num === 1) { $boxData['collection_amount'] = $totalAmount; }
+else { $boxData['collection_amount'] = 0.0; }
+```
+
+**แก้ไขใหม่**:
+```php
+// ตรวจสอบ status จาก DB
+if ($dbStatus === 'RETURNED') {
+    // Preserve collection_amount จาก DB, อัปเดตเฉพาะ cod_amount
+    $boxData['collection_amount'] = (float) $existingBoxRow['collection_amount'];
+} else {
+    // Non-RETURNED: set collection_amount = cod_amount จาก frontend
+    $boxData['collection_amount'] = $boxData['cod_amount'];
+}
+```
+
+- UPDATE/INSERT query ใช้ `$box['cod_amount']` แยกจาก `$box['collection_amount']` (เดิมใช้ `collection_amount` ทั้งคู่)
