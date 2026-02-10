@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Order, OrderStatus } from "../types";
-import { listOrders, saveReturnOrders, getReturnOrders, getOrder } from "../services/api";
+import { listOrders, saveReturnOrders, getReturnOrders, getOrder, revertReturnedOrder } from "../services/api";
 import * as XLSX from "xlsx";
 import {
   Search,
@@ -26,6 +26,7 @@ import {
   Copy,
   XCircle,
   ArrowLeftRight,
+  RotateCcw,
 } from "lucide-react";
 import OrderDetailModal from "../components/OrderDetailModal";
 import BulkReturnImport from "../components/BulkReturnImport";
@@ -122,6 +123,26 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     originalStatus: string; // Track initial status for constraints
   }
   const [manageRows, setManageRows] = useState<ManageRow[]>([]);
+
+  // State for Revert Returned Order Modal
+  const [isRevertModalOpen, setIsRevertModalOpen] = useState(false);
+  const [revertOrderId, setRevertOrderId] = useState<string>("");
+  const [revertNewStatus, setRevertNewStatus] = useState<string>("Shipping");
+  const [revertLoading, setRevertLoading] = useState(false);
+
+  const revertStatusOptions = [
+    { value: 'Pending', label: 'รอดำเนินการ' },
+    { value: 'AwaitingVerification', label: 'รอตรวจสอบ' },
+    { value: 'Confirmed', label: 'ยืนยันแล้ว' },
+    { value: 'Preparing', label: 'กำลังจัดเตรียม' },
+    { value: 'Picking', label: 'กำลังหยิบสินค้า' },
+    { value: 'Shipping', label: 'กำลังจัดส่ง' },
+    { value: 'PreApproved', label: 'รอตรวจสอบจากบัญชี' },
+    { value: 'Delivered', label: 'ส่งสำเร็จ' },
+    { value: 'Cancelled', label: 'ยกเลิก' },
+    { value: 'Claiming', label: 'เคลม' },
+    { value: 'BadDebt', label: 'หนี้เสีย' },
+  ];
 
   // State for Bulk Import Modal
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -262,9 +283,25 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             originalStatus: verified.status as any, // Store the status from DB
           };
         }
+
+        // Fallback: check boxes data from the order for return_status
+        const boxes = (managingOrder as any).boxes || [];
+        const matchedBox = boxes.find((b: any) =>
+          (row.subOrderId && b.sub_order_id === row.subOrderId) ||
+          (row.subOrderId && `${(managingOrder as any).id}-${b.box_number}` === row.subOrderId)
+        );
+        if (matchedBox && matchedBox.return_status) {
+          return {
+            ...row,
+            status: matchedBox.return_status as any,
+            note: matchedBox.return_note || "",
+            originalStatus: matchedBox.return_status as any,
+          };
+        }
+
         return {
           ...row,
-          originalStatus: "pending", // If not found in verifiedOrders, treat as pending
+          originalStatus: "pending", // If not found in verifiedOrders or boxes, treat as pending
         };
       });
 
@@ -430,11 +467,22 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
       const res = await saveReturnOrders(payload);
       if (res && res.status === "success") {
-        alert(`บันทึกข้อมูลเรียบร้อย(${res.message})`);
-        setManagingOrder(null);
-        setIsConfirmSaveOpen(false); // Close modal
-        fetchOrders();
-        fetchVerifiedOrders();
+        // Check if there are errors despite "success" status
+        if (res.errors && res.errors.length > 0 && res.updatedCount === 0) {
+          alert("ไม่สามารถอัปเดตได้:\n" + res.errors.join("\n"));
+        } else if (res.errors && res.errors.length > 0) {
+          alert(`บันทึกสำเร็จ ${res.updatedCount} รายการ\nแต่มีข้อผิดพลาด:\n` + res.errors.join("\n"));
+          setManagingOrder(null);
+          setIsConfirmSaveOpen(false);
+          fetchOrders();
+          fetchVerifiedOrders();
+        } else {
+          alert(`บันทึกข้อมูลเรียบร้อย (${res.updatedCount} รายการ)`);
+          setManagingOrder(null);
+          setIsConfirmSaveOpen(false);
+          fetchOrders();
+          fetchVerifiedOrders();
+        }
       } else {
         alert("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
       }
@@ -947,6 +995,26 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     </div>
   );
 
+  const handleRevertOrder = async () => {
+    if (!revertOrderId || !revertNewStatus) return;
+    setRevertLoading(true);
+    try {
+      const res = await revertReturnedOrder(revertOrderId, revertNewStatus);
+      if (res && res.status === 'success') {
+        alert(`สำเร็จ: ${res.message}`);
+        setIsRevertModalOpen(false);
+        setRevertOrderId("");
+        fetchVerifiedOrders();
+      } else {
+        alert(`ผิดพลาด: ${res?.message || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setRevertLoading(false);
+    }
+  };
+
   const VerifiedListTable = () => {
     // Filter client-side REMOVED -> Now handled by API
     // const filteredItems = verifiedOrders.filter(...) 
@@ -1016,9 +1084,21 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 <span className="font-semibold text-gray-700">Order: {group.displayId}</span>
                 {group.orderDate && <span className="text-xs text-gray-500 ml-2">({new Date(group.orderDate).toLocaleDateString('th-TH')})</span>}
               </div>
-              <div className="text-sm text-gray-600">
-                <span className="mr-4">{group.items.length} รายการ</span>
+              <div className="flex items-center gap-3 text-sm text-gray-600">
+                <span>{group.items.length} รายการ</span>
                 <span>ยอดบิล: {group.totalAmount.toLocaleString()}</span>
+                <button
+                  onClick={() => {
+                    setRevertOrderId(group.displayId);
+                    setRevertNewStatus("Shipping");
+                    setIsRevertModalOpen(true);
+                  }}
+                  className="ml-2 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-300 rounded-md text-xs font-medium hover:bg-amber-100 flex items-center gap-1 transition-colors"
+                  title="ยกเลิกสถานะตีกลับทั้ง Order"
+                >
+                  <RotateCcw size={12} />
+                  ยกเลิกตีกลับ
+                </button>
               </div>
             </div>
             <table className="min-w-full divide-y divide-gray-200">
@@ -1139,7 +1219,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             onClick={() => setIsImportStatusModalOpen(true)}
             className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-2"
           >
-            <Upload size={16} /> Import ไฟล์
+            <Upload size={16} /> ใส่เลข Tracking จำนวนมาก
           </button>
         </div>
       </div>
@@ -1379,6 +1459,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {manageRows.map((row, idx) => {
+                    // Check if the ORDER itself has order_status = 'Returned'
+                    const orderStatus = (managingOrder as any)?.orderStatus || (managingOrder as any)?.order_status || '';
+                    const allBoxesReturned = orderStatus.toLowerCase() === 'returned';
                     // Manual override: No rules. Always allow changing status.
                     return (
                       <tr
@@ -1433,11 +1516,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <div className="flex flex-col gap-2">
-                            <label className="flex items-center gap-2 cursor-pointer">
+                            <label className={`flex items-center gap-2 ${allBoxesReturned ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                              title={allBoxesReturned ? 'ทุกกล่องตีกลับครบแล้ว กรุณาใช้ปุ่ม "ยกเลิกตีกลับ"' : ''}
+                            >
                               <input
                                 type="radio"
                                 name={"status-" + idx}
                                 checked={row.status === "pending"}
+                                disabled={allBoxesReturned}
                                 onChange={() => {
                                   const newRows = [...manageRows];
                                   newRows[idx].status = "pending";
@@ -1448,6 +1534,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               <span className="text-gray-600">
                                 รอดำเนินการ
                               </span>
+                              {allBoxesReturned && (
+                                <span className="relative group ml-1">
+                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 text-[10px] font-bold cursor-help">?</span>
+                                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                    Order นี้ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม &quot;ยกเลิกตีกลับ&quot; แทน
+                                  </span>
+                                </span>
+                              )}
                             </label>
                             {/* Returning Status */}
                             <label className="flex items-center gap-2 cursor-pointer">
@@ -1541,11 +1635,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
 
 
-                            <label className="flex items-center gap-2 cursor-pointer">
+                            <label className={`flex items-center gap-2 ${allBoxesReturned ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                              title={allBoxesReturned ? 'ทุกกล่องตีกลับครบแล้ว กรุณาใช้ปุ่ม "ยกเลิกตีกลับ"' : ''}
+                            >
                               <input
                                 type="radio"
                                 name={"status-" + idx}
                                 checked={row.status === "delivered"}
+                                disabled={allBoxesReturned}
                                 onChange={() => {
                                   const newRows = [...manageRows];
                                   newRows[idx].status = "delivered";
@@ -1556,6 +1653,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               <span className="text-green-700">
                                 ส่งสำเร็จ (Delivered)
                               </span>
+                              {allBoxesReturned && (
+                                <span className="relative group ml-1">
+                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 text-[10px] font-bold cursor-help">?</span>
+                                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                    Order นี้ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม &quot;ยกเลิกตีกลับ&quot; แทน
+                                  </span>
+                                </span>
+                              )}
                             </label>
 
                             <div className="border-t my-1"></div>
@@ -1649,6 +1754,62 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           </div>
         )
       }
+      {/* Revert Returned Order Modal */}
+      {isRevertModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div className="px-6 py-4 border-b bg-amber-50 rounded-t-xl">
+              <h3 className="text-lg font-semibold text-amber-800 flex items-center gap-2">
+                <RotateCcw size={20} />
+                ยกเลิกสถานะตีกลับ
+              </h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Order ID</label>
+                <div className="px-3 py-2 bg-gray-100 rounded-lg text-sm font-mono text-gray-800">{revertOrderId}</div>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-sm text-amber-800">
+                  <strong>⚠️ คำเตือน:</strong> การยกเลิกจะ <strong>ล้างสถานะการตีกลับทุกกล่อง</strong> ของ Order นี้
+                  และเปลี่ยนสถานะ Order ไปเป็นสถานะที่เลือก
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">เปลี่ยนสถานะ Order เป็น</label>
+                <select
+                  value={revertNewStatus}
+                  onChange={(e) => setRevertNewStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-amber-500 focus:border-amber-500"
+                >
+                  {revertStatusOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label} ({opt.value})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 rounded-b-xl flex justify-end gap-3">
+              <button
+                onClick={() => setIsRevertModalOpen(false)}
+                className="px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-100"
+                disabled={revertLoading}
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleRevertOrder}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium disabled:opacity-50 flex items-center gap-2"
+                disabled={revertLoading}
+              >
+                {revertLoading && (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                )}
+                ยืนยันยกเลิกตีกลับ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 };

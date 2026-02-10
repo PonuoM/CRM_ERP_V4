@@ -865,6 +865,13 @@ export async function saveReturnOrders(returns: any[]) {
   });
 }
 
+export async function revertReturnedOrder(orderId: string, newStatus: string) {
+  return apiFetch("Orders/revert_returned_order.php", {
+    method: "POST",
+    body: JSON.stringify({ order_id: orderId, new_status: newStatus }),
+  });
+}
+
 export async function updateOrder(id: string | number, data: any) {
   return apiFetch(`orders/${encodeURIComponent(id)}`, {
     method: "PUT",

@@ -179,3 +179,82 @@ ADD COLUMN `collected_amount` decimal(10,2) DEFAULT 0 COMMENT 'ยอดเง�
 - **Permission Editor**: เพิ่ม **"เมนู จัดการตีกลับ (Return Management)"** ในหน้าตั้งค่าสิทธิ์ (`PermissionEditor.tsx`) ภายใต้กลุ่ม "จัดการขนส่ง (Tracking & Transport)"
 
 - **UI Cleanup**: ลบปุ่ม **"Download Template"** ออกจากหน้าจัดการตีกลับ
+
+## 12. อัปเดตล่าสุด (Change Log - 10/02/2026)
+- **Backend API Migration to `order_boxes`**:
+  - **`get_return_orders.php`**: เปลี่ยนจาก query `order_returns` เป็น `order_boxes` JOIN `order_tracking_numbers` + `orders`
+    - Response format: `{status: "success", data: [...], pagination: {total, totalPages, page, limit}}`
+  - **`save_return_orders.php`**: เปลี่ยนจาก INSERT/UPDATE `order_returns` เป็น UPDATE `order_boxes`
+    - Resolve box ผ่าน `sub_order_id` หรือ `tracking_number → order_tracking_numbers → order_boxes`
+  - **`validate_return_candidates.php`**: เปลี่ยนจาก query `order_returns` เป็น `order_tracking_numbers → order_boxes`
+    - Payload: `{candidates: [{trackingNumber, index}], mode}` (ตรงกับ frontend)
+    - Response: `{results: [{index, valid, message, subOrderId, foundStatus, isWarning}]}`
+
+- **Business Rules สำหรับ `save_return_orders.php`**:
+  - **Return statuses** (`returning`, `returned`, `good`, `damaged`, `lost`):
+    - `collection_amount = 0`, `collected_amount = 0`
+    - `order_boxes.status = 'RETURNED'`
+    - ตั้งค่า `return_status`, `return_note`, `return_created_at`
+  - **Undo statuses** (`pending`, `delivered` ฯลฯ):
+    - `collection_amount = cod_amount` (restore ค่าเดิม)
+    - `return_status = NULL`, `return_note = NULL`, `return_created_at = NULL` (ล้างข้อมูลการคืน)
+    - `order_boxes.status = UPPER(status)` (เปลี่ยนกลับเป็นสถานะเดิม)
+  - **Recalc `orders.total_amount`**: อัปเดตเฉพาะ `payment_method IN ('COD', 'PayAfter')` เท่านั้น
+
+- **Deprecation**: ตาราง `order_returns` ไม่ถูกใช้จาก Backend API อีกต่อไป ข้อมูลทั้งหมดเก็บใน `order_boxes`
+
+- **Auto Order Status Update**:
+  - หลังบันทึกใน `save_return_orders.php` ระบบจะเช็คว่า **ทุกกล่อง** ของ order นั้นมี `status = 'RETURNED'` หรือไม่
+  - ถ้าทุกกล่องเป็น RETURNED → auto-set `orders.order_status = 'Returned'`
+  - ถ้ามีบางกล่องยังไม่เป็น RETURNED → ไม่อัปเดต orders
+
+- **New API: `revert_returned_order.php`** (ยกเลิกสถานะ Returned ทั้ง Order):
+  - **Payload**: `{ order_id: string, new_status: string }`
+  - **Allowed statuses**: `Pending`, `AwaitingVerification`, `Confirmed`, `Preparing`, `Picking`, `Shipping`, `PreApproved`, `Delivered`, `Cancelled`, `Claiming`, `BadDebt`
+  - **ทำงาน**:
+    1. ตรวจสอบว่า `orders.order_status = 'Returned'` (ถ้าไม่ใช่จะ reject)
+    2. อัปเดต `orders.order_status = new_status`
+    3. ล้าง `order_boxes.return_status`, `return_note`, `return_created_at` เป็น NULL ทุกกล่อง
+    4. อัปเดต `order_boxes.status = UPPER(new_status)` ทุกกล่อง
+    5. Restore `order_boxes.collection_amount = cod_amount`
+    6. Recalc `orders.total_amount` (เฉพาะ COD/PayAfter)
+
+## 13. อัปเดตล่าสุด (Change Log - 10/02/2026 - Part 2)
+
+### Revert Button (ปุ่มยกเลิกตีกลับ)
+- เพิ่มปุ่ม **"ยกเลิกตีกลับ"** (RotateCcw icon) ที่ header ของ Order group ใน Tab "ตรวจสอบแล้ว"
+- เมื่อกดจะเปิด **Revert Modal** ให้เลือกสถานะใหม่ของ Order:
+  - `Pending`, `AwaitingVerification`, `Confirmed`, `Preparing`, `Picking`, `Shipping`, `รอตรวจสอบจากบัญชี`, `Delivered`, `Cancelled`, `Claiming`, `BadDebt`
+- เรียก API `revert_returned_order.php` เพื่อยกเลิกสถานะ Returned ทั้ง Order
+
+### Database Trigger Update
+- แก้ไข trigger `order_boxes_before_update` ให้อนุญาตการเปลี่ยน `collection_amount` เมื่อ transition เข้า/ออกจากสถานะ `'RETURNED'`
+- ก่อนหน้านี้ trigger block การเปลี่ยน `collection_amount` หลัง shipping ทำให้ return/revert flow ทำงานไม่ได้
+- **Migration file**: `api/Database/20260210_allow_returned_collection_amount.sql`
+
+### UI Locking (ล็อกตัวเลือก pending/delivered)
+- เมื่อ **Order มี `order_status = 'Returned'`** (ทุกกล่องตีกลับครบแล้ว):
+  - Radio button **"รอดำเนินการ"** และ **"ส่งสำเร็จ"** จะถูก **disabled**
+  - แสดงไอคอน **`?`** (วงกลมแดง) พร้อม tooltip hover:
+    > "Order นี้ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม "ยกเลิกตีกลับ" แทน"
+  - ตัวเลือก return sub-statuses อื่นๆ (กำลังตีกลับ, เข้าคลัง, สภาพดี, เสียหาย, สูญหาย) ยังเลือกได้ปกติ
+
+### Backend: Save Logic Refinement
+- **`save_return_orders.php`**: ปรับปรุงเงื่อนไขการบล็อก
+  - **บล็อกเฉพาะ** `pending` / `delivered` (undo statuses) เมื่อทุกกล่องเป็น RETURNED
+  - **อนุญาต** การเปลี่ยน return sub-statuses (`returning` → `returned` → `good` → `damaged` → `lost`) แม้ทุกกล่องจะเป็น RETURNED แล้ว
+
+### Frontend: Error Handling
+- ปรับปรุงการแสดง alert เมื่อบันทึก:
+  - ❌ `updatedCount === 0` + มี errors → แสดง error ทั้งหมด
+  - ⚠️ `updatedCount > 0` + มี errors → แสดงจำนวนสำเร็จ + errors
+  - ✅ ไม่มี errors → แสดงจำนวนที่อัปเดตสำเร็จ
+
+### Backend: `return_status` & `return_note` ใน Orders API
+- เพิ่ม `return_status` และ `return_note` ใน SELECT query ของ `order_boxes`:
+  - **List Orders API** (`index.php` listOrders): เพิ่มใน boxesMap
+  - **Single Order API** (`index.php` getOrder): เพิ่มใน boxes query
+- **Frontend**: เพิ่ม fallback logic ใน `useEffect` ที่สร้าง `manageRows`:
+  - เมื่อไม่พบ match ใน `verifiedOrders` → ตรวจ `managingOrder.boxes` แทน
+  - ถ้า box มี `return_status` → pre-fill สถานะและ note ให้ถูกต้อง
+  - แก้ปัญหาที่ค้นหาจาก Tracking No. แล้วสถานะแสดงเป็น "pending" ทั้งหมด

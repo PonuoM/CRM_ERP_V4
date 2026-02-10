@@ -1,109 +1,103 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
+/**
+ * get_return_orders.php
+ * ดึงรายการ order boxes ที่มี return_status (ระบบจัดการตีกลับ)
+ * ใช้ตาราง order_boxes แทน order_returns
+ */
 
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+require_once __DIR__ . '/../config.php';
+cors();
+$pdo = db_connect();
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
-
-header('Content-Type: application/json');
-
-require_once '../config.php';
-
-$conn = db_connect();
+header('Content-Type: application/json; charset=utf-8');
 
 try {
-    // Parameters
-    $status = isset($_GET['status']) ? $_GET['status'] : '';
-    $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
-    $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 50;
-    $companyId = isset($_GET['companyId']) ? (int) $_GET['companyId'] : 0;
+    $status = $_GET['status'] ?? '';
+    $page = max(1, intval($_GET['page'] ?? 1));
+    $limit = max(1, min(100, intval($_GET['limit'] ?? 20)));
+    $companyId = intval($_GET['companyId'] ?? 0);
     $offset = ($page - 1) * $limit;
 
-    // Build Query
-    $whereClauses = [];
+    // ─── Build WHERE conditions ───
+    $whereConditions = [];
     $params = [];
 
-    if (!empty($status)) {
-        // Support comma separated
-        $statuses = explode(',', $status);
-        $placeholders = implode(',', array_fill(0, count($statuses), '?'));
-        $whereClauses[] = "ort.status IN ($placeholders)";
-        $params = array_merge($params, $statuses);
+    // Filter by return_status
+    if ($status) {
+        $whereConditions[] = "ob.return_status = ?";
+        $params[] = $status;
+    } else {
+        // Default: only show boxes that have a return_status set
+        $whereConditions[] = "ob.return_status IS NOT NULL";
     }
 
-    // Filter by company_id if provided
+    // Filter by company
     if ($companyId > 0) {
-        $whereClauses[] = "o.company_id = ?";
+        $whereConditions[] = "o.company_id = ?";
         $params[] = $companyId;
     }
 
-    $whereSql = "";
-    if (count($whereClauses) > 0) {
-        $whereSql = "WHERE " . implode(' AND ', $whereClauses);
-    }
+    $whereClause = count($whereConditions) > 0
+        ? "WHERE " . implode(" AND ", $whereConditions)
+        : "";
 
-    // Count Total (with JOINs for company_id filtering)
+    // ─── Count total ───
     $countSql = "
-        SELECT COUNT(DISTINCT ort.id) as total 
-        FROM order_returns ort
-        LEFT JOIN order_tracking_numbers otn ON ort.tracking_number = otn.tracking_number
-        LEFT JOIN orders o ON o.id = otn.parent_order_id OR o.id = otn.order_id 
-        " . $whereSql;
-    $stmtCount = $conn->prepare($countSql);
+        SELECT COUNT(DISTINCT ob.id) as total
+        FROM order_boxes ob
+        LEFT JOIN orders o ON ob.order_id = o.id
+        $whereClause
+    ";
+    $stmtCount = $pdo->prepare($countSql);
     $stmtCount->execute($params);
-    $totalRow = $stmtCount->fetch(PDO::FETCH_ASSOC);
-    $total = $totalRow['total'];
-    $totalPages = ceil($total / $limit);
+    $total = (int) $stmtCount->fetchColumn();
 
-    // Select Data
-    $sql = "
-        SELECT 
-            ort.id,
-            COALESCE(CONCAT(otn.parent_order_id, '-', otn.box_number), otn.order_id) as sub_order_id,
-            ort.tracking_number,
-            ort.status,
-            ort.note,
-            ort.created_at,
-            ort.updated_at,
-            0 as return_amount,
+    // ─── Fetch data ───
+    $dataSql = "
+        SELECT
+            ob.id,
+            ob.sub_order_id,
+            ob.order_id as main_order_id,
+            ob.box_number,
+            ob.return_status as status,
+            ob.return_note as note,
+            ob.return_created_at as created_at,
+            ob.updated_at,
+            ob.collected_amount as return_amount,
+            ob.collection_amount,
+            otn.tracking_number,
             o.total_amount,
             o.order_date,
-            o.id as main_order_id
-        FROM order_returns ort
-        LEFT JOIN order_tracking_numbers otn ON ort.tracking_number = otn.tracking_number
-        LEFT JOIN orders o ON o.id = otn.parent_order_id OR o.id = otn.order_id 
-        $whereSql
-        GROUP BY ort.id
-        ORDER BY ort.updated_at DESC
-        LIMIT $limit OFFSET $offset
+            o.company_id
+        FROM order_boxes ob
+        LEFT JOIN order_tracking_numbers otn
+            ON ob.order_id = otn.parent_order_id AND ob.box_number = otn.box_number
+        LEFT JOIN orders o ON ob.order_id = o.id
+        $whereClause
+        ORDER BY ob.return_created_at DESC, ob.id DESC
+        LIMIT ? OFFSET ?
     ";
+    $dataParams = array_merge($params, [$limit, $offset]);
+    $stmtData = $pdo->prepare($dataSql);
+    $stmtData->execute($dataParams);
+    $rows = $stmtData->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt = $conn->prepare($sql);
-    $stmt->execute($params);
-    $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $totalPages = max(1, ceil($total / $limit));
 
     echo json_encode([
-        "status" => "success",
-        "data" => $results,
-        "pagination" => [
-            "page" => $page,
-            "limit" => $limit,
-            "total" => $total,
-            "totalPages" => $totalPages
-        ]
+        'status' => 'success',
+        'data' => $rows,
+        'pagination' => [
+            'total' => $total,
+            'totalPages' => $totalPages,
+            'page' => $page,
+            'limit' => $limit,
+        ],
     ]);
-
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(["status" => "error", "message" => "Database error: " . $e->getMessage()]);
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage(),
+    ]);
 }
-
-$conn = null;
-?>

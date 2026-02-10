@@ -1,176 +1,186 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-header('Content-Type: application/json');
+/**
+ * save_return_orders.php
+ * บันทึกสถานะการคืนสินค้าลงตาราง order_boxes
+ * ใช้ order_boxes แทน order_returns
+ *
+ * Payload: { returns: [{ sub_order_id, status, note, tracking_number? }] }
+ *
+ * Business Rules:
+ * - Return statuses (returning, returned, good, damaged, lost):
+ *     → SET collection_amount=0, collected_amount=0, status='RETURNED'
+ * - Undo statuses (pending, delivered, etc.):
+ *     → RESTORE collection_amount=cod_amount, CLEAR return_status/note/created_at
+ * - Recalc orders.total_amount ONLY for COD/PayAfter payment methods
+ */
 
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+require_once __DIR__ . '/../config.php';
+cors();
+$pdo = db_connect();
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
-
-require_once '../config.php';
-
-$data = json_decode(file_get_contents("php://input"), true);
-
-if (!$data || !isset($data['returns']) || !is_array($data['returns'])) {
-    http_response_code(400);
-    echo json_encode(["status" => "error", "message" => "Invalid input data"]);
-    exit;
-}
-
-$conn = db_connect();
-$conn->beginTransaction();
+header('Content-Type: application/json; charset=utf-8');
 
 try {
-    $successCount = 0;
+    $input = json_decode(file_get_contents('php://input'), true);
+    $returns = $input['returns'] ?? [];
+
+    if (empty($returns)) {
+        echo json_encode(['success' => false, 'error' => 'No return data provided']);
+        exit;
+    }
+
+    $pdo->beginTransaction();
+
+    $updatedCount = 0;
     $errors = [];
-    $mainOrderIdsToUpdate = [];
+    $affectedOrderIds = []; // Track order_ids that need total_amount recalc
 
-    foreach ($data['returns'] as $item) {
-        $trackingNumber = isset($item['tracking_number']) ? trim($item['tracking_number']) : '';
-        $subOrderId = isset($item['sub_order_id']) ? trim($item['sub_order_id']) : '';
-        $targetStatus = isset($item['status']) ? $item['status'] : ''; // returning, returned, lost, good, damaged
-        $note = isset($item['note']) ? $item['note'] : '';
+    foreach ($returns as $item) {
+        $subOrderId = $item['sub_order_id'] ?? '';
+        $status = $item['status'] ?? 'returning';
+        $note = $item['note'] ?? '';
+        $trackingNumber = $item['tracking_number'] ?? '';
 
-        if (empty($trackingNumber) && empty($subOrderId)) {
-            $errors[] = "Missing Tracking Number or Sub Order ID";
+        // ─── Resolve order_boxes row ───
+        $boxRow = null;
+
+        // Method 1: By sub_order_id
+        if ($subOrderId) {
+            $stmt = $pdo->prepare("SELECT id, order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
+            $stmt->execute([$subOrderId]);
+            $boxRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+
+        // Method 2: By tracking_number → order_tracking_numbers → order_boxes
+        if (!$boxRow && $trackingNumber) {
+            $stmt = $pdo->prepare("
+                SELECT ob.id, ob.order_id, ob.box_number
+                FROM order_tracking_numbers otn
+                JOIN order_boxes ob ON ob.order_id = otn.parent_order_id AND ob.box_number = otn.box_number
+                WHERE otn.tracking_number = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$trackingNumber]);
+            $boxRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if (!$boxRow) {
+            $errors[] = "Box not found for sub_order_id=$subOrderId tracking=$trackingNumber";
             continue;
         }
 
-        // 1. Resolve Tracking / SubOrderId
-        // If tracking is provided, resolve to sub_order_id if possible
-        if (!empty($trackingNumber)) {
-            // Find Sub Order ID from Tracking
-            $stmtTrack = $conn->prepare("SELECT order_id, parent_order_id, box_number FROM order_tracking_numbers WHERE tracking_number = ? LIMIT 1");
-            $stmtTrack->execute([$trackingNumber]);
-            $trackRow = $stmtTrack->fetch(PDO::FETCH_ASSOC);
+        // ─── Determine if this is a return or an undo ───
+        $returnStatuses = ['returning', 'returned', 'good', 'damaged', 'lost'];
+        $isReturn = in_array($status, $returnStatuses);
 
-            if ($trackRow) {
-                // Construct Sub Order ID: {MainID}-{BoxNum}
-                // If box_number is 0 or null, assume it's main order? But requirements say "linked to sub_order_id"
-                if (!empty($trackRow['parent_order_id']) && !empty($trackRow['box_number'])) {
-                    $resolvedSubId = $trackRow['parent_order_id'] . '-' . $trackRow['box_number'];
-                    if (empty($subOrderId)) {
-                        $subOrderId = $resolvedSubId;
-                    }
-                } else if (!empty($trackRow['order_id'])) {
-                    // Fallback if order_tracking stores sub_order_id in order_id column?
-                    // Check if order_id looks like a sub order
-                    if (empty($subOrderId)) {
-                        $subOrderId = $trackRow['order_id'];
-                    }
-                }
-            }
+        // ─── Block undo (pending/delivered) if ALL boxes are already RETURNED ───
+        // Return sub-status changes (returning→returned→good→damaged→lost) are still allowed
+        $undoStatuses = ['pending', 'delivered'];
+        $stmtAllReturned = $pdo->prepare("
+            SELECT
+                COUNT(*) as total_boxes,
+                SUM(CASE WHEN status = 'RETURNED' THEN 1 ELSE 0 END) as returned_boxes
+            FROM order_boxes
+            WHERE order_id = ?
+        ");
+        $stmtAllReturned->execute([$boxRow['order_id']]);
+        $boxCounts = $stmtAllReturned->fetch(PDO::FETCH_ASSOC);
+
+        if ($boxCounts && $boxCounts['total_boxes'] > 0 && $boxCounts['total_boxes'] == $boxCounts['returned_boxes'] && in_array($status, $undoStatuses)) {
+            $errors[] = "Order {$boxRow['order_id']} ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม 'ยกเลิกตีกลับ' เพื่อเปลี่ยนสถานะทั้ง Order";
+            continue;
         }
 
-        // Normalize inputs
-        $trackingNumber = $trackingNumber ?: $subOrderId; // Fallback if tracking missing but subID exists? No, tracking is key.
-
-        // Requirement: "Import Returning -> Check if tracking no linked to sub_order_id"
-        // If we can't find sub_order_id, maybe we should error for "returning" flow?
-        // But for "returned" flow, maybe tracking is enough if it exists in order_returns?
-
-        $stmtCheck = $conn->prepare("SELECT id, status FROM order_returns WHERE tracking_number = ? LIMIT 1");
-        $stmtCheck->execute([$trackingNumber]);
-        $currentReturn = $stmtCheck->fetch(PDO::FETCH_ASSOC);
-
-        // Unified Unconditional Upsert Logic
-        if ($currentReturn) {
-            // Update Existing
-            $stmtUpdate = $conn->prepare("UPDATE order_returns SET status = ?, note = COALESCE(?, note), updated_at = NOW() WHERE id = ?");
-            // Use provided note, or keep existing if empty string?
-            // Actually, if note is provided in payload (even empty), user might intend to clear it?
-            // User requested "Manual note", so if payload has note, use it.
-            // strict update:
-            $noteToUse = $note;
-            // If payload note is empty string, do we overwrite?
-            // Let's assume yes, or use logic: if (!empty($note)) update.
-            // Simple approach: Always update status. Update note if provided (not null).
-
-            if ($stmtUpdate->execute([$targetStatus, $note, $currentReturn['id']])) {
-                $successCount++;
-            }
+        if ($isReturn) {
+            // Return flow: set collection_amount = 0, mark as RETURNED
+            $stmtUpdate = $pdo->prepare("
+                UPDATE order_boxes
+                SET return_status = ?,
+                    return_note = COALESCE(?, return_note),
+                    return_created_at = COALESCE(return_created_at, NOW()),
+                    status = 'RETURNED',
+                    collected_amount = 0,
+                    collection_amount = 0,
+                    updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmtUpdate->execute([$status, $note ?: null, $boxRow['id']]);
         } else {
-            // Insert New
-            $stmtInsert = $conn->prepare("INSERT INTO order_returns (tracking_number, status, note, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())");
-            if ($stmtInsert->execute([$trackingNumber, $targetStatus, $note])) {
-                $successCount++;
+            // Undo flow (pending, delivered, etc.): restore collection_amount = cod_amount, clear return_status
+            $stmtUpdate = $pdo->prepare("
+                UPDATE order_boxes
+                SET return_status = NULL,
+                    return_note = NULL,
+                    return_created_at = NULL,
+                    status = UPPER(?),
+                    collected_amount = 0,
+                    collection_amount = cod_amount,
+                    updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmtUpdate->execute([$status, $boxRow['id']]);
+        }
+        $updatedCount++;
 
-                // Auto-create 'pending' siblings logic (Only on new insert)
-                // 1. Identify Main Order ID
-                $mainOrderId = null;
-                if (!empty($trackRow['parent_order_id'])) {
-                    $mainOrderId = $trackRow['parent_order_id'];
-                } elseif (!empty($trackRow['order_id'])) {
-                    $mainOrderId = $trackRow['order_id'];
-                } else {
-                    $parts = explode('-', $subOrderId);
-                    if (count($parts) >= 2) {
-                        if (count($parts) > 1) {
-                            array_pop($parts);
-                            $mainOrderId = implode('-', $parts);
-                        }
-                    }
-                }
+        // Track affected order_id for total_amount recalc
+        if ($boxRow['order_id']) {
+            $affectedOrderIds[$boxRow['order_id']] = true;
+        }
+    }
 
-                // 2. Find siblings
-                if ($mainOrderId) {
-                    $stmtSiblings = $conn->prepare("SELECT tracking_number FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
-                    $stmtSiblings->execute([$mainOrderId, $mainOrderId]);
-                    $siblings = $stmtSiblings->fetchAll(PDO::FETCH_ASSOC);
+    // ─── Recalculate orders.total_amount ONLY for COD/PayAfter orders ───
+    if (!empty($affectedOrderIds)) {
+        $stmtRecalc = $pdo->prepare("
+            UPDATE orders
+            SET total_amount = (
+                SELECT COALESCE(SUM(ob.collection_amount), 0)
+                FROM order_boxes ob
+                WHERE ob.order_id = orders.id
+            )
+            WHERE id = ?
+              AND payment_method IN ('COD', 'PayAfter')
+        ");
+        foreach (array_keys($affectedOrderIds) as $orderId) {
+            $stmtRecalc->execute([$orderId]);
+        }
+    }
 
-                    foreach ($siblings as $sib) {
-                        $sibTrack = $sib['tracking_number'];
-                        if ($sibTrack === $trackingNumber)
-                            continue; // Skip self
-
-                        // Check existence
-                        $stmtExist = $conn->prepare("SELECT id FROM order_returns WHERE tracking_number = ? LIMIT 1");
-                        $stmtExist->execute([$sibTrack]);
-                        if (!$stmtExist->fetch()) {
-                            // Insert as Pending
-                            $stmtPend = $conn->prepare("INSERT INTO order_returns (tracking_number, status, note, created_at, updated_at) VALUES (?, 'pending', '', NOW(), NOW())");
-                            $stmtPend->execute([$sibTrack]);
-                        }
-                    }
-                }
-
+    // ─── Auto-set orders.order_status = 'Returned' when ALL boxes are RETURNED ───
+    if (!empty($affectedOrderIds)) {
+        $stmtCheckAll = $pdo->prepare("
+            SELECT
+                COUNT(*) as total_boxes,
+                SUM(CASE WHEN ob.status = 'RETURNED' THEN 1 ELSE 0 END) as returned_boxes
+            FROM order_boxes ob
+            WHERE ob.order_id = ?
+        ");
+        $stmtSetReturned = $pdo->prepare("
+            UPDATE orders SET order_status = 'Returned' WHERE id = ? AND order_status != 'Returned'
+        ");
+        foreach (array_keys($affectedOrderIds) as $orderId) {
+            $stmtCheckAll->execute([$orderId]);
+            $counts = $stmtCheckAll->fetch(PDO::FETCH_ASSOC);
+            if ($counts && $counts['total_boxes'] > 0 && $counts['total_boxes'] == $counts['returned_boxes']) {
+                $stmtSetReturned->execute([$orderId]);
             }
         }
     }
 
-
-    // Update Main Order Statuses
-    $mainOrderIdsToUpdate = array_unique($mainOrderIdsToUpdate);
-    if (!empty($mainOrderIdsToUpdate)) {
-        $placeholders = str_repeat('?,', count($mainOrderIdsToUpdate) - 1) . '?';
-        // Only update if not already Returned? Or just force set?
-        // Requirement: "อัปเดตข้อมูล orders.order_status = 'Returned'"
-        $stmtOrder = $conn->prepare("UPDATE orders SET order_status = 'Returned' WHERE id IN ($placeholders)");
-        $stmtOrder->execute(array_values($mainOrderIdsToUpdate));
-    }
-
-    $conn->commit();
+    $pdo->commit();
 
     echo json_encode([
-        "status" => "success",
-        "message" => "Processed $successCount items.",
-        "errors" => $errors, // Return errors for feedback
-        "success_count" => $successCount
+        'status' => 'success',
+        'message' => "Updated $updatedCount items",
+        'updatedCount' => $updatedCount,
+        'errors' => $errors,
     ]);
-
 } catch (Exception $e) {
-    if (isset($conn))
-        $conn->rollBack();
-    error_log("Save Return Orders Error: " . $e->getMessage());
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     http_response_code(500);
-    echo json_encode(["status" => "error", "message" => "Database error: " . $e->getMessage()]);
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage(),
+    ]);
 }
-
-$conn = null;
-?>

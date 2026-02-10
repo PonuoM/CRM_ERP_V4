@@ -3721,7 +3721,7 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                     // Fetch boxes from order_boxes for each main order
                     $boxesMap = [];
-                    $boxesSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status
+                    $boxesSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status, return_status, return_note
                                  FROM order_boxes
                                  WHERE order_id IN ($parentPlaceholders)
                                  ORDER BY order_id, box_number";
@@ -3744,6 +3744,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                             'waived_amount' => $boxRow['waived_amount'] ?? null,
                             'payment_method' => $boxRow['payment_method'] ?? null,
                             'status' => $boxRow['status'] ?? null,
+                            'return_status' => $boxRow['return_status'] ?? null,
+                            'return_note' => $boxRow['return_note'] ?? null,
                         ];
                     }
                 }
@@ -7405,7 +7407,7 @@ function get_order(PDO $pdo, string $id): ?array
     $o['trackingNumbers'] = array_values(array_unique($tnList));
 
     // Fetch boxes from main order
-    $bx = $pdo->prepare('SELECT box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status, sub_order_id FROM order_boxes WHERE order_id=? ORDER BY box_number');
+    $bx = $pdo->prepare('SELECT box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status, sub_order_id, return_status, return_note FROM order_boxes WHERE order_id=? ORDER BY box_number');
     $bx->execute([$mainOrderId]);
     $o['boxes'] = $bx->fetchAll();
 
