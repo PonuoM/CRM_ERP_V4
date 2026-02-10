@@ -1928,13 +1928,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $userId = isset($_GET['userId']) ? (int) $_GET['userId'] : null;
                             // Match logic from upsell/check API:
                             // 1. Pending status
-                            // 2. Within 24 hours
-                            // 3. Not created by current user
-                            // 4. No upsell items added yet (NOT EXISTS)
+                            // 2. Not created by current user
+                            // 3. No upsell items added yet (NOT EXISTS)
                             $upsellSql = "SELECT DISTINCT o.customer_id FROM orders o
                                           WHERE o.customer_id IN ($placeholders) 
-                                          AND o.order_status = 'Pending' 
-                                          AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                                          AND o.order_status = 'Pending'
                                           AND NOT EXISTS (
                                               SELECT 1 FROM order_items oi 
                                               WHERE oi.parent_order_id = o.id 
@@ -5423,12 +5421,28 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $orderStatus = 'Delivered';
                         $paymentStatus = 'Approved';
                     }
-                    // Existing logic: Auto-update to Shipping if Picking/Preparing
+                    // Auto-update when tracking is added to Picking/Preparing orders
                     elseif (($currentStatus === 'PICKING' || $currentStatus === 'PREPARING')) {
-                        $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ? WHERE id = ?');
-                        $autoShippingStmt->execute(['Shipping', $id]);
-                        $newStatus = 'Shipping';
-                        $updatedOrder['order_status'] = 'Shipping';
+                        // Check if payment already approved (Bank Audit done before shipping)
+                        $currentPaymentStatusCheck = (string) ($updatedOrder['payment_status'] ?? $existingOrder['payment_status'] ?? '');
+                        if ($currentPaymentStatusCheck === 'Approved' || $currentPaymentStatusCheck === 'Paid') {
+                            // Payment already confirmed + tracking exists = auto-complete to Delivered
+                            $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ?, payment_status = ? WHERE id = ?');
+                            $autoShippingStmt->execute(['Delivered', 'Approved', $id]);
+                            $newStatus = 'Delivered';
+                            $newPaymentStatus = 'Approved';
+                            $updatedOrder['order_status'] = 'Delivered';
+                            $updatedOrder['payment_status'] = 'Approved';
+                            // Update variables for history log and downstream logic
+                            $orderStatus = 'Delivered';
+                            $paymentStatus = 'Approved';
+                        } else {
+                            // Normal flow: payment not yet confirmed → Shipping
+                            $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ? WHERE id = ?');
+                            $autoShippingStmt->execute(['Shipping', $id]);
+                            $newStatus = 'Shipping';
+                            $updatedOrder['order_status'] = 'Shipping';
+                        }
                         // Reload order to get updated status
                         $orderRowStmt->execute([$id]);
                         $updatedOrder = $orderRowStmt->fetch(PDO::FETCH_ASSOC);
@@ -10530,10 +10544,8 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
 
                 // Find orders that are eligible for upsell:
                 // 1. order_status = 'Pending'
-                // 2. order_date is within the last 24 hours
-                // 3. No upsell items exist yet (no order_items with creator_id != order.creator_id)
-                // 4. creator_id != assigned_to (creator is not the owner)
-                // 5. creator role is Telesale (6) or Supervisor (7)
+                // 2. No upsell items exist yet (no order_items with creator_id != order.creator_id)
+                // 3. creator_id != assigned_to (creator is not the owner)
                 $excludeCreatorClause = '';
                 $params = [$customerId];
                 if ($requesterId !== null) {
@@ -10549,7 +10561,6 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                     LEFT JOIN users u ON u.id = o.creator_id
                     WHERE (c.customer_id = ? OR c.customer_ref_id = ?)
                     AND o.order_status = 'Pending'
-                    AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
                     {$excludeCreatorClause}
                     AND NOT EXISTS (
                         SELECT 1
@@ -10581,10 +10592,8 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
 
                 // Get orders that are eligible for upsell
                 // 1. order_status = 'Pending'
-                // 2. order_date is within the last 24 hours
-                // 3. No upsell items exist yet (no order_items with creator_id != order.creator_id)
-                // 4. creator_id != assigned_to (creator is not the owner)
-                // 5. creator role is Telesale (6) or Supervisor (7)
+                // 2. No upsell items exist yet (no order_items with creator_id != order.creator_id)
+                // 3. creator_id != assigned_to (creator is not the owner)
                 $excludeCreatorClause = '';
                 $params = [$customerId];
                 if ($requesterId !== null) {
@@ -10605,7 +10614,6 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                     LEFT JOIN order_items oi ON oi.parent_order_id = o.id
                     WHERE (c.customer_id = ? OR c.customer_ref_id = ?)
                     AND o.order_status = 'Pending'
-                    AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
                     {$excludeCreatorClause}
                     AND NOT EXISTS (
                         SELECT 1
@@ -10665,7 +10673,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                 $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
 
                 // Query 1: Get customers with eligible upsell orders (hasUpsell)
-                // Order is Pending, within 24h, creator != assigned_to, no upsell items yet
+                // Order is Pending, creator != assigned_to, no upsell items yet
                 $upsellEligibleParams = $customerIds;
                 if ($userId !== null) {
                     $upsellEligibleParams[] = $userId;
@@ -10679,7 +10687,6 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                     INNER JOIN customers c ON (c.customer_ref_id = o.customer_id OR c.customer_id = o.customer_id)
                     WHERE c.customer_id IN ({$placeholders})
                     AND o.order_status = 'Pending'
-                    AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
                     AND c.assigned_to IS NOT NULL
                     AND c.assigned_to > 0
                     AND o.creator_id != c.assigned_to
@@ -10765,20 +10772,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                     return;
                 }
 
-                // Check if order is within 24 hours
-                $timeCheck = $pdo->prepare("
-                    SELECT COUNT(*) as is_eligible
-                    FROM orders
-                    WHERE id = ?
-                    AND order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                ");
-                $timeCheck->execute([$orderId]);
-                $timeResult = $timeCheck->fetch(PDO::FETCH_ASSOC);
-
-                if (!$timeResult || $timeResult['is_eligible'] == 0) {
-                    json_response(['error' => 'ORDER_EXPIRED', 'message' => 'Order is older than 24 hours'], 400);
-                    return;
-                }
+                // Time limit removed: Upsell allowed on any Pending order regardless of age
 
                 // Validate creator_id exists and get creator name
                 $creatorCheck = $pdo->prepare('SELECT id, status, first_name, last_name FROM users WHERE id = ?');
@@ -11260,9 +11254,10 @@ function handle_sync_tracking($pdo)
         $updateStmt = $pdo->prepare("UPDATE order_tracking_numbers SET tracking_number = ? WHERE id = ?");
         $insertStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
 
-        // Update shipping_provider (only if not empty), and always update statuses
-        // IMPORTANT: payment_status must be updated BEFORE order_status because MySQL uses the updated value for subsequent fields in the same SET clause.
-        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
+        // Update shipping_provider and statuses with GUARD for already-approved payments
+        // GUARD: If payment_status is already 'Approved' or 'Paid', don't downgrade to PreApproved
+        // and auto-complete to Delivered (payment confirmed + tracking = done)
+        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN payment_status IN ('Approved', 'Paid') THEN payment_status WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') AND payment_status IN ('Approved', 'Paid') THEN 'Delivered' WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
 
         // Prepare box lookup
         $boxLookupStmt = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");

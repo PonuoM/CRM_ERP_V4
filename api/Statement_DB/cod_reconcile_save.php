@@ -505,13 +505,16 @@ try {
     }
 
     // Determine order status based on payment status
-    // If payment is Approved/Paid, set order status to Delivered (เสร็จสิ้น)
-    // Otherwise, set to Preparing (รอตรวจสอบ)
+    // GUARD: Don't change order_status for orders still in fulfillment pipeline
     $currentStatus = $order["order_status"];
-    if ($currentPaymentStatus === "Approved" || $currentPaymentStatus === "Paid") {
-      // Already approved - keep Delivered
+    $earlyFulfillmentStages = ["Pending", "Picking", "Preparing"];
+    if (in_array($currentStatus, $earlyFulfillmentStages, true)) {
+      // Order hasn't shipped yet — keep order_status unchanged
+      $nextOrderStatus = $currentStatus;
+    } else if ($currentPaymentStatus === "Approved" || $currentPaymentStatus === "Paid") {
+      // Already approved and past fulfillment stages - set Delivered
       $nextOrderStatus = "Delivered";
-    } else if (in_array($currentStatus, ["Pending", "AwaitingVerification", "Confirmed", "Delivered"], true)) {
+    } else if (in_array($currentStatus, ["AwaitingVerification", "Confirmed", "Delivered"], true)) {
       // Payment not approved yet - set to Preparing (COD waiting for Bank Audit verification)
       $nextOrderStatus = "Preparing";
     } else {
