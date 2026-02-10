@@ -5421,12 +5421,28 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $orderStatus = 'Delivered';
                         $paymentStatus = 'Approved';
                     }
-                    // Existing logic: Auto-update to Shipping if Picking/Preparing
+                    // Auto-update when tracking is added to Picking/Preparing orders
                     elseif (($currentStatus === 'PICKING' || $currentStatus === 'PREPARING')) {
-                        $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ? WHERE id = ?');
-                        $autoShippingStmt->execute(['Shipping', $id]);
-                        $newStatus = 'Shipping';
-                        $updatedOrder['order_status'] = 'Shipping';
+                        // Check if payment already approved (Bank Audit done before shipping)
+                        $currentPaymentStatusCheck = (string) ($updatedOrder['payment_status'] ?? $existingOrder['payment_status'] ?? '');
+                        if ($currentPaymentStatusCheck === 'Approved' || $currentPaymentStatusCheck === 'Paid') {
+                            // Payment already confirmed + tracking exists = auto-complete to Delivered
+                            $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ?, payment_status = ? WHERE id = ?');
+                            $autoShippingStmt->execute(['Delivered', 'Approved', $id]);
+                            $newStatus = 'Delivered';
+                            $newPaymentStatus = 'Approved';
+                            $updatedOrder['order_status'] = 'Delivered';
+                            $updatedOrder['payment_status'] = 'Approved';
+                            // Update variables for history log and downstream logic
+                            $orderStatus = 'Delivered';
+                            $paymentStatus = 'Approved';
+                        } else {
+                            // Normal flow: payment not yet confirmed → Shipping
+                            $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ? WHERE id = ?');
+                            $autoShippingStmt->execute(['Shipping', $id]);
+                            $newStatus = 'Shipping';
+                            $updatedOrder['order_status'] = 'Shipping';
+                        }
                         // Reload order to get updated status
                         $orderRowStmt->execute([$id]);
                         $updatedOrder = $orderRowStmt->fetch(PDO::FETCH_ASSOC);
@@ -11258,9 +11274,10 @@ function handle_sync_tracking($pdo)
         $updateStmt = $pdo->prepare("UPDATE order_tracking_numbers SET tracking_number = ? WHERE id = ?");
         $insertStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
 
-        // Update shipping_provider (only if not empty), and always update statuses
-        // IMPORTANT: payment_status must be updated BEFORE order_status because MySQL uses the updated value for subsequent fields in the same SET clause.
-        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
+        // Update shipping_provider and statuses with GUARD for already-approved payments
+        // GUARD: If payment_status is already 'Approved' or 'Paid', don't downgrade to PreApproved
+        // and auto-complete to Delivered (payment confirmed + tracking = done)
+        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN payment_status IN ('Approved', 'Paid') THEN payment_status WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') AND payment_status IN ('Approved', 'Paid') THEN 'Delivered' WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
 
         // Prepare box lookup
         $boxLookupStmt = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");

@@ -459,17 +459,21 @@ try {
     }
 
     // Determine order status based on payment status
-    // STOP AUTO-DELIVERY: Payment received implies Deposit/PreApproved, NOT Delivered.
+    // GUARD: Don't change order_status for orders still in fulfillment pipeline
     $currentStatus = $order["order_status"];
-    if ($targetStatus === "Approved" || $targetStatus === "Paid") {
-      // Payment approved - set to PreApproved (Approved by finance, ready to move to Picking/Shipping)
-      // Do NOT set to Delivered here. Delivered implies shipment completion.
+    $earlyFulfillmentStages = ["Pending", "Picking", "Preparing"];
+    if (in_array($currentStatus, $earlyFulfillmentStages, true)) {
+      // Order hasn't shipped yet — only update payment fields, keep order_status unchanged
+      // When tracking is added later, index.php auto-complete will handle the final status
+      $nextOrderStatus = $currentStatus;
+    } else if ($targetStatus === "Approved" || $targetStatus === "Paid") {
+      // Payment approved and order already past fulfillment stages - set to PreApproved
       $nextOrderStatus = "PreApproved";
-    } else if (in_array($currentStatus, ["Pending", "AwaitingVerification", "Confirmed"], true)) {
-      // Payment not fully approved yet - set to Preparing/Confirmed
+    } else if (in_array($currentStatus, ["AwaitingVerification", "Confirmed"], true)) {
+      // Payment not fully approved yet
       $nextOrderStatus = "Confirmed";
     } else {
-      // Keep current status if it's already further along (e.g. Picking, Shipping)
+      // Keep current status if it's already further along (e.g. Shipping)
       $nextOrderStatus = $currentStatus;
     }
 

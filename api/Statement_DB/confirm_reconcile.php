@@ -53,13 +53,32 @@ try {
             // Get parent order id (remove sub-order suffix like -1, -2)
             $parentOrderId = preg_replace('/-\d+$/', '', $orderId);
             
-            $updateOrderStmt = $pdo->prepare("
-                UPDATE orders 
-                SET payment_status = 'Approved',
-                    order_status = 'Delivered'
-                WHERE id = :orderId
-                  AND order_status NOT IN ('Cancelled', 'Returned')
-            ");
+            // GUARD: Check if order has tracking (already shipped) before setting Delivered
+            $trackingCheckStmt = $pdo->prepare(
+                "SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = :orderId"
+            );
+            $trackingCheckStmt->execute([':orderId' => $parentOrderId]);
+            $hasTracking = (int)$trackingCheckStmt->fetchColumn() > 0;
+
+            if ($hasTracking) {
+                // Has tracking = already shipped → safe to set Delivered
+                $updateOrderStmt = $pdo->prepare("
+                    UPDATE orders 
+                    SET payment_status = 'Approved',
+                        order_status = 'Delivered'
+                    WHERE id = :orderId
+                      AND order_status NOT IN ('Cancelled', 'Returned')
+                ");
+            } else {
+                // No tracking = not shipped yet → only update payment_status
+                // order_status will be set to Delivered when tracking is added (auto-complete in index.php)
+                $updateOrderStmt = $pdo->prepare("
+                    UPDATE orders 
+                    SET payment_status = 'Approved'
+                    WHERE id = :orderId
+                      AND order_status NOT IN ('Cancelled', 'Returned')
+                ");
+            }
             $updateOrderStmt->execute([':orderId' => $parentOrderId]);
         }
 
