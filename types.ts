@@ -270,7 +270,7 @@ export interface Customer {
   isInWaitingBasket?: boolean; // อยู่ในตะกร้ารอ 30 วันหรือไม่
   waitingBasketStartDate?: string; // วันที่เริ่มต้นในตะกร้ารอ
   isBlocked?: boolean; // ระงับการใช้งานหรือไม่
-  isUpsellEligible?: boolean; // Eligible for upsell (Pending order < 24 hrs)
+  isUpsellEligible?: boolean; // Eligible for upsell (has Pending order by others)
   firstOrderDate?: string; // วันที่สั่งซื้อครั้งแรก
   lastOrderDate?: string; // วันที่สั่งซื้อล่าสุด
   orderCount?: number; // จำนวนออเดอร์

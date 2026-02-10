@@ -41,7 +41,7 @@ export const THAI_REGIONS: Record<string, string[]> = {
 
 /**
  * Determine which basket a customer should be in based on new rules:
- * - Upsell: Order created TODAY (same-day) - uses isUpsellEligible flag
+ * - Upsell: Has Pending order by others - uses isUpsellEligible flag
  * - ลูกค้าใหม่: 
  *   - order_count = 0 AND date_registered within 30 days (ลงทะเบียนใหม่ยังไม่ซื้อ)
  *   - order_count = 1 AND first_order_date within 30 days (ซื้อครั้งแรกภายใน 30 วัน)
