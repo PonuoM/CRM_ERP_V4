@@ -7822,18 +7822,36 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 $docId = (int) $pdo->lastInsertId();
 
                 $itemStmt = $pdo->prepare('INSERT INTO cod_records (document_id, tracking_number, order_id, cod_amount, order_amount, received_amount, difference, status, company_id, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)');
+                $findExistingStmt = $pdo->prepare('SELECT document_id, cod_amount, order_amount FROM cod_records WHERE tracking_number = ? AND company_id = ? LIMIT 1');
                 $deleteExistingStmt = $pdo->prepare('DELETE FROM cod_records WHERE tracking_number = ? AND company_id = ?');
+                $subtractDocTotalsStmt = $pdo->prepare('UPDATE cod_documents SET total_input_amount = GREATEST(0, total_input_amount - ?), total_order_amount = GREATEST(0, total_order_amount - ?), updated_at = NOW() WHERE id = ?');
                 // Prepared statements for updating order_boxes.collected_amount
                 $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
                 $updateBoxCollectedStmt = $pdo->prepare('UPDATE order_boxes SET collected_amount = ? WHERE order_id = ? AND box_number = ?');
 
+                $skippedItems = [];
                 foreach ($items as $it) {
                     $trackingNumber = trim((string) ($it['tracking_number'] ?? ''));
                     if ($trackingNumber === '') {
                         continue;
                     }
-                    // Upsert: delete existing record with same tracking + company before inserting
-                    $deleteExistingStmt->execute([$trackingNumber, $companyId]);
+                    // Check if tracking exists in a DIFFERENT document — if so, skip it
+                    $findExistingStmt->execute([$trackingNumber, $companyId]);
+                    $oldRecord = $findExistingStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($oldRecord && $oldRecord['document_id'] && (int) $oldRecord['document_id'] !== $docId) {
+                        // Exists in another document — do NOT overwrite
+                        $skippedItems[] = ['tracking_number' => $trackingNumber, 'existing_document_id' => (int) $oldRecord['document_id']];
+                        continue;
+                    }
+                    // Same document or not found — safe to upsert
+                    if ($oldRecord && $oldRecord['document_id']) {
+                        $deleteExistingStmt->execute([$trackingNumber, $companyId]);
+                        $subtractDocTotalsStmt->execute([
+                            (float) $oldRecord['cod_amount'],
+                            (float) $oldRecord['order_amount'],
+                            (int) $oldRecord['document_id'],
+                        ]);
+                    }
                     $orderId = isset($it['order_id']) ? trim((string) $it['order_id']) : null;
                     $codAmount = (float) ($it['cod_amount'] ?? 0);
                     $orderAmount = (float) ($it['order_amount'] ?? ($it['received_amount'] ?? 0));
@@ -7870,7 +7888,12 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 }
 
                 $pdo->commit();
-                json_response(['id' => $docId]);
+                $response = ['id' => $docId];
+                if (!empty($skippedItems)) {
+                    $response['skipped'] = $skippedItems;
+                    $response['skipped_count'] = count($skippedItems);
+                }
+                json_response($response);
             } catch (Throwable $e) {
                 $pdo->rollBack();
                 $code = 500;
@@ -7909,18 +7932,36 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     (document_id, tracking_number, order_id, cod_amount, order_amount, 
                      received_amount, difference, status, company_id, created_by) 
                     VALUES (?,?,?,?,?,?,?,?,?,?)');
+                $findExistingStmt = $pdo->prepare('SELECT document_id, cod_amount, order_amount FROM cod_records WHERE tracking_number = ? AND company_id = ? LIMIT 1');
                 $deleteExistingStmt = $pdo->prepare('DELETE FROM cod_records WHERE tracking_number = ? AND company_id = ?');
+                $subtractDocTotalsStmt = $pdo->prepare('UPDATE cod_documents SET total_input_amount = GREATEST(0, total_input_amount - ?), total_order_amount = GREATEST(0, total_order_amount - ?), updated_at = NOW() WHERE id = ?');
                 // Prepared statements for updating order_boxes.collected_amount
                 $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
                 $updateBoxCollectedStmt = $pdo->prepare('UPDATE order_boxes SET collected_amount = ? WHERE order_id = ? AND box_number = ?');
 
+                $skippedItems = [];
                 foreach ($items as $it) {
                     $trackingNumber = trim((string) ($it['tracking_number'] ?? ''));
                     if ($trackingNumber === '')
                         continue;
 
-                    // Upsert: delete existing record with same tracking + company before inserting
-                    $deleteExistingStmt->execute([$trackingNumber, $doc['company_id']]);
+                    // Check if tracking exists in a DIFFERENT document — if so, skip it
+                    $findExistingStmt->execute([$trackingNumber, $doc['company_id']]);
+                    $oldRecord = $findExistingStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($oldRecord && $oldRecord['document_id'] && (int) $oldRecord['document_id'] !== (int) $id) {
+                        // Exists in another document — do NOT overwrite
+                        $skippedItems[] = ['tracking_number' => $trackingNumber, 'existing_document_id' => (int) $oldRecord['document_id']];
+                        continue;
+                    }
+                    // Same document or not found — safe to upsert
+                    if ($oldRecord && $oldRecord['document_id']) {
+                        $deleteExistingStmt->execute([$trackingNumber, $doc['company_id']]);
+                        $subtractDocTotalsStmt->execute([
+                            (float) $oldRecord['cod_amount'],
+                            (float) $oldRecord['order_amount'],
+                            (int) $oldRecord['document_id'],
+                        ]);
+                    }
 
                     $codAmount = (float) ($it['cod_amount'] ?? 0);
                     $orderAmount = (float) ($it['order_amount'] ?? 0);
@@ -7975,7 +8016,12 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     $updateTotalsStmt->execute([$addedInputTotal, $addedOrderTotal, $id]);
                 }
 
-                json_response(['ok' => true, 'added_count' => count($items), 'added_input_total' => $addedInputTotal]);
+                $patchResponse = ['ok' => true, 'added_count' => count($items), 'added_input_total' => $addedInputTotal];
+                if (!empty($skippedItems)) {
+                    $patchResponse['skipped'] = $skippedItems;
+                    $patchResponse['skipped_count'] = count($skippedItems);
+                }
+                json_response($patchResponse);
             }
 
             // Existing logic for updating document metadata (statement matching, etc.)
@@ -8066,26 +8112,26 @@ function handle_cod_records(PDO $pdo, ?string $id): void
                 $companyId = $_GET['companyId'] ?? null;
                 $trackingNumber = $_GET['trackingNumber'] ?? null;
                 $status = $_GET['status'] ?? null;
-                $sql = 'SELECT * FROM cod_records WHERE 1=1';
+                $sql = 'SELECT cr.*, cd.document_number FROM cod_records cr LEFT JOIN cod_documents cd ON cr.document_id = cd.id WHERE 1=1';
                 $params = [];
                 if ($companyId) {
-                    $sql .= ' AND company_id = ?';
+                    $sql .= ' AND cr.company_id = ?';
                     $params[] = $companyId;
                 }
                 if ($trackingNumber) {
-                    $sql .= ' AND tracking_number LIKE ?';
+                    $sql .= ' AND cr.tracking_number LIKE ?';
                     $params[] = '%' . $trackingNumber . '%';
                 }
                 $orderId = $_GET['orderId'] ?? null;
                 if ($orderId) {
-                    $sql .= ' AND order_id LIKE ?';
+                    $sql .= ' AND cr.order_id LIKE ?';
                     $params[] = $orderId . '%';
                 }
                 if ($status) {
-                    $sql .= ' AND status = ?';
+                    $sql .= ' AND cr.status = ?';
                     $params[] = $status;
                 }
-                $sql .= ' ORDER BY created_at DESC';
+                $sql .= ' ORDER BY cr.created_at DESC';
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 json_response($stmt->fetchAll());
