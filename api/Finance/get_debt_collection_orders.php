@@ -38,81 +38,82 @@ try {
     $params = [];
 
     // Core Debt Collection Filters
-    $whereConditions[] = "o.payment_status = 'Unpaid'";
     // Exclude sub-orders
     $whereConditions[] = "o.id NOT REGEXP '^.+-[0-9]+$'";
 
     // Dynamic Filter: Use rules for 'shipping' and 'preparing' from order_tab_rules
-    // As per user request to be dynamic
-    $targetTabs = ['shipping', 'preparing'];
-    $placeholders = str_repeat('?,', count($targetTabs) - 1) . '?';
+    // Only apply payment_status + order_status filters for ACTIVE tab.
+    // Completed tab shows all orders with is_complete=1, regardless of current statuses.
+    if ($status !== 'completed') {
+        $whereConditions[] = "o.payment_status IN ('Unpaid', 'PendingVerification')";
+        $targetTabs = ['shipping', 'preparing'];
+        $placeholders = str_repeat('?,', count($targetTabs) - 1) . '?';
 
-    // Filter rules to only include COD and PayAfter payment methods
-    $ruleStmt = $pdo->prepare("SELECT * FROM order_tab_rules 
-                               WHERE tab_key IN ($placeholders) 
-                               AND is_active = 1 
-                               AND payment_method IN ('COD', 'PayAfter')");
-    $ruleStmt->execute($targetTabs);
-    $rules = $ruleStmt->fetchAll(PDO::FETCH_ASSOC);
+        // Filter rules to only include COD and PayAfter payment methods
+        $ruleStmt = $pdo->prepare("SELECT * FROM order_tab_rules 
+                                   WHERE tab_key IN ($placeholders) 
+                                   AND is_active = 1 
+                                   AND payment_method IN ('COD', 'PayAfter')");
+        $ruleStmt->execute($targetTabs);
+        $rules = $ruleStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    if ($rules) {
-        $ruleConditions = [];
-        foreach ($rules as $r) {
-            $conds = [];
+        if ($rules) {
+            $ruleConditions = [];
+            foreach ($rules as $r) {
+                $conds = [];
 
-            // payment_method
-            if (!empty($r['payment_method'])) {
-                $conds[] = "o.payment_method = " . $pdo->quote($r['payment_method']);
-            }
+                // payment_method
+                if (!empty($r['payment_method'])) {
+                    $conds[] = "o.payment_method = " . $pdo->quote($r['payment_method']);
+                }
 
-            // payment_status
-            if (!empty($r['payment_status']) && $r['payment_status'] !== 'ALL') {
-                if ($r['payment_status'] === 'NULL') {
-                    $conds[] = "o.payment_status IS NULL";
-                } else {
-                    $statuses = explode(',', $r['payment_status']);
+                // payment_status
+                if (!empty($r['payment_status']) && $r['payment_status'] !== 'ALL') {
+                    if ($r['payment_status'] === 'NULL') {
+                        $conds[] = "o.payment_status IS NULL";
+                    } else {
+                        $statuses = explode(',', $r['payment_status']);
+                        if (count($statuses) > 1) {
+                            $quoted = array_map(function ($s) use ($pdo) {
+                                return $pdo->quote(trim($s));
+                            }, $statuses);
+                            $conds[] = "o.payment_status IN (" . implode(',', $quoted) . ")";
+                        } else {
+                            $conds[] = "o.payment_status = " . $pdo->quote(trim($statuses[0]));
+                        }
+                    }
+                }
+
+                // order_status
+                if (!empty($r['order_status']) && $r['order_status'] !== 'ALL') {
+                    $statuses = explode(',', $r['order_status']);
                     if (count($statuses) > 1) {
                         $quoted = array_map(function ($s) use ($pdo) {
                             return $pdo->quote(trim($s));
                         }, $statuses);
-                        $conds[] = "o.payment_status IN (" . implode(',', $quoted) . ")";
+                        $conds[] = "o.order_status IN (" . implode(',', $quoted) . ")";
                     } else {
-                        $conds[] = "o.payment_status = " . $pdo->quote(trim($statuses[0]));
+                        $conds[] = "o.order_status = " . $pdo->quote(trim($statuses[0]));
                     }
                 }
-            }
 
-            // order_status
-            if (!empty($r['order_status']) && $r['order_status'] !== 'ALL') {
-                $statuses = explode(',', $r['order_status']);
-                if (count($statuses) > 1) {
-                    $quoted = array_map(function ($s) use ($pdo) {
-                        return $pdo->quote(trim($s));
-                    }, $statuses);
-                    $conds[] = "o.order_status IN (" . implode(',', $quoted) . ")";
-                } else {
-                    $conds[] = "o.order_status = " . $pdo->quote(trim($statuses[0]));
+                if (!empty($conds)) {
+                    $ruleConditions[] = "(" . implode(' AND ', $conds) . ")";
                 }
             }
 
-            if (!empty($conds)) {
-                $ruleConditions[] = "(" . implode(' AND ', $conds) . ")";
+            if (!empty($ruleConditions)) {
+                $whereConditions[] = "(" . implode(' OR ', $ruleConditions) . " OR o.order_status IN ('BadDebt','PreApproved'))";
             }
+        } else {
+            // Fallback if no rules found (safe default)
+            $whereConditions[] = "(o.order_status IN ('Preparing', 'Picking', 'Shipping', 'PreApproved') OR o.order_status = 'BadDebt')";
         }
-
-        if (!empty($ruleConditions)) {
-            // Apply rules: (Rule1) OR (Rule2) ...
-            // Also explicitly include BadDebt orders as per request, regardless of rules
-            $whereConditions[] = "(" . implode(' OR ', $ruleConditions) . " OR o.order_status = 'BadDebt')";
-        }
-    } else {
-        // Fallback if no rules found (safe default)
-        $whereConditions[] = "(o.order_status IN ('Preparing', 'Picking', 'Shipping') OR o.order_status = 'BadDebt')";
     }
 
     // Status Filter
     if ($status === 'completed') {
-        // Show orders that HAVE a complete debt collection record
+        // Show orders that HAVE a complete debt collection record (any order_status)
         $whereConditions[] = "EXISTS (SELECT 1 FROM debt_collection dc_check WHERE dc_check.order_id = o.id AND dc_check.is_complete = 1)";
     } else {
         // Default 'active': Show orders that DO NOT HAVE a complete debt collection record

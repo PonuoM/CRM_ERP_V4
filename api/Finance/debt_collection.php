@@ -303,6 +303,53 @@ function handlePost($pdo)
         $upd->execute([$orderId]);
     }
 
+    // === Sync Back to Orders ===
+
+    // 1. คำนวณยอดรวมสะสมที่เก็บได้ทั้งหมดของ order นี้
+    $totalCollectedStmt = $pdo->prepare(
+        "SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection WHERE order_id = ?"
+    );
+    $totalCollectedStmt->execute([$orderId]);
+    $totalCollected = (float) $totalCollectedStmt->fetchColumn();
+
+    // 2. อัพเดท cod_amount + amount_paid (เฉพาะเมื่อเก็บเงินได้ + ไม่ใช่หนี้สูญ)
+    if ($totalCollected > 0 && empty($input['is_bad_debt'])) {
+        $updAmountStmt = $pdo->prepare("UPDATE orders SET cod_amount = ?, amount_paid = ? WHERE id = ?");
+        $updAmountStmt->execute([$totalCollected, $totalCollected, $orderId]);
+    }
+
+    // 3. จบเคส + มียอดเก็บได้ (จากทุก record รวม) + ไม่ใช่หนี้สูญ → PendingVerification
+    // Note: ดูจาก totalCollected (ยอดสะสมรวม) ไม่ใช่ resultStatus ของ record ปัจจุบัน
+    // เพราะ user อาจเก็บเงินใน record ก่อนหน้า แล้วค่อยมาจบเคสแยก record
+    error_log("[DebtSync] orderId=$orderId isComplete=$isComplete resultStatus=$resultStatus is_bad_debt=" . (!empty($input['is_bad_debt']) ? '1' : '0') . " totalCollected=$totalCollected");
+    if ($isComplete && $totalCollected > 0 && empty($input['is_bad_debt'])) {
+        $parentOrderId = preg_replace('/-\d+$/', '', $orderId);
+        $trackingStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ?"
+        );
+        $trackingStmt->execute([$parentOrderId]);
+        $hasTracking = (int) $trackingStmt->fetchColumn() > 0;
+        error_log("[DebtSync] parentOrderId=$parentOrderId hasTracking=" . ($hasTracking ? 'YES' : 'NO'));
+
+        if ($hasTracking) {
+            // มี tracking → PendingVerification + PreApproved
+            $pdo->prepare("
+                UPDATE orders SET payment_status = 'PendingVerification', order_status = 'PreApproved'
+                WHERE id = ? AND order_status NOT IN ('Cancelled','Returned','BadDebt')
+            ")->execute([$orderId]);
+            error_log("[DebtSync] SET PendingVerification + PreApproved for orderId=$orderId");
+        } else {
+            // ไม่มี tracking → PendingVerification เฉพาะ payment_status
+            $pdo->prepare("
+                UPDATE orders SET payment_status = 'PendingVerification'
+                WHERE id = ? AND order_status NOT IN ('Cancelled','Returned','BadDebt')
+            ")->execute([$orderId]);
+            error_log("[DebtSync] SET PendingVerification (no tracking) for orderId=$orderId");
+        }
+    } else {
+        error_log("[DebtSync] SKIPPED PendingVerification - condition not met");
+    }
+
     json_response(['ok' => true, 'data' => $record, 'id' => $newId], 201);
 }
 
@@ -347,6 +394,28 @@ function handlePut($pdo, $id)
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
 
+    // === Revert orders status when cancelling close case ===
+    if (isset($input['is_complete']) && (int)$input['is_complete'] === 0) {
+        $recStmt = $pdo->prepare("SELECT order_id FROM debt_collection WHERE id = ?");
+        $recStmt->execute([$id]);
+        $rec = $recStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($rec) {
+            $revertOrderId = $rec['order_id'];
+            // Revert payment_status → Unpaid (ถ้าเป็น PendingVerification อยู่)
+            $pdo->prepare("
+                UPDATE orders SET payment_status = 'Unpaid'
+                WHERE id = ? AND payment_status = 'PendingVerification'
+            ")->execute([$revertOrderId]);
+
+            // Revert order_status → Shipping (ถ้าเป็น PreApproved อยู่)
+            $pdo->prepare("
+                UPDATE orders SET order_status = 'Shipping'
+                WHERE id = ? AND order_status = 'PreApproved'
+            ")->execute([$revertOrderId]);
+        }
+    }
+
     json_response(['ok' => true, 'message' => 'Updated successfully']);
 }
 
@@ -354,7 +423,73 @@ function handleDelete($pdo, $id)
 {
     if (!$id)
         json_response(['ok' => false, 'error' => 'ID is required'], 400);
+
+    // 1. ดึง order_id + is_complete ก่อนลบ
+    $recStmt = $pdo->prepare("SELECT order_id, is_complete, result_status FROM debt_collection WHERE id = ?");
+    $recStmt->execute([$id]);
+    $rec = $recStmt->fetch(PDO::FETCH_ASSOC);
+
+    // 2. ลบ slip ที่เกี่ยวข้องก่อน (debt_collection_images → order_slips)
+    $slipStmt = $pdo->prepare("
+        SELECT dci.id as mapping_id, dci.order_slip_id, os.url as slip_url
+        FROM debt_collection_images dci
+        LEFT JOIN order_slips os ON dci.order_slip_id = os.id
+        WHERE dci.debt_collection_id = ?
+    ");
+    $slipStmt->execute([$id]);
+    $linkedSlips = $slipStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!empty($linkedSlips)) {
+        foreach ($linkedSlips as $slip) {
+            // ลบไฟล์จริง (ถ้ามี)
+            if (!empty($slip['slip_url'])) {
+                $filePath = '../../' . $slip['slip_url'];
+                if (file_exists($filePath)) {
+                    @unlink($filePath);
+                }
+            }
+            // ลบจาก order_slips
+            if (!empty($slip['order_slip_id'])) {
+                $pdo->prepare("DELETE FROM order_slips WHERE id = ?")->execute([$slip['order_slip_id']]);
+            }
+        }
+        // ลบ mapping ทั้งหมด
+        $pdo->prepare("DELETE FROM debt_collection_images WHERE debt_collection_id = ?")->execute([$id]);
+    }
+
+    // 3. ลบ debt_collection record
     $stmt = $pdo->prepare("DELETE FROM debt_collection WHERE id = ?");
     $stmt->execute([$id]);
+
+    // 3. Sync ยอดกลับ orders
+    if ($rec) {
+        $orderId = $rec['order_id'];
+        $wasComplete = (int) $rec['is_complete'];
+
+        // คำนวณยอดสะสมใหม่หลังลบ
+        $totalStmt = $pdo->prepare(
+            "SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection WHERE order_id = ?"
+        );
+        $totalStmt->execute([$orderId]);
+        $newTotal = (float) $totalStmt->fetchColumn();
+
+        // อัพเดท cod_amount + amount_paid
+        $pdo->prepare("UPDATE orders SET cod_amount = ?, amount_paid = ? WHERE id = ?")
+            ->execute([$newTotal, $newTotal, $orderId]);
+
+        // ถ้าลบ record ที่เป็นจบเคส → revert สถานะ
+        if ($wasComplete === 1) {
+            $pdo->prepare("
+                UPDATE orders SET payment_status = 'Unpaid'
+                WHERE id = ? AND payment_status = 'PendingVerification'
+            ")->execute([$orderId]);
+
+            $pdo->prepare("
+                UPDATE orders SET order_status = 'Shipping'
+                WHERE id = ? AND order_status = 'PreApproved'
+            ")->execute([$orderId]);
+        }
+    }
+
     json_response(['ok' => true, 'message' => 'Deleted']);
 }

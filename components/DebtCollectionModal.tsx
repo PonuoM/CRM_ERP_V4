@@ -55,10 +55,10 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
     // Slip Detail Modal State
     const [selectedSlip, setSelectedSlip] = useState<SlipDetail | null>(null);
 
-    // Calculate remaining debt
+    // Calculate remaining debt dynamically from history
     const totalAmount = order.totalAmount || 0;
-    const paidAmount = order.amountPaid || order.codAmount || 0;
-    const remainingDebt = Math.max(0, totalAmount - paidAmount);
+    const totalCollectedFromHistory = history.reduce((sum, rec) => sum + (parseFloat(String(rec.amount_collected)) || 0), 0);
+    const remainingDebt = Math.max(0, totalAmount - totalCollectedFromHistory);
 
     useEffect(() => {
         if (isOpen) {
@@ -204,21 +204,41 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
             return;
         }
 
-        if (resultStatus === 2 && amount >= remainingDebt) {
-            setError('ยอดเก็บได้ต้องน้อยกว่ายอดหนี้คงเหลือ เมื่อเลือก "เก็บได้บางส่วน"');
+        if (resultStatus === 2 && amount > remainingDebt) {
+            setError(`ยอดเก็บได้ต้องไม่เกินยอดหนี้คงเหลือ (${remainingDebt.toLocaleString()} บาท)`);
             return;
         }
 
         setLoading(true);
+
+        // Auto-switch: ถ้าเลือก "บางส่วน" แต่ยอดพอดีกับหนี้คงเหลือ → เปลี่ยนเป็น "ทั้งหมด"
+        let finalResultStatus = resultStatus;
+        if (resultStatus === 2 && amount === remainingDebt && remainingDebt > 0) {
+            finalResultStatus = 3;
+        }
+
+        // Auto-detect: ถ้ายอดเก็บรวมสะสม >= ยอด order แล้ว + ยังไม่ได้ติ๊กจบเคส → ถาม confirm
+        let finalCloseCase = closeCase;
+        if (!closeCase && !isBadDebt) {
+            const projectedTotal = totalCollectedFromHistory + amount;
+            if (projectedTotal >= totalAmount && totalAmount > 0) {
+                const shouldClose = window.confirm(
+                    `ยอดเก็บรวมสะสม ฿${projectedTotal.toLocaleString()} ครบตามยอดหนี้ ฿${totalAmount.toLocaleString()} แล้ว\n\nต้องการจบเคสนี้เลยหรือไม่?`
+                );
+                if (shouldClose) {
+                    finalCloseCase = true;
+                }
+            }
+        }
 
         try {
             const response = await createDebtCollection({
                 order_id: order.id,
                 user_id: currentUser.id,
                 amount_collected: amount,
-                result_status: resultStatus,
-                is_complete: closeCase ? 1 : 0,
-                is_bad_debt: closeCase && isBadDebt,
+                result_status: finalResultStatus,
+                is_complete: finalCloseCase ? 1 : 0,
+                is_bad_debt: finalCloseCase && isBadDebt,
                 note: note.trim() || undefined,
                 evidence_images: uploadedSlips.map(s => s.file),
                 slip_amounts: uploadedSlips.map(s => parseFloat(s.amount)),
