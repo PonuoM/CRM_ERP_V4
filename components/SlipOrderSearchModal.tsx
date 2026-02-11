@@ -16,6 +16,7 @@ interface SlipOrderSearchModalProps {
         date?: string;
         amount?: number;
         companyId: number;
+        channel?: string;
     };
 }
 
@@ -205,6 +206,34 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
 
                 {/* Body */}
                 <div className="p-6 overflow-y-auto flex-1">
+                    {/* Statement Context Banner */}
+                    {initialParams?.amount && (
+                        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">📄 กำลังค้นหา Match สำหรับ Statement</div>
+                            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                                <div>
+                                    <span className="text-gray-500">ยอด: </span>
+                                    <span className="font-bold text-gray-900">
+                                        {new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(initialParams.amount)}
+                                    </span>
+                                </div>
+                                {initialParams.date && (
+                                    <div>
+                                        <span className="text-gray-500">วันเวลา: </span>
+                                        <span className="font-medium text-gray-800">
+                                            {new Date(initialParams.date).toLocaleString('th-TH')}
+                                        </span>
+                                    </div>
+                                )}
+                                {initialParams.channel && (
+                                    <div>
+                                        <span className="text-gray-500">ช่องทาง: </span>
+                                        <span className="font-medium text-gray-800">{initialParams.channel}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                     {/* Search Form */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                         {/* Search Term (Name/Phone/Order ID) */}
@@ -355,20 +384,33 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                                         <tr key={slip.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center space-x-3">
-                                                    {slip.url ? (
-                                                        <a href={slip.url} target="_blank" rel="noopener noreferrer" className="block w-12 h-12 flex-shrink-0">
-                                                            <img
-                                                                src={slip.url}
-                                                                alt="Slip"
-                                                                className="w-full h-full object-cover rounded border"
-                                                                onError={(e) => {
-                                                                    (e.target as HTMLImageElement).src = 'https://placehold.co/100?text=No+Img';
-                                                                }}
-                                                            />
-                                                        </a>
-                                                    ) : (
-                                                        <div className="w-12 h-12 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-400">No Img</div>
-                                                    )}
+                                                    {(() => {
+                                                        // Resolve the slip image URL properly
+                                                        let imgUrl = '';
+                                                        if (slip.url) {
+                                                            if (slip.url.startsWith('http')) {
+                                                                imgUrl = slip.url;
+                                                            } else {
+                                                                const apiBase = resolveApiBasePath().replace(/\/api$/, '');
+                                                                const cleanPath = slip.url.startsWith('/') ? slip.url.slice(1) : slip.url;
+                                                                imgUrl = `${apiBase}/${cleanPath}`;
+                                                            }
+                                                        }
+                                                        return imgUrl ? (
+                                                            <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="block w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden border-2 border-blue-200 hover:border-blue-400 transition-colors shadow-sm">
+                                                                <img
+                                                                    src={imgUrl}
+                                                                    alt="Slip"
+                                                                    className="w-full h-full object-cover"
+                                                                    onError={(e) => {
+                                                                        (e.target as HTMLImageElement).src = 'https://placehold.co/100?text=No+Img';
+                                                                    }}
+                                                                />
+                                                            </a>
+                                                        ) : (
+                                                            <div className="w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400 border">No Img</div>
+                                                        );
+                                                    })()}
                                                     <div>
                                                         <div className="font-medium text-gray-800">#{slip.id}</div>
                                                         <div className="text-xs text-gray-500">

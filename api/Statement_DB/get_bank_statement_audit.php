@@ -302,10 +302,10 @@ try {
               if ($slipBankId && $slipBankId !== $bankAccountId)
                 continue;
 
-              // Time Match (within 60s)
+              // Time Match (within 15 min)
               if ($slipDate) {
                 $timeDiff = abs(strtotime($stmtDate) - strtotime($slipDate));
-                if ($timeDiff <= 60) {
+                if ($timeDiff <= 900) {
                   $matchFound = true;
                   break;
                 }
@@ -331,7 +331,7 @@ try {
               $ordDate = $ord['slip_transfer_date'] ?? $ord['transfer_date'];
               if ($ordDate) {
                 $timeDiff = abs(strtotime($stmtDate) - strtotime($ordDate));
-                if ($timeDiff <= 60) {
+                if ($timeDiff <= 900) {
                   $matchFound = true;
                 }
               }

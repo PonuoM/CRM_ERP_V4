@@ -4,6 +4,7 @@ import { apiFetch } from '../../services/api';
 import { User, Customer, Activity, LineItem, Order } from '../../types';
 import { Search, Loader2, ExternalLink, Filter, CheckSquare, Download } from 'lucide-react';
 import OrderDetailModal from '../../components/OrderDetailModal';
+import type { StatementContext } from '../../components/OrderDetailModal';
 import SlipOrderSearchModal from '../../components/SlipOrderSearchModal';
 
 interface AuditLog {
@@ -62,6 +63,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     // For viewing order detail
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+    const [currentStatementContext, setCurrentStatementContext] = useState<StatementContext | null>(null);
 
     // New state for search modal
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -135,8 +137,17 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         }
     };
 
-    const openOrderModal = (orderId: string) => {
+    const openOrderModal = (orderId: string, log?: AuditLog) => {
         setSelectedOrderId(orderId);
+        if (log) {
+            setCurrentStatementContext({
+                statementAmount: log.statement_amount,
+                transferAt: log.transfer_at,
+                channel: log.channel || undefined,
+            });
+        } else {
+            setCurrentStatementContext(null);
+        }
         setIsOrderModalOpen(true);
     };
 
@@ -582,7 +593,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                             {log.cod_document_number}
                                                         </span>
                                                     ) : log.order_id ? (
-                                                        <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!)}>
+                                                        <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!, log)}>
                                                             {log.order_display || log.order_id}
                                                         </span>
                                                     ) : (
@@ -592,7 +603,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                     <span className="text-gray-400 italic">Unmatched</span>
                                                                     <span
                                                                         className="text-xs text-green-600 font-medium cursor-pointer hover:underline mt-0.5"
-                                                                        onClick={() => openOrderModal((log as any).suggested_order_id)}
+                                                                        onClick={() => openOrderModal((log as any).suggested_order_id, log)}
                                                                         title={(log as any).suggested_order_info}
                                                                     >
                                                                         แนะนำ: {(log as any).suggested_order_id}
@@ -720,8 +731,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                         onClose={() => {
                             setIsOrderModalOpen(false);
                             setSelectedOrderId(null);
+                            setCurrentStatementContext(null);
                         }}
                         orderId={selectedOrderId}
+                        statementContext={currentStatementContext}
                     />
                 )
             }
@@ -738,7 +751,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     initialParams={{
                         date: selectedLogForSearch.transfer_at,
                         amount: selectedLogForSearch.statement_amount,
-                        companyId: currentUser.companyId || (currentUser as any).company_id
+                        companyId: currentUser.companyId || (currentUser as any).company_id,
+                        channel: selectedLogForSearch.channel
                     }}
                 />
             )}

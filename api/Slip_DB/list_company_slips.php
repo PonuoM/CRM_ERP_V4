@@ -82,19 +82,19 @@ if (in_array($status, $allowedStatuses, true)) {
 }
 
 if ($date_range === "today") {
-  $conditions[] = "DATE(os.created_at) = CURDATE()";
+  $conditions[] = "DATE(COALESCE(os.transfer_date, os.created_at)) = CURDATE()";
 } elseif ($date_range === "week") {
-  $conditions[] = "os.created_at >= (NOW() - INTERVAL 7 DAY)";
+  $conditions[] = "COALESCE(os.transfer_date, os.created_at) >= (NOW() - INTERVAL 7 DAY)";
 } elseif ($date_range === "month") {
-  $conditions[] = "os.created_at >= (NOW() - INTERVAL 30 DAY)";
+  $conditions[] = "COALESCE(os.transfer_date, os.created_at) >= (NOW() - INTERVAL 30 DAY)";
 }
 
 if ($date_from !== "") {
-  $conditions[] = "DATE(os.created_at) >= ?";
+  $conditions[] = "DATE(COALESCE(os.transfer_date, os.created_at)) >= ?";
   $params[] = $date_from;
 }
 if ($date_to !== "") {
-  $conditions[] = "DATE(os.created_at) <= ?";
+  $conditions[] = "DATE(COALESCE(os.transfer_date, os.created_at)) <= ?";
   $params[] = $date_to;
 }
 
@@ -109,12 +109,12 @@ if ($bank_account_id !== "all" && $bank_account_id !== "") {
 }
 
 if ($min_amount !== null) {
-  $conditions[] = "o.total_amount >= ?";
+  $conditions[] = "COALESCE(os.amount, o.total_amount) >= ?";
   $params[] = $min_amount;
 }
 
 if ($max_amount !== null) {
-  $conditions[] = "o.total_amount <= ?";
+  $conditions[] = "COALESCE(os.amount, o.total_amount) <= ?";
   $params[] = $max_amount;
 }
 

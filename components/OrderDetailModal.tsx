@@ -3,13 +3,20 @@ import { getOrder } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
 import { X, User, MapPin, Box, Image as ImageIcon } from 'lucide-react';
 
+export interface StatementContext {
+    statementAmount: number;
+    transferAt: string;
+    channel?: string;
+}
+
 interface OrderDetailModalProps {
     isOpen: boolean;
     onClose: () => void;
     orderId: string | null;
+    statementContext?: StatementContext | null;
 }
 
-const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, orderId }) => {
+const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, orderId, statementContext }) => {
     const [order, setOrder] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [viewingImage, setViewingImage] = useState<string | null>(null);
@@ -34,7 +41,72 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
         }
     };
 
+    // Dynamically compute match details after order loads
+    // Key: compare against the BEST MATCHING SLIP, not order.total_amount
+    // Because one order can have many slips (e.g., 22 partial payments)
+    const computeMatchInfo = () => {
+        if (!statementContext || !order) return null;
+
+        const formatTHB = (v: number) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(v);
+        const stmtAmount = statementContext.statementAmount;
+        const stmtTime = new Date(statementContext.transferAt).getTime();
+
+        // --- Find the best matching slip ---
+        let bestSlip: any = null;
+        let bestAmountDiff = Infinity;
+        let bestTimeDiff = Infinity;
+
+        if (order.slips?.length > 0) {
+            for (const slip of order.slips) {
+                const slipAmount = parseFloat(slip.amount) || 0;
+                const aDiff = Math.abs(slipAmount - stmtAmount);
+
+                // Calculate time diff for this slip
+                let tDiff = Infinity;
+                if (slip.transfer_date) {
+                    const slipTime = new Date(slip.transfer_date).getTime();
+                    if (!isNaN(slipTime) && !isNaN(stmtTime)) {
+                        tDiff = Math.abs(stmtTime - slipTime);
+                    }
+                }
+
+                // Prefer: 1) closest amount, 2) closest time as tiebreaker
+                if (aDiff < bestAmountDiff || (aDiff === bestAmountDiff && tDiff < bestTimeDiff)) {
+                    bestSlip = slip;
+                    bestAmountDiff = aDiff;
+                    bestTimeDiff = tDiff;
+                }
+            }
+        }
+
+        // Use best matching slip's data, fallback to order-level data
+        const compareAmount = bestSlip ? (parseFloat(bestSlip.amount) || 0) : (parseFloat(order.total_amount) || 0);
+        const amountDiff = Math.abs(stmtAmount - compareAmount);
+        const amountMatch = amountDiff < 0.01;
+        const compareLabel = bestSlip ? 'สลิป' : 'Order';
+
+        // Time: use best slip's transfer_date, fallback to order transfer_date
+        let orderTransferDate: string | null = bestSlip?.transfer_date || null;
+        if (!orderTransferDate && order.transfer_date) {
+            orderTransferDate = order.transfer_date;
+        }
+
+        let timeDiffMinutes: number | null = null;
+        if (orderTransferDate) {
+            const orderTime = new Date(orderTransferDate).getTime();
+            if (!isNaN(stmtTime) && !isNaN(orderTime)) {
+                timeDiffMinutes = Math.round(Math.abs(stmtTime - orderTime) / 60000);
+            }
+        }
+        const timeMatch = timeDiffMinutes !== null && timeDiffMinutes < 1;
+        const isFullMatch = amountMatch && timeMatch;
+
+        return { amountMatch, amountDiff, orderAmount: compareAmount, stmtAmount, timeDiffMinutes, timeMatch, isFullMatch, orderTransferDate, formatTHB, compareLabel, slipCount: order.slips?.length || 0, bestSlipId: bestSlip?.id || null, bestSlipUrl: bestSlip?.url || null };
+    };
+
     if (!isOpen) return null;
+
+    const matchInfo = computeMatchInfo();
 
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -49,6 +121,123 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6">
+                    {/* Statement Context Banner — dynamically computed */}
+                    {statementContext && matchInfo && (
+                        <div className={`mb-4 rounded-lg border p-3 ${matchInfo.isFullMatch
+                            ? 'bg-green-50 border-green-200'
+                            : matchInfo.amountMatch
+                                ? 'bg-yellow-50 border-yellow-200'
+                                : 'bg-orange-50 border-orange-200'
+                            }`}>
+                            {/* Match badges */}
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                                {matchInfo.isFullMatch ? (
+                                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-800">
+                                        ✅ ตรงกัน 100%
+                                    </span>
+                                ) : (
+                                    <>
+                                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${matchInfo.amountMatch
+                                            ? 'bg-green-100 text-green-800'
+                                            : 'bg-orange-100 text-orange-800'
+                                            }`}>
+                                            {matchInfo.amountMatch
+                                                ? '💰 ยอดตรงกัน'
+                                                : `💰 ยอดต่าง ${matchInfo.formatTHB(matchInfo.amountDiff)}`}
+                                        </span>
+                                        {matchInfo.timeDiffMinutes !== null ? (
+                                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${matchInfo.timeMatch
+                                                ? 'bg-green-100 text-green-800'
+                                                : 'bg-yellow-100 text-yellow-800'
+                                                }`}>
+                                                {matchInfo.timeMatch
+                                                    ? '🕐 เวลาตรงกัน'
+                                                    : `🕐 เวลาต่าง ${matchInfo.timeDiffMinutes} นาที`}
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                                🕐 ไม่มีข้อมูลเวลาสลิป
+                                            </span>
+                                        )}
+                                        {matchInfo.slipCount > 1 && (
+                                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                                                📎 {matchInfo.slipCount} สลิป
+                                            </span>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                            {/* Two-column split: Statement vs Slip */}
+                            <div className="grid grid-cols-2 gap-0 text-sm">
+                                {/* Left: Statement */}
+                                <div className="pr-3 border-r border-gray-300 space-y-1">
+                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">📄 Statement</div>
+                                    <div>
+                                        <span className="text-gray-500">ยอด: </span>
+                                        <span className="font-bold text-gray-900">
+                                            {matchInfo.formatTHB(matchInfo.stmtAmount)}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500">เวลา: </span>
+                                        <span className="font-medium text-gray-800">
+                                            {new Date(statementContext.transferAt).toLocaleString('th-TH')}
+                                        </span>
+                                    </div>
+                                    {statementContext.channel && (
+                                        <div>
+                                            <span className="text-gray-500">ช่องทาง: </span>
+                                            <span className="font-medium text-gray-800">{statementContext.channel}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Right: Matched Slip */}
+                                <div className="pl-3 space-y-1">
+                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">🧾 {matchInfo.compareLabel}ที่ตรงกัน</div>
+                                    <div>
+                                        <span className="text-gray-500">ยอด: </span>
+                                        <span className="font-bold text-gray-900">
+                                            {matchInfo.formatTHB(matchInfo.orderAmount)}
+                                        </span>
+                                    </div>
+                                    {matchInfo.orderTransferDate && (
+                                        <div>
+                                            <span className="text-gray-500">เวลา: </span>
+                                            <span className="font-medium text-gray-800">
+                                                {new Date(matchInfo.orderTransferDate).toLocaleString('th-TH')}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {/* Show banner with just statement info while loading */}
+                    {statementContext && !matchInfo && !loading && (
+                        <div className="mb-4 rounded-lg border p-3 bg-blue-50 border-blue-200">
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                                <div>
+                                    <span className="text-gray-500">ยอด Statement: </span>
+                                    <span className="font-semibold text-gray-900">
+                                        {new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(statementContext.statementAmount)}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500">เวลา Statement: </span>
+                                    <span className="font-medium text-gray-800">
+                                        {new Date(statementContext.transferAt).toLocaleString('th-TH')}
+                                    </span>
+                                </div>
+                                {statementContext.channel && (
+                                    <div>
+                                        <span className="text-gray-500">ช่องทาง: </span>
+                                        <span className="font-medium text-gray-800">{statementContext.channel}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {loading ? (
                         <div className="flex justify-center py-10">
                             <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent"></div>
@@ -157,38 +346,72 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                 const getFullUrl = (path: string) => {
                                     if (!path) return '';
                                     if (path.startsWith('http')) return path;
-                                    // Remove leading slash if present to avoid double slashes
                                     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
                                     return `${apiBase}/${cleanPath}`;
                                 };
 
-                                const images = [
-                                    ...(order.slips?.map((s: any) => getFullUrl(s.url)) || []),
-                                    getFullUrl(order.slipUrl)
-                                ].filter(Boolean);
+                                // Build slip entries with metadata for highlighting
+                                const slipEntries = (order.slips || []).map((s: any) => ({
+                                    url: getFullUrl(s.url),
+                                    id: s.id,
+                                    amount: parseFloat(s.amount) || 0,
+                                    isMatch: matchInfo?.bestSlipId && s.id === matchInfo.bestSlipId,
+                                }));
+                                // Add legacy slipUrl if present
+                                if (order.slipUrl) {
+                                    slipEntries.push({ url: getFullUrl(order.slipUrl), id: null, amount: 0, isMatch: false });
+                                }
+                                const validEntries = slipEntries.filter((e: any) => e.url);
 
-                                if (images.length === 0) return null;
+                                if (validEntries.length === 0) return null;
+
+                                // If there's a matched slip, sort it to the front
+                                const matchedIdx = validEntries.findIndex((e: any) => e.isMatch);
+                                const sortedEntries = matchedIdx > 0
+                                    ? [validEntries[matchedIdx], ...validEntries.filter((_: any, i: number) => i !== matchedIdx)]
+                                    : validEntries;
 
                                 return (
                                     <div className="border-t pt-4">
                                         <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                                             <ImageIcon size={16} /> หลักฐานการโอนเงิน
+                                            {validEntries.length > 1 && (
+                                                <span className="text-xs font-normal text-gray-400">({validEntries.length} รายการ)</span>
+                                            )}
                                         </h4>
                                         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                                            {images.map((img: string, idx: number) => (
+                                            {sortedEntries.map((entry: any, idx: number) => (
                                                 <div
-                                                    key={idx}
-                                                    className="aspect-square rounded-lg overflow-hidden border border-gray-200 cursor-zoom-in relative group"
-                                                    onClick={() => setViewingImage(img)}
+                                                    key={entry.id || idx}
+                                                    className={`aspect-square rounded-lg overflow-hidden cursor-zoom-in relative group ${entry.isMatch
+                                                            ? 'ring-3 ring-blue-500 ring-offset-1 border-2 border-blue-400'
+                                                            : 'border border-gray-200'
+                                                        }`}
+                                                    onClick={() => setViewingImage(entry.url)}
                                                 >
                                                     <img
-                                                        src={img}
+                                                        src={entry.url}
                                                         alt="Slip"
                                                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                                                         onError={(e) => {
                                                             (e.target as HTMLImageElement).src = 'https://placehold.co/400?text=No+Image';
                                                         }}
                                                     />
+                                                    {/* Matched slip badge */}
+                                                    {entry.isMatch && (
+                                                        <div className="absolute top-0 left-0 right-0 bg-blue-600/90 text-white text-[10px] text-center font-semibold py-0.5">
+                                                            ✓ สลิปที่ตรงกัน
+                                                        </div>
+                                                    )}
+                                                    {/* Amount label */}
+                                                    {entry.amount > 0 && (
+                                                        <div className={`absolute bottom-0 left-0 right-0 text-[10px] text-center font-semibold py-0.5 ${entry.isMatch
+                                                                ? 'bg-blue-600/80 text-white'
+                                                                : 'bg-black/50 text-white'
+                                                            }`}>
+                                                            ฿{entry.amount.toLocaleString()}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
