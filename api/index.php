@@ -7822,12 +7822,18 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 $docId = (int) $pdo->lastInsertId();
 
                 $itemStmt = $pdo->prepare('INSERT INTO cod_records (document_id, tracking_number, order_id, cod_amount, order_amount, received_amount, difference, status, company_id, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)');
+                $deleteExistingStmt = $pdo->prepare('DELETE FROM cod_records WHERE tracking_number = ? AND company_id = ?');
+                // Prepared statements for updating order_boxes.collected_amount
+                $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
+                $updateBoxCollectedStmt = $pdo->prepare('UPDATE order_boxes SET collected_amount = ? WHERE order_id = ? AND box_number = ?');
 
                 foreach ($items as $it) {
                     $trackingNumber = trim((string) ($it['tracking_number'] ?? ''));
                     if ($trackingNumber === '') {
                         continue;
                     }
+                    // Upsert: delete existing record with same tracking + company before inserting
+                    $deleteExistingStmt->execute([$trackingNumber, $companyId]);
                     $orderId = isset($it['order_id']) ? trim((string) $it['order_id']) : null;
                     $codAmount = (float) ($it['cod_amount'] ?? 0);
                     $orderAmount = (float) ($it['order_amount'] ?? ($it['received_amount'] ?? 0));
@@ -7852,6 +7858,15 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                         $companyId,
                         $createdBy ?: null,
                     ]);
+
+                    // Update order_boxes.collected_amount for the matching box
+                    $lookupTrackingStmt->execute([$trackingNumber]);
+                    $trackingRow = $lookupTrackingStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($trackingRow && $trackingRow['box_number'] !== null) {
+                        $boxOrderId = $trackingRow['parent_order_id'] ?? $trackingRow['order_id'];
+                        $boxNumber = (int) $trackingRow['box_number'];
+                        $updateBoxCollectedStmt->execute([$codAmount, $boxOrderId, $boxNumber]);
+                    }
                 }
 
                 $pdo->commit();
@@ -7894,11 +7909,18 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     (document_id, tracking_number, order_id, cod_amount, order_amount, 
                      received_amount, difference, status, company_id, created_by) 
                     VALUES (?,?,?,?,?,?,?,?,?,?)');
+                $deleteExistingStmt = $pdo->prepare('DELETE FROM cod_records WHERE tracking_number = ? AND company_id = ?');
+                // Prepared statements for updating order_boxes.collected_amount
+                $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
+                $updateBoxCollectedStmt = $pdo->prepare('UPDATE order_boxes SET collected_amount = ? WHERE order_id = ? AND box_number = ?');
 
                 foreach ($items as $it) {
                     $trackingNumber = trim((string) ($it['tracking_number'] ?? ''));
                     if ($trackingNumber === '')
                         continue;
+
+                    // Upsert: delete existing record with same tracking + company before inserting
+                    $deleteExistingStmt->execute([$trackingNumber, $doc['company_id']]);
 
                     $codAmount = (float) ($it['cod_amount'] ?? 0);
                     $orderAmount = (float) ($it['order_amount'] ?? 0);
@@ -7927,6 +7949,17 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                         $doc['company_id'],
                         $createdBy
                     ]);
+
+                    // Update order_boxes.collected_amount for the matching box
+                    if (!$forceImport) {
+                        $lookupTrackingStmt->execute([$trackingNumber]);
+                        $trackingRow = $lookupTrackingStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($trackingRow && $trackingRow['box_number'] !== null) {
+                            $boxOrderId = $trackingRow['parent_order_id'] ?? $trackingRow['order_id'];
+                            $boxNumber = (int) $trackingRow['box_number'];
+                            $updateBoxCollectedStmt->execute([$codAmount, $boxOrderId, $boxNumber]);
+                        }
+                    }
 
                     $addedInputTotal += $codAmount;
                     $addedOrderTotal += $orderAmount;
@@ -8042,6 +8075,11 @@ function handle_cod_records(PDO $pdo, ?string $id): void
                 if ($trackingNumber) {
                     $sql .= ' AND tracking_number LIKE ?';
                     $params[] = '%' . $trackingNumber . '%';
+                }
+                $orderId = $_GET['orderId'] ?? null;
+                if ($orderId) {
+                    $sql .= ' AND order_id LIKE ?';
+                    $params[] = $orderId . '%';
                 }
                 if ($status) {
                     $sql .= ' AND status = ?';

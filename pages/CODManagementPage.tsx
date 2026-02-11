@@ -372,16 +372,12 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
           const amountMatch = isAmountValid && Math.abs(difference) < 0.01; // float epsilon
 
           // Check if already paid
-          // The API returns amountDetails? We added amountPaid.
           const isPaid = (apiResult.amountPaid || 0) > 0;
           let status: ValidationStatus = amountMatch ? 'matched' : 'unmatched';
           let message = amountMatch ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
 
           if (isPaid) {
-            // Warn if paid?
             message += ` (จ่ายแล้ว: ฿${apiResult.amountPaid})`;
-            // Maybe change status or keep matched but warn?
-            // Usually we don't block validation but handleImport checks it.
           }
 
           if (!isAmountValid) {
@@ -573,53 +569,11 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       return;
     }
 
-    const normalizedTrackingList = Array.from(uniqueRowsByTracking.keys());
-    const existingTrackingNumbers = new Set<string>();
-
-    try {
-      await Promise.all(
-        normalizedTrackingList.map(async (normalizedTracking) => {
-          const qs = new URLSearchParams({
-            companyId: String(user.companyId),
-            trackingNumber: normalizedTracking,
-          });
-          const existingRecords = await apiFetch(`cod_records?${qs.toString()}`);
-          if (
-            Array.isArray(existingRecords) &&
-            existingRecords.some(
-              (record: any) =>
-                normalizeTrackingNumber(record?.tracking_number || "") === normalizedTracking,
-            )
-          ) {
-            existingTrackingNumbers.add(normalizedTracking);
-          }
-        }),
-      );
-    } catch (error) {
-      console.error("COD duplicate lookup failed", error);
-      alert("เกิดข้อผิดพลาดในการตรวจสอบ COD ซ้ำ กรุณาลองใหม่");
-      return;
-    }
-
-    const rowsToImport = normalizedTrackingList
-      .filter((normalized) => !existingTrackingNumbers.has(normalized))
-      .map((normalized) => uniqueRowsByTracking.get(normalized)!)
-      .filter(Boolean);
-
-    // For non-forceImport rows, skip if already paid
-    const finalRowsToImport = rowsToImport.filter(row => {
-      if (row.forceImport) return true; // Always include force import
-      if (!row.orderId) return true;
-      // Use amountPaid from validation result
-      if ((row.amountPaid || 0) > 0) {
-        console.warn(`Skipping order ${row.orderId} because it already has amountPaid: ${row.amountPaid}`);
-        return false;
-      }
-      return true;
-    });
+    // All unique rows go to import (backend will upsert if tracking already exists)
+    const finalRowsToImport = Array.from(uniqueRowsByTracking.values());
 
     if (finalRowsToImport.length === 0) {
-      alert("ไม่มีรายการที่จะนำเข้า (tracking อาจซ้ำ หรือออเดอร์มีการจ่ายเงินแล้ว)");
+      alert("ไม่มีรายการที่จะนำเข้า");
       return;
     }
 
@@ -629,12 +583,6 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     const skipMessages: string[] = [];
     if (duplicateRowsInUpload.length > 0) {
       skipMessages.push(`${duplicateRowsInUpload.length} รายการซ้ำในไฟล์อัปโหลด`);
-    }
-    if (existingTrackingNumbers.size > 0) {
-      skipMessages.push(`${existingTrackingNumbers.size} รายการมีอยู่แล้ว`);
-    }
-    if (rowsToImport.length > finalRowsToImport.length) {
-      skipMessages.push(`${rowsToImport.length - finalRowsToImport.length} รายการถูกข้าม (จ่ายแล้ว)`);
     }
 
     const targetDocName = importMode === 'new'
@@ -708,21 +656,12 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         });
       }
 
-      // Update orders - only for non-forceImport rows
-      const totalsByOrder = new Map<
-        string,
-        { totalPaid: number; totalExpected: number }
-      >();
-
-      payloadRows.forEach(({ row, codAmount, orderAmount }) => {
-        if (row.forceImport) return; // Skip order update for forced imports
+      // Update orders - query SUM of cod_amount from cod_records for each order
+      const uniqueOrderIds = new Set<string>();
+      payloadRows.forEach(({ row }) => {
+        if (row.forceImport) return;
         const baseId = getBaseOrderId(row.orderId);
-        if (!baseId) return;
-        const agg =
-          totalsByOrder.get(baseId) ?? { totalPaid: 0, totalExpected: 0 };
-        agg.totalPaid += codAmount;
-        agg.totalExpected += orderAmount;
-        totalsByOrder.set(baseId, agg);
+        if (baseId) uniqueOrderIds.add(baseId);
       });
 
       const orderUpdates: Record<
@@ -730,12 +669,20 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         { amountPaid: number; paymentStatus: PaymentStatus }
       > = {};
 
-      if (totalsByOrder.size > 0) {
+      if (uniqueOrderIds.size > 0) {
         await Promise.all(
-          Array.from(totalsByOrder.entries()).map(([orderId, totals]) => {
-            const roundedPaid = Math.round(totals.totalPaid * 100) / 100;
-            const roundedExpected =
-              Math.round((totals.totalExpected || 0) * 100) / 100;
+          Array.from(uniqueOrderIds).map(async (orderId) => {
+            // Query all cod_records for this order and SUM cod_amount
+            const qs = new URLSearchParams({
+              companyId: String(user.companyId),
+              orderId: orderId,
+            });
+            const records = await apiFetch(`cod_records?${qs.toString()}`);
+            const totalPaid = Array.isArray(records)
+              ? records.reduce((sum: number, r: any) => sum + (parseFloat(r.cod_amount) || 0), 0)
+              : 0;
+
+            const roundedPaid = Math.round(totalPaid * 100) / 100;
             const nextStatus =
               roundedPaid > 0
                 ? PaymentStatus.PreApproved
@@ -762,11 +709,9 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         }
       }
 
-      const summaryLines = Array.from(totalsByOrder.entries()).map(
-        ([orderId, totals]) =>
-          `${orderId}: จ่าย ${formatCurrency(totals.totalPaid)} / ${formatCurrency(
-            totals.totalExpected,
-          )}`,
+      const summaryLines = Object.entries(orderUpdates).map(
+        ([orderId, update]) =>
+          `${orderId}: จ่าย ${formatCurrency(update.amountPaid)}`,
       );
       const forcedSummary = forcedCount > 0 ? `\n⚠️ ${forcedCount} รายการติ๊กข้าม (ไม่อัพเดท Order)` : '';
       const successMessage = summaryLines.length
