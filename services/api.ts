@@ -2181,4 +2181,11 @@ export async function getTelesalePerformance(params: {
   return res.json();
 }
 
-
+export async function exportDebtCollection(params: { startDate: string; endDate: string; type?: string; status?: string }): Promise<{ ok: boolean; records?: any[]; total?: number; error?: string }> {
+  const queryParams = new URLSearchParams();
+  queryParams.append('startDate', params.startDate);
+  queryParams.append('endDate', params.endDate);
+  if (params.type) queryParams.append('type', params.type);
+  if (params.status) queryParams.append('status', params.status);
+  return apiFetch(`Finance/export_debt_collection.php?${queryParams.toString()}`);
+}

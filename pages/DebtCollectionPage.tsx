@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { User, Order, Customer, ModalType } from '../types';
 import DebtCollectionModal from '../components/DebtCollectionModal';
 import OrderDetailModal from '../components/OrderDetailModal';
-import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle, XCircle, AlertOctagon } from 'lucide-react';
-import { getDebtCollectionOrders, getDebtCollectionSummary, closeDebtCase, DebtCollectionSummary, getDebtCollectionHistory, updateDebtCollection } from '../services/api';
+import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle, XCircle, AlertOctagon, Download } from 'lucide-react';
+import { getDebtCollectionOrders, getDebtCollectionSummary, closeDebtCase, DebtCollectionSummary, getDebtCollectionHistory, updateDebtCollection, exportDebtCollection } from '../services/api';
 import DateRangePicker from '../components/DateRangePicker';
 
 interface DebtCollectionPageProps {
@@ -44,6 +44,14 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   const [filterTrackingStatus, setFilterTrackingStatus] = useState('');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+
+  // CSV Export State
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportType, setExportType] = useState<'orders' | 'history'>('history');
+  const [exportStatus, setExportStatus] = useState<string>('');
 
   // Fetch Summary Statistics (Global)
   const fetchSummary = async () => {
@@ -240,6 +248,105 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
     return pages;
   };
 
+  // CSV Export Handler
+  const handleExportCSV = async () => {
+    if (!exportStartDate || !exportEndDate) {
+      alert('กรุณาเลือกวันที่เริ่มต้นและสิ้นสุด');
+      return;
+    }
+    if (!exportStatus) {
+      alert('กรุณาเลือกสถานะเคส');
+      return;
+    }
+    setExporting(true);
+    try {
+      if (exportType === 'history') {
+        // ===== Export: ประวัติการติดตาม =====
+        const response = await exportDebtCollection({
+          startDate: exportStartDate,
+          endDate: exportEndDate,
+          type: 'history',
+          status: exportStatus
+        });
+        if (response.ok && response.records) {
+          const records = response.records;
+          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่ส่ง', 'ยอดออเดอร์', 'ผู้ติดตาม', 'วันที่ติดตาม', 'ยอดเก็บได้', 'ผลการติดตาม', 'จบเคส', 'หมายเหตุ', 'ยอดเก็บรวม', 'ยอดคงเหลือ', 'สถานะออเดอร์', 'สถานะชำระ'];
+          const rows = records.map((r: any) => [
+            r.orderId,
+            r.customerName,
+            r.customerPhone || '',
+            r.deliveryDate || '',
+            r.totalAmount,
+            r.trackerName,
+            r.trackingDate || '',
+            r.amountCollected,
+            r.resultStatus,
+            r.isComplete ? 'ใช่' : 'ไม่',
+            r.note || '',
+            r.totalCollected,
+            r.remainingDebt,
+            r.orderStatus,
+            r.paymentStatus
+          ]);
+
+          downloadCSV(headers, rows, `debt_tracking_history_${exportStartDate}_${exportEndDate}.csv`);
+        } else {
+          alert('ไม่พบข้อมูล หรือเกิดข้อผิดพลาด');
+        }
+      } else {
+        // ===== Export: ข้อมูลออเดอร์ =====
+        const response = await getDebtCollectionOrders({
+          status: exportStatus,
+          startDate: exportStartDate,
+          endDate: exportEndDate,
+          pageSize: 9999,
+          page: 1
+        });
+        if (response.ok && response.orders) {
+          const orders = response.orders;
+          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่สั่ง', 'วันที่ส่ง', 'ยอดรวม', 'ยอดเก็บแล้ว', 'ยอดคงเหลือ', 'วันค้าง', 'สถานะออเดอร์', 'สถานะชำระ', 'จำนวนติดตาม'];
+          const rows = orders.map((o: any) => [
+            o.id,
+            `${o.customerInfo?.firstName || ''} ${o.customerInfo?.lastName || ''}`.trim(),
+            o.customerInfo?.phone || '',
+            o.orderDate || '',
+            o.deliveryDate || '',
+            o.totalAmount,
+            o.totalDebtCollected,
+            o.remainingDebt,
+            o.daysPassed,
+            o.orderStatus,
+            o.paymentStatus,
+            o.trackingCount
+          ]);
+
+          downloadCSV(headers, rows, `debt_collection_${activeTab}_${exportStartDate}_${exportEndDate}.csv`);
+        } else {
+          alert('ไม่พบข้อมูล หรือเกิดข้อผิดพลาด');
+        }
+      }
+      setShowExportModal(false);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('เกิดข้อผิดพลาดในการดาวน์โหลด');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const downloadCSV = (headers: string[], rows: any[][], filename: string) => {
+    const csvContent = [headers, ...rows]
+      .map(row => row.map((cell: any) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   // Indices for display
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, totalOrders);
@@ -249,7 +356,16 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   // Render
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">ติดตามหนี้</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">ติดตามหนี้</h2>
+        <button
+          onClick={() => setShowExportModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+        >
+          <Download size={16} />
+          ดาวน์โหลด CSV
+        </button>
+      </div>
 
       {/* Tabs */}
       <div className="mb-6 border-b border-gray-200">
@@ -634,6 +750,100 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
           }}
           orderId={detailSelectedOrder.id}
         />
+      )}
+
+      {/* CSV Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">ดาวน์โหลด CSV</h3>
+            <div className="space-y-4">
+              {/* Export Type Toggle */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">ประเภทข้อมูล</label>
+                <div className="flex rounded-lg border overflow-hidden">
+                  <button
+                    onClick={() => setExportType('history')}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${exportType === 'history'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                      }`}
+                  >
+                    📋 ประวัติการติดตาม
+                  </button>
+                  <button
+                    onClick={() => setExportType('orders')}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${exportType === 'orders'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                      }`}
+                  >
+                    📦 ข้อมูลออเดอร์
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {exportType === 'history'
+                    ? 'แต่ละรายการติดตาม + ผู้ติดตาม + ยอดเก็บ (สำหรับคำนวณค่าคอม)'
+                    : 'ข้อมูลสรุประดับออเดอร์ (ยอดรวม, ยอดค้าง)'}
+                </p>
+              </div>
+
+              {/* Status Selector */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">สถานะเคส</label>
+                <select
+                  value={exportStatus}
+                  onChange={(e) => setExportStatus(e.target.value as 'active' | 'completed')}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                >
+                  <option value="">-- เลือกสถานะ --</option>
+                  <option value="active">กำลังติดตาม</option>
+                  <option value="completed">จบเคสแล้ว</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  วันที่เริ่มต้น ({exportType === 'history' ? 'วันที่ติดตาม' : 'วันที่ส่ง'})
+                </label>
+                <input
+                  type="date"
+                  value={exportStartDate}
+                  onChange={(e) => setExportStartDate(e.target.value)}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  วันที่สิ้นสุด ({exportType === 'history' ? 'วันที่ติดตาม' : 'วันที่ส่ง'})
+                </label>
+                <input
+                  type="date"
+                  value={exportEndDate}
+                  onChange={(e) => setExportEndDate(e.target.value)}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                disabled={exporting}
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleExportCSV}
+                disabled={exporting || !exportStartDate || !exportEndDate || !exportStatus}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                {exporting ? 'กำลังดาวน์โหลด...' : 'ดาวน์โหลด'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
