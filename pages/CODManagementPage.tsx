@@ -256,6 +256,23 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     setRows(newRows);
   };
 
+  // Check-all toggle for forceImport — only affects filtered rows
+  const handleToggleForceImportAll = () => {
+    const visibleRows = filterStatus !== 'all' ? filteredRows : rows;
+    const eligibleIds = new Set(
+      visibleRows
+        .filter(r => (r.status === 'pending' || r.status === 'unmatched') && r.trackingNumber.trim())
+        .map(r => r.id)
+    );
+    const allChecked = eligibleIds.size > 0 && [...eligibleIds].every(id => rows.find(r => r.id === id)?.forceImport);
+    setRows(rows.map(r => {
+      if (eligibleIds.has(r.id)) {
+        return { ...r, forceImport: !allChecked };
+      }
+      return r;
+    }));
+  };
+
 
   // Removed client-side trackingLookup to use Server-Side API
 
@@ -291,7 +308,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       });
 
       // NEW: Check cod_records for already imported tracking numbers
-      const alreadyImportedMap = new Map<string, { cod_amount: number; status: string }>();
+      const alreadyImportedMap = new Map<string, { cod_amount: number; status: string; document_id: number | null; document_number: string | null }>();
       if (user?.companyId) {
         try {
           await Promise.all(
@@ -309,7 +326,9 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                 if (record) {
                   alreadyImportedMap.set(normalized, {
                     cod_amount: parseFloat(record.cod_amount) || 0,
-                    status: record.status || 'unknown'
+                    status: record.status || 'unknown',
+                    document_id: record.document_id ? parseInt(record.document_id) : null,
+                    document_number: record.document_number || null,
                   });
                 }
               }
@@ -319,6 +338,9 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
           console.warn("Failed to check existing cod_records", err);
         }
       }
+
+      // Determine "current" document id for comparison
+      const currentDocId = importMode === 'existing' && selectedDocumentId ? Number(selectedDocumentId) : null;
 
       // 4. Update rows
       const validatedRows = [...rows];
@@ -342,11 +364,17 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         // NEW: Check if already imported to cod_records
         if (alreadyImported) {
           const importedAmount = alreadyImported.cod_amount;
-          const importStatus = alreadyImported.status === 'forced' ? '(ข้าม)' : '';
+          const importStatus = alreadyImported.status === 'forced' ? ' (ข้าม)' : '';
+          const docId = alreadyImported.document_id;
+          const docName = alreadyImported.document_number || (docId ? `#${docId}` : '');
+          const isOtherDoc = !!(docId && (importMode === 'new' || (currentDocId && docId !== currentDocId)));
+          const docLabel = docName ? ` [เอกสาร ${docName}]` : '';
           validatedRows[index] = {
             ...row,
-            status: 'matched' as ValidationStatus,
-            message: `ซ้ำแล้ว ฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${importStatus}`,
+            status: (isOtherDoc ? 'returned' : 'matched') as ValidationStatus,
+            message: isOtherDoc
+              ? `มีในเอกสารอื่น ${docName} (฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})${importStatus}`
+              : `ซ้ำแล้ว ฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${importStatus}${docLabel}`,
             orderId: apiResult?.orderId,
             orderAmount: apiResult?.expectedAmount || importedAmount,
             difference: 0,
@@ -372,16 +400,12 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
           const amountMatch = isAmountValid && Math.abs(difference) < 0.01; // float epsilon
 
           // Check if already paid
-          // The API returns amountDetails? We added amountPaid.
           const isPaid = (apiResult.amountPaid || 0) > 0;
           let status: ValidationStatus = amountMatch ? 'matched' : 'unmatched';
           let message = amountMatch ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
 
           if (isPaid) {
-            // Warn if paid?
             message += ` (จ่ายแล้ว: ฿${apiResult.amountPaid})`;
-            // Maybe change status or keep matched but warn?
-            // Usually we don't block validation but handleImport checks it.
           }
 
           if (!isAmountValid) {
@@ -573,53 +597,11 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       return;
     }
 
-    const normalizedTrackingList = Array.from(uniqueRowsByTracking.keys());
-    const existingTrackingNumbers = new Set<string>();
-
-    try {
-      await Promise.all(
-        normalizedTrackingList.map(async (normalizedTracking) => {
-          const qs = new URLSearchParams({
-            companyId: String(user.companyId),
-            trackingNumber: normalizedTracking,
-          });
-          const existingRecords = await apiFetch(`cod_records?${qs.toString()}`);
-          if (
-            Array.isArray(existingRecords) &&
-            existingRecords.some(
-              (record: any) =>
-                normalizeTrackingNumber(record?.tracking_number || "") === normalizedTracking,
-            )
-          ) {
-            existingTrackingNumbers.add(normalizedTracking);
-          }
-        }),
-      );
-    } catch (error) {
-      console.error("COD duplicate lookup failed", error);
-      alert("เกิดข้อผิดพลาดในการตรวจสอบ COD ซ้ำ กรุณาลองใหม่");
-      return;
-    }
-
-    const rowsToImport = normalizedTrackingList
-      .filter((normalized) => !existingTrackingNumbers.has(normalized))
-      .map((normalized) => uniqueRowsByTracking.get(normalized)!)
-      .filter(Boolean);
-
-    // For non-forceImport rows, skip if already paid
-    const finalRowsToImport = rowsToImport.filter(row => {
-      if (row.forceImport) return true; // Always include force import
-      if (!row.orderId) return true;
-      // Use amountPaid from validation result
-      if ((row.amountPaid || 0) > 0) {
-        console.warn(`Skipping order ${row.orderId} because it already has amountPaid: ${row.amountPaid}`);
-        return false;
-      }
-      return true;
-    });
+    // All unique rows go to import (backend will upsert if tracking already exists)
+    const finalRowsToImport = Array.from(uniqueRowsByTracking.values());
 
     if (finalRowsToImport.length === 0) {
-      alert("ไม่มีรายการที่จะนำเข้า (tracking อาจซ้ำ หรือออเดอร์มีการจ่ายเงินแล้ว)");
+      alert("ไม่มีรายการที่จะนำเข้า");
       return;
     }
 
@@ -629,12 +611,6 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     const skipMessages: string[] = [];
     if (duplicateRowsInUpload.length > 0) {
       skipMessages.push(`${duplicateRowsInUpload.length} รายการซ้ำในไฟล์อัปโหลด`);
-    }
-    if (existingTrackingNumbers.size > 0) {
-      skipMessages.push(`${existingTrackingNumbers.size} รายการมีอยู่แล้ว`);
-    }
-    if (rowsToImport.length > finalRowsToImport.length) {
-      skipMessages.push(`${rowsToImport.length - finalRowsToImport.length} รายการถูกข้าม (จ่ายแล้ว)`);
     }
 
     const targetDocName = importMode === 'new'
@@ -666,9 +642,10 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     const documentDateTime = `${documentDate} ${documentTime || "00:00"}:00`;
 
     try {
+      let importResponse: any = null;
       if (importMode === 'new') {
         // POST - Create new document
-        await apiFetch("cod_documents", {
+        importResponse = await apiFetch("cod_documents", {
           method: "POST",
           body: JSON.stringify({
             document_number: documentNumber.trim(),
@@ -691,7 +668,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         });
       } else {
         // PATCH - Add to existing document
-        await apiFetch(`cod_documents/${selectedDocumentId}`, {
+        importResponse = await apiFetch(`cod_documents/${selectedDocumentId}`, {
           method: "PATCH",
           body: JSON.stringify({
             created_by: user.id,
@@ -708,21 +685,15 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         });
       }
 
-      // Update orders - only for non-forceImport rows
-      const totalsByOrder = new Map<
-        string,
-        { totalPaid: number; totalExpected: number }
-      >();
+      // Collect skipped items (tracking exists in another document)
+      const skippedByBackend: { tracking_number: string; existing_document_id: number }[] = importResponse?.skipped || [];
 
-      payloadRows.forEach(({ row, codAmount, orderAmount }) => {
-        if (row.forceImport) return; // Skip order update for forced imports
+      // Update orders - query SUM of cod_amount from cod_records for each order
+      const uniqueOrderIds = new Set<string>();
+      payloadRows.forEach(({ row }) => {
+        if (row.forceImport) return;
         const baseId = getBaseOrderId(row.orderId);
-        if (!baseId) return;
-        const agg =
-          totalsByOrder.get(baseId) ?? { totalPaid: 0, totalExpected: 0 };
-        agg.totalPaid += codAmount;
-        agg.totalExpected += orderAmount;
-        totalsByOrder.set(baseId, agg);
+        if (baseId) uniqueOrderIds.add(baseId);
       });
 
       const orderUpdates: Record<
@@ -730,12 +701,20 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         { amountPaid: number; paymentStatus: PaymentStatus }
       > = {};
 
-      if (totalsByOrder.size > 0) {
+      if (uniqueOrderIds.size > 0) {
         await Promise.all(
-          Array.from(totalsByOrder.entries()).map(([orderId, totals]) => {
-            const roundedPaid = Math.round(totals.totalPaid * 100) / 100;
-            const roundedExpected =
-              Math.round((totals.totalExpected || 0) * 100) / 100;
+          Array.from(uniqueOrderIds).map(async (orderId) => {
+            // Query all cod_records for this order and SUM cod_amount
+            const qs = new URLSearchParams({
+              companyId: String(user.companyId),
+              orderId: orderId,
+            });
+            const records = await apiFetch(`cod_records?${qs.toString()}`);
+            const totalPaid = Array.isArray(records)
+              ? records.reduce((sum: number, r: any) => sum + (parseFloat(r.cod_amount) || 0), 0)
+              : 0;
+
+            const roundedPaid = Math.round(totalPaid * 100) / 100;
             const nextStatus =
               roundedPaid > 0
                 ? PaymentStatus.PreApproved
@@ -762,16 +741,18 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         }
       }
 
-      const summaryLines = Array.from(totalsByOrder.entries()).map(
-        ([orderId, totals]) =>
-          `${orderId}: จ่าย ${formatCurrency(totals.totalPaid)} / ${formatCurrency(
-            totals.totalExpected,
-          )}`,
+      const summaryLines = Object.entries(orderUpdates).map(
+        ([orderId, update]) =>
+          `${orderId}: จ่าย ${formatCurrency(update.amountPaid)}`,
       );
       const forcedSummary = forcedCount > 0 ? `\n⚠️ ${forcedCount} รายการติ๊กข้าม (ไม่อัพเดท Order)` : '';
+      const skippedSummary = skippedByBackend.length > 0
+        ? `\n❌ ${skippedByBackend.length} รายการข้ามเพราะมีในเอกสารอื่น:\n${skippedByBackend.map(s => `  - ${s.tracking_number} (เอกสาร #${s.existing_document_id})`).join('\n')}`
+        : '';
+      const importedCount = finalRowsToImport.length - skippedByBackend.length;
       const successMessage = summaryLines.length
-        ? `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (รวม ${finalRowsToImport.length} รายการ)\n${summaryLines.join("\n")}${forcedSummary}`
-        : `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (รวม ${finalRowsToImport.length} รายการ)${forcedSummary}`;
+        ? `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (${importedCount} จาก ${finalRowsToImport.length} รายการ)\n${summaryLines.join("\n")}${forcedSummary}${skippedSummary}`
+        : `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (${importedCount} จาก ${finalRowsToImport.length} รายการ)${forcedSummary}${skippedSummary}`;
       alert(successMessage);
       setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
       setIsVerified(false);
@@ -991,11 +972,33 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       <div className="bg-white p-4 rounded-lg shadow mb-4">
         <div className="flex justify-between items-center">
           {isVerified ? (
-            <div className="flex items-center space-x-4 text-sm">
-              <span className="flex items-center text-green-600 font-medium"><CheckCircle size={16} className="mr-2" />ตรงกัน: {validCount}</span>
-              <span className="flex items-center text-yellow-600"><AlertTriangle size={16} className="mr-2" />ไม่ตรงกัน: {unmatchedCount}</span>
-              <span className="flex items-center text-orange-600"><AlertTriangle size={16} className="mr-2" />รอตรวจสอบ: {pendingCount}</span>
-              <span className="flex items-center text-red-600"><XCircle size={16} className="mr-2" />ตีกลับ: {returnedCount}</span>
+            <div className="flex items-center space-x-1 text-sm">
+              <button
+                onClick={() => setFilterStatus(filterStatus === 'matched' ? 'all' : 'matched')}
+                className={`flex items-center px-2.5 py-1 rounded-full cursor-pointer transition-all ${filterStatus === 'matched' ? 'bg-green-600 text-white shadow-sm' : 'text-green-600 hover:bg-green-50'
+                  } font-medium`}
+              ><CheckCircle size={16} className="mr-1.5" />ตรงกัน: {validCount}</button>
+              <button
+                onClick={() => setFilterStatus(filterStatus === 'unmatched' ? 'all' : 'unmatched')}
+                className={`flex items-center px-2.5 py-1 rounded-full cursor-pointer transition-all ${filterStatus === 'unmatched' ? 'bg-yellow-500 text-white shadow-sm' : 'text-yellow-600 hover:bg-yellow-50'
+                  }`}
+              ><AlertTriangle size={16} className="mr-1.5" />ไม่ตรงกัน: {unmatchedCount}</button>
+              <button
+                onClick={() => setFilterStatus(filterStatus === 'pending' ? 'all' : 'pending')}
+                className={`flex items-center px-2.5 py-1 rounded-full cursor-pointer transition-all ${filterStatus === 'pending' ? 'bg-orange-500 text-white shadow-sm' : 'text-orange-600 hover:bg-orange-50'
+                  }`}
+              ><AlertTriangle size={16} className="mr-1.5" />รอตรวจสอบ: {pendingCount}</button>
+              <button
+                onClick={() => setFilterStatus(filterStatus === 'returned' ? 'all' : 'returned')}
+                className={`flex items-center px-2.5 py-1 rounded-full cursor-pointer transition-all ${filterStatus === 'returned' ? 'bg-red-500 text-white shadow-sm' : 'text-red-600 hover:bg-red-50'
+                  }`}
+              ><XCircle size={16} className="mr-1.5" />ตีกลับ: {returnedCount}</button>
+              {filterStatus !== 'all' && (
+                <button
+                  onClick={() => setFilterStatus('all')}
+                  className="flex items-center px-2.5 py-1 rounded-full text-gray-500 hover:bg-gray-100 text-xs ml-1"
+                >✕ ล้างตัวกรอง</button>
+              )}
             </div>
           ) : (
             <p className="text-sm text-gray-500">วางข้อมูลแล้วกด "ตรวจสอบข้อมูล" เพื่อดำเนินการต่อ</p>
@@ -1056,84 +1059,105 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               <th className="px-6 py-3 text-right">COD จากออเดอร์</th>
               <th className="px-6 py-3 text-right">ส่วนต่าง</th>
               <th className="px-6 py-3">สถานะ</th>
-              <th className="px-2 py-3 w-16 text-center" title="ติ๊กเพื่อนำเข้าโดยไม่อัพเดท Order">ข้าม</th>
+              <th className="px-2 py-3 w-16 text-center" title="ติ๊กเพื่อนำเข้าโดยไม่อัพเดท Order">
+                <div className="flex flex-col items-center gap-0.5">
+                  <span>ข้าม</span>
+                  {isVerified && (() => {
+                    const visibleRows = filterStatus !== 'all' ? filteredRows : rows;
+                    const eligible = visibleRows.filter(r => (r.status === 'pending' || r.status === 'unmatched') && r.trackingNumber.trim());
+                    if (eligible.length === 0) return null;
+                    return (
+                      <input
+                        type="checkbox"
+                        checked={eligible.every(r => r.forceImport)}
+                        onChange={handleToggleForceImportAll}
+                        className="w-3.5 h-3.5 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
+                        title="เลือกทั้งหมด / ยกเลิกทั้งหมด"
+                      />
+                    );
+                  })()}
+                </div>
+              </th>
               <th className="px-2 py-3 w-12"></th>
             </tr>
           </thead>
           <tbody className="text-gray-600">
-            {rows.map((row, index) => (
-              <tr key={row.id} className={`border-b ${row.status === 'matched' ? 'bg-green-50' : row.status === 'unmatched' ? 'bg-yellow-50' : row.status === 'pending' ? 'bg-orange-50' : row.status === 'returned' ? 'bg-red-50' : ''} ${row.forceImport ? 'ring-2 ring-purple-300' : ''}`}>
-                <td className="px-2 py-1 text-center text-gray-400">{index + 1}</td>
-                <td className="px-6 py-1">
-                  <input
-                    type="text"
-                    data-index={index}
-                    value={row.trackingNumber}
-                    onChange={(e) => handleInputChange(index, 'trackingNumber', e.target.value)}
-                    onPaste={handlePaste}
-                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none"
-                    placeholder="TH123..."
-                  />
-                </td>
-                <td className="px-6 py-1">
-                  <input
-                    type="text"
-                    data-index={index}
-                    value={row.codAmount}
-                    onChange={(e) => handleInputChange(index, 'codAmount', e.target.value)}
-                    onPaste={handlePaste}
-                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none text-right"
-                    placeholder="0.00"
-                  />
-                </td>
-                <td className="px-6 py-1 text-sm">
-                  {row.orderId ? (
-                    <span className="text-blue-600">{row.orderId}</span>
-                  ) : (
-                    <span className="text-gray-400">-</span>
-                  )}
-                </td>
-                <td className="px-6 py-1 text-sm text-right">
-                  {row.orderAmount !== undefined && row.orderAmount !== null ? (
-                    <span>฿{row.orderAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
-                  ) : (
-                    <span className="text-gray-400">-</span>
-                  )}
-                </td>
-                <td className="px-6 py-1 text-sm text-right">
-                  {row.difference !== undefined ? (
-                    <span className={row.difference === 0 ? "text-green-600" : row.difference > 0 ? "text-orange-600" : "text-red-600"}>
-                      {row.difference > 0 ? "+" : ""}฿{Math.abs(row.difference).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                    </span>
-                  ) : (
-                    <span className="text-gray-400">-</span>
-                  )}
-                </td>
-                <td className="px-6 py-1 text-xs font-medium">
-                  {getStatusIndicator(row.status, row.message)}
-                </td>
-                {/* NEW: Force import checkbox for pending/unmatched rows */}
-                <td className="px-2 py-1 text-center">
-                  {(row.status === 'pending' || row.status === 'unmatched') && row.trackingNumber.trim() ? (
-                    <label className="cursor-pointer" title="นำเข้าโดยไม่อัพเดท Order (เพื่อให้ยอดรวมตรงกับ Statement)">
-                      <input
-                        type="checkbox"
-                        checked={row.forceImport || false}
-                        onChange={() => handleToggleForceImport(index)}
-                        className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                      />
-                    </label>
-                  ) : (
-                    <span className="text-gray-300">-</span>
-                  )}
-                </td>
-                <td className="px-2 py-1 text-center">
-                  <button onClick={() => removeRow(index)} className="text-gray-400 hover:text-red-500 p-1">
-                    <Trash2 size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {(filterStatus !== 'all' ? filteredRows : rows).map((row) => {
+              const index = rows.findIndex(r => r.id === row.id);
+              return (
+                <tr key={row.id} className={`border-b ${row.status === 'matched' ? 'bg-green-50' : row.status === 'unmatched' ? 'bg-yellow-50' : row.status === 'pending' ? 'bg-orange-50' : row.status === 'returned' ? 'bg-red-50' : ''} ${row.forceImport ? 'ring-2 ring-purple-300' : ''}`}>
+                  <td className="px-2 py-1 text-center text-gray-400">{index + 1}</td>
+                  <td className="px-6 py-1">
+                    <input
+                      type="text"
+                      data-index={index}
+                      value={row.trackingNumber}
+                      onChange={(e) => handleInputChange(index, 'trackingNumber', e.target.value)}
+                      onPaste={handlePaste}
+                      className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none"
+                      placeholder="TH123..."
+                    />
+                  </td>
+                  <td className="px-6 py-1">
+                    <input
+                      type="text"
+                      data-index={index}
+                      value={row.codAmount}
+                      onChange={(e) => handleInputChange(index, 'codAmount', e.target.value)}
+                      onPaste={handlePaste}
+                      className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none text-right"
+                      placeholder="0.00"
+                    />
+                  </td>
+                  <td className="px-6 py-1 text-sm">
+                    {row.orderId ? (
+                      <span className="text-blue-600">{row.orderId}</span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-1 text-sm text-right">
+                    {row.orderAmount !== undefined && row.orderAmount !== null ? (
+                      <span>฿{row.orderAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-1 text-sm text-right">
+                    {row.difference !== undefined ? (
+                      <span className={row.difference === 0 ? "text-green-600" : row.difference > 0 ? "text-orange-600" : "text-red-600"}>
+                        {row.difference > 0 ? "+" : ""}฿{Math.abs(row.difference).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-1 text-xs font-medium">
+                    {getStatusIndicator(row.status, row.message)}
+                  </td>
+                  {/* NEW: Force import checkbox for pending/unmatched rows */}
+                  <td className="px-2 py-1 text-center">
+                    {(row.status === 'pending' || row.status === 'unmatched') && row.trackingNumber.trim() ? (
+                      <label className="cursor-pointer" title="นำเข้าโดยไม่อัพเดท Order (เพื่อให้ยอดรวมตรงกับ Statement)">
+                        <input
+                          type="checkbox"
+                          checked={row.forceImport || false}
+                          onChange={() => handleToggleForceImport(index)}
+                          className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                        />
+                      </label>
+                    ) : (
+                      <span className="text-gray-300">-</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1 text-center">
+                    <button onClick={() => removeRow(index)} className="text-gray-400 hover:text-red-500 p-1">
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         <div className="p-2">
