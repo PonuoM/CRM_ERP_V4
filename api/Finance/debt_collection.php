@@ -92,13 +92,21 @@ function handleGet($pdo, $id)
 
         // Fetch Images: Join order_slips to get URL, fallback to image_path for old records
         $imgStmt = $pdo->prepare("
-            SELECT COALESCE(os.url, dci.image_path) as image_url 
+            SELECT os.url as image_url,
+                   os.amount, os.transfer_date, os.created_at as slip_created_at,
+                   os.bank_account_id,
+                   ba.bank as bank_name, ba.bank_number,
+                   u2.first_name as uploader_name
             FROM debt_collection_images dci 
             LEFT JOIN order_slips os ON dci.order_slip_id = os.id
+            LEFT JOIN bank_account ba ON os.bank_account_id = ba.id
+            LEFT JOIN users u2 ON os.upload_by = u2.id
             WHERE dci.debt_collection_id = ?
         ");
         $imgStmt->execute([$id]);
-        $record['images'] = $imgStmt->fetchAll(PDO::FETCH_COLUMN);
+        $slipRows = $imgStmt->fetchAll(PDO::FETCH_ASSOC);
+        $record['images'] = array_column($slipRows, 'image_url');
+        $record['slip_details'] = $slipRows;
 
         json_response(['ok' => true, 'data' => $record]);
     }
@@ -143,13 +151,21 @@ function handleGet($pdo, $id)
     // Fetch images for all records
     foreach ($records as &$rec) {
         $imgStmt = $pdo->prepare("
-            SELECT os.url as image_url 
+            SELECT os.url as image_url,
+                   os.amount, os.transfer_date, os.created_at as slip_created_at,
+                   os.bank_account_id,
+                   ba.bank as bank_name, ba.bank_number,
+                   u2.first_name as uploader_name
             FROM debt_collection_images dci 
             LEFT JOIN order_slips os ON dci.order_slip_id = os.id
+            LEFT JOIN bank_account ba ON os.bank_account_id = ba.id
+            LEFT JOIN users u2 ON os.upload_by = u2.id
             WHERE dci.debt_collection_id = ?
         ");
         $imgStmt->execute([$rec['id']]);
-        $rec['images'] = $imgStmt->fetchAll(PDO::FETCH_COLUMN);
+        $slipRows = $imgStmt->fetchAll(PDO::FETCH_ASSOC);
+        $rec['images'] = array_column($slipRows, 'image_url');
+        $rec['slip_details'] = $slipRows;
     }
 
     json_response(['ok' => true, 'data' => $records]);
@@ -205,11 +221,12 @@ function handlePost($pdo)
         // Get per-slip details
         $slipAmounts = $_POST['slip_amounts'] ?? [];
         $slipBankIds = $_POST['slip_bank_ids'] ?? [];
+        $slipTransferDates = $_POST['slip_transfer_dates'] ?? [];
 
         // Stmt to insert into order_slips
         // We use the collected amount and selected bank for the slip record
         // If multiple images are uploaded, they all get linked to this transaction info
-        $insertSlip = $pdo->prepare("INSERT INTO order_slips (order_id, url, upload_by, amount, bank_account_id, transfer_date, created_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())");
+        $insertSlip = $pdo->prepare("INSERT INTO order_slips (order_id, url, upload_by, amount, bank_account_id, transfer_date, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
         // Stmt to insert mapping
         $insertMapping = $pdo->prepare("INSERT INTO debt_collection_images (debt_collection_id, order_slip_id) VALUES (?, ?)");
 
@@ -244,8 +261,11 @@ function handlePost($pdo)
                             $thisSlipBankId = (int) $input['bank_account_id'];
                         }
 
+                        // Per-slip transfer date (from frontend datetime-local input)
+                        $thisTransferDate = !empty($slipTransferDates[$i]) ? date('Y-m-d H:i:s', strtotime($slipTransferDates[$i])) : date('Y-m-d H:i:s');
+
                         // 1. Insert into order_slips
-                        $insertSlip->execute([$orderId, $dbPath, $userId, $thisSlipAmount, $thisSlipBankId]);
+                        $insertSlip->execute([$orderId, $dbPath, $userId, $thisSlipAmount, $thisSlipBankId, $thisTransferDate]);
                         $newSlipId = $pdo->lastInsertId();
 
                         // 2. Insert into debt_collection_images mapping

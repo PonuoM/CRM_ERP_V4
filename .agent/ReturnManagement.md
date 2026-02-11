@@ -312,3 +312,32 @@ if ($dbStatus === 'RETURNED') {
 ```
 
 - UPDATE/INSERT query ใช้ `$box['cod_amount']` แยกจาก `$box['collection_amount']` (เดิมใช้ `collection_amount` ทั้งคู่)
+
+## 15. อัปเดต: Bulk Import ไร้เงื่อนไข + แสดง Warning ภาษาไทย (11/02/2026)
+
+### ไฟล์ที่แก้ไข
+- **`api/Orders/validate_return_candidates.php`**
+
+### การเปลี่ยนแปลง
+
+**ก่อนหน้านี้**: Bulk import มีเงื่อนไข `return_status` ตาม mode:
+- `returning` → ต้อง `return_status = NULL` เท่านั้น
+- `returned` → ต้อง `return_status` ไม่เป็น `NULL` และไม่เป็น `returned`
+
+**แก้ไขใหม่**: 
+- ✅ ทุก tracking number ที่เจอในระบบและมี order box = **valid ทันที** ไม่ว่า `return_status` จะเป็นค่าใดก็ตาม
+- ⚠️ ถ้า `return_status != NULL` → แสดง **warning** เป็นภาษาไทย: `"เลข Tracking มีสถานะเป็น \"xxx\""` (ยังคง import ได้)
+
+### Status Map (English → Thai)
+| DB Value | Thai Label |
+|---|---|
+| `returning` | กำลังตีกลับ |
+| `returned` | เข้าคลังแล้ว |
+| `good` | สภาพดี |
+| `damaged` | เสียหาย |
+| `lost` | สูญหาย |
+
+### Frontend (`BulkReturnImport.tsx`)
+- ไม่ต้องแก้ไข — รองรับ `isWarning` อยู่แล้ว
+- แสดง ⚠️ สีเหลือง + ข้อความเตือน
+- ปุ่ม "นำเข้าข้อมูล" ยังใช้งานได้เมื่อมี warning

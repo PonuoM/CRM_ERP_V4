@@ -92,26 +92,22 @@ try {
         $currentReturnStatus = $boxRow['return_status'];
         $result['foundStatus'] = $currentReturnStatus;
 
-        // 3. Validate based on mode
-        if ($mode === 'returning') {
-            if ($currentReturnStatus) {
-                $result['message'] = "Already has return status: $currentReturnStatus";
-            } else {
-                $result['valid'] = true;
-                $result['message'] = 'OK';
-            }
-        } elseif ($mode === 'returned') {
-            if (!$currentReturnStatus) {
-                $result['message'] = 'No return status yet. Must mark as "returning" first.';
-            } elseif ($currentReturnStatus === 'returned') {
-                $result['message'] = 'Already marked as returned';
-            } else {
-                $result['valid'] = true;
-                $result['message'] = 'OK';
-            }
-        } else {
-            $result['valid'] = true;
-            $result['message'] = 'OK';
+        // 3. Always valid (no status restrictions)
+        $result['valid'] = true;
+        $result['message'] = 'OK';
+
+        // Warn if already has a return status
+        if ($currentReturnStatus) {
+            $statusMap = [
+                'returning' => 'กำลังตีกลับ',
+                'returned' => 'เข้าคลังแล้ว',
+                'good' => 'สภาพดี',
+                'damaged' => 'เสียหาย',
+                'lost' => 'สูญหาย',
+            ];
+            $thaiStatus = $statusMap[$currentReturnStatus] ?? $currentReturnStatus;
+            $result['isWarning'] = true;
+            $result['message'] = "เลข Tracking มีสถานะเป็น \"$thaiStatus\"";
         }
 
         $results[] = $result;

@@ -1937,6 +1937,7 @@ export interface DebtCollectionRecord {
   last_name?: string;
   slip_url?: string;
   images?: string[];
+  slip_details?: any[];
 }
 
 export interface BankAccount {
@@ -1986,6 +1987,7 @@ export async function createDebtCollection(data: {
   evidence_images?: File[];
   slip_amounts?: number[]; // Per-slip
   slip_bank_ids?: number[]; // Per-slip
+  slip_transfer_dates?: string[]; // Per-slip
 }): Promise<{ ok: boolean; data?: DebtCollectionRecord; id?: number; error?: string }> {
   try {
     const headers: any = {
@@ -2014,6 +2016,9 @@ export async function createDebtCollection(data: {
         }
         if (data.slip_bank_ids && data.slip_bank_ids[index] !== undefined) {
           formData.append('slip_bank_ids[]', data.slip_bank_ids[index].toString());
+        }
+        if (data.slip_transfer_dates && data.slip_transfer_dates[index] !== undefined) {
+          formData.append('slip_transfer_dates[]', data.slip_transfer_dates[index]);
         }
       });
 
