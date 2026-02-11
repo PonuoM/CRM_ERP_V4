@@ -239,6 +239,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             customerType: r.customer_type,
             customerPhone: r.customer_phone || r.phone || '',
             airportDeliveryDate: r.airport_delivery_date || '',
+            amountPaid: Number(r.amount_paid) || 0,
           }));
 
         console.log('📊 Sample order with customer_type:', mappedOrders[0]);
@@ -613,7 +614,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'Shipping': 'กำลังจัดส่ง',
           'Delivered': 'จัดส่งสำเร็จ',
           'Cancelled': 'ยกเลิก',
-          'Returned': 'ตีกลับ'
+          'Returned': 'ตีกลับ',
+          'Claiming': 'รอเคลม',
+          'BadDebt': 'หนี้สูญ',
+          'PreApproved': 'รออนุมัติ'
         };
         return statusMap[status] || status;
       };
@@ -687,6 +691,16 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         };
 
         return customerTypeTranslations[customerType] || customerType;
+      };
+
+      const getPaymentComparisonStatus = () => {
+        const paid = (order as any).amountPaid || 0;
+        const total = order.totalAmount || 0;
+        if (total === 0) return 'ไม่มียอด';
+        if (paid === 0) return 'ค้าง';
+        if (paid === total) return 'ตรง';
+        if (paid < total) return 'ขาด';
+        return 'เกิน';
       };
 
       if (order.items && order.items.length > 0) {
@@ -764,6 +778,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
             'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
             'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
+            'สถานะการชำระเงิน': getPaymentComparisonStatus(),
             'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
             'ตะกร้าขาย': (item as any).basketKeyAtSale || '-'
           });
@@ -802,6 +817,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
           'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
           'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
+          'สถานะการชำระเงิน': getPaymentComparisonStatus(),
           'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
           'ตะกร้าขาย': '-'
         });
@@ -1144,7 +1160,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                   'Shipping': 'กำลังจัดส่ง',
                   'Delivered': 'จัดส่งสำเร็จ',
                   'Cancelled': 'ยกเลิก',
-                  'Returned': 'ตีกลับ'
+                  'Returned': 'ตีกลับ',
+                  'Claiming': 'รอเคลม',
+                  'BadDebt': 'หนี้สูญ',
+                  'PreApproved': 'รออนุมัติ'
                 };
                 return statusMap[status] || status;
               };
@@ -1189,6 +1208,15 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 'วันที่จัดส่ง Airport': order.airport_delivery_date ? new Date(order.airport_delivery_date).toLocaleDateString('th-TH') : '-',
                 'สถานะจาก Airport': order.airport_delivery_status || '-',
                 'สถานะออเดอร์': getOrderStatusThai(order.order_status || ''),
+                'สถานะการชำระเงิน': (() => {
+                  const paid = Number(order.amount_paid) || 0;
+                  const total = Number(order.total_amount) || 0;
+                  if (total === 0) return 'ไม่มียอด';
+                  if (paid === 0) return 'ค้าง';
+                  if (paid === total) return 'ตรง';
+                  if (paid < total) return 'ขาด';
+                  return 'เกิน';
+                })(),
                 'สถานะสลิป': getSlipStatus(order),
                 'ตะกร้าขาย': item.basket_key_at_sale || '-'
               });
