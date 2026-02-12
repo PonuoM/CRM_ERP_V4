@@ -7881,16 +7881,18 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     if ($trackingNumber === '') {
                         continue;
                     }
-                    // Check if tracking exists in a DIFFERENT document — if so, skip it
+                    // Check if tracking exists in a DIFFERENT document
                     $findExistingStmt->execute([$trackingNumber, $companyId]);
                     $oldRecord = $findExistingStmt->fetch(PDO::FETCH_ASSOC);
+                    $forceImport = (bool) ($it['force_import'] ?? false);
                     if ($oldRecord && $oldRecord['document_id'] && (int) $oldRecord['document_id'] !== $docId) {
-                        // Exists in another document — do NOT overwrite
-                        $skippedItems[] = ['tracking_number' => $trackingNumber, 'existing_document_id' => (int) $oldRecord['document_id']];
-                        continue;
-                    }
-                    // Same document or not found — safe to upsert
-                    if ($oldRecord && $oldRecord['document_id']) {
+                        if (!$forceImport) {
+                            // Exists in another document and not forced — skip
+                            $skippedItems[] = ['tracking_number' => $trackingNumber, 'existing_document_id' => (int) $oldRecord['document_id']];
+                            continue;
+                        }
+                        // force_import = true → allow adding to new document (keep old record intact)
+                    } elseif ($oldRecord && $oldRecord['document_id']) {
                         $deleteExistingStmt->execute([$trackingNumber, $companyId]);
                         $subtractDocTotalsStmt->execute([
                             (float) $oldRecord['cod_amount'],
@@ -7998,16 +8000,19 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     if ($trackingNumber === '')
                         continue;
 
-                    // Check if tracking exists in a DIFFERENT document — if so, skip it
+                    // Check if tracking exists in a DIFFERENT document
                     $findExistingStmt->execute([$trackingNumber, $doc['company_id']]);
                     $oldRecord = $findExistingStmt->fetch(PDO::FETCH_ASSOC);
+                    $forceImport = (bool) ($it['force_import'] ?? false);
                     if ($oldRecord && $oldRecord['document_id'] && (int) $oldRecord['document_id'] !== (int) $id) {
-                        // Exists in another document — do NOT overwrite
-                        $skippedItems[] = ['tracking_number' => $trackingNumber, 'existing_document_id' => (int) $oldRecord['document_id']];
-                        continue;
-                    }
-                    // Same document or not found — safe to upsert
-                    if ($oldRecord && $oldRecord['document_id']) {
+                        if (!$forceImport) {
+                            // Exists in another document and not forced — skip
+                            $skippedItems[] = ['tracking_number' => $trackingNumber, 'existing_document_id' => (int) $oldRecord['document_id']];
+                            continue;
+                        }
+                        // force_import = true → allow adding to new document (keep old record intact, don't delete)
+                        // Skip the "same document" delete logic below and go straight to insert
+                    } elseif ($oldRecord && $oldRecord['document_id']) {
                         $deleteExistingStmt->execute([$trackingNumber, $doc['company_id']]);
                         $subtractDocTotalsStmt->execute([
                             (float) $oldRecord['cod_amount'],
@@ -8018,15 +8023,13 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
 
                     $codAmount = (float) ($it['cod_amount'] ?? 0);
                     $orderAmount = (float) ($it['order_amount'] ?? 0);
-                    $forceImport = (bool) ($it['force_import'] ?? false);
 
-                    // Determine status
-                    if ($forceImport) {
+                    // Determine status and orderId
+                    $orderId = isset($it['order_id']) && $it['order_id'] !== '' ? trim((string) $it['order_id']) : null;
+                    $status = $it['status'] ?? 'pending';
+                    // Only override to 'forced' (no order association) for truly unmatched forced rows
+                    if ((bool) ($it['force_import'] ?? false) && !$orderId) {
                         $status = 'forced';
-                        $orderId = null; // No order association for forced imports
-                    } else {
-                        $status = $it['status'] ?? 'pending';
-                        $orderId = isset($it['order_id']) && $it['order_id'] !== '' ? trim((string) $it['order_id']) : null;
                     }
 
                     $difference = $codAmount - $orderAmount;

@@ -380,16 +380,26 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
           const expectedAmount = apiResult?.expectedAmount || 0;
           const boxCollected = apiResult?.boxCollectedAmount || 0;
           const totalSlipAmount = apiResult?.totalSlipAmount || 0;
+          const userEnteredAmount = parseFloat(String(row.codAmount)) || 0;
           // effectiveCollected = best COD data + slip data
           const codCollected = Math.max(boxCollected, importedAmount);
           const effectiveCollected = codCollected + totalSlipAmount;
           const remaining = expectedAmount > 0 ? Math.max(0, expectedAmount - effectiveCollected) : 0;
+          // After this import: how much will still be missing?
+          const remainingAfterImport = Math.max(0, remaining - userEnteredAmount);
           const isFullyCollected = expectedAmount > 0 && remaining < 0.01;
+          const willBeFullyCollected = expectedAmount > 0 && remainingAfterImport < 0.01;
 
           let statusMessage = '';
           const slipNote = totalSlipAmount > 0 ? ` + สลิป ฿${totalSlipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}` : '';
           if (isOtherDoc) {
-            statusMessage = `มีในเอกสารอื่น ${docName} (฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})${importStatus}`;
+            if (isFullyCollected) {
+              statusMessage = `มีในเอกสารอื่น ${docName} (฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}) (เก็บครบ)${importStatus}`;
+            } else if (remaining > 0) {
+              statusMessage = `มีในเอกสารอื่น ${docName} (฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})${importStatus} — ยังค้าง ฿${remaining.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+            } else {
+              statusMessage = `มีในเอกสารอื่น ${docName} (฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})${importStatus}`;
+            }
           } else if (isFullyCollected) {
             statusMessage = `ซ้ำแล้ว ฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${importStatus} (เก็บครบ${slipNote})${docLabel}`;
           } else if (remaining > 0 && expectedAmount > 0) {
@@ -398,13 +408,18 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
             statusMessage = `ซ้ำแล้ว ฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${importStatus}${docLabel}`;
           }
 
+          // For isOtherDoc: if fully collected → 'returned' (block), if remaining → 'matched' (auto-import + update order)
+          const resolvedStatus: ValidationStatus = isOtherDoc
+            ? (isFullyCollected ? 'returned' : 'matched')
+            : 'matched';
+
           validatedRows[index] = {
             ...row,
-            status: (isOtherDoc ? 'returned' : 'matched') as ValidationStatus,
+            status: resolvedStatus,
             message: statusMessage,
             orderId: apiResult?.orderId,
             orderAmount: expectedAmount || importedAmount,
-            difference: isFullyCollected ? 0 : (expectedAmount > 0 ? -(remaining) : 0),
+            difference: willBeFullyCollected ? 0 : (expectedAmount > 0 ? -(remainingAfterImport) : 0),
             amountPaid: importedAmount, // Mark as already paid to skip during import
           };
           return;
@@ -746,10 +761,10 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               tracking_number: row.trackingNumber.trim(),
               cod_amount: codAmount,
               order_amount: orderAmount,
-              order_id: row.forceImport ? null : (row.orderId || null),
+              order_id: row.forceImport && !row.orderId ? null : (row.orderId || null),
               difference: row.difference ?? codAmount - orderAmount,
-              status: row.forceImport ? 'forced' : row.status,
-              force_import: row.forceImport || false,
+              status: row.forceImport && !row.orderId ? 'forced' : row.status,
+              force_import: row.forceImport || (row.amountPaid > 0 && !!row.orderId),
             })),
           }),
         });
@@ -763,10 +778,10 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               tracking_number: row.trackingNumber.trim(),
               cod_amount: codAmount,
               order_amount: orderAmount,
-              order_id: row.forceImport ? null : (row.orderId || null),
+              order_id: row.forceImport && !row.orderId ? null : (row.orderId || null),
               difference: row.difference ?? codAmount - orderAmount,
-              status: row.forceImport ? 'forced' : row.status,
-              force_import: row.forceImport || false,
+              status: row.forceImport && !row.orderId ? 'forced' : row.status,
+              force_import: row.forceImport || (row.amountPaid > 0 && !!row.orderId),
             })),
           }),
         });
@@ -778,7 +793,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       // Update orders - query SUM of cod_amount from cod_records for each order
       const uniqueOrderIds = new Set<string>();
       payloadRows.forEach(({ row }) => {
-        if (row.forceImport) return;
+        if (row.forceImport && !row.orderId) return; // Skip only truly unmatched forced rows
         const baseId = getBaseOrderId(row.orderId);
         if (baseId) uniqueOrderIds.add(baseId);
       });

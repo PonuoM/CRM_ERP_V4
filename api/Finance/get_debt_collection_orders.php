@@ -233,11 +233,11 @@ try {
         $sql = "SELECT 
                     COUNT(DISTINCT o.id) as order_count,
                     SUM(
-                        o.total_amount - (
+                        GREATEST(0, o.total_amount - COALESCE(o.amount_paid, 0) - (
                             SELECT COALESCE(SUM(dc.amount_collected), 0) 
                             FROM debt_collection dc 
                             WHERE dc.order_id = o.id
-                        )
+                        ))
                     ) as total_remaining_debt
                 FROM orders o
                 LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -300,9 +300,9 @@ try {
         // Format Response
         $formattedOrders = array_map(function ($order) {
             $totalAmount = (float) $order['total_amount'];
-            $paidAmount = (float) ($order['amount_paid'] ?? $order['cod_amount'] ?? 0);
+            $paidAmount = (float) ($order['amount_paid'] ?? 0);
             $collected = (float) $order['total_debt_collected'];
-            $remainingDebt = max(0, $totalAmount - $collected);
+            $remainingDebt = max(0, $totalAmount - $paidAmount - $collected);
 
             // Calculate Days Passed from Delivery Date
             $daysPassed = 0;
