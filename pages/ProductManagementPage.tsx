@@ -291,6 +291,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
               <th scope="col" className="px-6 py-3">รหัสสินค้า (SKU)</th>
               <th scope="col" className="px-6 py-3">ชื่อสินค้า</th>
               <th scope="col" className="px-6 py-3">ร้านค้า</th>
+              <th scope="col" className="px-6 py-3">กลุ่ม Ads</th>
               <th scope="col" className="px-6 py-3">ต้นทุน(เฉลี่ย)</th>
               <th scope="col" className="px-6 py-3">ราคาขาย(เฉลี่ย)</th>
               <th scope="col" className="px-6 py-3">สต็อกทั้งหมด</th>
@@ -306,6 +307,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                 <td className="px-6 py-4 font-mono text-xs">{product.sku}</td>
                 <td className="px-6 py-4 font-medium text-gray-900">{product.name}</td>
                 <td className="px-6 py-4 text-gray-600">{product.shop || '-'}</td>
+                <td className="px-6 py-4 text-gray-600">{product.adsGroup || '-'}</td>
                 <td className="px-6 py-4">฿{getAverageCost(product.id).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className="px-6 py-4">฿{getAveragePrice(product.id).toLocaleString()}</td>
                 <td className="px-6 py-4">
