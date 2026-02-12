@@ -80,6 +80,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const runExport = async (ordersToExport: Order[]) => {
     // Show loading
     setIsProcessing(true);
+    setExportProgress({ current: 0, total: ordersToExport.length });
 
     // Force open modal if not already open (e.g. for non-waitingExport tabs)
     if (!validationModal.isOpen) {
@@ -97,7 +98,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     // Loop through *each* selected order to fetch full details
     // We do this sequentially to handle errors granularly
-    for (const liteOrder of ordersToExport) {
+    for (let i = 0; i < ordersToExport.length; i++) {
+      const liteOrder = ordersToExport[i];
       try {
         // 1. Fetch Full Details
         const response = await apiFetch(`orders/${encodeURIComponent(liteOrder.id)}`);
@@ -121,6 +123,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         console.error(`Failed to fetch details for export: ${liteOrder.id}`, err);
         failedIds.push(liteOrder.id);
       }
+      setExportProgress({ current: i + 1, total: ordersToExport.length });
     }
 
     try {
@@ -152,10 +155,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       alert(`เกิดข้อผิดพลาด: ${error instanceof Error ? error.message : "Undefined error"}`);
     } finally {
       setIsProcessing(false);
+      setExportProgress(null);
     }
   };
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
 
   // API Data States (Server-Side Pagination)
   const [apiOrders, setApiOrders] = useState<Order[]>([]);
@@ -1859,6 +1864,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               <div className="flex flex-col items-center justify-center p-12 space-y-4">
                 <Spinner />
                 <p className="text-gray-600 font-medium text-lg">กำลังประมวลผลและอัปเดตออเดอร์...</p>
+                {exportProgress && (
+                  <div className="w-full max-w-xs">
+                    <div className="flex justify-between text-sm text-gray-500 mb-1">
+                      <span>สำเร็จ {exportProgress.current} จาก {exportProgress.total}</span>
+                      <span>{Math.round((exportProgress.current / exportProgress.total) * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-200"
+                        style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
                 <p className="text-sm text-gray-400">ระบบกำลังเปลี่ยนสถานะเป็น "กำลังจัดสินค้า" และส่งออกไฟล์ CSV</p>
                 <p className="text-xs text-red-400 mt-2">ห้ามปิดหน้าต่างนี้จนกว่าจะเสร็จสิ้น</p>
               </div>
