@@ -3,6 +3,8 @@
  * get_return_orders.php
  * ดึงรายการ order boxes ที่มี return_status (ระบบจัดการตีกลับ)
  * ใช้ตาราง order_boxes แทน order_returns
+ * 
+ * Performance: ไม่ COUNT ทั้งตาราง — ใช้ has_more แทน
  */
 
 require_once __DIR__ . '/../config.php';
@@ -16,6 +18,7 @@ try {
     $page = max(1, intval($_GET['page'] ?? 1));
     $limit = max(1, min(100, intval($_GET['limit'] ?? 20)));
     $companyId = intval($_GET['companyId'] ?? 0);
+    $search = trim($_GET['search'] ?? '');
     $offset = ($page - 1) * $limit;
 
     // ─── Build WHERE conditions ───
@@ -37,22 +40,21 @@ try {
         $params[] = $companyId;
     }
 
+    // Search by order ID, tracking number, or customer phone
+    if ($search !== '') {
+        $whereConditions[] = "(ob.order_id LIKE ? OR otn.tracking_number LIKE ? OR c.phone LIKE ?)";
+        $searchWild = '%' . $search . '%';
+        $params[] = $searchWild;
+        $params[] = $searchWild;
+        $params[] = $searchWild;
+    }
+
     $whereClause = count($whereConditions) > 0
         ? "WHERE " . implode(" AND ", $whereConditions)
         : "";
 
-    // ─── Count total ───
-    $countSql = "
-        SELECT COUNT(DISTINCT ob.id) as total
-        FROM order_boxes ob
-        LEFT JOIN orders o ON ob.order_id = o.id
-        $whereClause
-    ";
-    $stmtCount = $pdo->prepare($countSql);
-    $stmtCount->execute($params);
-    $total = (int) $stmtCount->fetchColumn();
-
-    // ─── Fetch data ───
+    // ─── Fetch data (limit + 1 to detect has_more) ───
+    $fetchLimit = $limit + 1;
     $dataSql = "
         SELECT
             ob.id,
@@ -68,30 +70,35 @@ try {
             otn.tracking_number,
             o.total_amount,
             o.order_date,
-            o.company_id
+            o.company_id,
+            (SELECT COUNT(*) FROM order_boxes ob2 WHERE ob2.order_id = ob.order_id) as total_boxes
         FROM order_boxes ob
         LEFT JOIN order_tracking_numbers otn
             ON ob.order_id = otn.parent_order_id AND ob.box_number = otn.box_number
         LEFT JOIN orders o ON ob.order_id = o.id
+        LEFT JOIN customers c ON o.customer_id = c.customer_id
         $whereClause
         ORDER BY ob.return_created_at DESC, ob.id DESC
         LIMIT ? OFFSET ?
     ";
-    $dataParams = array_merge($params, [$limit, $offset]);
+    $dataParams = array_merge($params, [$fetchLimit, $offset]);
     $stmtData = $pdo->prepare($dataSql);
     $stmtData->execute($dataParams);
     $rows = $stmtData->fetchAll(PDO::FETCH_ASSOC);
 
-    $totalPages = max(1, ceil($total / $limit));
+    // Determine has_more: if we got more than $limit rows, there are more pages
+    $hasMore = count($rows) > $limit;
+    if ($hasMore) {
+        array_pop($rows); // Remove the extra row
+    }
 
     echo json_encode([
         'status' => 'success',
         'data' => $rows,
         'pagination' => [
-            'total' => $total,
-            'totalPages' => $totalPages,
             'page' => $page,
             'limit' => $limit,
+            'hasMore' => $hasMore,
         ],
     ]);
 } catch (Exception $e) {
