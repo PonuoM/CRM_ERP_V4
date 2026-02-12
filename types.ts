@@ -462,6 +462,7 @@ export interface Order {
   creatorId: number;
   orderDate: string;
   deliveryDate: string;
+  customerReceivedDate?: string;
   shippingAddress: Address;
   shippingProvider?: string;
   items: LineItem[];

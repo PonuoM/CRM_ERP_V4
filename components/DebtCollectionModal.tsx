@@ -52,6 +52,9 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
     const [closeCase, setCloseCase] = useState(false);
     const [isBadDebt, setIsBadDebt] = useState(false);
 
+    // Customer Received Date State
+    const [customerReceivedDate, setCustomerReceivedDate] = useState<string>(order.customerReceivedDate || '');
+
     // Slip Detail Modal State
     const [selectedSlip, setSelectedSlip] = useState<SlipDetail | null>(null);
 
@@ -82,6 +85,7 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
     useEffect(() => {
         if (isOpen && order) {
             fetchHistory();
+            setCustomerReceivedDate(order.customerReceivedDate || '');
         }
     }, [isOpen, order]);
 
@@ -243,7 +247,8 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                 evidence_images: uploadedSlips.map(s => s.file),
                 slip_amounts: uploadedSlips.map(s => parseFloat(s.amount)),
                 slip_bank_ids: uploadedSlips.map(s => s.bankId),
-                slip_transfer_dates: uploadedSlips.map(s => s.transferDate)
+                slip_transfer_dates: uploadedSlips.map(s => s.transferDate),
+                customer_received_date: customerReceivedDate || undefined
             });
 
             if (response.ok) {
@@ -419,6 +424,25 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                                     </div>
                                 )}
 
+
+                                {/* วันที่ลูกค้ารับสินค้า */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        📦 วันที่ลูกค้ารับสินค้า
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={customerReceivedDate}
+                                        onChange={(e) => setCustomerReceivedDate(e.target.value)}
+                                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                    {customerReceivedDate && (
+                                        <p className="text-xs text-green-600 mt-1">✅ บันทึกวันรับของ: {new Date(customerReceivedDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
+                                    )}
+                                    {!customerReceivedDate && (
+                                        <p className="text-xs text-gray-400 mt-1">ถ้ายังไม่ทราบสามารถข้ามได้ กลับมาใส่ทีหลังได้</p>
+                                    )}
+                                </div>
 
                                 {/* Note */}
                                 <div>

@@ -74,7 +74,9 @@ try {
                     c.phone as customer_phone,
                     u.first_name as tracker_first_name,
                     u.last_name as tracker_last_name,
-                    (SELECT COALESCE(SUM(dc2.amount_collected), 0) FROM debt_collection dc2 WHERE dc2.order_id = dc.order_id) as total_collected
+                    o.customer_received_date,
+                    (SELECT COALESCE(SUM(dc2.amount_collected), 0) FROM debt_collection dc2 WHERE dc2.order_id = dc.order_id) as total_collected,
+                    (SELECT MIN(dc3.created_at) FROM debt_collection dc3 WHERE dc3.order_id = dc.order_id) as first_tracking_date
                 FROM debt_collection dc
                 JOIN orders o ON dc.order_id = o.id
                 LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -115,7 +117,12 @@ try {
                 'trackingDate' => $r['tracking_date'],
                 'trackerName' => trim($r['tracker_first_name'] . ' ' . $r['tracker_last_name']),
                 'orderStatus' => $orderStatusMap[$r['order_status']] ?? $r['order_status'],
-                'paymentStatus' => $paymentStatusMap[$r['payment_status']] ?? $r['payment_status']
+                'paymentStatus' => $paymentStatusMap[$r['payment_status']] ?? $r['payment_status'],
+                'customerReceivedDate' => $r['customer_received_date'],
+                'firstTrackingDate' => $r['first_tracking_date'],
+                'daysToFirstTracking' => ($r['customer_received_date'] && $r['first_tracking_date'])
+                    ? (int) floor((strtotime($r['first_tracking_date']) - strtotime($r['customer_received_date'])) / 86400)
+                    : null
             ];
         }, $records);
 

@@ -350,6 +350,12 @@ function handlePost($pdo)
         error_log("[DebtSync] SKIPPED PendingVerification - condition not met");
     }
 
+    // 4. อัปเดตวันที่ลูกค้ารับสินค้า (ถ้ามีค่าส่งมา)
+    $customerReceivedDate = $input['customer_received_date'] ?? null;
+    if ($customerReceivedDate) {
+        $pdo->prepare("UPDATE orders SET customer_received_date = ? WHERE id = ?")->execute([$customerReceivedDate, $orderId]);
+    }
+
     json_response(['ok' => true, 'data' => $record, 'id' => $newId], 201);
 }
 

@@ -1988,6 +1988,7 @@ export async function createDebtCollection(data: {
   slip_amounts?: number[]; // Per-slip
   slip_bank_ids?: number[]; // Per-slip
   slip_transfer_dates?: string[]; // Per-slip
+  customer_received_date?: string; // วันที่ลูกค้ารับสินค้า
 }): Promise<{ ok: boolean; data?: DebtCollectionRecord; id?: number; error?: string }> {
   try {
     const headers: any = {
@@ -2007,6 +2008,7 @@ export async function createDebtCollection(data: {
       if (data.bank_account_id) formData.append('bank_account_id', data.bank_account_id.toString());
       if (data.note) formData.append('note', data.note);
       if (data.slip_id) formData.append('slip_id', data.slip_id.toString());
+      if (data.customer_received_date) formData.append('customer_received_date', data.customer_received_date);
 
       data.evidence_images.forEach((file, index) => {
         formData.append('evidence_images[]', file);

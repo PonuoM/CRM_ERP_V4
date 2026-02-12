@@ -205,6 +205,26 @@ try {
         $whereConditions[] = "(SELECT COUNT(*) FROM debt_collection dc WHERE dc.order_id = o.id) > 0";
     }
 
+    // Filter: ยังไม่ใส่วันรับของ
+    $missingReceivedDate = $_GET['missingReceivedDate'] ?? null;
+    if ($missingReceivedDate === '1') {
+        $whereConditions[] = "o.customer_received_date IS NULL";
+    }
+
+    // Filter: เกิน 7 วัน (first tracking date - customer_received_date > 7)
+    $over7Days = $_GET['over7Days'] ?? null;
+    if ($over7Days === '1') {
+        $whereConditions[] = "o.customer_received_date IS NOT NULL";
+        $whereConditions[] = "(SELECT DATEDIFF(MIN(dc_f.created_at), o.customer_received_date) FROM debt_collection dc_f WHERE dc_f.order_id = o.id) > 7";
+    }
+
+    // Filter: ผู้ติดตาม (tracker_id)
+    $trackerId = isset($_GET['trackerId']) ? (int) $_GET['trackerId'] : null;
+    if ($trackerId) {
+        $whereConditions[] = "EXISTS (SELECT 1 FROM debt_collection dc_t WHERE dc_t.order_id = o.id AND dc_t.user_id = ?)";
+        $params[] = $trackerId;
+    }
+
     $whereClause = !empty($whereConditions) ? 'WHERE ' . implode(' AND ', $whereConditions) : '';
 
     // 5. Execution based on Mode
@@ -227,10 +247,23 @@ try {
         $stmt->execute($params);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        // Fetch distinct trackers who have debt_collection records
+        $trackerSql = "SELECT DISTINCT dc.user_id as id, u.first_name, u.last_name 
+                       FROM debt_collection dc 
+                       JOIN users u ON dc.user_id = u.id 
+                       ORDER BY u.first_name ASC";
+        $trackerStmt = $pdo->prepare($trackerSql);
+        $trackerStmt->execute();
+        $trackers = $trackerStmt->fetchAll(PDO::FETCH_ASSOC);
+        $formattedTrackers = array_map(function ($t) {
+            return ['id' => (int) $t['id'], 'name' => trim($t['first_name'] . ' ' . $t['last_name'])];
+        }, $trackers);
+
         json_response([
             'ok' => true,
             'orderCount' => (int) ($result['order_count'] ?? 0),
-            'totalDebt' => (float) ($result['total_remaining_debt'] ?? 0)
+            'totalDebt' => (float) ($result['total_remaining_debt'] ?? 0),
+            'trackers' => $formattedTrackers
         ]);
 
     } else {
@@ -247,11 +280,13 @@ try {
 
         // Fetch Orders
         $sql = "SELECT 
-                    o.id, o.customer_id, o.order_date, o.delivery_date, o.total_amount, o.amount_paid, o.cod_amount,
+                    o.id, o.customer_id, o.order_date, o.delivery_date, o.customer_received_date, o.total_amount, o.amount_paid, o.cod_amount,
                     o.order_status, o.payment_status,
                     c.first_name, c.last_name, c.phone,
                     (SELECT COUNT(*) FROM debt_collection dc WHERE dc.order_id = o.id) as tracking_count,
-                    (SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection dc WHERE dc.order_id = o.id) as total_debt_collected
+                    (SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection dc WHERE dc.order_id = o.id) as total_debt_collected,
+                    (SELECT MAX(dc_l.created_at) FROM debt_collection dc_l WHERE dc_l.order_id = o.id) as last_tracking_date,
+                    (SELECT MIN(dc_f.created_at) FROM debt_collection dc_f WHERE dc_f.order_id = o.id) as first_tracking_date
                 FROM orders o
                 LEFT JOIN customers c ON o.customer_id = c.customer_id
                 $whereClause
@@ -294,7 +329,10 @@ try {
                 ],
                 'trackingCount' => (int) $order['tracking_count'],
                 'totalDebtCollected' => $collected,
-                'remainingDebt' => $remainingDebt
+                'remainingDebt' => $remainingDebt,
+                'customerReceivedDate' => $order['customer_received_date'],
+                'lastTrackingDate' => $order['last_tracking_date'],
+                'firstTrackingDate' => $order['first_tracking_date']
             ];
         }, $orders);
 
