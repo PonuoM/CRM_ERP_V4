@@ -62,6 +62,8 @@ interface RowData {
   returnCondition?: "ชำรุด" | "ปกติ";
   manualStatus?: "ศูนย์หาย" | "ไม่สำเร็จ" | "หายศูนย์" | "";
   forceImport?: boolean; // NEW: Skip order update, just record for total matching
+  boxExpectedAmount?: number; // Full box total when multiple trackings share same box
+  multiTracking?: boolean; // Flag: this tracking shares a box with other trackings
 }
 
 interface ExistingDocument {
@@ -396,34 +398,93 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         } else {
           // Found in DB
           const expected = apiResult.expectedAmount;
-          const difference = isAmountValid ? codAmountValue - expected : 0;
-          const amountMatch = isAmountValid && Math.abs(difference) < 0.01; // float epsilon
+          const isMultiTracking = apiResult.multipleTrackingsInBox === true;
 
-          // Check if already paid
-          const isPaid = (apiResult.amountPaid || 0) > 0;
-          let status: ValidationStatus = amountMatch ? 'matched' : 'unmatched';
-          let message = amountMatch ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+          if (isMultiTracking) {
+            // Multi-tracking box: defer validation to group-sum pass below
+            validatedRows[index] = {
+              ...row,
+              status: 'pending' as ValidationStatus, // will be updated in group-sum pass
+              message: '',
+              orderId: apiResult.orderId,
+              orderAmount: codAmountValue, // user's input for cod_records
+              boxExpectedAmount: expected, // full box total
+              multiTracking: true,
+              difference: undefined,
+              amountPaid: apiResult.amountPaid,
+            };
+          } else {
+            // Single tracking: exact match
+            const difference = isAmountValid ? codAmountValue - expected : 0;
+            const amountMatch = isAmountValid && Math.abs(difference) < 0.01;
 
-          if (isPaid) {
-            message += ` (จ่ายแล้ว: ฿${apiResult.amountPaid})`;
+            const isPaid = (apiResult.amountPaid || 0) > 0;
+            let status: ValidationStatus = amountMatch ? 'matched' : 'unmatched';
+            let message = amountMatch ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+
+            if (isPaid) {
+              message += ` (จ่ายแล้ว: ฿${apiResult.amountPaid})`;
+            }
+
+            if (!isAmountValid) {
+              status = 'pending';
+              message = 'ระบุยอดเงินไม่ถูกต้อง';
+            }
+
+            validatedRows[index] = {
+              ...row,
+              status,
+              message,
+              orderId: apiResult.orderId,
+              orderAmount: expected,
+              difference: isAmountValid ? difference : undefined,
+              amountPaid: apiResult.amountPaid,
+            };
           }
+        }
+      });
 
-          if (!isAmountValid) {
+      // === Second pass: group-sum validation for multi-tracking boxes ===
+      // Group multi-tracking rows by orderId, sum their cod_amounts, compare vs box total
+      const multiTrackingGroups = new Map<string, number[]>(); // orderId -> [row indices]
+      validatedRows.forEach((r, idx) => {
+        if (r.multiTracking && r.orderId) {
+          const existing = multiTrackingGroups.get(r.orderId) || [];
+          existing.push(idx);
+          multiTrackingGroups.set(r.orderId, existing);
+        }
+      });
+
+      multiTrackingGroups.forEach((indices, orderId) => {
+        const boxTotal = validatedRows[indices[0]].boxExpectedAmount || 0;
+        const sumCod = indices.reduce((sum, idx) => {
+          return sum + parseAmount(validatedRows[idx].codAmount);
+        }, 0);
+        const groupDiff = sumCod - boxTotal;
+        const groupMatch = Math.abs(groupDiff) < 0.01;
+
+        indices.forEach((idx) => {
+          const r = validatedRows[idx];
+          const codVal = parseAmount(r.codAmount);
+          const isValid = Number.isFinite(codVal) && codVal >= 0;
+
+          let status: ValidationStatus = groupMatch ? 'matched' : 'unmatched';
+          let message = groupMatch
+            ? `ตรงกัน (รวม ${indices.length} tracking = ฿${sumCod.toLocaleString('th-TH', { minimumFractionDigits: 2 })} / กล่อง ฿${boxTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })})`
+            : `ไม่ตรง: รวม ${indices.length} tracking = ฿${sumCod.toLocaleString('th-TH', { minimumFractionDigits: 2 })} vs กล่อง ฿${boxTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })} (ต่าง ${groupDiff > 0 ? '+' : ''}฿${Math.abs(groupDiff).toLocaleString('th-TH', { minimumFractionDigits: 2 })})`;
+
+          if (!isValid) {
             status = 'pending';
             message = 'ระบุยอดเงินไม่ถูกต้อง';
           }
 
-          validatedRows[index] = {
-            ...row,
+          validatedRows[idx] = {
+            ...r,
             status,
             message,
-            orderId: apiResult.orderId,
-            orderAmount: expected,
-            difference: isAmountValid ? difference : undefined,
-            amountPaid: apiResult.amountPaid,
-            // Preserving other fields
+            difference: isValid ? groupDiff : undefined,
           };
-        }
+        });
       });
 
       setRows(validatedRows);
@@ -797,12 +858,20 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
   }, [rows, searchTerm, filterStatus, showReturnedOnly]);
 
   const { totalInputAmount, totalMatchedOrderAmount } = useMemo(() => {
+    // For multi-tracking boxes, use boxExpectedAmount once per unique orderId
+    const countedBoxes = new Set<string>();
     return rows.reduce((acc, r) => {
       const input = parseAmount(r.codAmount);
       if (input > 0) {
         acc.totalInputAmount += input;
       }
-      if (r.orderAmount !== undefined && r.orderAmount !== null) {
+      if (r.multiTracking && r.boxExpectedAmount && r.orderId) {
+        // Multi-tracking: count box total once per unique orderId
+        if (!countedBoxes.has(r.orderId)) {
+          countedBoxes.add(r.orderId);
+          acc.totalMatchedOrderAmount += r.boxExpectedAmount;
+        }
+      } else if (r.orderAmount !== undefined && r.orderAmount !== null) {
         acc.totalMatchedOrderAmount += Number(r.orderAmount) || 0;
       }
       return acc;

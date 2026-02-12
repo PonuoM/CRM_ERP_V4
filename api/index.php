@@ -238,6 +238,16 @@ try {
                     }
                 }
 
+                // 2.5 Count how many trackings map to each box (parentId + boxNumber)
+                $trackingsPerBox = [];
+                foreach ($trackingRows as $tr) {
+                    $boxKey = $tr['parent_order_id'] . '-' . ($tr['track_box_number'] ?? 'null');
+                    if (!isset($trackingsPerBox[$boxKey])) {
+                        $trackingsPerBox[$boxKey] = 0;
+                    }
+                    $trackingsPerBox[$boxKey]++;
+                }
+
                 $results = [];
 
                 // Debug: Log what we're searching for
@@ -280,6 +290,7 @@ try {
                     $orderFallbackAmount = ($match['order_cod_amount'] > 0) ? $match['order_cod_amount'] : $match['order_total_amount'];
                     $expectedAmount = (float) $orderFallbackAmount;
                     $resolvedOrderId = $trackOrderId ?: $parentId; // Prefer sub, else parent
+                    $multipleTrackingsInBox = false;
 
                     // Try finding specific box
                     $boxes = $boxesByParent[$parentId] ?? [];
@@ -307,23 +318,35 @@ try {
 
                     if ($foundBox) {
                         $boxAmt = (float) ($foundBox['collection_amount'] > 0 ? $foundBox['collection_amount'] : $foundBox['cod_amount']);
-                        // Always use box amount if found, even if 0? Or fallback? 
-                        // Usually if a box exists, its amount is authoritative.
-                        $expectedAmount = $boxAmt;
 
                         if (!empty($foundBox['sub_order_id'])) {
                             $resolvedOrderId = $foundBox['sub_order_id'];
                         }
+
+                        // Check if multiple trackings share this same box
+                        $boxKey = $parentId . '-' . ($trackBoxNum ?? 'null');
+                        $trackingCountInBox = $trackingsPerBox[$boxKey] ?? 1;
+
+                        if ($trackingCountInBox > 1) {
+                            // Multiple trackings in same box — return full box total
+                            // Frontend validates: cod_amount must be 1..boxTotal
+                            $expectedAmount = $boxAmt;
+                            $multipleTrackingsInBox = true;
+                        } else {
+                            // Single tracking in box — box amount is authoritative
+                            $expectedAmount = $boxAmt;
+                        }
                     }
 
                     $results[] = [
-                        'trackingNumber' => $original, // Use correctly formatted from DB? No, keep user input or normalized? Input is better for mapping.
-                        'status' => 'found', // Helper status, frontend will determine matched/unmatched
+                        'trackingNumber' => $original,
+                        'status' => 'found',
                         'orderId' => $resolvedOrderId,
                         'parentOrderId' => $parentId,
                         'expectedAmount' => $expectedAmount,
                         'amountPaid' => (float) $match['amount_paid'],
-                        'message' => 'ตรวจสอบแล้ว'
+                        'message' => $multipleTrackingsInBox ? 'ตรวจสอบแล้ว (หลาย tracking ใน box เดียวกัน)' : 'ตรวจสอบแล้ว',
+                        'multipleTrackingsInBox' => $multipleTrackingsInBox,
                     ];
                 }
 
@@ -7827,7 +7850,14 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 $subtractDocTotalsStmt = $pdo->prepare('UPDATE cod_documents SET total_input_amount = GREATEST(0, total_input_amount - ?), total_order_amount = GREATEST(0, total_order_amount - ?), updated_at = NOW() WHERE id = ?');
                 // Prepared statements for updating order_boxes.collected_amount
                 $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
-                $updateBoxCollectedStmt = $pdo->prepare('UPDATE order_boxes SET collected_amount = ? WHERE order_id = ? AND box_number = ?');
+                $updateBoxCollectedStmt = $pdo->prepare(
+                    'UPDATE order_boxes SET collected_amount = (
+                        SELECT COALESCE(SUM(cr.cod_amount), 0)
+                        FROM cod_records cr
+                        INNER JOIN order_tracking_numbers otn ON LOWER(REPLACE(otn.tracking_number, " ", "")) = LOWER(REPLACE(cr.tracking_number, " ", ""))
+                        WHERE otn.parent_order_id = ? AND otn.box_number = ?
+                    ) WHERE order_id = ? AND box_number = ?'
+                );
 
                 $skippedItems = [];
                 foreach ($items as $it) {
@@ -7883,7 +7913,7 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     if ($trackingRow && $trackingRow['box_number'] !== null) {
                         $boxOrderId = $trackingRow['parent_order_id'] ?? $trackingRow['order_id'];
                         $boxNumber = (int) $trackingRow['box_number'];
-                        $updateBoxCollectedStmt->execute([$codAmount, $boxOrderId, $boxNumber]);
+                        $updateBoxCollectedStmt->execute([$boxOrderId, $boxNumber, $boxOrderId, $boxNumber]);
                     }
                 }
 
@@ -7937,7 +7967,14 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 $subtractDocTotalsStmt = $pdo->prepare('UPDATE cod_documents SET total_input_amount = GREATEST(0, total_input_amount - ?), total_order_amount = GREATEST(0, total_order_amount - ?), updated_at = NOW() WHERE id = ?');
                 // Prepared statements for updating order_boxes.collected_amount
                 $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
-                $updateBoxCollectedStmt = $pdo->prepare('UPDATE order_boxes SET collected_amount = ? WHERE order_id = ? AND box_number = ?');
+                $updateBoxCollectedStmt = $pdo->prepare(
+                    'UPDATE order_boxes SET collected_amount = (
+                        SELECT COALESCE(SUM(cr.cod_amount), 0)
+                        FROM cod_records cr
+                        INNER JOIN order_tracking_numbers otn ON LOWER(REPLACE(otn.tracking_number, " ", "")) = LOWER(REPLACE(cr.tracking_number, " ", ""))
+                        WHERE otn.parent_order_id = ? AND otn.box_number = ?
+                    ) WHERE order_id = ? AND box_number = ?'
+                );
 
                 $skippedItems = [];
                 foreach ($items as $it) {
@@ -7998,7 +8035,7 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                         if ($trackingRow && $trackingRow['box_number'] !== null) {
                             $boxOrderId = $trackingRow['parent_order_id'] ?? $trackingRow['order_id'];
                             $boxNumber = (int) $trackingRow['box_number'];
-                            $updateBoxCollectedStmt->execute([$codAmount, $boxOrderId, $boxNumber]);
+                            $updateBoxCollectedStmt->execute([$boxOrderId, $boxNumber, $boxOrderId, $boxNumber]);
                         }
                     }
 
