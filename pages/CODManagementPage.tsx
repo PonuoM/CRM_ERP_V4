@@ -15,6 +15,7 @@ import {
   Plus,
   Trash2,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { patchOrder, apiFetch } from "../services/api";
 
@@ -145,6 +146,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [isLoadingBanks, setIsLoadingBanks] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
+  const [showSuccessPopup, setShowSuccessPopup] = useState<{ message: string } | null>(null);
 
   // NEW: Import mode and existing documents
   const [importMode, setImportMode] = useState<'new' | 'existing'>('new');
@@ -371,15 +374,37 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
           const docName = alreadyImported.document_number || (docId ? `#${docId}` : '');
           const isOtherDoc = !!(docId && (importMode === 'new' || (currentDocId && docId !== currentDocId)));
           const docLabel = docName ? ` [เอกสาร ${docName}]` : '';
+
+          // Calculate actual remaining difference
+          // Combine ALL payment sources: boxCollected (order_boxes), importedAmount (cod_records), totalSlipAmount (order_slips)
+          const expectedAmount = apiResult?.expectedAmount || 0;
+          const boxCollected = apiResult?.boxCollectedAmount || 0;
+          const totalSlipAmount = apiResult?.totalSlipAmount || 0;
+          // effectiveCollected = best COD data + slip data
+          const codCollected = Math.max(boxCollected, importedAmount);
+          const effectiveCollected = codCollected + totalSlipAmount;
+          const remaining = expectedAmount > 0 ? Math.max(0, expectedAmount - effectiveCollected) : 0;
+          const isFullyCollected = expectedAmount > 0 && remaining < 0.01;
+
+          let statusMessage = '';
+          const slipNote = totalSlipAmount > 0 ? ` + สลิป ฿${totalSlipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}` : '';
+          if (isOtherDoc) {
+            statusMessage = `มีในเอกสารอื่น ${docName} (฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})${importStatus}`;
+          } else if (isFullyCollected) {
+            statusMessage = `ซ้ำแล้ว ฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${importStatus} (เก็บครบ${slipNote})${docLabel}`;
+          } else if (remaining > 0 && expectedAmount > 0) {
+            statusMessage = `ซ้ำแล้ว ฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${importStatus}${slipNote} — ยังค้าง ฿${remaining.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${docLabel}`;
+          } else {
+            statusMessage = `ซ้ำแล้ว ฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${importStatus}${docLabel}`;
+          }
+
           validatedRows[index] = {
             ...row,
             status: (isOtherDoc ? 'returned' : 'matched') as ValidationStatus,
-            message: isOtherDoc
-              ? `มีในเอกสารอื่น ${docName} (฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})${importStatus}`
-              : `ซ้ำแล้ว ฿${importedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}${importStatus}${docLabel}`,
+            message: statusMessage,
             orderId: apiResult?.orderId,
-            orderAmount: apiResult?.expectedAmount || importedAmount,
-            difference: 0,
+            orderAmount: expectedAmount || importedAmount,
+            difference: isFullyCollected ? 0 : (expectedAmount > 0 ? -(remaining) : 0),
             amountPaid: importedAmount, // Mark as already paid to skip during import
           };
           return;
@@ -700,6 +725,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     }));
 
     setIsSubmitting(true);
+    setImportProgress({ current: 0, total: finalRowsToImport.length });
     const documentDateTime = `${documentDate} ${documentTime || "00:00"}:00`;
 
     try {
@@ -762,41 +788,47 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         { amountPaid: number; paymentStatus: PaymentStatus }
       > = {};
 
+      // Update progress: document created/updated
+      setImportProgress({ current: 1, total: finalRowsToImport.length });
+
       if (uniqueOrderIds.size > 0) {
-        await Promise.all(
-          Array.from(uniqueOrderIds).map(async (orderId) => {
-            // Query all cod_records for this order and SUM cod_amount
-            const qs = new URLSearchParams({
-              companyId: String(user.companyId),
-              orderId: orderId,
-            });
-            const records = await apiFetch(`cod_records?${qs.toString()}`);
-            const totalPaid = Array.isArray(records)
-              ? records.reduce((sum: number, r: any) => sum + (parseFloat(r.cod_amount) || 0), 0)
-              : 0;
+        const orderIdArray = Array.from(uniqueOrderIds);
+        let completedOrders = 0;
+        // Process orders sequentially for progress tracking
+        for (const orderId of orderIdArray) {
+          // Query all cod_records for this order and SUM cod_amount
+          const qs = new URLSearchParams({
+            companyId: String(user.companyId),
+            orderId: orderId,
+          });
+          const records = await apiFetch(`cod_records?${qs.toString()}`);
+          const totalPaid = Array.isArray(records)
+            ? records.reduce((sum: number, r: any) => sum + (parseFloat(r.cod_amount) || 0), 0)
+            : 0;
 
-            const roundedPaid = Math.round(totalPaid * 100) / 100;
-            const nextStatus =
-              roundedPaid > 0
-                ? PaymentStatus.PreApproved
-                : PaymentStatus.PendingVerification;
+          const roundedPaid = Math.round(totalPaid * 100) / 100;
+          const nextStatus =
+            roundedPaid > 0
+              ? PaymentStatus.PreApproved
+              : PaymentStatus.PendingVerification;
 
-            const updatePayload: any = {
-              amountPaid: roundedPaid,
-              paymentStatus: nextStatus,
-            };
+          const updatePayload: any = {
+            amountPaid: roundedPaid,
+            paymentStatus: nextStatus,
+          };
 
-            if (nextStatus === PaymentStatus.PreApproved) {
-              updatePayload.orderStatus = 'PreApproved';
-            }
+          if (nextStatus === PaymentStatus.PreApproved) {
+            updatePayload.orderStatus = 'PreApproved';
+          }
 
-            orderUpdates[orderId] = {
-              amountPaid: roundedPaid,
-              paymentStatus: nextStatus,
-            };
-            return patchOrder(orderId, updatePayload);
-          }),
-        );
+          orderUpdates[orderId] = {
+            amountPaid: roundedPaid,
+            paymentStatus: nextStatus,
+          };
+          await patchOrder(orderId, updatePayload);
+          completedOrders++;
+          setImportProgress({ current: 1 + completedOrders, total: finalRowsToImport.length });
+        }
         if (Object.keys(orderUpdates).length > 0) {
           onOrdersPaidUpdate?.(orderUpdates);
         }
@@ -814,7 +846,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       const successMessage = summaryLines.length
         ? `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (${importedCount} จาก ${finalRowsToImport.length} รายการ)\n${summaryLines.join("\n")}${forcedSummary}${skippedSummary}`
         : `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (${importedCount} จาก ${finalRowsToImport.length} รายการ)${forcedSummary}${skippedSummary}`;
-      alert(successMessage);
+      setShowSuccessPopup({ message: successMessage });
       setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
       setIsVerified(false);
       setDocumentNumber("");
@@ -830,6 +862,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       }
     } finally {
       setIsSubmitting(false);
+      setImportProgress(null);
     }
   };
 
@@ -1085,7 +1118,17 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                 className="hidden"
               />
             </label>
-            <button onClick={handleValidate} className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md py-2 px-3 hover:bg-gray-50">ตรวจสอบข้อมูล</button>
+            <button
+              onClick={handleValidate}
+              disabled={isSubmitting}
+              className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md py-2 px-3 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              {isSubmitting ? (
+                <><Loader2 size={14} className="animate-spin" />กำลังตรวจสอบ...</>
+              ) : (
+                'ตรวจสอบข้อมูล'
+              )}
+            </button>
             <button
               onClick={handleImport}
               disabled={
@@ -1106,11 +1149,13 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
             >
               <UploadCloud size={16} className="mr-2" />
-              {isSubmitting
-                ? "กำลังนำเข้า..."
-                : importMode === 'new'
-                  ? `สร้างเอกสารใหม่ (${validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length})`
-                  : `เพิ่มในเอกสาร (${validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length})`
+              {isSubmitting && importProgress
+                ? `กำลังนำเข้า ${importProgress.current} / ${importProgress.total}...`
+                : isSubmitting
+                  ? "กำลังนำเข้า..."
+                  : importMode === 'new'
+                    ? `สร้างเอกสารใหม่ (${validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length})`
+                    : `เพิ่มในเอกสาร (${validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length})`
               }
             </button>
           </div>
@@ -1292,6 +1337,27 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Success Popup */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4 text-center">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                <CheckCircle size={40} className="text-green-600" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-3">นำเข้าสำเร็จ!</h3>
+            <p className="text-sm text-gray-600 whitespace-pre-line mb-6">{showSuccessPopup.message}</p>
+            <button
+              onClick={() => setShowSuccessPopup(null)}
+              className="bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-2.5 rounded-lg transition-colors"
+            >
+              ตกลง
+            </button>
           </div>
         </div>
       )}

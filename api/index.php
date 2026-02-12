@@ -225,7 +225,7 @@ try {
                 if (!empty($parentIds)) {
                     $parentIds = array_values($parentIds); // Re-index for PDO
                     $pPlaceholders = str_repeat('?,', count($parentIds) - 1) . '?';
-                    $boxSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount 
+                    $boxSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount, collected_amount 
                            FROM order_boxes 
                            WHERE order_id IN ($pPlaceholders)";
                     $bStmt = $pdo->prepare($boxSql);
@@ -235,6 +235,20 @@ try {
                     foreach ($boxes as $b) {
                         $pid = $b['order_id'];
                         $boxesByParent[$pid][] = $b;
+                    }
+                }
+
+                // 2.4b Query order_slips to get total slip payments per order
+                $slipsByParent = [];
+                if (!empty($parentIds)) {
+                    $slipSql = "SELECT order_id, COALESCE(SUM(amount), 0) as total_slip_amount 
+                               FROM order_slips 
+                               WHERE order_id IN ($pPlaceholders) 
+                               GROUP BY order_id";
+                    $slipStmt = $pdo->prepare($slipSql);
+                    $slipStmt->execute($parentIds);
+                    while ($slipRow = $slipStmt->fetch(PDO::FETCH_ASSOC)) {
+                        $slipsByParent[$slipRow['order_id']] = (float) $slipRow['total_slip_amount'];
                     }
                 }
 
@@ -345,6 +359,8 @@ try {
                         'parentOrderId' => $parentId,
                         'expectedAmount' => $expectedAmount,
                         'amountPaid' => (float) $match['amount_paid'],
+                        'boxCollectedAmount' => $foundBox ? (float) ($foundBox['collected_amount'] ?? 0) : 0,
+                        'totalSlipAmount' => $slipsByParent[$parentId] ?? 0,
                         'message' => $multipleTrackingsInBox ? 'ตรวจสอบแล้ว (หลาย tracking ใน box เดียวกัน)' : 'ตรวจสอบแล้ว',
                         'multipleTrackingsInBox' => $multipleTrackingsInBox,
                     ];
