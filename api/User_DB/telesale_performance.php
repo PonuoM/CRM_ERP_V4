@@ -411,6 +411,7 @@ try {
             FROM user_daily_attendance a
             JOIN users u ON a.user_id = u.id
             WHERE a.work_date BETWEEN ? AND ?
+                AND a.work_date < CURDATE()
                 AND u.company_id = ?
                 AND u.role LIKE '%telesale%'
                 AND $visibleFilter

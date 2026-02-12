@@ -88,7 +88,8 @@ try {
                 SUM(CASE WHEN duration >= 40 THEN 1 ELSE 0 END) AS connected_calls,
                 ROUND(SUM(duration) / 60, 2) AS total_minutes
             FROM onecall_log
-            WHERE phone_telesale IN ($phPlaceholders)";
+            WHERE phone_telesale IN ($phPlaceholders)
+              AND DATE(`timestamp`) < CURDATE()";
         $callParams = $phones;
 
         if (!empty($month)) {
@@ -124,7 +125,8 @@ try {
                 DATE_FORMAT(work_date, '%Y-%m') AS month_key,
                 SUM(attendance_value) AS working_days
             FROM user_daily_attendance
-            WHERE user_id IN ($uidPlaceholders)";
+            WHERE user_id IN ($uidPlaceholders)
+              AND work_date < CURDATE()";
         $attParams = $userIds;
 
         if (!empty($month)) {
