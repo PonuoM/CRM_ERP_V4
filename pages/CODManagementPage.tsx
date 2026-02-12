@@ -834,18 +834,14 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         }
       }
 
-      const summaryLines = Object.entries(orderUpdates).map(
-        ([orderId, update]) =>
-          `${orderId}: จ่าย ${formatCurrency(update.amountPaid)}`,
-      );
+      const totalOrders = Object.keys(orderUpdates).length;
+      const totalAmount = Object.values(orderUpdates).reduce((sum, u) => sum + u.amountPaid, 0);
       const forcedSummary = forcedCount > 0 ? `\n⚠️ ${forcedCount} รายการติ๊กข้าม (ไม่อัพเดท Order)` : '';
       const skippedSummary = skippedByBackend.length > 0
-        ? `\n❌ ${skippedByBackend.length} รายการข้ามเพราะมีในเอกสารอื่น:\n${skippedByBackend.map(s => `  - ${s.tracking_number} (เอกสาร #${s.existing_document_id})`).join('\n')}`
+        ? `\n❌ ${skippedByBackend.length} รายการข้ามเพราะมีในเอกสารอื่น`
         : '';
       const importedCount = finalRowsToImport.length - skippedByBackend.length;
-      const successMessage = summaryLines.length
-        ? `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (${importedCount} จาก ${finalRowsToImport.length} รายการ)\n${summaryLines.join("\n")}${forcedSummary}${skippedSummary}`
-        : `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ (${importedCount} จาก ${finalRowsToImport.length} รายการ)${forcedSummary}${skippedSummary}`;
+      const successMessage = `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ\n\n📦 ${importedCount} รายการ (จาก ${finalRowsToImport.length})\n🧾 ${totalOrders} ออเดอร์\n💰 ยอดรวม ${formatCurrency(totalAmount)}${forcedSummary}${skippedSummary}`;
       setShowSuccessPopup({ message: successMessage });
       setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
       setIsVerified(false);
