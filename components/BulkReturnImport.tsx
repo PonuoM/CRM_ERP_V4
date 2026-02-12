@@ -161,7 +161,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                 allValid = false;
                 candidates.forEach(c => {
                     newRows[c.index].status = 'error';
-                    newRows[c.index].message = 'API Error';
+                    newRows[c.index].message = 'เกิดข้อผิดพลาด API';
                 });
             }
 
@@ -179,7 +179,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                     allValid = false;
                     indices.forEach(idx => {
                         newRows[idx].status = 'duplicate';
-                        newRows[idx].message = 'Duplicate in this batch';
+                        newRows[idx].message = 'ซ้ำในชุดนี้';
                     });
                 }
             });
@@ -189,7 +189,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
 
         } catch (error) {
             console.error(error);
-            alert('Validation failed');
+            alert('ตรวจสอบไม่สำเร็จ');
         } finally {
             setValidating(false);
         }
@@ -209,7 +209,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
 
     const handleExecuteImport = async () => {
         if (!isVerified || (validCount === 0 && warningCount === 0)) return;
-        if (!window.confirm(`Confirm import of ${validCount + warningCount} items?`)) return;
+        if (!window.confirm(`ยืนยันนำเข้า ${validCount + warningCount} รายการ?`)) return;
 
         setImporting(true);
         try {
@@ -240,16 +240,16 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                 <div>
                     <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
                         <Clipboard className="text-blue-600" size={20} />
-                        Bulk Import ({
-                            mode === 'returning' ? 'กำลังตีกลับ (Returning)' :
-                                mode === 'returned' ? 'เข้าคลังแล้ว (Returned)' :
-                                    mode === 'good' ? 'สภาพดี (Good)' :
-                                        mode === 'damaged' ? 'เสียหาย (Damaged)' :
-                                            'สูญหาย (Lost)'
+                        นำเข้าข้อมูล ({
+                            mode === 'returning' ? 'กำลังตีกลับ' :
+                                mode === 'returned' ? 'เข้าคลังแล้ว' :
+                                    mode === 'good' ? 'สภาพดี' :
+                                        mode === 'damaged' ? 'เสียหาย' :
+                                            'สูญหาย'
                         })
                     </h3>
                     <p className="text-sm text-gray-500">
-                        Paste Tracking Numbers (one per line)
+                        วางเลข Tracking (บรรทัดละ 1 เลข)
                     </p>
                 </div>
 
@@ -270,7 +270,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                             }`}
                     >
                         {validating ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                        Check
+                        ตรวจสอบ
                     </button>
 
                     <button
@@ -290,10 +290,10 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                     <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tracking Number</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Matched Order</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">เลข Tracking</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ขนส่ง</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ออเดอร์ที่พบ</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">สถานะ</th>
                             <th className="px-4 py-2 w-10"></th>
                         </tr>
                     </thead>
@@ -311,7 +311,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                                         className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${row.status === 'error' ? 'bg-red-50 border-red-300' :
                                             row.status === 'duplicate' ? 'bg-yellow-50 border-yellow-300' : ''
                                             }`}
-                                        placeholder="Tracking No."
+                                        placeholder="เลข Tracking"
                                     />
                                 </td>
                                 <td className="px-4 py-2 text-sm text-gray-500">
@@ -364,7 +364,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                         onClick={addRow}
                         className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-medium px-4 py-2 rounded-md hover:bg-indigo-50 transition-colors"
                     >
-                        <Plus size={18} /> Add Row
+                        <Plus size={18} /> เพิ่มแถว
                     </button>
                 </div>
             </div>
