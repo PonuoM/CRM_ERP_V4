@@ -66,11 +66,12 @@ if ($search !== "") {
   $params[] = $like;
 }
 
-$allowedStatuses = ["pending", "verified", "rejected"];
-// Status expression logic remains same
+$allowedStatuses = ["pending", "preapproved", "approved", "rejected"];
+// Status expression logic
 $statusExpr = "LOWER(
   CASE
-    WHEN LOWER(o.payment_status) IN ('paid','verified','complete','completed') THEN 'verified'
+    WHEN LOWER(o.payment_status) IN ('preapproved','verified') THEN 'preapproved'
+    WHEN LOWER(o.payment_status) IN ('approved','paid','complete','completed') THEN 'approved'
     WHEN LOWER(o.payment_status) IN ('rejected','cancelled','void','refunded') THEN 'rejected'
     ELSE 'pending'
   END

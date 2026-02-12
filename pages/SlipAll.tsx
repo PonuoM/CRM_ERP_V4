@@ -22,7 +22,7 @@ interface PaymentSlip {
   name: string;
   url?: string;
   uploadedAt: string;
-  status: "pending" | "verified" | "rejected";
+  status: "pending" | "verified" | "rejected" | "preapproved" | "approved";
   uploadedBy?: string;
   customerName?: string;
   customerPhone?: string;
@@ -45,7 +45,7 @@ interface OrderSlipGroup {
   orderTotal?: number;
   slips: PaymentSlip[];
   latestUpload: string;
-  status: "pending" | "verified" | "rejected";
+  status: "pending" | "verified" | "rejected" | "preapproved" | "approved";
   paymentMethod?: string;
 }
 
@@ -87,7 +87,7 @@ const SlipAll: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "pending" | "verified" | "rejected"
+    "all" | "pending" | "preapproved" | "approved" | "rejected"
   >("all");
   const [dateFilter, setDateFilter] = useState<
     "all" | "today" | "week" | "month"
@@ -176,7 +176,7 @@ const SlipAll: React.FC = () => {
               ? apiUrl.split("/").pop() || `slip_${item.id}`
               : `slip_${item.id}`;
           const statusValue =
-            item.status === "verified" || item.status === "rejected"
+            item.status === "verified" || item.status === "rejected" || item.status === "preapproved" || item.status === "approved"
               ? item.status
               : "pending";
           const fileExists = Boolean(
@@ -332,10 +332,13 @@ const SlipAll: React.FC = () => {
 
   const getStatusIcon = (status: PaymentSlip["status"]) => {
     switch (status) {
+      case "approved":
       case "verified":
         return <CheckCircle className="w-5 h-5 text-green-600" />;
       case "rejected":
         return <X className="w-5 h-5 text-red-600" />;
+      case "preapproved":
+        return <AlertCircle className="w-5 h-5 text-blue-600" />;
       default:
         return <AlertCircle className="w-5 h-5 text-yellow-600" />;
     }
@@ -343,10 +346,13 @@ const SlipAll: React.FC = () => {
 
   const getStatusText = (status: PaymentSlip["status"]) => {
     switch (status) {
+      case "approved":
       case "verified":
         return "ยืนยันแล้ว";
       case "rejected":
-        return "ปฏิเสธ";
+        return "ยกเลิก";
+      case "preapproved":
+        return "รอตรวจสอบจากบัญชี";
       default:
         return "รอตรวจสอบ";
     }
@@ -354,10 +360,13 @@ const SlipAll: React.FC = () => {
 
   const getStatusColor = (status: PaymentSlip["status"]) => {
     switch (status) {
+      case "approved":
       case "verified":
         return "bg-green-100 text-green-800 border-green-200";
       case "rejected":
         return "bg-red-100 text-red-800 border-red-200";
+      case "preapproved":
+        return "bg-blue-100 text-blue-800 border-blue-200";
       default:
         return "bg-yellow-100 text-yellow-800 border-yellow-200";
     }
@@ -501,7 +510,9 @@ const SlipAll: React.FC = () => {
             >
               <option value="all">สถานะทั้งหมด</option>
               <option value="pending">รอตรวจสอบ</option>
-              <option value="verified">ชำระแล้ว</option>
+              <option value="preapproved">รอตรวจสอบจากบัญชี</option>
+              <option value="approved">ยืนยันแล้ว</option>
+              <option value="rejected">ยกเลิก</option>
             </select>
           </div>
 
