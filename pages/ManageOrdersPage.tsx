@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
-import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText, XCircle } from 'lucide-react';
+import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText, XCircle, RotateCcw } from 'lucide-react';
 import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl, getTabRules, validateOrdersForExport } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
@@ -39,7 +39,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [activeTab, setActiveTab] = usePersistentState<'all' | 'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed' | 'cancelled'>('manageOrders:activeTab', 'waitingVerifySlip');
+  const [activeTab, setActiveTab] = usePersistentState<'all' | 'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed' | 'returned' | 'cancelled'>('manageOrders:activeTab', 'waitingVerifySlip');
   const [itemsPerPage, setItemsPerPage] = usePersistentState<number>('manageOrders:itemsPerPage', PAGE_SIZE_OPTIONS[1]);
   const [currentPage, setCurrentPage] = usePersistentState<number>('manageOrders:currentPage', 1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
@@ -1458,14 +1458,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           <p className="text-gray-600">{`ทั้งหมด ${finalDisplayedOrders.length} รายการ`}</p>
         </div>
         <div className="flex items-center space-x-2">
-          <button
-            onClick={handleExportAndProcessSelected}
-            disabled={selectedIds.length === 0}
-            className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Send size={16} className="mr-2" />
-            {activeTab === 'waitingExport' ? `ส่งออกข้อมูล (${selectedIds.length})` : 'ส่งออกข้อมูล'}
-          </button>
+          {activeTab !== 'waitingVerifySlip' && (
+            <button
+              onClick={handleExportAndProcessSelected}
+              disabled={selectedIds.length === 0}
+              className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send size={16} className="mr-2" />
+              {activeTab === 'waitingExport' ? `ส่งออกข้อมูล (${selectedIds.length})` : 'ส่งออกข้อมูล'}
+            </button>
+          )}
           {activeTab === 'waitingExport' && (
             <button
               onClick={async () => {
@@ -1699,6 +1701,21 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           )}
         </button>
         <button
+          onClick={() => setActiveTab('returned')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'returned'
+            ? 'border-b-2 border-amber-600 text-amber-600'
+            : 'text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          <RotateCcw size={16} />
+          <span>ตีกลับ</span>
+          {(
+            <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-600">
+              {tabCounts['returned'] !== undefined ? tabCounts['returned'] : '....'}
+            </span>
+          )}
+        </button>
+        <button
           onClick={() => setActiveTab('cancelled')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'cancelled'
             ? 'border-b-2 border-red-600 text-red-600'
@@ -1772,7 +1789,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             user={user}
             users={users}
             onCancelOrder={(orderId) => onCancelOrders([orderId])}
-            selectable={activeTab === 'waitingVerifySlip' || activeTab === 'waitingExport'}
+            selectable={activeTab === 'waitingExport'}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
             showShippingColumn={activeTab !== 'waitingExport'}
