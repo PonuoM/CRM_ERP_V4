@@ -89,6 +89,7 @@ const TAB_GROUPS = [
             { key: 'shipping', label: 'กำลังจัดส่ง' },
             { key: 'awaiting_account', label: 'รอตรวจสอบจากบัญชี' },
             { key: 'completed', label: 'เสร็จสิ้น' },
+            { key: 'returned', label: 'ตีกลับ' },
             { key: 'cancelled', label: 'ยกเลิก' },
         ]
     },
