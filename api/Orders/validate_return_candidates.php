@@ -28,7 +28,7 @@ try {
     }
 
     if (empty($candidates)) {
-        echo json_encode(['success' => false, 'error' => 'No tracking numbers provided']);
+        echo json_encode(['success' => false, 'error' => 'ไม่พบเลข Tracking']);
         exit;
     }
 
@@ -63,7 +63,7 @@ try {
         $trackRow = $stmtTrack->fetch(PDO::FETCH_ASSOC);
 
         if (!$trackRow) {
-            $result['message'] = 'Tracking number not found';
+            $result['message'] = 'ไม่พบเลข Tracking ในระบบ';
             $results[] = $result;
             continue;
         }
@@ -83,7 +83,7 @@ try {
         $boxRow = $stmtBox->fetch(PDO::FETCH_ASSOC);
 
         if (!$boxRow) {
-            $result['message'] = 'Order box not found for this tracking number';
+            $result['message'] = 'ไม่พบกล่องสินค้าสำหรับเลข Tracking นี้';
             $results[] = $result;
             continue;
         }

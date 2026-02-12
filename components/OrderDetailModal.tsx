@@ -5,7 +5,7 @@ import { X, User, MapPin, Box, Image as ImageIcon } from 'lucide-react';
 
 export interface StatementContext {
     statementAmount: number;
-    transferAt: string;
+    transferAt: string; 
     channel?: string;
 }
 

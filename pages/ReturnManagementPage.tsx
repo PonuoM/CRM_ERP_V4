@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Order, OrderStatus } from "../types";
-import { listOrders, saveReturnOrders, getReturnOrders, getOrder, revertReturnedOrder } from "../services/api";
+import { listOrders, saveReturnOrders, getReturnOrders, getReturnStats, getOrder, revertReturnedOrder } from "../services/api";
 import * as XLSX from "xlsx";
 import {
   Search,
@@ -72,6 +72,7 @@ interface VerifiedOrder {
   order_date?: string;
   main_order_id?: string;
   updated_at?: string;
+  total_boxes?: number;
 }
 
 const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
@@ -108,6 +109,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   // Search State
   const [searchTracking, setSearchTracking] = useState("");
+  const [filterSearch, setFilterSearch] = useState("");
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
 
   // Manage Modal State
@@ -152,9 +154,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
-    total: 0,
-    totalPages: 1
+    hasMore: false,
   });
+
+  // Tab counts from stats API (fetched once)
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (managingOrder) {
@@ -316,7 +320,23 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   useEffect(() => {
     fetchVerifiedOrders();
-  }, [user.companyId, activeTab, pagination.page]);
+  }, [user.companyId, activeTab, pagination.page, filterSearch]);
+
+  // Fetch stats once on mount + when tab data changes (after save/revert)
+  const fetchReturnStats = async () => {
+    try {
+      const res = await getReturnStats(user.companyId);
+      if (res && res.status === 'success' && res.counts) {
+        setTabCounts(res.counts);
+      }
+    } catch (err) {
+      console.error('Failed to fetch return stats', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchReturnStats();
+  }, [user.companyId]);
 
   const fetchVerifiedOrders = async () => {
     try {
@@ -326,7 +346,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         status: activeTab,
         page: pagination.page,
         limit: pagination.limit,
-        companyId: user.companyId
+        companyId: user.companyId,
+        search: filterSearch || undefined
       });
 
       if (res && res.status === "success") {
@@ -334,8 +355,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         if (res.pagination) {
           setPagination(prev => ({
             ...prev,
-            total: res.pagination.total,
-            totalPages: res.pagination.totalPages
+            hasMore: res.pagination.hasMore ?? false,
           }));
         }
       }
@@ -476,12 +496,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           setIsConfirmSaveOpen(false);
           fetchOrders();
           fetchVerifiedOrders();
+          fetchReturnStats();
         } else {
           alert(`บันทึกข้อมูลเรียบร้อย (${res.updatedCount} รายการ)`);
           setManagingOrder(null);
           setIsConfirmSaveOpen(false);
           fetchOrders();
           fetchVerifiedOrders();
+          fetchReturnStats();
         }
       } else {
         alert("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
@@ -871,6 +893,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         alert(`บันทึกข้อมูลเรียบร้อยแล้ว(${res.message})`);
         setMode("list");
         fetchVerifiedOrders(); // Refresh verified list
+        fetchReturnStats(); // Refresh tab counts
         fetchOrders(); // Refresh pending list (though we filter logic client side)
       } else {
         alert("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
@@ -961,22 +984,22 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               <td className="px-6 py-4 whitespace-nowrap text-center">
                 {res.status === "matched" && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                    Verified
+                    ตรวจสอบแล้ว
                   </span>
                 )}
                 {res.status === "already_verified" && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                    Already Verified
+                    มีในระบบแล้ว
                   </span>
                 )}
                 {res.status === "amount_mismatch" && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                    Amount Diff
+                    ยอดไม่ตรง
                   </span>
                 )}
                 {res.status === "unmatched_file" && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                    Not Found
+                    ไม่พบในระบบ
                   </span>
                 )}
               </td>
@@ -1005,6 +1028,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         setIsRevertModalOpen(false);
         setRevertOrderId("");
         fetchVerifiedOrders();
+        fetchReturnStats();
       } else {
         alert(`ผิดพลาด: ${res?.message || 'Unknown error'}`);
       }
@@ -1031,6 +1055,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             items: [],
             totalAmount: v.total_amount || 0,
             orderDate: v.order_date || "",
+            totalBoxes: v.total_boxes || 0,
           };
         }
         acc[key].items.push(v);
@@ -1038,7 +1063,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       },
       {} as Record<
         string,
-        { displayId: string; items: typeof verifiedOrders; totalAmount: number; orderDate: string }
+        { displayId: string; items: typeof verifiedOrders; totalAmount: number; orderDate: string; totalBoxes: number }
       >,
     );
 
@@ -1054,7 +1079,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         {/* Pagination Controls */}
         <div className="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border mb-4">
           <span className="text-sm text-gray-600">
-            แสดง {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} จาก {pagination.total} รายการ
+            หน้า {pagination.page} {filterSearch && '(ค้นหา)'}
           </span>
           <div className="flex gap-2">
             <button
@@ -1065,11 +1090,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               <ChevronLeft size={20} />
             </button>
             <span className="px-3 py-1 bg-gray-100 rounded text-sm font-medium">
-              หน้า {pagination.page} / {pagination.totalPages}
+              หน้า {pagination.page}
             </span>
             <button
-              onClick={() => setPagination(prev => ({ ...prev, page: Math.min(pagination.totalPages, prev.page + 1) }))}
-              disabled={pagination.page >= pagination.totalPages}
+              onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+              disabled={!pagination.hasMore}
               className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
             >
               <ChevronRight size={20} />
@@ -1081,11 +1106,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           <div key={group.displayId} className="bg-white shadow rounded-lg overflow-hidden border">
             <div className="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
               <div>
-                <span className="font-semibold text-gray-700">Order: {group.displayId}</span>
+                <span
+                  className="font-semibold text-blue-600 cursor-pointer hover:underline"
+                  onClick={() => setSelectedOrderId(group.displayId)}
+                >Order: {group.displayId}</span>
                 {group.orderDate && <span className="text-xs text-gray-500 ml-2">({new Date(group.orderDate).toLocaleDateString('th-TH')})</span>}
               </div>
               <div className="flex items-center gap-3 text-sm text-gray-600">
-                <span>{group.items.length} รายการ</span>
+                <span>{group.items.length}{group.totalBoxes > group.items.length ? ` จาก ${group.totalBoxes}` : ''} กล่อง</span>
                 <span>ยอดบิล: {group.totalAmount.toLocaleString()}</span>
                 <button
                   onClick={() => {
@@ -1224,43 +1252,67 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         </div>
       </div>
 
-      {/* Loading Overlay */}
-      {/* Loading Overlay */}
-      {loading && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-xl flex flex-col items-center gap-4 min-w-[300px] px-8">
-            <Spinner size="lg" />
-            <span className="text-gray-700 font-medium">กำลังโหลดข้อมูล...</span>
-          </div>
-        </div>
-      )}
+
 
       {/* Tabs Row - Moved Here */}
       {mode === "list" && (
         <div className="mb-6">
           <div className="flex border-b overflow-x-auto">
             {[
-              { id: "pending", label: "รอการดำเนินการ (Pending)", color: "gray" },
-              { id: "returning", label: "กำลังตีกลับ (Returning)", color: "orange" },
-              { id: "returned", label: "เข้าคลัง (Returned)", color: "blue" },
-              { id: "good", label: "สภาพดี (Good)", color: "green" },
-              { id: "damaged", label: "ชำรุด (Damaged)", color: "red" },
-              { id: "lost", label: "สูญหาย (Lost)", color: "gray" },
+              { id: "pending", label: "รอการดำเนินการ", color: "gray" },
+              { id: "returning", label: "กำลังตีกลับ", color: "orange" },
+              { id: "returned", label: "เข้าคลัง", color: "blue" },
+              { id: "good", label: "สภาพดี", color: "green" },
+              { id: "damaged", label: "ชำรุด", color: "red" },
+              { id: "lost", label: "สูญหาย", color: "gray" },
             ].map((tab) => (
               <button
                 key={tab.id}
-                className={`px-4 py-2 font-medium text-sm focus:outline-none whitespace-nowrap ${activeTab === tab.id
+                className={`px-4 py-2 font-medium text-sm focus:outline-none whitespace-nowrap flex items-center gap-1.5 ${activeTab === tab.id
                   ? `border-b-2 border-${tab.color}-500 text-${tab.color}-600`
                   : "text-gray-500 hover:text-gray-700"
                   }`}
                 onClick={() => setActiveTab(tab.id as any)}
               >
                 {tab.label}
+                {tabCounts[tab.id] !== undefined && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.id
+                    ? `bg-${tab.color}-100 text-${tab.color}-700`
+                    : 'bg-gray-100 text-gray-500'
+                    }`}>
+                    {tabCounts[tab.id].toLocaleString()}
+                  </span>
+                )}
               </button>
             ))}
             <div className="flex-1 min-w-[20px]"></div>
-            {/* Search Box */}
-            <div className="p-2">
+            {/* Filter Search */}
+            <div className="p-2 flex items-center gap-2">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="ค้นหาเลขออเดอร์ / เบอร์โทร..."
+                  className="pl-8 pr-8 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 w-56"
+                  value={filterSearch}
+                  onChange={(e) => {
+                    setFilterSearch(e.target.value);
+                    setPagination(prev => ({ ...prev, page: 1 }));
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && fetchVerifiedOrders()}
+                />
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                {filterSearch && (
+                  <button
+                    onClick={() => {
+                      setFilterSearch("");
+                      setPagination(prev => ({ ...prev, page: 1 }));
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1268,7 +1320,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
       {/* Verified List Content */}
       <div className="mt-6">
-        {mode === "verify" ? (
+        {loading ? (
+          <div className="bg-white shadow rounded-lg p-12 flex flex-col items-center justify-center gap-4">
+            <Spinner size="lg" />
+            <span className="text-gray-500 font-medium">กำลังโหลดข้อมูล...</span>
+          </div>
+        ) : mode === "verify" ? (
           <VerificationList />
         ) : (
           <VerifiedListTable />
@@ -1810,6 +1867,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           </div>
         </div>
       )}
+      {/* Order Detail Modal */}
+      <OrderDetailModal
+        isOpen={!!selectedOrderId}
+        onClose={() => setSelectedOrderId(null)}
+        orderId={selectedOrderId}
+      />
     </div >
   );
 };
