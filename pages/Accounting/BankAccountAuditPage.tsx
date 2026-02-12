@@ -794,8 +794,54 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                             </div>
 
                             <div className="border-t pt-4">
-                                <h4 className="font-semibold text-gray-700 mb-3">รายการ Orders ที่รวมอยู่ในเอกสารนี้:</h4>
-                                {selectedCodLog.reconcile_items && selectedCodLog.reconcile_items.length > 0 ? (
+                                <h4 className="font-semibold text-gray-700 mb-3">รายการทั้งหมดในเอกสาร COD:</h4>
+                                {(selectedCodLog as any).cod_records && (selectedCodLog as any).cod_records.length > 0 ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-gray-100 text-gray-600">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">#</th>
+                                                    <th className="px-3 py-2 text-left">Tracking</th>
+                                                    <th className="px-3 py-2 text-left">Order</th>
+                                                    <th className="px-3 py-2 text-right">ยอด COD</th>
+                                                    <th className="px-3 py-2 text-center">สถานะ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {(selectedCodLog as any).cod_records.map((rec: any, idx: number) => (
+                                                    <tr key={rec.id || idx} className="hover:bg-gray-50">
+                                                        <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
+                                                        <td className="px-3 py-2 font-mono text-xs">{rec.tracking_number || '-'}</td>
+                                                        <td className="px-3 py-2">
+                                                            {rec.order_id ? (
+                                                                <span
+                                                                    className="text-indigo-600 font-medium cursor-pointer hover:underline"
+                                                                    onClick={() => {
+                                                                        setIsCodDetailModalOpen(false);
+                                                                        openOrderModal(rec.order_id);
+                                                                    }}
+                                                                >
+                                                                    {rec.order_id}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-400 italic">ไม่มี Order</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right">{formatCurrency(parseFloat(rec.cod_amount || '0'))}</td>
+                                                        <td className="px-3 py-2 text-center">
+                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${rec.status === 'matched' ? 'bg-green-100 text-green-700' :
+                                                                    rec.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                                                        'bg-gray-100 text-gray-600'
+                                                                }`}>
+                                                                {rec.status === 'matched' ? 'จับคู่แล้ว' : rec.status === 'pending' ? 'รอจับคู่' : rec.status || '-'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : selectedCodLog.reconcile_items && selectedCodLog.reconcile_items.length > 0 ? (
                                     <div className="space-y-2">
                                         {selectedCodLog.reconcile_items.map((item: any, idx: number) => (
                                             <div

@@ -225,7 +225,7 @@ try {
     // For COD documents without reconcile logs, use cod_total_amount for comparison
     $isCodDocument = !empty($row['cod_document_id']);
     $codTotalAmountForCalc = !empty($row['cod_total_amount']) ? (float) $row['cod_total_amount'] : 0;
-    
+
     if (count($reconcileItems) > 0) {
       if (in_array('Suspense', $reconcileTypes)) {
         $primaryType = 'Suspense';
@@ -237,14 +237,14 @@ try {
         $primaryType = 'Order';
         // Check Amount Logic
         $stmtAmt = (float) $row['statement_amount'];
-        
+
         // For COD documents, use cod_total_amount for accurate comparison
         // This accounts for forced records that may not be in reconcile logs
         $compareAmount = $totalConfirmed;
         if ($isCodDocument && $codTotalAmountForCalc > 0) {
           $compareAmount = $codTotalAmountForCalc;
         }
-        
+
         $diff = $stmtAmt - $compareAmount;
 
         if (abs($diff) < 0.01) {
@@ -260,7 +260,7 @@ try {
       $primaryType = 'Order';
       $stmtAmt = (float) $row['statement_amount'];
       $diff = $stmtAmt - $codTotalAmountForCalc;
-      
+
       if (abs($diff) < 0.01) {
         $status = 'Exact';
       } elseif ($diff > 0) {
@@ -404,6 +404,34 @@ try {
       'cod_status' => $row['cod_status'] ?? null,
       'is_cod_document' => $isCodDocument,
     ];
+  }
+
+  // Fetch cod_records for each COD document and attach to results
+  $codDocIds = [];
+  foreach ($results as $idx => $r) {
+    if (!empty($r['cod_document_id'])) {
+      $codDocIds[$r['cod_document_id']] = $idx;
+    }
+  }
+  if (!empty($codDocIds)) {
+    $placeholders = implode(',', array_fill(0, count($codDocIds), '?'));
+    $crStmt = $pdo->prepare("
+      SELECT id, document_id, tracking_number, order_id, cod_amount, status
+      FROM cod_records
+      WHERE document_id IN ({$placeholders})
+      ORDER BY id
+    ");
+    $crStmt->execute(array_keys($codDocIds));
+    $crRows = $crStmt->fetchAll(PDO::FETCH_ASSOC);
+    // Group by document_id
+    $grouped = [];
+    foreach ($crRows as $cr) {
+      $grouped[(int) $cr['document_id']][] = $cr;
+    }
+    foreach ($grouped as $docId => $records) {
+      $resultIdx = $codDocIds[$docId];
+      $results[$resultIdx]['cod_records'] = $records;
+    }
   }
 
   echo json_encode(['ok' => true, 'data' => $results], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
