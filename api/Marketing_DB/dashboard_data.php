@@ -92,7 +92,7 @@ try {
     $logWhereClause = implode(" AND ", $logWhereConditions);
 
     // Build WHERE conditions for orders
-    $orderWhereConditions = ["order_status != 'Cancelled'"];
+    $orderWhereConditions = ["1=1"];
     $orderParams = [];
 
     if ($dateFrom && $dateTo) {
@@ -139,6 +139,10 @@ try {
             COALESCE(orders_agg.new_customer_sales, 0) as new_customer_sales,
             COALESCE(orders_agg.reorder_customer_sales, 0) as reorder_customer_sales,
             COALESCE(orders_agg.total_customers, 0) as total_customers,
+            COALESCE(returned_boxes_agg.returned_sales, 0) as returned_sales,
+            COALESCE(returned_boxes_agg.returned_orders, 0) as returned_orders,
+            COALESCE(orders_agg.cancelled_sales, 0) as cancelled_sales,
+            COALESCE(orders_agg.cancelled_orders, 0) as cancelled_orders,
             staff.staff_names
         FROM pages p
         LEFT JOIN (
@@ -155,17 +159,30 @@ try {
         LEFT JOIN (
             SELECT 
                 sales_channel_page_id,
-                SUM(total_amount) as total_sales,
-                COUNT(DISTINCT id) as total_orders,
-                SUM(CASE WHEN customer_type = 'New Customer' THEN 1 ELSE 0 END) as new_customer_orders,
-                SUM(CASE WHEN customer_type = 'Reorder Customer' THEN 1 ELSE 0 END) as reorder_customer_orders,
-                SUM(CASE WHEN customer_type = 'New Customer' THEN total_amount ELSE 0 END) as new_customer_sales,
-                SUM(CASE WHEN customer_type = 'Reorder Customer' THEN total_amount ELSE 0 END) as reorder_customer_sales,
-                COUNT(DISTINCT customer_id) as total_customers
+                SUM(CASE WHEN order_status NOT IN ('Cancelled', 'Returned') THEN total_amount ELSE 0 END) as total_sales,
+                COUNT(DISTINCT CASE WHEN order_status NOT IN ('Cancelled', 'Returned') THEN id END) as total_orders,
+                SUM(CASE WHEN customer_type = 'New Customer' AND order_status NOT IN ('Cancelled', 'Returned') THEN 1 ELSE 0 END) as new_customer_orders,
+                SUM(CASE WHEN customer_type = 'Reorder Customer' AND order_status NOT IN ('Cancelled', 'Returned') THEN 1 ELSE 0 END) as reorder_customer_orders,
+                SUM(CASE WHEN customer_type = 'New Customer' AND order_status NOT IN ('Cancelled', 'Returned') THEN total_amount ELSE 0 END) as new_customer_sales,
+                SUM(CASE WHEN customer_type = 'Reorder Customer' AND order_status NOT IN ('Cancelled', 'Returned') THEN total_amount ELSE 0 END) as reorder_customer_sales,
+                COUNT(DISTINCT CASE WHEN order_status NOT IN ('Cancelled', 'Returned') THEN customer_id END) as total_customers,
+                SUM(CASE WHEN order_status = 'Cancelled' THEN total_amount ELSE 0 END) as cancelled_sales,
+                COUNT(CASE WHEN order_status = 'Cancelled' THEN 1 END) as cancelled_orders
             FROM orders
             WHERE $orderWhereClause
             GROUP BY sales_channel_page_id
         ) orders_agg ON p.id = orders_agg.sales_channel_page_id
+        LEFT JOIN (
+            SELECT 
+                o.sales_channel_page_id,
+                SUM(ob.cod_amount) as returned_sales,
+                COUNT(DISTINCT ob.id) as returned_orders
+            FROM order_boxes ob
+            JOIN orders o ON ob.order_id = o.id
+            WHERE ob.status = 'RETURNED'
+            AND $orderWhereClause
+            GROUP BY o.sales_channel_page_id
+        ) returned_boxes_agg ON p.id = returned_boxes_agg.sales_channel_page_id
         LEFT JOIN (
             SELECT mup.page_id, GROUP_CONCAT(u.first_name SEPARATOR ', ') as staff_names
             FROM marketing_user_page mup
@@ -176,8 +193,8 @@ try {
         ORDER BY p.name ASC
     ";
 
-    // Combine parameters: logParams, orderParams, then pageParams
-    $allParams = array_merge($logParams, $orderParams, $pageParams);
+    // Combine parameters: logParams, orderParams, orderParams (for returned_boxes_agg), then pageParams
+    $allParams = array_merge($logParams, $orderParams, $orderParams, $pageParams);
 
     // Prepare and execute query
     $stmt = $conn->prepare($query);
