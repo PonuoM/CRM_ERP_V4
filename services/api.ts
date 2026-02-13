@@ -2163,6 +2163,20 @@ export async function getReturnOrders(params?: { status?: string; page?: number;
   });
 }
 
+export async function exportReturnOrders(params: { date_from: string; date_to: string; companyId?: number }) {
+  const qs = new URLSearchParams();
+  qs.set('date_from', params.date_from);
+  qs.set('date_to', params.date_to);
+  if (params.companyId) qs.set('companyId', String(params.companyId));
+
+  return apiFetch(`Orders/export_return_orders.php?${qs.toString()}`, {
+    method: "GET",
+    headers: {
+      "Cache-Control": "no-cache",
+    }
+  });
+}
+
 export async function getReturnStats(companyId?: number) {
   const qs = new URLSearchParams();
   if (companyId) qs.set('companyId', String(companyId));

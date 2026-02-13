@@ -19,6 +19,7 @@ try {
   $pageIds = $_GET["page_ids"] ?? null;
   $userIds = $_GET["user_ids"] ?? null;
   $companyId = $_GET["company_id"] ?? null;
+  $adsGroups = $_GET["ads_groups"] ?? null;
 
   // 1. Where clause for Ads Log (marketing_product_ads_log)
   $logWhere = ["1=1"];
@@ -45,6 +46,15 @@ try {
     $logWhere[] = "u.company_id = ?";
     $logParams[] = $companyId;
   }
+  // Ads group filter
+  if ($adsGroups) {
+    $adsGroupArray = array_filter(explode(',', $adsGroups));
+    if (!empty($adsGroupArray)) {
+      $in = implode(',', array_fill(0, count($adsGroupArray), '?'));
+      $logWhere[] = "mal.ads_group IN ($in)";
+      $logParams = array_merge($logParams, $adsGroupArray);
+    }
+  }
 
   $logWhereSql = implode(" AND ", $logWhere);
 
@@ -60,9 +70,7 @@ try {
     $orderWhere[] = "o.order_date <= ?";
     $orderParams[] = $dateTo;
   }
-  if ($pageIds) {
-    $orderWhere[] = "o.sales_channel_page_id IN ($pageIds)";
-  }
+  // page_ids filter removed from orders - only applies to ads log
   if ($userIds) {
     $uIds = array_filter(explode(',', $userIds), 'is_numeric');
     if (!empty($uIds)) {
@@ -115,14 +123,14 @@ try {
             p.ads_group,
             SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as total_sales,
             SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.quantity ELSE 0 END) as total_qty,
-            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.order_id END) as total_orders,
+            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.parent_order_id END) as total_orders,
             SUM(CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as new_customer_sales,
             SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as reorder_customer_sales,
             COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as total_customers,
             SUM(CASE WHEN o.order_status = 'Cancelled' THEN oi.net_total ELSE 0 END) as cancelled_sales,
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN oi.order_id END) as cancelled_orders
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN oi.parent_order_id END) as cancelled_orders
         FROM order_items oi
-        JOIN orders o ON oi.order_id = o.id
+        JOIN orders o ON oi.parent_order_id = o.id
         JOIN products p ON oi.product_id = p.id
         WHERE $orderWhereSql
         AND p.ads_group IS NOT NULL AND p.ads_group != ''

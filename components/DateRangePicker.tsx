@@ -70,6 +70,20 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
             <button onClick={() => applyPreset(30)} className="border rounded px-2 py-1 hover:bg-gray-50">30 วันย้อนหลัง</button>
             <button onClick={() => applyPreset(60)} className="border rounded px-2 py-1 hover:bg-gray-50">60 วันย้อนหลัง</button>
             <button onClick={() => applyPreset(90)} className="border rounded px-2 py-1 hover:bg-gray-50">90 วันย้อนหลัง</button>
+            <button onClick={() => {
+              const now = new Date();
+              const startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+              const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+              setStart(toLocalDatetimeString(startDate.toISOString()));
+              setEnd(toLocalDatetimeString(endDate.toISOString()));
+            }} className="border rounded px-2 py-1 hover:bg-gray-50">เดือนนี้</button>
+            <button onClick={() => {
+              const now = new Date();
+              const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+              const endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+              setStart(toLocalDatetimeString(startDate.toISOString()));
+              setEnd(toLocalDatetimeString(endDate.toISOString()));
+            }} className="border rounded px-2 py-1 hover:bg-gray-50">เดือนที่แล้ว</button>
           </div>
           <div className="flex justify-end mt-3">
             <button

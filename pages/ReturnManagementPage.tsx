@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Order, OrderStatus } from "../types";
-import { listOrders, saveReturnOrders, getReturnOrders, getReturnStats, getOrder, revertReturnedOrder } from "../services/api";
+import { listOrders, saveReturnOrders, getReturnOrders, getReturnStats, getOrder, revertReturnedOrder, exportReturnOrders } from "../services/api";
 import * as XLSX from "xlsx";
 import {
   Search,
@@ -31,6 +31,7 @@ import {
 import OrderDetailModal from "../components/OrderDetailModal";
 import BulkReturnImport from "../components/BulkReturnImport";
 import Spinner from "../components/Spinner";
+import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 
 interface ReturnManagementPageProps {
   user: User;
@@ -156,6 +157,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     limit: 50,
     hasMore: false,
   });
+
+  // Export State
+  const [exportDateRange, setExportDateRange] = useState<DateRange>(() => {
+    const end = new Date(); end.setHours(23, 59, 59, 999);
+    const start = new Date(); start.setDate(start.getDate() - 30); start.setHours(0, 0, 0, 0);
+    return { start: start.toISOString(), end: end.toISOString() };
+  });
+  const [exporting, setExporting] = useState(false);
 
   // Tab counts from stats API (fetched once)
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
@@ -1252,7 +1261,104 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         </div>
       </div>
 
-
+      {/* Export Section */}
+      <div className="mb-4 bg-white p-4 rounded-lg shadow-sm border">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-gray-700">📦 Export ข้อมูลตีกลับ</span>
+          <div className="w-auto min-w-[320px]">
+            <DateRangePicker
+              value={exportDateRange}
+              onApply={(range) => setExportDateRange(range)}
+            />
+          </div>
+          <button
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const dateFrom = exportDateRange.start.split('T')[0];
+                const dateTo = exportDateRange.end.split('T')[0];
+                const res = await exportReturnOrders({
+                  date_from: dateFrom,
+                  date_to: dateTo,
+                  companyId: user.companyId,
+                });
+                if (res?.success && Array.isArray(res.data)) {
+                  if (res.data.length === 0) {
+                    alert('ไม่พบข้อมูลในช่วงวันที่ที่เลือก');
+                    return;
+                  }
+                  const statusMap: Record<string, string> = {
+                    returning: 'กำลังตีกลับ',
+                    returned: 'เข้าคลัง',
+                    good: 'สภาพดี',
+                    damaged: 'ชำรุด',
+                    lost: 'สูญหาย',
+                    pending: 'รอการดำเนินการ',
+                    delivered: 'ส่งสำเร็จ',
+                  };
+                  const headers = [
+                    'Order ID', 'Sub Order ID', 'วันที่สั่งซื้อ', 'ชื่อจริง', 'นามสกุล', 'เบอร์โทร',
+                    'Tracking No.', 'สถานะตีกลับ', 'หมายเหตุ',
+                    'ราคากล่อง', 'ยอดเก็บได้', 'วันที่บันทึกตีกลับ',
+                    'สถานะกล่อง', 'ช่องทางชำระ',
+                    'ที่อยู่', 'แขวง/ตำบล', 'เขต/อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์',
+                    'ชื่อผู้ขาย', 'นามสกุลผู้ขาย', 'ตำแหน่งผู้ขาย',
+                    'ยอดเต็ม', 'ยอดคงเหลือ'
+                  ];
+                  const rows = res.data.map((r: any) => ([
+                    r.order_id || '',
+                    r.sub_order_id || '',
+                    r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH') : '',
+                    r.customer_first_name || '',
+                    r.customer_last_name || '',
+                    r.customer_phone || '',
+                    r.tracking_number || '',
+                    statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
+                    r.return_note || '',
+                    r.cod_amount ?? 0,
+                    r.collection_amount ?? 0,
+                    r.return_created_at ? new Date(r.return_created_at).toLocaleString('th-TH') : '',
+                    statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
+                    r.payment_method || '',
+                    r.shipping_street || '',
+                    r.shipping_subdistrict || '',
+                    r.shipping_district || '',
+                    r.shipping_province || '',
+                    r.shipping_postal_code || '',
+                    r.seller_first_name || '',
+                    r.seller_last_name || '',
+                    r.seller_role || '',
+                    r.total_cod_amount ?? 0,
+                    r.total_collection_amount ?? 0,
+                  ]));
+                  const csvContent = '\uFEFF' + headers.join(',') + '\n'
+                    + rows.map((row: any[]) => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+                  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `return_orders_${dateFrom}_${dateTo}.csv`;
+                  link.click();
+                  URL.revokeObjectURL(url);
+                } else {
+                  alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
+                }
+              } catch (err) {
+                console.error('Export error:', err);
+                alert('เกิดข้อผิดพลาดในการ Export');
+              } finally {
+                setExporting(false);
+              }
+            }}
+            disabled={exporting}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50 transition-colors"
+          >
+            <Download size={16} />
+            {exporting ? 'กำลัง Export...' : 'Export CSV'}
+          </button>
+          <span className="text-xs text-gray-400">(เฉพาะกล่องที่มีสถานะ RETURNED)</span>
+        </div>
+      </div>
 
       {/* Tabs Row - Moved Here */}
       {mode === "list" && (

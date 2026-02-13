@@ -341,3 +341,67 @@ if ($dbStatus === 'RETURNED') {
 - ไม่ต้องแก้ไข — รองรับ `isWarning` อยู่แล้ว
 - แสดง ⚠️ สีเหลือง + ข้อความเตือน
 - ปุ่ม "นำเข้าข้อมูล" ยังใช้งานได้เมื่อมี warning
+
+## 16. อัปเดต: Export ข้อมูลตีกลับ (13/02/2026)
+
+### ภาพรวม
+เพิ่มฟีเจอร์ Export CSV สำหรับข้อมูลกล่องที่มี `order_boxes.status = 'RETURNED'` โดยเลือกช่วงวันที่ได้ (กรองจาก `orders.order_date`)
+
+### ไฟล์ที่เกี่ยวข้อง
+- **Backend**: `api/Orders/export_return_orders.php` [NEW]
+- **Frontend**: `pages/ReturnManagementPage.tsx` (เพิ่ม Export UI)
+- **API Service**: `services/api.ts` (เพิ่ม `exportReturnOrders`)
+- **Component**: ใช้ `components/DateRangePicker.tsx` สำหรับเลือกช่วงวันที่
+
+### Backend API (`export_return_orders.php`)
+- **Filter**: `order_boxes.status = 'RETURNED'`
+- **Date Range**: กรองจาก `DATE(orders.order_date)`
+- **Parameters**: `date_from`, `date_to`, `companyId`
+- **JOINs**: `order_boxes` → `order_tracking_numbers` → `orders` → `customers` → `users` (via `orders.creator_id`)
+- ไม่มี pagination — ดึงทั้งหมดสำหรับ export
+
+### คอลัมน์ใน CSV
+
+| Header | Source |
+|---|---|
+| Order ID | `ob.order_id` |
+| Sub Order ID | `ob.sub_order_id` |
+| วันที่สั่งซื้อ | `o.order_date` |
+| ชื่อจริง (ลูกค้า) | `c.first_name` |
+| นามสกุล (ลูกค้า) | `c.last_name` |
+| เบอร์โทร | `c.phone` |
+| Tracking No. | `otn.tracking_number` |
+| สถานะตีกลับ | `ob.return_status` (แปลเป็นภาษาไทย) |
+| หมายเหตุ | `ob.return_note` |
+| ราคากล่อง | `ob.cod_amount` |
+| ยอดเก็บได้ | `ob.collection_amount` |
+| วันที่บันทึกตีกลับ | `ob.return_created_at` |
+| สถานะกล่อง | `ob.return_status` (แปลเป็นภาษาไทย) |
+| ช่องทางชำระ | `o.payment_method` |
+| ที่อยู่ | `o.street` |
+| แขวง/ตำบล | `o.subdistrict` |
+| เขต/อำเภอ | `o.district` |
+| จังหวัด | `o.province` |
+| รหัสไปรษณีย์ | `o.postal_code` |
+| ชื่อผู้ขาย | `u.first_name` |
+| นามสกุลผู้ขาย | `u.last_name` |
+| ตำแหน่งผู้ขาย | `u.role` |
+| ยอดเต็ม | `SUM(ob2.cod_amount) WHERE ob2.order_id = ob.order_id` |
+| ยอดคงเหลือ | `SUM(ob2.collection_amount) WHERE ob2.order_id = ob.order_id` |
+
+### Status Map (สถานะภาษาไทยใน CSV)
+| DB Value | Thai Label |
+|---|---|
+| `returning` | กำลังตีกลับ |
+| `returned` | เข้าคลัง |
+| `good` | สภาพดี |
+| `damaged` | ชำรุด |
+| `lost` | สูญหาย |
+| `pending` | รอการดำเนินการ |
+| `delivered` | ส่งสำเร็จ |
+
+### DateRangePicker Component
+- ใช้ `components/DateRangePicker.tsx` ที่มีอยู่
+- มี preset: วันนี้, เมื่อวาน, 7/30/60/90 วันย้อนหลัง, **เดือนนี้**, **เดือนที่แล้ว**
+- Default: 30 วันย้อนหลัง
+- CSV ใส่ BOM (`\uFEFF`) เพื่อรองรับ Excel ภาษาไทย

@@ -33,6 +33,7 @@ import MarketingDatePicker, {
 } from "@/components/Dashboard/MarketingDatePicker";
 import MultiSelectPageFilter from "@/components/Dashboard/MultiSelectPageFilter";
 import MultiSelectProductFilter from "@/components/Dashboard/MultiSelectProductFilter";
+import MultiSelectAdsGroupFilter from "@/components/Dashboard/MultiSelectAdsGroupFilter";
 import MultiSelectUserFilter from "@/components/Dashboard/MultiSelectUserFilter";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { isSystemCheck } from "@/utils/isSystemCheck";
@@ -226,7 +227,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   });
   // Filters
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
-  const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
+  const [selectedAdsGroups, setSelectedAdsGroups] = useState<string[]>([]);
   const [dashboardSelectedUsers, setDashboardSelectedUsers] = useState<number[]>([]);
   const [showInactivePages, setShowInactivePages] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -364,8 +365,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [adsHistorySelectedPages, setAdsHistorySelectedPages] = useState<
     number[]
   >([]);
-  const [adsHistorySelectedProducts, setAdsHistorySelectedProducts] = useState<
-    number[]
+  const [adsHistorySelectedAdsGroups, setAdsHistorySelectedAdsGroups] = useState<
+    string[]
   >([]);
   const [showInactivePagesAdsHistory, setShowInactivePagesAdsHistory] =
     useState(false);
@@ -427,8 +428,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         }
       }
 
-      if (adsHistorySelectedProducts.length > 0) {
-        queryParams.append("product_ids", adsHistorySelectedProducts.join(','));
+      if (adsHistorySelectedAdsGroups.length > 0) {
+        queryParams.append("ads_groups", adsHistorySelectedAdsGroups.join(','));
       }
 
       /*
@@ -527,7 +528,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         loadPageAdsLogs();
       }
     }
-  }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, adsHistorySelectedProducts]);
+  }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, adsHistorySelectedAdsGroups]);
 
   // No longer need client-side pagination since we're using server-side pagination
   // const paginatedAdsLogs = useMemo(() => {
@@ -768,8 +769,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           );
 
           // Select all products
-          setAdsHistorySelectedProducts(
-            loadedProducts.map((p: any) => p.id)
+          setAdsHistorySelectedAdsGroups(
+            [...new Set(loadedProducts.map((p: any) => p.ads_group || p.adsGroup).filter(Boolean))] as string[]
           );
 
           // Select all marketing + system users
@@ -1879,12 +1880,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     setDashboardLoading(true);
     try {
       const pageIds = selectedPages.join(',');
-      const productIds = selectedProducts.join(',');
+      const adsGroupsStr = selectedAdsGroups.join(',');
       const queryParams = new URLSearchParams({
         start_date: dateRange.start,
         end_date: dateRange.end,
         page_ids: pageIds,
-        product_ids: productIds,
+        ads_groups: adsGroupsStr,
         company_id: currentUser.companyId.toString()
       });
 
@@ -1914,7 +1915,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     if (activeTab === 'dashboard' && adsInputMode === 'product') {
       loadProductDashboardData();
     }
-  }, [activeTab, adsInputMode, dateRange, selectedPages, selectedProducts, dashboardSelectedUsers]);
+  }, [activeTab, adsInputMode, dateRange, selectedPages, selectedAdsGroups, dashboardSelectedUsers]);
   */
 
   const exportDashboard = () => {
@@ -2692,15 +2693,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     </>
                   ) : (
                     <>
-                      <label className={labelClass}>เลือกสินค้า</label>
-                      <MultiSelectProductFilter
-                        products={products.map((p) => ({
-                          id: p.id,
-                          sku: p.sku || "",
-                          name: p.name,
-                        }))}
-                        selectedProducts={selectedProducts}
-                        onChange={setSelectedProducts}
+                      <label className={labelClass}>เลือก Ads Group</label>
+                      <MultiSelectAdsGroupFilter
+                        adsGroups={[...uniqueAdsGroups.keys()]}
+                        selectedAdsGroups={selectedAdsGroups}
+                        onChange={setSelectedAdsGroups}
                       />
                     </>
                   )}
@@ -3766,15 +3763,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     </>
                   ) : (
                     <>
-                      <label className={labelClass}>เลือกสินค้า</label>
-                      <MultiSelectProductFilter
-                        products={products.map((p) => ({
-                          id: p.id,
-                          name: p.name,
-                          sku: p.sku
-                        }))}
-                        selectedProducts={adsHistorySelectedProducts}
-                        onChange={setAdsHistorySelectedProducts}
+                      <label className={labelClass}>เลือก Ads Group</label>
+                      <MultiSelectAdsGroupFilter
+                        adsGroups={[...uniqueAdsGroups.keys()]}
+                        selectedAdsGroups={adsHistorySelectedAdsGroups}
+                        onChange={setAdsHistorySelectedAdsGroups}
                       />
                     </>
                   )}
