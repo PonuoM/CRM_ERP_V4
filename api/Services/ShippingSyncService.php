@@ -102,30 +102,21 @@ class ShippingSyncService
     {
         try {
             // Extract data from sheet record
-            $sheetStatus = $sheetRecord['order_status'];      // e.g. "Shipping"
+            // NOTE: order_status is intentionally NOT synced from Sheet to prevent
+            // auto-closing orders (e.g. "Delivered") before payment is confirmed.
+            // Only delivery_date and delivery_status (as a note) are synced.
             $deliveryStatus = $sheetRecord['delivery_status']; // e.g. "Sent"
             $deliveryDate = $sheetRecord['delivery_date'];     // e.g. "2024-01-01"
 
-            // 1. Update Order Status if present in sheet
-            // Only update if current status is different? Or always overwrite?
-            // Requirement: "Update order_status column"
-
             $updateFields = [];
             $params = [];
-
-            if (!empty($sheetStatus)) {
-                // Map sheet status to system enum if needed, or assume direct match
-                // For now assuming direct value
-                $updateFields[] = "order_status = ?";
-                $params[] = $sheetStatus;
-            }
 
             if (!empty($deliveryDate)) {
                 $updateFields[] = "delivery_date = ?";
                 $params[] = $deliveryDate;
             }
 
-            // 2. Update note_system with delivery_status (instead of appending to notes)
+            // Update note_system with delivery_status (log only, does not change order_status)
             if (!empty($deliveryStatus)) {
                 // Check if note_system already contains this status to prevent spamming
                 $stmt = $this->pdo->prepare("SELECT note_system FROM orders WHERE id = ?");
@@ -145,38 +136,12 @@ class ShippingSyncService
                 return ['success' => false, 'message' => 'No fields to update'];
             }
 
-            // Get old status before update for comparison
-            $oldStatusStmt = $this->pdo->prepare("SELECT order_status FROM orders WHERE id = ?");
-            $oldStatusStmt->execute([$orderId]);
-            $oldStatus = $oldStatusStmt->fetchColumn();
-
-            // Execute Update
+            // Execute Update (only delivery_date + note_system, never order_status)
             $sql = "UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?";
             $params[] = $orderId;
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
-
-            // 🔥 HOOK: Trigger Event-Driven Basket Routing when status changes
-            if (!empty($sheetStatus) && $oldStatus !== $sheetStatus) {
-                try {
-                    require_once __DIR__ . '/BasketRoutingServiceV2.php';
-                    $router = new BasketRoutingServiceV2($this->pdo);
-                    $routingResult = $router->handleOrderStatusChange(
-                        $orderId,
-                        $sheetStatus,
-                        0 // System-triggered (no user)
-                    );
-                    
-                    if ($routingResult && $routingResult['success']) {
-                        error_log("[ShippingSyncService] Basket routing triggered for order #$orderId: " . 
-                            "Basket {$routingResult['from_basket']} → {$routingResult['to_basket']}");
-                    }
-                } catch (Exception $routeError) {
-                    // Log but don't fail the sync
-                    error_log("[ShippingSyncService] Basket routing error for order #$orderId: " . $routeError->getMessage());
-                }
-            }
 
             return ['success' => true];
 
