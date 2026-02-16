@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { CallHistory, Customer, User, UserRole } from "@/types";
+import { listRoles, Role } from "@/services/roleApi";
+import { isSystemCheck } from "@/utils/isSystemCheck";
 import {
   PhoneIncoming,
   PhoneOutgoing,
@@ -123,17 +125,6 @@ const getOnecallCredentialsFromDB = async () => {
 
     const user = JSON.parse(sessionUser);
 
-    // Check if user has permission to access credentials
-    if (
-      user.role !== UserRole.SuperAdmin &&
-      user.role !== UserRole.AdminControl &&
-      user.role !== UserRole.Telesale &&
-      user.role !== UserRole.Supervisor
-    ) {
-      throw new Error("Access denied - insufficient permissions");
-    }
-
-    // Call secure API to get credentials (prefix with BASE_URL for prod subpath)
     const apiBase = resolveApiBasePath();
     const response = await fetch(`${apiBase}/Onecall_DB/get_credentials.php`, {
       method: "POST",
@@ -289,7 +280,7 @@ const authenticateOneCall = async () => {
 };
 
 // JavaScript version of getRecordingsData function
-const getRecordingsData = async (currentUser?: User, sortParam?: string) => {
+const getRecordingsData = async (currentUser?: User, sortParam?: string, isSystem?: boolean) => {
   // Try to get recordings data with token refresh logic
   const maxRetries = 2; // Allow one retry after token refresh
   let retryCount = 0;
@@ -310,25 +301,14 @@ const getRecordingsData = async (currentUser?: User, sortParam?: string) => {
     includeprograms: true,
   };
 
-  // Add party parameter for Telesale and Supervisor users
-  if (
-    currentUser &&
-    currentUser.role === UserRole.Telesale &&
-    currentUser.phone
-  ) {
-    // Format phone number using the global utility function
-    const formattedPhone = formatPhoneToPlus66(currentUser.phone);
-
-    apiConfig.party = formattedPhone;
-  } else if (
-    currentUser &&
-    currentUser.role === UserRole.Supervisor &&
-    currentUser.phone
-  ) {
-    // Format phone number using the global utility function
-    const formattedPhone = formatPhoneToPlus66(currentUser.phone);
-
-    apiConfig.party = formattedPhone;
+  // Add party parameter:
+  // - is_system roles see all (no party), EXCEPT Supervisor defaults to own phone
+  // - non is_system roles always see only their own phone
+  if (currentUser && currentUser.phone) {
+    if (!isSystem || currentUser.role === UserRole.Supervisor) {
+      const formattedPhone = formatPhoneToPlus66(currentUser.phone);
+      apiConfig.party = formattedPhone;
+    }
   }
 
   while (retryCount < maxRetries) {
@@ -481,7 +461,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
   const [qCustomer, setQCustomer] = useState("");
   const [qCustomerPhone, setQCustomerPhone] = useState("");
   const [qAgentPhone, setQAgentPhone] = useState("");
-  const [selectedAgent, setSelectedAgent] = useState("");
+  const [selectedAgent, setSelectedAgent] = useState(
+    currentUser.role === UserRole.Supervisor ? (currentUser.phone || "") : ""
+  );
   const [status, setStatus] = useState("all");
   const [direction, setDirection] = useState("all");
   const [range, setRange] = useState<DateTimeRange>({ start: "", end: "" });
@@ -533,9 +515,17 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
   const currentUserFull =
     `${currentUser.firstName} ${currentUser.lastName}`.trim();
-  const isPrivileged =
-    currentUser.role === UserRole.SuperAdmin ||
-    currentUser.role === UserRole.AdminControl;
+
+  // Fetch roles to check is_system flag
+  const [roles, setRoles] = useState<Role[]>([]);
+  useEffect(() => {
+    listRoles().then((res) => setRoles(res.roles || [])).catch(() => { });
+  }, []);
+
+  // is_system = 1 roles get full access (see all phone numbers)
+  const isPrivileged = useMemo(() => {
+    return isSystemCheck(currentUser.role, roles);
+  }, [currentUser.role, roles]);
 
   const customersById = useMemo(() => {
     const map: Record<string, Customer> = {};
@@ -557,12 +547,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     return [];
   }, [currentUser, users]);
 
-  // Filter users for admin
+  // Filter users for admin (is_system roles)
   const adminUsers = useMemo(() => {
-    if (
-      currentUser.role === UserRole.AdminControl ||
-      currentUser.role === UserRole.SuperAdmin
-    ) {
+    if (isPrivileged) {
       return users.filter(
         (user) =>
           user.role === UserRole.Supervisor || user.role === UserRole.Telesale,
@@ -1215,40 +1202,42 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     };
   }, []);
 
-  // Load recordings data on component mount
+  // Load recordings data once roles are loaded
   useEffect(() => {
-    if (isFirstLoad.current) {
-      isFirstLoad.current = false;
-      const loadRecordings = async () => {
-        setIsLoading(true);
-        setIsDataLoading(true);
-        try {
-          // First, authenticate to get the access token
-          const authResult = await authenticateOneCall();
-          if (authResult.success && authResult.token) {
-            setAccessToken(authResult.token);
+    // Wait for roles to load so isPrivileged is accurate
+    if (roles.length === 0) return;
+    if (!isFirstLoad.current) return;
+    isFirstLoad.current = false;
 
-            // Then load recordings data with current user info
-            const result = await getRecordingsData(currentUser);
-            if (result.success && result.data) {
-              setRecordingsData(result.data);
-            } else {
-              // Handle error silently
-            }
+    const loadRecordings = async () => {
+      setIsLoading(true);
+      setIsDataLoading(true);
+      try {
+        // First, authenticate to get the access token
+        const authResult = await authenticateOneCall();
+        if (authResult.success && authResult.token) {
+          setAccessToken(authResult.token);
+
+          // Then load recordings data with current user info
+          const result = await getRecordingsData(currentUser, undefined, isPrivileged);
+          if (result.success && result.data) {
+            setRecordingsData(result.data);
           } else {
             // Handle error silently
           }
-        } catch (error) {
+        } else {
           // Handle error silently
-        } finally {
-          setIsLoading(false);
-          setIsDataLoading(false);
         }
-      };
+      } catch (error) {
+        // Handle error silently
+      } finally {
+        setIsLoading(false);
+        setIsDataLoading(false);
+      }
+    };
 
-      loadRecordings();
-    }
-  }, [currentUser]);
+    loadRecordings();
+  }, [roles, isPrivileged]);
 
   // Function to create search parameters for SuperAdmin and AdminControl users
   const createSearchParams = () => {
@@ -1418,12 +1407,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
       setAccessToken(authResult.token);
 
-      // Use different logic based on user role
-      if (
-        currentUser &&
-        (currentUser.role === UserRole.AdminControl ||
-          currentUser.role === UserRole.SuperAdmin)
-      ) {
+      // Use different logic based on is_system flag
+      if (currentUser && isPrivileged) {
         // Use the new createSearchParams function for AdminControl and SuperAdmin
         const { params: paramsList, isDualRequest } = createSearchParams();
 
@@ -1873,11 +1858,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       const authResult = await authenticateOneCall();
       if (authResult.success && authResult.token) {
         // Use the same logic as the search button to maintain consistency
-        if (
-          currentUser &&
-          (currentUser.role === UserRole.AdminControl ||
-            currentUser.role === UserRole.SuperAdmin)
-        ) {
+        if (currentUser && isPrivileged) {
           // Use the createSearchParams function for AdminControl and SuperAdmin
           const { params: paramsList, isDualRequest } = createSearchParams();
 
@@ -2312,12 +2293,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
       setAccessToken(authResult.token);
 
-      // Use different logic based on user role
-      if (
-        currentUser &&
-        (currentUser.role === UserRole.AdminControl ||
-          currentUser.role === UserRole.SuperAdmin)
-      ) {
+      // Use different logic based on is_system flag
+      if (currentUser && isPrivileged) {
         // Use the createSearchParams function for AdminControl and SuperAdmin
         const { params: paramsList, isDualRequest } = createSearchParams();
 
@@ -2968,8 +2945,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                     ))}
                   </select>
                 </div>
-              ) : currentUser.role === UserRole.AdminControl ||
-                currentUser.role === UserRole.SuperAdmin ? (
+              ) : isPrivileged ? (
                 <div className="space-y-2">
                   <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                     <UserIcon className="w-4 h-4 text-gray-400" />
