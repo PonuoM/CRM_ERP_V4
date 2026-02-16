@@ -18,7 +18,7 @@ $now = time();
 
 if (file_exists($rate_file)) {
   $last_request = intval(file_get_contents($rate_file));
-  
+
   // Check if less than 1 second has passed since last request
   if ($now - $last_request < 1) {
     http_response_code(429);
@@ -29,7 +29,7 @@ if (file_exists($rate_file)) {
 }
 
 // Update last request timestamp
-file_put_contents($rate_file, (string)$now);
+file_put_contents($rate_file, (string) $now);
 
 try {
   // Get user data from request
@@ -46,21 +46,9 @@ try {
     json_response(["error" => "Missing required user fields"], 400);
   }
 
-  // Security: Only allow Super Admin, AdminControl, Telesale, and Supervisor Telesale roles
-  if (
-    $user["role"] !== "Super Admin" &&
-    $user["role"] !== "Admin Control" &&
-    $user["role"] !== "Telesale" &&
-    $user["role"] !== "Supervisor Telesale"
-  ) {
-    http_response_code(403);
-    header("Content-Type: application/json");
-    echo json_encode(["error" => "Access denied - insufficient permissions"]);
-    exit();
-  }
-
   // Connect to database
   $pdo = db_connect();
+
 
   // Get company_id
   $companyId = intval($user["company_id"]);
@@ -104,11 +92,11 @@ try {
   // Log the access for security audit (in production, this should go to a secure audit log)
   error_log(
     "Onecall credentials accessed by user_id: " .
-      ($user["id"] ?? "unknown") .
-      " for company_id: " .
-      $companyId .
-      " at " .
-      date("Y-m-d H:i:s"),
+    ($user["id"] ?? "unknown") .
+    " for company_id: " .
+    $companyId .
+    " at " .
+    date("Y-m-d H:i:s"),
   );
 
   // Return credentials (only for authenticated, authorized users)
