@@ -2,11 +2,14 @@
 /**
  * get_call_imports.php
  * GET:  ดึง call_import_logs + LEFT JOIN users + JOIN batches
- * Params: batch_id, date_from, date_to, search, page, limit
+ * Params: batch_id, date_from, date_to, search, page, limit, company_id
  *         mode=batches → ดึง batches list แทน
+ *         mode=report  → สรุปตาม matched user
  */
+header("Content-Type: application/json; charset=utf-8");
 error_reporting(E_ALL);
-ini_set("display_errors", 1);
+ini_set("display_errors", 0);
+ini_set("log_errors", 1);
 
 require_once __DIR__ . "/../config.php";
 cors();
@@ -151,6 +154,7 @@ if ($mode === 'report') {
 // MODE: logs — list call import logs
 // ═══════════════════════════════════════
 $batchId = isset($_GET['batch_id']) ? intval($_GET['batch_id']) : null;
+$companyId = isset($_GET['company_id']) ? intval($_GET['company_id']) : null;
 $dateFrom = $_GET['date_from'] ?? null;
 $dateTo = $_GET['date_to'] ?? null;
 $search = $_GET['search'] ?? null;
@@ -161,6 +165,10 @@ $offset = ($page - 1) * $limit;
 $where = [];
 $params = [];
 
+if ($companyId) {
+    $where[] = "b.company_id = ?";
+    $params[] = $companyId;
+}
 if ($batchId) {
     $where[] = "l.batch_id = ?";
     $params[] = $batchId;
@@ -183,7 +191,7 @@ $whereSQL = count($where) > 0 ? "WHERE " . implode(" AND ", $where) : "";
 
 // Count total
 $countStmt = $pdo->prepare(
-    "SELECT COUNT(*) FROM call_import_logs l LEFT JOIN users u ON u.id = l.matched_user_id $whereSQL"
+    "SELECT COUNT(*) FROM call_import_logs l LEFT JOIN users u ON u.id = l.matched_user_id LEFT JOIN call_import_batches b ON b.id = l.batch_id $whereSQL"
 );
 $countStmt->execute($params);
 $total = (int) $countStmt->fetchColumn();

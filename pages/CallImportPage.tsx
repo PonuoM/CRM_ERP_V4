@@ -308,7 +308,7 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
         async (page = 1) => {
             setIsLogLoading(true);
             try {
-                let url = `${apiBase}/Onecall_DB/get_call_imports.php?mode=logs&page=${page}&limit=50`;
+                let url = `${apiBase}/Onecall_DB/get_call_imports.php?mode=logs&company_id=${currentUser.companyId}&page=${page}&limit=50`;
                 if (selectedBatchId) url += `&batch_id=${selectedBatchId}`;
                 if (dateFrom) url += `&date_from=${dateFrom}`;
                 if (dateTo) url += `&date_to=${dateTo}`;
