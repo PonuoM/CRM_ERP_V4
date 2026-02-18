@@ -20,6 +20,8 @@ import {
   Eye,
   ShieldCheck,
   ShieldOff,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { patchOrder, apiFetch } from "../services/api";
 
@@ -181,6 +183,9 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
   const HISTORY_PER_PAGE = 15;
   const [historyFilterDate, setHistoryFilterDate] = useState('');
   const [historyFilterBank, setHistoryFilterBank] = useState('');
+  const [expandedDocId, setExpandedDocId] = useState<number | null>(null);
+  const [expandedDocRecords, setExpandedDocRecords] = useState<any[]>([]);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
 
   useEffect(() => {
     const fetchBanks = async () => {
@@ -253,6 +258,27 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       setHistoryFilterDate('');
       setHistoryFilterBank('');
       fetchHistoryDocs();
+    }
+  };
+
+  // Fetch cod_records for a specific document
+  const fetchDocRecords = async (docId: number) => {
+    if (expandedDocId === docId) {
+      setExpandedDocId(null);
+      setExpandedDocRecords([]);
+      return;
+    }
+    setExpandedDocId(docId);
+    setExpandedDocRecords([]);
+    setIsLoadingRecords(true);
+    try {
+      const data = await apiFetch(`cod_documents/${docId}?includeItems=true&companyId=${user.companyId}`);
+      setExpandedDocRecords(data?.items || []);
+    } catch (err) {
+      console.error('Failed to load document records', err);
+      setExpandedDocRecords([]);
+    } finally {
+      setIsLoadingRecords(false);
     }
   };
 
@@ -1144,58 +1170,128 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                         {filteredHistoryDocs
                           .slice((historyPage - 1) * HISTORY_PER_PAGE, historyPage * HISTORY_PER_PAGE)
                           .map((doc) => (
-                            <tr key={doc.id} className="hover:bg-gray-50">
-                              <td className="px-3 py-2.5 font-medium text-gray-800">{doc.document_number}</td>
-                              <td className="px-3 py-2.5 text-gray-600">
-                                {doc.document_datetime ? new Date(doc.document_datetime).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-'}
-                              </td>
-                              <td className="px-3 py-2.5 text-gray-600">
-                                {doc.bank ? `${doc.bank} ${doc.bank_number || ''}` : '-'}
-                              </td>
-                              <td className="px-3 py-2.5 text-right font-mono">
-                                {formatCurrency(doc.total_input_amount || 0)}
-                              </td>
-                              <td className="px-3 py-2.5 text-right font-mono">
-                                {formatCurrency(doc.total_order_amount || 0)}
-                              </td>
-                              <td className="px-3 py-2.5 text-center">{doc.item_count}</td>
-                              <td className="px-3 py-2.5 text-center">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${doc.status === 'verified'
-                                  ? 'bg-green-100 text-green-700'
-                                  : doc.status === 'pending'
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-gray-100 text-gray-600'
-                                  }`}>
-                                  {doc.status === 'verified' ? 'ยืนยันแล้ว' : doc.status === 'pending' ? 'รอดำเนินการ' : doc.status}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2.5 text-center">
-                                {doc.is_referenced ? (
-                                  <span className="inline-flex items-center gap-1 text-green-600" title="ถูกผูกกับ Statement แล้ว">
-                                    <ShieldCheck size={16} />
+                            <React.Fragment key={doc.id}>
+                              <tr
+                                className="hover:bg-blue-50/50 cursor-pointer transition-colors"
+                                onClick={() => fetchDocRecords(doc.id)}
+                              >
+                                <td className="px-3 py-2.5 font-medium text-gray-800">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    {expandedDocId === doc.id ? <ChevronDown size={14} className="text-blue-500" /> : <ChevronRight size={14} className="text-gray-400" />}
+                                    {doc.document_number}
                                   </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-gray-400" title="ยังไม่ถูกผูกกับ Statement">
-                                    <ShieldOff size={16} />
+                                </td>
+                                <td className="px-3 py-2.5 text-gray-600">
+                                  {doc.document_datetime ? new Date(doc.document_datetime).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-'}
+                                </td>
+                                <td className="px-3 py-2.5 text-gray-600">
+                                  {doc.bank ? `${doc.bank} ${doc.bank_number || ''}` : '-'}
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono">
+                                  {formatCurrency(doc.total_input_amount || 0)}
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono">
+                                  {formatCurrency(doc.total_order_amount || 0)}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">{doc.item_count}</td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${doc.status === 'verified'
+                                    ? 'bg-green-100 text-green-700'
+                                    : doc.status === 'pending'
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-gray-100 text-gray-600'
+                                    }`}>
+                                    {doc.status === 'verified' ? 'ยืนยันแล้ว' : doc.status === 'pending' ? 'รอดำเนินการ' : doc.status}
                                   </span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5 text-center">
-                                <button
-                                  onClick={() => deleteDocument(doc)}
-                                  disabled={doc.is_referenced === 1}
-                                  className={`p-1.5 rounded transition-colors ${doc.is_referenced
-                                    ? 'text-gray-300 cursor-not-allowed'
-                                    : 'text-red-500 hover:bg-red-50 hover:text-red-700'
-                                    }`}
-                                  title={doc.is_referenced ? 'ไม่สามารถลบได้ (ถูกผูกกับ Statement แล้ว)' : 'ลบเอกสาร'}
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                      </tbody>
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  {doc.is_referenced ? (
+                                    <span className="inline-flex items-center gap-1 text-green-600" title="ถูกผูกกับ Statement แล้ว">
+                                      <ShieldCheck size={16} />
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-gray-400" title="ยังไม่ถูกผูกกับ Statement">
+                                      <ShieldOff size={16} />
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <button
+                                    onClick={() => deleteDocument(doc)}
+                                    disabled={doc.is_referenced === 1}
+                                    className={`p-1.5 rounded transition-colors ${doc.is_referenced
+                                      ? 'text-gray-300 cursor-not-allowed'
+                                      : 'text-red-500 hover:bg-red-50 hover:text-red-700'
+                                      }`}
+                                    title={doc.is_referenced ? 'ไม่สามารถลบได้ (ถูกผูกกับ Statement แล้ว)' : 'ลบเอกสาร'}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </td>
+                              </tr>
+                              {/* Expanded records */}
+                              {expandedDocId === doc.id && (
+                                <tr>
+                                  <td colSpan={8} className="p-0">
+                                    <div className="bg-blue-50/30 border-t border-b border-blue-100 px-6 py-3">
+                                      {isLoadingRecords ? (
+                                        <div className="flex items-center justify-center py-4 text-gray-500 text-sm">
+                                          <Loader2 size={16} className="animate-spin mr-2" /> กำลังโหลดรายการ...
+                                        </div>
+                                      ) : expandedDocRecords.length === 0 ? (
+                                        <p className="text-center py-4 text-gray-400 text-sm">ไม่มีรายการ COD</p>
+                                      ) : (
+                                        <>
+                                          <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">รายการ COD ({expandedDocRecords.length})</span>
+                                          </div>
+                                          <div className="overflow-x-auto max-h-[300px] overflow-y-auto rounded-lg border border-gray-200">
+                                            <table className="w-full text-xs">
+                                              <thead className="sticky top-0">
+                                                <tr className="bg-gray-100 text-gray-600">
+                                                  <th className="px-3 py-2 text-left">#</th>
+                                                  <th className="px-3 py-2 text-left">Tracking Number</th>
+                                                  <th className="px-3 py-2 text-left">Order ID</th>
+                                                  <th className="px-3 py-2 text-right">ยอด COD</th>
+                                                  <th className="px-3 py-2 text-right">ยอด Order</th>
+                                                  <th className="px-3 py-2 text-right">ส่วนต่าง</th>
+                                                  <th className="px-3 py-2 text-center">สถานะ</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-gray-100 bg-white">
+                                                {expandedDocRecords.map((rec: any, idx: number) => (
+                                                  <tr key={rec.id || idx} className="hover:bg-gray-50">
+                                                    <td className="px-3 py-1.5 text-gray-400">{idx + 1}</td>
+                                                    <td className="px-3 py-1.5 font-mono text-gray-800">{rec.tracking_number}</td>
+                                                    <td className="px-3 py-1.5 text-gray-600">{rec.order_id || '-'}</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono">{formatCurrency(parseFloat(rec.cod_amount) || 0)}</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono">{formatCurrency(parseFloat(rec.order_amount) || 0)}</td>
+                                                    <td className={`px-3 py-1.5 text-right font-mono ${parseFloat(rec.difference) > 0 ? 'text-green-600' : parseFloat(rec.difference) < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                                                      {formatCurrency(parseFloat(rec.difference) || 0)}
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-center">
+                                                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${rec.status === 'matched' ? 'bg-green-100 text-green-700'
+                                                          : rec.status === 'unmatched' ? 'bg-yellow-100 text-yellow-700'
+                                                            : rec.status === 'forced' ? 'bg-orange-100 text-orange-700'
+                                                              : rec.status === 'returned' ? 'bg-red-100 text-red-700'
+                                                                : 'bg-gray-100 text-gray-600'
+                                                        }`}>
+                                                        {rec.status === 'matched' ? 'ตรง' : rec.status === 'unmatched' ? 'ไม่ตรง' : rec.status === 'forced' ? 'บังคับ' : rec.status === 'returned' ? 'ตีกลับ' : rec.status}
+                                                      </span>
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          ))}                      </tbody>
                     </table>
                   </div>
                   {/* Pagination */}

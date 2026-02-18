@@ -7938,8 +7938,6 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
 
                 $itemStmt = $pdo->prepare('INSERT INTO cod_records (document_id, tracking_number, order_id, cod_amount, order_amount, received_amount, difference, status, company_id, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)');
                 $findExistingStmt = $pdo->prepare('SELECT document_id, cod_amount, order_amount FROM cod_records WHERE tracking_number = ? AND company_id = ? LIMIT 1');
-                $deleteExistingStmt = $pdo->prepare('DELETE FROM cod_records WHERE tracking_number = ? AND company_id = ?');
-                $subtractDocTotalsStmt = $pdo->prepare('UPDATE cod_documents SET total_input_amount = GREATEST(0, total_input_amount - ?), total_order_amount = GREATEST(0, total_order_amount - ?), updated_at = NOW() WHERE id = ?');
                 // Prepared statements for updating order_boxes.collected_amount
                 $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
                 $updateBoxCollectedStmt = $pdo->prepare(
@@ -7968,13 +7966,6 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                             continue;
                         }
                         // force_import = true → allow adding to new document (keep old record intact)
-                    } elseif ($oldRecord && $oldRecord['document_id']) {
-                        $deleteExistingStmt->execute([$trackingNumber, $companyId]);
-                        $subtractDocTotalsStmt->execute([
-                            (float) $oldRecord['cod_amount'],
-                            (float) $oldRecord['order_amount'],
-                            (int) $oldRecord['document_id'],
-                        ]);
                     }
                     $orderId = isset($it['order_id']) ? trim((string) $it['order_id']) : null;
                     $codAmount = (float) ($it['cod_amount'] ?? 0);
@@ -8062,8 +8053,6 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                      received_amount, difference, status, company_id, created_by) 
                     VALUES (?,?,?,?,?,?,?,?,?,?)');
                 $findExistingStmt = $pdo->prepare('SELECT document_id, cod_amount, order_amount FROM cod_records WHERE tracking_number = ? AND company_id = ? LIMIT 1');
-                $deleteExistingStmt = $pdo->prepare('DELETE FROM cod_records WHERE tracking_number = ? AND company_id = ?');
-                $subtractDocTotalsStmt = $pdo->prepare('UPDATE cod_documents SET total_input_amount = GREATEST(0, total_input_amount - ?), total_order_amount = GREATEST(0, total_order_amount - ?), updated_at = NOW() WHERE id = ?');
                 // Prepared statements for updating order_boxes.collected_amount
                 $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
                 $updateBoxCollectedStmt = $pdo->prepare(
@@ -8093,13 +8082,6 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                         }
                         // force_import = true → allow adding to new document (keep old record intact, don't delete)
                         // Skip the "same document" delete logic below and go straight to insert
-                    } elseif ($oldRecord && $oldRecord['document_id']) {
-                        $deleteExistingStmt->execute([$trackingNumber, $doc['company_id']]);
-                        $subtractDocTotalsStmt->execute([
-                            (float) $oldRecord['cod_amount'],
-                            (float) $oldRecord['order_amount'],
-                            (int) $oldRecord['document_id'],
-                        ]);
                     }
 
                     $codAmount = (float) ($it['cod_amount'] ?? 0);
