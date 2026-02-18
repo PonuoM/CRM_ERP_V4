@@ -4265,6 +4265,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const finalOrderData: Partial<Order> = {
         ...orderData,
         items: normalizedItems,
+        billDiscount: billDiscountAmount,
 
         // For PayAfter/Transfer, calculate codAmount per box based on items in each box
         boxes:
