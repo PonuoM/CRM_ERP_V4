@@ -199,9 +199,29 @@ class BasketRoutingServiceV2 {
         // === BASKET 51 (Upsell Dashboard) ===
         // Rule P1 & P2
         if ($currentBasket === self::BASKET_UPSELL_DASHBOARD) {
-            $target = $hasTelesaleInvolvement ? self::BASKET_PERSONAL_1_2M : self::BASKET_NEW_CUSTOMER;
-            $type = $hasTelesaleInvolvement ? 'picking_upsell_sold' : 'picking_upsell_not_sold';
-            $status = $hasTelesaleInvolvement ? 'ขายได้' : 'ขายไม่ได้';
+            $preserveDate = false;
+            
+            if ($hasTelesaleInvolvement) {
+                // P1: Telesale involvement → 39 (ขายได้)
+                $target = self::BASKET_PERSONAL_1_2M;
+                $type = 'picking_upsell_sold';
+                $status = 'ขายได้';
+            } else {
+                // P2: ไม่มี Telesale → เช็คว่ามาจาก 39 หรือไม่
+                $cameFrom39 = $this->getPreviousBasketBefore51($customer['customer_id']);
+                if ($cameFrom39) {
+                    // P2-A: มาจาก 39 → กลับ 39 โดยไม่ reset วัน
+                    $target = self::BASKET_PERSONAL_1_2M;
+                    $type = 'picking_upsell_return_39';
+                    $status = 'กลับ 39 (มาจากเดิม)';
+                    $preserveDate = true;
+                } else {
+                    // P2-B: มาจาก basket อื่น → 38 (ขายไม่ได้)
+                    $target = self::BASKET_NEW_CUSTOMER;
+                    $type = 'picking_upsell_not_sold';
+                    $status = 'ขายไม่ได้';
+                }
+            }
             
             return $this->transitionTo(
                 $customer['customer_id'],
@@ -210,7 +230,8 @@ class BasketRoutingServiceV2 {
                 $order['id'],
                 $assignedTo,
                 $assignedTo,
-                "$status - Order #{$order['id']} picked"
+                "$status - Order #{$order['id']} picked",
+                $preserveDate
             );
         }
         
@@ -452,6 +473,29 @@ class BasketRoutingServiceV2 {
         return $stmt->execute([$customerId]);
     }
     
+    /**
+     * Check if customer came from basket 39 before entering basket 51
+     * ดู transition log ล่าสุดที่เข้า 51 ว่ามาจาก basket ไหน
+     * 
+     * @param int $customerId Customer ID
+     * @return bool True if came from basket 39 (BASKET_PERSONAL_1_2M)
+     */
+    private function getPreviousBasketBefore51(int $customerId): bool {
+        $stmt = $this->pdo->prepare("
+            SELECT from_basket_key FROM basket_transition_log
+            WHERE customer_id = ? AND to_basket_key = ?
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmt->execute([$customerId, self::BASKET_UPSELL_DASHBOARD]);
+        $fromBasket = $stmt->fetchColumn();
+        
+        if ($fromBasket === false) {
+            return false;
+        }
+        
+        return (int)$fromBasket === self::BASKET_PERSONAL_1_2M;
+    }
+    
     // ===========================
     // TRANSITION EXECUTOR
     // ===========================
@@ -475,7 +519,8 @@ class BasketRoutingServiceV2 {
         $orderId,
         ?int $assignedToOld,
         ?int $assignedToNew,
-        ?string $notes = null
+        ?string $notes = null,
+        bool $preserveDate = false
     ): array {
         $this->pdo->beginTransaction();
         
@@ -493,15 +538,24 @@ class BasketRoutingServiceV2 {
             $fromBasket = $current['current_basket_key'] ?? null;
             
             // 🔍 DEBUG
-            error_log("[BasketRoutingV2] transitionTo: customer=$customerId, from=$fromBasket, to=$targetBasket, type=$transitionType, order=$orderId");
+            error_log("[BasketRoutingV2] transitionTo: customer=$customerId, from=$fromBasket, to=$targetBasket, type=$transitionType, order=$orderId, preserveDate=" . ($preserveDate ? 'true' : 'false'));
             
             // Update customer basket
-            $updateStmt = $this->pdo->prepare("
-                UPDATE customers 
-                SET current_basket_key = ?,
-                    basket_entered_date = NOW()
-                WHERE customer_id = ?
-            ");
+            if ($preserveDate) {
+                // ไม่ reset basket_entered_date (เช่น กลับ 39 จาก 51)
+                $updateStmt = $this->pdo->prepare("
+                    UPDATE customers 
+                    SET current_basket_key = ?
+                    WHERE customer_id = ?
+                ");
+            } else {
+                $updateStmt = $this->pdo->prepare("
+                    UPDATE customers 
+                    SET current_basket_key = ?,
+                        basket_entered_date = NOW()
+                    WHERE customer_id = ?
+                ");
+            }
             $updateResult = $updateStmt->execute([$targetBasket, $customerId]);
             error_log("[BasketRoutingV2] UPDATE result: " . ($updateResult ? 'SUCCESS' : 'FAILED'));
             
