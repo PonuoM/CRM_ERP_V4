@@ -7805,7 +7805,8 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 json_response($doc);
             } else {
                 $params = [];
-                $sql = 'SELECT cd.*, b.bank, b.bank_number 
+                $sql = 'SELECT cd.*, b.bank, b.bank_number,
+                        (SELECT COUNT(*) FROM cod_records cr WHERE cr.document_id = cd.id) AS item_count
                         FROM cod_documents cd 
                         LEFT JOIN bank_account b ON b.id = cd.bank_account_id
                         WHERE 1=1';
@@ -7816,7 +7817,82 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 $sql .= ' ORDER BY cd.document_datetime DESC, cd.id DESC';
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
-                json_response($stmt->fetchAll());
+                $docs = $stmt->fetchAll();
+
+                // Check reference in statement_reconcile_batches.notes
+                // notes format: "COD Document: {document_number}"
+                try {
+                    $refStmt = $pdo->prepare('SELECT notes FROM statement_reconcile_batches WHERE company_id = ?');
+                    $refParams = [$companyId ?: 0];
+                    $refStmt->execute($refParams);
+                    $allNotes = $refStmt->fetchAll(PDO::FETCH_COLUMN, 0);
+                    $referencedDocNumbers = [];
+                    foreach ($allNotes as $note) {
+                        if ($note && strpos($note, 'COD Document: ') === 0) {
+                            $referencedDocNumbers[] = substr($note, strlen('COD Document: '));
+                        }
+                    }
+                    foreach ($docs as &$doc) {
+                        $doc['is_referenced'] = in_array($doc['document_number'], $referencedDocNumbers) ? 1 : 0;
+                    }
+                    unset($doc);
+                } catch (Throwable $e) {
+                    // If table doesn't exist yet, just set all to 0
+                    foreach ($docs as &$doc) {
+                        $doc['is_referenced'] = 0;
+                    }
+                    unset($doc);
+                }
+
+                json_response($docs);
+            }
+            break;
+        case 'DELETE':
+            if (!$id) {
+                json_response(['error' => 'VALIDATION_FAILED', 'message' => 'Document ID is required'], 400);
+            }
+            $companyId = $_GET['companyId'] ?? null;
+
+            // Fetch document
+            $docStmt = $pdo->prepare('SELECT * FROM cod_documents WHERE id = ?');
+            $docStmt->execute([$id]);
+            $doc = $docStmt->fetch();
+            if (!$doc) {
+                json_response(['error' => 'NOT_FOUND'], 404);
+            }
+            if ($companyId && (int) $doc['company_id'] !== (int) $companyId) {
+                json_response(['error' => 'FORBIDDEN', 'message' => 'Document does not belong to this company'], 403);
+            }
+
+            // Check if referenced in statement_reconcile_batches
+            $docNumber = $doc['document_number'];
+            $noteSearch = 'COD Document: ' . $docNumber;
+            try {
+                $refCheck = $pdo->prepare('SELECT COUNT(*) FROM statement_reconcile_batches WHERE notes = ? AND company_id = ?');
+                $refCheck->execute([$noteSearch, $doc['company_id']]);
+                if ((int) $refCheck->fetchColumn() > 0) {
+                    json_response(['error' => 'REFERENCED', 'message' => 'เอกสารนี้ถูกอ้างอิงในระบบ Reconcile แล้ว ไม่สามารถลบได้'], 409);
+                }
+            } catch (Throwable $e) {
+                // If table doesn't exist, proceed with delete
+            }
+
+            // Delete cod_records first, then cod_document
+            try {
+                $pdo->beginTransaction();
+                $delRecords = $pdo->prepare('DELETE FROM cod_records WHERE document_id = ?');
+                $delRecords->execute([$id]);
+                $deletedRecords = $delRecords->rowCount();
+
+                $delDoc = $pdo->prepare('DELETE FROM cod_documents WHERE id = ?');
+                $delDoc->execute([$id]);
+
+                $pdo->commit();
+                json_response(['ok' => true, 'deleted_records' => $deletedRecords]);
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction())
+                    $pdo->rollBack();
+                json_response(['error' => 'DELETE_FAILED', 'message' => $e->getMessage()], 500);
             }
             break;
         case 'POST':
@@ -7945,10 +8021,15 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
             } catch (Throwable $e) {
                 $pdo->rollBack();
                 $code = 500;
-                if (strpos($e->getMessage(), 'uniq_cod_document_company_number') !== false) {
+                $errMsg = $e->getMessage();
+                if (strpos($errMsg, 'uniq_cod_document_company_number') !== false) {
                     $code = 409;
+                    $errMsg = 'เลขที่เอกสารซ้ำ กรุณาใช้เลขที่เอกสารอื่น';
                 }
-                json_response(['error' => 'CREATE_FAILED', 'message' => $e->getMessage()], $code);
+                if (strpos($errMsg, 'collected + waived exceeds collection_amount') !== false) {
+                    $errMsg = 'ยอดเก็บเงิน COD รวมเกินยอดที่ต้องเก็บของกล่องพัสดุ กรุณาตรวจสอบยอด COD';
+                }
+                json_response(['error' => 'CREATE_FAILED', 'message' => $errMsg], $code);
             }
             break;
         case 'PATCH':
