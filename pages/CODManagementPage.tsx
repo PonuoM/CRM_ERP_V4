@@ -16,6 +16,12 @@ import {
   Trash2,
   AlertTriangle,
   Loader2,
+  History,
+  Eye,
+  ShieldCheck,
+  ShieldOff,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { patchOrder, apiFetch } from "../services/api";
 
@@ -75,6 +81,20 @@ interface ExistingDocument {
   total_order_amount: number;
   status: string;
   matched_statement_log_id: number | null;
+}
+
+interface HistoryDocument {
+  id: number;
+  document_number: string;
+  document_datetime: string;
+  total_input_amount: number;
+  total_order_amount: number;
+  status: string;
+  bank?: string;
+  bank_number?: string;
+  item_count: number;
+  is_referenced: number;
+  created_at?: string;
 }
 
 interface BankAccount {
@@ -155,6 +175,18 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
   const [isLoadingExistingDocs, setIsLoadingExistingDocs] = useState(false);
 
+  // Document history
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyDocs, setHistoryDocs] = useState<HistoryDocument[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PER_PAGE = 15;
+  const [historyFilterDate, setHistoryFilterDate] = useState('');
+  const [historyFilterBank, setHistoryFilterBank] = useState('');
+  const [expandedDocId, setExpandedDocId] = useState<number | null>(null);
+  const [expandedDocRecords, setExpandedDocRecords] = useState<any[]>([]);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
+
   useEffect(() => {
     const fetchBanks = async () => {
       if (!user?.companyId) return;
@@ -200,6 +232,94 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     };
     fetchExistingDocs();
   }, [user?.companyId, importMode]);
+
+  // ── Document History ──
+  const fetchHistoryDocs = async () => {
+    if (!user?.companyId) return;
+    setIsLoadingHistory(true);
+    try {
+      const qs = new URLSearchParams({ companyId: String(user.companyId) });
+      const data = await apiFetch(`cod_documents?${qs.toString()}`);
+      if (Array.isArray(data)) {
+        setHistoryDocs(data as HistoryDocument[]);
+      }
+    } catch (err) {
+      console.error('Failed to load document history', err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const toggleHistory = () => {
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next) {
+      setHistoryPage(1);
+      setHistoryFilterDate('');
+      setHistoryFilterBank('');
+      fetchHistoryDocs();
+    }
+  };
+
+  // Fetch cod_records for a specific document
+  const fetchDocRecords = async (docId: number) => {
+    if (expandedDocId === docId) {
+      setExpandedDocId(null);
+      setExpandedDocRecords([]);
+      return;
+    }
+    setExpandedDocId(docId);
+    setExpandedDocRecords([]);
+    setIsLoadingRecords(true);
+    try {
+      const data = await apiFetch(`cod_documents/${docId}?includeItems=true&companyId=${user.companyId}`);
+      setExpandedDocRecords(data?.items || []);
+    } catch (err) {
+      console.error('Failed to load document records', err);
+      setExpandedDocRecords([]);
+    } finally {
+      setIsLoadingRecords(false);
+    }
+  };
+
+  // Filtered history docs
+  const filteredHistoryDocs = useMemo(() => {
+    let docs = historyDocs;
+    if (historyFilterDate) {
+      docs = docs.filter(d => d.document_datetime && d.document_datetime.startsWith(historyFilterDate));
+    }
+    if (historyFilterBank) {
+      docs = docs.filter(d => {
+        const bankLabel = d.bank ? `${d.bank} ${d.bank_number || ''}`.trim() : '';
+        return bankLabel === historyFilterBank;
+      });
+    }
+    return docs;
+  }, [historyDocs, historyFilterDate, historyFilterBank]);
+
+  const historyBankOptions = useMemo(() => {
+    const set = new Set<string>();
+    historyDocs.forEach(d => {
+      if (d.bank) set.add(`${d.bank} ${d.bank_number || ''}`.trim());
+    });
+    return Array.from(set).sort();
+  }, [historyDocs]);
+
+  const deleteDocument = async (doc: HistoryDocument) => {
+    if (doc.is_referenced) {
+      alert('เอกสารนี้ถูกผูกกับ Statement แล้ว ไม่สามารถลบได้');
+      return;
+    }
+    if (!confirm(`ต้องการลบเอกสาร "${doc.document_number}" (${doc.item_count} รายการ) ?\n\nข้อมูล COD ทั้งหมดในเอกสารนี้จะถูกลบ`)) return;
+    try {
+      const qs = new URLSearchParams({ companyId: String(user.companyId) });
+      await apiFetch(`cod_documents/${doc.id}?${qs.toString()}`, { method: 'DELETE' });
+      fetchHistoryDocs();
+    } catch (err: any) {
+      const msg = err?.message || 'เกิดข้อผิดพลาดในการลบ';
+      alert(msg);
+    }
+  };
 
   const handleInputChange = (index: number, field: 'trackingNumber' | 'codAmount', value: string) => {
     const newRows = [...rows];
@@ -869,7 +989,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       if (error?.data?.error === 'DOCUMENT_ALREADY_VERIFIED') {
         alert("ไม่สามารถแก้ไขเอกสารที่จับคู่กับ Statement แล้ว");
       } else {
-        alert("เกิดข้อผิดพลาดในการนำเข้า COD กรุณาลองใหม่");
+        const msg = error?.data?.message || error?.message || "เกิดข้อผิดพลาดในการนำเข้า COD กรุณาลองใหม่";
+        alert(msg);
       }
     } finally {
       setIsSubmitting(false);
@@ -950,8 +1071,271 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-2">จัดการ COD</h2>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-2xl font-bold text-gray-800">จัดการ COD</h2>
+        <button
+          onClick={toggleHistory}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+        >
+          <History size={16} />
+          ดูประวัติเอกสาร
+        </button>
+      </div>
       <p className="text-gray-600 mb-6">คัดลอกข้อมูลจากไฟล์ Excel/CSV (2 คอลัมน์: Tracking Number, COD Amount) แล้ววางลงในตารางด้านล่าง</p>
+
+      {/* Document History Modal */}
+      {showHistory && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowHistory(false); }}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <FileText size={20} className="text-blue-600" />
+                ประวัติเอกสาร COD
+              </h3>
+              <div className="flex items-center gap-3">
+                <button onClick={fetchHistoryDocs} className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-blue-50">
+                  <Loader2 size={14} className={isLoadingHistory ? 'animate-spin' : ''} />
+                  รีเฟรช
+                </button>
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"
+                >
+                  <XCircle size={22} />
+                </button>
+              </div>
+            </div>
+            {/* Filters */}
+            <div className="px-5 pt-4 pb-2 border-b border-gray-100 flex items-end gap-4 flex-shrink-0 bg-gray-50/50">
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-500 mb-1">วันที่เอกสาร</label>
+                <input
+                  type="date"
+                  value={historyFilterDate}
+                  onChange={(e) => { setHistoryFilterDate(e.target.value); setHistoryPage(1); }}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-500 mb-1">ธนาคาร</label>
+                <select
+                  value={historyFilterBank}
+                  onChange={(e) => { setHistoryFilterBank(e.target.value); setHistoryPage(1); }}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-w-[180px]"
+                >
+                  <option value="">ทั้งหมด</option>
+                  {historyBankOptions.map(b => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+              {(historyFilterDate || historyFilterBank) && (
+                <button
+                  onClick={() => { setHistoryFilterDate(''); setHistoryFilterBank(''); setHistoryPage(1); }}
+                  className="text-sm text-red-500 hover:text-red-700 px-3 py-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  ล้างตัวกรอง
+                </button>
+              )}
+              <span className="text-xs text-gray-400 ml-auto">
+                {filteredHistoryDocs.length} รายการ
+              </span>
+            </div>
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto flex-1">
+              {isLoadingHistory ? (
+                <div className="flex items-center justify-center py-12 text-gray-500">
+                  <Loader2 size={24} className="animate-spin mr-2" /> กำลังโหลด...
+                </div>
+              ) : filteredHistoryDocs.length === 0 ? (
+                <p className="text-center py-12 text-gray-400">{historyDocs.length > 0 ? 'ไม่พบเอกสารที่ตรงกับตัวกรอง' : 'ยังไม่มีเอกสาร COD'}</p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-600 border-b">
+                          <th className="px-3 py-2.5 text-left">เลขที่เอกสาร</th>
+                          <th className="px-3 py-2.5 text-left">วันที่</th>
+                          <th className="px-3 py-2.5 text-left">ธนาคาร</th>
+                          <th className="px-3 py-2.5 text-right">ยอด COD</th>
+                          <th className="px-3 py-2.5 text-right">ยอด Order</th>
+                          <th className="px-3 py-2.5 text-center">รายการ</th>
+                          <th className="px-3 py-2.5 text-center">ผูก Statement</th>
+                          <th className="px-3 py-2.5 text-center">จัดการ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {filteredHistoryDocs
+                          .slice((historyPage - 1) * HISTORY_PER_PAGE, historyPage * HISTORY_PER_PAGE)
+                          .map((doc) => (
+                            <React.Fragment key={doc.id}>
+                              <tr
+                                className="hover:bg-blue-50/50 cursor-pointer transition-colors"
+                                onClick={() => fetchDocRecords(doc.id)}
+                              >
+                                <td className="px-3 py-2.5 font-medium text-gray-800">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    {expandedDocId === doc.id ? <ChevronDown size={14} className="text-blue-500" /> : <ChevronRight size={14} className="text-gray-400" />}
+                                    {doc.document_number}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-gray-600">
+                                  {doc.document_datetime ? new Date(doc.document_datetime).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-'}
+                                </td>
+                                <td className="px-3 py-2.5 text-gray-600">
+                                  {doc.bank ? `${doc.bank} ${doc.bank_number || ''}` : '-'}
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono">
+                                  {formatCurrency(doc.total_input_amount || 0)}
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono">
+                                  {formatCurrency(doc.total_order_amount || 0)}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">{doc.item_count}</td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${doc.status === 'verified'
+                                    ? 'bg-green-100 text-green-700'
+                                    : doc.status === 'pending'
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-gray-100 text-gray-600'
+                                    }`}>
+                                    {doc.status === 'verified' ? 'ยืนยันแล้ว' : doc.status === 'pending' ? 'รอดำเนินการ' : doc.status}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  {doc.is_referenced ? (
+                                    <span className="inline-flex items-center gap-1 text-green-600" title="ถูกผูกกับ Statement แล้ว">
+                                      <ShieldCheck size={16} />
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-gray-400" title="ยังไม่ถูกผูกกับ Statement">
+                                      <ShieldOff size={16} />
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <button
+                                    onClick={() => deleteDocument(doc)}
+                                    disabled={doc.is_referenced === 1}
+                                    className={`p-1.5 rounded transition-colors ${doc.is_referenced
+                                      ? 'text-gray-300 cursor-not-allowed'
+                                      : 'text-red-500 hover:bg-red-50 hover:text-red-700'
+                                      }`}
+                                    title={doc.is_referenced ? 'ไม่สามารถลบได้ (ถูกผูกกับ Statement แล้ว)' : 'ลบเอกสาร'}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </td>
+                              </tr>
+                              {/* Expanded records */}
+                              {expandedDocId === doc.id && (
+                                <tr>
+                                  <td colSpan={8} className="p-0">
+                                    <div className="bg-blue-50/30 border-t border-b border-blue-100 px-6 py-3">
+                                      {isLoadingRecords ? (
+                                        <div className="flex items-center justify-center py-4 text-gray-500 text-sm">
+                                          <Loader2 size={16} className="animate-spin mr-2" /> กำลังโหลดรายการ...
+                                        </div>
+                                      ) : expandedDocRecords.length === 0 ? (
+                                        <p className="text-center py-4 text-gray-400 text-sm">ไม่มีรายการ COD</p>
+                                      ) : (
+                                        <>
+                                          <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">รายการ COD ({expandedDocRecords.length})</span>
+                                          </div>
+                                          <div className="overflow-x-auto max-h-[300px] overflow-y-auto rounded-lg border border-gray-200">
+                                            <table className="w-full text-xs">
+                                              <thead className="sticky top-0">
+                                                <tr className="bg-gray-100 text-gray-600">
+                                                  <th className="px-3 py-2 text-left">#</th>
+                                                  <th className="px-3 py-2 text-left">Tracking Number</th>
+                                                  <th className="px-3 py-2 text-left">Order ID</th>
+                                                  <th className="px-3 py-2 text-right">ยอด COD</th>
+                                                  <th className="px-3 py-2 text-right">ยอด Order</th>
+                                                  <th className="px-3 py-2 text-right">ส่วนต่าง</th>
+                                                  <th className="px-3 py-2 text-center">สถานะ</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-gray-100 bg-white">
+                                                {expandedDocRecords.map((rec: any, idx: number) => (
+                                                  <tr key={rec.id || idx} className="hover:bg-gray-50">
+                                                    <td className="px-3 py-1.5 text-gray-400">{idx + 1}</td>
+                                                    <td className="px-3 py-1.5 font-mono text-gray-800">{rec.tracking_number}</td>
+                                                    <td className="px-3 py-1.5 text-gray-600">{rec.order_id || '-'}</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono">{formatCurrency(parseFloat(rec.cod_amount) || 0)}</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono">{formatCurrency(parseFloat(rec.order_amount) || 0)}</td>
+                                                    <td className={`px-3 py-1.5 text-right font-mono ${parseFloat(rec.difference) > 0 ? 'text-green-600' : parseFloat(rec.difference) < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                                                      {formatCurrency(parseFloat(rec.difference) || 0)}
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-center">
+                                                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${rec.status === 'matched' ? 'bg-green-100 text-green-700'
+                                                          : rec.status === 'unmatched' ? 'bg-yellow-100 text-yellow-700'
+                                                            : rec.status === 'forced' ? 'bg-orange-100 text-orange-700'
+                                                              : rec.status === 'returned' ? 'bg-red-100 text-red-700'
+                                                                : 'bg-gray-100 text-gray-600'
+                                                        }`}>
+                                                        {rec.status === 'matched' ? 'ตรง' : rec.status === 'unmatched' ? 'ไม่ตรง' : rec.status === 'forced' ? 'บังคับ' : rec.status === 'returned' ? 'ตีกลับ' : rec.status}
+                                                      </span>
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          ))}                      </tbody>
+                    </table>
+                  </div>
+                  {/* Pagination */}
+                  {filteredHistoryDocs.length > HISTORY_PER_PAGE && (
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+                      <span className="text-sm text-gray-500">
+                        แสดง {(historyPage - 1) * HISTORY_PER_PAGE + 1}-{Math.min(historyPage * HISTORY_PER_PAGE, filteredHistoryDocs.length)} จาก {filteredHistoryDocs.length} รายการ
+                      </span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                          disabled={historyPage <= 1}
+                          className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          ← ก่อนหน้า
+                        </button>
+                        {Array.from({ length: Math.ceil(filteredHistoryDocs.length / HISTORY_PER_PAGE) }, (_, i) => i + 1).map(p => (
+                          <button
+                            key={p}
+                            onClick={() => setHistoryPage(p)}
+                            className={`px-3 py-1.5 text-sm rounded-lg border ${p === historyPage
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                              }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setHistoryPage(p => Math.min(Math.ceil(filteredHistoryDocs.length / HISTORY_PER_PAGE), p + 1))}
+                          disabled={historyPage >= Math.ceil(filteredHistoryDocs.length / HISTORY_PER_PAGE)}
+                          className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          ถัดไป →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white p-4 rounded-lg shadow mb-4">
         {/* NEW: Import Mode Selection */}
