@@ -12,7 +12,8 @@ import {
   ChevronDown,
   BarChart3,
   FileSpreadsheet,
-  Loader2
+  Loader2,
+  RotateCcw
 } from 'lucide-react';
 import { Order, Customer, Product, WarehouseStock, StockMovement, PaymentMethod, PaymentStatus, OrderStatus, User, Page } from '../types';
 import { calculateCustomerGrade } from '@/utils/customerGrade';
@@ -41,7 +42,7 @@ interface ReportsPageProps {
   pages?: Page[];
 }
 
-type ReportType = 'stock' | 'lot-stock' | 'customers' | 'orders-raw';
+type ReportType = 'stock' | 'lot-stock' | 'customers' | 'orders-raw' | 'return-summary';
 
 interface ReportCard {
   id: ReportType;
@@ -88,6 +89,14 @@ const reportCards: ReportCard[] = [
     color: 'bg-gray-400',
     disabled: true,
     comingSoon: 'ใช้งานได้ในอนาคต'
+  },
+  {
+    id: 'return-summary',
+    title: 'รายงานตีกลับเข้าคลัง',
+    description: 'สรุปข้อมูลออเดอร์ตีกลับ จำนวนกล่อง สภาพสินค้า และสถานะการจัดการ',
+    icon: RotateCcw,
+    color: 'bg-orange-500',
+    disabled: false
   }
 ];
 
@@ -110,6 +119,17 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   const [fetchedOrders, setFetchedOrders] = useState<Order[]>([]);
   const [fetchedCustomers, setFetchedCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [returnSummary, setReturnSummary] = useState<{
+    totalOrders: number;
+    allOrders: number;
+    totalBoxes: number;
+    returning: number;
+    returned: number;
+    good: number;
+    damaged: number;
+    lost: number;
+  } | null>(null);
+  const [isReturnLoading, setIsReturnLoading] = useState(false);
   const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
 
   // Calculate date range for filtering
@@ -284,6 +304,40 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propOrders, currentUser]); // Only refetch when user or propOrders change, NOT date range
+
+  // Fetch return summary when return-summary report is selected
+  useEffect(() => {
+    if (selectedReport !== 'return-summary') return;
+
+    const fetchReturnSummary = async () => {
+      setIsReturnLoading(true);
+      try {
+        const { filterStartDate, filterEndDate } = getDateRange();
+        const startDateStr = filterStartDate.toISOString().split('T')[0];
+        const endDateStr = filterEndDate.toISOString().split('T')[0];
+        const isSuperAdmin = currentUser && String(currentUser.role).toLowerCase() === 'superadmin';
+        const companyFilter = currentUser && !isSuperAdmin && currentUser.companyId
+          ? `&companyId=${currentUser.companyId}` : '';
+
+        const response = await apiFetch(
+          `Orders/get_return_summary.php?date_from=${startDateStr}&date_to=${endDateStr}${companyFilter}`
+        );
+        if (response?.success && response?.summary) {
+          setReturnSummary(response.summary);
+        } else {
+          setReturnSummary(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch return summary:', error);
+        setReturnSummary(null);
+      } finally {
+        setIsReturnLoading(false);
+      }
+    };
+
+    fetchReturnSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedReport, dateRange, startDate, endDate, currentUser]);
 
   // State for department filter
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
@@ -891,6 +945,57 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   const handleExport = async () => {
     if (!selectedReport) return;
 
+    // For return-summary, fetch CSV from export_return_orders API
+    if (selectedReport === 'return-summary') {
+      setIsExporting(true);
+      try {
+        const { filterStartDate, filterEndDate } = getDateRange();
+        const startDateStr = filterStartDate.toISOString().split('T')[0];
+        const endDateStr = filterEndDate.toISOString().split('T')[0];
+        const isSuperAdmin = currentUser && String(currentUser.role).toLowerCase() === 'superadmin';
+        const companyFilter = currentUser && !isSuperAdmin && currentUser.companyId
+          ? `&companyId=${currentUser.companyId}` : '';
+
+        const response = await apiFetch(
+          `Orders/export_return_orders.php?date_from=${startDateStr}&date_to=${endDateStr}${companyFilter}`
+        );
+        const rows = response?.data || [];
+
+        if (rows.length === 0) {
+          alert('ไม่มีข้อมูลตีกลับในช่วงวันที่ที่เลือก');
+          return;
+        }
+
+        const statusThai: { [key: string]: string } = {
+          returning: 'กำลังตีกลับ', returned: 'เข้าคลัง',
+          good: 'สภาพดี', damaged: 'ชำรุด', lost: 'สูญหาย'
+        };
+
+        const csvRows = rows.map((r: any) => ({
+          'Order ID': r.order_id || '',
+          'Sub Order ID': r.sub_order_id || '',
+          'วันที่สั่งซื้อ': r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH') : '-',
+          'ชื่อลูกค้า': `${r.customer_first_name || ''} ${r.customer_last_name || ''}`.trim() || '-',
+          'เบอร์โทร': r.customer_phone || '-',
+          'Tracking No.': r.tracking_number || '-',
+          'สถานะตีกลับ': statusThai[r.return_status] || r.return_status || '-',
+          'หมายเหตุ': r.return_note || '-',
+          'ราคากล่อง': r.cod_amount || 0,
+          'ยอดเก็บได้': r.collection_amount || 0,
+          'วันที่บันทึก': r.return_created_at ? new Date(r.return_created_at).toLocaleDateString('th-TH') : '-',
+          'ช่องทางชำระ': r.payment_method || '-',
+        }));
+
+        downloadCSV(csvRows, `return-report_${startDateStr}_${endDateStr}`);
+      } catch (error) {
+        console.error('Failed to export return data:', error);
+        alert('ไม่สามารถดาวน์โหลดรายงานได้ กรุณาลองใหม่');
+      } finally {
+        setIsExporting(false);
+      }
+      return;
+    }
+
     // For orders-raw, fetch data from API with date filter
     if (selectedReport === 'orders-raw') {
       setIsExporting(true);
@@ -1265,6 +1370,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         return productLots.length > 0;
       case 'customers':
         return customers.length > 0;
+      case 'return-summary':
+        return true; // Always available — data fetched on demand
       default:
         return false;
     }
@@ -1639,6 +1746,87 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               </div>
             </div>
             {renderTable(reportData.customers, 'ลูกค้า')}
+          </div>
+        );
+
+      case 'return-summary':
+        return (
+          <div>
+            <h3 className="text-xl font-semibold mb-4">รายงานตีกลับเข้าคลัง</h3>
+            {isReturnLoading ? (
+              <div className="text-center py-10">
+                <Loader2 className="w-10 h-10 text-orange-500 mx-auto mb-3 animate-spin" />
+                <p className="text-gray-500">กำลังโหลดข้อมูล...</p>
+              </div>
+            ) : returnSummary ? (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <p className="text-sm text-gray-600">ออเดอร์ทั้งหมด</p>
+                    <p className="text-2xl font-bold text-blue-600">{returnSummary.allOrders.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg border">
+                    <p className="text-sm text-gray-600">ออเดอร์ตีกลับ (Returned)</p>
+                    <p className="text-2xl font-bold text-gray-800">{returnSummary.totalOrders.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                    <p className="text-sm text-gray-600">% ตีกลับ</p>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {returnSummary.allOrders > 0
+                        ? ((returnSummary.totalOrders / returnSummary.allOrders) * 100).toFixed(2)
+                        : '0.00'}%
+                    </p>
+                  </div>
+                  <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                    <p className="text-sm text-gray-600">จำนวนกล่องทั้งหมด</p>
+                    <p className="text-2xl font-bold text-indigo-600">{returnSummary.totalBoxes.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                  <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                    <p className="text-sm text-gray-600">กำลังตีกลับ</p>
+                    <p className="text-2xl font-bold text-orange-600">{returnSummary.returning.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-cyan-50 p-4 rounded-lg border border-cyan-100">
+                    <p className="text-sm text-gray-600">เข้าคลัง (รวม)</p>
+                    <p className="text-2xl font-bold text-cyan-600">{returnSummary.returned.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                    <p className="text-sm text-gray-600">เข้าคลัง — สภาพดี</p>
+                    <p className="text-2xl font-bold text-green-600">{returnSummary.good.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+                    <p className="text-sm text-gray-600">เข้าคลัง — ชำรุด</p>
+                    <p className="text-2xl font-bold text-red-600">{returnSummary.damaged.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg border">
+                    <p className="text-sm text-gray-600">สูญหาย</p>
+                    <p className="text-2xl font-bold text-gray-600">{returnSummary.lost.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Download className="w-5 h-5 text-orange-600" />
+                    <p className="text-sm font-medium text-orange-900">
+                      ดาวน์โหลด CSV รายละเอียดข้อมูลตีกลับทั้งหมด
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleExport}
+                    disabled={isExporting}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 text-sm font-medium disabled:opacity-50"
+                  >
+                    {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {isExporting ? 'กำลังดาวน์โหลด...' : 'ดาวน์โหลด CSV'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-10">
+                <RotateCcw className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500">เลือกช่วงวันที่แล้วรอสักครู่...</p>
+              </div>
+            )}
           </div>
         );
 

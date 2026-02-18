@@ -223,6 +223,7 @@ import BankAccountsManagementPage from "./pages/BankAccountsManagementPage";
 import TagsManagementPage from "./pages/TagsManagementPage";
 import CallHistoryPage from "./pages/CallHistoryPage";
 import CallDetailsPage from "./pages/CallDetailsPage";
+import CallImportPage from "./pages/CallImportPage";
 import StockDocumentsPage from "./pages/StockDocumentsPage";
 import WarehouseStockViewPage from "./pages/WarehouseStockViewPage";
 import LotTrackingPage from "./pages/LotTrackingPage";
@@ -6529,6 +6530,9 @@ const App: React.FC = () => {
     }
     if (activePage === "Calls Overview") {
       return <CallsDashboard calls={callHistory} user={currentUser} />;
+    }
+    if (activePage === "Call Import") {
+      return <CallImportPage currentUser={currentUser} />;
     }
     if (activePage === "Pancake User Mapping") {
       return <PancakeUserIntegrationPage currentUser={currentUser} />;

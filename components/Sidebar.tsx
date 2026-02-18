@@ -121,6 +121,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Lot Tracking": "การติดตามล็อต",
     "Warehouse Allocation": "การจัดสรรคลัง",
     "Call Details": "รายละเอียดการโทร",
+    "Call Import": "นำเข้าข้อมูลโทร",
     "Dtac Onecall": "Dtac Onecall",
     "Active Promotions": "โปรโมชั่นที่ใช้งาน",
     "Promotion History": "ประวัติโปรโมชั่น",
@@ -186,6 +187,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Calls Overview", icon: Phone, key: "calls.overview" },
         { label: "Call Details", icon: Phone, key: "calls.details" },
         { label: "Dtac Onecall", icon: Phone, key: "calls.dtac" },
+        { label: "Call Import", icon: FileUp, key: "calls.import" },
       ]
     },
     {
