@@ -58,7 +58,9 @@ function previewGoogleSheetData(PDO $pdo, ?string $startDate = null, ?string $en
 
             $systemCreateTime = $row[0] ?? null;
             $orderNumber = $row[1] ?? null;
-            $deliveryDate = isset($row[2]) ? $row[2] : null;
+            $rawDeliveryDate = isset($row[2]) ? trim($row[2]) : null;
+            // Strip trailing dash-number suffixes (e.g. "12/1/26-2" -> "12/1/26")
+            $deliveryDate = $rawDeliveryDate ? preg_replace('/-\d+$/', '', $rawDeliveryDate) : null;
             $rawDeliveryStatus = isset($row[3]) ? $row[3] : null;
             $orderStatus = null;
             $deliveryStatus = null;

@@ -102,19 +102,14 @@ class ShippingSyncService
     {
         try {
             // Extract data from sheet record
-            // NOTE: order_status is intentionally NOT synced from Sheet to prevent
-            // auto-closing orders (e.g. "Delivered") before payment is confirmed.
-            // Only delivery_date and delivery_status (as a note) are synced.
+            // NOTE: order_status and delivery_date are intentionally NOT synced from Sheet.
+            // - order_status: prevent auto-closing orders before payment is confirmed.
+            // - delivery_date: kept only in google_sheet_shipping as reference data.
+            // Only delivery_status (as a note in note_system) is synced.
             $deliveryStatus = $sheetRecord['delivery_status']; // e.g. "Sent"
-            $deliveryDate = $sheetRecord['delivery_date'];     // e.g. "2024-01-01"
 
             $updateFields = [];
             $params = [];
-
-            if (!empty($deliveryDate)) {
-                $updateFields[] = "delivery_date = ?";
-                $params[] = $deliveryDate;
-            }
 
             // Update note_system with delivery_status (log only, does not change order_status)
             if (!empty($deliveryStatus)) {
@@ -136,7 +131,7 @@ class ShippingSyncService
                 return ['success' => false, 'message' => 'No fields to update'];
             }
 
-            // Execute Update (only delivery_date + note_system, never order_status)
+            // Execute Update (only note_system, never order_status or delivery_date)
             $sql = "UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?";
             $params[] = $orderId;
 
