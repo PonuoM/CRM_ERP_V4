@@ -35,6 +35,7 @@ $bank_account_id = isset($_GET["bank_account_id"]) ? trim($_GET["bank_account_id
 $min_amount = isset($_GET["min_amount"]) && $_GET["min_amount"] !== "" ? (float) $_GET["min_amount"] : null;
 $max_amount = isset($_GET["max_amount"]) && $_GET["max_amount"] !== "" ? (float) $_GET["max_amount"] : null;
 $exclude_reconciled = isset($_GET["exclude_reconciled"]) && $_GET["exclude_reconciled"] === 'true';
+$payment_status_filter = isset($_GET["payment_status_filter"]) ? trim($_GET["payment_status_filter"]) : "verified_preapproved";
 
 $page = isset($_GET["page"]) ? (int) $_GET["page"] : 1;
 $pageSize = isset($_GET["pageSize"]) ? (int) $_GET["pageSize"] : 20;
@@ -55,6 +56,11 @@ if ($company_id <= 0) {
 
 $conditions = ["o.company_id = ?"]; // Removed Unpaid restriction
 $params = [$company_id];
+
+// Payment status filter: default to Verified/PreApproved only
+if ($payment_status_filter === 'verified_preapproved') {
+  $conditions[] = "LOWER(o.payment_status) IN ('verified', 'preapproved')";
+}
 
 if ($search !== "") {
   $like = "%" . $search . "%";
@@ -405,6 +411,7 @@ try {
       "file_exists" => $fileExists,
       "original_url" => $rawUrl,
       "payment_method" => $row["payment_method"],
+      "payment_status" => $row["payment_status"],
     ];
   }
 

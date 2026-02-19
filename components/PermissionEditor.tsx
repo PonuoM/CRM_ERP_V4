@@ -124,6 +124,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'data.pages', label: 'จัดการ Pages (เพจ)' },
             { key: 'data.platforms', label: 'จัดการ Platforms' },
             { key: 'data.bank_accounts', label: 'จัดการ Bank Accounts (บัญชีธนาคาร)' },
+            { key: 'data.addresses', label: 'จัดการข้อมูลที่อยู่ (Addresses)' },
             { key: 'data.tags', label: 'จัดการ Tags' },
             { key: 'data.companies', label: 'จัดการ Companies (บริษัท)' },
             { key: 'data.roles', label: 'จัดการ Roles (บทบาทและสิทธิ์)' },

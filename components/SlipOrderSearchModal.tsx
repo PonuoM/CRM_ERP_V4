@@ -46,6 +46,7 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
     const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<string | null>(null);
     const [bankAccounts, setBankAccounts] = useState<any[]>([]);
     const [bankAccountId, setBankAccountId] = useState("all");
+    const [ignorePaymentStatus, setIgnorePaymentStatus] = useState(false);
 
     useEffect(() => {
         if (isOpen && initialParams) {
@@ -135,6 +136,11 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
             // Filter out fully reconciled orders
             params.append("exclude_reconciled", "true");
 
+            // Payment status filter
+            if (ignorePaymentStatus) {
+                params.append("payment_status_filter", "all");
+            }
+
             // Status filter? The modal doesn't have status filter UI, but maybe we want "verified" only? 
             // Or "pending"? The user said "show slipes". Usually 'pending' or 'all'? 
             // Let's default to 'all' or not send it (default in PHP is 'all').
@@ -182,6 +188,7 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
         setEndDate("");
         setPaymentMethod("all");
         setBankAccountId("all");
+        setIgnorePaymentStatus(false);
         setOrders([]);
         setTotalCount(0);
     };
@@ -336,6 +343,19 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                             </div>
                         </div>
 
+                        {/* Payment Status Filter Checkbox */}
+                        <div className="flex items-end">
+                            <label className="flex items-center gap-2 cursor-pointer px-1 py-2">
+                                <input
+                                    type="checkbox"
+                                    checked={ignorePaymentStatus}
+                                    onChange={(e) => setIgnorePaymentStatus(e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm text-gray-700">แสดงทุกสถานะ</span>
+                            </label>
+                        </div>
+
                         {/* Action Buttons */}
                         <div className="flex items-end justify-end gap-2 md:col-start-3">
                             <button
@@ -457,11 +477,26 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                                                 )}
                                             </td>
                                             <td className="px-4 py-3 text-center">
-                                                <span className={`px-2 py-1 rounded-full text-xs font-medium 
-                                                    ${slip.status === 'verified' ? 'bg-green-100 text-green-800' :
-                                                        slip.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                                    {slip.status}
-                                                </span>
+                                                {(() => {
+                                                    const ps = slip.payment_status || '';
+                                                    const map: Record<string, { label: string; cls: string }> = {
+                                                        'Unpaid': { label: 'ยังไม่ชำระ', cls: 'bg-gray-100 text-gray-700' },
+                                                        'PendingVerification': { label: 'รอตรวจสอบสลิป', cls: 'bg-yellow-100 text-yellow-800' },
+                                                        'Verified': { label: 'ตรวจสอบสลิปแล้ว', cls: 'bg-blue-100 text-blue-800' },
+                                                        'PreApproved': { label: 'รอยืนยันจากบัญชี', cls: 'bg-orange-100 text-orange-800' },
+                                                        'Approved': { label: 'ยืนยันจากบัญชีแล้ว', cls: 'bg-green-100 text-green-800' },
+                                                        'Paid': { label: 'ชำระแล้ว', cls: 'bg-green-100 text-green-800' },
+                                                        'Rejected': { label: 'ปฏิเสธ', cls: 'bg-red-100 text-red-800' },
+                                                        'Cancelled': { label: 'ยกเลิก', cls: 'bg-red-100 text-red-800' },
+                                                        'Refunded': { label: 'คืนเงิน', cls: 'bg-red-100 text-red-800' },
+                                                    };
+                                                    const info = map[ps] || { label: ps || '-', cls: 'bg-gray-100 text-gray-600' };
+                                                    return (
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${info.cls}`}>
+                                                            {info.label}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </td>
                                             <td className="px-4 py-3 text-center">
                                                 <button
