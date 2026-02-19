@@ -40,7 +40,11 @@ try {
                 $stmt->execute([$id]);
                 $response['data'] = $stmt->fetch();
             } else {
-                $stmt = $pdo->prepare("SELECT * FROM address_geographies WHERE deleted_at IS NULL ORDER BY id LIMIT ? OFFSET ?");
+                $stmt = $pdo->prepare("
+                    SELECT g.*, 
+                        (SELECT COUNT(*) FROM address_provinces p WHERE p.geography_id = g.id AND p.deleted_at IS NULL) AS child_count
+                    FROM address_geographies g 
+                    WHERE g.deleted_at IS NULL ORDER BY g.id LIMIT ? OFFSET ?");
                 $stmt->execute([$limit, $offset]);
                 $response['data'] = $stmt->fetchAll();
             }
@@ -49,11 +53,19 @@ try {
         case 'provinces':
             // Get provinces by geography or all provinces
             if ($id) {
-                $stmt = $pdo->prepare("SELECT * FROM address_provinces WHERE geography_id = ? AND deleted_at IS NULL ORDER BY name_th");
+                $stmt = $pdo->prepare("
+                    SELECT p.*, 
+                        (SELECT COUNT(*) FROM address_districts d WHERE d.province_id = p.id AND d.deleted_at IS NULL) AS child_count
+                    FROM address_provinces p 
+                    WHERE p.geography_id = ? AND p.deleted_at IS NULL ORDER BY p.name_th");
                 $stmt->execute([$id]);
                 $response['data'] = $stmt->fetchAll();
             } else {
-                $stmt = $pdo->prepare("SELECT * FROM address_provinces WHERE deleted_at IS NULL ORDER BY name_th LIMIT ? OFFSET ?");
+                $stmt = $pdo->prepare("
+                    SELECT p.*, 
+                        (SELECT COUNT(*) FROM address_districts d WHERE d.province_id = p.id AND d.deleted_at IS NULL) AS child_count
+                    FROM address_provinces p 
+                    WHERE p.deleted_at IS NULL ORDER BY p.name_th LIMIT ? OFFSET ?");
                 $stmt->execute([$limit, $offset]);
                 $response['data'] = $stmt->fetchAll();
             }
@@ -62,11 +74,19 @@ try {
         case 'districts':
             // Get districts by province or all districts
             if ($id) {
-                $stmt = $pdo->prepare("SELECT * FROM address_districts WHERE province_id = ? AND deleted_at IS NULL ORDER BY name_th");
+                $stmt = $pdo->prepare("
+                    SELECT d.*, 
+                        (SELECT COUNT(*) FROM address_sub_districts sd WHERE sd.district_id = d.id AND sd.deleted_at IS NULL) AS child_count
+                    FROM address_districts d 
+                    WHERE d.province_id = ? AND d.deleted_at IS NULL ORDER BY d.name_th");
                 $stmt->execute([$id]);
                 $response['data'] = $stmt->fetchAll();
             } else {
-                $stmt = $pdo->prepare("SELECT * FROM address_districts WHERE deleted_at IS NULL ORDER BY name_th LIMIT ? OFFSET ?");
+                $stmt = $pdo->prepare("
+                    SELECT d.*, 
+                        (SELECT COUNT(*) FROM address_sub_districts sd WHERE sd.district_id = d.id AND sd.deleted_at IS NULL) AS child_count
+                    FROM address_districts d 
+                    WHERE d.deleted_at IS NULL ORDER BY d.name_th LIMIT ? OFFSET ?");
                 $stmt->execute([$limit, $offset]);
                 $response['data'] = $stmt->fetchAll();
             }
@@ -361,6 +381,15 @@ try {
                 break;
             }
             try {
+                // Check child references
+                $chk = $pdo->prepare("SELECT COUNT(*) AS cnt FROM address_provinces WHERE geography_id = ? AND deleted_at IS NULL");
+                $chk->execute([$data['id']]);
+                $cnt = (int) $chk->fetch()['cnt'];
+                if ($cnt > 0) {
+                    $response['success'] = false;
+                    $response['message'] = "ไม่สามารถลบได้ เนื่องจากมีจังหวัดภายใต้ภาคนี้ {$cnt} รายการ";
+                    break;
+                }
                 $stmt = $pdo->prepare("UPDATE address_geographies SET deleted_at = NOW() WHERE id = ?");
                 $stmt->execute([$data['id']]);
                 $response['message'] = 'ลบภาคสำเร็จ';
@@ -416,6 +445,15 @@ try {
                 break;
             }
             try {
+                // Check child references
+                $chk = $pdo->prepare("SELECT COUNT(*) AS cnt FROM address_districts WHERE province_id = ? AND deleted_at IS NULL");
+                $chk->execute([$data['id']]);
+                $cnt = (int) $chk->fetch()['cnt'];
+                if ($cnt > 0) {
+                    $response['success'] = false;
+                    $response['message'] = "ไม่สามารถลบได้ เนื่องจากมีอำเภอภายใต้จังหวัดนี้ {$cnt} รายการ";
+                    break;
+                }
                 $stmt = $pdo->prepare("UPDATE address_provinces SET deleted_at = NOW() WHERE id = ?");
                 $stmt->execute([$data['id']]);
                 $response['message'] = 'ลบจังหวัดสำเร็จ';
@@ -474,6 +512,15 @@ try {
                 break;
             }
             try {
+                // Check child references
+                $chk = $pdo->prepare("SELECT COUNT(*) AS cnt FROM address_sub_districts WHERE district_id = ? AND deleted_at IS NULL");
+                $chk->execute([$data['id']]);
+                $cnt = (int) $chk->fetch()['cnt'];
+                if ($cnt > 0) {
+                    $response['success'] = false;
+                    $response['message'] = "ไม่สามารถลบได้ เนื่องจากมีตำบลภายใต้อำเภอนี้ {$cnt} รายการ";
+                    break;
+                }
                 $stmt = $pdo->prepare("UPDATE address_districts SET deleted_at = NOW() WHERE id = ?");
                 $stmt->execute([$data['id']]);
                 $response['message'] = 'ลบอำเภอสำเร็จ';

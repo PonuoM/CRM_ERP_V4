@@ -3,9 +3,9 @@ import { Plus, Pencil, Trash2, Search, Loader2, MapPin, ChevronDown, Globe, Map,
 import APP_BASE_PATH from '../appBasePath';
 
 // ─── Types ────────────────────────────────────────────
-interface Geography { id: number; name: string; }
-interface Province { id: number; name_th: string; name_en: string; geography_id: number; }
-interface District { id: number; name_th: string; name_en: string; province_id: number; }
+interface Geography { id: number; name: string; child_count?: number; }
+interface Province { id: number; name_th: string; name_en: string; geography_id: number; child_count?: number; }
+interface District { id: number; name_th: string; name_en: string; province_id: number; child_count?: number; }
 interface SubDistrict { id: number; name_th: string; name_en: string; zip_code: string; district_id: number; }
 
 type TabKey = 'geographies' | 'provinces' | 'districts' | 'sub_districts';
@@ -184,18 +184,30 @@ function GeographiesTab() {
                         <thead><tr className="bg-gray-50 text-gray-600 text-left">
                             <th className="px-4 py-3 font-medium w-20">ID</th>
                             <th className="px-4 py-3 font-medium">ชื่อภาค</th>
+                            <th className="px-4 py-3 font-medium w-32 text-center">จังหวัด</th>
                             <th className="px-4 py-3 font-medium w-28 text-right">จัดการ</th>
                         </tr></thead>
                         <tbody>
                             {filtered.length === 0 ? (
-                                <tr><td colSpan={3} className="text-center py-8 text-gray-400">ไม่พบข้อมูล</td></tr>
+                                <tr><td colSpan={4} className="text-center py-8 text-gray-400">ไม่พบข้อมูล</td></tr>
                             ) : filtered.map(g => (
                                 <tr key={g.id} className="border-t border-gray-50 hover:bg-gray-50/50">
                                     <td className="px-4 py-3 text-gray-500">{g.id}</td>
                                     <td className="px-4 py-3 font-medium text-gray-800">{g.name}</td>
+                                    <td className="px-4 py-3 text-center">
+                                        {(g.child_count ?? 0) > 0 ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                                {g.child_count} จังหวัด
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-gray-400">-</span>
+                                        )}
+                                    </td>
                                     <td className="px-4 py-3 text-right">
                                         <button onClick={() => { setEditItem(g); setFormName(g.name); setShowAdd(false); }} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg mr-1"><Pencil size={14} /></button>
-                                        <button onClick={() => setDeleteId(g.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
+                                        <button onClick={() => setDeleteId(g.id)} disabled={(g.child_count ?? 0) > 0}
+                                            title={(g.child_count ?? 0) > 0 ? `ไม่สามารถลบได้ (มี ${g.child_count} จังหวัด)` : 'ลบ'}
+                                            className={`p-1.5 rounded-lg ${(g.child_count ?? 0) > 0 ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}><Trash2 size={14} /></button>
                                     </td>
                                 </tr>
                             ))}
@@ -324,20 +336,32 @@ function ProvincesTab() {
                             <th className="px-4 py-3 font-medium">ชื่อ (ไทย)</th>
                             <th className="px-4 py-3 font-medium">ชื่อ (EN)</th>
                             <th className="px-4 py-3 font-medium">ภาค</th>
+                            <th className="px-4 py-3 font-medium w-32 text-center">อำเภอ</th>
                             <th className="px-4 py-3 font-medium w-28 text-right">จัดการ</th>
                         </tr></thead>
                         <tbody>
                             {filtered.length === 0 ? (
-                                <tr><td colSpan={5} className="text-center py-8 text-gray-400">ไม่พบข้อมูล</td></tr>
+                                <tr><td colSpan={6} className="text-center py-8 text-gray-400">ไม่พบข้อมูล</td></tr>
                             ) : filtered.map(p => (
                                 <tr key={p.id} className="border-t border-gray-50 hover:bg-gray-50/50">
                                     <td className="px-4 py-3 text-gray-500">{p.id}</td>
                                     <td className="px-4 py-3 font-medium text-gray-800">{p.name_th}</td>
                                     <td className="px-4 py-3 text-gray-600">{p.name_en}</td>
                                     <td className="px-4 py-3 text-gray-600">{geoName(p.geography_id)}</td>
+                                    <td className="px-4 py-3 text-center">
+                                        {(p.child_count ?? 0) > 0 ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                                {p.child_count} อำเภอ
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-gray-400">-</span>
+                                        )}
+                                    </td>
                                     <td className="px-4 py-3 text-right">
                                         <button onClick={() => openEdit(p)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg mr-1"><Pencil size={14} /></button>
-                                        <button onClick={() => setDeleteId(p.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
+                                        <button onClick={() => setDeleteId(p.id)} disabled={(p.child_count ?? 0) > 0}
+                                            title={(p.child_count ?? 0) > 0 ? `ไม่สามารถลบได้ (มี ${p.child_count} อำเภอ)` : 'ลบ'}
+                                            className={`p-1.5 rounded-lg ${(p.child_count ?? 0) > 0 ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}><Trash2 size={14} /></button>
                                     </td>
                                 </tr>
                             ))}
@@ -470,20 +494,32 @@ function DistrictsTab() {
                             <th className="px-4 py-3 font-medium">ชื่อ (ไทย)</th>
                             <th className="px-4 py-3 font-medium">ชื่อ (EN)</th>
                             <th className="px-4 py-3 font-medium">จังหวัด</th>
+                            <th className="px-4 py-3 font-medium w-32 text-center">ตำบล</th>
                             <th className="px-4 py-3 font-medium w-28 text-right">จัดการ</th>
                         </tr></thead>
                         <tbody>
                             {filtered.length === 0 ? (
-                                <tr><td colSpan={5} className="text-center py-8 text-gray-400">ไม่พบข้อมูล</td></tr>
+                                <tr><td colSpan={6} className="text-center py-8 text-gray-400">ไม่พบข้อมูล</td></tr>
                             ) : filtered.map(d => (
                                 <tr key={d.id} className="border-t border-gray-50 hover:bg-gray-50/50">
                                     <td className="px-4 py-3 text-gray-500">{d.id}</td>
                                     <td className="px-4 py-3 font-medium text-gray-800">{d.name_th}</td>
                                     <td className="px-4 py-3 text-gray-600">{d.name_en}</td>
                                     <td className="px-4 py-3 text-gray-600">{provinceName(d.province_id)}</td>
+                                    <td className="px-4 py-3 text-center">
+                                        {(d.child_count ?? 0) > 0 ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                                {d.child_count} ตำบล
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-gray-400">-</span>
+                                        )}
+                                    </td>
                                     <td className="px-4 py-3 text-right">
                                         <button onClick={() => openEdit(d)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg mr-1"><Pencil size={14} /></button>
-                                        <button onClick={() => setDeleteId(d.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
+                                        <button onClick={() => setDeleteId(d.id)} disabled={(d.child_count ?? 0) > 0}
+                                            title={(d.child_count ?? 0) > 0 ? `ไม่สามารถลบได้ (มี ${d.child_count} ตำบล)` : 'ลบ'}
+                                            className={`p-1.5 rounded-lg ${(d.child_count ?? 0) > 0 ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}><Trash2 size={14} /></button>
                                     </td>
                                 </tr>
                             ))}
