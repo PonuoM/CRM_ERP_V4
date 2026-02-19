@@ -29,6 +29,7 @@ import {
   ClipboardList,
   Clock,
   ArrowLeftRight,
+  MapPin,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -99,6 +100,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     Platforms: "แพลตฟอร์ม",
     "Bank Accounts": "จัดการธนาคาร",
     Tags: "แท็ก",
+    Addresses: "ข้อมูลที่อยู่",
     Orders: "การสั่งซื้อ",
     Customers: "ลูกค้า",
     "Customer Management": "จัดการลูกค้า",
@@ -291,6 +293,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Tags", icon: FileText, key: "data.tags" },
         { label: "Companies", icon: Briefcase, key: "data.companies" },
         { label: "Role Management", icon: Key, key: "data.roles" },
+        { label: "Addresses", icon: MapPin, key: "data.addresses" }, // Added Addresses item
       ]
     },
     // Page Stats - Special Group for Marketing/Admins

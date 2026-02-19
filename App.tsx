@@ -236,6 +236,7 @@ import SlipAll from "./pages/SlipAll";
 
 import FinanceApprovalPage from "./pages/FinanceApprovalPage";
 import CODManagementPage from "./pages/CODManagementPage";
+import AddressManagementPage from "./pages/AddressManagementPage";
 import GoogleSheetImportPage from "./pages/GoogleSheetImportPage";
 import InventoryReportsPage from "./pages/InventoryReportsPage";
 import StatementManagementPage from "./pages/StatementManagementPage";
@@ -6793,6 +6794,9 @@ const App: React.FC = () => {
           onCompanyChange={setCompanies}
         />
       );
+    }
+    if (activePage === "Addresses") {
+      return <AddressManagementPage />;
     }
     if (activePage === "Warehouses") {
       return (

@@ -10,7 +10,7 @@ require_once '../config.php';
 // Set headers for JSON response
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, DELETE, PATCH, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 // Handle preflight OPTIONS request
@@ -23,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $endpoint = $_GET['endpoint'] ?? '';
 $id = $_GET['id'] ?? '';
 $search = $_GET['search'] ?? '';
-$limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 100;
-$offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+$limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 100;
+$offset = isset($_GET['offset']) ? (int) $_GET['offset'] : 0;
 
 try {
     // Connect to database
@@ -36,11 +36,11 @@ try {
         case 'geographies':
             // Get all geographies or a specific one
             if ($id) {
-                $stmt = $pdo->prepare("SELECT * FROM address_geographies WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT * FROM address_geographies WHERE id = ? AND deleted_at IS NULL");
                 $stmt->execute([$id]);
                 $response['data'] = $stmt->fetch();
             } else {
-                $stmt = $pdo->prepare("SELECT * FROM address_geographies ORDER BY id LIMIT ? OFFSET ?");
+                $stmt = $pdo->prepare("SELECT * FROM address_geographies WHERE deleted_at IS NULL ORDER BY id LIMIT ? OFFSET ?");
                 $stmt->execute([$limit, $offset]);
                 $response['data'] = $stmt->fetchAll();
             }
@@ -49,11 +49,11 @@ try {
         case 'provinces':
             // Get provinces by geography or all provinces
             if ($id) {
-                $stmt = $pdo->prepare("SELECT * FROM address_provinces WHERE geography_id = ? ORDER BY name_th");
+                $stmt = $pdo->prepare("SELECT * FROM address_provinces WHERE geography_id = ? AND deleted_at IS NULL ORDER BY name_th");
                 $stmt->execute([$id]);
                 $response['data'] = $stmt->fetchAll();
             } else {
-                $stmt = $pdo->prepare("SELECT * FROM address_provinces ORDER BY name_th LIMIT ? OFFSET ?");
+                $stmt = $pdo->prepare("SELECT * FROM address_provinces WHERE deleted_at IS NULL ORDER BY name_th LIMIT ? OFFSET ?");
                 $stmt->execute([$limit, $offset]);
                 $response['data'] = $stmt->fetchAll();
             }
@@ -62,11 +62,11 @@ try {
         case 'districts':
             // Get districts by province or all districts
             if ($id) {
-                $stmt = $pdo->prepare("SELECT * FROM address_districts WHERE province_id = ? ORDER BY name_th");
+                $stmt = $pdo->prepare("SELECT * FROM address_districts WHERE province_id = ? AND deleted_at IS NULL ORDER BY name_th");
                 $stmt->execute([$id]);
                 $response['data'] = $stmt->fetchAll();
             } else {
-                $stmt = $pdo->prepare("SELECT * FROM address_districts ORDER BY name_th LIMIT ? OFFSET ?");
+                $stmt = $pdo->prepare("SELECT * FROM address_districts WHERE deleted_at IS NULL ORDER BY name_th LIMIT ? OFFSET ?");
                 $stmt->execute([$limit, $offset]);
                 $response['data'] = $stmt->fetchAll();
             }
@@ -75,11 +75,11 @@ try {
         case 'sub_districts':
             // Get sub-districts by district or all sub-districts
             if ($id) {
-                $stmt = $pdo->prepare("SELECT * FROM address_sub_districts WHERE district_id = ? ORDER BY name_th");
+                $stmt = $pdo->prepare("SELECT * FROM address_sub_districts WHERE district_id = ? AND deleted_at IS NULL ORDER BY name_th");
                 $stmt->execute([$id]);
                 $response['data'] = $stmt->fetchAll();
             } else {
-                $stmt = $pdo->prepare("SELECT * FROM address_sub_districts ORDER BY name_th LIMIT ? OFFSET ?");
+                $stmt = $pdo->prepare("SELECT * FROM address_sub_districts WHERE deleted_at IS NULL ORDER BY name_th LIMIT ? OFFSET ?");
                 $stmt->execute([$limit, $offset]);
                 $response['data'] = $stmt->fetchAll();
             }
@@ -158,10 +158,10 @@ try {
                 $recipientFirstName = '';
                 $recipientLastName = '';
                 if (isset($data['recipient_first_name']) || isset($data['recipientFirstName'])) {
-                    $recipientFirstName = trim((string)($data['recipient_first_name'] ?? $data['recipientFirstName']));
+                    $recipientFirstName = trim((string) ($data['recipient_first_name'] ?? $data['recipientFirstName']));
                 }
                 if (isset($data['recipient_last_name']) || isset($data['recipientLastName'])) {
-                    $recipientLastName = trim((string)($data['recipient_last_name'] ?? $data['recipientLastName']));
+                    $recipientLastName = trim((string) ($data['recipient_last_name'] ?? $data['recipientLastName']));
                 }
 
                 $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, recipient_first_name, recipient_last_name, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
@@ -213,7 +213,7 @@ try {
                 // Get current customer address
                 // Find customer by customer_ref_id or customer_id, then select using customer_id (PK)
                 $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
-                $findStmt->execute([$data['customerId'], is_numeric($data['customerId']) ? (int)$data['customerId'] : null]);
+                $findStmt->execute([$data['customerId'], is_numeric($data['customerId']) ? (int) $data['customerId'] : null]);
                 $customer = $findStmt->fetch();
                 if (!$customer || !$customer['customer_id']) {
                     json_response(['error' => 'Customer not found'], 404);
@@ -300,24 +300,249 @@ try {
             // Get statistics about the address data
             $stats = [];
 
-            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_geographies");
+            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_geographies WHERE deleted_at IS NULL");
             $stats['geographies'] = $stmt->fetch()['count'];
 
-            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_provinces");
+            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_provinces WHERE deleted_at IS NULL");
             $stats['provinces'] = $stmt->fetch()['count'];
 
-            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_districts");
+            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_districts WHERE deleted_at IS NULL");
             $stats['districts'] = $stmt->fetch()['count'];
 
-            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_sub_districts");
+            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_sub_districts WHERE deleted_at IS NULL");
             $stats['sub_districts'] = $stmt->fetch()['count'];
 
             $response['data'] = $stats;
             break;
 
+        // ============ CRUD: Geographies ============
+        case 'add_geography':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || empty($data['name'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุชื่อภาค';
+                break;
+            }
+            try {
+                $stmt = $pdo->query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM address_geographies");
+                $nextId = $stmt->fetch()['next_id'];
+                $stmt = $pdo->prepare("INSERT INTO address_geographies (id, name, created_at, updated_at) VALUES (?, ?, NOW(), NOW())");
+                $stmt->execute([$nextId, $data['name']]);
+                $response['data'] = ['id' => $nextId, 'name' => $data['name']];
+                $response['message'] = 'เพิ่มภาคสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        case 'update_geography':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || !isset($data['id']) || empty($data['name'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุ ID และชื่อภาค';
+                break;
+            }
+            try {
+                $stmt = $pdo->prepare("UPDATE address_geographies SET name = ?, updated_at = NOW() WHERE id = ?");
+                $stmt->execute([$data['name'], $data['id']]);
+                $response['message'] = 'แก้ไขภาคสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        case 'delete_geography':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || !isset($data['id'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุ ID ภาค';
+                break;
+            }
+            try {
+                $stmt = $pdo->prepare("UPDATE address_geographies SET deleted_at = NOW() WHERE id = ?");
+                $stmt->execute([$data['id']]);
+                $response['message'] = 'ลบภาคสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        // ============ CRUD: Provinces ============
+        case 'add_province':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || empty($data['name_th'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุชื่อจังหวัด (ภาษาไทย)';
+                break;
+            }
+            try {
+                $stmt = $pdo->query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM address_provinces");
+                $nextId = $stmt->fetch()['next_id'];
+                $stmt = $pdo->prepare("INSERT INTO address_provinces (id, name_th, name_en, geography_id, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())");
+                $stmt->execute([$nextId, $data['name_th'], $data['name_en'] ?? '', $data['geography_id'] ?? null]);
+                $response['data'] = ['id' => $nextId];
+                $response['message'] = 'เพิ่มจังหวัดสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        case 'update_province':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || !isset($data['id']) || empty($data['name_th'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุ ID และชื่อจังหวัด';
+                break;
+            }
+            try {
+                $stmt = $pdo->prepare("UPDATE address_provinces SET name_th = ?, name_en = ?, geography_id = ?, updated_at = NOW() WHERE id = ?");
+                $stmt->execute([$data['name_th'], $data['name_en'] ?? '', $data['geography_id'] ?? null, $data['id']]);
+                $response['message'] = 'แก้ไขจังหวัดสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        case 'delete_province':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || !isset($data['id'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุ ID จังหวัด';
+                break;
+            }
+            try {
+                $stmt = $pdo->prepare("UPDATE address_provinces SET deleted_at = NOW() WHERE id = ?");
+                $stmt->execute([$data['id']]);
+                $response['message'] = 'ลบจังหวัดสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        // ============ CRUD: Districts ============
+        case 'add_district':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || empty($data['name_th']) || !isset($data['province_id'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุชื่ออำเภอและจังหวัด';
+                break;
+            }
+            try {
+                // Generate contextual ID: province_id * 100 + next sequence
+                $provinceId = (int) $data['province_id'];
+                $stmt = $pdo->prepare("SELECT COALESCE(MAX(id), ? * 100) + 1 AS next_id FROM address_districts WHERE province_id = ?");
+                $stmt->execute([$provinceId, $provinceId]);
+                $nextId = $stmt->fetch()['next_id'];
+                $stmt = $pdo->prepare("INSERT INTO address_districts (id, name_th, name_en, province_id, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())");
+                $stmt->execute([$nextId, $data['name_th'], $data['name_en'] ?? '', $provinceId]);
+                $response['data'] = ['id' => $nextId];
+                $response['message'] = 'เพิ่มอำเภอสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        case 'update_district':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || !isset($data['id']) || empty($data['name_th'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุ ID และชื่ออำเภอ';
+                break;
+            }
+            try {
+                $stmt = $pdo->prepare("UPDATE address_districts SET name_th = ?, name_en = ?, province_id = ?, updated_at = NOW() WHERE id = ?");
+                $stmt->execute([$data['name_th'], $data['name_en'] ?? '', $data['province_id'] ?? null, $data['id']]);
+                $response['message'] = 'แก้ไขอำเภอสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        case 'delete_district':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || !isset($data['id'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุ ID อำเภอ';
+                break;
+            }
+            try {
+                $stmt = $pdo->prepare("UPDATE address_districts SET deleted_at = NOW() WHERE id = ?");
+                $stmt->execute([$data['id']]);
+                $response['message'] = 'ลบอำเภอสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        // ============ CRUD: Sub-Districts ============
+        case 'add_sub_district':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || empty($data['name_th']) || !isset($data['district_id'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุชื่อตำบลและอำเภอ';
+                break;
+            }
+            try {
+                $districtId = (int) $data['district_id'];
+                $stmt = $pdo->prepare("SELECT COALESCE(MAX(id), ? * 100) + 1 AS next_id FROM address_sub_districts WHERE district_id = ?");
+                $stmt->execute([$districtId, $districtId]);
+                $nextId = $stmt->fetch()['next_id'];
+                $stmt = $pdo->prepare("INSERT INTO address_sub_districts (id, zip_code, name_th, name_en, district_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())");
+                $stmt->execute([$nextId, $data['zip_code'] ?? '', $data['name_th'], $data['name_en'] ?? '', $districtId]);
+                $response['data'] = ['id' => $nextId];
+                $response['message'] = 'เพิ่มตำบลสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        case 'update_sub_district':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || !isset($data['id']) || empty($data['name_th'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุ ID และชื่อตำบล';
+                break;
+            }
+            try {
+                $stmt = $pdo->prepare("UPDATE address_sub_districts SET name_th = ?, name_en = ?, zip_code = ?, district_id = ?, updated_at = NOW() WHERE id = ?");
+                $stmt->execute([$data['name_th'], $data['name_en'] ?? '', $data['zip_code'] ?? '', $data['district_id'] ?? null, $data['id']]);
+                $response['message'] = 'แก้ไขตำบลสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
+        case 'delete_sub_district':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data || !isset($data['id'])) {
+                $response['success'] = false;
+                $response['message'] = 'กรุณาระบุ ID ตำบล';
+                break;
+            }
+            try {
+                $stmt = $pdo->prepare("UPDATE address_sub_districts SET deleted_at = NOW() WHERE id = ?");
+                $stmt->execute([$data['id']]);
+                $response['message'] = 'ลบตำบลสำเร็จ';
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
         default:
             $response['success'] = false;
-            $response['message'] = 'Invalid endpoint. Available endpoints: geographies, provinces, districts, sub_districts, search, complete_address, stats, customer_addresses, save_customer_address, delete_customer_address, set_primary_address';
+            $response['message'] = 'Invalid endpoint. Available endpoints: geographies, provinces, districts, sub_districts, search, complete_address, stats, customer_addresses, save_customer_address, delete_customer_address, set_primary_address, add_geography, update_geography, delete_geography, add_province, update_province, delete_province, add_district, update_district, delete_district, add_sub_district, update_sub_district, delete_sub_district';
             break;
     }
 
