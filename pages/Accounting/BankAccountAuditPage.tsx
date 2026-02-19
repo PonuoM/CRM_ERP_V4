@@ -260,6 +260,11 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     const handleUnpause = async (log: AuditLog) => {
         if (!log.reconcile_id) return;
+        // Prevent unmatch if linked to COD document
+        if (log.is_cod_document || log.cod_document_id) {
+            alert('ไม่สามารถยกเลิกการจับคู่ได้ เนื่องจากผูกกับเอกสาร COD');
+            return;
+        }
         const isSuspenseOrDeposit = log.status === 'Suspense' || log.status === 'Deposit';
         const confirmMsg = isSuspenseOrDeposit
             ? 'ยืนยันยกเลิกการพักรับ? รายการจะกลับไปสถานะ Unmatched'
@@ -601,8 +606,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                             <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!, log)}>
                                                                 {log.order_display || log.order_id}
                                                             </span>
-                                                            {/* Unmatch button - only for unconfirmed matched rows */}
-                                                            {!log.confirmed_at && log.reconcile_id && (
+                                                            {/* Unmatch button - only for unconfirmed matched rows, NOT linked to COD */}
+                                                            {!log.confirmed_at && log.reconcile_id && !log.is_cod_document && !log.cod_document_id && (
                                                                 <button
                                                                     onClick={() => handleUnpause(log)}
                                                                     className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-1 py-0.5 rounded transition-colors"
@@ -693,7 +698,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                 </div>
                                                             </div>
                                                         )}
-                                                        {(log.status === 'Suspense' || log.status === 'Deposit') && (
+                                                        {(log.status === 'Suspense' || log.status === 'Deposit') && !log.is_cod_document && !log.cod_document_id && (
                                                             <button
                                                                 onClick={() => handleUnpause(log)}
                                                                 className="text-xs text-red-600 hover:text-white hover:bg-red-500 bg-white border border-red-200 px-2 py-0.5 rounded-full transition-all shadow-sm font-medium mt-1"
