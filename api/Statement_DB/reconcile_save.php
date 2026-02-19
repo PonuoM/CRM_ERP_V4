@@ -455,7 +455,7 @@ try {
     $accumulatedPaid = $existingReconciled + $batchRunningTotals[$orderId];
     $amountToSave = min((float) $order["total_amount"], max($currentPaid, $accumulatedPaid));
 
-    $targetStatus = $amountToSave >= ((float) $order["total_amount"] - 0.01) ? "Approved" : "PreApproved";
+    $targetStatus = "PreApproved";
     $currentPaymentStatus = $order["payment_status"];
     if ($currentPaymentStatus === "Approved" || $currentPaymentStatus === "Paid") {
       $targetStatus = $currentPaymentStatus;

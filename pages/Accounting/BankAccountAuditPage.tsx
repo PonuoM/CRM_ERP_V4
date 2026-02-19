@@ -260,7 +260,11 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     const handleUnpause = async (log: AuditLog) => {
         if (!log.reconcile_id) return;
-        if (!window.confirm('ยืนยันยกเลิกการพักรับ? รายการจะกลับไปสถานะ Unmatched')) {
+        const isSuspenseOrDeposit = log.status === 'Suspense' || log.status === 'Deposit';
+        const confirmMsg = isSuspenseOrDeposit
+            ? 'ยืนยันยกเลิกการพักรับ? รายการจะกลับไปสถานะ Unmatched'
+            : 'ยืนยันยกเลิกการจับคู่? รายการจะกลับไปสถานะ Unmatched';
+        if (!window.confirm(confirmMsg)) {
             return;
         }
 
@@ -593,9 +597,21 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                             {log.cod_document_number}
                                                         </span>
                                                     ) : log.order_id ? (
-                                                        <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!, log)}>
-                                                            {log.order_display || log.order_id}
-                                                        </span>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!, log)}>
+                                                                {log.order_display || log.order_id}
+                                                            </span>
+                                                            {/* Unmatch button - only for unconfirmed matched rows */}
+                                                            {!log.confirmed_at && log.reconcile_id && (
+                                                                <button
+                                                                    onClick={() => handleUnpause(log)}
+                                                                    className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-1 py-0.5 rounded transition-colors"
+                                                                    title="ยกเลิกการจับคู่"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     ) : (
                                                         <div className="flex flex-col items-start gap-1">
                                                             {(log as any).suggested_order_id ? (
@@ -830,8 +846,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                         <td className="px-3 py-2 text-right">{formatCurrency(parseFloat(rec.cod_amount || '0'))}</td>
                                                         <td className="px-3 py-2 text-center">
                                                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${rec.status === 'matched' ? 'bg-green-100 text-green-700' :
-                                                                    rec.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                                                        'bg-gray-100 text-gray-600'
+                                                                rec.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                                                    'bg-gray-100 text-gray-600'
                                                                 }`}>
                                                                 {rec.status === 'matched' ? 'จับคู่แล้ว' : rec.status === 'pending' ? 'รอจับคู่' : rec.status || '-'}
                                                             </span>
