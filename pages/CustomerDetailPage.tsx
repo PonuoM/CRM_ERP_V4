@@ -36,7 +36,11 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
+  Loader2,
 } from "lucide-react";
+import { isSystemCheck } from "@/utils/isSystemCheck";
+import { listRoles, Role } from "@/services/roleApi";
+import APP_BASE_PATH from "../appBasePath";
 import { getStatusChip, getPaymentStatusChip } from "../components/OrderTable";
 import {
   createCustomerBlock,
@@ -141,6 +145,15 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   const [hasUpsell, setHasUpsell] = useState(false);
   const [upsellLoading, setUpsellLoading] = useState(true);
 
+  // Basket change states
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [basketConfigs, setBasketConfigs] = useState<{ id: number; basket_key: string; basket_name: string; target_page: string; is_active: number }[]>([]);
+  const [showBasketChange, setShowBasketChange] = useState(false);
+  const [selectedBasketKey, setSelectedBasketKey] = useState<string>('');
+  const [basketChangeLoading, setBasketChangeLoading] = useState(false);
+  const [basketChangeError, setBasketChangeError] = useState<string | null>(null);
+  const [localBasketKey, setLocalBasketKey] = useState<number | string | undefined>(customer.current_basket_key);
+
   // Per-customer call history state (to bypass global sync limit)
   const [localCallHistory, setLocalCallHistory] = useState<CallHistory[]>([]);
   const [callsLoading, setCallsLoading] = useState(false);
@@ -212,6 +225,45 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       });
     }
   }, [orders]);
+
+  // Fetch roles and basket configs for system check
+  useEffect(() => {
+    listRoles().then(res => setRoles(res.roles || [])).catch(() => { });
+    fetch(`${APP_BASE_PATH}api/basket_config.php?company_id=1`)
+      .then(r => r.json())
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data.data || data.baskets || []);
+        setBasketConfigs(list);
+      }).catch(() => { });
+  }, []);
+
+  // Sync localBasketKey when customer prop changes
+  useEffect(() => {
+    setLocalBasketKey(customer.current_basket_key);
+  }, [customer.current_basket_key]);
+
+  const isSystem = useMemo(() => isSystemCheck(user.role, roles), [user.role, roles]);
+
+  const currentBasketConfig = useMemo(() => {
+    if (!localBasketKey) return null;
+    return basketConfigs.find(b => String(b.id) === String(localBasketKey)) || null;
+  }, [localBasketKey, basketConfigs]);
+
+  const handleBasketChange = async () => {
+    if (!selectedBasketKey) return;
+    setBasketChangeLoading(true);
+    setBasketChangeError(null);
+    try {
+      const customerIdToUpdate = customer.pk ? String(customer.pk) : customer.id;
+      await updateCustomer(customerIdToUpdate, { current_basket_key: Number(selectedBasketKey) });
+      setLocalBasketKey(Number(selectedBasketKey));
+      setShowBasketChange(false);
+    } catch (e: any) {
+      setBasketChangeError(e.message || 'ไม่สามารถเปลี่ยนตะกร้าได้');
+    } finally {
+      setBasketChangeLoading(false);
+    }
+  };
 
   const usersById = useMemo(() => {
     const map = new Map<number, User>();
@@ -1167,6 +1219,64 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                   </div>
                 )}
               </InfoItem>
+
+              {/* Basket Change - visible only for system roles */}
+              {isSystem && (
+                <InfoItem label="ตะกร้าปัจจุบัน">
+                  <div className="flex items-center">
+                    <span className="text-sm font-medium text-gray-800 mr-2">
+                      {currentBasketConfig ? currentBasketConfig.basket_name : (localBasketKey ? `ID: ${localBasketKey}` : '-')}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:underline"
+                      onClick={() => {
+                        setShowBasketChange(prev => !prev);
+                        setSelectedBasketKey(localBasketKey ? String(localBasketKey) : '');
+                        setBasketChangeError(null);
+                      }}
+                    >
+                      (เปลี่ยนตะกร้า)
+                    </button>
+                  </div>
+                  {showBasketChange && (
+                    <div className="mt-2 space-y-2">
+                      <select
+                        className="w-full border rounded-md px-2 py-1 text-sm"
+                        value={selectedBasketKey}
+                        onChange={e => { setSelectedBasketKey(e.target.value); setBasketChangeError(null); }}
+                      >
+                        <option value="">เลือกตะกร้า</option>
+                        {basketConfigs.filter(b => b.is_active).map(b => (
+                          <option key={b.id} value={String(b.id)}>
+                            {b.basket_name} ({b.target_page})
+                          </option>
+                        ))}
+                      </select>
+                      {basketChangeError && <p className="text-xs text-red-600">{basketChangeError}</p>}
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={handleBasketChange}
+                          className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={basketChangeLoading || !selectedBasketKey || selectedBasketKey === String(localBasketKey)}
+                        >
+                          {basketChangeLoading ? <Loader2 size={12} className="animate-spin inline mr-1" /> : null}
+                          {basketChangeLoading ? 'กำลังบันทึก...' : 'ยืนยัน'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowBasketChange(false); setBasketChangeError(null); }}
+                          className="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-100"
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </InfoItem>
+              )}
+
               <InfoItem
                 label="วันที่ลงทะเบียน"
                 value={

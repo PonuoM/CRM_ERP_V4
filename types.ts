@@ -287,6 +287,7 @@ export interface Customer {
   previous_assigned_to?: number[] | string | null;
   // Personal info
   birthDate?: string; // วันเกิด (YYYY-MM-DD)
+  current_basket_key?: number | string; // basket_config.id ที่ลูกค้าอยู่ปัจจุบัน
 }
 
 export interface SalesImportRow {
