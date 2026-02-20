@@ -9,6 +9,7 @@ import {
   XCircle,
   Upload,
   Download,
+  AlertTriangle,
 } from "lucide-react";
 import Modal from "@/components/Modal";
 import resolveApiBasePath from "@/utils/apiBasePath";
@@ -86,6 +87,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [duplicateConfirmMessage, setDuplicateConfirmMessage] = useState<string | null>(null);
 
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -412,7 +414,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (allowDuplicate = false) => {
     if (!selectedBankId) {
       setErrorMessage("กรุณาเลือกบัญชีธนาคารที่รับเงินก่อนบันทึก");
       return;
@@ -480,18 +482,30 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
 
     setIsSaving(true);
     try {
+      const payload: Record<string, unknown> = {
+        company_id: user.companyId,
+        user_id: user.id,
+        bank_account_id: Number(selectedBankId),
+        rows: validRows,
+      };
+      if (allowDuplicate) {
+        payload.allow_duplicate = true;
+      }
       const res = await fetch(`${apiBase}/Statement_DB/save_statement.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_id: user.companyId,
-          user_id: user.id,
-          bank_account_id: Number(selectedBankId),
-          rows: validRows,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
+        // Handle duplicate detection — show custom confirmation modal
+        if (res.status === 409 && data.can_force) {
+          setIsSaving(false);
+          setDuplicateConfirmMessage(
+            data.detail || "มีข้อมูลวันเดียวกัน/ธนาคารเดียวกันอยู่แล้ว ต้องการนำเข้าเพิ่มเติมหรือไม่?",
+          );
+          return;
+        }
         const msg =
           data?.detail ||
           data?.error ||
@@ -636,7 +650,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
             เพิ่มแถว
           </button>
           <button
-            onClick={handleSave}
+            onClick={() => handleSave()}
             disabled={isSaving || !selectedBankId}
             className="inline-flex items-center px-3 py-2 bg-green-600 text-white border rounded-md text-sm shadow-sm hover:bg-green-700 disabled:opacity-50"
           >
@@ -849,6 +863,41 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
             >
               ปิด
             </button>
+          </div>
+        </Modal>
+      )}
+
+      {duplicateConfirmMessage && (
+        <Modal title="พบข้อมูลซ้ำ" onClose={() => setDuplicateConfirmMessage(null)}>
+          <div className="p-6 flex flex-col items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center">
+              <AlertTriangle className="w-8 h-8 text-amber-500" />
+            </div>
+            <div className="text-sm text-center text-gray-700 leading-relaxed whitespace-pre-line">
+              {duplicateConfirmMessage}
+            </div>
+            <p className="text-xs text-gray-500 text-center">
+              ข้อมูลเก่าที่จับคู่แล้วจะไม่ถูกกระทบ ระบบจะสร้าง Batch ใหม่เพิ่มเติม
+            </p>
+            <div className="flex gap-3 w-full">
+              <button
+                type="button"
+                onClick={() => setDuplicateConfirmMessage(null)}
+                className="flex-1 px-4 py-2.5 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDuplicateConfirmMessage(null);
+                  handleSave(true);
+                }}
+                className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors font-medium shadow-sm"
+              >
+                นำเข้าเพิ่มเติม
+              </button>
+            </div>
           </div>
         </Modal>
       )}

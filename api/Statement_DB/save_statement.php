@@ -261,9 +261,10 @@ try {
     ];
   }
 
-  // Duplicate detection: bank + transfer date should be unique. Abort if any date already imported for this bank.
+  // Duplicate detection: bank + transfer date should be unique unless allow_duplicate is set.
+  $allowDuplicate = !empty($input['allow_duplicate']);
   $uniqueDates = array_values(array_unique(array_column($preparedRows, 'transfer_date')));
-  if (!empty($uniqueDates)) {
+  if (!empty($uniqueDates) && !$allowDuplicate) {
     $placeholders = implode(',', array_fill(0, count($uniqueDates), '?'));
     $checkStmt = $pdo->prepare(
       "SELECT DATE(sl.transfer_at) AS transfer_date
@@ -283,7 +284,9 @@ try {
         [
           'ok' => false,
           'error' => 'Duplicate import detected',
-          'detail' => "มีการนำเข้าข้อมูลของ {$bankDisplayName} ในวันที่ {$dateList} แล้ว กรุณาลบการนำเข้าอันเก่าก่อนนำเข้าใหม่",
+          'detail' => "มีการนำเข้าข้อมูลของ {$bankDisplayName} ในวันที่ {$dateList} แล้ว ต้องการนำเข้าเพิ่มเติมหรือไม่?",
+          'existing_dates' => $existingDates,
+          'can_force' => true,
         ],
         409,
       );
