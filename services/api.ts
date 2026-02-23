@@ -1869,6 +1869,27 @@ export async function validateTrackingBulk(items: { orderId: string; trackingNum
   });
 }
 
+export async function saveTrackingLog(batchId: string, logs: {
+  order_id: string;
+  resolved_order_id?: string;
+  tracking_number: string;
+  box_number?: number;
+  action?: string;
+  status?: string;
+  message?: string;
+}[], userInfo?: { user_id?: number; username?: string; company_id?: number }) {
+  return apiFetch('Orders/save_tracking_log.php', {
+    method: 'POST',
+    body: JSON.stringify({
+      batch_id: batchId,
+      logs,
+      user_id: userInfo?.user_id,
+      username: userInfo?.username,
+      company_id: userInfo?.company_id,
+    })
+  });
+}
+
 export async function validateReturnCandidates(candidates: { trackingNumber: string; index: number }[], mode: string) {
   return apiFetch('Orders/validate_return_candidates.php', {
     method: 'POST',

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Order, OrderStatus, User } from '../types';
-import { validateTrackingBulk } from '../services/api';
+import { validateTrackingBulk, saveTrackingLog } from '../services/api';
 import { UploadCloud, CheckCircle, XCircle, AlertTriangle, Plus, Trash2, Loader2 } from 'lucide-react';
 
 type ValidationStatus = 'valid' | 'duplicate' | 'error' | 'unchecked';
@@ -215,6 +215,34 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders: propsOrders
           // Update tracking numbers via callback
           await onBulkUpdateTracking(updates);
 
+          // Log import data (from UI) for debugging data-loss reports
+          try {
+            const batchId = crypto.randomUUID();
+            const logEntries = rows
+              .filter(r => r.status === 'valid' && r.orderId && r.trackingNumber)
+              .map(r => ({
+                order_id: r.orderId.trim(),
+                resolved_order_id: r.normalizedOrderId || undefined,
+                tracking_number: r.trackingNumber.trim(),
+                box_number: r.boxNumber ?? 1,
+                action: 'import' as const,
+                status: 'success' as const,
+              }));
+            if (logEntries.length > 0) {
+              saveTrackingLog(batchId, logEntries, {
+                user_id: currentUser?.id,
+                username: currentUser?.firstName
+                  ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
+                  : undefined,
+                company_id: currentUser?.companyId,
+              }).catch(err =>
+                console.warn('Tracking log save failed (non-critical):', err)
+              );
+            }
+          } catch (logErr) {
+            console.warn('Tracking log error (non-critical):', logErr);
+          }
+
           alert("นำเข้าข้อมูลเรียบร้อยแล้ว");
           // Reset
           setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
@@ -250,8 +278,8 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders: propsOrders
             onClick={handleValidate}
             disabled={validating}
             className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${validating
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
               }`}
           >
             {validating ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
@@ -262,8 +290,8 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders: propsOrders
             onClick={handleImport}
             disabled={!isVerified || validCount === 0 || validating}
             className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${!isVerified || validCount === 0 || validating
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-green-600 text-white hover:bg-green-700 shadow-sm'
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-green-600 text-white hover:bg-green-700 shadow-sm'
               }`}
           >
             <UploadCloud size={18} />
