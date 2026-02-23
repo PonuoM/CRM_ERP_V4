@@ -37,6 +37,7 @@ if ($companyId) {
     $phoneSql = "SELECT RIGHT(phone, 9) AS phone9, GROUP_CONCAT(CONCAT(first_name, ' ', COALESCE(last_name, '')) SEPARATOR ', ') AS user_names, COUNT(*) AS cnt
                  FROM users
                  WHERE company_id = ? AND phone IS NOT NULL AND phone != '' AND status = 'active'
+                   AND role IN ('Telesale', 'Supervisor Telesale')
                  GROUP BY RIGHT(phone, 9)
                  HAVING cnt > 1";
     $phoneStmt = $pdo->prepare($phoneSql);
