@@ -1942,7 +1942,10 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $neededCols = "$customerIdCol as id, customer_id, customer_ref_id, first_name, last_name, phone, province, 
                             date_assigned, birth_date, assigned_to, company_id, lifecycle_status, behavioral_status,
                             total_purchases, order_count, first_order_date, last_order_date, current_basket_key,
-                            ownership_expires, date_registered, grade, facebook_name, line_id, updated_at";
+                            ownership_expires, date_registered, grade, facebook_name, line_id, updated_at,
+                            street, subdistrict, district, postal_code, recipient_first_name, recipient_last_name,
+                            backup_phone, email, follow_up_date, total_calls,
+                            is_in_waiting_basket, waiting_basket_start_date, is_blocked";
                         $sql = "SELECT $neededCols FROM customers WHERE $whereSql ORDER BY $orderBy";
 
                         if ($page) {

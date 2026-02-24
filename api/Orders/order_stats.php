@@ -17,10 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 try {
     $pdo = db_connect();
-    
+
     // validate_auth($pdo);
 
-    $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : 0;
+    $companyId = isset($_GET['company_id']) ? (int) $_GET['company_id'] : 0;
 
     if ($companyId <= 0) {
         http_response_code(400);
@@ -29,14 +29,14 @@ try {
     }
 
     // Parameters
-    $month = isset($_GET['month']) ? (int)$_GET['month'] : null;
-    $year = isset($_GET['year']) ? (int)$_GET['year'] : null;
-    $userId = isset($_GET['user_id']) ? (int)$_GET['user_id'] : null;
+    $month = isset($_GET['month']) ? (int) $_GET['month'] : null;
+    $year = isset($_GET['year']) ? (int) $_GET['year'] : null;
+    $userId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : null;
 
     // Base filtering for "Summary" cards (Orders, Revenue, Status, Payment)
     // If AdminDashboard calls without filters -> All Time
     // If SalesDashboard calls with filters -> Filtered
-    
+
     // Build date filter
     $dateFilter = "";
     $dateParams = [];
@@ -52,21 +52,24 @@ try {
     // NOTE: We now use oi.creator_id for filtering so upsell items are included
     // Regular sale: o.creator_id = user, oi.creator_id = user
     // Upsell: o.creator_id = other_user, oi.creator_id = user (we still count these)
-    
+
     // 1. Overall/Filtered Stats - Using order_items to include upsell
     if ($userId > 0) {
-        // User-specific stats using order_items (includes upsell)
+        // User-specific stats using order_items (excludes upsell basket 51)
         $stmtOverall = $pdo->prepare("
             SELECT 
                 COUNT(DISTINCT o.id) as totalOrders, 
-                COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt') 
+                COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'BadDebt') 
+                    AND (ob.status IS NULL OR ob.status != 'RETURNED')
                     THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as totalRevenue,
                 COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN o.id END) as totalCancelOrderCount
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
+            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             WHERE o.company_id = ?
             AND oi.creator_id = ?
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale != 51)
             $dateFilter
         ");
         $filterParams = array_merge([$companyId, $userId], $dateParams);
@@ -83,28 +86,28 @@ try {
         ");
         $filterParams = array_merge([$companyId], $dateParams);
     }
-    
+
     $stmtOverall->execute($filterParams);
     $overall = $stmtOverall->fetch(PDO::FETCH_ASSOC);
-    
-    $totalOrders = (int)$overall['totalOrders'];
-    $totalRevenue = (float)$overall['totalRevenue'];
-    $totalCancelOrderCount = (int)$overall['totalCancelOrderCount'];
-    
+
+    $totalOrders = (int) $overall['totalOrders'];
+    $totalRevenue = (float) $overall['totalRevenue'];
+    $totalCancelOrderCount = (int) $overall['totalCancelOrderCount'];
+
     $validOrderCount = max(1, $totalOrders - $totalCancelOrderCount);
     $avgOrderValue = $totalRevenue / $validOrderCount;
 
     // ========================================
-    // Upsell Stats: Items added by this user to orders created by OTHER users
+    // Upsell Stats: Items with basket_key_at_sale = 51 (upsell bucket)
     // ========================================
     $upsellRevenue = 0;
     $upsellOrders = 0;
     $upsellQuantity = 0;
-    
+
     if ($userId > 0) {
-        $upsellWhere = "WHERE o.company_id = ? AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')";
+        $upsellWhere = "WHERE o.company_id = ? AND o.order_status NOT IN ('Cancelled', 'BadDebt')";
         $upsellParams = [$companyId];
-        
+
         if ($year) {
             $upsellWhere .= " AND YEAR(o.order_date) = ?";
             $upsellParams[] = $year;
@@ -113,12 +116,11 @@ try {
                 $upsellParams[] = $month;
             }
         }
-        
-        // Upsell = items where creator_id = user but order creator is different
-        $upsellWhere .= " AND oi.creator_id = ? AND o.creator_id != ?";
+
+        // Upsell = items with basket_key_at_sale = 51 (consistent with telesale_performance)
+        $upsellWhere .= " AND oi.creator_id = ? AND oi.basket_key_at_sale = 51";
         $upsellParams[] = $userId;
-        $upsellParams[] = $userId;
-        
+
         $stmtUpsell = $pdo->prepare("
             SELECT 
                 COUNT(DISTINCT o.id) as upsell_orders,
@@ -126,15 +128,17 @@ try {
                 COALESCE(SUM(oi.quantity), 0) as upsell_quantity
             FROM orders o
             JOIN order_items oi ON oi.parent_order_id = o.id
+            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             $upsellWhere
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (ob.status IS NULL OR ob.status != 'RETURNED')
         ");
         $stmtUpsell->execute($upsellParams);
         $upsellRow = $stmtUpsell->fetch(PDO::FETCH_ASSOC);
-        
-        $upsellRevenue = (float)($upsellRow['upsell_revenue'] ?? 0);
-        $upsellOrders = (int)($upsellRow['upsell_orders'] ?? 0);
-        $upsellQuantity = (int)($upsellRow['upsell_quantity'] ?? 0);
+
+        $upsellRevenue = (float) ($upsellRow['upsell_revenue'] ?? 0);
+        $upsellOrders = (int) ($upsellRow['upsell_orders'] ?? 0);
+        $upsellQuantity = (int) ($upsellRow['upsell_quantity'] ?? 0);
     }
 
     // Build filterWhere for status/payment queries
@@ -172,7 +176,7 @@ try {
     // Or just keep Last 12 Months? AdminDashboard likes Last 12.
     // SalesDashboard might prefer the selected year trend.
     // Let's adapt: If Year is provided, show that Year's months. Else Last 12.
-    
+
     $chartParams = [$companyId];
     $userFilter = "";
     if ($userId > 0) {
@@ -192,7 +196,8 @@ try {
             ORDER BY month_key ASC
         ";
         $chartParams[] = $year;
-        if ($userId > 0) $chartParams[] = $userId;
+        if ($userId > 0)
+            $chartParams[] = $userId;
     } else {
         $chartSql = "
             SELECT 
@@ -205,16 +210,17 @@ try {
             GROUP BY month_key 
             ORDER BY month_key ASC
         ";
-        if ($userId > 0) $chartParams[] = $userId;
+        if ($userId > 0)
+            $chartParams[] = $userId;
     }
 
     $stmtMonthly = $pdo->prepare($chartSql);
     $stmtMonthly->execute($chartParams);
     $monthlyRaw = $stmtMonthly->fetchAll(PDO::FETCH_ASSOC);
-    
+
     $monthlyCounts = [];
     foreach ($monthlyRaw as $row) {
-        $monthlyCounts[$row['month_key']] = (int)$row['count'];
+        $monthlyCounts[$row['month_key']] = (int) $row['count'];
     }
 
     // ========================================
@@ -234,16 +240,19 @@ try {
                 COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as sales
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
+            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             WHERE o.company_id = ? 
               AND YEAR(o.order_date) = ?
-              AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+              AND o.order_status NOT IN ('Cancelled', 'BadDebt')
               AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+              AND (ob.status IS NULL OR ob.status != 'RETURNED')
               $salesUserFilter
             GROUP BY month_key 
             ORDER BY month_key ASC
         ";
         $salesParams[] = $year;
-        if ($userId > 0) $salesParams[] = $userId;
+        if ($userId > 0)
+            $salesParams[] = $userId;
     } else {
         $salesSql = "
             SELECT 
@@ -251,24 +260,27 @@ try {
                 COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as sales
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
+            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             WHERE o.company_id = ? 
               AND o.order_date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
-              AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+              AND o.order_status NOT IN ('Cancelled', 'BadDebt')
               AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+              AND (ob.status IS NULL OR ob.status != 'RETURNED')
               $salesUserFilter
             GROUP BY month_key 
             ORDER BY month_key ASC
         ";
-        if ($userId > 0) $salesParams[] = $userId;
+        if ($userId > 0)
+            $salesParams[] = $userId;
     }
 
     $stmtMonthlySales = $pdo->prepare($salesSql);
     $stmtMonthlySales->execute($salesParams);
     $monthlySalesRaw = $stmtMonthlySales->fetchAll(PDO::FETCH_ASSOC);
-    
+
     $monthlySales = [];
     foreach ($monthlySalesRaw as $row) {
-        $monthlySales[$row['month_key']] = (float)$row['sales'];
+        $monthlySales[$row['month_key']] = (float) $row['sales'];
     }
 
     echo json_encode([
