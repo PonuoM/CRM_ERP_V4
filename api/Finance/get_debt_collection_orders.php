@@ -44,7 +44,8 @@ try {
     // Dynamic Filter: Use rules for 'shipping' and 'preparing' from order_tab_rules
     // Only apply payment_status + order_status filters for ACTIVE tab.
     // Completed tab shows all orders with is_complete=1, regardless of current statuses.
-    if ($status !== 'completed') {
+    // 'all' tab shows both active-qualifying orders AND any order with debt records.
+    if ($status === 'active') {
         $whereConditions[] = "o.payment_status IN ('Unpaid', 'PendingVerification')";
         $targetTabs = ['shipping', 'preparing'];
         $placeholders = str_repeat('?,', count($targetTabs) - 1) . '?';
@@ -109,16 +110,23 @@ try {
             // Fallback if no rules found (safe default)
             $whereConditions[] = "(o.order_status IN ('Preparing', 'Picking', 'Shipping', 'PreApproved') OR o.order_status = 'BadDebt')";
         }
+    } elseif ($status === 'all') {
+        // 'all': Show COD/PayAfter orders that qualify for debt tracking OR any order with debt records
+        $whereConditions[] = "(
+            (o.payment_method IN ('COD', 'PayAfter') AND o.payment_status IN ('Unpaid', 'PendingVerification'))
+            OR EXISTS (SELECT 1 FROM debt_collection dc_any WHERE dc_any.order_id = o.id)
+        )";
     }
 
     // Status Filter
     if ($status === 'completed') {
         // Show orders that HAVE a complete debt collection record (any order_status)
         $whereConditions[] = "EXISTS (SELECT 1 FROM debt_collection dc_check WHERE dc_check.order_id = o.id AND dc_check.is_complete = 1)";
-    } else {
-        // Default 'active': Show orders that DO NOT HAVE a complete debt collection record
+    } elseif ($status === 'active') {
+        // 'active': Show orders that DO NOT HAVE a complete debt collection record
         $whereConditions[] = "NOT EXISTS (SELECT 1 FROM debt_collection dc_check WHERE dc_check.order_id = o.id AND dc_check.is_complete = 1)";
     }
+    // 'all': no EXISTS/NOT EXISTS filter — show both active and completed
 
     if ($companyId > 0) {
         $whereConditions[] = "o.company_id = ?";
@@ -233,11 +241,7 @@ try {
         $sql = "SELECT 
                     COUNT(DISTINCT o.id) as order_count,
                     SUM(
-                        GREATEST(0, o.total_amount - COALESCE(o.amount_paid, 0) - (
-                            SELECT COALESCE(SUM(dc.amount_collected), 0) 
-                            FROM debt_collection dc 
-                            WHERE dc.order_id = o.id
-                        ))
+                        GREATEST(0, o.total_amount - COALESCE(o.amount_paid, 0))
                     ) as total_remaining_debt
                 FROM orders o
                 LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -287,6 +291,12 @@ try {
                     (SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection dc WHERE dc.order_id = o.id) as total_debt_collected,
                     (SELECT MAX(dc_l.created_at) FROM debt_collection dc_l WHERE dc_l.order_id = o.id) as last_tracking_date,
                     (SELECT MIN(dc_f.created_at) FROM debt_collection dc_f WHERE dc_f.order_id = o.id) as first_tracking_date,
+                    (SELECT CONCAT(u_t.first_name, ' ', u_t.last_name)
+                     FROM debt_collection dc_t
+                     JOIN users u_t ON dc_t.user_id = u_t.id
+                     WHERE dc_t.order_id = o.id
+                     ORDER BY dc_t.created_at DESC LIMIT 1
+                    ) as last_tracker_name,
                     (SELECT COALESCE(SUM(os_p.amount), 0)
                      FROM order_slips os_p
                      WHERE os_p.order_id = o.id
@@ -310,7 +320,9 @@ try {
             $paidAmount = (float) ($order['amount_paid'] ?? 0);
             $collected = (float) $order['total_debt_collected'];
             $pendingSlips = (float) ($order['pending_slip_amount'] ?? 0);
-            $remainingDebt = max(0, $totalAmount - $paidAmount - $collected - $pendingSlips);
+            // Note: amount_paid already includes debt collected (synced by debt_collection.php)
+            // So we only subtract amount_paid + pendingSlips to avoid double-counting
+            $remainingDebt = max(0, $totalAmount - $paidAmount - $pendingSlips);
 
             // Calculate Days Passed from Delivery Date
             $daysPassed = 0;
@@ -342,7 +354,8 @@ try {
                 'hasPendingSlips' => $pendingSlips > 0,
                 'customerReceivedDate' => $order['customer_received_date'],
                 'lastTrackingDate' => $order['last_tracking_date'],
-                'firstTrackingDate' => $order['first_tracking_date']
+                'firstTrackingDate' => $order['first_tracking_date'],
+                'lastTrackerName' => $order['last_tracker_name'] ? trim($order['last_tracker_name']) : null
             ];
         }, $orders);
 
