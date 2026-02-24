@@ -977,10 +977,12 @@ export async function saveRolePermissions(role: string, data: any) {
   });
 }
 
-export async function listActivities(customerId?: string) {
+export async function listActivities(customerId?: string, limit?: number) {
   const qs = new URLSearchParams();
   if (customerId) qs.set("customerId", customerId);
-  return apiFetch(`activities${customerId ? `?${qs}` : ""}`);
+  if (limit) qs.set("limit", String(limit));
+  const query = qs.toString();
+  return apiFetch(`activities${query ? `?${query}` : ""}`);
 }
 
 export async function listCustomerLogs(

@@ -1,6 +1,20 @@
 <?php
 date_default_timezone_set("Asia/Bangkok");
-ini_set('memory_limit', '256M');
+ini_set('memory_limit', '512M');
+ini_set('max_execution_time', '120');
+
+// Catch fatal errors (memory limit, timeout) that bypass try-catch
+register_shutdown_function(function () {
+  $error = error_get_last();
+  if ($error && in_array($error['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE])) {
+    file_put_contents(__DIR__ . '/fatal_error.log', date('Y-m-d H:i:s') . " FATAL: " . $error['message'] . " in " . $error['file'] . ":" . $error['line'] . " Mem: " . memory_get_peak_usage(true) . "\n", FILE_APPEND);
+    if (!headers_sent()) {
+      http_response_code(500);
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['error' => 'FATAL_ERROR', 'message' => $error['message'], 'peak_memory' => memory_get_peak_usage(true)]);
+    }
+  }
+});
 // Database configuration
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv("DB_HOST") ?: "127.0.0.1";
@@ -53,13 +67,13 @@ function db_connect(): PDO
   if ($lastError) {
     throw new RuntimeException(
       "MySQL connection failed for host " .
-        $DB_HOST .
-        ":" .
-        $DB_PORT .
-        " / db " .
-        $DB_NAME .
-        " - " .
-        $lastError->getMessage(),
+      $DB_HOST .
+      ":" .
+      $DB_PORT .
+      " / db " .
+      $DB_NAME .
+      " - " .
+      $lastError->getMessage(),
     );
   }
   throw new RuntimeException("MySQL connection failed (unknown error)");
@@ -100,15 +114,15 @@ function validate_auth(PDO $pdo): void
 {
   file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH CHECK: " . ($_SERVER['REQUEST_URI'] ?? 'unknown') . " Mem: " . memory_get_usage() . "\n", FILE_APPEND);
   $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
-  
+
   if (!$auth && function_exists('getallheaders')) {
-      $headers = getallheaders();
-      $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    $headers = getallheaders();
+    $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
   }
-  
+
   // Also check query param (for downloads)
   if (!$auth && isset($_GET['token'])) {
-      $auth = 'Bearer ' . $_GET['token'];
+    $auth = 'Bearer ' . $_GET['token'];
   }
 
   if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
@@ -135,18 +149,18 @@ function validate_auth(PDO $pdo): void
 function get_authenticated_user(PDO $pdo): ?array
 {
   $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
-  
+
   if (!$auth && function_exists('getallheaders')) {
-      $headers = getallheaders();
-      $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    $headers = getallheaders();
+    $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
   }
-  
+
   if (!$auth && isset($_GET['token'])) {
-      $auth = 'Bearer ' . $_GET['token'];
+    $auth = 'Bearer ' . $_GET['token'];
   }
 
   if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
-      return null;
+    return null;
   }
   $token = $matches[1];
 

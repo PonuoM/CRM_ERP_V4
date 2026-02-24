@@ -1550,6 +1550,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $t_list_start = microtime(true);
                     log_perf("handle_customers:list:START");
                     require_once __DIR__ . '/customer/distribution_helper.php';
+                    error_log("[customers:list] START memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                     $q = $_GET['q'] ?? '';
                     $companyId = $_GET['companyId'] ?? null;
                     $bucket = $_REQUEST['bucket'] ?? $_GET['bucket'] ?? null;
@@ -1937,10 +1938,18 @@ function handle_customers(PDO $pdo, ?string $id): void
                                 date_assigned DESC
                             ";
                         }
-                        $sql = "SELECT *, $customerIdCol as id FROM customers WHERE $whereSql ORDER BY $orderBy";
+                        // Use specific columns instead of SELECT * to reduce memory
+                        $neededCols = "$customerIdCol as id, customer_id, customer_ref_id, first_name, last_name, phone, province, 
+                            date_assigned, birth_date, assigned_to, company_id, lifecycle_status, behavioral_status,
+                            total_purchases, order_count, first_order_date, last_order_date, current_basket_key,
+                            ownership_expires, date_registered, grade, facebook_name, line_id, updated_at";
+                        $sql = "SELECT $neededCols FROM customers WHERE $whereSql ORDER BY $orderBy";
 
                         if ($page) {
                             $sql .= " LIMIT $limit OFFSET $offset";
+                        } elseif ($limit > 0) {
+                            // Apply LIMIT even without page param to prevent unbounded queries
+                            $sql .= " LIMIT $limit";
                         }
 
                         try {
@@ -1948,6 +1957,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $t_query_start = microtime(true);
                             $stmt->execute($params);
                             $customers = $stmt->fetchAll();
+                            error_log("[customers:list] MAIN_QUERY done rows=" . count($customers) . " memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                             log_perf("handle_customers:list:EXECUTE_QUERY source=$source filter=$filterType count=" . count($customers), $t_query_start);
 
                             error_log("listCustomers: Fetched " . count($customers) . " rows for company " . $companyId);
@@ -1987,6 +1997,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                             }
                         }
                         log_perf("handle_customers:list:UPSELL_BATCH", $t_upsell_start);
+                        error_log("[customers:list] UPSELL_BATCH done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
 
                         // BATCH FETCH: Last call notes (most recent per customer)
                         $t_notes_start = microtime(true);
@@ -2010,6 +2021,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                             }
                         }
                         log_perf("handle_customers:list:NOTES_BATCH", $t_notes_start);
+                        error_log("[customers:list] NOTES_BATCH done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
 
                         // BATCH FETCH: Order stats (order_count, total_purchases, first_order_date, last_order_date)
                         $t_order_stats_start = microtime(true);
@@ -2038,8 +2050,9 @@ function handle_customers(PDO $pdo, ?string $id): void
                             }
                         }
                         log_perf("handle_customers:list:ORDER_STATS_BATCH", $t_order_stats_start);
+                        error_log("[customers:list] ORDER_STATS_BATCH done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
 
-                        // Apply batch results to customers
+                        // Apply batch results to customers and free maps
                         foreach ($customers as &$customer) {
                             $cid = strval($customer['customer_id']); // Cast to string for lookup
                             $customer['is_upsell_eligible'] = isset($upsellMap[$cid]) ? 1 : 0;
@@ -2050,6 +2063,9 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $customer['first_order_date'] = $orderStatsMap[$cid]['first_order_date'] ?? ($customer['first_order_date'] ?? null);
                             $customer['last_order_date'] = $orderStatsMap[$cid]['last_order_date'] ?? ($customer['last_order_date'] ?? null);
                         }
+                        unset($customer);
+                        // Free batch maps immediately to reclaim memory
+                        unset($upsellMap, $notesMap, $orderStatsMap);
 
                         // Optimized: Fetch tags for all customers in one query
                         $t_tags_start = microtime(true);
@@ -2065,30 +2081,45 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $allTags = $tagsStmt->fetchAll(PDO::FETCH_GROUP | PDO::FETCH_ASSOC); // Group by customer_id
 
                             foreach ($customers as &$customer) {
-                                // customer_id might be string or int depending on driver, mapped matches fetchAll group key
                                 $cid = $customer['customer_id'];
                                 $customer['tags'] = $allTags[$cid] ?? [];
                             }
+                            unset($allTags); // Free tags map
                         } else {
-                            // No customers found
                             foreach ($customers as &$customer) {
                                 $customer['tags'] = [];
                             }
                         }
+                        unset($customer);
                         log_perf("handle_customers:list:TAGS_BATCH", $t_tags_start);
+                        error_log("[customers:list] TAGS_BATCH done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                         log_perf("handle_customers:list:TOTAL", $t_list_start);
 
                         // Attach next appointment data for each customer
                         attach_next_appointments_to_customers($pdo, $customers);
+                        error_log("[customers:list] APPOINTMENTS done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                         // Attach call status (by current owner)
                         attach_call_status_to_customers($pdo, $customers);
+                        error_log("[customers:list] CALL_STATUS done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
 
+                        // Stream JSON response to avoid memory doubling from json_encode on large array
+                        $serverTs = round(microtime(true) * 1000);
+                        http_response_code(200);
+                        header('Content-Type: application/json; charset=utf-8');
                         if ($page) {
-                            json_response(['total' => $total, 'data' => $customers, 'server_timestamp' => round(microtime(true) * 1000)]);
+                            echo '{"total":' . $total . ',"data":[';
                         } else {
-                            // Wrap list response to include server_timestamp for time sync
-                            json_response(['data' => $customers, 'server_timestamp' => round(microtime(true) * 1000)]);
+                            echo '{"data":[';
                         }
+                        $first = true;
+                        foreach ($customers as $c) {
+                            if (!$first)
+                                echo ',';
+                            echo json_encode($c, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                            $first = false;
+                        }
+                        echo '],"server_timestamp":' . $serverTs . '}';
+                        exit();
 
                     }
                 }
@@ -8640,8 +8671,27 @@ function handle_customer_tags(PDO $pdo): void
                     $stmt->execute([$customerId]);
                     json_response($stmt->fetchAll());
                 } else {
-                    $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id ORDER BY ct.customer_id, t.name');
-                    json_response($stmt->fetchAll());
+                    // Stream JSON output row-by-row to avoid OOM on large datasets
+                    $companyId = $_GET['companyId'] ?? null;
+                    if ($companyId) {
+                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id=ct.customer_id WHERE c.company_id=? ORDER BY ct.customer_id, t.name');
+                        $stmt->execute([$companyId]);
+                    } else {
+                        $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id ORDER BY ct.customer_id, t.name');
+                    }
+                    // Stream output to avoid loading everything into memory
+                    http_response_code(200);
+                    header('Content-Type: application/json; charset=utf-8');
+                    echo '[';
+                    $first = true;
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        if (!$first)
+                            echo ',';
+                        echo json_encode($row, JSON_UNESCAPED_UNICODE);
+                        $first = false;
+                    }
+                    echo ']';
+                    exit();
                 }
             } catch (Throwable $e) {
                 json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
@@ -8722,6 +8772,10 @@ function handle_activities(PDO $pdo, ?string $id): void
                     }
                 }
                 $sql .= ' ORDER BY a.timestamp DESC';
+                $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 0;
+                if ($limit > 0) {
+                    $sql .= " LIMIT $limit";
+                }
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 json_response($stmt->fetchAll());
