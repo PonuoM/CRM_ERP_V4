@@ -30,6 +30,7 @@ import {
   Clock,
   ArrowLeftRight,
   MapPin,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -161,6 +162,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Product Analysis": "วิเคราะห์ผลิตภัณฑ์",
     "Telesale Performance": "ประสิทธิภาพ Telesale",
     "Attendance Management": "จัดการวันมาทำงาน",
+    "Sales Sheet": "ยอดขาย (Sheet)",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -180,6 +182,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Product Analysis", icon: BarChart2, key: "home.product_analysis" },
         { label: "Telesale Performance", icon: BarChart2, key: "home.telesale_performance" },
         { label: "Attendance Management", icon: Clock, key: "nav.attendance_management" },
+        { label: "Sales Sheet", icon: FileSpreadsheet, key: "home.sales_sheet" },
       ]
     },
     {

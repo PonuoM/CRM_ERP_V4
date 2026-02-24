@@ -153,6 +153,7 @@ import CustomerDistributionV2 from "./pages/CustomerDistributionV2";
 import TelesalePerformancePage from "./pages/TelesalePerformancePage";
 import AttendanceManagementPage from "./pages/AttendanceManagementPage";
 import AdsInputV2 from "./pages/AdsInputV2";
+import SalesSheetPage from "./pages/SalesSheetPage";
 import { db } from "./db/db";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
@@ -553,6 +554,7 @@ const App: React.FC = () => {
       'Ads Input V2': 'marketing.ads_input_v2',
       'Accounting Report': 'accounting.report',
       'จัดการตีกลับ': 'nav.return_management',
+      'Sales Sheet': 'home.sales_sheet',
     };
 
     // Check if current page needs permission check
@@ -6532,6 +6534,9 @@ const App: React.FC = () => {
     }
     if (activePage === "Orders Report") {
       return <OrdersReportPage currentUser={currentUser} />;
+    }
+    if (activePage === "Sales Sheet") {
+      return <SalesSheetPage currentUser={currentUser} />;
     }
     if (activePage === "Calls Overview") {
       return <CallsDashboard calls={callHistory} user={currentUser} />;
