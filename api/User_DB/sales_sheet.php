@@ -45,26 +45,27 @@ try {
     $endDate = date('Y-m-d 00:00:00', strtotime($startDate . ' +1 month'));
 
     // Build access filter (role-based scoping)
+    // Use oi.creator_id so upsell sellers see their own items even on other sellers' orders
     $accessFilter = "";
     $accessParams = [];
 
     if (!$isAdmin && !$isCEO) {
         if ($isSupervisor) {
-            // Supervisor sees self + team
+            // Supervisor sees self + team (items created by them)
             $teamStmt = $pdo->prepare("SELECT id FROM users WHERE (id = ? OR supervisor_id = ?) AND status = 'active'");
             $teamStmt->execute([$currentUserId, $currentUserId]);
             $teamIds = $teamStmt->fetchAll(PDO::FETCH_COLUMN);
             if (!empty($teamIds)) {
                 $placeholders = implode(',', array_fill(0, count($teamIds), '?'));
-                $accessFilter = " AND o.creator_id IN ($placeholders)";
+                $accessFilter = " AND COALESCE(oi.creator_id, o.creator_id) IN ($placeholders)";
                 $accessParams = $teamIds;
             } else {
-                $accessFilter = " AND o.creator_id = ?";
+                $accessFilter = " AND COALESCE(oi.creator_id, o.creator_id) = ?";
                 $accessParams = [$currentUserId];
             }
         } else {
-            // Telesale sees only self
-            $accessFilter = " AND o.creator_id = ?";
+            // Telesale sees only items they created (supports upsell)
+            $accessFilter = " AND COALESCE(oi.creator_id, o.creator_id) = ?";
             $accessParams = [$currentUserId];
         }
     }
@@ -74,7 +75,7 @@ try {
     $extraParams = [];
 
     if ($sellerId > 0) {
-        $extraFilter .= " AND o.creator_id = ?";
+        $extraFilter .= " AND COALESCE(oi.creator_id, o.creator_id) = ?";
         $extraParams[] = $sellerId;
     }
 
@@ -169,14 +170,15 @@ try {
             o.delivery_date,
             o.order_status,
             o.payment_status,
-            CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS seller_name,
-            o.creator_id AS seller_id,
+            CONCAT(COALESCE(u_item.first_name, u_order.first_name,''), ' ', COALESCE(u_item.last_name, u_order.last_name,'')) AS seller_name,
+            COALESCE(oi.creator_id, o.creator_id) AS seller_id,
             o.id AS order_id
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         LEFT JOIN customers c ON o.customer_id = c.customer_id
         LEFT JOIN products p ON oi.product_id = p.id
-        LEFT JOIN users u ON o.creator_id = u.id
+        LEFT JOIN users u_item ON oi.creator_id = u_item.id
+        LEFT JOIN users u_order ON o.creator_id = u_order.id
         $whereClause
         ORDER BY o.order_date DESC, o.id DESC, oi.id ASC
         LIMIT ? OFFSET ?
