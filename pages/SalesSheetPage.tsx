@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { User } from "../types";
 import { apiFetch } from "../services/api";
 import { Download, ChevronLeft, ChevronRight, Search, FileSpreadsheet, Loader2, X, ChevronDown, Check } from "lucide-react";
@@ -105,32 +106,60 @@ const getCustomerTypeThai = (type: string | null): string => {
     return map[type] || type;
 };
 
-// ============ Multi-Select Filter Dropdown ============
+// ============ Multi-Select Filter Dropdown (Portal, Buffered) ============
 interface MultiSelectFilterProps {
     label: string;
     colKey: string;
     allValues: string[];
-    selectedValues: Set<string> | null; // null = all selected
-    onChangeFilter: (colKey: string, selected: Set<string> | null) => void;
+    selectedValues: Set<string> | null; // null = all selected (committed)
+    onApplyFilter: (colKey: string, selected: Set<string> | null) => void;
     openFilter: string | null;
     setOpenFilter: (key: string | null) => void;
-    align?: 'left' | 'right';
     width?: string;
 }
 
 const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
-    label, colKey, allValues, selectedValues, onChangeFilter, openFilter, setOpenFilter, align = 'left', width
+    label, colKey, allValues, selectedValues, onApplyFilter, openFilter, setOpenFilter, width
 }) => {
     const [search, setSearch] = useState('');
+    // Pending = buffered selection that only applies on OK
+    const [pending, setPending] = useState<Set<string> | null>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
     const isOpen = openFilter === colKey;
     const isFiltered = selectedValues !== null;
+
+    // Initialize pending from committed when opening
+    useEffect(() => {
+        if (isOpen) {
+            setPending(selectedValues === null ? null : new Set(selectedValues));
+            setSearch('');
+            // Calculate position from button
+            if (buttonRef.current) {
+                const rect = buttonRef.current.getBoundingClientRect();
+                const dropdownWidth = 240;
+                let left = rect.left;
+                // If dropdown would go off screen right, align from right
+                if (left + dropdownWidth > window.innerWidth) {
+                    left = rect.right - dropdownWidth;
+                }
+                // If still off screen left
+                if (left < 4) left = 4;
+                setDropdownPos({ top: rect.bottom + 2, left });
+            }
+        }
+    }, [isOpen, selectedValues]);
 
     // Close on outside click
     useEffect(() => {
         if (!isOpen) return;
         const handler = (e: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+            const target = e.target as Node;
+            if (
+                dropdownRef.current && !dropdownRef.current.contains(target) &&
+                buttonRef.current && !buttonRef.current.contains(target)
+            ) {
                 setOpenFilter(null);
             }
         };
@@ -138,48 +167,51 @@ const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
         return () => document.removeEventListener('mousedown', handler);
     }, [isOpen, setOpenFilter]);
 
-    // Reset search when opening
-    useEffect(() => { if (isOpen) setSearch(''); }, [isOpen]);
-
     const filteredValues = useMemo(() => {
         if (!search) return allValues;
         const s = search.toLowerCase();
         return allValues.filter(v => v.toLowerCase().includes(s));
     }, [allValues, search]);
 
-    const isAllSelected = selectedValues === null || selectedValues.size === allValues.length;
-    const selectedCount = selectedValues === null ? allValues.length : selectedValues.size;
+    const isAllSelected = pending === null || pending.size === allValues.length;
+    const pendingCount = pending === null ? allValues.length : pending.size;
 
     const toggleAll = () => {
-        if (isAllSelected) {
-            // Deselect all
-            onChangeFilter(colKey, new Set());
-        } else {
-            // Select all
-            onChangeFilter(colKey, null);
-        }
+        setPending(isAllSelected ? new Set() : null);
     };
 
     const toggleValue = (val: string) => {
-        const currentSet = selectedValues === null ? new Set(allValues) : new Set(selectedValues);
-        if (currentSet.has(val)) {
-            currentSet.delete(val);
-        } else {
-            currentSet.add(val);
-        }
-        // If all selected, set to null (means "all")
-        if (currentSet.size === allValues.length) {
-            onChangeFilter(colKey, null);
-        } else {
-            onChangeFilter(colKey, currentSet);
-        }
+        const currentSet = pending === null ? new Set(allValues) : new Set(pending);
+        if (currentSet.has(val)) currentSet.delete(val);
+        else currentSet.add(val);
+        setPending(currentSet.size === allValues.length ? null : currentSet);
     };
 
-    const isValueSelected = (val: string) => selectedValues === null || selectedValues.has(val);
+    const isValueChecked = (val: string) => pending === null || pending.has(val);
+
+    const handleOK = () => {
+        // Apply the pending selection
+        if (pending === null || pending.size === allValues.length) {
+            onApplyFilter(colKey, null); // all = no filter
+        } else {
+            onApplyFilter(colKey, new Set(pending));
+        }
+        setOpenFilter(null);
+    };
+
+    const handleClear = () => {
+        onApplyFilter(colKey, null);
+        setOpenFilter(null);
+    };
+
+    const handleCancel = () => {
+        setOpenFilter(null);
+    };
 
     return (
-        <th className={`px-1 py-1.5 font-semibold text-gray-600 border-r border-gray-200 relative ${width || ''}`} ref={dropdownRef}>
+        <th className={`px-1 py-1.5 font-semibold text-gray-600 border-r border-gray-200 ${width || ''}`}>
             <button
+                ref={buttonRef}
                 onClick={() => setOpenFilter(isOpen ? null : colKey)}
                 className={`w-full flex items-center gap-0.5 text-[11px] hover:text-green-700 transition-colors ${isFiltered ? 'text-green-700' : 'text-gray-600'}`}
                 title={`กรอง ${label}`}
@@ -188,13 +220,21 @@ const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
                 <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''} ${isFiltered ? 'text-green-600' : 'text-gray-400'}`} />
                 {isFiltered && <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />}
             </button>
-            {isOpen && (
+            {isOpen && createPortal(
                 <div
-                    className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} z-50 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl min-w-[200px] max-w-[280px]`}
-                    style={{ maxHeight: '320px' }}
+                    ref={dropdownRef}
+                    className="fixed z-[9999] bg-white border border-gray-300 rounded-lg shadow-2xl"
+                    style={{
+                        top: dropdownPos.top,
+                        left: dropdownPos.left,
+                        width: 240,
+                        maxHeight: 360,
+                        display: 'flex',
+                        flexDirection: 'column',
+                    }}
                 >
                     {/* Search box */}
-                    <div className="p-1.5 border-b border-gray-200">
+                    <div className="p-1.5 border-b border-gray-200 flex-shrink-0">
                         <div className="relative">
                             <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
@@ -204,13 +244,12 @@ const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
                                 placeholder="ค้นหา..."
                                 className="w-full pl-6 pr-2 py-1 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-green-400 focus:outline-none bg-gray-50"
                                 autoFocus
-                                onClick={e => e.stopPropagation()}
                             />
                         </div>
                     </div>
 
                     {/* Select All */}
-                    <div className="border-b border-gray-100">
+                    <div className="border-b border-gray-100 flex-shrink-0">
                         <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 cursor-pointer">
                             <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${isAllSelected ? 'bg-green-600 border-green-600' : 'border-gray-300'}`}>
                                 {isAllSelected && <Check className="w-2.5 h-2.5 text-white" />}
@@ -222,12 +261,12 @@ const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
                     </div>
 
                     {/* Values list */}
-                    <div className="overflow-y-auto" style={{ maxHeight: '220px' }}>
+                    <div className="overflow-y-auto flex-1" style={{ maxHeight: '220px' }}>
                         {filteredValues.length === 0 ? (
                             <div className="px-3 py-3 text-[11px] text-gray-400 text-center">ไม่พบรายการ</div>
                         ) : (
                             filteredValues.map(val => {
-                                const checked = isValueSelected(val);
+                                const checked = isValueChecked(val);
                                 return (
                                     <label key={val} className="flex items-center gap-2 px-2 py-1 hover:bg-blue-50 cursor-pointer" title={val}>
                                         <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${checked ? 'bg-green-600 border-green-600' : 'border-gray-300'}`}>
@@ -241,27 +280,25 @@ const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
                         )}
                     </div>
 
-                    {/* Footer with count + OK */}
-                    <div className="border-t border-gray-200 px-2 py-1.5 flex items-center justify-between bg-gray-50 rounded-b-lg">
-                        <span className="text-[10px] text-gray-500">เลือก {selectedCount}/{allValues.length}</span>
+                    {/* Footer: count + Cancel/Clear/OK */}
+                    <div className="border-t border-gray-200 px-2 py-1.5 flex items-center justify-between bg-gray-50 rounded-b-lg flex-shrink-0">
+                        <span className="text-[10px] text-gray-500">เลือก {pendingCount}/{allValues.length}</span>
                         <div className="flex gap-1">
+                            <button onClick={handleCancel} className="px-2 py-0.5 text-[10px] text-gray-500 hover:bg-gray-100 rounded font-medium">
+                                ยกเลิก
+                            </button>
                             {isFiltered && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onChangeFilter(colKey, null); }}
-                                    className="px-2 py-0.5 text-[10px] text-red-600 hover:bg-red-50 rounded font-medium"
-                                >
+                                <button onClick={handleClear} className="px-2 py-0.5 text-[10px] text-red-600 hover:bg-red-50 rounded font-medium">
                                     ล้าง
                                 </button>
                             )}
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setOpenFilter(null); }}
-                                className="px-2.5 py-0.5 text-[10px] bg-green-600 text-white rounded font-medium hover:bg-green-700"
-                            >
-                                OK
+                            <button onClick={handleOK} className="px-2.5 py-0.5 text-[10px] bg-green-600 text-white rounded font-medium hover:bg-green-700">
+                                ตกลง
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </th>
     );
@@ -625,10 +662,9 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                     colKey={col.key}
                                                     allValues={(colUniqueValues as any)[col.key] || []}
                                                     selectedValues={colFilters[col.key] ?? null}
-                                                    onChangeFilter={onChangeFilter}
+                                                    onApplyFilter={onChangeFilter}
                                                     openFilter={openFilter}
                                                     setOpenFilter={setOpenFilter}
-                                                    align={i >= columns.length - 4 ? 'right' : 'left'}
                                                     width={col.width}
                                                 />
                                             ))}
