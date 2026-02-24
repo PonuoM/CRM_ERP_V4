@@ -591,54 +591,46 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
     const lastCallMap = useMemo(() => {
         const map = new Map<string, CallHistory>();
-        if (!calls) return map;
 
-        // Debug: log first few calls and user name
-        console.log('[DashboardV2] currentUserFullName:', currentUserFullName);
-        console.log('[DashboardV2] Total calls:', calls.length);
-        console.log('[DashboardV2] Sample call callers:', calls.slice(0, 3).map(c => c.caller));
-
-        let matchCount = 0;
-        let skippedDueToCallerMismatch = 0;
-
-        calls.forEach(call => {
-            if (!call.customerId) return;
-            const customerId = String(call.customerId);
-
-            // Only include calls made by the current user (compare by full name)
-            // NOTE: Removed dateAssigned check - we count ALL calls by this user regardless of assignment date
-            // This fixes the issue where customer was re-assigned and old calls weren't counted
-            const callerId = call.caller ? String(call.caller).trim() : '';
-            if (callerId !== currentUserFullName) {
-                skippedDueToCallerMismatch++;
-                return;
-            }
-
-            matchCount++;
-
-            // Use 'date' field per types.ts definition
-            const callDate = new Date(call.date || Date.now());
-            const existing = map.get(customerId);
-            const existingDate = existing ? new Date(existing.date || 0) : null;
-
-            if (!existing || (existingDate && callDate > existingDate)) {
-                map.set(customerId, call);
+        // Step 1: Build from customer-attached data (complete, not affected by pagination)
+        // Backend attach_call_status_to_customers provides: last_call_date_by_owner, call_count_by_owner, last_call_result_by_owner
+        localCustomers.forEach(c => {
+            const lastCallDate = (c as any).last_call_date_by_owner;
+            if (lastCallDate) {
+                const cid = String(c.id);
+                map.set(cid, {
+                    id: 0, // synthetic entry
+                    customerId: cid,
+                    date: lastCallDate,
+                    caller: currentUserFullName,
+                    status: '',
+                    result: (c as any).last_call_result_by_owner || '',
+                } as CallHistory);
             }
         });
 
-        console.log('[DashboardV2] lastCallMap size:', map.size,
-            'matched:', matchCount,
-            'skippedCaller:', skippedDueToCallerMismatch);
+        // Step 2: Overlay with actual call_history records (has more detail like notes)
+        if (calls) {
+            calls.forEach(call => {
+                if (!call.customerId) return;
+                const customerId = String(call.customerId);
+                const callerId = call.caller ? String(call.caller).trim() : '';
+                if (callerId !== currentUserFullName) return;
 
-        // Debug specific customer 16065
-        const testCustomerId = '16065';
-        const testCall = map.get(testCustomerId);
-        console.log('[DashboardV2] Debug customer 16065:',
-            'inMap:', map.has(testCustomerId),
-            'lastCall:', testCall?.date);
+                const callDate = new Date(call.date || Date.now());
+                const existing = map.get(customerId);
+                const existingDate = existing ? new Date(existing.date || 0) : null;
+
+                if (!existing || (existingDate && callDate > existingDate)) {
+                    map.set(customerId, call);
+                }
+            });
+        }
+
+        console.log('[DashboardV2] lastCallMap size:', map.size, '(from customer data + call_history)');
 
         return map;
-    }, [calls, currentUserFullName]);
+    }, [calls, currentUserFullName, localCustomers]);
 
     // Track customers with upcoming appointments and days until appointment
     // PRIORITY: Store UPCOMING (daysUntil >= 0) appointments over overdue ones
@@ -678,26 +670,36 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     }, [localCustomers]);
 
 
-    // Count ALL calls by current user for each customer (no date_assigned filter)
+    // Count ALL calls by current user for each customer
     const callCountMap = useMemo(() => {
         const map = new Map<string, number>();
-        if (!calls) return map;
 
-        // caller field stores full name: "firstName lastName"
-        const currentUserFullName = `${user.firstName} ${user.lastName}`;
-
-        calls.forEach(call => {
-            if (!call.customerId) return;
-            const customerId = String(call.customerId);
-
-            // Only count calls made by the current user (compare by full name)
-            const callerId = call.caller ? String(call.caller).trim() : '';
-            if (callerId !== currentUserFullName) return;
-
-            map.set(customerId, (map.get(customerId) || 0) + 1);
+        // Step 1: Use customer-attached data (complete, not affected by pagination)
+        localCustomers.forEach(c => {
+            const count = (c as any).call_count_by_owner;
+            if (count && count > 0) {
+                map.set(String(c.id), count);
+            }
         });
+
+        // Step 2: Supplement with call_history records (may have newer data)
+        if (calls) {
+            const tempMap = new Map<string, number>();
+            calls.forEach(call => {
+                if (!call.customerId) return;
+                const customerId = String(call.customerId);
+                const callerId = call.caller ? String(call.caller).trim() : '';
+                if (callerId !== currentUserFullName) return;
+                tempMap.set(customerId, (tempMap.get(customerId) || 0) + 1);
+            });
+            // Use the higher count (customer-attached is authoritative, but call_history might be more recent)
+            tempMap.forEach((count, cid) => {
+                const existing = map.get(cid) || 0;
+                if (count > existing) map.set(cid, count);
+            });
+        }
         return map;
-    }, [calls, user.firstName, user.lastName]);
+    }, [calls, currentUserFullName, localCustomers]);
 
     // Load customers: Fetch from API to get lastCallNote and other joined fields
     // Fallback to propsCustomers if API fails
