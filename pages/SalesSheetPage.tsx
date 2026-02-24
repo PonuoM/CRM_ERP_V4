@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { User } from "../types";
 import { apiFetch } from "../services/api";
-import { Download, ChevronLeft, ChevronRight, Search, FileSpreadsheet, Loader2, X } from "lucide-react";
+import { Download, ChevronLeft, ChevronRight, Search, FileSpreadsheet, Loader2, X, Filter } from "lucide-react";
 
 interface SalesSheetPageProps {
     currentUser: User;
@@ -122,113 +122,58 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const [summary, setSummary] = useState({ total_orders: 0, total_items: 0, total_revenue: 0 });
     const [pagination, setPagination] = useState({ page: 1, pageSize: 200, total: 0, totalPages: 0 });
 
-    // --- Cell selection (Click + Shift+Click, Google Sheets style) ---
-    const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
-    const [selectionStats, setSelectionStats] = useState<{ sum: number; count: number; avg: number } | null>(null);
-    const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-    const lastClickedCell = useRef<{ row: number; col: string } | null>(null);
-    const tableRef = useRef<HTMLTableElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
+    // --- Column Filters (client-side) ---
+    const [colFilters, setColFilters] = useState<Record<string, string>>({});
+    const [showFilters, setShowFilters] = useState(false);
 
-    // Numeric column keys that support selection
-    const NUMERIC_COLS = useMemo(() => ['quantity', 'net_total'] as const, []);
-
-    const getCellKey = (rowIdx: number, col: string) => `${rowIdx}:${col}`;
-
-    const computeStats = useCallback((cells: Set<string>) => {
-        if (cells.size === 0) { setSelectionStats(null); return; }
-        let sum = 0;
-        let count = 0;
-        cells.forEach(key => {
-            const [rStr, col] = key.split(':');
-            const r = parseInt(rStr);
-            if (r >= 0 && r < rows.length) {
-                const row = rows[r];
-                const val = col === 'quantity' ? Number(row.quantity) : Number(row.net_total);
-                if (!isNaN(val)) { sum += val; count++; }
-            }
-        });
-        setSelectionStats(count > 0 ? { sum, count, avg: sum / count } : null);
-    }, [rows]);
-
-    // Build rectangle selection from start to end cell
-    const buildRectSelection = useCallback((startRow: number, startCol: string, endRow: number, endCol: string): Set<string> => {
-        const newSet = new Set<string>();
-        const colIdx = (c: string) => NUMERIC_COLS.indexOf(c as any);
-        const sCI = colIdx(startCol);
-        const eCI = colIdx(endCol);
-        if (sCI === -1 || eCI === -1) return newSet;
-        const minR = Math.min(startRow, endRow);
-        const maxR = Math.max(startRow, endRow);
-        const minC = Math.min(sCI, eCI);
-        const maxC = Math.max(sCI, eCI);
-        for (let r = minR; r <= maxR; r++) {
-            for (let c = minC; c <= maxC; c++) {
-                newSet.add(getCellKey(r, NUMERIC_COLS[c]));
-            }
-        }
-        return newSet;
-    }, [NUMERIC_COLS]);
-
-    const handleCellClick = useCallback((e: React.MouseEvent, rowIdx: number, col: string) => {
-        e.stopPropagation();
-        // Update tooltip position
-        setTooltipPos({ x: e.clientX, y: e.clientY });
-
-        if (e.shiftKey && lastClickedCell.current) {
-            // Shift+Click: select range from last clicked cell to this one
-            const newSet = buildRectSelection(
-                lastClickedCell.current.row, lastClickedCell.current.col,
-                rowIdx, col
-            );
-            setSelectedCells(newSet);
-            computeStats(newSet);
-        } else if (e.ctrlKey || e.metaKey) {
-            // Ctrl+Click: toggle this cell in selection
-            const key = getCellKey(rowIdx, col);
-            setSelectedCells(prev => {
-                const newSet = new Set(prev);
-                if (newSet.has(key)) newSet.delete(key); else newSet.add(key);
-                computeStats(newSet);
-                return newSet;
-            });
-            lastClickedCell.current = { row: rowIdx, col };
-        } else {
-            // Normal click: select only this cell
-            const newSet = new Set([getCellKey(rowIdx, col)]);
-            setSelectedCells(newSet);
-            computeStats(newSet);
-            lastClickedCell.current = { row: rowIdx, col };
-        }
-    }, [buildRectSelection, computeStats]);
-
-    // Track mouse movement for tooltip position
-    const handleMouseMoveOnTable = useCallback((e: React.MouseEvent) => {
-        if (selectionStats) {
-            setTooltipPos({ x: e.clientX, y: e.clientY });
-        }
-    }, [selectionStats]);
-
-    // Clear selection when clicking outside numeric cells
-    useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
-            const target = e.target as HTMLElement;
-            if (!target.closest('[data-selectable-cell]')) {
-                setSelectedCells(new Set());
-                setSelectionStats(null);
-                lastClickedCell.current = null;
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+    const updateColFilter = useCallback((key: string, value: string) => {
+        setColFilters(prev => ({ ...prev, [key]: value }));
     }, []);
 
-    // Clear selection when data changes
-    useEffect(() => {
-        setSelectedCells(new Set());
-        setSelectionStats(null);
-        lastClickedCell.current = null;
-    }, [rows]);
+    const clearAllColFilters = useCallback(() => {
+        setColFilters({});
+    }, []);
+
+    const hasActiveColFilters = useMemo(() => Object.values(colFilters).some(v => v !== ''), [colFilters]);
+
+    // Client-side filtering of loaded rows
+    const filteredRows = useMemo(() => {
+        if (!hasActiveColFilters) return rows;
+        return rows.filter(row => {
+            const match = (field: string | null | undefined, filter: string | undefined) => {
+                if (!filter) return true;
+                return (field || '').toLowerCase().includes(filter.toLowerCase());
+            };
+            if (colFilters.order_number && !match(row.order_number, colFilters.order_number)) return false;
+            if (colFilters.seller_name && !match(row.seller_name, colFilters.seller_name)) return false;
+            if (colFilters.customer_type && row.customer_type !== colFilters.customer_type) return false;
+            if (colFilters.basket && !match(row.basket_key_at_sale, colFilters.basket)) return false;
+            if (colFilters.sales_channel && !match(row.sales_channel, colFilters.sales_channel)) return false;
+            if (colFilters.payment_method && !match(row.payment_method, colFilters.payment_method)) return false;
+            if (colFilters.customer_name && !match(row.customer_name, colFilters.customer_name)) return false;
+            if (colFilters.customer_phone && !match(row.customer_phone, colFilters.customer_phone)) return false;
+            if (colFilters.province && !match(row.province, colFilters.province)) return false;
+            if (colFilters.product_sku && !match(row.product_sku, colFilters.product_sku)) return false;
+            if (colFilters.product_name && !match(row.product_name, colFilters.product_name)) return false;
+            if (colFilters.order_status && row.order_status !== colFilters.order_status) return false;
+            return true;
+        });
+    }, [rows, colFilters, hasActiveColFilters]);
+
+    // Compute sum stats for filtered rows
+    const filteredStats = useMemo(() => {
+        const totalQty = filteredRows.reduce((s, r) => s + (r.quantity || 0), 0);
+        const totalNet = filteredRows.reduce((s, r) => s + (r.is_freebie ? 0 : (r.net_total || 0)), 0);
+        return { totalQty, totalNet };
+    }, [filteredRows]);
+
+    // Get unique values for dropdown column filters
+    const uniqueChannels = useMemo(() => [...new Set(rows.map(r => r.sales_channel).filter(Boolean))] as string[], [rows]);
+    const uniquePayments = useMemo(() => [...new Set(rows.map(r => r.payment_method).filter(Boolean))] as string[], [rows]);
+    const uniqueProvinces = useMemo(() => [...new Set(rows.map(r => r.province).filter(Boolean))].sort() as string[], [rows]);
+
+    // Reset column filters when data changes
+    useEffect(() => { setColFilters({}); }, [month, year, sellerId, orderStatus, customerType, debouncedSearch]);
 
     const yearOptions = useMemo(() => {
         const cur = new Date().getFullYear();
@@ -431,30 +376,105 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                         </div>
                     ) : (
                         <>
-                            <div className="flex-1 overflow-auto" ref={containerRef} onMouseMove={handleMouseMoveOnTable}>
-                                <table ref={tableRef} className="w-full text-[11px] border-collapse min-w-[1200px]">
+                            <div className="flex-1 overflow-auto">
+                                <table className="w-full text-[11px] border-collapse min-w-[1200px]">
                                     <thead className="sticky top-0 z-10">
-                                        <tr className="bg-gray-100 border-b-2 border-gray-300">
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[70px]">วันที่สั่ง</th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[110px]">เลขออเดอร์</th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[90px]">ผู้ขาย</th>
-                                            <th className="px-2 py-2 text-center font-semibold text-gray-600 border-r border-gray-200 w-[55px]">ประเภท</th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[70px]">ตะกร้า</th>
-                                            <th className="px-2 py-2 text-center font-semibold text-gray-600 border-r border-gray-200 w-[60px]">ช่องทาง</th>
-                                            <th className="px-2 py-2 text-center font-semibold text-gray-600 border-r border-gray-200 w-[50px]">ชำระ</th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[110px]">ชื่อลูกค้า</th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[85px]">เบอร์โทร</th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200">ที่อยู่</th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[65px]">รหัส</th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[140px]">ชื่อสินค้า</th>
-                                            <th className="px-2 py-2 text-right font-semibold text-gray-600 border-r border-gray-200 w-[40px]">จำนวน</th>
-                                            <th className="px-2 py-2 text-right font-semibold text-gray-600 border-r border-gray-200 w-[75px]">ยอดรวม</th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[65px]">วันส่ง</th>
-                                            <th className="px-2 py-2 text-center font-semibold text-gray-600 w-[70px]">สถานะ</th>
+                                        <tr className="bg-gray-100 border-b border-gray-300">
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 w-[70px]">วันที่สั่ง</th>
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 w-[110px]">เลขออเดอร์</th>
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 w-[90px]">ผู้ขาย</th>
+                                            <th className="px-2 py-1.5 text-center font-semibold text-gray-600 border-r border-gray-200 w-[55px]">ประเภท</th>
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 w-[70px]">ตะกร้า</th>
+                                            <th className="px-2 py-1.5 text-center font-semibold text-gray-600 border-r border-gray-200 w-[60px]">ช่องทาง</th>
+                                            <th className="px-2 py-1.5 text-center font-semibold text-gray-600 border-r border-gray-200 w-[50px]">ชำระ</th>
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 w-[110px]">ชื่อลูกค้า</th>
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 w-[85px]">เบอร์โทร</th>
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200">
+                                                จังหวัด
+                                            </th>
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 w-[65px]">รหัส</th>
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 w-[140px]">ชื่อสินค้า</th>
+                                            <th className="px-2 py-1.5 text-right font-semibold text-gray-600 border-r border-gray-200 w-[50px]">จำนวน</th>
+                                            <th className="px-2 py-1.5 text-right font-semibold text-gray-600 border-r border-gray-200 w-[75px]">ยอดรวม</th>
+                                            <th className="px-2 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 w-[65px]">วันส่ง</th>
+                                            <th className="px-2 py-1.5 text-center font-semibold text-gray-600 w-[70px]">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    สถานะ
+                                                    <button
+                                                        onClick={() => setShowFilters(f => !f)}
+                                                        className={`p-0.5 rounded transition-colors ${showFilters ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-green-600 hover:bg-green-50'}`}
+                                                        title={showFilters ? 'ซ่อนตัวกรอง' : 'แสดงตัวกรอง'}
+                                                    >
+                                                        <Filter className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            </th>
                                         </tr>
+                                        {/* Column Filter Row */}
+                                        {showFilters && (
+                                            <tr className="bg-yellow-50/80 border-b border-gray-200">
+                                                <td className="px-1 py-1 border-r border-gray-200"></td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <input type="text" value={colFilters.order_number || ''} onChange={e => updateColFilter('order_number', e.target.value)} placeholder="🔍" className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none" />
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <input type="text" value={colFilters.seller_name || ''} onChange={e => updateColFilter('seller_name', e.target.value)} placeholder="🔍" className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none" />
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <select value={colFilters.customer_type || ''} onChange={e => updateColFilter('customer_type', e.target.value)} className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none">
+                                                        <option value="">ทั้งหมด</option>
+                                                        <option value="New Customer">ใหม่</option>
+                                                        <option value="Reorder Customer">รีออเดอร์</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <input type="text" value={colFilters.basket || ''} onChange={e => updateColFilter('basket', e.target.value)} placeholder="🔍" className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none" />
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <select value={colFilters.sales_channel || ''} onChange={e => updateColFilter('sales_channel', e.target.value)} className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none">
+                                                        <option value="">ทั้งหมด</option>
+                                                        {uniqueChannels.map(c => <option key={c} value={c}>{c}</option>)}
+                                                    </select>
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <select value={colFilters.payment_method || ''} onChange={e => updateColFilter('payment_method', e.target.value)} className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none">
+                                                        <option value="">ทั้งหมด</option>
+                                                        {uniquePayments.map(p => <option key={p} value={p}>{p}</option>)}
+                                                    </select>
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <input type="text" value={colFilters.customer_name || ''} onChange={e => updateColFilter('customer_name', e.target.value)} placeholder="🔍" className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none" />
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <input type="text" value={colFilters.customer_phone || ''} onChange={e => updateColFilter('customer_phone', e.target.value)} placeholder="🔍" className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none" />
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <select value={colFilters.province || ''} onChange={e => updateColFilter('province', e.target.value)} className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none">
+                                                        <option value="">ทั้งหมด</option>
+                                                        {uniqueProvinces.map(p => <option key={p} value={p}>{p}</option>)}
+                                                    </select>
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <input type="text" value={colFilters.product_sku || ''} onChange={e => updateColFilter('product_sku', e.target.value)} placeholder="🔍" className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none" />
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200">
+                                                    <input type="text" value={colFilters.product_name || ''} onChange={e => updateColFilter('product_name', e.target.value)} placeholder="🔍" className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded bg-white focus:ring-1 focus:ring-green-400 focus:outline-none" />
+                                                </td>
+                                                <td className="px-1 py-1 border-r border-gray-200"></td>
+                                                <td className="px-1 py-1 border-r border-gray-200"></td>
+                                                <td className="px-1 py-1 border-r border-gray-200"></td>
+                                                <td className="px-1 py-1 text-center">
+                                                    {hasActiveColFilters && (
+                                                        <button onClick={clearAllColFilters} className="text-red-500 hover:text-red-700 text-[10px] font-medium" title="ล้างตัวกรองทั้งหมด">
+                                                            <X className="w-3 h-3 inline" /> ล้าง
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )}
                                     </thead>
                                     <tbody>
-                                        {rows.map((row, idx) => (
+                                        {filteredRows.map((row, idx) => (
                                             <tr
                                                 key={`${row.order_id}-${idx}`}
                                                 className={`border-b border-gray-100 hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/60"
@@ -476,22 +496,14 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                 <td className="px-2 py-1.5 text-center text-gray-600 border-r border-gray-100 text-[10px]">{getPaymentThai(row.payment_method)}</td>
                                                 <td className="px-2 py-1.5 text-gray-700 border-r border-gray-100 truncate" title={row.customer_name.trim()}>{row.customer_name.trim() || "-"}</td>
                                                 <td className="px-2 py-1.5 text-gray-600 border-r border-gray-100">{row.customer_phone || "-"}</td>
-                                                <td className="px-2 py-1.5 text-gray-500 border-r border-gray-100 truncate text-[10px]" title={row.address || ""}>{row.address || "-"}</td>
+                                                <td className="px-2 py-1.5 text-gray-500 border-r border-gray-100 truncate text-[10px]" title={row.province || ""}>{row.province || "-"}</td>
                                                 <td className="px-2 py-1.5 text-gray-500 border-r border-gray-100 text-[10px] font-mono">{row.product_sku || "-"}</td>
                                                 <td className="px-2 py-1.5 text-gray-700 border-r border-gray-100 truncate" title={row.product_name}>
                                                     {row.is_freebie ? <span className="text-orange-500 mr-0.5">🎁</span> : null}
                                                     {row.product_name || "-"}
                                                 </td>
-                                                <td
-                                                    data-selectable-cell
-                                                    className={`px-2 py-1.5 text-right text-gray-700 border-r border-gray-100 font-medium cursor-cell ${selectedCells.has(getCellKey(idx, 'quantity')) ? 'bg-blue-100 ring-1 ring-blue-400 ring-inset' : ''}`}
-                                                    onClick={e => handleCellClick(e, idx, 'quantity')}
-                                                >{row.quantity}</td>
-                                                <td
-                                                    data-selectable-cell
-                                                    className={`px-2 py-1.5 text-right border-r border-gray-100 font-medium cursor-cell ${selectedCells.has(getCellKey(idx, 'net_total')) ? 'bg-blue-100 ring-1 ring-blue-400 ring-inset' : ''}`}
-                                                    onClick={e => handleCellClick(e, idx, 'net_total')}
-                                                >
+                                                <td className="px-2 py-1.5 text-right text-gray-700 border-r border-gray-100 font-medium">{row.quantity}</td>
+                                                <td className="px-2 py-1.5 text-right border-r border-gray-100 font-medium">
                                                     <span className={row.is_freebie ? "text-gray-400" : "text-gray-800"}>
                                                         {row.is_freebie ? "0" : formatMoney(row.net_total)}
                                                     </span>
@@ -504,10 +516,10 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                 </td>
                                             </tr>
                                         ))}
-                                        {rows.length === 0 && (
+                                        {filteredRows.length === 0 && (
                                             <tr>
                                                 <td colSpan={16} className="px-4 py-10 text-center text-gray-400 text-sm">
-                                                    ไม่พบข้อมูลสำหรับเดือนที่เลือก
+                                                    {hasActiveColFilters ? 'ไม่พบข้อมูลตามตัวกรองที่เลือก' : 'ไม่พบข้อมูลสำหรับเดือนที่เลือก'}
                                                 </td>
                                             </tr>
                                         )}
@@ -515,10 +527,17 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                 </table>
                             </div>
 
-                            {/* Pagination */}
+                            {/* Footer: Pagination + Filtered Stats */}
                             <div className="px-3 py-2 bg-gray-50 border-t flex items-center justify-between flex-shrink-0">
-                                <div className="text-[11px] text-gray-500">
-                                    แสดง {rows.length > 0 ? ((page - 1) * pageSize) + 1 : 0} - {Math.min(page * pageSize, pagination.total)} จาก {pagination.total.toLocaleString()} รายการ
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[11px] text-gray-500">
+                                        แสดง {filteredRows.length > 0 ? ((page - 1) * pageSize) + 1 : 0} - {Math.min(page * pageSize, pagination.total)} จาก {pagination.total.toLocaleString()} รายการ
+                                    </span>
+                                    {hasActiveColFilters && (
+                                        <span className="text-[11px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                                            กรอง: {filteredRows.length} รายการ · ฿{formatMoney(filteredStats.totalNet)} · จำนวน {filteredStats.totalQty.toLocaleString()}
+                                        </span>
+                                    )}
                                 </div>
                                 {pagination.totalPages > 1 && (
                                     <div className="flex items-center gap-1">
@@ -565,37 +584,6 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                     </div>
                                 )}
                             </div>
-
-                            {/* Floating Tooltip (follows cursor) */}
-                            {selectionStats && (
-                                <div
-                                    className="fixed z-50 pointer-events-none"
-                                    style={{
-                                        left: tooltipPos.x + 16,
-                                        top: tooltipPos.y - 60,
-                                    }}
-                                >
-                                    <div className="bg-gray-900/95 text-white rounded-lg shadow-xl px-3 py-2 text-xs backdrop-blur-sm border border-gray-700">
-                                        <div className="flex items-center gap-3 whitespace-nowrap">
-                                            <span>
-                                                <span className="text-blue-300 font-semibold">SUM:</span>{' '}
-                                                <span className="text-white font-bold">{formatMoney(selectionStats.sum)}</span>
-                                            </span>
-                                            <span className="w-px h-3 bg-gray-600" />
-                                            <span>
-                                                <span className="text-purple-300 font-semibold">AVG:</span>{' '}
-                                                <span className="text-white font-bold">{formatMoney(selectionStats.avg)}</span>
-                                            </span>
-                                            <span className="w-px h-3 bg-gray-600" />
-                                            <span>
-                                                <span className="text-green-300 font-semibold">COUNT:</span>{' '}
-                                                <span className="text-white font-bold">{selectionStats.count}</span>
-                                            </span>
-                                        </div>
-                                        <div className="text-[9px] text-gray-400 mt-0.5 text-center">Shift+Click เลือกช่วง · Ctrl+Click เลือกเพิ่ม</div>
-                                    </div>
-                                </div>
-                            )}
                         </>
                     )}
                 </div>
