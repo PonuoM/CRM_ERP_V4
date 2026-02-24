@@ -101,7 +101,7 @@ const getPaymentThai = (method: string | null): string => {
 const getCustomerTypeThai = (type: string | null): string => {
     if (!type) return "-";
     const map: Record<string, string> = {
-        "New Customer": "ใหม่", "Reorder Customer": "รีออเดอร์", "Reorder": "รีออเดอร์",
+        "New Customer": "ใหม่", "Reorder Customer": "รีออเดอร์", "Reorder": "รีออเดอร์", "Mined Lead": "ลูกค้าขุด",
     };
     return map[type] || type;
 };
@@ -663,7 +663,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                 <td className="px-1.5 py-1 text-gray-700 border-r border-gray-100 text-[10px] truncate whitespace-nowrap max-w-[90px]" title={row.seller_name.trim()}>{row.seller_name.trim() || "-"}</td>
                                                 <td className="px-1.5 py-1 text-center border-r border-gray-100 whitespace-nowrap">
                                                     {row.customer_type ? (
-                                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium ${row.customer_type === "New Customer" ? "bg-green-100 text-green-700" : "bg-purple-100 text-purple-700"
+                                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium ${row.customer_type === "New Customer" ? "bg-green-100 text-green-700" : row.customer_type === "Mined Lead" ? "bg-orange-100 text-orange-700" : "bg-purple-100 text-purple-700"
                                                             }`}>
                                                             {getCustomerTypeThai(row.customer_type)}
                                                         </span>
