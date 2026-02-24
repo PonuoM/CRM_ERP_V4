@@ -407,8 +407,8 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
 
     // Compute stats for filtered rows
     const filteredStats = useMemo(() => {
-        const totalQty = filteredRows.reduce((s, r) => s + (r.quantity || 0), 0);
-        const totalNet = filteredRows.reduce((s, r) => s + (r.is_freebie ? 0 : (r.net_total || 0)), 0);
+        const totalQty = filteredRows.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
+        const totalNet = filteredRows.reduce((s, r) => s + (r.is_freebie ? 0 : (Number(r.net_total) || 0)), 0);
         const uniqueOrders = new Set(filteredRows.map(r => r.order_id)).size;
         return { totalQty, totalNet, count: filteredRows.length, uniqueOrders };
     }, [filteredRows]);
@@ -451,7 +451,12 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             const result = await apiFetch(`User_DB/sales_sheet.php?${params}`);
             if (result?.success) {
                 setRows(result.rows || []);
-                setSummary(result.summary || { total_orders: 0, total_items: 0, total_revenue: 0 });
+                const s = result.summary || {};
+                setSummary({
+                    total_orders: Number(s.total_orders) || 0,
+                    total_items: Number(s.total_items) || 0,
+                    total_revenue: Number(s.total_revenue) || 0,
+                });
                 setPagination(result.pagination || { page: 1, pageSize, total: 0, totalPages: 0 });
                 if (result.sellers) setSellers(result.sellers);
             }
