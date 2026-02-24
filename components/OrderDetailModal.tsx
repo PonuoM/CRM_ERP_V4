@@ -5,7 +5,7 @@ import { X, User, MapPin, Box, Image as ImageIcon } from 'lucide-react';
 
 export interface StatementContext {
     statementAmount: number;
-    transferAt: string; 
+    transferAt: string;
     channel?: string;
 }
 
@@ -20,6 +20,21 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
     const [order, setOrder] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [viewingImage, setViewingImage] = useState<string | null>(null);
+
+    const statusThai: Record<string, string> = {
+        'Pending': 'รอดำเนินการ', 'Confirmed': 'ยืนยันแล้ว', 'Preparing': 'กำลังจัดเตรียม',
+        'Picking': 'กำลังหยิบสินค้า', 'Shipping': 'กำลังจัดส่ง', 'Delivered': 'จัดส่งแล้ว',
+        'Cancelled': 'ยกเลิก', 'Returned': 'ตีกลับ', 'BadDebt': 'หนี้สูญ',
+        'PreApproved': 'รอตรวจสอบ', 'AwaitingVerification': 'รอยืนยัน',
+    };
+    const paymentStatusThai: Record<string, string> = {
+        'Pending': 'รอชำระ', 'Paid': 'ชำระแล้ว', 'PartiallyPaid': 'ชำระบางส่วน',
+        'Unpaid': 'ยังไม่ชำระ', 'Refunded': 'คืนเงินแล้ว', 'CODCollected': 'COD เก็บแล้ว',
+    };
+    const paymentMethodThai: Record<string, string> = {
+        'COD': 'เก็บเงินปลายทาง', 'Transfer': 'โอนเงิน', 'CreditCard': 'บัตรเครดิต',
+        'PayAfter': 'ชำระทีหลัง', 'QR': 'QR Code',
+    };
 
     useEffect(() => {
         if (isOpen && orderId) {
@@ -110,7 +125,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
 
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
                 <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <div>
                         <h3 className="text-lg font-bold text-gray-800">รายละเอียดออเดอร์ #{orderId}</h3>
@@ -286,6 +301,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                 <th className="px-3 py-2 text-right w-20">ส่วนลด</th>
                                                 <th className="px-3 py-2 text-right w-24">ราคารวม</th>
                                                 <th className="px-3 py-2 text-left w-24">หมายเหตุ</th>
+                                                <th className="px-3 py-2 text-left w-24">ผู้ขาย</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y">
@@ -306,12 +322,15 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                             item.notes || '-'
                                                         )}
                                                     </td>
+                                                    <td className="px-3 py-2 text-sm text-purple-600 font-medium">
+                                                        {`${item.creator_first_name || ''} ${item.creator_last_name || ''}`.trim() || '-'}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                         <tfoot className="bg-gray-50 font-semibold border-t">
                                             <tr>
-                                                <td className="px-3 py-2 text-right" colSpan={4}>รวมทั้งหมด</td>
+                                                <td className="px-3 py-2 text-right" colSpan={5}>รวมทั้งหมด</td>
                                                 <td className="px-3 py-2 text-right text-blue-600">{new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(Number(order.total_amount))}</td>
                                             </tr>
                                         </tfoot>
@@ -325,16 +344,18 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                     <div className="text-xs text-gray-500 mb-1">สถานะการชำระเงิน</div>
                                     <span className={`px-2 py-0.5 rounded text-xs font-semibold ${order.payment_status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                                         }`}>
-                                        {order.payment_method} ({order.payment_status})
+                                        {paymentMethodThai[order.payment_method] || order.payment_method} ({paymentStatusThai[order.payment_status] || order.payment_status})
                                     </span>
                                 </div>
                                 <div className="p-3 bg-gray-50 rounded border">
                                     <div className="text-xs text-gray-500 mb-1">สถานะออเดอร์</div>
                                     <span className={`px-2 py-0.5 rounded text-xs font-semibold ${order.order_status === 'Delivered' ? 'bg-green-100 text-green-800' :
-                                        order.order_status === 'BadDebt' ? 'bg-gray-800 text-white' :
-                                            'bg-blue-100 text-blue-800'
+                                        order.order_status === 'Cancelled' ? 'bg-red-100 text-red-800' :
+                                            order.order_status === 'Returned' ? 'bg-orange-100 text-orange-800' :
+                                                order.order_status === 'BadDebt' ? 'bg-gray-800 text-white' :
+                                                    'bg-blue-100 text-blue-800'
                                         }`}>
-                                        {order.order_status}
+                                        {statusThai[order.order_status] || order.order_status}
                                     </span>
                                 </div>
                             </div>
@@ -384,8 +405,8 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                 <div
                                                     key={entry.id || idx}
                                                     className={`aspect-square rounded-lg overflow-hidden cursor-zoom-in relative group ${entry.isMatch
-                                                            ? 'ring-3 ring-blue-500 ring-offset-1 border-2 border-blue-400'
-                                                            : 'border border-gray-200'
+                                                        ? 'ring-3 ring-blue-500 ring-offset-1 border-2 border-blue-400'
+                                                        : 'border border-gray-200'
                                                         }`}
                                                     onClick={() => setViewingImage(entry.url)}
                                                 >
@@ -406,8 +427,8 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                     {/* Amount label */}
                                                     {entry.amount > 0 && (
                                                         <div className={`absolute bottom-0 left-0 right-0 text-[10px] text-center font-semibold py-0.5 ${entry.isMatch
-                                                                ? 'bg-blue-600/80 text-white'
-                                                                : 'bg-black/50 text-white'
+                                                            ? 'bg-blue-600/80 text-white'
+                                                            : 'bg-black/50 text-white'
                                                             }`}>
                                                             ฿{entry.amount.toLocaleString()}
                                                         </div>

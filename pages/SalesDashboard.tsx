@@ -12,9 +12,10 @@ import {
 import StatCard from "@/components/StatCard";
 import { MonthlyOrdersChart } from "@/components/Charts";
 import DailySalesChart from "@/components/DailySalesChart";
-import { getOrderStats, getCustomerStats, getDailySales, getTelesalePerformance } from "@/services/api";
+import { getOrderStats, getCustomerStats, getDailySales, getTelesalePerformance, getRevenueOrders } from "@/services/api";
 import Spinner from "@/components/Spinner";
-import { Phone, Clock, Users, Target } from "lucide-react";
+import OrderDetailModal from "@/components/OrderDetailModal";
+import { Phone, Clock, Users, Target, X, Eye } from "lucide-react";
 
 interface SalesDashboardProps {
   user?: any; // Accepting user for companyId
@@ -81,6 +82,49 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
     roleLower.includes('supervisor') ||
     roleLower.includes('admin') ||
     roleLower.includes('ceo');
+
+  // Revenue Orders Modal State
+  const [revenueModalOpen, setRevenueModalOpen] = useState(false);
+  const [revenueModalType, setRevenueModalType] = useState<'returned' | 'cancelled' | 'upsell'>('returned');
+  const [revenueModalTitle, setRevenueModalTitle] = useState('');
+  const [revenueOrders, setRevenueOrders] = useState<any[]>([]);
+  const [revenueOrdersLoading, setRevenueOrdersLoading] = useState(false);
+  const [orderDetailModalOpen, setOrderDetailModalOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+
+  const openRevenueModal = async (type: 'returned' | 'cancelled' | 'upsell', title: string) => {
+    if (!user?.companyId) return;
+    setRevenueModalType(type);
+    setRevenueModalTitle(title);
+    setRevenueModalOpen(true);
+    setRevenueOrdersLoading(true);
+    try {
+      const isCompanyAdmin = user.role === 'Admin Control' || user.role === 'Super Admin';
+      const userIdFilter = isCompanyAdmin ? undefined : user.id;
+      const result = await getRevenueOrders(user.companyId, month, year, type, userIdFilter);
+      if (result.ok) {
+        setRevenueOrders(result.orders || []);
+      }
+    } catch (error) {
+      console.error('Revenue orders fetch error', error);
+    } finally {
+      setRevenueOrdersLoading(false);
+    }
+  };
+
+  const statusToThai: Record<string, { label: string; color: string }> = {
+    'Pending': { label: 'รอดำเนินการ', color: 'text-yellow-600' },
+    'Confirmed': { label: 'ยืนยันแล้ว', color: 'text-blue-600' },
+    'Preparing': { label: 'กำลังจัดเตรียม', color: 'text-purple-600' },
+    'Picking': { label: 'กำลังหยิบสินค้า', color: 'text-purple-600' },
+    'Shipping': { label: 'กำลังจัดส่ง', color: 'text-blue-600' },
+    'Delivered': { label: 'จัดส่งแล้ว', color: 'text-green-600' },
+    'Cancelled': { label: 'ยกเลิก', color: 'text-red-600' },
+    'Returned': { label: 'ตีกลับ', color: 'text-orange-600' },
+    'BadDebt': { label: 'หนี้สูญ', color: 'text-gray-600' },
+    'PreApproved': { label: 'รอตรวจสอบ', color: 'text-orange-600' },
+    'AwaitingVerification': { label: 'รอยืนยัน', color: 'text-orange-600' },
+  };
 
   const fetchStats = async () => {
     if (!user?.companyId) return;
@@ -299,7 +343,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
         </div>
 
         {/* KPI cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-6">
           <StatCard
             title="ยอดขายรายเดือน"
             value={loading ? renderLoadingSpinner() : `฿${(
@@ -307,9 +351,45 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
                 ? (perfData.metrics.newCustSales || 0) + (perfData.metrics.coreCustSales || 0) + (perfData.metrics.revivalCustSales || 0)
                 : monthlySales
             ).toLocaleString()}`}
-            subtext="อัปเดตล่าสุด"
+            subtext="ยอดขายรวมตีกลับและ Upsell"
             icon={DollarSign}
           />
+          {/* ยอดตีกลับ Card */}
+          <div
+            className="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl border border-orange-200 p-4 shadow-sm cursor-pointer hover:shadow-md hover:border-orange-300 transition-all"
+            onClick={() => openRevenueModal('returned', 'รายการออเดอร์ตีกลับ')}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-orange-600 font-medium mb-1">ยอดตีกลับ</p>
+                <p className="text-xl font-bold text-orange-700">
+                  {loading ? renderLoadingSpinner() : `฿${(orderStats?.returnedRevenue || 0).toLocaleString()}`}
+                </p>
+                <p className="text-xs text-orange-500 mt-1 flex items-center gap-1"><Eye className="w-3 h-3" />กดเพื่อดูรายการ</p>
+              </div>
+              <div className="bg-orange-100 p-2 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-orange-600" />
+              </div>
+            </div>
+          </div>
+          {/* ยอดยกเลิก Card */}
+          <div
+            className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl border border-red-200 p-4 shadow-sm cursor-pointer hover:shadow-md hover:border-red-300 transition-all"
+            onClick={() => openRevenueModal('cancelled', 'รายการออเดอร์ยกเลิก')}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-red-600 font-medium mb-1">ยอดยกเลิก</p>
+                <p className="text-xl font-bold text-red-700">
+                  {loading ? renderLoadingSpinner() : `฿${(orderStats?.cancelledRevenue || 0).toLocaleString()}`}
+                </p>
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><Eye className="w-3 h-3" />กดเพื่อดูรายการ</p>
+              </div>
+              <div className="bg-red-100 p-2 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-red-600" />
+              </div>
+            </div>
+          </div>
           <StatCard
             title="จำนวนออเดอร์"
             value={loading ? renderLoadingSpinner() : (
@@ -334,15 +414,18 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
           />
           {/* Upsell Card - Shows sales from items added to other users' orders */}
           {(orderStats?.upsellRevenue > 0 || orderStats?.upsellOrders > 0) && (
-            <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200 p-4 shadow-sm">
+            <div
+              className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200 p-4 shadow-sm cursor-pointer hover:shadow-md hover:border-purple-300 transition-all"
+              onClick={() => openRevenueModal('upsell', 'รายการออเดอร์ Upsell')}
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-purple-600 font-medium mb-1">ยอด Upsell</p>
                   <p className="text-xl font-bold text-purple-700">
                     ฿{(orderStats?.upsellRevenue || 0).toLocaleString()}
                   </p>
-                  <p className="text-xs text-purple-500 mt-1">
-                    {orderStats?.upsellOrders || 0} ออเดอร์ • {orderStats?.upsellQuantity || 0} ชิ้น
+                  <p className="text-xs text-purple-500 mt-1 flex items-center gap-1">
+                    <Eye className="w-3 h-3" />{orderStats?.upsellOrders || 0} ออเดอร์ • {orderStats?.upsellQuantity || 0} ชิ้น
                   </p>
                 </div>
                 <div className="bg-purple-100 p-2 rounded-lg">
@@ -585,6 +668,78 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
           />
         </div>
       </div>
+
+      {/* Revenue Orders List Modal */}
+      {revenueModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">{revenueModalTitle}</h3>
+              <button onClick={() => setRevenueModalOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="overflow-auto flex-1 p-4">
+              {revenueOrdersLoading ? (
+                <div className="flex justify-center py-8"><Spinner /></div>
+              ) : revenueOrders.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">ไม่มีรายการ</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-gray-500 border-b">
+                      <th className="text-left py-2 font-medium">เลขออเดอร์</th>
+                      <th className="text-left py-2 font-medium">วันที่</th>
+                      <th className="text-left py-2 font-medium">ลูกค้า</th>
+                      <th className="text-left py-2 font-medium">สถานะ</th>
+                      {revenueModalType === 'returned' && <th className="text-left py-2 font-medium">กล่อง</th>}
+
+                      <th className="text-right py-2 font-medium">ยอด</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {revenueOrders.map((order: any, idx: number) => (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="py-2">
+                          <button
+                            onClick={() => { setSelectedOrderId(order.order_id); setOrderDetailModalOpen(true); }}
+                            className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                          >
+                            {order.order_id}
+                          </button>
+                        </td>
+                        <td className="py-2 text-gray-600">{order.order_date ? new Date(order.order_date).toLocaleDateString('th-TH') : '-'}</td>
+                        <td className="py-2 text-gray-700">{(order.customer_name || '').trim() || '-'}</td>
+                        <td className={`py-2 text-xs font-medium ${statusToThai[order.order_status]?.color || 'text-gray-500'}`}>{statusToThai[order.order_status]?.label || order.order_status || '-'}</td>
+                        {revenueModalType === 'returned' && <td className="py-2 text-orange-600 text-xs">{order.returned_boxes || '-'}</td>}
+
+                        <td className="py-2 text-right font-medium">฿{(order.amount || 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 font-semibold">
+                      <td className="py-2">รวม {revenueOrders.length} รายการ</td>
+                      <td></td>
+                      <td></td>
+                      <td></td>
+                      {revenueModalType === 'returned' && <td></td>}
+                      <td className="py-2 text-right">฿{revenueOrders.reduce((sum: number, o: any) => sum + (o.amount || 0), 0).toLocaleString()}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order Detail Modal */}
+      <OrderDetailModal
+        isOpen={orderDetailModalOpen}
+        onClose={() => setOrderDetailModalOpen(false)}
+        orderId={selectedOrderId}
+      />
     </>
   );
 };

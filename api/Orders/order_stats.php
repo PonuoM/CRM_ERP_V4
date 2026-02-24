@@ -60,16 +60,13 @@ try {
             SELECT 
                 COUNT(DISTINCT o.id) as totalOrders, 
                 COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'BadDebt') 
-                    AND (ob.status IS NULL OR ob.status != 'RETURNED')
                     THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as totalRevenue,
                 COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN o.id END) as totalCancelOrderCount
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
-            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             WHERE o.company_id = ?
             AND oi.creator_id = ?
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale != 51)
             $dateFilter
         ");
         $filterParams = array_merge([$companyId, $userId], $dateParams);
@@ -128,10 +125,8 @@ try {
                 COALESCE(SUM(oi.quantity), 0) as upsell_quantity
             FROM orders o
             JOIN order_items oi ON oi.parent_order_id = o.id
-            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             $upsellWhere
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND (ob.status IS NULL OR ob.status != 'RETURNED')
         ");
         $stmtUpsell->execute($upsellParams);
         $upsellRow = $stmtUpsell->fetch(PDO::FETCH_ASSOC);
@@ -240,12 +235,10 @@ try {
                 COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as sales
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
-            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             WHERE o.company_id = ? 
               AND YEAR(o.order_date) = ?
               AND o.order_status NOT IN ('Cancelled', 'BadDebt')
               AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-              AND (ob.status IS NULL OR ob.status != 'RETURNED')
               $salesUserFilter
             GROUP BY month_key 
             ORDER BY month_key ASC
@@ -260,12 +253,10 @@ try {
                 COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as sales
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
-            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             WHERE o.company_id = ? 
               AND o.order_date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
               AND o.order_status NOT IN ('Cancelled', 'BadDebt')
               AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-              AND (ob.status IS NULL OR ob.status != 'RETURNED')
               $salesUserFilter
             GROUP BY month_key 
             ORDER BY month_key ASC
@@ -283,6 +274,33 @@ try {
         $monthlySales[$row['month_key']] = (float) $row['sales'];
     }
 
+    // ========================================
+    // 6. Returned & Cancelled Revenue (box-level)
+    // ========================================
+    $returnedRevenue = 0;
+    $cancelledRevenue = 0;
+
+    if ($userId > 0) {
+        $stmtReturned = $pdo->prepare("
+            SELECT 
+                COALESCE(SUM(CASE WHEN ob.status = 'RETURNED' 
+                    THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as returnedRevenue,
+                COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' 
+                    THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as cancelledRevenue
+            FROM order_items oi
+            JOIN orders o ON oi.parent_order_id = o.id
+            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
+            WHERE o.company_id = ?
+            AND oi.creator_id = ?
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            $dateFilter
+        ");
+        $stmtReturned->execute(array_merge([$companyId, $userId], $dateParams));
+        $retRow = $stmtReturned->fetch(PDO::FETCH_ASSOC);
+        $returnedRevenue = (float) ($retRow['returnedRevenue'] ?? 0);
+        $cancelledRevenue = (float) ($retRow['cancelledRevenue'] ?? 0);
+    }
+
     echo json_encode([
         'ok' => true,
         'filter' => [
@@ -292,13 +310,14 @@ try {
         'stats' => [
             'totalOrders' => $totalOrders,
             'totalRevenue' => $totalRevenue,
+            'returnedRevenue' => $returnedRevenue,
+            'cancelledRevenue' => $cancelledRevenue,
             'totalCancelOrderCount' => $totalCancelOrderCount,
             'avgOrderValue' => $avgOrderValue,
             'statusCounts' => $statusCounts,
             'paymentMethodCounts' => $paymentMethodCounts,
             'monthlyCounts' => $monthlyCounts,
-            'monthlySales' => $monthlySales,  // ★ NEW: Monthly sales for chart toggle
-            // Upsell: sales from items added to OTHER users' orders
+            'monthlySales' => $monthlySales,
             'upsellRevenue' => $upsellRevenue,
             'upsellOrders' => $upsellOrders,
             'upsellQuantity' => $upsellQuantity

@@ -105,11 +105,9 @@ try {
         SELECT DISTINCT u.id FROM users u
         JOIN order_items oi ON oi.creator_id = u.id
         JOIN orders o ON oi.parent_order_id = o.id
-        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE u.company_id = ? AND u.role LIKE '%telesale%' AND u.status != 'active'
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
-            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             $userFilter
     ";
@@ -171,11 +169,9 @@ try {
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN users u ON oi.creator_id = u.id
-        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
-            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale != 51)  -- NOT upsell
             AND u.company_id = ?
@@ -625,11 +621,9 @@ try {
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN users u ON oi.creator_id = u.id
-        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
-            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'

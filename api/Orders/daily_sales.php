@@ -106,11 +106,9 @@ try {
             COUNT(DISTINCT o.id) as order_count
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
-        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         $joinClause
         $whereClause
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-        AND (ob.status IS NULL OR ob.status != 'RETURNED')
         GROUP BY $groupByField, DAY(o.order_date)
         ORDER BY $groupByField, DAY(o.order_date)
     ";

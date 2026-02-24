@@ -1039,6 +1039,30 @@ export async function getOrderStats(companyId: number, month?: string, year?: st
   return res.json();
 }
 
+export async function getRevenueOrders(
+  companyId: number,
+  month: string,
+  year: string,
+  type: 'returned' | 'cancelled' | 'upsell',
+  userId?: number
+) {
+  const token = localStorage.getItem("token");
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const params = new URLSearchParams();
+  params.set("company_id", String(companyId));
+  params.set("month", month);
+  params.set("year", year);
+  params.set("type", type);
+  if (userId) params.set("user_id", String(userId));
+
+  const res = await fetch(`${apiBasePath}/Orders/revenue_orders.php?${params.toString()}`, {
+    method: "GET",
+    headers,
+  });
+  return res.json();
+}
 export async function getDailySales(
   companyId: number,
   month: string,
