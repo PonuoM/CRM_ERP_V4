@@ -90,7 +90,7 @@ try {
 
     if ($search !== '') {
         $extraFilter .= " AND (
-            o.order_number LIKE ? 
+            o.id LIKE ? 
             OR CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,'')) LIKE ?
             OR c.phone LIKE ?
             OR oi.product_name LIKE ?
@@ -144,7 +144,7 @@ try {
     $dataSql = "
         SELECT 
             o.order_date,
-            o.order_number,
+            o.id AS order_number,
             o.customer_type,
             oi.basket_key_at_sale,
             o.sales_channel,
