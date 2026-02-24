@@ -977,10 +977,12 @@ export async function saveRolePermissions(role: string, data: any) {
   });
 }
 
-export async function listActivities(customerId?: string) {
+export async function listActivities(customerId?: string, limit?: number) {
   const qs = new URLSearchParams();
   if (customerId) qs.set("customerId", customerId);
-  return apiFetch(`activities${customerId ? `?${qs}` : ""}`);
+  if (limit) qs.set("limit", String(limit));
+  const query = qs.toString();
+  return apiFetch(`activities${query ? `?${query}` : ""}`);
 }
 
 export async function listCustomerLogs(
@@ -1866,6 +1868,27 @@ export async function validateTrackingBulk(items: { orderId: string; trackingNum
   return apiFetch('validate_tracking_bulk', {
     method: 'POST',
     body: JSON.stringify({ items })
+  });
+}
+
+export async function saveTrackingLog(batchId: string, logs: {
+  order_id: string;
+  resolved_order_id?: string;
+  tracking_number: string;
+  box_number?: number;
+  action?: string;
+  status?: string;
+  message?: string;
+}[], userInfo?: { user_id?: number; username?: string; company_id?: number }) {
+  return apiFetch('Orders/save_tracking_log.php', {
+    method: 'POST',
+    body: JSON.stringify({
+      batch_id: batchId,
+      logs,
+      user_id: userInfo?.user_id,
+      username: userInfo?.username,
+      company_id: userInfo?.company_id,
+    })
   });
 }
 

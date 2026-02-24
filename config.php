@@ -1,6 +1,21 @@
 <?php
 date_default_timezone_set("Asia/Bangkok");
-ini_set('memory_limit', '256M');
+ini_set('memory_limit', '512M');
+ini_set('max_execution_time', '120');
+
+// Catch fatal errors (memory limit, timeout) that bypass try-catch
+register_shutdown_function(function () {
+  $error = error_get_last();
+  if ($error && in_array($error['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE])) {
+    file_put_contents(__DIR__ . '/fatal_error.log', date('Y-m-d H:i:s') . " FATAL: " . $error['message'] . " in " . $error['file'] . ":" . $error['line'] . " Mem: " . memory_get_peak_usage(true) . "\n", FILE_APPEND);
+    if (!headers_sent()) {
+      http_response_code(500);
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['error' => 'FATAL_ERROR', 'message' => $error['message'], 'peak_memory' => memory_get_peak_usage(true)]);
+    }
+  }
+});
+
 // Database configuration
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv("DB_HOST") ?: "localhost";

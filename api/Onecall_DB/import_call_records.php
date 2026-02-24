@@ -4,11 +4,38 @@
  * POST: รับ CSV file → สร้าง batch → INSERT logs
  * Match agent_phone: เทียบ 9 ตัวท้ายของ CallOrigination/DisplayNumber/CallTermination กับ users.phone
  * Return: { success, batchId, totalRows, matchedRows, duplicateRows, insertedRows }
+ *
+ * Memory-optimised: streams CSV row-by-row instead of loading everything into RAM.
  */
+
+// ── Ensure every possible output is JSON ──
+header('Content-Type: application/json; charset=utf-8');
+ob_start(); // capture any stray output (warnings / notices)
+
+// Increase limits for large files
+ini_set('memory_limit', '1024M');
+set_time_limit(600);
+
+// Suppress raw error output – we catch everything via the shutdown handler
 error_reporting(E_ALL);
-ini_set("display_errors", 1);
-ini_set('memory_limit', '512M');
-set_time_limit(300);
+ini_set('display_errors', 0);
+
+// Register a shutdown function so even fatal errors return JSON
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE])) {
+        // Clean any partial output
+        if (ob_get_level())
+            ob_end_clean();
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Fatal error: ' . $err['message'],
+            'file' => basename($err['file']),
+            'line' => $err['line'],
+        ], JSON_UNESCAPED_UNICODE);
+    }
+});
 
 require_once __DIR__ . "/../config.php";
 cors();
@@ -50,7 +77,6 @@ function parseDateDMY($dateStr)
     $dateStr = trim($dateStr);
     if (empty($dateStr))
         return null;
-    // Try DD/MM/YYYY
     $parts = explode('/', $dateStr);
     if (count($parts) === 3) {
         $d = str_pad($parts[0], 2, '0', STR_PAD_LEFT);
@@ -58,16 +84,16 @@ function parseDateDMY($dateStr)
         $y = $parts[2];
         return "$y-$m-$d";
     }
-    return $dateStr; // return as-is if not parseable
+    return $dateStr;
 }
 
 // ── Pre-load user phones for matching (scoped by company_id) ──
 $userPhones = [];
 if ($companyId) {
-    $stmt = $pdo->prepare("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != '' AND company_id = ?");
+    $stmt = $pdo->prepare("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != '' AND company_id = ? AND role IN ('Telesale', 'Supervisor Telesale')");
     $stmt->execute([$companyId]);
 } else {
-    $stmt = $pdo->query("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != ''");
+    $stmt = $pdo->query("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != '' AND role IN ('Telesale', 'Supervisor Telesale')");
 }
 while ($row = $stmt->fetch()) {
     $normalized = last9digits($row['phone']);
@@ -75,6 +101,7 @@ while ($row = $stmt->fetch()) {
         $userPhones[$normalized] = $row;
     }
 }
+unset($stmt); // free statement memory
 
 // ── Open CSV ──
 $handle = fopen($filePath, 'r');
@@ -107,19 +134,28 @@ foreach ($requiredCols as $col) {
     }
 }
 
-// Read all data rows
-$rows = [];
-while (($row = fgetcsv($handle)) !== false) {
-    $rows[] = $row;
+// ── Count total rows first (quick pass) ──
+$totalRows = 0;
+$startPos = ftell($handle); // remember position after header
+while (fgetcsv($handle) !== false) {
+    $totalRows++;
 }
-fclose($handle);
+fseek($handle, $startPos); // rewind to after header
 
-$totalRows = count($rows);
 if ($totalRows === 0) {
+    fclose($handle);
     json_response(["success" => true, "batchId" => null, "totalRows" => 0, "insertedRows" => 0, "matchedRows" => 0, "duplicateRows" => 0]);
 }
 
-// ── Create batch ──
+// Helper to get column value safely
+$getCol = function ($row, $colName) use ($colMap) {
+    if (!isset($colMap[$colName]))
+        return null;
+    $idx = $colMap[$colName];
+    return isset($row[$idx]) ? trim($row[$idx]) : null;
+};
+
+// ── Create batch & stream-insert rows ──
 $pdo->beginTransaction();
 try {
     $batchStmt = $pdo->prepare(
@@ -141,16 +177,10 @@ try {
     $insertedRows = 0;
     $matchedRows = 0;
     $duplicateRows = 0;
+    $processedRows = 0;
 
-    // Helper to get column value safely
-    $getCol = function ($row, $colName) use ($colMap) {
-        if (!isset($colMap[$colName]))
-            return null;
-        $idx = $colMap[$colName];
-        return isset($row[$idx]) ? trim($row[$idx]) : null;
-    };
-
-    foreach ($rows as $row) {
+    // ── Stream CSV row-by-row (no $rows array in memory) ──
+    while (($row = fgetcsv($handle)) !== false) {
         $recordId = $getCol($row, 'ID');
         if (empty($recordId))
             continue;
@@ -182,7 +212,7 @@ try {
                 continue;
             $norm = last9digits($candidate);
             if (strlen($norm) >= 9 && isset($userPhones[$norm])) {
-                $agentPhone = $candidate; // store original value
+                $agentPhone = $candidate;
                 $matchedUserId = $userPhones[$norm]['id'];
                 break;
             }
@@ -221,7 +251,11 @@ try {
         } else {
             $duplicateRows++;
         }
+
+        $processedRows++;
     }
+
+    fclose($handle);
 
     // Update batch with final counts
     $updateBatch = $pdo->prepare(
@@ -230,6 +264,10 @@ try {
     $updateBatch->execute([$insertedRows + $duplicateRows, $matchedRows, $duplicateRows, $batchId]);
 
     $pdo->commit();
+
+    // Discard any stray output captured by ob_start
+    if (ob_get_level())
+        ob_end_clean();
 
     json_response([
         "success" => true,
@@ -243,7 +281,13 @@ try {
 } catch (Exception $e) {
     if ($pdo->inTransaction())
         $pdo->rollBack();
+    if (is_resource($handle))
+        fclose($handle);
     error_log("Call import failed: " . $e->getMessage());
+
+    if (ob_get_level())
+        ob_end_clean();
+
     json_response(["success" => false, "error" => "Import failed: " . $e->getMessage()], 500);
 }
 ?>

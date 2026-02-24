@@ -1550,6 +1550,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $t_list_start = microtime(true);
                     log_perf("handle_customers:list:START");
                     require_once __DIR__ . '/customer/distribution_helper.php';
+                    error_log("[customers:list] START memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                     $q = $_GET['q'] ?? '';
                     $companyId = $_GET['companyId'] ?? null;
                     $bucket = $_REQUEST['bucket'] ?? $_GET['bucket'] ?? null;
@@ -1937,10 +1938,18 @@ function handle_customers(PDO $pdo, ?string $id): void
                                 date_assigned DESC
                             ";
                         }
-                        $sql = "SELECT *, $customerIdCol as id FROM customers WHERE $whereSql ORDER BY $orderBy";
+                        // Use specific columns instead of SELECT * to reduce memory
+                        $neededCols = "$customerIdCol as id, customer_id, customer_ref_id, first_name, last_name, phone, province, 
+                            date_assigned, birth_date, assigned_to, company_id, lifecycle_status, behavioral_status,
+                            total_purchases, order_count, first_order_date, last_order_date, current_basket_key,
+                            ownership_expires, date_registered, grade, facebook_name, line_id, updated_at";
+                        $sql = "SELECT $neededCols FROM customers WHERE $whereSql ORDER BY $orderBy";
 
                         if ($page) {
                             $sql .= " LIMIT $limit OFFSET $offset";
+                        } elseif ($limit > 0) {
+                            // Apply LIMIT even without page param to prevent unbounded queries
+                            $sql .= " LIMIT $limit";
                         }
 
                         try {
@@ -1948,6 +1957,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $t_query_start = microtime(true);
                             $stmt->execute($params);
                             $customers = $stmt->fetchAll();
+                            error_log("[customers:list] MAIN_QUERY done rows=" . count($customers) . " memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                             log_perf("handle_customers:list:EXECUTE_QUERY source=$source filter=$filterType count=" . count($customers), $t_query_start);
 
                             error_log("listCustomers: Fetched " . count($customers) . " rows for company " . $companyId);
@@ -1987,6 +1997,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                             }
                         }
                         log_perf("handle_customers:list:UPSELL_BATCH", $t_upsell_start);
+                        error_log("[customers:list] UPSELL_BATCH done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
 
                         // BATCH FETCH: Last call notes (most recent per customer)
                         $t_notes_start = microtime(true);
@@ -2010,6 +2021,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                             }
                         }
                         log_perf("handle_customers:list:NOTES_BATCH", $t_notes_start);
+                        error_log("[customers:list] NOTES_BATCH done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
 
                         // BATCH FETCH: Order stats (order_count, total_purchases, first_order_date, last_order_date)
                         $t_order_stats_start = microtime(true);
@@ -2038,8 +2050,9 @@ function handle_customers(PDO $pdo, ?string $id): void
                             }
                         }
                         log_perf("handle_customers:list:ORDER_STATS_BATCH", $t_order_stats_start);
+                        error_log("[customers:list] ORDER_STATS_BATCH done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
 
-                        // Apply batch results to customers
+                        // Apply batch results to customers and free maps
                         foreach ($customers as &$customer) {
                             $cid = strval($customer['customer_id']); // Cast to string for lookup
                             $customer['is_upsell_eligible'] = isset($upsellMap[$cid]) ? 1 : 0;
@@ -2050,6 +2063,9 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $customer['first_order_date'] = $orderStatsMap[$cid]['first_order_date'] ?? ($customer['first_order_date'] ?? null);
                             $customer['last_order_date'] = $orderStatsMap[$cid]['last_order_date'] ?? ($customer['last_order_date'] ?? null);
                         }
+                        unset($customer);
+                        // Free batch maps immediately to reclaim memory
+                        unset($upsellMap, $notesMap, $orderStatsMap);
 
                         // Optimized: Fetch tags for all customers in one query
                         $t_tags_start = microtime(true);
@@ -2065,30 +2081,45 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $allTags = $tagsStmt->fetchAll(PDO::FETCH_GROUP | PDO::FETCH_ASSOC); // Group by customer_id
 
                             foreach ($customers as &$customer) {
-                                // customer_id might be string or int depending on driver, mapped matches fetchAll group key
                                 $cid = $customer['customer_id'];
                                 $customer['tags'] = $allTags[$cid] ?? [];
                             }
+                            unset($allTags); // Free tags map
                         } else {
-                            // No customers found
                             foreach ($customers as &$customer) {
                                 $customer['tags'] = [];
                             }
                         }
+                        unset($customer);
                         log_perf("handle_customers:list:TAGS_BATCH", $t_tags_start);
+                        error_log("[customers:list] TAGS_BATCH done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                         log_perf("handle_customers:list:TOTAL", $t_list_start);
 
                         // Attach next appointment data for each customer
                         attach_next_appointments_to_customers($pdo, $customers);
+                        error_log("[customers:list] APPOINTMENTS done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                         // Attach call status (by current owner)
                         attach_call_status_to_customers($pdo, $customers);
+                        error_log("[customers:list] CALL_STATUS done memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
 
+                        // Stream JSON response to avoid memory doubling from json_encode on large array
+                        $serverTs = round(microtime(true) * 1000);
+                        http_response_code(200);
+                        header('Content-Type: application/json; charset=utf-8');
                         if ($page) {
-                            json_response(['total' => $total, 'data' => $customers, 'server_timestamp' => round(microtime(true) * 1000)]);
+                            echo '{"total":' . $total . ',"data":[';
                         } else {
-                            // Wrap list response to include server_timestamp for time sync
-                            json_response(['data' => $customers, 'server_timestamp' => round(microtime(true) * 1000)]);
+                            echo '{"data":[';
                         }
+                        $first = true;
+                        foreach ($customers as $c) {
+                            if (!$first)
+                                echo ',';
+                            echo json_encode($c, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                            $first = false;
+                        }
+                        echo '],"server_timestamp":' . $serverTs . '}';
+                        exit();
 
                     }
                 }
@@ -3257,23 +3288,15 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $manageTab = $_GET['tab'] ?? null;
                 $returnMode = $_GET['returnMode'] ?? null;
 
-                $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
-                $ordersColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
-                $hasShippingProvider = in_array('shipping_provider', $ordersColumns);
-
+                // Performance: shipping_provider column is known to exist, skip INFORMATION_SCHEMA query
                 $selectCols = 'o.id, o.customer_id, o.customer_type, o.company_id, o.creator_id, o.order_date, o.delivery_date, 
-                               o.street, o.subdistrict, o.district, o.province, o.postal_code, o.recipient_first_name, o.recipient_last_name';
-                if ($hasShippingProvider) {
-                    $selectCols .= ', o.shipping_provider';
-                }
+                               o.street, o.subdistrict, o.district, o.province, o.postal_code, o.recipient_first_name, o.recipient_last_name,
+                               o.shipping_provider';
 
                 $selectCols .= ', o.shipping_cost, o.bill_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
-                               GROUP_CONCAT(DISTINCT gss.delivery_status ORDER BY gss.id SEPARATOR ",") AS airport_delivery_status,
-                               MAX(gss.delivery_date) AS airport_delivery_date,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
-                               MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action,
                                c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone, c.phone as phone,
                                c.street as customer_street, c.subdistrict as customer_subdistrict, c.district as customer_district,
                                c.province as customer_province, c.postal_code as customer_postal_code';
@@ -3281,21 +3304,13 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $sql = "SELECT $selectCols
                         FROM orders o
                         LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id
-                        LEFT JOIN google_sheet_shipping gss ON gss.order_number = t.tracking_number
-                        LEFT JOIN statement_reconcile_logs srl ON (
-                            srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
-                            OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
-                        )
                         LEFT JOIN customers c ON o.customer_id = c.customer_id";
 
                 $params = [];
                 $whereConditions = [];
 
-                // Filter out sub orders (orders with -1, -2, -3, etc. suffix)
-                // Sub orders have pattern: mainOrderId-number (e.g., 251118-00001admin19z-1)
-                // We exclude orders where id matches pattern: ends with - followed by digits
-                // Use both REGEXP and LIKE for better compatibility
-                $whereConditions[] = "o.id NOT REGEXP '^.+-[0-9]+$'";
+                // Filter out sub orders — use simple LIKE instead of REGEXP for better index use
+                $whereConditions[] = "o.id NOT LIKE '%-1' AND o.id NOT LIKE '%-2' AND o.id NOT LIKE '%-3' AND o.id NOT LIKE '%-4' AND o.id NOT LIKE '%-5' AND o.id NOT LIKE '%-6' AND o.id NOT LIKE '%-7' AND o.id NOT LIKE '%-8' AND o.id NOT LIKE '%-9' AND o.id NOT LIKE '%-10'";
 
                 if ($companyId) {
                     $whereConditions[] = 'o.company_id = ?';
@@ -3573,10 +3588,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $sql .= ' WHERE ' . implode(' AND ', $whereConditions);
                 }
 
-                // Get total count before pagination
-                $countSql = "SELECT COUNT(DISTINCT o.id) FROM orders o";
+                // Get total count before pagination — lightweight query, minimal JOINs
+                $countSql = "SELECT COUNT(*) FROM orders o";
 
-                // Add conditional joins for filters
+                // Add conditional joins only when filter requires them
                 if ($trackingNumber) {
                     $countSql .= " LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id";
                 }
@@ -3584,13 +3599,6 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $countSql .= " LEFT JOIN customers c ON o.customer_id = c.customer_id";
                 }
 
-                // Add conditional joins for Tabs that rely on specific tables in their WHERE clauses
-                if ($manageTab === 'completed') {
-                    $countSql .= " LEFT JOIN statement_reconcile_logs srl ON (
-                        srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
-                        OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
-                     )";
-                }
                 if (!empty($whereConditions)) {
                     $countSql .= ' WHERE ' . implode(' AND ', $whereConditions);
                 }
@@ -3621,6 +3629,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $itemsMap = [];
                 $slipsMap = [];
                 $trackingMap = [];
+                $reconcileMap = [];
+                $airportMap = [];
 
                 if (!empty($orderIds)) {
                     // Fetch items directly using parent_order_id to get ALL items regardless of box count
@@ -3785,15 +3795,76 @@ function handle_orders(PDO $pdo, ?string $id): void
                             'return_note' => $boxRow['return_note'] ?? null,
                         ];
                     }
+
+                    // Batch fetch reconcile_action for paginated orders only
+                    $reconcileMap = [];
+                    try {
+                        $srlSql = "SELECT 
+                                    COALESCE(srl.confirmed_order_id, srl.order_id) as matched_order_id,
+                                    MAX(CASE WHEN srl.confirmed_action = 'Confirmed' THEN 'Confirmed' ELSE NULL END) as reconcile_action
+                                   FROM statement_reconcile_logs srl
+                                   WHERE srl.order_id IN ($parentPlaceholders)
+                                      OR srl.confirmed_order_id IN ($parentPlaceholders)
+                                   GROUP BY matched_order_id";
+                        $srlStmt = $pdo->prepare($srlSql);
+                        $srlStmt->execute(array_merge($orderIds, $orderIds));
+                        foreach ($srlStmt->fetchAll() as $srlRow) {
+                            $reconcileMap[$srlRow['matched_order_id']] = $srlRow['reconcile_action'];
+                        }
+                    } catch (Throwable $e) {
+                        error_log('Reconcile batch query failed: ' . $e->getMessage());
+                    }
+
+                    // Batch fetch airport delivery status for paginated orders only
+                    $airportMap = [];
+                    try {
+                        $trackingNums = [];
+                        foreach ($trackingRows as $tr) {
+                            if (!empty($tr['tracking_number'])) {
+                                $trackingNums[] = $tr['tracking_number'];
+                            }
+                        }
+                        if (!empty($trackingNums)) {
+                            $tnPlaceholders = implode(',', array_fill(0, count($trackingNums), '?'));
+                            $gssSql = "SELECT gss.order_number as tracking_number,
+                                              GROUP_CONCAT(DISTINCT gss.delivery_status ORDER BY gss.id SEPARATOR ',') as delivery_status,
+                                              MAX(gss.delivery_date) as delivery_date
+                                       FROM google_sheet_shipping gss
+                                       WHERE gss.order_number IN ($tnPlaceholders)
+                                       GROUP BY gss.order_number";
+                            $gssStmt = $pdo->prepare($gssSql);
+                            $gssStmt->execute($trackingNums);
+                            foreach ($gssStmt->fetchAll() as $gssRow) {
+                                // Map tracking number -> order via trackingMap
+                                foreach ($trackingMap as $parentId => $trackings) {
+                                    foreach ($trackings as $t) {
+                                        if ($t['tracking_number'] === $gssRow['tracking_number']) {
+                                            if (!isset($airportMap[$parentId])) {
+                                                $airportMap[$parentId] = ['statuses' => [], 'dates' => []];
+                                            }
+                                            $airportMap[$parentId]['statuses'][] = $gssRow['delivery_status'];
+                                            $airportMap[$parentId]['dates'][] = $gssRow['delivery_date'];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Throwable $e) {
+                        error_log('Airport delivery batch query failed: ' . $e->getMessage());
+                    }
                 }
 
-                // Add items, slips, tracking details, and boxes to each order
+                // Add items, slips, tracking details, boxes, reconcile, and airport data to each order
                 foreach ($orders as &$order) {
                     $order['items'] = $itemsMap[$order['id']] ?? [];
                     $order['slips'] = $slipsMap[$order['id']] ?? [];
                     $order['tracking_details'] = $trackingMap[$order['id']] ?? [];
                     $order['trackingDetails'] = $order['tracking_details'];
                     $order['boxes'] = $boxesMap[$order['id']] ?? [];
+                    $order['reconcile_action'] = $reconcileMap[$order['id']] ?? null;
+                    $airportData = $airportMap[$order['id']] ?? null;
+                    $order['airport_delivery_status'] = $airportData ? implode(',', $airportData['statuses']) : null;
+                    $order['airport_delivery_date'] = $airportData ? max($airportData['dates']) : null;
                 }
 
                 // Return paginated response
@@ -8598,8 +8669,27 @@ function handle_customer_tags(PDO $pdo): void
                     $stmt->execute([$customerId]);
                     json_response($stmt->fetchAll());
                 } else {
-                    $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id ORDER BY ct.customer_id, t.name');
-                    json_response($stmt->fetchAll());
+                    // Stream JSON output row-by-row to avoid OOM on large datasets
+                    $companyId = $_GET['companyId'] ?? null;
+                    if ($companyId) {
+                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id=ct.customer_id WHERE c.company_id=? ORDER BY ct.customer_id, t.name');
+                        $stmt->execute([$companyId]);
+                    } else {
+                        $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id ORDER BY ct.customer_id, t.name');
+                    }
+                    // Stream output to avoid loading everything into memory
+                    http_response_code(200);
+                    header('Content-Type: application/json; charset=utf-8');
+                    echo '[';
+                    $first = true;
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        if (!$first)
+                            echo ',';
+                        echo json_encode($row, JSON_UNESCAPED_UNICODE);
+                        $first = false;
+                    }
+                    echo ']';
+                    exit();
                 }
             } catch (Throwable $e) {
                 json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
@@ -8680,6 +8770,10 @@ function handle_activities(PDO $pdo, ?string $id): void
                     }
                 }
                 $sql .= ' ORDER BY a.timestamp DESC';
+                $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 0;
+                if ($limit > 0) {
+                    $sql .= " LIMIT $limit";
+                }
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 json_response($stmt->fetchAll());

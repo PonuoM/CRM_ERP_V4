@@ -86,7 +86,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const [matchResults, setMatchResults] = useState<MatchResult[]>([]);
   // Tabs state
   const [activeTab, setActiveTab] = useState<
-    "pending" | "returning" | "returned" | "good" | "damaged" | "lost" | "delivered"
+    "pending" | "returning" | "good" | "damaged" | "lost" | "delivered"
   >("returning");
   const [verifiedOrders, setVerifiedOrders] = useState<VerifiedOrder[]>([]);
 
@@ -103,7 +103,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   // Import Status Selection
   const [importTargetStatus, setImportTargetStatus] = useState<
-    "returning" | "returned"
+    "returning"
   >("returning");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [isImportStatusModalOpen, setIsImportStatusModalOpen] = useState(false);
@@ -119,7 +119,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     trackingNumber: string;
 
     subOrderId: string | null;
-    status: "pending" | "returned" | "returning" | "delivered" | "delivering" | "other" | "lost" | "good" | "damaged";
+    status: "pending" | "returning" | "delivered" | "delivering" | "other" | "lost" | "good" | "damaged";
     collectedAmount?: number;
     note: string;
     items: any[];
@@ -149,7 +149,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   // State for Bulk Import Modal
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
-  const [bulkImportMode, setBulkImportMode] = useState<"returning" | "returned" | "good" | "damaged" | "lost">("returning");
+  const [bulkImportMode, setBulkImportMode] = useState<"returning" | "good" | "damaged" | "lost">("returning");
 
   // Pagination State
   const [pagination, setPagination] = useState({
@@ -451,7 +451,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
     if (parsed.length > 0) {
       setImportedData(parsed);
-      performMatching(parsed, orders, verifiedOrders, importTargetStatus || "returned");
+      performMatching(parsed, orders, verifiedOrders, importTargetStatus || "returning");
       setMode("verify");
       setIsPasteModalOpen(false);
       setPasteContent("");
@@ -488,7 +488,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       // Prepare payload for all actioned items
       const payload = actionRows.map((r) => ({
         sub_order_id: r.subOrderId || managingOrder?.id || "", // Fallback to main ID if sub is missing
-        status: r.status || "returned", // Use row status directly (Manual Manage Mode)
+        status: r.status || "returning", // Use row status directly (Manual Manage Mode)
         collected_amount: r.collectedAmount || 0,
         note: r.note || "",
         tracking_number: r.trackingNumber // Essential for new flow
@@ -573,16 +573,16 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // If no status selected, default to 'returned' or handle error (Should not happen with new flow)
-    const targetStatus = importTargetStatus || "returned";
+    // If no status selected, default to 'returning'
+    const targetStatus = importTargetStatus || "returning";
 
-    processImportFile(file, targetStatus as "returning" | "returned");
+    processImportFile(file, targetStatus as "returning");
 
     // Reset input
     e.target.value = "";
   };
 
-  const processImportFile = (file: File, status: "returning" | "returned") => {
+  const processImportFile = (file: File, status: "returning") => {
     // setImportTargetStatus(status); // Already set before file select
     const reader = new FileReader();
     reader.onload = async (evt) => {
@@ -688,7 +688,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     imported: ImportRow[],
     systemOrders: Order[],
     verifiedList: VerifiedOrder[],
-    targetStatus: "returning" | "returned"
+    targetStatus: "returning"
   ) => {
     const results: MatchResult[] = [];
     const matchedOrderIds = new Set<string>();
@@ -754,32 +754,6 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           });
         }
 
-      } else if (targetStatus === 'returned') {
-        // Rule: Must EXIST in Returns AND Status == 'returning'
-        if (!existingReturn) {
-          results.push({
-            importRow: row,
-            status: "unmatched_file", // "Not found in Returns"
-            diff: 0
-          });
-        } else {
-          if (existingReturn.status === 'returning') {
-            results.push({
-              importRow: row,
-              matchedSubOrderId: existingReturn.sub_order_id,
-              status: "matched", // Ready to Complete
-              diff: 0
-            });
-          } else {
-            // Status mismatch (e.g. already returned)
-            results.push({
-              importRow: row,
-              matchedSubOrderId: existingReturn.sub_order_id,
-              status: "already_verified", // "Wrong Status"
-              diff: 0
-            });
-          }
-        }
       }
     });
 
@@ -891,7 +865,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         r.matchedSubOrderId ||
         (r.matchedOrder ? r.matchedOrder.id : r.importRow.orderNumber),
       return_amount: 0,
-      status: importTargetStatus || "returned", // Use selected import status
+      status: importTargetStatus || "returning", // Use selected import status
       note: r.importRow.note || "",
     }));
 
@@ -1172,19 +1146,17 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${item.status.toLowerCase() === 'returning' ? 'bg-orange-100 text-orange-800' :
-                        item.status.toLowerCase() === 'returned' ? 'bg-blue-100 text-blue-800' :
-                          item.status.toLowerCase() === 'good' ? 'bg-green-100 text-green-800' :
-                            item.status.toLowerCase() === 'damaged' ? 'bg-red-100 text-red-800' :
-                              item.status.toLowerCase() === 'lost' ? 'bg-gray-100 text-gray-800' :
-                                'bg-gray-100 text-gray-800'
+                        item.status.toLowerCase() === 'good' ? 'bg-green-100 text-green-800' :
+                          item.status.toLowerCase() === 'damaged' ? 'bg-red-100 text-red-800' :
+                            item.status.toLowerCase() === 'lost' ? 'bg-gray-100 text-gray-800' :
+                              'bg-gray-100 text-gray-800'
                         }`}>
                         {(() => {
                           const s = item.status.toLowerCase();
                           switch (s) {
                             case 'returning': return 'กำลังตีกลับ';
-                            case 'returned': return 'เข้าคลัง';
-                            case 'good': return 'สภาพดี';
-                            case 'damaged': return 'ชำรุด';
+                            case 'good': return 'เข้าคลัง (สภาพดี)';
+                            case 'damaged': return 'เข้าคลัง (เสียหาย)';
                             case 'lost': return 'สูญหาย';
                             case 'pending': return 'รอการดำเนินการ';
                             default: return item.status;
@@ -1289,9 +1261,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   }
                   const statusMap: Record<string, string> = {
                     returning: 'กำลังตีกลับ',
-                    returned: 'เข้าคลัง',
-                    good: 'สภาพดี',
-                    damaged: 'ชำรุด',
+                    good: 'เข้าคลัง (สภาพดี)',
+                    damaged: 'เข้าคลัง (เสียหาย)',
                     lost: 'สูญหาย',
                     pending: 'รอการดำเนินการ',
                     delivered: 'ส่งสำเร็จ',
@@ -1356,7 +1327,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             <Download size={16} />
             {exporting ? 'กำลัง Export...' : 'Export CSV'}
           </button>
-          <span className="text-xs text-gray-400">(เฉพาะกล่องที่มีสถานะ RETURNED)</span>
+          <span className="text-xs text-gray-400">(ข้อมูลตีกลับทั้งหมด)</span>
         </div>
       </div>
 
@@ -1367,9 +1338,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             {[
               { id: "pending", label: "รอการดำเนินการ", color: "gray" },
               { id: "returning", label: "กำลังตีกลับ", color: "orange" },
-              { id: "returned", label: "เข้าคลัง", color: "blue" },
-              { id: "good", label: "สภาพดี", color: "green" },
-              { id: "damaged", label: "ชำรุด", color: "red" },
+              { id: "good", label: "เข้าคลัง (สภาพดี)", color: "green" },
+              { id: "damaged", label: "เข้าคลัง (เสียหาย)", color: "red" },
               { id: "lost", label: "สูญหาย", color: "gray" },
             ].map((tab) => (
               <button
@@ -1469,16 +1439,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 >
                   <RefreshCw size={18} /> Import ตีกลับ (Returning)
                 </button>
-                <button
-                  onClick={() => {
-                    setBulkImportMode("returned");
-                    setIsImportStatusModalOpen(false);
-                    setIsBulkImportOpen(true);
-                  }}
-                  className="w-full py-3 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 font-medium flex items-center justify-center gap-2"
-                >
-                  <CheckCircle size={18} /> Import เข้าคลังแล้ว (Returned)
-                </button>
+
                 <button
                   onClick={() => {
                     setBulkImportMode("good");
@@ -1487,7 +1448,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   }}
                   className="w-full py-3 bg-emerald-100 text-emerald-800 rounded-lg hover:bg-emerald-200 font-medium flex items-center justify-center gap-2"
                 >
-                  <ThumbsUp size={18} /> Import สภาพดี (Good)
+                  <ThumbsUp size={18} /> Import เข้าคลัง (สภาพดี)
                 </button>
                 <button
                   onClick={() => {
@@ -1497,7 +1458,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   }}
                   className="w-full py-3 bg-rose-100 text-rose-800 rounded-lg hover:bg-rose-200 font-medium flex items-center justify-center gap-2"
                 >
-                  <AlertTriangle size={18} /> Import เสียหาย (Damaged)
+                  <AlertTriangle size={18} /> Import เข้าคลัง (เสียหาย)
                 </button>
                 <button
                   onClick={() => {
@@ -1624,27 +1585,25 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   {manageRows.map((row, idx) => {
                     // Check if the ORDER itself has order_status = 'Returned'
                     const orderStatus = (managingOrder as any)?.orderStatus || (managingOrder as any)?.order_status || '';
-                    const allBoxesReturned = orderStatus.toLowerCase() === 'returned';
+                    const isOrderReturned = orderStatus.toLowerCase() === 'returned';
                     // Manual override: No rules. Always allow changing status.
                     return (
                       <tr
                         key={idx}
                         className={
-                          row.status === "returned"
-                            ? "bg-red-50"
-                            : row.status === "delivered"
-                              ? "bg-green-50"
-                              : row.status === "returning"
-                                ? "bg-orange-50"
-                                : row.status === "delivering"
-                                  ? "bg-blue-50"
-                                  : row.status === "good"
-                                    ? "bg-green-100"
-                                    : row.status === "damaged"
-                                      ? "bg-red-100"
-                                      : row.status === "lost"
-                                        ? "bg-gray-200"
-                                        : ""
+                          row.status === "delivered"
+                            ? "bg-green-50"
+                            : row.status === "returning"
+                              ? "bg-orange-50"
+                              : row.status === "delivering"
+                                ? "bg-blue-50"
+                                : row.status === "good"
+                                  ? "bg-green-100"
+                                  : row.status === "damaged"
+                                    ? "bg-red-100"
+                                    : row.status === "lost"
+                                      ? "bg-gray-200"
+                                      : ""
                         }
                       >
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">
@@ -1679,14 +1638,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <div className="flex flex-col gap-2">
-                            <label className={`flex items-center gap-2 ${allBoxesReturned ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-                              title={allBoxesReturned ? 'ทุกกล่องตีกลับครบแล้ว กรุณาใช้ปุ่ม "ยกเลิกตีกลับ"' : ''}
+                            <label className={`flex items-center gap-2 ${isOrderReturned ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                              title={isOrderReturned ? 'ทุกกล่องตีกลับครบแล้ว กรุณาใช้ปุ่ม "ยกเลิกตีกลับ"' : ''}
                             >
                               <input
                                 type="radio"
                                 name={"status-" + idx}
                                 checked={row.status === "pending"}
-                                disabled={allBoxesReturned}
+                                disabled={isOrderReturned}
                                 onChange={() => {
                                   const newRows = [...manageRows];
                                   newRows[idx].status = "pending";
@@ -1697,7 +1656,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               <span className="text-gray-600">
                                 รอดำเนินการ
                               </span>
-                              {allBoxesReturned && (
+                              {isOrderReturned && (
                                 <span className="relative group ml-1">
                                   <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 text-[10px] font-bold cursor-help">?</span>
                                   <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
@@ -1722,61 +1681,39 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               <span className="text-orange-700">กำลังตีกลับ</span>
                             </label>
 
-                            {/* Returned Status Group */}
-                            <div className="flex flex-col">
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name={"status-" + idx}
-                                  checked={row.status === "returned"}
-                                  onChange={() => {
-                                    const newRows = [...manageRows];
-                                    newRows[idx].status = "returned";
-                                    setManageRows(newRows);
-                                  }}
-                                  className="text-red-600 focus:ring-red-500"
-                                />
-                                <span className="text-red-700">
-                                  รับของคืนแล้ว (เข้าคลัง)
-                                </span>
-                              </label>
-
-                              {/* Sub-options for Returned */}
-                              <div className="ml-6 flex flex-col gap-1 mt-1 border-l-2 border-gray-200 pl-2">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="radio"
-                                    name={"status-" + idx}
-                                    checked={row.status === "good"}
-                                    onChange={() => {
-                                      const newRows = [...manageRows];
-                                      newRows[idx].status = "good";
-                                      setManageRows(newRows);
-                                    }}
-                                    className="text-emerald-600 focus:ring-emerald-500"
-                                  />
-                                  <span className="text-emerald-700 text-sm">
-                                    สภาพดี (Good)
-                                  </span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="radio"
-                                    name={"status-" + idx}
-                                    checked={row.status === "damaged"}
-                                    onChange={() => {
-                                      const newRows = [...manageRows];
-                                      newRows[idx].status = "damaged";
-                                      setManageRows(newRows);
-                                    }}
-                                    className="text-rose-600 focus:ring-rose-500"
-                                  />
-                                  <span className="text-rose-700 text-sm">
-                                    เสียหาย (Damaged)
-                                  </span>
-                                </label>
-                              </div>
-                            </div>
+                            {/* Good / Damaged / Lost Status Options */}
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={"status-" + idx}
+                                checked={row.status === "good"}
+                                onChange={() => {
+                                  const newRows = [...manageRows];
+                                  newRows[idx].status = "good";
+                                  setManageRows(newRows);
+                                }}
+                                className="text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <span className="text-emerald-700">
+                                เข้าคลัง - สภาพดี (Good)
+                              </span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={"status-" + idx}
+                                checked={row.status === "damaged"}
+                                onChange={() => {
+                                  const newRows = [...manageRows];
+                                  newRows[idx].status = "damaged";
+                                  setManageRows(newRows);
+                                }}
+                                className="text-rose-600 focus:ring-rose-500"
+                              />
+                              <span className="text-rose-700">
+                                เข้าคลัง - เสียหาย (Damaged)
+                              </span>
+                            </label>
 
                             {/* Lost Status */}
                             <label className="flex items-center gap-2 cursor-pointer">
@@ -1798,14 +1735,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
 
 
-                            <label className={`flex items-center gap-2 ${allBoxesReturned ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-                              title={allBoxesReturned ? 'ทุกกล่องตีกลับครบแล้ว กรุณาใช้ปุ่ม "ยกเลิกตีกลับ"' : ''}
+                            <label className={`flex items-center gap-2 ${isOrderReturned ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                              title={isOrderReturned ? 'ทุกกล่องตีกลับครบแล้ว กรุณาใช้ปุ่ม "ยกเลิกตีกลับ"' : ''}
                             >
                               <input
                                 type="radio"
                                 name={"status-" + idx}
                                 checked={row.status === "delivered"}
-                                disabled={allBoxesReturned}
+                                disabled={isOrderReturned}
                                 onChange={() => {
                                   const newRows = [...manageRows];
                                   newRows[idx].status = "delivered";
@@ -1816,7 +1753,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               <span className="text-green-700">
                                 ส่งสำเร็จ (Delivered)
                               </span>
-                              {allBoxesReturned && (
+                              {isOrderReturned && (
                                 <span className="relative group ml-1">
                                   <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 text-[10px] font-bold cursor-help">?</span>
                                   <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">

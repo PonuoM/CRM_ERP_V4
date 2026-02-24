@@ -884,7 +884,8 @@ const App: React.FC = () => {
           listUsers(sessionUser?.company_id),
           shouldSkipCustomers ? Promise.resolve([]) : listCustomers({
             companyId: sessionUser?.company_id,
-            pageSize: 10000,
+            page: 1,
+            pageSize: 500,
             assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
           }),
           // Orders are now fetched only in TelesaleOrdersPage
@@ -898,14 +899,15 @@ const App: React.FC = () => {
           listPlatforms(sessionUser?.company_id, true, sessionUser?.role),
           listCallHistory({
             companyId: sessionUser?.company_id,
-            pageSize: 10000,
+            page: 1,
+            pageSize: 500,
             assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
           }),
           // Appointments are now primarily loaded from customer.next_appointment_* fields
           // This call is just a fallback for customers not yet loaded - reduced pageSize
           listAppointments({ companyId: sessionUser?.company_id, pageSize: 100, excludeStatus: 'เสร็จสิ้น' }),
           shouldSkipCustomers ? Promise.resolve([]) : listCustomerTags(),
-          listActivities(),
+          listActivities(undefined, 500),
           listTags({ type: "SYSTEM" }),
           apiFetch("companies"),
           listWarehouses(sessionUser?.company_id),
@@ -1501,7 +1503,8 @@ const App: React.FC = () => {
             listCustomerTags(),
             listCustomers({
               companyId: sessionUser.company_id,
-              pageSize: 10000, // Keep consistent with initial load to avoid missing customers
+              page: 1,
+              pageSize: 500,
               assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
             }),
           ]);

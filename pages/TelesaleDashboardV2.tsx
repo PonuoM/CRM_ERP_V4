@@ -707,11 +707,25 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         const fetchCustomers = async () => {
             try {
                 console.log('[DashboardV2] Fetching customers from API...');
-                const response = await listCustomers({
-                    companyId: user.companyId,
-                    assignedTo: user.id,
-                    pageSize: 10000
-                });
+                // Fetch in pages to avoid server OOM (production PHP memory limit ~20MB)
+                const PAGE_SIZE = 500;
+                let allCustomers: any[] = [];
+                let currentPage = 1;
+                let hasMore = true;
+                while (hasMore) {
+                    const response = await listCustomers({
+                        companyId: user.companyId,
+                        assignedTo: user.id,
+                        page: currentPage,
+                        pageSize: PAGE_SIZE
+                    });
+                    const pageData = response?.data || [];
+                    allCustomers = allCustomers.concat(pageData);
+                    const total = response?.total || 0;
+                    hasMore = allCustomers.length < total && pageData.length === PAGE_SIZE;
+                    currentPage++;
+                }
+                const response = { data: allCustomers, total: allCustomers.length };
 
                 // listCustomers returns { total, data } object
                 const customers = response?.data || [];

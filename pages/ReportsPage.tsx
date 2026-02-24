@@ -1791,7 +1791,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                   </div>
                   <div className="bg-cyan-50 p-4 rounded-lg border border-cyan-100">
                     <p className="text-sm text-gray-600">เข้าคลัง (รวม)</p>
-                    <p className="text-2xl font-bold text-cyan-600">{returnSummary.returned.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-cyan-600">{(returnSummary.good + returnSummary.damaged).toLocaleString()}</p>
                   </div>
                   <div className="bg-green-50 p-4 rounded-lg border border-green-100">
                     <p className="text-sm text-gray-600">เข้าคลัง — สภาพดี</p>
