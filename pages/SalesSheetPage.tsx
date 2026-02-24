@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { User } from "../types";
 import { apiFetch } from "../services/api";
 import { Download, ChevronLeft, ChevronRight, Search, FileSpreadsheet, Loader2, X } from "lucide-react";
@@ -122,6 +122,87 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const [summary, setSummary] = useState({ total_orders: 0, total_items: 0, total_revenue: 0 });
     const [pagination, setPagination] = useState({ page: 1, pageSize: 200, total: 0, totalPages: 0 });
 
+    // --- Drag-to-select cell selection (Google Sheets style) ---
+    const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+    const [selectionStats, setSelectionStats] = useState<{ sum: number; count: number; avg: number } | null>(null);
+    const isDragging = useRef(false);
+    const dragStartCell = useRef<string | null>(null);
+    const dragStartRow = useRef<number>(-1);
+    const dragStartCol = useRef<string>("");
+    const tableRef = useRef<HTMLTableElement>(null);
+
+    // Numeric column keys that support selection
+    const NUMERIC_COLS = useMemo(() => ['quantity', 'net_total'] as const, []);
+
+    const getCellKey = (rowIdx: number, col: string) => `${rowIdx}:${col}`;
+
+    const computeStats = useCallback((cells: Set<string>) => {
+        if (cells.size === 0) { setSelectionStats(null); return; }
+        let sum = 0;
+        let count = 0;
+        cells.forEach(key => {
+            const [rStr, col] = key.split(':');
+            const r = parseInt(rStr);
+            if (r >= 0 && r < rows.length) {
+                const row = rows[r];
+                const val = col === 'quantity' ? Number(row.quantity) : Number(row.net_total);
+                if (!isNaN(val)) { sum += val; count++; }
+            }
+        });
+        setSelectionStats(count > 0 ? { sum, count, avg: sum / count } : null);
+    }, [rows]);
+
+    // Build rectangle selection from start to current
+    const buildRectSelection = useCallback((startRow: number, startCol: string, endRow: number, endCol: string): Set<string> => {
+        const newSet = new Set<string>();
+        const colIdx = (c: string) => NUMERIC_COLS.indexOf(c as any);
+        const sCI = colIdx(startCol);
+        const eCI = colIdx(endCol);
+        if (sCI === -1 || eCI === -1) return newSet;
+        const minR = Math.min(startRow, endRow);
+        const maxR = Math.max(startRow, endRow);
+        const minC = Math.min(sCI, eCI);
+        const maxC = Math.max(sCI, eCI);
+        for (let r = minR; r <= maxR; r++) {
+            for (let c = minC; c <= maxC; c++) {
+                newSet.add(getCellKey(r, NUMERIC_COLS[c]));
+            }
+        }
+        return newSet;
+    }, [NUMERIC_COLS]);
+
+    const handleCellMouseDown = useCallback((e: React.MouseEvent, rowIdx: number, col: string) => {
+        e.preventDefault();
+        isDragging.current = true;
+        dragStartCell.current = getCellKey(rowIdx, col);
+        dragStartRow.current = rowIdx;
+        dragStartCol.current = col;
+        const newSet = new Set([getCellKey(rowIdx, col)]);
+        setSelectedCells(newSet);
+        computeStats(newSet);
+    }, [computeStats]);
+
+    const handleCellMouseEnter = useCallback((rowIdx: number, col: string) => {
+        if (!isDragging.current) return;
+        const newSet = buildRectSelection(dragStartRow.current, dragStartCol.current, rowIdx, col);
+        setSelectedCells(newSet);
+        computeStats(newSet);
+    }, [buildRectSelection, computeStats]);
+
+    useEffect(() => {
+        const handleMouseUp = () => {
+            isDragging.current = false;
+        };
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => window.removeEventListener('mouseup', handleMouseUp);
+    }, []);
+
+    // Clear selection when data changes
+    useEffect(() => {
+        setSelectedCells(new Set());
+        setSelectionStats(null);
+    }, [rows]);
+
     const yearOptions = useMemo(() => {
         const cur = new Date().getFullYear();
         return [cur, cur - 1, cur - 2];
@@ -230,8 +311,8 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                 key={idx}
                                 onClick={() => setMonth(idx + 1)}
                                 className={`px-2.5 py-1 text-xs rounded-md font-medium transition-all ${month === idx + 1
-                                        ? "bg-green-600 text-white shadow-sm"
-                                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-200"
+                                    ? "bg-green-600 text-white shadow-sm"
+                                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-200"
                                     }`}
                             >
                                 {m}
@@ -324,7 +405,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                     ) : (
                         <>
                             <div className="flex-1 overflow-auto">
-                                <table className="w-full text-[11px] border-collapse min-w-[1200px]">
+                                <table ref={tableRef} className={`w-full text-[11px] border-collapse min-w-[1200px] ${isDragging.current ? 'select-none' : ''}`}>
                                     <thead className="sticky top-0 z-10">
                                         <tr className="bg-gray-100 border-b-2 border-gray-300">
                                             <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[70px]">วันที่สั่ง</th>
@@ -374,8 +455,16 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                     {row.is_freebie ? <span className="text-orange-500 mr-0.5">🎁</span> : null}
                                                     {row.product_name || "-"}
                                                 </td>
-                                                <td className="px-2 py-1.5 text-right text-gray-700 border-r border-gray-100 font-medium">{row.quantity}</td>
-                                                <td className="px-2 py-1.5 text-right border-r border-gray-100 font-medium">
+                                                <td
+                                                    className={`px-2 py-1.5 text-right text-gray-700 border-r border-gray-100 font-medium cursor-cell ${selectedCells.has(getCellKey(idx, 'quantity')) ? 'bg-blue-100 ring-1 ring-blue-300 ring-inset' : ''}`}
+                                                    onMouseDown={e => handleCellMouseDown(e, idx, 'quantity')}
+                                                    onMouseEnter={() => handleCellMouseEnter(idx, 'quantity')}
+                                                >{row.quantity}</td>
+                                                <td
+                                                    className={`px-2 py-1.5 text-right border-r border-gray-100 font-medium cursor-cell ${selectedCells.has(getCellKey(idx, 'net_total')) ? 'bg-blue-100 ring-1 ring-blue-300 ring-inset' : ''}`}
+                                                    onMouseDown={e => handleCellMouseDown(e, idx, 'net_total')}
+                                                    onMouseEnter={() => handleCellMouseEnter(idx, 'net_total')}
+                                                >
                                                     <span className={row.is_freebie ? "text-gray-400" : "text-gray-800"}>
                                                         {row.is_freebie ? "0" : formatMoney(row.net_total)}
                                                     </span>
@@ -430,8 +519,8 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                         key={pageNum}
                                                         onClick={() => setPage(pageNum)}
                                                         className={`w-7 h-7 rounded text-xs font-medium transition-colors ${page === pageNum
-                                                                ? "bg-green-600 text-white"
-                                                                : "text-gray-600 hover:bg-gray-200"
+                                                            ? "bg-green-600 text-white"
+                                                            : "text-gray-600 hover:bg-gray-200"
                                                             }`}
                                                     >
                                                         {pageNum}
@@ -449,6 +538,28 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Selection Stats Bar (Google Sheets style) */}
+                            {selectionStats && (
+                                <div className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-blue-200 flex items-center justify-end gap-5 flex-shrink-0">
+                                    <div className="flex items-center gap-4 text-xs">
+                                        <span className="text-blue-600 font-medium">📊 เลือก {selectionStats.count} เซลล์</span>
+                                        <span className="h-3 w-px bg-blue-200" />
+                                        <span className="text-gray-600">
+                                            <span className="font-semibold text-gray-800">SUM:</span>{' '}
+                                            <span className="text-blue-700 font-bold">{formatMoney(selectionStats.sum)}</span>
+                                        </span>
+                                        <span className="text-gray-600">
+                                            <span className="font-semibold text-gray-800">AVG:</span>{' '}
+                                            <span className="text-purple-700 font-bold">{formatMoney(selectionStats.avg)}</span>
+                                        </span>
+                                        <span className="text-gray-600">
+                                            <span className="font-semibold text-gray-800">COUNT:</span>{' '}
+                                            <span className="text-indigo-700 font-bold">{selectionStats.count}</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                         </>
                     )}
                 </div>
