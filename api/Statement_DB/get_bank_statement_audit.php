@@ -347,6 +347,35 @@ try {
           break;
         }
       }
+
+      // Fallback: If no strict match found, try amount-only match (wider criteria)
+      if (!$suggestedOrderId) {
+        foreach ($candidateOrders as $ord) {
+          $totalAmount = (float) $ord['total_amount'];
+          $slipTotal = (float) $ord['slip_total'];
+          $payAmount = (float) $ord['amount_paid'];
+
+          // Match against total_amount or slip_total  
+          $amountMatch = false;
+          if (abs($totalAmount - $stmtAmount) <= 0.01) {
+            $amountMatch = true;
+          } elseif ($slipTotal > 0 && abs($slipTotal - $stmtAmount) <= 0.01) {
+            $amountMatch = true;
+          }
+
+          if ($amountMatch) {
+            // Check bank account (or no bank restriction)
+            $ordBankId = $ord['bank_account_id'] ?? $ord['slip_bank_account_id'] ?? null;
+            if (!$ordBankId || (int) $ordBankId === $bankAccountId) {
+              $suggestedOrderId = $ord['id'];
+              $suggestedOrderInfo = "Amount match: " . number_format($stmtAmount, 2);
+              $suggestedOrderAmount = $totalAmount;
+              $suggestedPaymentMethod = $ord['payment_method'];
+              break;
+            }
+          }
+        }
+      }
     }
 
     // Determine payment method from reconcile items (especially for COD)

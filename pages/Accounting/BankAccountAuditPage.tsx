@@ -60,6 +60,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     );
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(false);
+    const [recalculating, setRecalculating] = useState(false);
     // For viewing order detail
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
@@ -107,10 +108,11 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         }
     };
 
-    const fetchAuditLogs = async () => {
+    const fetchAuditLogs = async (silent = false) => {
         if (!selectedBankId) return;
 
-        setLoading(true);
+        if (!silent) setLoading(true);
+        if (silent) setRecalculating(true);
         try {
             const res = await apiFetch('Statement_DB/get_bank_statement_audit.php', {
                 method: 'POST',
@@ -125,15 +127,23 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             });
 
             if (res.ok && res.data) {
+                if (silent) {
+                    // Debug: log how many suggestions were found
+                    const withSuggestions = res.data.filter((d: any) => d.suggested_order_id);
+                    console.log(`[Silent Refresh] ${res.data.length} rows, ${withSuggestions.length} with suggestions`);
+                }
                 setLogs(res.data);
-            } else {
+            } else if (!silent) {
                 setLogs([]);
+            } else {
+                console.warn('[Silent Refresh] Failed:', res.error || 'Unknown error');
             }
         } catch (error) {
             console.error("Failed to fetch audit logs", error);
-            setLogs([]);
+            if (!silent) setLogs([]);
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
+            if (silent) setRecalculating(false);
         }
     };
 
@@ -217,7 +227,15 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             });
 
             if (res.ok) {
-                fetchAuditLogs();
+                // Optimistic update: update the specific log locally
+                setLogs(prev => prev.map(l => l.id === log.id ? {
+                    ...l,
+                    status: action as any,
+                    reconcile_id: res.reconcile_log_ids?.[log.id] || l.reconcile_id || -1,
+                    order_id: null,
+                    order_amount: null,
+                    note: note || l.note,
+                } : l));
             } else {
                 alert('บันทึกไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
@@ -249,7 +267,25 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             });
 
             if (res.ok) {
-                fetchAuditLogs();
+                // Optimistic update: mark as matched with order
+                const orderAmt = (log as any).suggested_order_amount || log.order_amount || log.statement_amount;
+                const diff = log.statement_amount - orderAmt;
+                const newStatus = (Math.abs(diff) < 0.01 ? 'Exact' : diff > 0 ? 'Over' : 'Short');
+                setLogs(prev => prev.map(l => l.id === log.id ? {
+                    ...l,
+                    order_id: suggestedOrderId,
+                    order_display: suggestedOrderId,
+                    order_amount: (l as any).suggested_order_amount || l.statement_amount,
+                    payment_method: (l as any).suggested_payment_method || l.payment_method,
+                    status: newStatus as any,
+                    diff: diff,
+                    reconcile_id: res.reconcile_log_ids?.[log.id] || l.reconcile_id || -1,
+                    // Clear suggestion fields
+                    suggested_order_id: undefined,
+                    suggested_order_amount: undefined,
+                    suggested_order_info: undefined,
+                    suggested_payment_method: undefined,
+                } : l));
             } else {
                 alert('บันทึกไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
@@ -278,12 +314,27 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                 method: 'POST',
                 body: JSON.stringify({
                     id: log.reconcile_id,
-                    company_id: currentUser.company_id || (currentUser as any).companyId
+                    company_id: currentUser.companyId || (currentUser as any).company_id
                 })
             });
 
             if (res.ok) {
-                fetchAuditLogs();
+                // Optimistic update: reset to Unmatched
+                setLogs(prev => prev.map(l => l.id === log.id ? {
+                    ...l,
+                    order_id: null,
+                    order_display: null,
+                    order_amount: null,
+                    payment_method: null,
+                    status: 'Unmatched' as any,
+                    diff: 0,
+                    reconcile_id: null,
+                    confirmed_at: null,
+                    confirmed_action: null,
+                    note: null,
+                } : l));
+                // Background refresh to get new auto-match suggestions
+                fetchAuditLogs(true);
             } else {
                 alert('ยกเลิกไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
@@ -309,8 +360,14 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             });
 
             if (res.ok) {
-                // Refresh records
-                fetchAuditLogs();
+                // Optimistic update: mark as confirmed
+                setLogs(prev => prev.map(l => l.id === log.id ? {
+                    ...l,
+                    confirmed_at: new Date().toISOString(),
+                    confirmed_action: 'Confirmed',
+                } : l));
+                // Remove from selection
+                setSelectedIds(prev => prev.filter(id => id !== log.id));
             } else {
                 alert('ยืนยันไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
@@ -386,8 +443,14 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             // Wait for all confirmations
             await Promise.all([...codPromises, ...regularPromises]);
 
+            // Optimistic update: mark all selected as confirmed
+            const confirmedAt = new Date().toISOString();
+            setLogs(prev => prev.map(l => selectedIds.includes(l.id) ? {
+                ...l,
+                confirmed_at: confirmedAt,
+                confirmed_action: 'Confirmed',
+            } : l));
             setSelectedIds([]);
-            fetchAuditLogs();
         } catch (error: any) {
             console.error(error);
             alert("เกิดข้อผิดพลาดในการบันทึก: " + (error?.message || "Unknown error"));
@@ -515,7 +578,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                 </div>
 
                                 <button
-                                    onClick={fetchAuditLogs}
+                                    onClick={() => fetchAuditLogs()}
                                     disabled={!selectedBankId || loading}
                                     className="mb-[1px] px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                                 >
@@ -630,6 +693,11 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                         แนะนำ: {(log as any).suggested_order_id}
                                                                     </span>
                                                                 </>
+                                                            ) : recalculating ? (
+                                                                <span className="text-blue-500 italic flex items-center gap-1">
+                                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                                    กำลังค้นหา...
+                                                                </span>
                                                             ) : (
                                                                 <span className="text-gray-400 italic">Unmatched</span>
                                                             )}

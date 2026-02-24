@@ -241,6 +241,7 @@ try {
   $saved = 0;
   $batchRunningTotals = [];
   $existingReconCache = [];
+  $reconcileLogIds = []; // Track reconcile log IDs per statement_id
 
   // Prepare statement fetch query
   $stmtFetchSql = $pdo->prepare("SELECT amount FROM statement_logs WHERE id = :id");
@@ -395,6 +396,7 @@ try {
         ":id" => $existingLog['id']
       ]);
       $saved++;
+      $reconcileLogIds[$statementId] = (int) $existingLog['id'];
     } else {
       try {
         // Ensure order_id is treated as string with correct collation
@@ -412,6 +414,7 @@ try {
           ":paymentMethod" => $order ? ($order['payment_method'] ?? null) : null,
         ]);
         $saved += 1;
+        $reconcileLogIds[$statementId] = (int) $pdo->lastInsertId();
       } catch (PDOException $insertError) {
         error_log("Failed to insert reconcile log: " . $insertError->getMessage());
         error_log("SQL State: " . $insertError->getCode());
@@ -500,6 +503,7 @@ try {
       "document_no" => $documentNo,
       "batch_id" => $batchId,
       "saved" => $saved,
+      "reconcile_log_ids" => $reconcileLogIds,
     ],
     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
   );
