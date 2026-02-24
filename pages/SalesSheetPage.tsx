@@ -586,40 +586,6 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                             </button>
                         )}
                     </div>
-
-                    {/* Seller */}
-                    <select
-                        value={sellerId}
-                        onChange={e => setSellerId(Number(e.target.value))}
-                        className="border border-gray-300 rounded px-2 py-1.5 text-xs bg-white min-w-[130px]"
-                    >
-                        <option value={0}>พนักงานทั้งหมด</option>
-                        {sellers.map(s => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                    </select>
-
-                    {/* Status */}
-                    <select
-                        value={orderStatus}
-                        onChange={e => setOrderStatus(e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 text-xs bg-white"
-                    >
-                        {STATUS_OPTIONS.map(o => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                    </select>
-
-                    {/* Customer Type */}
-                    <select
-                        value={customerType}
-                        onChange={e => setCustomerType(e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 text-xs bg-white"
-                    >
-                        {CUSTOMER_TYPE_OPTIONS.map(o => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                    </select>
                 </div>
             </div>
 
@@ -785,7 +751,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
