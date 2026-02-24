@@ -317,7 +317,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
         });
         if (response.ok && response.orders) {
           const orders = response.orders;
-          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่สั่ง', 'วันที่ส่ง', 'ยอดรวม', 'ยอดเก็บแล้ว', 'ยอดคงเหลือ', 'วันค้าง', 'สถานะออเดอร์', 'สถานะชำระ', 'จำนวนติดตาม'];
+          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่สั่ง', 'วันที่ส่ง', 'ยอดรวม', 'ยอดเก็บแล้ว', 'ยอดคงเหลือ', 'วันค้าง', 'สถานะออเดอร์', 'สถานะชำระ', 'จำนวนติดตาม', 'ผู้ติดตามล่าสุด'];
           const rows = orders.map((o: any) => [
             o.id,
             `${o.customerInfo?.firstName || ''} ${o.customerInfo?.lastName || ''}`.trim(),
@@ -330,7 +330,8 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
             o.daysPassed,
             o.orderStatus,
             o.paymentStatus,
-            o.trackingCount
+            o.trackingCount,
+            o.lastTrackerName || ''
           ]);
 
           downloadCSV(headers, rows, `debt_collection_${activeTab}_${exportStartDate}_${exportEndDate}.csv`);
@@ -909,6 +910,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                     className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   >
                     <option value="">-- เลือกสถานะ --</option>
+                    <option value="all">ทั้งหมด</option>
                     <option value="active">กำลังติดตาม</option>
                     <option value="completed">จบเคสแล้ว</option>
                   </select>
