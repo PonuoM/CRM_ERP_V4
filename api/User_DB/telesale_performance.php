@@ -580,6 +580,9 @@ try {
         'newCustOrders' => 0,
         'coreCustOrders' => 0,
         'revivalCustOrders' => 0,
+        'newCustSales' => 0,
+        'coreCustSales' => 0,
+        'revivalCustSales' => 0,
         'conversionRate' => 0,
     ];
 
@@ -598,6 +601,9 @@ try {
             $teamTotals['newCustOrders'] += $ts['metrics']['newCustOrders'];
             $teamTotals['coreCustOrders'] += $ts['metrics']['coreCustOrders'];
             $teamTotals['revivalCustOrders'] += $ts['metrics']['revivalCustOrders'];
+            $teamTotals['newCustSales'] += $ts['metrics']['newCustSales'];
+            $teamTotals['coreCustSales'] += $ts['metrics']['coreCustSales'];
+            $teamTotals['revivalCustSales'] += $ts['metrics']['revivalCustSales'];
         }
 
         // Calculate team conversion rate (ได้คุย / ออเดอร์)

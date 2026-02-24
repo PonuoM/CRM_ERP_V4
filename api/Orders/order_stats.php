@@ -134,6 +134,38 @@ try {
         $upsellRevenue = (float) ($upsellRow['upsell_revenue'] ?? 0);
         $upsellOrders = (int) ($upsellRow['upsell_orders'] ?? 0);
         $upsellQuantity = (int) ($upsellRow['upsell_quantity'] ?? 0);
+    } else {
+        // Company-wide upsell (admin view)
+        $upsellWhere = "WHERE o.company_id = ? AND o.order_status NOT IN ('Cancelled', 'BadDebt')";
+        $upsellParams = [$companyId];
+
+        if ($year) {
+            $upsellWhere .= " AND YEAR(o.order_date) = ?";
+            $upsellParams[] = $year;
+            if ($month) {
+                $upsellWhere .= " AND MONTH(o.order_date) = ?";
+                $upsellParams[] = $month;
+            }
+        }
+
+        $upsellWhere .= " AND oi.basket_key_at_sale = 51";
+
+        $stmtUpsell = $pdo->prepare("
+            SELECT 
+                COUNT(DISTINCT o.id) as upsell_orders,
+                COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as upsell_revenue,
+                COALESCE(SUM(oi.quantity), 0) as upsell_quantity
+            FROM orders o
+            JOIN order_items oi ON oi.parent_order_id = o.id
+            $upsellWhere
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        ");
+        $stmtUpsell->execute($upsellParams);
+        $upsellRow = $stmtUpsell->fetch(PDO::FETCH_ASSOC);
+
+        $upsellRevenue = (float) ($upsellRow['upsell_revenue'] ?? 0);
+        $upsellOrders = (int) ($upsellRow['upsell_orders'] ?? 0);
+        $upsellQuantity = (int) ($upsellRow['upsell_quantity'] ?? 0);
     }
 
     // Build filterWhere for status/payment queries
@@ -296,6 +328,25 @@ try {
             $dateFilter
         ");
         $stmtReturned->execute(array_merge([$companyId, $userId], $dateParams));
+        $retRow = $stmtReturned->fetch(PDO::FETCH_ASSOC);
+        $returnedRevenue = (float) ($retRow['returnedRevenue'] ?? 0);
+        $cancelledRevenue = (float) ($retRow['cancelledRevenue'] ?? 0);
+    } else {
+        // Company-wide (admin view) - no user filter
+        $stmtReturned = $pdo->prepare("
+            SELECT 
+                COALESCE(SUM(CASE WHEN ob.status = 'RETURNED' 
+                    THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as returnedRevenue,
+                COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' 
+                    THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as cancelledRevenue
+            FROM order_items oi
+            JOIN orders o ON oi.parent_order_id = o.id
+            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
+            WHERE o.company_id = ?
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            $dateFilter
+        ");
+        $stmtReturned->execute(array_merge([$companyId], $dateParams));
         $retRow = $stmtReturned->fetch(PDO::FETCH_ASSOC);
         $returnedRevenue = (float) ($retRow['returnedRevenue'] ?? 0);
         $cancelledRevenue = (float) ($retRow['cancelledRevenue'] ?? 0);

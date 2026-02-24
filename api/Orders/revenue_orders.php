@@ -57,7 +57,9 @@ try {
                 CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) as customer_name,
                 c.phone as customer_phone,
                 COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as amount,
-                GROUP_CONCAT(DISTINCT ob.box_number ORDER BY ob.box_number SEPARATOR ', ') as returned_boxes
+                GROUP_CONCAT(DISTINCT ob.box_number ORDER BY ob.box_number SEPARATOR ', ') as returned_boxes,
+                COUNT(DISTINCT ob.box_number) as returned_count,
+                (SELECT COUNT(DISTINCT ob2.box_number) FROM order_boxes ob2 WHERE ob2.sub_order_id LIKE CONCAT(o.id, '-%')) as total_boxes
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
             JOIN order_boxes ob ON ob.sub_order_id = oi.order_id

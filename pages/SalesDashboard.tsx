@@ -248,8 +248,12 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
 
   const { monthlySales, monthlyOrders, customersCount, performancePct } =
     useMemo(() => {
-      // Use API stats if available, fall back to "0" or mocked props if needed (though we expect API now)
-      const monthlySales = orderStats?.totalRevenue || 0;
+      // For monthlySales: prefer the order_items-based monthlySales chart data
+      // (same formula as daily_sales table) to ensure card matches the chart exactly.
+      // Falls back to totalRevenue if chart data isn't available.
+      const currentMonthKey = `${year}-${month}`;
+      const chartMonthlySales = orderStats?.monthlySales?.[currentMonthKey];
+      const monthlySales = chartMonthlySales != null ? chartMonthlySales : (orderStats?.totalRevenue || 0);
       const monthlyOrdersCount = orderStats?.totalOrders || 0;
       const customersCount = customerStats?.totalCustomers || 0;
 
@@ -264,7 +268,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
         customersCount,
         performancePct,
       };
-    }, [orderStats, customerStats]);
+    }, [orderStats, customerStats, month, year]);
 
   const monthOptions = Array.from({ length: 12 }, (_, i) =>
     String(i + 1).padStart(2, "0"),
@@ -347,9 +351,11 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
           <StatCard
             title="ยอดขายรายเดือน"
             value={loading ? renderLoadingSpinner() : `฿${(
-              perfData?.metrics
-                ? (perfData.metrics.newCustSales || 0) + (perfData.metrics.coreCustSales || 0) + (perfData.metrics.revivalCustSales || 0)
-                : monthlySales
+              (user?.role === 'Admin Control' || user?.role === 'Super Admin')
+                ? monthlySales
+                : perfData?.metrics
+                  ? (perfData.metrics.newCustSales || 0) + (perfData.metrics.coreCustSales || 0) + (perfData.metrics.revivalCustSales || 0)
+                  : monthlySales
             ).toLocaleString()}`}
             subtext="ยอดขายรวมตีกลับและ Upsell"
             icon={DollarSign}
@@ -393,9 +399,11 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
           <StatCard
             title="จำนวนออเดอร์"
             value={loading ? renderLoadingSpinner() : (
-              perfData?.metrics
-                ? (perfData.metrics.newCustOrders || 0) + (perfData.metrics.coreCustOrders || 0) + (perfData.metrics.revivalCustOrders || 0)
-                : monthlyOrders
+              (user?.role === 'Admin Control' || user?.role === 'Super Admin')
+                ? monthlyOrders
+                : perfData?.metrics
+                  ? (perfData.metrics.newCustOrders || 0) + (perfData.metrics.coreCustOrders || 0) + (perfData.metrics.revivalCustOrders || 0)
+                  : monthlyOrders
             ).toString()}
             subtext="ช่วงนี้"
             icon={ShoppingCart}
@@ -691,8 +699,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
                       <th className="text-left py-2 font-medium">เลขออเดอร์</th>
                       <th className="text-left py-2 font-medium">วันที่</th>
                       <th className="text-left py-2 font-medium">ลูกค้า</th>
-                      <th className="text-left py-2 font-medium">สถานะ</th>
-                      {revenueModalType === 'returned' && <th className="text-left py-2 font-medium">กล่อง</th>}
+                      <th className="text-left py-2 px-3 font-medium">สถานะ</th>
+                      {revenueModalType === 'returned' && <th className="text-left py-2 px-3 font-medium">กล่องตีกลับ</th>}
 
                       <th className="text-right py-2 font-medium">ยอด</th>
                     </tr>
@@ -710,8 +718,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
                         </td>
                         <td className="py-2 text-gray-600">{order.order_date ? new Date(order.order_date).toLocaleDateString('th-TH') : '-'}</td>
                         <td className="py-2 text-gray-700">{(order.customer_name || '').trim() || '-'}</td>
-                        <td className={`py-2 text-xs font-medium ${statusToThai[order.order_status]?.color || 'text-gray-500'}`}>{statusToThai[order.order_status]?.label || order.order_status || '-'}</td>
-                        {revenueModalType === 'returned' && <td className="py-2 text-orange-600 text-xs">{order.returned_boxes || '-'}</td>}
+                        <td className={`py-2 px-3 text-xs font-medium ${statusToThai[order.order_status]?.color || 'text-gray-500'}`}>{statusToThai[order.order_status]?.label || order.order_status || '-'}</td>
+                        {revenueModalType === 'returned' && <td className="py-2 px-3 text-orange-600 text-xs font-medium">{order.returned_count && order.total_boxes ? `${order.returned_count} จาก ${order.total_boxes}` : (order.returned_boxes || '-')}</td>}
 
                         <td className="py-2 text-right font-medium">฿{(order.amount || 0).toLocaleString()}</td>
                       </tr>
