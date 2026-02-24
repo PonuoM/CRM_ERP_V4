@@ -89,6 +89,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
   const [revenueModalTitle, setRevenueModalTitle] = useState('');
   const [revenueOrders, setRevenueOrders] = useState<any[]>([]);
   const [revenueOrdersLoading, setRevenueOrdersLoading] = useState(false);
+  const [revenueModalPage, setRevenueModalPage] = useState(1);
+  const REVENUE_PAGE_SIZE = 20;
   const [orderDetailModalOpen, setOrderDetailModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
@@ -97,6 +99,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
     setRevenueModalType(type);
     setRevenueModalTitle(title);
     setRevenueModalOpen(true);
+    setRevenueModalPage(1);
     setRevenueOrdersLoading(true);
     try {
       const isCompanyAdmin = user.role === 'Admin Control' || user.role === 'Super Admin';
@@ -693,49 +696,76 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
               ) : revenueOrders.length === 0 ? (
                 <p className="text-center text-gray-500 py-8">ไม่มีรายการ</p>
               ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-gray-500 border-b">
-                      <th className="text-left py-2 font-medium">เลขออเดอร์</th>
-                      <th className="text-left py-2 font-medium">วันที่</th>
-                      <th className="text-left py-2 font-medium">ลูกค้า</th>
-                      <th className="text-left py-2 px-3 font-medium">สถานะ</th>
-                      {revenueModalType === 'returned' && <th className="text-left py-2 px-3 font-medium">กล่องตีกลับ</th>}
-
-                      <th className="text-right py-2 font-medium">ยอด</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {revenueOrders.map((order: any, idx: number) => (
-                      <tr key={idx} className="border-b hover:bg-gray-50">
-                        <td className="py-2">
-                          <button
-                            onClick={() => { setSelectedOrderId(order.order_id); setOrderDetailModalOpen(true); }}
-                            className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                          >
-                            {order.order_id}
-                          </button>
-                        </td>
-                        <td className="py-2 text-gray-600">{order.order_date ? new Date(order.order_date).toLocaleDateString('th-TH') : '-'}</td>
-                        <td className="py-2 text-gray-700">{(order.customer_name || '').trim() || '-'}</td>
-                        <td className={`py-2 px-3 text-xs font-medium ${statusToThai[order.order_status]?.color || 'text-gray-500'}`}>{statusToThai[order.order_status]?.label || order.order_status || '-'}</td>
-                        {revenueModalType === 'returned' && <td className="py-2 px-3 text-orange-600 text-xs font-medium">{order.returned_count && order.total_boxes ? `${order.returned_count} จาก ${order.total_boxes}` : (order.returned_boxes || '-')}</td>}
-
-                        <td className="py-2 text-right font-medium">฿{(order.amount || 0).toLocaleString()}</td>
+                <>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-xs text-gray-500 border-b">
+                        <th className="text-left py-2 font-medium">เลขออเดอร์</th>
+                        <th className="text-left py-2 font-medium">วันที่</th>
+                        <th className="text-left py-2 font-medium">ลูกค้า</th>
+                        <th className="text-left py-2 px-3 font-medium">สถานะ</th>
+                        {revenueModalType === 'returned' && <th className="text-left py-2 px-3 font-medium">กล่องตีกลับ</th>}
+                        <th className="text-right py-2 font-medium">ยอด</th>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 font-semibold">
-                      <td className="py-2">รวม {revenueOrders.length} รายการ</td>
-                      <td></td>
-                      <td></td>
-                      <td></td>
-                      {revenueModalType === 'returned' && <td></td>}
-                      <td className="py-2 text-right">฿{revenueOrders.reduce((sum: number, o: any) => sum + (o.amount || 0), 0).toLocaleString()}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </thead>
+                    <tbody>
+                      {revenueOrders.slice((revenueModalPage - 1) * REVENUE_PAGE_SIZE, revenueModalPage * REVENUE_PAGE_SIZE).map((order: any, idx: number) => (
+                        <tr key={idx} className="border-b hover:bg-gray-50">
+                          <td className="py-2">
+                            <button
+                              onClick={() => { setSelectedOrderId(order.order_id); setOrderDetailModalOpen(true); }}
+                              className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                            >
+                              {order.order_id}
+                            </button>
+                          </td>
+                          <td className="py-2 text-gray-600">{order.order_date ? new Date(order.order_date).toLocaleDateString('th-TH') : '-'}</td>
+                          <td className="py-2 text-gray-700">{(order.customer_name || '').trim() || '-'}</td>
+                          <td className={`py-2 px-3 text-xs font-medium ${statusToThai[order.order_status]?.color || 'text-gray-500'}`}>{statusToThai[order.order_status]?.label || order.order_status || '-'}</td>
+                          {revenueModalType === 'returned' && <td className="py-2 px-3 text-orange-600 text-xs font-medium">{order.returned_count && order.total_boxes ? `${order.returned_count} จาก ${order.total_boxes}` : (order.returned_boxes || '-')}</td>}
+                          <td className="py-2 text-right font-medium">฿{(order.amount || 0).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 font-semibold">
+                        <td className="py-2">รวม {revenueOrders.length} รายการ</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        {revenueModalType === 'returned' && <td></td>}
+                        <td className="py-2 text-right">฿{revenueOrders.reduce((sum: number, o: any) => sum + (o.amount || 0), 0).toLocaleString()}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  {/* Pagination Controls */}
+                  {revenueOrders.length > REVENUE_PAGE_SIZE && (
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                      <span className="text-xs text-gray-500">
+                        แสดง {((revenueModalPage - 1) * REVENUE_PAGE_SIZE) + 1}-{Math.min(revenueModalPage * REVENUE_PAGE_SIZE, revenueOrders.length)} จาก {revenueOrders.length} รายการ
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setRevenueModalPage(p => Math.max(1, p - 1))}
+                          disabled={revenueModalPage === 1}
+                          className="px-3 py-1 text-xs rounded-md border bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          ← ก่อนหน้า
+                        </button>
+                        <span className="text-xs text-gray-600 font-medium">
+                          หน้า {revenueModalPage} / {Math.ceil(revenueOrders.length / REVENUE_PAGE_SIZE)}
+                        </span>
+                        <button
+                          onClick={() => setRevenueModalPage(p => Math.min(Math.ceil(revenueOrders.length / REVENUE_PAGE_SIZE), p + 1))}
+                          disabled={revenueModalPage >= Math.ceil(revenueOrders.length / REVENUE_PAGE_SIZE)}
+                          className="px-3 py-1 text-xs rounded-md border bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          ถัดไป →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
