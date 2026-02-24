@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
+import { useToast } from "../components/Toast";
 import {
   User,
   Order,
@@ -168,6 +169,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [showSuccessPopup, setShowSuccessPopup] = useState<{ message: string } | null>(null);
+  const toast = useToast();
 
   // NEW: Import mode and existing documents
   const [importMode, setImportMode] = useState<'new' | 'existing'>('new');
@@ -307,17 +309,24 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
   const deleteDocument = async (doc: HistoryDocument) => {
     if (doc.is_referenced) {
-      alert('เอกสารนี้ถูกผูกกับ Statement แล้ว ไม่สามารถลบได้');
+      toast.warning('ไม่สามารถลบได้', 'เอกสารนี้ถูกผูกกับ Statement แล้ว');
       return;
     }
-    if (!confirm(`ต้องการลบเอกสาร "${doc.document_number}" (${doc.item_count} รายการ) ?\n\nข้อมูล COD ทั้งหมดในเอกสารนี้จะถูกลบ`)) return;
+    const confirmed = await toast.confirm({
+      type: 'warning',
+      title: 'ยืนยันลบเอกสาร?',
+      message: `ต้องการลบเอกสาร "${doc.document_number}" (${doc.item_count} รายการ)?\n\nข้อมูล COD ทั้งหมดในเอกสารนี้จะถูกลบ`,
+      confirmText: 'ลบ',
+    });
+    if (!confirmed) return;
     try {
       const qs = new URLSearchParams({ companyId: String(user.companyId) });
       await apiFetch(`cod_documents/${doc.id}?${qs.toString()}`, { method: 'DELETE' });
+      toast.success('ลบเอกสารสำเร็จ');
       fetchHistoryDocs();
     } catch (err: any) {
       const msg = err?.message || 'เกิดข้อผิดพลาดในการลบ';
-      alert(msg);
+      toast.error('ลบเอกสารไม่สำเร็จ', msg);
     }
   };
 
@@ -406,7 +415,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     const rowsToValidate = rows.map((row, index) => ({ row, index })).filter(({ row }) => row.trackingNumber.trim());
 
     if (rowsToValidate.length === 0) {
-      alert("กรุณากรอก Tracking Number");
+      toast.warning('กรุณากรอก Tracking Number');
       return;
     }
 
@@ -579,10 +588,13 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
             const amountMatch = isAmountValid && Math.abs(difference) < 0.01;
 
             const isPaid = (apiResult.amountPaid || 0) > 0;
+            const slipAmount = apiResult.totalSlipAmount || 0;
             let status: ValidationStatus = amountMatch ? 'matched' : 'unmatched';
             let message = amountMatch ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
 
-            if (isPaid) {
+            if (slipAmount > 0) {
+              message += ` ⚠️ ชำระผ่านช่องทางอื่นแล้ว ฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+            } else if (isPaid) {
               message += ` (จ่ายแล้ว: ฿${apiResult.amountPaid})`;
             }
 
@@ -652,7 +664,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
     } catch (error) {
       console.error("Validation failed", error);
-      alert("เกิดข้อผิดพลาดในการตรวจสอบข้อมูล");
+      toast.error('ตรวจสอบข้อมูลไม่สำเร็จ', 'กรุณาลองใหม่อีกครั้ง');
     } finally {
       setIsSubmitting(false);
     }
@@ -668,7 +680,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       const text = await file.text();
       const lines = text.split("\n").filter((line) => line.trim());
       if (lines.length < 2) {
-        alert("ไฟล์ไม่มีข้อมูล");
+        toast.warning('ไฟล์ไม่มีข้อมูล');
         return;
       }
 
@@ -692,7 +704,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       }
     } catch (error) {
       console.error("Error parsing CSV:", error);
-      alert("เกิดข้อผิดพลาดในการอ่านไฟล์");
+      toast.error('อ่านไฟล์ไม่สำเร็จ', 'กรุณาตรวจสอบรูปแบบไฟล์');
     }
   };
 
@@ -725,7 +737,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         notes: `COD ตีกลับ - สภาพ: ${row.returnCondition || "ไม่ระบุ"}`,
       });
 
-      alert("Approve ออเดอร์ที่ตีกลับเรียบร้อยแล้ว");
+      toast.success('Approve สำเร็จ', 'ออเดอร์ที่ตีกลับถูก Approve แล้ว');
       setRows((prev) =>
         prev.map((r) =>
           r.id === row.id
@@ -735,7 +747,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       );
     } catch (error) {
       console.error("Error approving returned order:", error);
-      alert("เกิดข้อผิดพลาดในการ Approve");
+      toast.error('Approve ไม่สำเร็จ', 'เกิดข้อผิดพลาด กรุณาลองใหม่');
     }
   };
 
@@ -748,7 +760,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         notes: `COD ${row.manualStatus}`,
       });
 
-      alert("Approve ออเดอร์เรียบร้อยแล้ว");
+      toast.success('Approve สำเร็จ', 'ออเดอร์ถูก Approve แล้ว');
       setRows((prev) =>
         prev.map((r) =>
           r.id === row.id
@@ -758,7 +770,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       );
     } catch (error) {
       console.error("Error approving manual status:", error);
-      alert("เกิดข้อผิดพลาดในการ Approve");
+      toast.error('Approve ไม่สำเร็จ', 'เกิดข้อผิดพลาด กรุณาลองใหม่');
     }
   };
 
@@ -770,28 +782,28 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         (row.status === "pending" && row.forceImport)
     );
     if (readyRows.length === 0) {
-      alert("ไม่มีรายการที่พร้อมนำเข้า (สถานะ matched, unmatched หรือติ๊กข้าม)");
+      toast.warning('ไม่มีรายการที่พร้อมนำเข้า', 'ต้องมีสถานะ matched, unmatched หรือติ๊กข้าม');
       return;
     }
 
     // Validation based on import mode
     if (importMode === 'new') {
       if (!documentNumber.trim()) {
-        alert("กรุณากรอกเลขที่เอกสาร");
+        toast.warning('กรุณากรอกเลขที่เอกสาร');
         return;
       }
       if (!documentDate || !documentTime) {
-        alert("กรุณากรอกวันที่และเวลาเอกสาร");
+        toast.warning('กรุณากรอกวันที่และเวลาเอกสาร');
         return;
       }
       if (!bankAccountId) {
-        alert("กรุณาเลือกบัญชีธนาคาร");
+        toast.warning('กรุณาเลือกบัญชีธนาคาร');
         return;
       }
     } else {
       // existing mode
       if (!selectedDocumentId) {
-        alert("กรุณาเลือกเอกสารที่ต้องการเพิ่มรายการ");
+        toast.warning('กรุณาเลือกเอกสารที่ต้องการเพิ่มรายการ');
         return;
       }
     }
@@ -809,12 +821,12 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     });
 
     if (uniqueRowsByTracking.size === 0) {
-      alert("ไม่มีข้อมูล COD ที่จะนำเข้า");
+      toast.warning('ไม่มีข้อมูล COD ที่จะนำเข้า');
       return;
     }
 
     if (!user?.companyId) {
-      alert("ไม่สามารถระบุบริษัทสำหรับนำเข้า COD");
+      toast.error('ไม่สามารถระบุบริษัทสำหรับนำเข้า COD');
       return;
     }
 
@@ -822,7 +834,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     const finalRowsToImport = Array.from(uniqueRowsByTracking.values());
 
     if (finalRowsToImport.length === 0) {
-      alert("ไม่มีรายการที่จะนำเข้า");
+      toast.warning('ไม่มีรายการที่จะนำเข้า');
       return;
     }
 
@@ -838,18 +850,32 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       ? documentNumber
       : existingDocuments.find(d => d.id === selectedDocumentId)?.document_number || String(selectedDocumentId);
 
+    // Check for excess amounts (difference > 0)
+    const excessRows = finalRowsToImport.filter(r => (r.difference ?? 0) > 0);
+    const excessWarning = excessRows.length > 0
+      ? `\n⚠️ มี ${excessRows.length} รายการที่ยอดเกิน (รวม +฿${excessRows.reduce((s, r) => s + (r.difference ?? 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })})`
+      : '';
+
     const confirmMessage = [
-      importMode === 'new'
-        ? `ยืนยันสร้างเอกสาร COD ใหม่ (${documentNumber})?`
-        : `ยืนยันเพิ่ม ${finalRowsToImport.length} รายการในเอกสาร ${targetDocName}?`,
-      skipMessages.length > 0 ? `ข้าม: ${skipMessages.join(" / ")}` : "",
-      `ยอดรวมนำเข้า: ฿${totalInputAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}`,
-      forcedCount > 0 ? `⚠️ รายการติ๊กข้าม (ไม่อัพเดท Order): ${forcedCount} รายการ` : "",
+      skipMessages.length > 0 ? `ข้าม: ${skipMessages.join(' / ')}` : '',
+      `📦 ${finalRowsToImport.length} รายการ`,
+      `💰 ยอดรวมนำเข้า: ฿${totalInputAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
+      forcedCount > 0 ? `⚠️ รายการติ๊กข้าม (ไม่อัพเดท Order): ${forcedCount} รายการ` : '',
+      excessWarning,
     ]
       .filter(Boolean)
-      .join("\n");
+      .join('\n');
 
-    if (!window.confirm(confirmMessage)) {
+    const confirmed = await toast.confirm({
+      type: excessRows.length > 0 ? 'warning' : 'info',
+      title: importMode === 'new'
+        ? `สร้างเอกสาร COD ใหม่ (${documentNumber})?`
+        : `เพิ่มรายการในเอกสาร ${targetDocName}?`,
+      message: confirmMessage,
+      confirmText: excessRows.length > 0 ? 'ยืนยัน (ยอดเกิน)' : 'ยืนยัน',
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -937,10 +963,27 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
             orderId: orderId,
           });
           const records = await apiFetch(`cod_records?${qs.toString()}`);
-          const totalPaid = Array.isArray(records)
+          const codTotal = Array.isArray(records)
             ? records.reduce((sum: number, r: any) => sum + (parseFloat(r.cod_amount) || 0), 0)
             : 0;
 
+          // Also get slip payments for this order to ADD together
+          let slipTotal = 0;
+          try {
+            const slipQs = new URLSearchParams({
+              companyId: String(user.companyId),
+              orderId: orderId,
+            });
+            const slipRecords = await apiFetch(`order_slips?${slipQs.toString()}`);
+            slipTotal = Array.isArray(slipRecords)
+              ? slipRecords
+                .filter((s: any) => s.status !== 'rejected')
+                .reduce((sum: number, s: any) => sum + (parseFloat(s.amount) || 0), 0)
+              : 0;
+          } catch { /* no slips */ }
+
+          // amountPaid = COD + Slips (not overwrite!)
+          const totalPaid = codTotal + slipTotal;
           const roundedPaid = Math.round(totalPaid * 100) / 100;
           const nextStatus =
             roundedPaid > 0
@@ -976,8 +1019,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         ? `\n❌ ${skippedByBackend.length} รายการข้ามเพราะมีในเอกสารอื่น`
         : '';
       const importedCount = finalRowsToImport.length - skippedByBackend.length;
-      const successMessage = `นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ\n\n📦 ${importedCount} รายการ (จาก ${finalRowsToImport.length})\n🧾 ${totalOrders} ออเดอร์\n💰 ยอดรวม ${formatCurrency(totalAmount)}${forcedSummary}${skippedSummary}`;
-      setShowSuccessPopup({ message: successMessage });
+      const successMessage = `📦 ${importedCount} รายการ (จาก ${finalRowsToImport.length})\n🧾 ${totalOrders} ออเดอร์\n💰 ยอดรวม ${formatCurrency(totalAmount)}${forcedSummary}${skippedSummary}`;
+      toast.success(`นำเข้า${importMode === 'new' ? 'เอกสาร ' + documentNumber : 'รายการเพิ่มเติม'} สำเร็จ`, successMessage);
       setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
       setIsVerified(false);
       setDocumentNumber("");
@@ -987,10 +1030,10 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     } catch (error: any) {
       console.error("COD import failed", error);
       if (error?.data?.error === 'DOCUMENT_ALREADY_VERIFIED') {
-        alert("ไม่สามารถแก้ไขเอกสารที่จับคู่กับ Statement แล้ว");
+        toast.error('ไม่สามารถแก้ไขเอกสาร', 'เอกสารนี้จับคู่กับ Statement แล้ว');
       } else {
         const msg = error?.data?.message || error?.message || "เกิดข้อผิดพลาดในการนำเข้า COD กรุณาลองใหม่";
-        alert(msg);
+        toast.error('นำเข้า COD ไม่สำเร็จ', msg);
       }
     } finally {
       setIsSubmitting(false);
@@ -1271,10 +1314,10 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                                                     </td>
                                                     <td className="px-3 py-1.5 text-center">
                                                       <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${rec.status === 'matched' ? 'bg-green-100 text-green-700'
-                                                          : rec.status === 'unmatched' ? 'bg-yellow-100 text-yellow-700'
-                                                            : rec.status === 'forced' ? 'bg-orange-100 text-orange-700'
-                                                              : rec.status === 'returned' ? 'bg-red-100 text-red-700'
-                                                                : 'bg-gray-100 text-gray-600'
+                                                        : rec.status === 'unmatched' ? 'bg-yellow-100 text-yellow-700'
+                                                          : rec.status === 'forced' ? 'bg-orange-100 text-orange-700'
+                                                            : rec.status === 'returned' ? 'bg-red-100 text-red-700'
+                                                              : 'bg-gray-100 text-gray-600'
                                                         }`}>
                                                         {rec.status === 'matched' ? 'ตรง' : rec.status === 'unmatched' ? 'ไม่ตรง' : rec.status === 'forced' ? 'บังคับ' : rec.status === 'returned' ? 'ตีกลับ' : rec.status}
                                                       </span>
@@ -1736,26 +1779,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         </div>
       )}
 
-      {/* Success Popup */}
-      {showSuccessPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4 text-center">
-            <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle size={40} className="text-green-600" />
-              </div>
-            </div>
-            <h3 className="text-xl font-bold text-gray-800 mb-3">นำเข้าสำเร็จ!</h3>
-            <p className="text-sm text-gray-600 whitespace-pre-line mb-6">{showSuccessPopup.message}</p>
-            <button
-              onClick={() => setShowSuccessPopup(null)}
-              className="bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-2.5 rounded-lg transition-colors"
-            >
-              ตกลง
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };

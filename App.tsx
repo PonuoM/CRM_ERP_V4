@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { ToastProvider } from "./components/Toast";
 import {
   UserRole,
   User,
@@ -7855,311 +7856,313 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="h-screen bg-[#F5F5F5] relative">
-      {showCheckInPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">เริ่มงานวันนี้ไหม?</h3>
-            <p className="text-sm text-gray-600 mb-4">ต้องการบันทึกเข้างานตอนนี้เลยหรือไม่</p>
-            <div className="flex justify-end gap-2">
-              <button
-                className="px-4 py-2 rounded-md border text-sm"
-                onClick={handleCheckInPromptSkip}
-              >
-                ไม่ใช่ตอนนี้
-              </button>
-              <button
-                className="px-4 py-2 rounded-md bg-green-600 text-white text-sm"
-                onClick={handleCheckInPromptConfirm}
-                disabled={attendanceLoading}
-              >
-                {attendanceLoading ? "กำลังบันทึก..." : "บันทึกเข้างาน"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Fixed Sidebar */}
-      {!viewingCustomer && !hideSidebar && (
-        <div className="fixed left-0 top-0 h-screen z-10">
-          <Sidebar
-            user={currentUser}
-            activePage={activePage}
-            setActivePage={setActivePage}
-            isCollapsed={isSidebarCollapsed}
-            setIsCollapsed={setIsSidebarCollapsed}
-            onLogout={handleLogout}
-            permissions={{
-              ...(rolePermissions || {}),
-              onChangePassword: () => setIsChangePasswordModalOpen(true),
-            }}
-            menuOrder={menuOrder}
-          />
-        </div>
-      )}
-      {/* Main Content with proper margin */}
-      <div
-        className={`h-screen flex flex-col transition-all duration-300 ${hideSidebar || viewingCustomer
-          ? ""
-          : isSidebarCollapsed
-            ? "ml-20"
-            : "ml-64"
-          }`}
-      >
-        {!viewingCustomer && !hideSidebar && (
-          <header className="flex items-center px-6 h-16 bg-white border-b border-gray-200 flex-shrink-0">
-            <div className="flex items-center space-x-4 flex-shrink-0">
-              <button
-                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                className="text-gray-600 lg:hidden"
-              >
-                <Menu size={24} />
-              </button>
-              <h1 className="text-xl font-semibold text-gray-800">
-                {activePage}
-              </h1>
-            </div>
-            <div className="flex-1 flex justify-center px-2">
-              {renderAttendanceWidget()}
-            </div>
-            <div className="flex items-center space-x-4 flex-shrink-0">
-              <div className="relative hidden">
-                <select
-                  value={currentUserRole}
-                  onChange={(e) => {
-                    setCurrentUserRole(e.target.value as UserRole);
-                    setActivePage("Dashboard");
-                    handleCloseCustomerDetail();
-                  }}
-                  className="appearance-none cursor-pointer bg-gray-100 border border-gray-200 text-gray-700 text-sm rounded-md focus:ring-green-500 focus:border-green-500 block w-full py-2 pl-3 pr-8"
-                >
-                  <option value={UserRole.SuperAdmin}>Super Admin</option>
-                  <option value={UserRole.AdminControl}>Admin Control</option>
-                  <option value={UserRole.Admin}>Admin Page</option>
-                  <option value={UserRole.Telesale}>Telesale</option>
-                  <option value={UserRole.Supervisor}>
-                    Supervisor Telesale
-                  </option>
-                  <option value={UserRole.Backoffice}>Backoffice</option>
-                  <option value={UserRole.Marketing}>Marketing</option>
-                </select>
-                <ChevronsUpDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-              </div>
-            </div>
-          </header>
-        )}
-        <main className="flex-1 overflow-x-auto overflow-y-auto bg-[#F5F5F5] relative">
-          <div className="max-w-full min-h-full">
-            {renderPage()}
-          </div>
-        </main>
-      </div>
-
-      {renderModal()}
-
-      {/* Loading overlay for Customer Detail page restore */}
-      {isLoadingCustomerDetail && !viewingCustomer && (
-        <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent"></div>
-            <p className="text-gray-600 text-lg">กำลังโหลดข้อมูลลูกค้า...</p>
-          </div>
-        </div>
-      )}
-
-      {/* CustomerDetailPage Overlay - renders ON TOP of current page without unmounting it */}
-      {viewingCustomer && (
-        <div className="fixed inset-0 z-50 bg-white overflow-auto">
-          <CustomerDetailPage
-            activities={activities}
-            customer={viewingCustomer}
-            orders={companyOrders.filter(
-              (o) => {
-                return String(o.customerId) === String(viewingCustomer.id) ||
-                  String(o.customerId) === String(viewingCustomer.pk);
-              },
-            )}
-            callHistory={callHistory.filter(
-              (c) => {
-                return String(c.customerId) === String(viewingCustomer.id) ||
-                  String(c.customerId) === String(viewingCustomer.pk);
-              },
-            )}
-            appointments={appointments.filter(
-              (a) => {
-                return String(a.customerId) === String(viewingCustomer.id) ||
-                  String(a.customerId) === String(viewingCustomer.pk);
-              },
-            )}
-            onClose={handleCloseCustomerDetail}
-            openModal={openModal}
-            user={currentUser}
-            allUsers={companyUsers}
-            systemTags={systemTags}
-            ownerName={(function () {
-              const u = companyUsers.find(
-                (x) => x.id === (viewingCustomer as any).assignedTo,
-              );
-              return u ? `${u.firstName} ${u.lastName}` : undefined;
-            })()}
-            onAddTag={handleAddTagToCustomer}
-            onRemoveTag={handleRemoveTagFromCustomer}
-            onCreateUserTag={handleCreateUserTag}
-            onCompleteAppointment={handleCompleteAppointment}
-            onChangeOwner={handleChangeCustomerOwner}
-            customerCounts={userCustomerCounts}
-            onStartCreateOrder={(customer) => {
-              setPreviousPage(activePage);
-              setCreateOrderInitialData({ customer });
-              handleCloseCustomerDetail();
-              setActivePage("CreateOrder");
-            }}
-            onUpsellClick={(customer) => {
-              setPreviousPage(activePage);
-              setCreateOrderInitialData({ customer, upsell: true });
-              handleCloseCustomerDetail();
-              setActivePage("CreateOrder");
-            }}
-            refreshTrigger={refreshTrigger}
-          />
-        </div>
-      )}
-
-      {/* Change Password Modal */}
-      {
-        isChangePasswordModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div
-              className="absolute inset-0 bg-black bg-opacity-50"
-              onClick={() => setIsChangePasswordModalOpen(false)}
-            />
-            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  เปลี่ยนรหัสผ่าน
-                </h3>
+    <ToastProvider>
+      <div className="h-screen bg-[#F5F5F5] relative">
+        {showCheckInPrompt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">เริ่มงานวันนี้ไหม?</h3>
+              <p className="text-sm text-gray-600 mb-4">ต้องการบันทึกเข้างานตอนนี้เลยหรือไม่</p>
+              <div className="flex justify-end gap-2">
                 <button
-                  onClick={() => setIsChangePasswordModalOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="px-4 py-2 rounded-md border text-sm"
+                  onClick={handleCheckInPromptSkip}
                 >
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+                  ไม่ใช่ตอนนี้
+                </button>
+                <button
+                  className="px-4 py-2 rounded-md bg-green-600 text-white text-sm"
+                  onClick={handleCheckInPromptConfirm}
+                  disabled={attendanceLoading}
+                >
+                  {attendanceLoading ? "กำลังบันทึก..." : "บันทึกเข้างาน"}
                 </button>
               </div>
-
-              <div className="p-6">
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleChangePassword();
-                  }}
-                >
-                  {passwordError && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-                      {passwordError}
-                    </div>
-                  )}
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        รหัสผ่านปัจจุบัน
-                      </label>
-                      <input
-                        type="password"
-                        value={passwordForm.currentPassword}
-                        onChange={(e) =>
-                          setPasswordForm((prev) => ({
-                            ...prev,
-                            currentPassword: e.target.value,
-                          }))
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        รหัสผ่านใหม่
-                      </label>
-                      <input
-                        type="password"
-                        value={passwordForm.newPassword}
-                        onChange={(e) =>
-                          setPasswordForm((prev) => ({
-                            ...prev,
-                            newPassword: e.target.value,
-                          }))
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        ยืนยันรหัสผ่านใหม่
-                      </label>
-                      <input
-                        type="password"
-                        value={passwordForm.confirmPassword}
-                        onChange={(e) =>
-                          setPasswordForm((prev) => ({
-                            ...prev,
-                            confirmPassword: e.target.value,
-                          }))
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end space-x-3 mt-6">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsChangePasswordModalOpen(false);
-                        setPasswordError("");
-                        setPasswordForm({
-                          currentPassword: "",
-                          newPassword: "",
-                          confirmPassword: "",
-                        });
-                      }}
-                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-                      disabled={isChangingPassword}
-                    >
-                      ยกเลิก
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={isChangingPassword}
-                    >
-                      {isChangingPassword
-                        ? "กำลังเปลี่ยนรหัสผ่าน..."
-                        : "เปลี่ยนรหัสผ่าน"}
-                    </button>
-                  </div>
-                </form>
-              </div>
             </div>
           </div>
-        )
-      }
-    </div >
+        )}
+        {/* Fixed Sidebar */}
+        {!viewingCustomer && !hideSidebar && (
+          <div className="fixed left-0 top-0 h-screen z-10">
+            <Sidebar
+              user={currentUser}
+              activePage={activePage}
+              setActivePage={setActivePage}
+              isCollapsed={isSidebarCollapsed}
+              setIsCollapsed={setIsSidebarCollapsed}
+              onLogout={handleLogout}
+              permissions={{
+                ...(rolePermissions || {}),
+                onChangePassword: () => setIsChangePasswordModalOpen(true),
+              }}
+              menuOrder={menuOrder}
+            />
+          </div>
+        )}
+        {/* Main Content with proper margin */}
+        <div
+          className={`h-screen flex flex-col transition-all duration-300 ${hideSidebar || viewingCustomer
+            ? ""
+            : isSidebarCollapsed
+              ? "ml-20"
+              : "ml-64"
+            }`}
+        >
+          {!viewingCustomer && !hideSidebar && (
+            <header className="flex items-center px-6 h-16 bg-white border-b border-gray-200 flex-shrink-0">
+              <div className="flex items-center space-x-4 flex-shrink-0">
+                <button
+                  onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                  className="text-gray-600 lg:hidden"
+                >
+                  <Menu size={24} />
+                </button>
+                <h1 className="text-xl font-semibold text-gray-800">
+                  {activePage}
+                </h1>
+              </div>
+              <div className="flex-1 flex justify-center px-2">
+                {renderAttendanceWidget()}
+              </div>
+              <div className="flex items-center space-x-4 flex-shrink-0">
+                <div className="relative hidden">
+                  <select
+                    value={currentUserRole}
+                    onChange={(e) => {
+                      setCurrentUserRole(e.target.value as UserRole);
+                      setActivePage("Dashboard");
+                      handleCloseCustomerDetail();
+                    }}
+                    className="appearance-none cursor-pointer bg-gray-100 border border-gray-200 text-gray-700 text-sm rounded-md focus:ring-green-500 focus:border-green-500 block w-full py-2 pl-3 pr-8"
+                  >
+                    <option value={UserRole.SuperAdmin}>Super Admin</option>
+                    <option value={UserRole.AdminControl}>Admin Control</option>
+                    <option value={UserRole.Admin}>Admin Page</option>
+                    <option value={UserRole.Telesale}>Telesale</option>
+                    <option value={UserRole.Supervisor}>
+                      Supervisor Telesale
+                    </option>
+                    <option value={UserRole.Backoffice}>Backoffice</option>
+                    <option value={UserRole.Marketing}>Marketing</option>
+                  </select>
+                  <ChevronsUpDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                </div>
+              </div>
+            </header>
+          )}
+          <main className="flex-1 overflow-x-auto overflow-y-auto bg-[#F5F5F5] relative">
+            <div className="max-w-full min-h-full">
+              {renderPage()}
+            </div>
+          </main>
+        </div>
+
+        {renderModal()}
+
+        {/* Loading overlay for Customer Detail page restore */}
+        {isLoadingCustomerDetail && !viewingCustomer && (
+          <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent"></div>
+              <p className="text-gray-600 text-lg">กำลังโหลดข้อมูลลูกค้า...</p>
+            </div>
+          </div>
+        )}
+
+        {/* CustomerDetailPage Overlay - renders ON TOP of current page without unmounting it */}
+        {viewingCustomer && (
+          <div className="fixed inset-0 z-50 bg-white overflow-auto">
+            <CustomerDetailPage
+              activities={activities}
+              customer={viewingCustomer}
+              orders={companyOrders.filter(
+                (o) => {
+                  return String(o.customerId) === String(viewingCustomer.id) ||
+                    String(o.customerId) === String(viewingCustomer.pk);
+                },
+              )}
+              callHistory={callHistory.filter(
+                (c) => {
+                  return String(c.customerId) === String(viewingCustomer.id) ||
+                    String(c.customerId) === String(viewingCustomer.pk);
+                },
+              )}
+              appointments={appointments.filter(
+                (a) => {
+                  return String(a.customerId) === String(viewingCustomer.id) ||
+                    String(a.customerId) === String(viewingCustomer.pk);
+                },
+              )}
+              onClose={handleCloseCustomerDetail}
+              openModal={openModal}
+              user={currentUser}
+              allUsers={companyUsers}
+              systemTags={systemTags}
+              ownerName={(function () {
+                const u = companyUsers.find(
+                  (x) => x.id === (viewingCustomer as any).assignedTo,
+                );
+                return u ? `${u.firstName} ${u.lastName}` : undefined;
+              })()}
+              onAddTag={handleAddTagToCustomer}
+              onRemoveTag={handleRemoveTagFromCustomer}
+              onCreateUserTag={handleCreateUserTag}
+              onCompleteAppointment={handleCompleteAppointment}
+              onChangeOwner={handleChangeCustomerOwner}
+              customerCounts={userCustomerCounts}
+              onStartCreateOrder={(customer) => {
+                setPreviousPage(activePage);
+                setCreateOrderInitialData({ customer });
+                handleCloseCustomerDetail();
+                setActivePage("CreateOrder");
+              }}
+              onUpsellClick={(customer) => {
+                setPreviousPage(activePage);
+                setCreateOrderInitialData({ customer, upsell: true });
+                handleCloseCustomerDetail();
+                setActivePage("CreateOrder");
+              }}
+              refreshTrigger={refreshTrigger}
+            />
+          </div>
+        )}
+
+        {/* Change Password Modal */}
+        {
+          isChangePasswordModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <div
+                className="absolute inset-0 bg-black bg-opacity-50"
+                onClick={() => setIsChangePasswordModalOpen(false)}
+              />
+              <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+                <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    เปลี่ยนรหัสผ่าน
+                  </h3>
+                  <button
+                    onClick={() => setIsChangePasswordModalOpen(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg
+                      className="w-6 h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="p-6">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleChangePassword();
+                    }}
+                  >
+                    {passwordError && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+                        {passwordError}
+                      </div>
+                    )}
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          รหัสผ่านปัจจุบัน
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordForm.currentPassword}
+                          onChange={(e) =>
+                            setPasswordForm((prev) => ({
+                              ...prev,
+                              currentPassword: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          รหัสผ่านใหม่
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordForm.newPassword}
+                          onChange={(e) =>
+                            setPasswordForm((prev) => ({
+                              ...prev,
+                              newPassword: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          ยืนยันรหัสผ่านใหม่
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordForm.confirmPassword}
+                          onChange={(e) =>
+                            setPasswordForm((prev) => ({
+                              ...prev,
+                              confirmPassword: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end space-x-3 mt-6">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsChangePasswordModalOpen(false);
+                          setPasswordError("");
+                          setPasswordForm({
+                            currentPassword: "",
+                            newPassword: "",
+                            confirmPassword: "",
+                          });
+                        }}
+                        className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                        disabled={isChangingPassword}
+                      >
+                        ยกเลิก
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isChangingPassword}
+                      >
+                        {isChangingPassword
+                          ? "กำลังเปลี่ยนรหัสผ่าน..."
+                          : "เปลี่ยนรหัสผ่าน"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )
+        }
+      </div >
+    </ToastProvider>
   );
 };
 

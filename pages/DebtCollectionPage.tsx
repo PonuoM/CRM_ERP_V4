@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Order, Customer, ModalType } from '../types';
 import DebtCollectionModal from '../components/DebtCollectionModal';
 import OrderDetailModal from '../components/OrderDetailModal';
-import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle, XCircle, AlertOctagon, Download, Filter } from 'lucide-react';
+import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle, XCircle, AlertOctagon, Download, Filter, Clock } from 'lucide-react';
 import { getDebtCollectionOrders, getDebtCollectionSummary, closeDebtCase, DebtCollectionSummary, getDebtCollectionHistory, updateDebtCollection, exportDebtCollection } from '../services/api';
 import DateRangePicker from '../components/DateRangePicker';
 
@@ -646,6 +646,9 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                         ยอด
                       </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-orange-500 uppercase tracking-wider">
+                        ยอดรอตรวจ
+                      </th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                         จำนวนครั้ง
                       </th>
@@ -664,6 +667,9 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                       const remainingDebt = (order as any).remainingDebt;
                       const totalAmount = order.totalAmount;
                       const collected = (order as any).totalDebtCollected;
+                      const pendingSlipAmount = (order as any).pendingSlipAmount || 0;
+                      const hasPendingSlips = (order as any).hasPendingSlips || false;
+                      const isPendingFullyCovered = hasPendingSlips && remainingDebt <= 0;
 
                       return (
                         <tr key={order.id} className="hover:bg-gray-50">
@@ -719,6 +725,19 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                               </span>
                             </div>
                           </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                            {hasPendingSlips ? (
+                              <div className="flex flex-col items-end">
+                                <span className="inline-flex items-center gap-1 text-orange-600 font-semibold">
+                                  <Clock size={12} />
+                                  {pendingSlipAmount.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </span>
+                                <span className="text-[10px] text-orange-500">รอตรวจสอบ</span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-300 text-xs">-</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-600">
 
                             {(order as any).trackingCount > 0 ? (
@@ -737,13 +756,23 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                             )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-center">
-                            <button
-                              onClick={() => handleTrackClick(order)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors"
-                            >
-                              <FileText size={14} />
-                              ติดตาม
-                            </button>
+                            {isPendingFullyCovered ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-md cursor-default"
+                                title={`มีสลิปยอด ฿${pendingSlipAmount.toLocaleString()} รอการตรวจสอบ`}
+                              >
+                                <Clock size={14} />
+                                รอตรวจสลิป
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleTrackClick(order)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors"
+                              >
+                                <FileText size={14} />
+                                ติดตาม
+                              </button>
+                            )}
                           </td>
 
                         </tr>

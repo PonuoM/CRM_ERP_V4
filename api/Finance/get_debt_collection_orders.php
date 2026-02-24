@@ -286,7 +286,14 @@ try {
                     (SELECT COUNT(*) FROM debt_collection dc WHERE dc.order_id = o.id) as tracking_count,
                     (SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection dc WHERE dc.order_id = o.id) as total_debt_collected,
                     (SELECT MAX(dc_l.created_at) FROM debt_collection dc_l WHERE dc_l.order_id = o.id) as last_tracking_date,
-                    (SELECT MIN(dc_f.created_at) FROM debt_collection dc_f WHERE dc_f.order_id = o.id) as first_tracking_date
+                    (SELECT MIN(dc_f.created_at) FROM debt_collection dc_f WHERE dc_f.order_id = o.id) as first_tracking_date,
+                    (SELECT COALESCE(SUM(os_p.amount), 0)
+                     FROM order_slips os_p
+                     WHERE os_p.order_id = o.id
+                     AND os_p.id NOT IN (
+                       SELECT dci.order_slip_id FROM debt_collection_images dci WHERE dci.order_slip_id IS NOT NULL
+                     )
+                    ) as pending_slip_amount
                 FROM orders o
                 LEFT JOIN customers c ON o.customer_id = c.customer_id
                 $whereClause
@@ -302,7 +309,8 @@ try {
             $totalAmount = (float) $order['total_amount'];
             $paidAmount = (float) ($order['amount_paid'] ?? 0);
             $collected = (float) $order['total_debt_collected'];
-            $remainingDebt = max(0, $totalAmount - $paidAmount - $collected);
+            $pendingSlips = (float) ($order['pending_slip_amount'] ?? 0);
+            $remainingDebt = max(0, $totalAmount - $paidAmount - $collected - $pendingSlips);
 
             // Calculate Days Passed from Delivery Date
             $daysPassed = 0;
@@ -330,6 +338,8 @@ try {
                 'trackingCount' => (int) $order['tracking_count'],
                 'totalDebtCollected' => $collected,
                 'remainingDebt' => $remainingDebt,
+                'pendingSlipAmount' => $pendingSlips,
+                'hasPendingSlips' => $pendingSlips > 0,
                 'customerReceivedDate' => $order['customer_received_date'],
                 'lastTrackingDate' => $order['last_tracking_date'],
                 'firstTrackingDate' => $order['first_tracking_date']

@@ -677,16 +677,18 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       };
 
       // Helper functions for new columns
-      const getSeller = () => {
-        const creator = users.find(u => u.id === order.creatorId);
+      const getSeller = (itemCreatorId?: number) => {
+        const creatorId = itemCreatorId ?? order.creatorId;
+        const creator = users.find(u => u.id === creatorId);
         if (creator) {
           return `${creator.firstName || ''} ${creator.lastName || ''}`.trim() || creator.username || '-';
         }
         return '-';
       };
 
-      const getSellerRole = () => {
-        const creator = users.find(u => u.id === order.creatorId);
+      const getSellerRole = (itemCreatorId?: number) => {
+        const creatorId = itemCreatorId ?? order.creatorId;
+        const creator = users.find(u => u.id === creatorId);
         return creator?.role || '-';
       };
 
@@ -803,8 +805,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           ordersRawReport.push({
             'วันที่สั่งซื้อ': new Date(order.orderDate).toLocaleDateString('th-TH'),
             'เลขคำสั่งซื้อ': order.id,
-            'ผู้ขาย': getSeller(),
-            'แผนก': getSellerRole(),
+            'ผู้ขาย': getSeller(item.creatorId),
+            'แผนก': getSellerRole(item.creatorId),
             'ชื่อลูกค้า': getCustomerName(),
             'เบอร์โทรลูกค้า': getCustomerPhone(),
             'ประเภทลูกค้า': getCustomerType(),
@@ -1171,7 +1173,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               String(c.customer_id) === String(order.customer_id) ||
               String(c.id) === String(order.customer_id)
             );
-            const creator = users.find(u => u.id === order.creator_id);
+            const orderCreator = users.find(u => u.id === order.creator_id);
             const page = pages.find(p => p.id === order.sales_channel_page_id);
 
             const customerName = customer
@@ -1284,8 +1286,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               exportRows.push({
                 'วันที่สั่งซื้อ': order.order_date ? new Date(order.order_date).toLocaleDateString('th-TH') : '-',
                 'เลขคำสั่งซื้อ': order.id || '-',
-                'ผู้ขาย': creator ? `${creator.firstName || ''} ${creator.lastName || ''}`.trim() || creator.username : '-',
-                'แผนก': creator?.role || '-',
+                'ผู้ขาย': (() => { const c = users.find(u => u.id === (item.creator_id ?? order.creator_id)); return c ? `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.username : '-'; })(),
+                'แผนก': (() => { const c = users.find(u => u.id === (item.creator_id ?? order.creator_id)); return c?.role || '-'; })(),
                 'ชื่อลูกค้า': customerName,
                 'เบอร์โทรลูกค้า': customerPhone,
                 'ประเภทลูกค้า': getCustomerTypeThai(order.customer_type || customer?.lifecycleStatus),

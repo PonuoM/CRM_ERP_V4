@@ -8017,9 +8017,7 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     $code = 409;
                     $errMsg = 'เลขที่เอกสารซ้ำ กรุณาใช้เลขที่เอกสารอื่น';
                 }
-                if (strpos($errMsg, 'collected + waived exceeds collection_amount') !== false) {
-                    $errMsg = 'ยอดเก็บเงิน COD รวมเกินยอดที่ต้องเก็บของกล่องพัสดุ กรุณาตรวจสอบยอด COD';
-                }
+                // Note: excess COD amounts are now ALLOWED (trigger updated 2026-02-21)
                 json_response(['error' => 'CREATE_FAILED', 'message' => $errMsg], $code);
             }
             break;
