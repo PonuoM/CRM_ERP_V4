@@ -19,11 +19,11 @@ try {
     $pdo = db_connect();
 
     // Required parameters
-    $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : 0;
-    $month = isset($_GET['month']) ? (int)$_GET['month'] : (int)date('m');
-    $year = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
+    $companyId = isset($_GET['company_id']) ? (int) $_GET['company_id'] : 0;
+    $month = isset($_GET['month']) ? (int) $_GET['month'] : (int) date('m');
+    $year = isset($_GET['year']) ? (int) $_GET['year'] : (int) date('Y');
     $groupBy = isset($_GET['group_by']) ? $_GET['group_by'] : 'seller';
-    $userId = isset($_GET['user_id']) ? (int)$_GET['user_id'] : null;
+    $userId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : null;
 
     if ($companyId <= 0) {
         http_response_code(400);
@@ -57,7 +57,7 @@ try {
         // Confirmed, Picking, Shipping, Delivered (exclude pending/cancelled)
         $whereClause .= " AND o.order_status IN ('Confirmed', 'Preparing', 'Picking', 'Shipping', 'Delivered')";
     } else {
-        // All Active (exclude Cancelled/BadDebt)
+        // All Active (exclude Cancelled/BadDebt at order level, Returned handled at box level)
         $whereClause .= " AND o.order_status NOT IN ('Cancelled', 'BadDebt')";
     }
 
@@ -106,9 +106,11 @@ try {
             COUNT(DISTINCT o.id) as order_count
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
+        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         $joinClause
         $whereClause
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND (ob.status IS NULL OR ob.status != 'RETURNED')
         GROUP BY $groupByField, DAY(o.order_date)
         ORDER BY $groupByField, DAY(o.order_date)
     ";
@@ -125,7 +127,7 @@ try {
         $groupId = $row['group_id'] ?? 'unknown';
         $groupName = trim($row['group_name']) ?: 'ไม่ระบุ';
         $dayKey = str_pad($row['day_of_month'], 2, '0', STR_PAD_LEFT);
-        $sales = (float)$row['total_sales'];
+        $sales = (float) $row['total_sales'];
 
         if (!isset($groupedData[$groupId])) {
             $groupedData[$groupId] = [
@@ -142,10 +144,10 @@ try {
         }
 
         // data array is 0-indexed (day 1 = index 0)
-        $dayIndex = (int)$row['day_of_month'] - 1;
+        $dayIndex = (int) $row['day_of_month'] - 1;
         $groupedData[$groupId]['data'][$dayIndex] = $sales;
         $groupedData[$groupId]['total'] += $sales;
-        
+
         $detailsMap[$groupId]['dailySales'][$dayKey] = $sales;
         $detailsMap[$groupId]['total'] += $sales;
     }
@@ -163,7 +165,7 @@ try {
     $details = array_values($detailsMap);
 
     // Sort details alphabetically by name (instead of by total)
-    usort($details, function($a, $b) {
+    usort($details, function ($a, $b) {
         return strcmp($a['name'], $b['name']);
     });
 

@@ -17,34 +17,34 @@ cors();
 try {
     $pdo = db_connect();
     $user = get_authenticated_user($pdo);
-    
+
     if (!$user) {
         json_response(['success' => false, 'message' => 'Unauthorized'], 401);
         exit;
     }
-    
+
     $companyId = $user['company_id'];
     $currentUserId = $user['id'];
     $currentUserRole = strtolower($user['role'] ?? '');
-    
+
     // Role check - Admin, CEO, or Supervisor only
     $isAdmin = strpos($currentUserRole, 'admin') !== false && strpos($currentUserRole, 'supervisor') === false;
     $isSupervisor = strpos($currentUserRole, 'supervisor') !== false;
     $isCEO = strpos($currentUserRole, 'ceo') !== false;
-    
+
     if (!$isAdmin && !$isSupervisor && !$isCEO) {
         json_response(['success' => false, 'message' => 'Access denied. Admin, CEO, or Supervisor only.'], 403);
         exit;
     }
-    
+
     // Get parameters
     $year = isset($_GET['year']) ? intval($_GET['year']) : intval(date('Y'));
     $month = isset($_GET['month']) ? intval($_GET['month']) : intval(date('m'));
     $specificDate = isset($_GET['date']) ? $_GET['date'] : null; // YYYY-MM-DD for daily view
-    
+
     // Build date filter based on mode (monthly vs daily)
     $isDaily = !empty($specificDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $specificDate);
-    
+
     // For calls/orders - date filter conditions
     if ($isDaily) {
         $dateFilterCalls = "DATE(ol.timestamp) = ?";
@@ -57,34 +57,34 @@ try {
         $dateFilterAttendance = "YEAR(uda.date) = ? AND MONTH(uda.date) = ?";
         $dateParams = [$year, $month];
     }
-    
+
     // Build user filter for Supervisor (Admin and CEO see all)
     $userFilter = "";
     $userParams = [];
-    
+
     if ($isSupervisor && !$isAdmin && !$isCEO) {
         // Supervisor sees their team AND themselves
         $userFilter = " AND (u.supervisor_id = ? OR u.id = ?)";
         $userParams = [$currentUserId, $currentUserId];
     }
-    
+
     // ========================================
     // TIER DEFINITIONS (Basket Keys) - UPDATED
     // ========================================
     // ลูกค้าใหม่ (New) - basket_key 48 ย้ายมาอยู่กลุ่มนี้
     $TIER_NEW_KEYS = [38, 46, 47, 48];
-    
+
     // ลูกค้าเก่า 3 เดือน (Core)
     $TIER_CORE_KEYS = [39, 40];
-    
+
     // ลูกค้าขุด (Revival/Win-back) - basket_key 48 ย้ายไปกลุ่มลูกค้าใหม่
     $TIER_REVIVAL_KEYS = [49, 50];
-    
+
     // SQL IN clause helpers
     $newKeysIn = implode(',', $TIER_NEW_KEYS);
     $coreKeysIn = implode(',', $TIER_CORE_KEYS);
     $revivalKeysIn = implode(',', $TIER_REVIVAL_KEYS);
-    
+
     // ========================================
     // PRE-COMPUTATION: Visible User IDs
     // Active users always show; inactive users show if they had orders in the period
@@ -97,7 +97,7 @@ try {
         $visibleYear = $year;
         $visibleMonth = $month;
     }
-    
+
     $sqlVisibleUsers = "
         SELECT u.id FROM users u 
         WHERE u.company_id = ? AND u.role LIKE '%telesale%' AND u.status = 'active' $userFilter
@@ -105,9 +105,11 @@ try {
         SELECT DISTINCT u.id FROM users u
         JOIN order_items oi ON oi.creator_id = u.id
         JOIN orders o ON oi.parent_order_id = o.id
+        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE u.company_id = ? AND u.role LIKE '%telesale%' AND u.status != 'active'
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
-            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND o.order_status NOT IN ('Cancelled', 'BadDebt')
+            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             $userFilter
     ";
@@ -115,14 +117,14 @@ try {
     $stmt = $pdo->prepare($sqlVisibleUsers);
     $stmt->execute($visibleParams);
     $visibleIds = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id');
-    
+
     if (empty($visibleIds)) {
         $visibleIdsIn = '0';
     } else {
         $visibleIdsIn = implode(',', array_map('intval', $visibleIds));
     }
     $visibleFilter = "u.id IN ($visibleIdsIn)";
-    
+
     // ========================================
     // 1. Get Call Data from onecall_log
     // ========================================
@@ -145,18 +147,18 @@ try {
             $userFilter
         GROUP BY u.id, u.first_name, u.last_name, u.phone
     ";
-    
+
     $callParams = array_merge($dateParams, [$companyId], $userParams);
     $stmt = $pdo->prepare($sqlCalls);
     $stmt->execute($callParams);
     $callData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     // Index by user_id
     $callsByUser = [];
     foreach ($callData as $row) {
         $callsByUser[$row['user_id']] = $row;
     }
-    
+
     // ========================================
     // 2. Get Order Data - REGULAR (not upsell)
     //    Exclude basket_key_at_sale = 51 (Upsell bucket)
@@ -169,9 +171,11 @@ try {
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN users u ON oi.creator_id = u.id
+        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND $dateFilterOrders
-            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND o.order_status NOT IN ('Cancelled', 'BadDebt')
+            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale != 51)  -- NOT upsell
             AND u.company_id = ?
@@ -180,17 +184,17 @@ try {
             $userFilter
         GROUP BY oi.creator_id
     ";
-    
+
     $orderParams = array_merge([$companyId], $dateParams, [$companyId], $userParams);
     $stmt = $pdo->prepare($sqlOrdersRegular);
     $stmt->execute($orderParams);
     $orderData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     $ordersByUser = [];
     foreach ($orderData as $row) {
         $ordersByUser[$row['user_id']] = $row;
     }
-    
+
     // ========================================
     // 2b. Get Upsell Data - Items tagged as basket_key_at_sale = 51
     // ========================================
@@ -202,9 +206,11 @@ try {
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN users u ON oi.creator_id = u.id
+        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND $dateFilterOrders
-            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND o.order_status NOT IN ('Cancelled', 'BadDebt')
+            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.basket_key_at_sale = 51  -- IS upsell (basket 51)
             AND u.company_id = ?
@@ -213,17 +219,17 @@ try {
             $userFilter
         GROUP BY oi.creator_id
     ";
-    
+
     $upsellParams = array_merge([$companyId], $dateParams, [$companyId], $userParams);
     $stmt = $pdo->prepare($sqlUpsell);
     $stmt->execute($upsellParams);
     $upsellData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     $upsellByUser = [];
     foreach ($upsellData as $row) {
         $upsellByUser[$row['user_id']] = $row;
     }
-    
+
     // ========================================
     // 2c. Get Sales Targets
     // ========================================
@@ -232,16 +238,16 @@ try {
         FROM sales_targets
         WHERE month = ? AND year = ?
     ";
-    
+
     $stmt = $pdo->prepare($sqlTargets);
     $stmt->execute([$month, $year]);
     $targetData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     $targetsByUser = [];
     foreach ($targetData as $row) {
         $targetsByUser[$row['user_id']] = floatval($row['target_amount']);
     }
-    
+
     // ========================================
     // 3. AOV by Category (ปุ๋ย vs ชีวภัณฑ์)
     // ========================================
@@ -259,9 +265,11 @@ try {
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN products p ON oi.product_id = p.id
         JOIN users u ON oi.creator_id = u.id
+        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND $dateFilterOrders
-            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND o.order_status NOT IN ('Cancelled', 'BadDebt')
+            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
@@ -269,12 +277,12 @@ try {
             $userFilter
         GROUP BY oi.creator_id, category_type
     ";
-    
+
     $aovParams = array_merge([$companyId], $dateParams, [$companyId], $userParams);
     $stmt = $pdo->prepare($sqlAovByCategory);
     $stmt->execute($aovParams);
     $aovCategoryData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     // Organize by user and category
     $aovByUserCategory = [];
     foreach ($aovCategoryData as $row) {
@@ -290,12 +298,12 @@ try {
             ];
         }
     }
-    
+
     // ========================================
     // 4. Customer Segment Counts (from current_basket_key) - OPTIMIZED: Single Query
     // ========================================
     $allSegmentKeysIn = implode(',', array_merge($TIER_NEW_KEYS, $TIER_CORE_KEYS, $TIER_REVIVAL_KEYS));
-    
+
     $sqlCustomerCounts = "
         SELECT 
             c.assigned_to AS user_id,
@@ -312,12 +320,12 @@ try {
             $userFilter
         GROUP BY c.assigned_to
     ";
-    
+
     $custParams = array_merge([$companyId, $companyId], $userParams);
     $stmt = $pdo->prepare($sqlCustomerCounts);
     $stmt->execute($custParams);
     $custCountData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     $newCustCountByUser = [];
     $coreCustCountByUser = [];
     $revivalCustCountByUser = [];
@@ -326,7 +334,7 @@ try {
         $coreCustCountByUser[$row['user_id']] = intval($row['core_count']);
         $revivalCustCountByUser[$row['user_id']] = intval($row['revival_count']);
     }
-    
+
     // ========================================
     // 5. Customer Segment Orders (from basket_key_at_sale) - OPTIMIZED: Single Query
     // ========================================
@@ -348,9 +356,11 @@ try {
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN users u ON oi.creator_id = u.id
+        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND $dateFilterOrders
-            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND o.order_status NOT IN ('Cancelled', 'BadDebt')
+            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($allSegmentKeysIn)
             AND u.company_id = ?
@@ -359,12 +369,12 @@ try {
             $userFilter
         GROUP BY oi.creator_id
     ";
-    
+
     $segmentParams = array_merge([$companyId], $dateParams, [$companyId], $userParams);
     $stmt = $pdo->prepare($sqlSegmentOrders);
     $stmt->execute($segmentParams);
     $segmentOrdersData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     $newCustOrdersByUser = [];
     $newCustSalesByUser = [];
     $coreCustOrdersByUser = [];
@@ -379,7 +389,7 @@ try {
         $revivalCustOrdersByUser[$row['user_id']] = intval($row['revival_orders']);
         $revivalCustSalesByUser[$row['user_id']] = floatval($row['revival_sales']);
     }
-    
+
     // ========================================
     // 6. Attendance Data (Working Days)
     // ========================================
@@ -403,7 +413,7 @@ try {
     } else {
         $startDate = sprintf('%04d-%02d-01', $year, $month);
         $endDate = date('Y-m-t', strtotime($startDate));
-        
+
         $sqlAttendance = "
             SELECT 
                 a.user_id,
@@ -423,81 +433,81 @@ try {
     $stmt = $pdo->prepare($sqlAttendance);
     $stmt->execute($attendParams);
     $attendData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     $attendByUser = [];
     foreach ($attendData as $row) {
         $attendByUser[$row['user_id']] = floatval($row['working_days']);
     }
-    
+
     // ========================================
     // 7. Combine All Data
     // ========================================
     $telesaleDetails = [];
-    
+
     foreach ($callsByUser as $userId => $callInfo) {
         $orders = $ordersByUser[$userId] ?? ['total_orders' => 0, 'total_sales' => 0];
         $upsell = $upsellByUser[$userId] ?? ['upsell_orders' => 0, 'upsell_sales' => 0];
         $aovCat = $aovByUserCategory[$userId] ?? ['fertilizer' => ['orders' => 0, 'sales' => 0], 'bio' => ['orders' => 0, 'sales' => 0]];
-        
+
         // Call metrics
         $totalCalls = intval($callInfo['total_calls']);
         $answeredCalls = intval($callInfo['answered_calls']);
         $totalMinutes = floatval($callInfo['total_minutes']);
         $avgMinutesPerCall = floatval($callInfo['avg_duration_minutes']);
-        
+
         // Order metrics
         $totalOrders = intval($orders['total_orders']);
         $totalSales = floatval($orders['total_sales']);  // Regular sales only
-        
+
         // Upsell metrics
         $upsellOrders = intval($upsell['upsell_orders']);
         $upsellSales = floatval($upsell['upsell_sales']);
-        
+
         // Combined
         $combinedSales = $totalSales + $upsellSales;
-        
+
         // All orders for conversion rate (regular + upsell)
         $allOrders = $totalOrders + $upsellOrders;
-        
+
         // Conversion rate
         $conversionRate = $totalCalls > 0 ? round(($allOrders / $totalCalls) * 100, 2) : 0;
-        
+
         // AOV by category
-        $aovFertilizer = $aovCat['fertilizer']['orders'] > 0 
-            ? round($aovCat['fertilizer']['sales'] / $aovCat['fertilizer']['orders'], 0) 
+        $aovFertilizer = $aovCat['fertilizer']['orders'] > 0
+            ? round($aovCat['fertilizer']['sales'] / $aovCat['fertilizer']['orders'], 0)
             : 0;
-        $aovBio = $aovCat['bio']['orders'] > 0 
-            ? round($aovCat['bio']['sales'] / $aovCat['bio']['orders'], 0) 
+        $aovBio = $aovCat['bio']['orders'] > 0
+            ? round($aovCat['bio']['sales'] / $aovCat['bio']['orders'], 0)
             : 0;
-        
+
         // Customer segments - counts
         $newCustCount = $newCustCountByUser[$userId] ?? 0;
         $coreCustCount = $coreCustCountByUser[$userId] ?? 0;
         $revivalCustCount = $revivalCustCountByUser[$userId] ?? 0;
-        
+
         // Customer segments - orders
         $newCustOrders = $newCustOrdersByUser[$userId] ?? 0;
         $coreCustOrders = $coreCustOrdersByUser[$userId] ?? 0;
         $revivalCustOrders = $revivalCustOrdersByUser[$userId] ?? 0;
-        
+
         // Customer segments - sales
         $newCustSales = $newCustSalesByUser[$userId] ?? 0;
         $coreCustSales = $coreCustSalesByUser[$userId] ?? 0;
         $revivalCustSales = $revivalCustSalesByUser[$userId] ?? 0;
-        
+
         // Customer segments - rates
         $newCustRate = $newCustCount > 0 ? round(($newCustOrders / $newCustCount) * 100, 1) : 0;
         $coreCustRate = $coreCustCount > 0 ? round(($coreCustOrders / $coreCustCount) * 100, 1) : 0;
         $revivalCustRate = $revivalCustCount > 0 ? round(($revivalCustOrders / $revivalCustCount) * 100, 1) : 0;
-        
+
         // Attendance
         $workingDays = $attendByUser[$userId] ?? 0;
         $avgMinutesPerDay = $workingDays > 0 ? round($totalMinutes / $workingDays, 1) : 0;
-        
+
         // Target
         $targetAmount = $targetsByUser[$userId] ?? 0;
         $targetProgress = $targetAmount > 0 ? round(($combinedSales / $targetAmount) * 100, 1) : 0;
-        
+
         $telesaleDetails[] = [
             'userId' => intval($userId),
             'name' => trim($callInfo['first_name'] . ' ' . $callInfo['last_name']),
@@ -507,55 +517,55 @@ try {
                 // Orders & Conversion
                 'totalOrders' => $allOrders,
                 'conversionRate' => $conversionRate,
-                
+
                 // Sales
                 'totalSales' => $totalSales,           // ยอดขายปกติ (ไม่รวม upsell)
                 'upsellOrders' => $upsellOrders,
                 'upsellSales' => $upsellSales,
                 'combinedSales' => $combinedSales,     // ยอดขายรวม ★
-                
+
                 // Customers 3 months (Core)
                 'customers90Days' => $coreCustCount,
-                
+
                 // AOV by category
                 'aovFertilizer' => $aovFertilizer,
                 'aovBio' => $aovBio,
-                
+
                 // ลูกค้าใหม่ (38,46,47)
                 'newCustCount' => $newCustCount,
                 'newCustOrders' => $newCustOrders,
                 'newCustSales' => $newCustSales,
                 'newCustRate' => $newCustRate,
-                
+
                 // ลูกค้าเก่า (39,40)
                 'coreCustCount' => $coreCustCount,
                 'coreCustOrders' => $coreCustOrders,
                 'coreCustSales' => $coreCustSales,
                 'coreCustRate' => $coreCustRate,
-                
+
                 // ลูกค้าขุด (48,49,50)
                 'revivalCustCount' => $revivalCustCount,
                 'revivalCustOrders' => $revivalCustOrders,
                 'revivalCustSales' => $revivalCustSales,
                 'revivalCustRate' => $revivalCustRate,
-                
+
                 // Target
                 'targetAmount' => $targetAmount,
                 'targetProgress' => $targetProgress,
-                
+
                 // Call metrics
                 'totalCalls' => $totalCalls,
                 'answeredCalls' => $answeredCalls,
                 'totalMinutes' => round($totalMinutes, 1),
                 'avgMinutesPerCall' => $avgMinutesPerCall,
-                
+
                 // Attendance
                 'workingDays' => $workingDays,
                 'avgMinutesPerDay' => $avgMinutesPerDay,
             ]
         ];
     }
-    
+
     // ========================================
     // 8. Calculate Team Totals/Averages
     // ========================================
@@ -576,7 +586,7 @@ try {
         'revivalCustOrders' => 0,
         'conversionRate' => 0,
     ];
-    
+
     if ($totalTelesales > 0) {
         foreach ($telesaleDetails as $ts) {
             $teamTotals['totalOrders'] += $ts['metrics']['totalOrders'];
@@ -593,13 +603,13 @@ try {
             $teamTotals['coreCustOrders'] += $ts['metrics']['coreCustOrders'];
             $teamTotals['revivalCustOrders'] += $ts['metrics']['revivalCustOrders'];
         }
-        
+
         // Calculate team conversion rate (ได้คุย / ออเดอร์)
-        $teamTotals['conversionRate'] = $teamTotals['answeredCalls'] > 0 
-            ? round(($teamTotals['totalOrders'] / $teamTotals['answeredCalls']) * 100, 2) 
+        $teamTotals['conversionRate'] = $teamTotals['answeredCalls'] > 0
+            ? round(($teamTotals['totalOrders'] / $teamTotals['answeredCalls']) * 100, 2)
             : 0;
     }
-    
+
     // ========================================
     // 9. Get Previous Month Sales for Comparison
     // ========================================
@@ -609,38 +619,40 @@ try {
         $prevMonth = 12;
         $prevYear = $year - 1;
     }
-    
+
     $sqlPrevMonth = "
         SELECT COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS prev_sales
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN users u ON oi.creator_id = u.id
+        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
-            AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
+            AND o.order_status NOT IN ('Cancelled', 'BadDebt')
+            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND $visibleFilter
             $userFilter
     ";
-    
+
     $prevParams = array_merge([$companyId, $prevYear, $prevMonth, $companyId], $userParams);
     $stmt = $pdo->prepare($sqlPrevMonth);
     $stmt->execute($prevParams);
     $prevResult = $stmt->fetch(PDO::FETCH_ASSOC);
     $previousMonthSales = floatval($prevResult['prev_sales'] ?? 0);
-    
+
     // ========================================
     // 10. Create Rankings
     // ========================================
-    
+
     // By Conversion Rate
     $byConversion = $telesaleDetails;
-    usort($byConversion, function($a, $b) {
+    usort($byConversion, function ($a, $b) {
         return $b['metrics']['conversionRate'] <=> $a['metrics']['conversionRate'];
     });
-    $rankingsConversion = array_map(function($ts) {
+    $rankingsConversion = array_map(function ($ts) {
         return [
             'userId' => $ts['userId'],
             'name' => $ts['name'],
@@ -649,13 +661,13 @@ try {
             'orders' => $ts['metrics']['totalOrders']
         ];
     }, array_slice($byConversion, 0, 10));
-    
+
     // By Combined Sales
     $bySales = $telesaleDetails;
-    usort($bySales, function($a, $b) {
+    usort($bySales, function ($a, $b) {
         return $b['metrics']['combinedSales'] <=> $a['metrics']['combinedSales'];
     });
-    $rankingsSales = array_map(function($ts) {
+    $rankingsSales = array_map(function ($ts) {
         return [
             'userId' => $ts['userId'],
             'name' => $ts['name'],
@@ -663,13 +675,13 @@ try {
             'upsell' => $ts['metrics']['upsellSales']
         ];
     }, array_slice($bySales, 0, 10));
-    
+
     // By Core Customer Rate (ลูกค้าเก่าซื้อซ้ำ)
     $byCoreRate = $telesaleDetails;
-    usort($byCoreRate, function($a, $b) {
+    usort($byCoreRate, function ($a, $b) {
         return $b['metrics']['coreCustRate'] <=> $a['metrics']['coreCustRate'];
     });
-    $rankingsCoreRate = array_map(function($ts) {
+    $rankingsCoreRate = array_map(function ($ts) {
         return [
             'userId' => $ts['userId'],
             'name' => $ts['name'],
@@ -678,16 +690,16 @@ try {
             'count' => $ts['metrics']['coreCustCount']
         ];
     }, array_slice($byCoreRate, 0, 10));
-    
+
     // By Upsell Sales
     $byUpsell = $telesaleDetails;
-    usort($byUpsell, function($a, $b) {
+    usort($byUpsell, function ($a, $b) {
         return $b['metrics']['upsellSales'] <=> $a['metrics']['upsellSales'];
     });
-    $filteredUpsell = array_filter($byUpsell, function($ts) {
+    $filteredUpsell = array_filter($byUpsell, function ($ts) {
         return $ts['metrics']['upsellSales'] > 0;
     });
-    $rankingsUpsell = array_map(function($ts) {
+    $rankingsUpsell = array_map(function ($ts) {
         return [
             'userId' => $ts['userId'],
             'name' => $ts['name'],
@@ -695,7 +707,7 @@ try {
             'orders' => $ts['metrics']['upsellOrders']
         ];
     }, array_slice($filteredUpsell, 0, 10));
-    
+
     // ========================================
     // 11. Return Response
     // ========================================
@@ -728,7 +740,7 @@ try {
             ]
         ]
     ]);
-    
+
 } catch (Exception $e) {
     json_response([
         'success' => false,
