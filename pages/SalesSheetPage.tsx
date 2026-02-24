@@ -347,7 +347,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const hasActiveFilters = useMemo(() => Object.keys(colFilters).length > 0, [colFilters]);
     const activeFilterCount = useMemo(() => Object.keys(colFilters).length, [colFilters]);
 
-    // Build unique value lists for each column (from loaded rows)
+    // Build unique value lists for each column (from loaded rows) — display in Thai
     const colUniqueValues = useMemo(() => {
         const getUnique = (getter: (r: SheetRow) => string | null | undefined): string[] =>
             [...new Set(rows.map(r => getter(r) || '-'))].sort();
@@ -355,10 +355,10 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             order_date: [...new Set(rows.map(r => formatDate(r.order_date)))].sort(),
             order_number: getUnique(r => r.order_number),
             seller_name: [...new Set(rows.map(r => r.seller_name?.trim() || '-'))].sort(),
-            customer_type: getUnique(r => r.customer_type),
+            customer_type: [...new Set(rows.map(r => getCustomerTypeThai(r.customer_type)))].sort(),
             basket: getUnique(r => r.basket_key_at_sale),
             sales_channel: getUnique(r => r.sales_channel),
-            payment_method: getUnique(r => r.payment_method),
+            payment_method: [...new Set(rows.map(r => getPaymentThai(r.payment_method)))].sort(),
             customer_name: [...new Set(rows.map(r => r.customer_name?.trim() || '-'))].sort(),
             customer_phone: getUnique(r => r.customer_phone),
             province: getUnique(r => r.province),
@@ -367,7 +367,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             quantity: [...new Set(rows.map(r => String(r.quantity)))].sort((a, b) => Number(a) - Number(b)),
             net_total: [...new Set(rows.map(r => r.is_freebie ? '0' : formatMoney(r.net_total)))].sort(),
             delivery_date: [...new Set(rows.map(r => formatDate(r.delivery_date)))].sort(),
-            order_status: getUnique(r => r.order_status),
+            order_status: [...new Set(rows.map(r => getStatusThai(r.order_status)))].sort(),
         };
     }, [rows]);
 
@@ -376,10 +376,10 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
         order_date: r => formatDate(r.order_date),
         order_number: r => r.order_number || '-',
         seller_name: r => r.seller_name?.trim() || '-',
-        customer_type: r => r.customer_type || '-',
+        customer_type: r => getCustomerTypeThai(r.customer_type),
         basket: r => r.basket_key_at_sale || '-',
         sales_channel: r => r.sales_channel || '-',
-        payment_method: r => r.payment_method || '-',
+        payment_method: r => getPaymentThai(r.payment_method),
         customer_name: r => r.customer_name?.trim() || '-',
         customer_phone: r => r.customer_phone || '-',
         province: r => r.province || '-',
@@ -388,7 +388,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
         quantity: r => String(r.quantity),
         net_total: r => r.is_freebie ? '0' : formatMoney(r.net_total),
         delivery_date: r => formatDate(r.delivery_date),
-        order_status: r => r.order_status || '-',
+        order_status: r => getStatusThai(r.order_status),
     }), []);
 
     // Client-side filtering of loaded rows
@@ -409,7 +409,8 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const filteredStats = useMemo(() => {
         const totalQty = filteredRows.reduce((s, r) => s + (r.quantity || 0), 0);
         const totalNet = filteredRows.reduce((s, r) => s + (r.is_freebie ? 0 : (r.net_total || 0)), 0);
-        return { totalQty, totalNet, count: filteredRows.length };
+        const uniqueOrders = new Set(filteredRows.map(r => r.order_id)).size;
+        return { totalQty, totalNet, count: filteredRows.length, uniqueOrders };
     }, [filteredRows]);
 
     // Reset column filters when top-level filters change
@@ -589,20 +590,29 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                 </div>
             </div>
 
-            {/* Summary Cards */}
+            {/* Summary Cards — show filtered stats when filters active */}
             <div className="px-4 py-2 flex-shrink-0">
                 <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-white rounded-lg border px-3 py-2">
+                    <div className={`rounded-lg border px-3 py-2 ${hasActiveFilters ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
                         <div className="text-[10px] text-gray-500 uppercase tracking-wide">ออเดอร์</div>
-                        <div className="text-lg font-bold text-gray-800">{summary.total_orders.toLocaleString()}</div>
+                        <div className="text-lg font-bold text-gray-800">
+                            {hasActiveFilters ? filteredStats.uniqueOrders.toLocaleString() : summary.total_orders.toLocaleString()}
+                        </div>
+                        {hasActiveFilters && <div className="text-[10px] text-blue-500">จาก {summary.total_orders.toLocaleString()}</div>}
                     </div>
-                    <div className="bg-white rounded-lg border px-3 py-2">
+                    <div className={`rounded-lg border px-3 py-2 ${hasActiveFilters ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
                         <div className="text-[10px] text-gray-500 uppercase tracking-wide">รายการสินค้า</div>
-                        <div className="text-lg font-bold text-gray-800">{summary.total_items.toLocaleString()}</div>
+                        <div className="text-lg font-bold text-gray-800">
+                            {hasActiveFilters ? filteredStats.count.toLocaleString() : summary.total_items.toLocaleString()}
+                        </div>
+                        {hasActiveFilters && <div className="text-[10px] text-blue-500">จาก {summary.total_items.toLocaleString()}</div>}
                     </div>
-                    <div className="bg-white rounded-lg border px-3 py-2">
+                    <div className={`rounded-lg border px-3 py-2 ${hasActiveFilters ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
                         <div className="text-[10px] text-gray-500 uppercase tracking-wide">ยอดขายรวม (net)</div>
-                        <div className="text-lg font-bold text-emerald-700">฿{formatMoney(summary.total_revenue)}</div>
+                        <div className="text-lg font-bold text-emerald-700">
+                            ฿{formatMoney(hasActiveFilters ? filteredStats.totalNet : summary.total_revenue)}
+                        </div>
+                        {hasActiveFilters && <div className="text-[10px] text-blue-500">จาก ฿{formatMoney(summary.total_revenue)}</div>}
                     </div>
                 </div>
             </div>
@@ -643,37 +653,37 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                 className={`border-b border-gray-100 hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/60"
                                                     }`}
                                             >
-                                                <td className="px-2 py-1.5 text-gray-600 border-r border-gray-100">{formatDate(row.order_date)}</td>
-                                                <td className="px-2 py-1.5 text-blue-600 font-medium border-r border-gray-100 truncate" title={row.order_number}>{row.order_number}</td>
-                                                <td className="px-2 py-1.5 text-gray-700 border-r border-gray-100 truncate" title={row.seller_name.trim()}>{row.seller_name.trim() || "-"}</td>
-                                                <td className="px-2 py-1.5 text-center border-r border-gray-100">
+                                                <td className="px-1.5 py-1 text-gray-600 border-r border-gray-100 text-[10px] whitespace-nowrap">{formatDate(row.order_date)}</td>
+                                                <td className="px-1.5 py-1 text-blue-600 font-medium border-r border-gray-100 text-[10px] truncate whitespace-nowrap max-w-[110px]" title={row.order_number}>{row.order_number}</td>
+                                                <td className="px-1.5 py-1 text-gray-700 border-r border-gray-100 text-[10px] truncate whitespace-nowrap max-w-[90px]" title={row.seller_name.trim()}>{row.seller_name.trim() || "-"}</td>
+                                                <td className="px-1.5 py-1 text-center border-r border-gray-100 whitespace-nowrap">
                                                     {row.customer_type ? (
-                                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${row.customer_type === "New Customer" ? "bg-green-100 text-green-700" : "bg-purple-100 text-purple-700"
+                                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium ${row.customer_type === "New Customer" ? "bg-green-100 text-green-700" : "bg-purple-100 text-purple-700"
                                                             }`}>
                                                             {getCustomerTypeThai(row.customer_type)}
                                                         </span>
                                                     ) : "-"}
                                                 </td>
-                                                <td className="px-2 py-1.5 text-gray-500 border-r border-gray-100 truncate text-[10px]" title={row.basket_key_at_sale || ""}>{row.basket_key_at_sale || "-"}</td>
-                                                <td className="px-2 py-1.5 text-center text-gray-500 border-r border-gray-100 text-[10px]">{row.sales_channel || "-"}</td>
-                                                <td className="px-2 py-1.5 text-center text-gray-600 border-r border-gray-100 text-[10px]">{getPaymentThai(row.payment_method)}</td>
-                                                <td className="px-2 py-1.5 text-gray-700 border-r border-gray-100 truncate" title={row.customer_name.trim()}>{row.customer_name.trim() || "-"}</td>
-                                                <td className="px-2 py-1.5 text-gray-600 border-r border-gray-100">{row.customer_phone || "-"}</td>
-                                                <td className="px-2 py-1.5 text-gray-500 border-r border-gray-100 truncate text-[10px]" title={row.province || ""}>{row.province || "-"}</td>
-                                                <td className="px-2 py-1.5 text-gray-500 border-r border-gray-100 text-[10px] font-mono">{row.product_sku || "-"}</td>
-                                                <td className="px-2 py-1.5 text-gray-700 border-r border-gray-100 truncate" title={row.product_name}>
+                                                <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[70px]" title={row.basket_key_at_sale || ""}>{row.basket_key_at_sale || "-"}</td>
+                                                <td className="px-1.5 py-1 text-center text-gray-500 border-r border-gray-100 text-[10px] whitespace-nowrap">{row.sales_channel || "-"}</td>
+                                                <td className="px-1.5 py-1 text-center text-gray-600 border-r border-gray-100 text-[10px] whitespace-nowrap">{getPaymentThai(row.payment_method)}</td>
+                                                <td className="px-1.5 py-1 text-gray-700 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[110px]" title={row.customer_name.trim()}>{row.customer_name.trim() || "-"}</td>
+                                                <td className="px-1.5 py-1 text-gray-600 border-r border-gray-100 text-[10px] whitespace-nowrap">{row.customer_phone || "-"}</td>
+                                                <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[80px]" title={row.province || ""}>{row.province || "-"}</td>
+                                                <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 text-[10px] font-mono whitespace-nowrap">{row.product_sku || "-"}</td>
+                                                <td className="px-1.5 py-1 text-gray-700 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[140px]" title={row.product_name}>
                                                     {row.is_freebie ? <span className="text-orange-500 mr-0.5">🎁</span> : null}
                                                     {row.product_name || "-"}
                                                 </td>
-                                                <td className="px-2 py-1.5 text-right text-gray-700 border-r border-gray-100 font-medium">{row.quantity}</td>
-                                                <td className="px-2 py-1.5 text-right border-r border-gray-100 font-medium">
+                                                <td className="px-1.5 py-1 text-right text-gray-700 border-r border-gray-100 font-medium text-[10px] whitespace-nowrap">{row.quantity}</td>
+                                                <td className="px-1.5 py-1 text-right border-r border-gray-100 font-medium text-[10px] whitespace-nowrap">
                                                     <span className={row.is_freebie ? "text-gray-400" : "text-gray-800"}>
                                                         {row.is_freebie ? "0" : formatMoney(row.net_total)}
                                                     </span>
                                                 </td>
-                                                <td className="px-2 py-1.5 text-gray-500 border-r border-gray-100">{formatDate(row.delivery_date)}</td>
-                                                <td className="px-2 py-1.5 text-center">
-                                                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${getStatusColor(row.order_status)}`}>
+                                                <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 text-[10px] whitespace-nowrap">{formatDate(row.delivery_date)}</td>
+                                                <td className="px-1.5 py-1 text-center whitespace-nowrap">
+                                                    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium ${getStatusColor(row.order_status)}`}>
                                                         {getStatusThai(row.order_status)}
                                                     </span>
                                                 </td>
