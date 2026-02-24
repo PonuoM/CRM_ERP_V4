@@ -122,14 +122,13 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const [summary, setSummary] = useState({ total_orders: 0, total_items: 0, total_revenue: 0 });
     const [pagination, setPagination] = useState({ page: 1, pageSize: 200, total: 0, totalPages: 0 });
 
-    // --- Drag-to-select cell selection (Google Sheets style) ---
+    // --- Cell selection (Click + Shift+Click, Google Sheets style) ---
     const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
     const [selectionStats, setSelectionStats] = useState<{ sum: number; count: number; avg: number } | null>(null);
-    const isDragging = useRef(false);
-    const dragStartCell = useRef<string | null>(null);
-    const dragStartRow = useRef<number>(-1);
-    const dragStartCol = useRef<string>("");
+    const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+    const lastClickedCell = useRef<{ row: number; col: string } | null>(null);
     const tableRef = useRef<HTMLTableElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     // Numeric column keys that support selection
     const NUMERIC_COLS = useMemo(() => ['quantity', 'net_total'] as const, []);
@@ -152,7 +151,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
         setSelectionStats(count > 0 ? { sum, count, avg: sum / count } : null);
     }, [rows]);
 
-    // Build rectangle selection from start to current
+    // Build rectangle selection from start to end cell
     const buildRectSelection = useCallback((startRow: number, startCol: string, endRow: number, endCol: string): Set<string> => {
         const newSet = new Set<string>();
         const colIdx = (c: string) => NUMERIC_COLS.indexOf(c as any);
@@ -171,36 +170,64 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
         return newSet;
     }, [NUMERIC_COLS]);
 
-    const handleCellMouseDown = useCallback((e: React.MouseEvent, rowIdx: number, col: string) => {
-        e.preventDefault();
-        isDragging.current = true;
-        dragStartCell.current = getCellKey(rowIdx, col);
-        dragStartRow.current = rowIdx;
-        dragStartCol.current = col;
-        const newSet = new Set([getCellKey(rowIdx, col)]);
-        setSelectedCells(newSet);
-        computeStats(newSet);
-    }, [computeStats]);
+    const handleCellClick = useCallback((e: React.MouseEvent, rowIdx: number, col: string) => {
+        e.stopPropagation();
+        // Update tooltip position
+        setTooltipPos({ x: e.clientX, y: e.clientY });
 
-    const handleCellMouseEnter = useCallback((rowIdx: number, col: string) => {
-        if (!isDragging.current) return;
-        const newSet = buildRectSelection(dragStartRow.current, dragStartCol.current, rowIdx, col);
-        setSelectedCells(newSet);
-        computeStats(newSet);
+        if (e.shiftKey && lastClickedCell.current) {
+            // Shift+Click: select range from last clicked cell to this one
+            const newSet = buildRectSelection(
+                lastClickedCell.current.row, lastClickedCell.current.col,
+                rowIdx, col
+            );
+            setSelectedCells(newSet);
+            computeStats(newSet);
+        } else if (e.ctrlKey || e.metaKey) {
+            // Ctrl+Click: toggle this cell in selection
+            const key = getCellKey(rowIdx, col);
+            setSelectedCells(prev => {
+                const newSet = new Set(prev);
+                if (newSet.has(key)) newSet.delete(key); else newSet.add(key);
+                computeStats(newSet);
+                return newSet;
+            });
+            lastClickedCell.current = { row: rowIdx, col };
+        } else {
+            // Normal click: select only this cell
+            const newSet = new Set([getCellKey(rowIdx, col)]);
+            setSelectedCells(newSet);
+            computeStats(newSet);
+            lastClickedCell.current = { row: rowIdx, col };
+        }
     }, [buildRectSelection, computeStats]);
 
+    // Track mouse movement for tooltip position
+    const handleMouseMoveOnTable = useCallback((e: React.MouseEvent) => {
+        if (selectionStats) {
+            setTooltipPos({ x: e.clientX, y: e.clientY });
+        }
+    }, [selectionStats]);
+
+    // Clear selection when clicking outside numeric cells
     useEffect(() => {
-        const handleMouseUp = () => {
-            isDragging.current = false;
+        const handleClickOutside = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (!target.closest('[data-selectable-cell]')) {
+                setSelectedCells(new Set());
+                setSelectionStats(null);
+                lastClickedCell.current = null;
+            }
         };
-        window.addEventListener('mouseup', handleMouseUp);
-        return () => window.removeEventListener('mouseup', handleMouseUp);
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     // Clear selection when data changes
     useEffect(() => {
         setSelectedCells(new Set());
         setSelectionStats(null);
+        lastClickedCell.current = null;
     }, [rows]);
 
     const yearOptions = useMemo(() => {
@@ -404,8 +431,8 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                         </div>
                     ) : (
                         <>
-                            <div className="flex-1 overflow-auto">
-                                <table ref={tableRef} className={`w-full text-[11px] border-collapse min-w-[1200px] ${isDragging.current ? 'select-none' : ''}`}>
+                            <div className="flex-1 overflow-auto" ref={containerRef} onMouseMove={handleMouseMoveOnTable}>
+                                <table ref={tableRef} className="w-full text-[11px] border-collapse min-w-[1200px]">
                                     <thead className="sticky top-0 z-10">
                                         <tr className="bg-gray-100 border-b-2 border-gray-300">
                                             <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 w-[70px]">วันที่สั่ง</th>
@@ -456,14 +483,14 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                     {row.product_name || "-"}
                                                 </td>
                                                 <td
-                                                    className={`px-2 py-1.5 text-right text-gray-700 border-r border-gray-100 font-medium cursor-cell ${selectedCells.has(getCellKey(idx, 'quantity')) ? 'bg-blue-100 ring-1 ring-blue-300 ring-inset' : ''}`}
-                                                    onMouseDown={e => handleCellMouseDown(e, idx, 'quantity')}
-                                                    onMouseEnter={() => handleCellMouseEnter(idx, 'quantity')}
+                                                    data-selectable-cell
+                                                    className={`px-2 py-1.5 text-right text-gray-700 border-r border-gray-100 font-medium cursor-cell ${selectedCells.has(getCellKey(idx, 'quantity')) ? 'bg-blue-100 ring-1 ring-blue-400 ring-inset' : ''}`}
+                                                    onClick={e => handleCellClick(e, idx, 'quantity')}
                                                 >{row.quantity}</td>
                                                 <td
-                                                    className={`px-2 py-1.5 text-right border-r border-gray-100 font-medium cursor-cell ${selectedCells.has(getCellKey(idx, 'net_total')) ? 'bg-blue-100 ring-1 ring-blue-300 ring-inset' : ''}`}
-                                                    onMouseDown={e => handleCellMouseDown(e, idx, 'net_total')}
-                                                    onMouseEnter={() => handleCellMouseEnter(idx, 'net_total')}
+                                                    data-selectable-cell
+                                                    className={`px-2 py-1.5 text-right border-r border-gray-100 font-medium cursor-cell ${selectedCells.has(getCellKey(idx, 'net_total')) ? 'bg-blue-100 ring-1 ring-blue-400 ring-inset' : ''}`}
+                                                    onClick={e => handleCellClick(e, idx, 'net_total')}
                                                 >
                                                     <span className={row.is_freebie ? "text-gray-400" : "text-gray-800"}>
                                                         {row.is_freebie ? "0" : formatMoney(row.net_total)}
@@ -539,24 +566,33 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                 )}
                             </div>
 
-                            {/* Selection Stats Bar (Google Sheets style) */}
+                            {/* Floating Tooltip (follows cursor) */}
                             {selectionStats && (
-                                <div className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-blue-200 flex items-center justify-end gap-5 flex-shrink-0">
-                                    <div className="flex items-center gap-4 text-xs">
-                                        <span className="text-blue-600 font-medium">📊 เลือก {selectionStats.count} เซลล์</span>
-                                        <span className="h-3 w-px bg-blue-200" />
-                                        <span className="text-gray-600">
-                                            <span className="font-semibold text-gray-800">SUM:</span>{' '}
-                                            <span className="text-blue-700 font-bold">{formatMoney(selectionStats.sum)}</span>
-                                        </span>
-                                        <span className="text-gray-600">
-                                            <span className="font-semibold text-gray-800">AVG:</span>{' '}
-                                            <span className="text-purple-700 font-bold">{formatMoney(selectionStats.avg)}</span>
-                                        </span>
-                                        <span className="text-gray-600">
-                                            <span className="font-semibold text-gray-800">COUNT:</span>{' '}
-                                            <span className="text-indigo-700 font-bold">{selectionStats.count}</span>
-                                        </span>
+                                <div
+                                    className="fixed z-50 pointer-events-none"
+                                    style={{
+                                        left: tooltipPos.x + 16,
+                                        top: tooltipPos.y - 60,
+                                    }}
+                                >
+                                    <div className="bg-gray-900/95 text-white rounded-lg shadow-xl px-3 py-2 text-xs backdrop-blur-sm border border-gray-700">
+                                        <div className="flex items-center gap-3 whitespace-nowrap">
+                                            <span>
+                                                <span className="text-blue-300 font-semibold">SUM:</span>{' '}
+                                                <span className="text-white font-bold">{formatMoney(selectionStats.sum)}</span>
+                                            </span>
+                                            <span className="w-px h-3 bg-gray-600" />
+                                            <span>
+                                                <span className="text-purple-300 font-semibold">AVG:</span>{' '}
+                                                <span className="text-white font-bold">{formatMoney(selectionStats.avg)}</span>
+                                            </span>
+                                            <span className="w-px h-3 bg-gray-600" />
+                                            <span>
+                                                <span className="text-green-300 font-semibold">COUNT:</span>{' '}
+                                                <span className="text-white font-bold">{selectionStats.count}</span>
+                                            </span>
+                                        </div>
+                                        <div className="text-[9px] text-gray-400 mt-0.5 text-center">Shift+Click เลือกช่วง · Ctrl+Click เลือกเพิ่ม</div>
                                     </div>
                                 </div>
                             )}
