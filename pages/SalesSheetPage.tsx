@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { createPortal } from "react-dom";
 import { User } from "../types";
 import { apiFetch } from "../services/api";
-import { Download, ChevronLeft, ChevronRight, Search, FileSpreadsheet, Loader2, X, ChevronDown, Check } from "lucide-react";
+import { Download, ChevronLeft, ChevronRight, Search, FileSpreadsheet, Loader2, X, ChevronDown, Check, ArrowUpDown } from "lucide-react";
 
 interface SalesSheetPageProps {
     currentUser: User;
@@ -116,10 +116,12 @@ interface MultiSelectFilterProps {
     openFilter: string | null;
     setOpenFilter: (key: string | null) => void;
     width?: string;
+    sortDir: 'asc' | 'desc' | null;
+    onSort: (colKey: string, dir: 'asc' | 'desc' | null) => void;
 }
 
 const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
-    label, colKey, allValues, selectedValues, onApplyFilter, openFilter, setOpenFilter, width
+    label, colKey, allValues, selectedValues, onApplyFilter, openFilter, setOpenFilter, width, sortDir, onSort
 }) => {
     const [search, setSearch] = useState('');
     // Pending = buffered selection that only applies on OK
@@ -233,6 +235,24 @@ const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
                         flexDirection: 'column',
                     }}
                 >
+                    {/* Sort buttons */}
+                    <div className="flex border-b border-gray-200 flex-shrink-0">
+                        <button
+                            onClick={() => onSort(colKey, sortDir === 'asc' ? null : 'asc')}
+                            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium transition-colors ${sortDir === 'asc' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            <span>A→Z</span>
+                            <span className="text-[9px]">↑</span>
+                        </button>
+                        <button
+                            onClick={() => onSort(colKey, sortDir === 'desc' ? null : 'desc')}
+                            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium transition-colors border-l border-gray-200 ${sortDir === 'desc' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            <span>Z→A</span>
+                            <span className="text-[9px]">↓</span>
+                        </button>
+                    </div>
+
                     {/* Search box */}
                     <div className="p-1.5 border-b border-gray-200 flex-shrink-0">
                         <div className="relative">
@@ -326,6 +346,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     // null = all selected (no filter), Set = specific values selected
     const [colFilters, setColFilters] = useState<Record<string, Set<string> | null>>({});
     const [openFilter, setOpenFilter] = useState<string | null>(null);
+    const [sortConfig, setSortConfig] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
 
     const onChangeFilter = useCallback((key: string, selected: Set<string> | null) => {
         setColFilters(prev => {
@@ -337,6 +358,10 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             }
             return next;
         });
+    }, []);
+
+    const onSort = useCallback((key: string, dir: 'asc' | 'desc' | null) => {
+        setSortConfig(dir === null ? null : { key, dir });
     }, []);
 
     const clearAllFilters = useCallback(() => {
@@ -404,6 +429,26 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             return true;
         });
     }, [rows, colFilters, hasActiveFilters, colGetters]);
+
+    // Apply sorting after filtering
+    const sortedRows = useMemo(() => {
+        if (!sortConfig) return filteredRows;
+        const { key, dir } = sortConfig;
+        const getter = colGetters[key];
+        if (!getter) return filteredRows;
+        return [...filteredRows].sort((a, b) => {
+            const va = getter(a);
+            const vb = getter(b);
+            // Try numeric comparison first
+            const na = parseFloat(va.replace(/,/g, ''));
+            const nb = parseFloat(vb.replace(/,/g, ''));
+            if (!isNaN(na) && !isNaN(nb)) {
+                return dir === 'asc' ? na - nb : nb - na;
+            }
+            // String comparison
+            return dir === 'asc' ? va.localeCompare(vb, 'th') : vb.localeCompare(va, 'th');
+        });
+    }, [filteredRows, sortConfig, colGetters]);
 
     // Compute stats for filtered rows
     const filteredStats = useMemo(() => {
@@ -647,12 +692,14 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                     openFilter={openFilter}
                                                     setOpenFilter={setOpenFilter}
                                                     width={col.width}
+                                                    sortDir={sortConfig?.key === col.key ? sortConfig.dir : null}
+                                                    onSort={onSort}
                                                 />
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredRows.map((row, idx) => (
+                                        {sortedRows.map((row, idx) => (
                                             <tr
                                                 key={`${row.order_id}-${idx}`}
                                                 className={`border-b border-gray-100 hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/60"
@@ -694,7 +741,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                 </td>
                                             </tr>
                                         ))}
-                                        {filteredRows.length === 0 && (
+                                        {sortedRows.length === 0 && (
                                             <tr>
                                                 <td colSpan={16} className="px-4 py-10 text-center text-gray-400 text-sm">
                                                     {hasActiveFilters ? 'ไม่พบข้อมูลตามตัวกรองที่เลือก' : 'ไม่พบข้อมูลสำหรับเดือนที่เลือก'}
@@ -709,7 +756,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                             <div className="px-3 py-2 bg-gray-50 border-t flex items-center justify-between flex-shrink-0">
                                 <div className="flex items-center gap-3">
                                     <span className="text-[11px] text-gray-500">
-                                        แสดง {filteredRows.length > 0 ? ((page - 1) * pageSize) + 1 : 0} - {Math.min(page * pageSize, pagination.total)} จาก {pagination.total.toLocaleString()} รายการ
+                                        แสดง {sortedRows.length > 0 ? ((page - 1) * pageSize) + 1 : 0} - {Math.min(page * pageSize, pagination.total)} จาก {pagination.total.toLocaleString()} รายการ
                                     </span>
                                     {hasActiveFilters && (
                                         <span className="text-[11px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
