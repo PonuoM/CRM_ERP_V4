@@ -336,7 +336,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const [searchText, setSearchText] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [page, setPage] = useState(1);
-    const [pageSize] = useState(200);
+    const [pageSize] = useState(5000);
     const [loading, setLoading] = useState(false);
     const [rows, setRows] = useState<SheetRow[]>([]);
     const [sellers, setSellers] = useState<Seller[]>([]);
