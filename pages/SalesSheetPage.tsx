@@ -757,11 +757,14 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                             <div className="px-3 py-2 bg-gray-50 border-t flex items-center justify-between flex-shrink-0">
                                 <div className="flex items-center gap-3">
                                     <span className="text-[11px] text-gray-500">
-                                        แสดง {sortedRows.length > 0 ? ((page - 1) * pageSize) + 1 : 0} - {Math.min(page * pageSize, pagination.total)} จาก {pagination.total.toLocaleString()} รายการ
+                                        {hasActiveFilters
+                                            ? `กรองได้ ${sortedRows.length.toLocaleString()} จาก ${pagination.total.toLocaleString()} รายการ (หน้า ${page})`
+                                            : `แสดง ${sortedRows.length > 0 ? ((page - 1) * pageSize) + 1 : 0} - ${Math.min(page * pageSize, pagination.total)} จาก ${pagination.total.toLocaleString()} รายการ`
+                                        }
                                     </span>
                                     {hasActiveFilters && (
                                         <span className="text-[11px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                                            กรอง: {filteredStats.count} รายการ · ฿{formatMoney(filteredStats.totalNet)} · จำนวน {filteredStats.totalQty.toLocaleString()}
+                                            ฿{formatMoney(filteredStats.totalNet)} · จำนวน {filteredStats.totalQty.toLocaleString()}
                                         </span>
                                     )}
                                 </div>
