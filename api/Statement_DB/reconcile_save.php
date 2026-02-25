@@ -322,10 +322,17 @@ try {
       $batchRunningTotals[$orderId] = $runningAfter;
     }
 
-    // Check for existing reconciliation for this statement (1-to-1 rule)
+    // Check for existing reconciliation for this statement
     $existingStmt = $pdo->prepare("SELECT id, order_id, confirmed_amount, reconcile_type FROM statement_reconcile_logs WHERE statement_log_id = :stmtId");
     $existingStmt->execute([':stmtId' => $statementId]);
-    $existingLog = $existingStmt->fetch(PDO::FETCH_ASSOC);
+    $allExisting = $existingStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Guard: if statement has multiple records, block replace to prevent data corruption
+    if (count($allExisting) > 1) {
+      throw new RuntimeException("Statement นี้ถูกผูกกับหลาย Order แล้ว กรุณากดรีเฟรชข้อมูลอีกครั้ง แล้วใช้ปุ่ม \"ผูกเพิ่ม\" หรือยกเลิกการผูกก่อน");
+    }
+
+    $existingLog = !empty($allExisting) ? $allExisting[0] : null;
 
     if ($existingLog) {
       // Optimistic check: if exact same match, skip to save DB calls

@@ -30,6 +30,7 @@ interface AuditLog {
     cod_status?: string | null;
     is_cod_document?: boolean;
     reconcile_items?: any[];
+    matched_orders?: { reconcile_id: number; order_id: string; confirmed_amount: number; confirmed_at?: string | null; payment_method?: string | null }[];
 }
 
 interface BankAccount {
@@ -69,6 +70,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     // New state for search modal
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
     const [selectedLogForSearch, setSelectedLogForSearch] = useState<AuditLog | null>(null);
+    const [addModeForLog, setAddModeForLog] = useState<AuditLog | null>(null); // For adding extra orders
 
     // State for COD document detail modal
     const [isCodDetailModalOpen, setIsCodDetailModalOpen] = useState(false);
@@ -170,9 +172,67 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     // Callback when order is selected from modal
     const handleOrderSelected = (orderId: string, orderAmount: number) => {
         if (selectedLogForSearch) {
-            handleConfirmMatch(selectedLogForSearch, orderId);
+            if (addModeForLog) {
+                // Adding extra order to already-matched statement
+                handleAddOrder(addModeForLog, orderId, orderAmount);
+            } else {
+                // First-time match
+                handleConfirmMatch(selectedLogForSearch, orderId);
+            }
             setIsSearchModalOpen(false);
             setSelectedLogForSearch(null);
+            setAddModeForLog(null);
+        }
+    };
+
+    // Open search modal in "add more" mode
+    const openAddOrderModal = (log: AuditLog) => {
+        setSelectedLogForSearch(log);
+        setAddModeForLog(log);
+        setIsSearchModalOpen(true);
+    };
+
+    // Add additional order to an already-matched statement
+    const handleAddOrder = async (log: AuditLog, orderId: string, orderAmount: number) => {
+        try {
+            const res = await apiFetch('Statement_DB/reconcile_add.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    company_id: currentUser.companyId || (currentUser as any).company_id,
+                    user_id: currentUser.id,
+                    bank_account_id: parseInt(selectedBankId),
+                    statement_id: log.id,
+                    order_id: orderId,
+                    confirmed_amount: orderAmount,
+                    start_date: startDate,
+                    end_date: endDate,
+                })
+            });
+
+            if (res.ok) {
+                // Optimistic update: add order to matched_orders
+                setLogs(prev => prev.map(l => {
+                    if (l.id !== log.id) return l;
+                    const newMatch = { reconcile_id: res.reconcile_log_id, order_id: orderId, confirmed_amount: orderAmount, confirmed_at: null, payment_method: null };
+                    const updatedMatched = [...(l.matched_orders || []), newMatch];
+                    const totalConfirmed = updatedMatched.reduce((sum, m) => sum + m.confirmed_amount, 0);
+                    const diff = l.statement_amount - totalConfirmed;
+                    return {
+                        ...l,
+                        matched_orders: updatedMatched,
+                        order_id: updatedMatched.map(m => m.order_id).join(','),
+                        order_display: updatedMatched.map(m => m.order_id).join(', '),
+                        order_amount: totalConfirmed,
+                        reconcile_id: updatedMatched[0]?.reconcile_id || l.reconcile_id,
+                        status: (Math.abs(diff) < 0.01 ? 'Exact' : diff > 0 ? 'Over' : 'Short') as any,
+                        diff,
+                    };
+                }));
+            } else {
+                alert('เพิ่มออเดอร์ไม่สำเร็จ: ' + (res.error || 'Server error'));
+            }
+        } catch (e: any) {
+            alert('Error: ' + e.message);
         }
     };
 
@@ -294,8 +354,9 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         }
     };
 
-    const handleUnpause = async (log: AuditLog) => {
-        if (!log.reconcile_id) return;
+    const handleUnpause = async (log: AuditLog, reconcileId?: number) => {
+        const targetReconcileId = reconcileId || log.reconcile_id;
+        if (!targetReconcileId) return;
         // Prevent unmatch if linked to COD document
         if (log.is_cod_document || log.cod_document_id) {
             alert('ไม่สามารถยกเลิกการจับคู่ได้ เนื่องจากผูกกับเอกสาร COD');
@@ -304,7 +365,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         const isSuspenseOrDeposit = log.status === 'Suspense' || log.status === 'Deposit';
         const confirmMsg = isSuspenseOrDeposit
             ? 'ยืนยันยกเลิกการพักรับ? รายการจะกลับไปสถานะ Unmatched'
-            : 'ยืนยันยกเลิกการจับคู่? รายการจะกลับไปสถานะ Unmatched';
+            : 'ยืนยันยกเลิกการจับคู่ออเดอร์นี้?';
         if (!window.confirm(confirmMsg)) {
             return;
         }
@@ -313,8 +374,70 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             const res = await apiFetch('Statement_DB/reconcile_cancel.php', {
                 method: 'POST',
                 body: JSON.stringify({
-                    id: log.reconcile_id,
+                    id: targetReconcileId,
                     company_id: currentUser.companyId || (currentUser as any).company_id
+                })
+            });
+
+            if (res.ok) {
+                // Optimistic update: remove specific order from matched_orders
+                setLogs(prev => prev.map(l => {
+                    if (l.id !== log.id) return l;
+                    const remaining = (l.matched_orders || []).filter(m => m.reconcile_id !== targetReconcileId);
+                    if (remaining.length === 0) {
+                        // Last order removed → reset to Unmatched
+                        return {
+                            ...l,
+                            order_id: null,
+                            order_display: null,
+                            order_amount: null,
+                            payment_method: null,
+                            status: 'Unmatched' as any,
+                            diff: 0,
+                            reconcile_id: null,
+                            confirmed_at: null,
+                            confirmed_action: null,
+                            note: null,
+                            matched_orders: [],
+                        };
+                    } else {
+                        // Still has other orders
+                        const totalConfirmed = remaining.reduce((sum, m) => sum + m.confirmed_amount, 0);
+                        const diff = l.statement_amount - totalConfirmed;
+                        return {
+                            ...l,
+                            matched_orders: remaining,
+                            order_id: remaining.map(m => m.order_id).join(','),
+                            order_display: remaining.map(m => m.order_id).join(', '),
+                            order_amount: totalConfirmed,
+                            reconcile_id: remaining[0]?.reconcile_id || null,
+                            status: (Math.abs(diff) < 0.01 ? 'Exact' : diff > 0 ? 'Over' : 'Short') as any,
+                            diff,
+                        };
+                    }
+                }));
+                // Background refresh to get new auto-match suggestions
+                fetchAuditLogs(true);
+            } else {
+                alert('ยกเลิกไม่สำเร็จ: ' + (res.error || 'Server error'));
+            }
+        } catch (e: any) {
+            alert('Error: ' + e.message);
+        }
+    };
+
+    // Unmatch COD document from statement
+    const handleCodUnmatch = async (log: AuditLog) => {
+        if (!log.cod_document_id) return;
+        if (!window.confirm('ยืนยันยกเลิกการผูกเอกสาร COD กับ statement นี้?')) return;
+
+        try {
+            const res = await apiFetch('Statement_DB/cod_unmatch.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    statement_log_id: log.id,
+                    cod_document_id: log.cod_document_id,
+                    company_id: currentUser.companyId || (currentUser as any).company_id,
                 })
             });
 
@@ -332,8 +455,14 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     confirmed_at: null,
                     confirmed_action: null,
                     note: null,
+                    cod_document_id: null,
+                    cod_document_number: null,
+                    cod_total_amount: null,
+                    cod_status: null,
+                    is_cod_document: false,
+                    matched_orders: [],
+                    reconcile_items: [],
                 } : l));
-                // Background refresh to get new auto-match suggestions
                 fetchAuditLogs(true);
             } else {
                 alert('ยกเลิกไม่สำเร็จ: ' + (res.error || 'Server error'));
@@ -656,27 +785,73 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                         <span className="text-orange-500 italic font-medium">พักรับ (Suspense)</span>
                                                     ) : log.is_cod_document && log.cod_document_number ? (
                                                         // COD Document - show document number and open detail modal
-                                                        <span
-                                                            className="font-medium text-emerald-600 hover:underline cursor-pointer inline-flex items-center gap-1 max-w-[11rem] truncate align-middle"
-                                                            onClick={() => openCodDetailModal(log)}
-                                                            title={`COD Document: ${log.cod_document_number} (${log.reconcile_items?.length || 0} orders)`}
-                                                        >
-                                                            <i className="fa-solid fa-box-open text-xs"></i>
-                                                            {log.cod_document_number}
-                                                        </span>
-                                                    ) : log.order_id ? (
                                                         <div className="flex items-center gap-1">
-                                                            <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!, log)}>
-                                                                {log.order_display || log.order_id}
+                                                            <span
+                                                                className="font-medium text-emerald-600 hover:underline cursor-pointer inline-flex items-center gap-1 max-w-[11rem] truncate align-middle"
+                                                                onClick={() => openCodDetailModal(log)}
+                                                                title={`COD Document: ${log.cod_document_number} (${log.reconcile_items?.length || 0} orders)`}
+                                                            >
+                                                                <i className="fa-solid fa-box-open text-xs"></i>
+                                                                {log.cod_document_number}
                                                             </span>
-                                                            {/* Unmatch button - only for unconfirmed matched rows, NOT linked to COD */}
-                                                            {!log.confirmed_at && log.reconcile_id && !log.is_cod_document && !log.cod_document_id && (
+                                                            {!(log.confirmed_action || '').includes('Confirmed') && (
                                                                 <button
-                                                                    onClick={() => handleUnpause(log)}
+                                                                    onClick={() => handleCodUnmatch(log)}
                                                                     className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-1 py-0.5 rounded transition-colors"
-                                                                    title="ยกเลิกการจับคู่"
+                                                                    title="ยกเลิกการผูก COD"
                                                                 >
                                                                     ✕
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ) : log.order_id ? (
+                                                        <div className="flex flex-col items-start gap-1">
+                                                            {/* Multi-order display */}
+                                                            {(log.matched_orders && log.matched_orders.length > 1) ? (
+                                                                // Multiple orders matched
+                                                                log.matched_orders.map((mo, moIdx) => (
+                                                                    <div key={mo.reconcile_id || moIdx} className="flex items-center gap-1">
+                                                                        <span className="font-medium text-indigo-600 hover:underline cursor-pointer text-sm" onClick={() => openOrderModal(mo.order_id, log)}>
+                                                                            {mo.order_id}
+                                                                        </span>
+                                                                        <span className="text-xs text-gray-400">(฿{mo.confirmed_amount?.toLocaleString()})</span>
+                                                                        {!mo.confirmed_at && !log.is_cod_document && !log.cod_document_id && (
+                                                                            <button
+                                                                                onClick={() => handleUnpause(log, mo.reconcile_id)}
+                                                                                className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-1 py-0.5 rounded transition-colors"
+                                                                                title="ยกเลิกการจับคู่ออเดอร์นี้"
+                                                                            >
+                                                                                ✕
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ))
+                                                            ) : (
+                                                                // Single order matched (original display)
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!, log)}>
+                                                                        {log.order_display || log.order_id}
+                                                                    </span>
+                                                                    {!log.confirmed_at && log.reconcile_id && !log.is_cod_document && !log.cod_document_id && (
+                                                                        <button
+                                                                            onClick={() => handleUnpause(log)}
+                                                                            className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-1 py-0.5 rounded transition-colors"
+                                                                            title="ยกเลิกการจับคู่"
+                                                                        >
+                                                                            ✕
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {/* Add more orders button */}
+                                                            {!log.confirmed_at && !log.is_cod_document && !log.cod_document_id && (
+                                                                <button
+                                                                    onClick={() => openAddOrderModal(log)}
+                                                                    className="text-xs flex items-center gap-1 text-emerald-600 hover:text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 hover:bg-emerald-100 transition-colors mt-0.5"
+                                                                    title="ผูกออเดอร์เพิ่ม"
+                                                                >
+                                                                    <span className="text-sm leading-none">+</span>
+                                                                    ผูกเพิ่ม
                                                                 </button>
                                                             )}
                                                         </div>
@@ -824,6 +999,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                         }}
                         orderId={selectedOrderId}
                         statementContext={currentStatementContext}
+                        companyId={currentUser.companyId || (currentUser as any).company_id}
+                        onSlipUpdated={() => fetchAuditLogs(true)}
                     />
                 )
             }

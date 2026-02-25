@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { getOrder } from '../services/api';
+import { getOrder, apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
-import { X, User, MapPin, Box, Image as ImageIcon } from 'lucide-react';
+import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2 } from 'lucide-react';
 
 export interface StatementContext {
     statementAmount: number;
@@ -14,12 +14,18 @@ interface OrderDetailModalProps {
     onClose: () => void;
     orderId: string | null;
     statementContext?: StatementContext | null;
+    onSlipUpdated?: () => void;
+    companyId?: number | null;
 }
 
-const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, orderId, statementContext }) => {
+const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, orderId, statementContext, onSlipUpdated, companyId }) => {
     const [order, setOrder] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [viewingImage, setViewingImage] = useState<string | null>(null);
+    // Slip editing state (only used when statementContext is provided)
+    const [editingSlipId, setEditingSlipId] = useState<number | null>(null);
+    const [slipEdits, setSlipEdits] = useState<{ amount: string; transfer_date: string }>({ amount: '', transfer_date: '' });
+    const [savingSlip, setSavingSlip] = useState(false);
 
     const statusThai: Record<string, string> = {
         'Pending': 'รอดำเนินการ', 'Confirmed': 'ยืนยันแล้ว', 'Preparing': 'กำลังจัดเตรียม',
@@ -117,6 +123,52 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
         const isFullMatch = amountMatch && timeMatch;
 
         return { amountMatch, amountDiff, orderAmount: compareAmount, stmtAmount, timeDiffMinutes, timeMatch, isFullMatch, orderTransferDate, formatTHB, compareLabel, slipCount: order.slips?.length || 0, bestSlipId: bestSlip?.id || null, bestSlipUrl: bestSlip?.url || null };
+    };
+
+    // Slip editing handlers
+    const startEditSlip = (slip: any) => {
+        setEditingSlipId(slip.id);
+        setSlipEdits({
+            amount: slip.amount != null ? String(parseFloat(slip.amount)) : '',
+            transfer_date: slip.transfer_date ? slip.transfer_date.slice(0, 16) : '',
+        });
+    };
+
+    const cancelEditSlip = () => {
+        setEditingSlipId(null);
+        setSlipEdits({ amount: '', transfer_date: '' });
+    };
+
+    const handleSlipSave = async () => {
+        if (!editingSlipId || !companyId) return;
+        setSavingSlip(true);
+        try {
+            const payload: any = { id: editingSlipId, company_id: companyId };
+            if (slipEdits.amount !== '') payload.amount = parseFloat(slipEdits.amount);
+            if (slipEdits.transfer_date !== '') payload.transfer_date = slipEdits.transfer_date;
+
+            const res = await apiFetch('Slip_DB/update_order_slip.php', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            });
+            if (res.success) {
+                // Update local order data
+                if (order?.slips) {
+                    const updated = order.slips.map((s: any) =>
+                        s.id === editingSlipId ? { ...s, amount: payload.amount ?? s.amount, transfer_date: payload.transfer_date ?? s.transfer_date } : s
+                    );
+                    setOrder({ ...order, slips: updated });
+                }
+                setEditingSlipId(null);
+                onSlipUpdated?.();
+            } else {
+                alert('บันทึกไม่สำเร็จ: ' + (res.message || 'Unknown error'));
+            }
+        } catch (e: any) {
+            alert('Error: ' + e.message);
+        } finally {
+            setSavingSlip(false);
+        }
     };
 
     if (!isOpen) return null;
@@ -436,6 +488,66 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                 </div>
                                             ))}
                                         </div>
+
+                                        {/* Slip Edit Section - only shown from BankAccountAuditPage */}
+                                        {statementContext && (order.slips || []).length > 0 && (
+                                            <div className="mt-3 space-y-2">
+                                                <div className="text-xs font-medium text-gray-500 mb-1">แก้ไขรายละเอียดสลิป</div>
+                                                {(order.slips || []).map((slip: any, idx: number) => (
+                                                    <div key={slip.id || idx} className="border rounded-lg p-2 bg-white">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs text-gray-600">
+                                                                สลิป #{idx + 1} {slip.id ? `(ID: ${slip.id})` : ''}
+                                                            </span>
+                                                            {editingSlipId === slip.id ? (
+                                                                <div className="flex items-center gap-1">
+                                                                    <button onClick={handleSlipSave} disabled={savingSlip} className="text-xs text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50" title="บันทึก">
+                                                                        {savingSlip ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                                                    </button>
+                                                                    <button onClick={cancelEditSlip} className="text-xs text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="ยกเลิก">
+                                                                        <X className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button onClick={() => startEditSlip(slip)} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-0.5 p-1 rounded hover:bg-blue-50" title="แก้ไข">
+                                                                    <Pencil className="w-3 h-3" />
+                                                                    <span>แก้ไข</span>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        {editingSlipId === slip.id ? (
+                                                            <div className="mt-2 grid grid-cols-2 gap-2">
+                                                                <div>
+                                                                    <label className="text-[10px] text-gray-500">ยอดเงิน</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        step="0.01"
+                                                                        value={slipEdits.amount}
+                                                                        onChange={e => setSlipEdits(prev => ({ ...prev, amount: e.target.value }))}
+                                                                        className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-400"
+                                                                        placeholder="ยอดเงิน"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] text-gray-500">วันที่โอน</label>
+                                                                    <input
+                                                                        type="datetime-local"
+                                                                        value={slipEdits.transfer_date}
+                                                                        onChange={e => setSlipEdits(prev => ({ ...prev, transfer_date: e.target.value }))}
+                                                                        className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-400"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="mt-1 flex gap-4 text-xs text-gray-500">
+                                                                <span>ยอด: <strong className="text-gray-700">฿{(parseFloat(slip.amount) || 0).toLocaleString()}</strong></span>
+                                                                <span>โอน: <strong className="text-gray-700">{slip.transfer_date ? new Date(slip.transfer_date).toLocaleString('th-TH') : '-'}</strong></span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })()}
