@@ -229,6 +229,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const [selectedAdsGroups, setSelectedAdsGroups] = useState<string[]>([]);
   const [dashboardSelectedUsers, setDashboardSelectedUsers] = useState<number[]>([]);
+  const [dashboardSelectedAdsUsers, setDashboardSelectedAdsUsers] = useState<number[]>([]);
   const [showInactivePages, setShowInactivePages] = useState(false);
   const [dashboardPageTypeFilter, setDashboardPageTypeFilter] = useState<string>("All");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -1671,7 +1672,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       }
 
       if (dashboardSelectedUsers.length > 0) {
-        params.set("user_ids", dashboardSelectedUsers.join(","));
+        params.set("manager_user_ids", dashboardSelectedUsers.join(","));
+      }
+      if (dashboardSelectedAdsUsers.length > 0) {
+        params.set("ads_user_ids", dashboardSelectedAdsUsers.join(","));
       }
 
       // Add company_id to fetch all pages for this company
@@ -1685,7 +1689,49 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       );
       const data = await res.json();
       if (data.success) {
-        setDashboardData(data.data || []);
+        // Merge "ยังไม่ลงแอด" rows into existing page rows
+        const rawData = data.data || [];
+        const mergedData: any[] = [];
+        const noAdsRows: any[] = [];
+        const pageRowMap = new Map<string, number>(); // page_id -> index in mergedData
+
+        // First pass: separate real rows and ยังไม่ลงแอด rows
+        for (const row of rawData) {
+          if (row.staff_first_name === 'ยังไม่ลงแอด') {
+            noAdsRows.push(row);
+          } else {
+            const idx = mergedData.length;
+            mergedData.push({ ...row });
+            // Track first row per page for merging (prefer page manager)
+            if (!pageRowMap.has(String(row.page_id))) {
+              pageRowMap.set(String(row.page_id), idx);
+            }
+          }
+        }
+
+        // Second pass: merge ยังไม่ลงแอด sales into existing page rows
+        for (const noAdsRow of noAdsRows) {
+          const targetIdx = pageRowMap.get(String(noAdsRow.page_id));
+          if (targetIdx !== undefined) {
+            const target = mergedData[targetIdx];
+            target.total_sales = Number(target.total_sales || 0) + Number(noAdsRow.total_sales || 0);
+            target.total_orders = Number(target.total_orders || 0) + Number(noAdsRow.total_orders || 0);
+            target.new_customer_orders = Number(target.new_customer_orders || 0) + Number(noAdsRow.new_customer_orders || 0);
+            target.reorder_customer_orders = Number(target.reorder_customer_orders || 0) + Number(noAdsRow.reorder_customer_orders || 0);
+            target.new_customer_sales = Number(target.new_customer_sales || 0) + Number(noAdsRow.new_customer_sales || 0);
+            target.reorder_customer_sales = Number(target.reorder_customer_sales || 0) + Number(noAdsRow.reorder_customer_sales || 0);
+            target.total_customers = Number(target.total_customers || 0) + Number(noAdsRow.total_customers || 0);
+            target.returned_sales = Number(target.returned_sales || 0) + Number(noAdsRow.returned_sales || 0);
+            target.returned_orders = Number(target.returned_orders || 0) + Number(noAdsRow.returned_orders || 0);
+            target.cancelled_sales = Number(target.cancelled_sales || 0) + Number(noAdsRow.cancelled_sales || 0);
+            target.cancelled_orders = Number(target.cancelled_orders || 0) + Number(noAdsRow.cancelled_orders || 0);
+          } else {
+            // No real user row for this page → keep ยังไม่ลงแอด row
+            mergedData.push(noAdsRow);
+          }
+        }
+
+        setDashboardData(mergedData);
       } else {
         setDashboardData([]);
         console.error("Failed to load dashboard data:", data.error);
@@ -1903,7 +1949,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
 
       if (dashboardSelectedUsers.length > 0) {
-        queryParams.set("user_ids", dashboardSelectedUsers.join(","));
+        queryParams.set("manager_user_ids", dashboardSelectedUsers.join(","));
+      }
+      if (dashboardSelectedAdsUsers.length > 0) {
+        queryParams.set("ads_user_ids", dashboardSelectedAdsUsers.join(","));
       }
 
       const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_dashboard_data.php?${queryParams.toString()}`);
@@ -2728,26 +2777,33 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 )}
 
                 <div className="flex-1">
-                  <label className={labelClass}>เลือกพนักงาน(ผู้ดูแลเพจ)</label>
+                  <label className={labelClass}>ผู้ดูแลเพจ</label>
                   <MultiSelectUserFilter
                     users={(() => {
-                      // Merge: current page managers + historical ads users
                       const userMap = new Map();
                       marketingPageUsers.forEach((mpu: any) => {
                         const u = marketingUsersList.find((u: any) => u.id === mpu.user_id);
                         if (u) userMap.set(u.id, { id: u.id, firstName: u.first_name, lastName: u.last_name || '', username: u.username });
                       });
-                      // Add historical ads users (old employees)
-                      adsUsersList.forEach((au: any) => {
-                        if (!userMap.has(au.id)) {
-                          userMap.set(au.id, { id: au.id, firstName: au.first_name, lastName: au.last_name || '', username: au.username });
-                        }
-                      });
                       return Array.from(userMap.values());
-                    })()
-                    }
+                    })()}
                     selectedUsers={dashboardSelectedUsers}
                     onChange={setDashboardSelectedUsers}
+                  />
+                </div>
+
+                <div className="flex-1">
+                  <label className={labelClass}>ผู้ลงแอด</label>
+                  <MultiSelectUserFilter
+                    users={(adsUsersList.length > 0 ? adsUsersList : marketingUsersList)
+                      .map((u: any) => ({
+                        id: u.id,
+                        firstName: u.first_name,
+                        lastName: u.last_name || '',
+                        username: u.username
+                      }))}
+                    selectedUsers={dashboardSelectedAdsUsers}
+                    onChange={setDashboardSelectedAdsUsers}
                   />
                 </div>
 
@@ -3142,27 +3198,27 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]" title={row.page_managers || ''}>{row.page_managers || "-"}</td>
                                   <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]" title={`${row.staff_first_name || ''} ${row.staff_last_name || ''}`}>{row.staff_first_name || "-"}</td>
                                   <td className="px-3 py-2 text-right">
-                                    {Number(row.ads_cost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {Number(row.ads_cost || 0).toLocaleString('th-TH')}
                                   </td>
                                   <td className="px-3 py-2 text-right">{Number(row.impressions || 0).toLocaleString('th-TH')}</td>
                                   <td className="px-3 py-2 text-right">{Number(row.reach || 0).toLocaleString('th-TH')}</td>
                                   <td className="px-3 py-2 text-right font-semibold text-blue-700">
-                                    {(Number(row.total_sales || 0) + Number(row.returned_sales || 0)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {(Number(row.total_sales || 0) + Number(row.returned_sales || 0)).toLocaleString('th-TH')}
                                   </td>
                                   <td className="px-3 py-2 text-right">
-                                    {Number(row.total_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {Number(row.total_sales || 0).toLocaleString('th-TH')}
                                   </td>
                                   <td className="px-3 py-2 text-right text-amber-600">
-                                    {Number(row.returned_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {Number(row.returned_sales || 0).toLocaleString('th-TH')}
                                   </td>
                                   <td className="px-3 py-2 text-right text-red-600">
-                                    {Number(row.cancelled_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {Number(row.cancelled_sales || 0).toLocaleString('th-TH')}
                                   </td>
                                   <td className="px-3 py-2 text-right">
-                                    {Number(row.new_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {Number(row.new_customer_sales || 0).toLocaleString('th-TH')}
                                   </td>
                                   <td className="px-3 py-2 text-right">
-                                    {Number(row.reorder_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {Number(row.reorder_customer_sales || 0).toLocaleString('th-TH')}
                                   </td>
                                   <td className="px-3 py-2 text-right font-medium">{Number(row.clicks || 0).toLocaleString('th-TH')}</td>
                                   <td className="px-3 py-2 text-right">{Number(row.total_customers || 0).toLocaleString('th-TH')}</td>
@@ -3190,7 +3246,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 return (
                                   <>
                                     <td className="px-3 py-2 text-right">
-                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.ads_cost || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.ads_cost || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right">
                                       {summaryRows.reduce((acc: number, row: any) => acc + Number(row.impressions || 0), 0).toLocaleString('th-TH')}
@@ -3199,22 +3255,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                       {summaryRows.reduce((acc: number, row: any) => acc + Number(row.reach || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right font-semibold text-blue-700">
-                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0) + Number(row.returned_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0) + Number(row.returned_sales || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right">
-                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right text-amber-600">
-                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.returned_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.returned_sales || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right text-red-600">
-                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.cancelled_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.cancelled_sales || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right">
-                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.new_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.new_customer_sales || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right">
-                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.reorder_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.reorder_customer_sales || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right">
                                       {summaryRows.reduce((acc: number, row: any) => acc + Number(row.clicks || 0), 0).toLocaleString('th-TH')}

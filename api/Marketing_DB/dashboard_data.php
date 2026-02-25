@@ -18,7 +18,8 @@ try {
   $dateFrom = $_GET["date_from"] ?? null;
   $dateTo = $_GET["date_to"] ?? null;
   $pageIds = $_GET["page_ids"] ?? null;
-  $userIds = $_GET["user_ids"] ?? null;
+  $managerUserIds = $_GET["manager_user_ids"] ?? null;
+  $adsUserIds = $_GET["ads_user_ids"] ?? null;
   $companyId = isset($_GET["company_id"]) ? (int) $_GET["company_id"] : null;
 
   // Get session user from localStorage (simulate login session)
@@ -45,16 +46,16 @@ try {
       }
     }
 
-    // Filter pages by user_ids via marketing_user_page (current) OR marketing_ads_log (historical)
-    if ($userIds) {
-      $userIdArray = explode(",", $userIds);
-      $userIdArray = array_map("intval", $userIdArray);
-      $userIdArray = array_filter($userIdArray);
+    // Filter pages by manager_user_ids via marketing_user_page
+    if ($managerUserIds) {
+      $mgrArray = explode(",", $managerUserIds);
+      $mgrArray = array_map("intval", $mgrArray);
+      $mgrArray = array_filter($mgrArray);
 
-      if (!empty($userIdArray)) {
-        $placeholders = str_repeat("?,", count($userIdArray) - 1) . "?";
-        $pageWhereConditions[] = "(p.id IN (SELECT page_id FROM marketing_user_page WHERE user_id IN ($placeholders)) OR p.id IN (SELECT DISTINCT page_id FROM marketing_ads_log WHERE user_id IN ($placeholders)))";
-        $pageParams = array_merge($pageParams, $userIdArray, $userIdArray);
+      if (!empty($mgrArray)) {
+        $placeholders = str_repeat("?,", count($mgrArray) - 1) . "?";
+        $pageWhereConditions[] = "p.id IN (SELECT page_id FROM marketing_user_page WHERE user_id IN ($placeholders))";
+        $pageParams = array_merge($pageParams, $mgrArray);
       }
     }
 
@@ -76,7 +77,18 @@ try {
       $logParams[] = $dateTo;
     }
 
-    // No user_id filter in ads log - user filter is applied at page level via marketing_user_page
+    // Filter ads log by ads_user_ids (show only selected user's ads rows)
+    if ($adsUserIds) {
+      $adsArray = explode(",", $adsUserIds);
+      $adsArray = array_map("intval", $adsArray);
+      $adsArray = array_filter($adsArray);
+
+      if (!empty($adsArray)) {
+        $placeholdersLog = str_repeat("?,", count($adsArray) - 1) . "?";
+        $logWhereConditions[] = "user_id IN ($placeholdersLog)";
+        $logParams = array_merge($logParams, $adsArray);
+      }
+    }
 
     $logWhereClause = implode(" AND ", $logWhereConditions);
 
@@ -125,7 +137,18 @@ try {
       $logExistsParams[] = $dateTo;
     }
 
-    // No user_id filter in NOT EXISTS - user filter is at page level
+    // Also filter NOT EXISTS by ads_user_ids
+    if ($adsUserIds) {
+      $adsArrayExists = explode(",", $adsUserIds);
+      $adsArrayExists = array_map("intval", $adsArrayExists);
+      $adsArrayExists = array_filter($adsArrayExists);
+
+      if (!empty($adsArrayExists)) {
+        $placeholdersExists = str_repeat("?,", count($adsArrayExists) - 1) . "?";
+        $logExistsConditions[] = "mal.user_id IN ($placeholdersExists)";
+        $logExistsParams = array_merge($logExistsParams, $adsArrayExists);
+      }
+    }
 
     $logWhereClauseForExists = implode(" AND ", $logExistsConditions);
 
@@ -219,6 +242,15 @@ try {
             GROUP BY mup.page_id
         ) page_mgr ON p.id = page_mgr.page_id
         WHERE $pageWhereClause)
+    ";
+
+    // Part 1 params
+    $allParams = array_merge($logParams, $logParams, $orderParams, $logParams, $orderParams, $pageParams);
+
+    // Part 2: Hide only when filtering by specific ads user (their rows only)
+    // Keep when filtering by manager (to include sales on dates without ads in totals)
+    if (!$adsUserIds) {
+      $query .= "
 
         UNION ALL
 
@@ -295,18 +327,11 @@ try {
             GROUP BY mup.page_id
         ) page_mgr2 ON p.id = page_mgr2.page_id
         WHERE $pageWhereClause)
+      ";
+      $allParams = array_merge($allParams, $orderParams, $logExistsParams, $orderParams, $logExistsParams, $pageParams);
+    }
 
-        ORDER BY page_name ASC, staff_first_name ASC
-    ";
-
-    // Build logWhereClauseForExists params (same structure as logParams but with mal. prefix already handled)
-    // Combine parameters for UNION:
-    // Part 1: logParams(ads_agg), logParams(orders.ads_dates), orderParams, logParams(returned.ads_dates), orderParams, pageParams
-    // Part 2: orderParams, logParams(NOT EXISTS), pageParams, orderParams(returned), logParams(NOT EXISTS), pageParams
-    $allParams = array_merge(
-        $logParams, $logParams, $orderParams, $logParams, $orderParams, $pageParams,
-        $orderParams, $logExistsParams, $orderParams, $logExistsParams, $pageParams
-    );
+    $query .= " ORDER BY page_name ASC, staff_first_name ASC";
 
     // Prepare and execute query
     $stmt = $conn->prepare($query);
