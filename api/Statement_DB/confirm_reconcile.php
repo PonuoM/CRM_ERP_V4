@@ -25,24 +25,29 @@ try {
 
     $pdo = db_connect();
 
+    // Get the current order_id from the reconcile log (don't trust frontend's comma-separated value)
+    $logStmt = $pdo->prepare("SELECT order_id FROM statement_reconcile_logs WHERE id = :id");
+    $logStmt->execute([':id' => $id]);
+    $logRow = $logStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$logRow) {
+        throw new Exception("Reconcile log not found: {$id}");
+    }
+    $existingOrderId = $logRow['order_id'];
+
     // Fallback: if payment_method is null, look it up from the orders table
-    if (empty($paymentMethod) && !empty($orderId)) {
+    if (empty($paymentMethod) && !empty($existingOrderId)) {
         $pmStmt = $pdo->prepare("SELECT payment_method FROM orders WHERE id = :id LIMIT 1");
-        $pmStmt->execute([':id' => preg_replace('/-\d+$/', '', $orderId)]);
+        $pmStmt->execute([':id' => preg_replace('/-\d+$/', '', $existingOrderId)]);
         $pmRow = $pmStmt->fetch(PDO::FETCH_ASSOC);
         if ($pmRow) {
             $paymentMethod = $pmRow['payment_method'];
         }
     }
 
-    // Check if the record exists and is not already confirmed? 
-    // Usually valid to re-confirm or confirm for the first time.
-
-    // Update with snapshot
+    // Update with snapshot — do NOT update order_id (it's already correct from INSERT)
     $sql = "UPDATE statement_reconcile_logs 
             SET confirmed_at = NOW(),
                 confirmed_action = 'Confirmed',
-                order_id = :orderId,
                 confirmed_order_id = :confirmedOrderId,
                 confirmed_order_amount = :orderAmount,
                 confirmed_payment_method = :paymentMethod
@@ -50,8 +55,7 @@ try {
 
     $stmt = $pdo->prepare($sql);
     $result = $stmt->execute([
-        ':orderId' => $orderId,
-        ':confirmedOrderId' => $orderId,
+        ':confirmedOrderId' => $existingOrderId,
         ':orderAmount' => $orderAmount,
         ':paymentMethod' => $paymentMethod,
         ':id' => $id
@@ -59,9 +63,9 @@ try {
 
     if ($result) {
         // Update order status to Delivered (final confirmation after Bank Audit)
-        if (!empty($orderId)) {
+        if (!empty($existingOrderId)) {
             // Get parent order id (remove sub-order suffix like -1, -2)
-            $parentOrderId = preg_replace('/-\d+$/', '', $orderId);
+            $parentOrderId = preg_replace('/-\d+$/', '', $existingOrderId);
 
             // GUARD: Check if order has tracking (already shipped) before setting Delivered
             $trackingCheckStmt = $pdo->prepare(
@@ -71,7 +75,6 @@ try {
             $hasTracking = (int) $trackingCheckStmt->fetchColumn() > 0;
 
             if ($hasTracking) {
-                // Has tracking = already shipped → safe to set Delivered
                 $updateOrderStmt = $pdo->prepare("
                     UPDATE orders 
                     SET payment_status = 'Approved',
@@ -80,8 +83,6 @@ try {
                       AND order_status NOT IN ('Cancelled', 'Returned')
                 ");
             } else {
-                // No tracking = not shipped yet → only update payment_status
-                // order_status will be set to Delivered when tracking is added (auto-complete in index.php)
                 $updateOrderStmt = $pdo->prepare("
                     UPDATE orders 
                     SET payment_status = 'Approved'

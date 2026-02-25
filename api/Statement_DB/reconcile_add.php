@@ -39,9 +39,6 @@ try {
         exit();
     }
     $statementAmount = (float) $stmtInfo['amount'];
-    if ($confirmedAmount === null) {
-        $confirmedAmount = $statementAmount;
-    }
 
     // 2. Validate order
     $orderStmt = $pdo->prepare("
@@ -54,6 +51,11 @@ try {
     if (!$order) {
         echo json_encode(["ok" => false, "error" => "Order not found: {$orderId}"], JSON_UNESCAPED_UNICODE);
         exit();
+    }
+
+    // Use order's total_amount as confirmed_amount when frontend sends statement amount by mistake
+    if ($confirmedAmount === null || (abs($confirmedAmount - $statementAmount) < 0.01 && abs($statementAmount - (float) $order['total_amount']) > 0.01)) {
+        $confirmedAmount = (float) $order['total_amount'];
     }
 
     // 3. Check if this (statement_id, order_id) pair already exists

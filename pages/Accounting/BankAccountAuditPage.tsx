@@ -177,7 +177,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                 handleAddOrder(addModeForLog, orderId, orderAmount);
             } else {
                 // First-time match
-                handleConfirmMatch(selectedLogForSearch, orderId);
+                handleConfirmMatch(selectedLogForSearch, orderId, orderAmount);
             }
             setIsSearchModalOpen(false);
             setSelectedLogForSearch(null);
@@ -304,10 +304,13 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         }
     };
 
-    const handleConfirmMatch = async (log: AuditLog, suggestedOrderId: string) => {
+    const handleConfirmMatch = async (log: AuditLog, suggestedOrderId: string, knownOrderAmount?: number) => {
         if (!window.confirm(`ยืนยันการจับคู่กับออเดอร์ ${suggestedOrderId}?`)) {
             return;
         }
+
+        // Use known order amount if provided, otherwise fall back to suggestion/statement
+        const orderAmt = knownOrderAmount || (log as any).suggested_order_amount || log.order_amount || log.statement_amount;
 
         try {
             const res = await apiFetch('Statement_DB/reconcile_save.php', {
@@ -321,25 +324,27 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     items: [{
                         statement_id: log.id,
                         order_id: suggestedOrderId,
-                        confirmed_amount: log.statement_amount
+                        confirmed_amount: orderAmt
                     }]
                 })
             });
 
             if (res.ok) {
                 // Optimistic update: mark as matched with order
-                const orderAmt = (log as any).suggested_order_amount || log.order_amount || log.statement_amount;
                 const diff = log.statement_amount - orderAmt;
                 const newStatus = (Math.abs(diff) < 0.01 ? 'Exact' : diff > 0 ? 'Over' : 'Short');
+                const reconcileId = res.reconcile_log_ids?.[log.id] || log.reconcile_id || -1;
                 setLogs(prev => prev.map(l => l.id === log.id ? {
                     ...l,
                     order_id: suggestedOrderId,
                     order_display: suggestedOrderId,
-                    order_amount: (l as any).suggested_order_amount || l.statement_amount,
+                    order_amount: orderAmt,
                     payment_method: (l as any).suggested_payment_method || l.payment_method,
                     status: newStatus as any,
                     diff: diff,
-                    reconcile_id: res.reconcile_log_ids?.[log.id] || l.reconcile_id || -1,
+                    reconcile_id: reconcileId,
+                    // Set matched_orders so handleAddOrder can read it later
+                    matched_orders: [{ reconcile_id: reconcileId, order_id: suggestedOrderId, confirmed_amount: orderAmt, confirmed_at: null, payment_method: (l as any).suggested_payment_method || l.payment_method || null }],
                     // Clear suggestion fields
                     suggested_order_id: undefined,
                     suggested_order_amount: undefined,
@@ -478,30 +483,34 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         }
 
         try {
-            const res = await apiFetch('Statement_DB/confirm_reconcile.php', {
-                method: 'POST',
-                body: JSON.stringify({
-                    id: log.reconcile_id,
-                    order_id: log.order_id,
-                    order_amount: log.order_amount,
-                    payment_method: log.payment_method
-                })
-            });
+            // Confirm all matched orders for this statement (not just the first one)
+            const reconcileIds = log.matched_orders && log.matched_orders.length > 0
+                ? log.matched_orders.map(m => m.reconcile_id)
+                : [log.reconcile_id];
 
-            if (res.ok) {
-                // Optimistic update: mark as confirmed
-                setLogs(prev => prev.map(l => l.id === log.id ? {
-                    ...l,
-                    confirmed_at: new Date().toISOString(),
-                    confirmed_action: 'Confirmed',
-                } : l));
-                // Remove from selection
-                setSelectedIds(prev => prev.filter(id => id !== log.id));
-            } else {
-                alert('ยืนยันไม่สำเร็จ: ' + (res.error || 'Server error'));
-            }
+            await Promise.all(reconcileIds.map(rid =>
+                apiFetch('Statement_DB/confirm_reconcile.php', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        id: rid,
+                        order_amount: log.order_amount,
+                        payment_method: log.payment_method
+                    })
+                }).then(res => {
+                    if (!res.ok) throw new Error(res.error || 'Server error');
+                })
+            ));
+
+            // Optimistic update: mark as confirmed
+            setLogs(prev => prev.map(l => l.id === log.id ? {
+                ...l,
+                confirmed_at: new Date().toISOString(),
+                confirmed_action: 'Confirmed',
+            } : l));
+            // Remove from selection
+            setSelectedIds(prev => prev.filter(id => id !== log.id));
         } catch (e: any) {
-            alert('Error: ' + e.message);
+            alert('ยืนยันไม่สำเร็จ: ' + (e?.message || 'Server error'));
         }
     };
 
@@ -552,21 +561,25 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                 return res;
             });
 
-            // Process regular orders with existing API
-            const regularPromises = regularLogs.map(async (log) => {
-                const res = await apiFetch('Statement_DB/confirm_reconcile.php', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        id: log.reconcile_id,
-                        order_id: log.order_id,
-                        order_amount: log.order_amount,
-                        payment_method: log.payment_method
+            // Process regular orders — confirm each reconcile log individually
+            const regularPromises = regularLogs.flatMap((log) => {
+                const reconcileIds = log.matched_orders && log.matched_orders.length > 0
+                    ? log.matched_orders.map(m => m.reconcile_id)
+                    : [log.reconcile_id];
+
+                return reconcileIds.map(rid =>
+                    apiFetch('Statement_DB/confirm_reconcile.php', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            id: rid,
+                            order_amount: log.order_amount,
+                            payment_method: log.payment_method
+                        })
+                    }).then(res => {
+                        if (!res.ok) throw new Error(res.error || `Failed to confirm reconcile ${rid}`);
+                        return res;
                     })
-                });
-                if (!res.ok) {
-                    throw new Error(res.error || `Failed to confirm order ${log.order_id}`);
-                }
-                return res;
+                );
             });
 
             // Wait for all confirmations
@@ -969,7 +982,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                             </div>
                                                         ) : (log as any).suggested_order_id ? (
                                                             <button
-                                                                onClick={() => handleConfirmMatch(log, (log as any).suggested_order_id)}
+                                                                onClick={() => handleConfirmMatch(log, (log as any).suggested_order_id, (log as any).suggested_order_amount)}
                                                                 className="text-xs bg-green-50 text-green-700 border border-green-200 px-3 py-1 rounded-md hover:bg-green-100 transition-colors shadow-sm whitespace-nowrap"
                                                             >
                                                                 ยืนยันจับคู่
