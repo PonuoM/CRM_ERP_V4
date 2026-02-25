@@ -441,35 +441,29 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         if (normalized) resultMap.set(normalized, res);
       });
 
-      // NEW: Check cod_records for already imported tracking numbers
+      // Batch check cod_records for all tracking numbers at once (1 request instead of N)
       const alreadyImportedMap = new Map<string, { cod_amount: number; status: string; document_id: number | null; document_number: string | null }>();
       if (user?.companyId) {
         try {
-          await Promise.all(
-            items.map(async (item) => {
-              const normalized = normalizeTrackingNumber(item.trackingNumber);
-              const qs = new URLSearchParams({
-                companyId: String(user.companyId),
-                trackingNumber: normalized,
+          const allNormalized = items.map(item => normalizeTrackingNumber(item.trackingNumber)).filter(Boolean);
+          const batchRes = await apiFetch('Order_DB/cod_batch_check.php', {
+            method: 'POST',
+            body: JSON.stringify({ company_id: user.companyId, tracking_numbers: allNormalized }),
+          });
+          const records = batchRes?.records || {};
+          for (const [tn, record] of Object.entries(records) as [string, any][]) {
+            const normalized = normalizeTrackingNumber(tn);
+            if (normalized) {
+              alreadyImportedMap.set(normalized, {
+                cod_amount: parseFloat(record.cod_amount) || 0,
+                status: record.status || 'unknown',
+                document_id: record.document_id ? parseInt(record.document_id) : null,
+                document_number: record.document_number || null,
               });
-              const existingRecords = await apiFetch(`cod_records?${qs.toString()}`);
-              if (Array.isArray(existingRecords) && existingRecords.length > 0) {
-                const record = existingRecords.find(
-                  (r: any) => normalizeTrackingNumber(r?.tracking_number || "") === normalized
-                );
-                if (record) {
-                  alreadyImportedMap.set(normalized, {
-                    cod_amount: parseFloat(record.cod_amount) || 0,
-                    status: record.status || 'unknown',
-                    document_id: record.document_id ? parseInt(record.document_id) : null,
-                    document_number: record.document_number || null,
-                  });
-                }
-              }
-            })
-          );
+            }
+          }
         } catch (err) {
-          console.warn("Failed to check existing cod_records", err);
+          console.warn("Failed to batch check existing cod_records", err);
         }
       }
 
@@ -950,63 +944,45 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       > = {};
 
       // Update progress: document created/updated
-      setImportProgress({ current: 1, total: finalRowsToImport.length });
+      const halfwayMark = Math.max(1, Math.floor(finalRowsToImport.length / 2));
+      setImportProgress({ current: halfwayMark, total: finalRowsToImport.length });
 
       if (uniqueOrderIds.size > 0) {
         const orderIdArray = Array.from(uniqueOrderIds);
-        let completedOrders = 0;
-        // Process orders sequentially for progress tracking
-        for (const orderId of orderIdArray) {
-          // Query all cod_records for this order and SUM cod_amount
-          const qs = new URLSearchParams({
-            companyId: String(user.companyId),
-            orderId: orderId,
+        // Batch update all orders in one request instead of N sequential calls
+        try {
+          const batchRes = await apiFetch('Order_DB/cod_batch_update_orders.php', {
+            method: 'POST',
+            body: JSON.stringify({ company_id: user.companyId, order_ids: orderIdArray }),
           });
-          const records = await apiFetch(`cod_records?${qs.toString()}`);
-          const codTotal = Array.isArray(records)
-            ? records.reduce((sum: number, r: any) => sum + (parseFloat(r.cod_amount) || 0), 0)
-            : 0;
 
-          // Also get slip payments for this order to ADD together
-          let slipTotal = 0;
-          try {
-            const slipQs = new URLSearchParams({
-              companyId: String(user.companyId),
-              orderId: orderId,
-            });
-            const slipRecords = await apiFetch(`order_slips?${slipQs.toString()}`);
-            slipTotal = Array.isArray(slipRecords)
-              ? slipRecords
-                .filter((s: any) => s.status !== 'rejected')
-                .reduce((sum: number, s: any) => sum + (parseFloat(s.amount) || 0), 0)
-              : 0;
-          } catch { /* no slips */ }
-
-          // amountPaid = COD + Slips (not overwrite!)
-          const totalPaid = codTotal + slipTotal;
-          const roundedPaid = Math.round(totalPaid * 100) / 100;
-          const nextStatus =
-            roundedPaid > 0
-              ? PaymentStatus.PreApproved
-              : PaymentStatus.PendingVerification;
-
-          const updatePayload: any = {
-            amountPaid: roundedPaid,
-            paymentStatus: nextStatus,
-          };
-
-          if (nextStatus === PaymentStatus.PreApproved) {
-            updatePayload.orderStatus = 'PreApproved';
+          if (batchRes?.ok && batchRes.updates) {
+            for (const [orderId, update] of Object.entries(batchRes.updates) as [string, any][]) {
+              orderUpdates[orderId] = {
+                amountPaid: update.amountPaid || 0,
+                paymentStatus: update.paymentStatus === 'PreApproved' ? PaymentStatus.PreApproved : PaymentStatus.PendingVerification,
+              };
+            }
           }
-
-          orderUpdates[orderId] = {
-            amountPaid: roundedPaid,
-            paymentStatus: nextStatus,
-          };
-          await patchOrder(orderId, updatePayload);
-          completedOrders++;
-          setImportProgress({ current: 1 + completedOrders, total: finalRowsToImport.length });
+        } catch (err) {
+          console.error('Batch order update failed, falling back to sequential', err);
+          // Fallback: sequential update (slower but reliable)
+          for (const orderId of orderIdArray) {
+            try {
+              const qs = new URLSearchParams({ companyId: String(user.companyId), orderId });
+              const records = await apiFetch(`cod_records?${qs.toString()}`);
+              const codTotal = Array.isArray(records)
+                ? records.reduce((sum: number, r: any) => sum + (parseFloat(r.cod_amount) || 0), 0)
+                : 0;
+              const roundedPaid = Math.round(codTotal * 100) / 100;
+              const nextStatus = roundedPaid > 0 ? PaymentStatus.PreApproved : PaymentStatus.PendingVerification;
+              orderUpdates[orderId] = { amountPaid: roundedPaid, paymentStatus: nextStatus };
+              await patchOrder(orderId, { amountPaid: roundedPaid, paymentStatus: nextStatus, ...(nextStatus === PaymentStatus.PreApproved ? { orderStatus: 'PreApproved' } : {}) });
+            } catch { /* skip failed order */ }
+          }
         }
+
+        setImportProgress({ current: finalRowsToImport.length, total: finalRowsToImport.length });
         if (Object.keys(orderUpdates).length > 0) {
           onOrdersPaidUpdate?.(orderUpdates);
         }
