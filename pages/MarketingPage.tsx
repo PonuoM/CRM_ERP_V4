@@ -287,6 +287,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [expandedPages, setExpandedPages] = useState<Set<number>>(new Set());
   const [marketingPageUsers, setMarketingPageUsers] = useState<any[]>([]);
   const [marketingUsersList, setMarketingUsersList] = useState<any[]>([]);
+  const [adsUsersList, setAdsUsersList] = useState<any[]>([]);
   const [selectedPageForUser, setSelectedPageForUser] = useState<number | null>(
     null,
   );
@@ -679,6 +680,17 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           listUsers(),
         ]);
         if (cancelled) return;
+
+        // Fetch users who have ever logged ads
+        try {
+          const token = localStorage.getItem("authToken");
+          const adsHeaders: any = { "Content-Type": "application/json" };
+          if (token) adsHeaders["Authorization"] = `Bearer ${token}`;
+          const adsUsersRes = await fetch(`${API_BASE}/Marketing_DB/ads_users.php?company_id=${currentUser.companyId}`, { headers: adsHeaders });
+          const adsUsersData = await adsUsersRes.json();
+          console.log('[AdsUsers] Response:', adsUsersData);
+          if (Array.isArray(adsUsersData) && adsUsersData.length > 0) setAdsUsersList(adsUsersData);
+        } catch (e) { console.error('Failed to load ads users:', e); }
 
         const fetchedRoles = rolesData?.roles || [];
         setRoles(fetchedRoles);
@@ -2716,16 +2728,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 )}
 
                 <div className="flex-1">
-                  <label className={labelClass}>เลือกพนักงาน</label>
+                  <label className={labelClass}>เลือกพนักงาน(ผู้ดูแลเพจ)</label>
                   <MultiSelectUserFilter
-                    users={marketingUsersList
-                      .filter(u => marketingPageUsers.some((mpu: any) => mpu.user_id === u.id))
-                      .map(u => ({
-                        id: u.id,
-                        firstName: u.first_name,
-                        lastName: u.last_name || '',
-                        username: u.username
-                      }))
+                    users={(() => {
+                      // Merge: current page managers + historical ads users
+                      const userMap = new Map();
+                      marketingPageUsers.forEach((mpu: any) => {
+                        const u = marketingUsersList.find((u: any) => u.id === mpu.user_id);
+                        if (u) userMap.set(u.id, { id: u.id, firstName: u.first_name, lastName: u.last_name || '', username: u.username });
+                      });
+                      // Add historical ads users (old employees)
+                      adsUsersList.forEach((au: any) => {
+                        if (!userMap.has(au.id)) {
+                          userMap.set(au.id, { id: au.id, firstName: au.first_name, lastName: au.last_name || '', username: au.username });
+                        }
+                      });
+                      return Array.from(userMap.values());
+                    })()
                     }
                     selectedUsers={dashboardSelectedUsers}
                     onChange={setDashboardSelectedUsers}
@@ -2949,7 +2968,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <tr>
                           <th className="px-3 py-2 text-left bg-gray-50">เพจ</th>
                           <th className="px-3 py-2 text-left bg-gray-50">ประเภทเพจ</th>
-                          <th className="px-3 py-2 text-left bg-gray-50">พนักงาน</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">ผู้ดูแลเพจ</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">ผู้ลงแอด</th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
                               ค่าแอด
@@ -2967,8 +2987,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               ยอดขายรวม
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
                                 <p className="font-bold mb-1">💰 ยอดขายรวมทั้งหมด (Grand Total Sales)</p>
-                                <p>ยอดขาย + ตีกลับ + ยกเลิก</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= ยอดขายสำเร็จ + ยอดตีกลับ + ยอดยกเลิก</p>
+                                <p>ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= ยอดขายสำเร็จ + ยอดตีกลับ</p>
                               </div>
                             </div>
                           </th>
@@ -3055,9 +3075,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               %Ads
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
                                 <p className="font-bold mb-1">📉 %Ads (Ads Cost Ratio)</p>
-                                <p>สัดส่วนค่าแอดเทียบยอดขายทั้งหมด</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขาย) × 100</p>
-                                <p className="mt-1 text-gray-300">ตัวอย่าง: ค่าแอด 5,000 ÷ ยอดขาย 20,000 = 25%</p>
+                                <p>สัดส่วนค่าแอดเทียบยอดขายรวม</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขายรวม) × 100</p>
+                                <p className="mt-1 text-gray-300">ยอดขายรวม = ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
                                 <p className="text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
                               </div>
                             </div>
@@ -3094,17 +3114,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 return spt === dashboardPageTypeFilter;
                               })
                             ).map((row, index) => {
-                              const roas = row.ads_cost > 0 ? row.total_sales / row.ads_cost : 0;
+                              const grandTotalSales = Number(row.total_sales || 0) + Number(row.returned_sales || 0);
+                              const roas = row.ads_cost > 0 ? Number(row.total_sales) / row.ads_cost : 0;
                               const costPerInbox = row.clicks > 0 ? row.ads_cost / row.clicks : 0;
                               const pctAdsNewSales = row.new_customer_sales > 0 ? (row.ads_cost / row.new_customer_sales) * 100 : 0;
-                              const pctAds = row.total_sales > 0 ? (row.ads_cost / row.total_sales) * 100 : 0;
+                              const pctAds = grandTotalSales > 0 ? (row.ads_cost / grandTotalSales) * 100 : 0;
                               const closeRate = row.clicks > 0 ? (row.total_orders / row.clicks) * 100 : 0;
 
                               return (
                                 <tr key={index} className="border-b hover:bg-gray-50">
                                   <td className="px-3 py-2">
-                                    <div className="flex items-center gap-2">
-                                      <span>{row.page_name}</span>
+                                    <div className="flex items-center gap-2 max-w-[250px]">
+                                      <span className="truncate" title={row.page_name}>{row.page_name}</span>
                                       {(() => {
                                         const page = pages.find(
                                           (p) => p.name === row.page_name,
@@ -3118,14 +3139,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                     </div>
                                   </td>
                                   <td className="px-3 py-2 text-gray-600">{row.sell_product_type || "-"}</td>
-                                  <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]" title={row.staff_names}>{row.staff_names || "-"}</td>
+                                  <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]" title={row.page_managers || ''}>{row.page_managers || "-"}</td>
+                                  <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]" title={`${row.staff_first_name || ''} ${row.staff_last_name || ''}`}>{row.staff_first_name || "-"}</td>
                                   <td className="px-3 py-2 text-right">
                                     {Number(row.ads_cost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </td>
                                   <td className="px-3 py-2 text-right">{Number(row.impressions || 0).toLocaleString('th-TH')}</td>
                                   <td className="px-3 py-2 text-right">{Number(row.reach || 0).toLocaleString('th-TH')}</td>
                                   <td className="px-3 py-2 text-right font-semibold text-blue-700">
-                                    {(Number(row.total_sales || 0) + Number(row.returned_sales || 0) + Number(row.cancelled_sales || 0)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {(Number(row.total_sales || 0) + Number(row.returned_sales || 0)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </td>
                                   <td className="px-3 py-2 text-right">
                                     {Number(row.total_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -3157,7 +3179,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                             })}
                             {/* Summary Row */}
                             <tr className="bg-gray-100 font-bold border-t-2 border-gray-300">
-                              <td className="px-3 py-2" colSpan={3}>รวมทั้งสิ้น</td>
+                              <td className="px-3 py-2" colSpan={4}>รวมทั้งสิ้น</td>
                               {(() => {
                                 const summaryRows = dashboardPageTypeFilter === "All"
                                   ? dashboardData
@@ -3177,7 +3199,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                       {summaryRows.reduce((acc: number, row: any) => acc + Number(row.reach || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right font-semibold text-blue-700">
-                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0) + Number(row.returned_sales || 0) + Number(row.cancelled_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0) + Number(row.returned_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </td>
                                     <td className="px-3 py-2 text-right">
                                       {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -3203,9 +3225,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                     {(() => {
                                       const totalAds = summaryRows.reduce((acc: number, row: any) => acc + Number(row.ads_cost || 0), 0);
                                       const totalSales = summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0), 0);
+                                      const totalReturned = summaryRows.reduce((acc: number, row: any) => acc + Number(row.returned_sales || 0), 0);
                                       const totalClicks = summaryRows.reduce((acc: number, row: any) => acc + Number(row.clicks || 0), 0);
                                       const totalNewSales = summaryRows.reduce((acc: number, row: any) => acc + Number(row.new_customer_sales || 0), 0);
                                       const totalOrders = summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_orders || 0), 0);
+                                      const grandTotal = totalSales + totalReturned;
                                       return (
                                         <>
                                           <td className="px-3 py-2 text-right text-blue-700">
@@ -3218,7 +3242,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                             {totalNewSales > 0 ? ((totalAds / totalNewSales) * 100).toFixed(2) + "%" : "0.00%"}
                                           </td>
                                           <td className="px-3 py-2 text-right">
-                                            {totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) + "%" : "0.00%"}
+                                            {grandTotal > 0 ? ((totalAds / grandTotal) * 100).toFixed(2) + "%" : "0.00%"}
                                           </td>
                                           <td className="px-3 py-2 text-right">
                                             {totalClicks > 0 ? ((totalOrders / totalClicks) * 100).toFixed(2) + "%" : "0.00%"}
@@ -3266,7 +3290,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               ยอดขายรวม
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
                                 <p className="font-bold mb-1">💰 ยอดขายรวมทั้งหมด (Grand Total Sales)</p>
-                                <p>ยอดขาย + ตีกลับ + ยกเลิก</p>
+                                <p>ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
                               </div>
                             </div>
                           </th>
@@ -3318,7 +3342,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               %Ads
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
                                 <p className="font-bold mb-1">📉 %Ads (Ads Cost Ratio)</p>
-                                <p className="text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขาย) × 100</p>
+                                <p className="text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขายรวม) × 100</p>
+                                <p className="mt-1 text-gray-300">ยอดขายรวม = ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
                                 <p className="mt-1 text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
                               </div>
                             </div>
@@ -3339,10 +3364,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         {productDashboardData.length > 0 ? (
                           <>
                             {productDashboardData.map((row, index) => {
+                              const grandTotalSales = Number(row.total_sales || 0) + Number(row.returned_sales || 0);
                               const roas = Number(row.ads_cost) > 0 ? Number(row.total_sales) / Number(row.ads_cost) : 0;
                               const costPerInbox = Number(row.clicks) > 0 ? Number(row.ads_cost) / Number(row.clicks) : 0;
                               const pctAdsNewSales = Number(row.new_customer_sales) > 0 ? (Number(row.ads_cost) / Number(row.new_customer_sales)) * 100 : 0;
-                              const pctAds = Number(row.total_sales) > 0 ? (Number(row.ads_cost) / Number(row.total_sales)) * 100 : 0;
+                              const pctAds = grandTotalSales > 0 ? (Number(row.ads_cost) / grandTotalSales) * 100 : 0;
                               const closeRate = Number(row.clicks) > 0 ? (Number(row.total_orders) / Number(row.clicks)) * 100 : 0;
 
                               return (
@@ -3352,7 +3378,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   <td className="px-3 py-2 text-right">{Number(row.impressions || 0).toLocaleString('th-TH')}</td>
                                   <td className="px-3 py-2 text-right">{Number(row.reach || 0).toLocaleString('th-TH')}</td>
                                   <td className="px-3 py-2 text-right font-medium">{Number(row.clicks || 0).toLocaleString('th-TH')}</td>
-                                  <td className="px-3 py-2 text-right font-semibold text-blue-700">{(Number(row.total_sales || 0) + Number(row.returned_sales || 0) + Number(row.cancelled_sales || 0)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-blue-700">{(Number(row.total_sales || 0) + Number(row.returned_sales || 0)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td className="px-3 py-2 text-right">{Number(row.total_sales).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td className="px-3 py-2 text-right text-amber-600">{Number(row.returned_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td className="px-3 py-2 text-right text-red-600">{Number(row.cancelled_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -3383,7 +3409,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 {productDashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0).toLocaleString('th-TH')}
                               </td>
                               <td className="px-3 py-2 text-right font-semibold text-blue-700">
-                                {productDashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0) + Number(row.returned_sales || 0) + Number(row.cancelled_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {productDashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0) + Number(row.returned_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                               <td className="px-3 py-2 text-right">
                                 {productDashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -3427,8 +3453,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               <td className="px-3 py-2 text-right">
                                 {(() => {
                                   const totalAds = productDashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
-                                  const totalSales = productDashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0);
-                                  return totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) + "%" : "0.00%";
+                                  const grandTotal = productDashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0) + Number(row.returned_sales || 0), 0);
+                                  return grandTotal > 0 ? ((totalAds / grandTotal) * 100).toFixed(2) + "%" : "0.00%";
                                 })()}
                               </td>
                               <td className="px-3 py-2 text-right">

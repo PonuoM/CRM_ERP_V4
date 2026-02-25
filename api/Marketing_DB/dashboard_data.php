@@ -45,7 +45,7 @@ try {
       }
     }
 
-    // Add user IDs filter for Pages (Show only pages assigned to selected users)
+    // Filter pages by user_ids via marketing_user_page (current) OR marketing_ads_log (historical)
     if ($userIds) {
       $userIdArray = explode(",", $userIds);
       $userIdArray = array_map("intval", $userIdArray);
@@ -53,8 +53,8 @@ try {
 
       if (!empty($userIdArray)) {
         $placeholders = str_repeat("?,", count($userIdArray) - 1) . "?";
-        $pageWhereConditions[] = "p.id IN (SELECT page_id FROM marketing_user_page WHERE user_id IN ($placeholders))";
-        $pageParams = array_merge($pageParams, $userIdArray);
+        $pageWhereConditions[] = "(p.id IN (SELECT page_id FROM marketing_user_page WHERE user_id IN ($placeholders)) OR p.id IN (SELECT DISTINCT page_id FROM marketing_ads_log WHERE user_id IN ($placeholders)))";
+        $pageParams = array_merge($pageParams, $userIdArray, $userIdArray);
       }
     }
 
@@ -76,18 +76,7 @@ try {
       $logParams[] = $dateTo;
     }
 
-    // Add user IDs filter
-    if ($userIds) {
-      $userIdArray = explode(",", $userIds);
-      $userIdArray = array_map("intval", $userIdArray);
-      $userIdArray = array_filter($userIdArray);
-
-      if (!empty($userIdArray)) {
-        $placeholders = str_repeat("?,", count($userIdArray) - 1) . "?";
-        $logWhereConditions[] = "user_id IN ($placeholders)";
-        $logParams = array_merge($logParams, $userIdArray);
-      }
-    }
+    // No user_id filter in ads log - user filter is applied at page level via marketing_user_page
 
     $logWhereClause = implode(" AND ", $logWhereConditions);
 
@@ -117,17 +106,43 @@ try {
 
     $orderWhereClause = implode(" AND ", $orderWhereConditions);
 
-    // Query to get all pages for the company with aggregated ads log and order data
-    // FIX: Pre-aggregate ads_log and orders BEFORE joining to prevent Cartesian Product
-    // The previous query caused ads_cost to be multiplied by order count
+    // returned_boxes uses same orderWhereClause (filter by order_date)
+    $returnWhereClause = "ob.status = 'RETURNED' AND " . $orderWhereClause;
+
+    // Build WHERE for NOT EXISTS subquery (uses mal. alias prefix)
+    $logExistsConditions = ["1=1"];
+    $logExistsParams = [];
+
+    if ($dateFrom && $dateTo) {
+      $logExistsConditions[] = "mal.date BETWEEN ? AND ?";
+      $logExistsParams[] = $dateFrom;
+      $logExistsParams[] = $dateTo;
+    } elseif ($dateFrom) {
+      $logExistsConditions[] = "mal.date >= ?";
+      $logExistsParams[] = $dateFrom;
+    } elseif ($dateTo) {
+      $logExistsConditions[] = "mal.date <= ?";
+      $logExistsParams[] = $dateTo;
+    }
+
+    // No user_id filter in NOT EXISTS - user filter is at page level
+
+    $logWhereClauseForExists = implode(" AND ", $logExistsConditions);
+
+    // Query: Two-part UNION
+    // Part 1: Pages WITH ads data (per-user, ads_cost > 0, sales attributed by ads dates)
+    // Part 2: Pages with sales on dates NOT covered by any ads log (shows as page-level, no user)
     $query = "
-        SELECT
+        (SELECT
             p.id as page_id,
             p.name as page_name,
             p.platform,
             p.page_type,
             p.sell_product_type,
             p.page_id as external_page_id,
+            ads_agg.user_id,
+            u.first_name as staff_first_name,
+            u.last_name as staff_last_name,
             COALESCE(ads_agg.ads_cost, 0) as ads_cost,
             COALESCE(ads_agg.impressions, 0) as impressions,
             COALESCE(ads_agg.reach, 0) as reach,
@@ -143,35 +158,120 @@ try {
             COALESCE(returned_boxes_agg.returned_orders, 0) as returned_orders,
             COALESCE(orders_agg.cancelled_sales, 0) as cancelled_sales,
             COALESCE(orders_agg.cancelled_orders, 0) as cancelled_orders,
-            staff.staff_names
+            COALESCE(page_mgr.manager_names, '') as page_managers
         FROM pages p
-        LEFT JOIN (
+        INNER JOIN (
             SELECT 
                 page_id,
+                user_id,
                 SUM(ads_cost) as ads_cost,
                 SUM(impressions) as impressions,
                 SUM(reach) as reach,
                 SUM(clicks) as clicks
             FROM marketing_ads_log
             WHERE $logWhereClause
-            GROUP BY page_id
+            GROUP BY page_id, user_id
+            HAVING SUM(ads_cost) > 0
         ) ads_agg ON p.id = ads_agg.page_id
+        LEFT JOIN users u ON ads_agg.user_id = u.id
         LEFT JOIN (
             SELECT 
-                sales_channel_page_id,
-                SUM(CASE WHEN order_status NOT IN ('Cancelled', 'Returned') THEN total_amount ELSE 0 END) as total_sales,
-                COUNT(DISTINCT CASE WHEN order_status NOT IN ('Cancelled', 'Returned') THEN id END) as total_orders,
-                SUM(CASE WHEN customer_type = 'New Customer' AND order_status NOT IN ('Cancelled', 'Returned') THEN 1 ELSE 0 END) as new_customer_orders,
-                SUM(CASE WHEN customer_type = 'Reorder Customer' AND order_status NOT IN ('Cancelled', 'Returned') THEN 1 ELSE 0 END) as reorder_customer_orders,
-                SUM(CASE WHEN customer_type = 'New Customer' AND order_status NOT IN ('Cancelled', 'Returned') THEN total_amount ELSE 0 END) as new_customer_sales,
-                SUM(CASE WHEN customer_type = 'Reorder Customer' AND order_status NOT IN ('Cancelled', 'Returned') THEN total_amount ELSE 0 END) as reorder_customer_sales,
-                COUNT(DISTINCT CASE WHEN order_status NOT IN ('Cancelled', 'Returned') THEN customer_id END) as total_customers,
-                SUM(CASE WHEN order_status = 'Cancelled' THEN total_amount ELSE 0 END) as cancelled_sales,
-                COUNT(CASE WHEN order_status = 'Cancelled' THEN 1 END) as cancelled_orders
-            FROM orders
+                o.sales_channel_page_id,
+                ads_dates.user_id,
+                SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.total_amount ELSE 0 END) as total_sales,
+                COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.id END) as total_orders,
+                SUM(CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN 1 ELSE 0 END) as new_customer_orders,
+                SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN 1 ELSE 0 END) as reorder_customer_orders,
+                SUM(CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.total_amount ELSE 0 END) as new_customer_sales,
+                SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.total_amount ELSE 0 END) as reorder_customer_sales,
+                COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as total_customers,
+                SUM(CASE WHEN o.order_status = 'Cancelled' THEN o.total_amount ELSE 0 END) as cancelled_sales,
+                COUNT(CASE WHEN o.order_status = 'Cancelled' THEN 1 END) as cancelled_orders
+            FROM orders o
+            INNER JOIN (
+                SELECT DISTINCT page_id, user_id, date
+                FROM marketing_ads_log
+                WHERE $logWhereClause
+            ) ads_dates ON o.sales_channel_page_id = ads_dates.page_id AND DATE(o.order_date) = ads_dates.date
             WHERE $orderWhereClause
-            GROUP BY sales_channel_page_id
-        ) orders_agg ON p.id = orders_agg.sales_channel_page_id
+            GROUP BY o.sales_channel_page_id, ads_dates.user_id
+        ) orders_agg ON p.id = orders_agg.sales_channel_page_id AND ads_agg.user_id = orders_agg.user_id
+        LEFT JOIN (
+            SELECT 
+                o.sales_channel_page_id,
+                ads_dates.user_id,
+                SUM(ob.cod_amount) as returned_sales,
+                COUNT(DISTINCT ob.id) as returned_orders
+            FROM order_boxes ob
+            JOIN orders o ON ob.order_id = o.id
+            INNER JOIN (
+                SELECT DISTINCT page_id, user_id, date
+                FROM marketing_ads_log
+                WHERE $logWhereClause
+            ) ads_dates ON o.sales_channel_page_id = ads_dates.page_id AND DATE(o.order_date) = ads_dates.date
+            WHERE $returnWhereClause
+            GROUP BY o.sales_channel_page_id, ads_dates.user_id
+        ) returned_boxes_agg ON p.id = returned_boxes_agg.sales_channel_page_id AND ads_agg.user_id = returned_boxes_agg.user_id
+        LEFT JOIN (
+            SELECT mup.page_id, GROUP_CONCAT(DISTINCT u2.first_name ORDER BY u2.first_name SEPARATOR ', ') as manager_names
+            FROM marketing_user_page mup
+            JOIN users u2 ON mup.user_id = u2.id
+            GROUP BY mup.page_id
+        ) page_mgr ON p.id = page_mgr.page_id
+        WHERE $pageWhereClause)
+
+        UNION ALL
+
+        (SELECT
+            p.id as page_id,
+            p.name as page_name,
+            p.platform,
+            p.page_type,
+            p.sell_product_type,
+            p.page_id as external_page_id,
+            NULL as user_id,
+            'ยังไม่ลงแอด' as staff_first_name,
+            '' as staff_last_name,
+            0 as ads_cost,
+            0 as impressions,
+            0 as reach,
+            0 as clicks,
+            COALESCE(noads_orders.total_sales, 0) as total_sales,
+            COALESCE(noads_orders.total_orders, 0) as total_orders,
+            COALESCE(noads_orders.new_customer_orders, 0) as new_customer_orders,
+            COALESCE(noads_orders.reorder_customer_orders, 0) as reorder_customer_orders,
+            COALESCE(noads_orders.new_customer_sales, 0) as new_customer_sales,
+            COALESCE(noads_orders.reorder_customer_sales, 0) as reorder_customer_sales,
+            COALESCE(noads_orders.total_customers, 0) as total_customers,
+            COALESCE(noads_returned.returned_sales, 0) as returned_sales,
+            COALESCE(noads_returned.returned_orders, 0) as returned_orders,
+            COALESCE(noads_orders.cancelled_sales, 0) as cancelled_sales,
+            COALESCE(noads_orders.cancelled_orders, 0) as cancelled_orders,
+            COALESCE(page_mgr2.manager_names, '') as page_managers
+        FROM pages p
+        INNER JOIN (
+            SELECT 
+                o.sales_channel_page_id,
+                SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.total_amount ELSE 0 END) as total_sales,
+                COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.id END) as total_orders,
+                SUM(CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN 1 ELSE 0 END) as new_customer_orders,
+                SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN 1 ELSE 0 END) as reorder_customer_orders,
+                SUM(CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.total_amount ELSE 0 END) as new_customer_sales,
+                SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.total_amount ELSE 0 END) as reorder_customer_sales,
+                COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as total_customers,
+                SUM(CASE WHEN o.order_status = 'Cancelled' THEN o.total_amount ELSE 0 END) as cancelled_sales,
+                COUNT(CASE WHEN o.order_status = 'Cancelled' THEN 1 END) as cancelled_orders
+            FROM orders o
+            WHERE $orderWhereClause
+            AND NOT EXISTS (
+                SELECT 1 FROM marketing_ads_log mal
+                WHERE mal.page_id = o.sales_channel_page_id
+                AND mal.date = DATE(o.order_date)
+                AND $logWhereClauseForExists
+            )
+            GROUP BY o.sales_channel_page_id
+            HAVING total_sales > 0 OR cancelled_sales > 0
+        ) noads_orders ON p.id = noads_orders.sales_channel_page_id
         LEFT JOIN (
             SELECT 
                 o.sales_channel_page_id,
@@ -179,22 +279,34 @@ try {
                 COUNT(DISTINCT ob.id) as returned_orders
             FROM order_boxes ob
             JOIN orders o ON ob.order_id = o.id
-            WHERE ob.status = 'RETURNED'
-            AND $orderWhereClause
+            WHERE $returnWhereClause
+            AND NOT EXISTS (
+                SELECT 1 FROM marketing_ads_log mal
+                WHERE mal.page_id = o.sales_channel_page_id
+                AND mal.date = DATE(o.order_date)
+                AND $logWhereClauseForExists
+            )
             GROUP BY o.sales_channel_page_id
-        ) returned_boxes_agg ON p.id = returned_boxes_agg.sales_channel_page_id
+        ) noads_returned ON p.id = noads_returned.sales_channel_page_id
         LEFT JOIN (
-            SELECT mup.page_id, GROUP_CONCAT(u.first_name SEPARATOR ', ') as staff_names
+            SELECT mup.page_id, GROUP_CONCAT(DISTINCT u2.first_name ORDER BY u2.first_name SEPARATOR ', ') as manager_names
             FROM marketing_user_page mup
-            JOIN users u ON mup.user_id = u.id
+            JOIN users u2 ON mup.user_id = u2.id
             GROUP BY mup.page_id
-        ) staff ON p.id = staff.page_id
-        WHERE $pageWhereClause
-        ORDER BY p.name ASC
+        ) page_mgr2 ON p.id = page_mgr2.page_id
+        WHERE $pageWhereClause)
+
+        ORDER BY page_name ASC, staff_first_name ASC
     ";
 
-    // Combine parameters: logParams, orderParams, orderParams (for returned_boxes_agg), then pageParams
-    $allParams = array_merge($logParams, $orderParams, $orderParams, $pageParams);
+    // Build logWhereClauseForExists params (same structure as logParams but with mal. prefix already handled)
+    // Combine parameters for UNION:
+    // Part 1: logParams(ads_agg), logParams(orders.ads_dates), orderParams, logParams(returned.ads_dates), orderParams, pageParams
+    // Part 2: orderParams, logParams(NOT EXISTS), pageParams, orderParams(returned), logParams(NOT EXISTS), pageParams
+    $allParams = array_merge(
+        $logParams, $logParams, $orderParams, $logParams, $orderParams, $pageParams,
+        $orderParams, $logExistsParams, $orderParams, $logExistsParams, $pageParams
+    );
 
     // Prepare and execute query
     $stmt = $conn->prepare($query);
