@@ -348,6 +348,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const [colFilters, setColFilters] = useState<Record<string, Set<string> | null>>({});
     const [openFilter, setOpenFilter] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+    const [allDataLoaded, setAllDataLoaded] = useState(false);
 
     const onChangeFilter = useCallback((key: string, selected: Set<string> | null) => {
         setColFilters(prev => {
@@ -357,9 +358,14 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             } else {
                 next[key] = selected;
             }
+            // If any filter is now active, load all data
+            const hasFilters = Object.keys(next).length > 0;
+            if (hasFilters && !allDataLoaded) {
+                setAllDataLoaded(true);
+            }
             return next;
         });
-    }, []);
+    }, [allDataLoaded]);
 
     const onSort = useCallback((key: string, dir: 'asc' | 'desc' | null) => {
         setSortConfig(dir === null ? null : { key, dir });
@@ -368,6 +374,8 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const clearAllFilters = useCallback(() => {
         setColFilters({});
         setOpenFilter(null);
+        setSortConfig(null);
+        setAllDataLoaded(false);
     }, []);
 
     const hasActiveFilters = useMemo(() => Object.keys(colFilters).length > 0, [colFilters]);
@@ -463,6 +471,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     useEffect(() => {
         setColFilters({});
         setOpenFilter(null);
+        setAllDataLoaded(false);
     }, [month, year, sellerId, orderStatus, customerType, debouncedSearch]);
 
     const yearOptions = useMemo(() => {
@@ -486,8 +495,8 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             const params = new URLSearchParams({
                 month: String(month),
                 year: String(year),
-                page: String(page),
-                pageSize: String(pageSize),
+                page: String(allDataLoaded ? 1 : page),
+                pageSize: String(allDataLoaded ? 10000 : pageSize),
             });
             if (sellerId > 0) params.set("seller_id", String(sellerId));
             if (orderStatus) params.set("order_status", orderStatus);
@@ -512,7 +521,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
         } finally {
             setLoading(false);
         }
-    }, [month, year, sellerId, orderStatus, customerType, debouncedSearch, page, pageSize]);
+    }, [month, year, sellerId, orderStatus, customerType, debouncedSearch, page, pageSize, allDataLoaded]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -768,7 +777,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                         </span>
                                     )}
                                 </div>
-                                {pagination.totalPages > 1 && (
+                                {pagination.totalPages > 1 && !allDataLoaded && (
                                     <div className="flex items-center gap-1">
                                         <button
                                             onClick={() => setPage(p => Math.max(1, p - 1))}
