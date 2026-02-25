@@ -13,6 +13,7 @@ interface SheetRow {
     order_number: string;
     customer_type: string | null;
     basket_key_at_sale: string | null;
+    basket_name: string | null;
     sales_channel: string | null;
     payment_method: string | null;
     customer_name: string;
@@ -381,7 +382,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             order_number: getUnique(r => r.order_number),
             seller_name: [...new Set(rows.map(r => r.seller_name?.trim() || '-'))].sort(),
             customer_type: [...new Set(rows.map(r => getCustomerTypeThai(r.customer_type)))].sort(),
-            basket: getUnique(r => r.basket_key_at_sale),
+            basket: getUnique(r => r.basket_name),
             sales_channel: getUnique(r => r.sales_channel),
             payment_method: [...new Set(rows.map(r => getPaymentThai(r.payment_method)))].sort(),
             customer_name: [...new Set(rows.map(r => r.customer_name?.trim() || '-'))].sort(),
@@ -402,7 +403,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
         order_number: r => r.order_number || '-',
         seller_name: r => r.seller_name?.trim() || '-',
         customer_type: r => getCustomerTypeThai(r.customer_type),
-        basket: r => r.basket_key_at_sale || '-',
+        basket: r => r.basket_name || '-',
         sales_channel: r => r.sales_channel || '-',
         payment_method: r => getPaymentThai(r.payment_method),
         customer_name: r => r.customer_name?.trim() || '-',
@@ -716,7 +717,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                         </span>
                                                     ) : "-"}
                                                 </td>
-                                                <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[70px]" title={row.basket_key_at_sale || ""}>{row.basket_key_at_sale || "-"}</td>
+                                                <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[90px]" title={row.basket_name || row.basket_key_at_sale || ""}>{row.basket_name || row.basket_key_at_sale || "-"}</td>
                                                 <td className="px-1.5 py-1 text-center text-gray-500 border-r border-gray-100 text-[10px] whitespace-nowrap">{row.sales_channel || "-"}</td>
                                                 <td className="px-1.5 py-1 text-center text-gray-600 border-r border-gray-100 text-[10px] whitespace-nowrap">{getPaymentThai(row.payment_method)}</td>
                                                 <td className="px-1.5 py-1 text-gray-700 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[110px]" title={row.customer_name.trim()}>{row.customer_name.trim() || "-"}</td>

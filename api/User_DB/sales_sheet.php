@@ -148,6 +148,7 @@ try {
             o.id AS order_number,
             o.customer_type,
             oi.basket_key_at_sale,
+            COALESCE(bc.basket_name, oi.basket_key_at_sale) AS basket_name,
             o.sales_channel,
             o.payment_method,
             CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,'')) AS customer_name,
@@ -179,6 +180,7 @@ try {
         LEFT JOIN products p ON oi.product_id = p.id
         LEFT JOIN users u_item ON oi.creator_id = u_item.id
         LEFT JOIN users u_order ON o.creator_id = u_order.id
+        LEFT JOIN basket_config bc ON oi.basket_key_at_sale = bc.basket_key AND bc.company_id = 1
         $whereClause
         ORDER BY o.order_date DESC, o.id DESC, oi.id ASC
         LIMIT ? OFFSET ?
