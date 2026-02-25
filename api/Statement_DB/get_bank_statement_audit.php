@@ -404,9 +404,23 @@ try {
       }
     }
 
+    // Build matched_orders array for multi-order display
+    $matchedOrders = [];
+    foreach ($reconcileItems as $item) {
+      if (!empty($item['order_id']) && ($item['reconcile_type'] ?? '') === 'Order') {
+        $matchedOrders[] = [
+          'reconcile_id' => $item['reconcile_id'],
+          'order_id' => $item['order_id'],
+          'confirmed_amount' => (float) ($item['confirmed_amount'] ?? 0),
+          'confirmed_at' => $item['confirmed_at'] ?? null,
+          'payment_method' => $item['confirmed_payment_method'] ?? null,
+        ];
+      }
+    }
+
     $results[] = [
       'id' => $row['id'],
-      'reconcile_id' => !empty($reconcileItems) ? $reconcileItems[0]['reconcile_id'] : null, // Just use first for now or null
+      'reconcile_id' => !empty($reconcileItems) ? $reconcileItems[0]['reconcile_id'] : null,
       'confirmed_at' => !empty($confirmedAts) ? $confirmedAts[0] : null,
       'confirmed_action' => !empty($confirmedActions) ? implode(', ', array_unique($confirmedActions)) : null,
       'reconcile_type' => $primaryType,
@@ -415,7 +429,7 @@ try {
       'statement_amount' => $row['statement_amount'],
       'channel' => $row['channel'],
       'description' => $row['description'],
-      'order_id' => !empty($orderIds) ? implode(',', array_unique($orderIds)) : null, // Return as CSV for raw
+      'order_id' => !empty($orderIds) ? implode(',', array_unique($orderIds)) : null,
       'order_display' => $displayOrderId,
       'order_amount' => $displayOrderAmount,
       'payment_method' => $derivedPaymentMethod,
@@ -425,7 +439,8 @@ try {
       'suggested_order_info' => $suggestedOrderInfo,
       'suggested_order_amount' => $suggestedOrderAmount,
       'suggested_payment_method' => $suggestedPaymentMethod,
-      'reconcile_items' => $reconcileItems, // Pass full details if frontend wants to show breakdown
+      'reconcile_items' => $reconcileItems,
+      'matched_orders' => $matchedOrders,
       // COD document info
       'cod_document_id' => $row['cod_document_id'] ?? null,
       'cod_document_number' => $row['cod_document_number'] ?? null,
