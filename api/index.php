@@ -8011,9 +8011,7 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 $docId = (int) $pdo->lastInsertId();
 
                 $itemStmt = $pdo->prepare('INSERT INTO cod_records (document_id, tracking_number, order_id, cod_amount, order_amount, received_amount, difference, status, company_id, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)');
-                $findExistingStmt = $pdo->prepare('SELECT document_id, cod_amount, order_amount FROM cod_records WHERE tracking_number = ? AND company_id = ? LIMIT 1');
-                // Prepared statements for updating order_boxes.collected_amount
-                $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
+                // Prepared statement for updating order_boxes.collected_amount
                 $updateBoxCollectedStmt = $pdo->prepare(
                     'UPDATE order_boxes SET collected_amount = (
                         SELECT COALESCE(SUM(cr.cod_amount), 0)
@@ -8023,23 +8021,56 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     ) WHERE order_id = ? AND box_number = ?'
                 );
 
+                // === BATCH PRE-FETCH: existing cod_records for all tracking numbers ===
+                $allTrackings = [];
+                foreach ($items as $it) {
+                    $tn = trim((string) ($it['tracking_number'] ?? ''));
+                    if ($tn !== '')
+                        $allTrackings[] = $tn;
+                }
+
+                $existingMap = []; // tracking_number -> { document_id, cod_amount, order_amount }
+                if (count($allTrackings) > 0) {
+                    $ph = implode(',', array_fill(0, count($allTrackings), '?'));
+                    $existStmt = $pdo->prepare("SELECT tracking_number, document_id, cod_amount, order_amount FROM cod_records WHERE tracking_number IN ($ph) AND company_id = ?");
+                    $existParams = $allTrackings;
+                    $existParams[] = $companyId;
+                    $existStmt->execute($existParams);
+                    foreach ($existStmt->fetchAll(PDO::FETCH_ASSOC) as $er) {
+                        // Only store the first match per tracking (same as LIMIT 1)
+                        if (!isset($existingMap[$er['tracking_number']])) {
+                            $existingMap[$er['tracking_number']] = $er;
+                        }
+                    }
+                }
+
+                // === BATCH PRE-FETCH: order_tracking_numbers for box lookup ===
+                $trackingBoxMap = []; // tracking_number -> { order_id, box_number, parent_order_id }
+                if (count($allTrackings) > 0) {
+                    $ph = implode(',', array_fill(0, count($allTrackings), '?'));
+                    $trkStmt = $pdo->prepare("SELECT tracking_number, order_id, box_number, parent_order_id FROM order_tracking_numbers WHERE tracking_number IN ($ph)");
+                    $trkStmt->execute($allTrackings);
+                    foreach ($trkStmt->fetchAll(PDO::FETCH_ASSOC) as $tr) {
+                        if (!isset($trackingBoxMap[$tr['tracking_number']])) {
+                            $trackingBoxMap[$tr['tracking_number']] = $tr;
+                        }
+                    }
+                }
+
                 $skippedItems = [];
                 foreach ($items as $it) {
                     $trackingNumber = trim((string) ($it['tracking_number'] ?? ''));
                     if ($trackingNumber === '') {
                         continue;
                     }
-                    // Check if tracking exists in a DIFFERENT document
-                    $findExistingStmt->execute([$trackingNumber, $companyId]);
-                    $oldRecord = $findExistingStmt->fetch(PDO::FETCH_ASSOC);
+                    // Check if tracking exists in a DIFFERENT document (from pre-fetched map)
+                    $oldRecord = $existingMap[$trackingNumber] ?? null;
                     $forceImport = (bool) ($it['force_import'] ?? false);
                     if ($oldRecord && $oldRecord['document_id'] && (int) $oldRecord['document_id'] !== $docId) {
                         if (!$forceImport) {
-                            // Exists in another document and not forced — skip
                             $skippedItems[] = ['tracking_number' => $trackingNumber, 'existing_document_id' => (int) $oldRecord['document_id']];
                             continue;
                         }
-                        // force_import = true → allow adding to new document (keep old record intact)
                     }
                     $orderId = isset($it['order_id']) ? trim((string) $it['order_id']) : null;
                     $codAmount = (float) ($it['cod_amount'] ?? 0);
@@ -8066,9 +8097,8 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                         $createdBy ?: null,
                     ]);
 
-                    // Update order_boxes.collected_amount for the matching box
-                    $lookupTrackingStmt->execute([$trackingNumber]);
-                    $trackingRow = $lookupTrackingStmt->fetch(PDO::FETCH_ASSOC);
+                    // Update order_boxes.collected_amount (from pre-fetched map)
+                    $trackingRow = $trackingBoxMap[$trackingNumber] ?? null;
                     if ($trackingRow && $trackingRow['box_number'] !== null) {
                         $boxOrderId = $trackingRow['parent_order_id'] ?? $trackingRow['order_id'];
                         $boxNumber = (int) $trackingRow['box_number'];
@@ -8124,9 +8154,7 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     (document_id, tracking_number, order_id, cod_amount, order_amount, 
                      received_amount, difference, status, company_id, created_by) 
                     VALUES (?,?,?,?,?,?,?,?,?,?)');
-                $findExistingStmt = $pdo->prepare('SELECT document_id, cod_amount, order_amount FROM cod_records WHERE tracking_number = ? AND company_id = ? LIMIT 1');
-                // Prepared statements for updating order_boxes.collected_amount
-                $lookupTrackingStmt = $pdo->prepare('SELECT otn.order_id, otn.box_number, otn.parent_order_id FROM order_tracking_numbers otn WHERE otn.tracking_number = ? LIMIT 1');
+                // Prepared statement for updating order_boxes.collected_amount
                 $updateBoxCollectedStmt = $pdo->prepare(
                     'UPDATE order_boxes SET collected_amount = (
                         SELECT COALESCE(SUM(cr.cod_amount), 0)
@@ -8136,24 +8164,55 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     ) WHERE order_id = ? AND box_number = ?'
                 );
 
+                // === BATCH PRE-FETCH: existing cod_records ===
+                $allTrackings = [];
+                foreach ($items as $it) {
+                    $tn = trim((string) ($it['tracking_number'] ?? ''));
+                    if ($tn !== '')
+                        $allTrackings[] = $tn;
+                }
+
+                $existingMap = [];
+                if (count($allTrackings) > 0) {
+                    $ph = implode(',', array_fill(0, count($allTrackings), '?'));
+                    $existStmt = $pdo->prepare("SELECT tracking_number, document_id, cod_amount, order_amount FROM cod_records WHERE tracking_number IN ($ph) AND company_id = ?");
+                    $existParams = $allTrackings;
+                    $existParams[] = $doc['company_id'];
+                    $existStmt->execute($existParams);
+                    foreach ($existStmt->fetchAll(PDO::FETCH_ASSOC) as $er) {
+                        if (!isset($existingMap[$er['tracking_number']])) {
+                            $existingMap[$er['tracking_number']] = $er;
+                        }
+                    }
+                }
+
+                // === BATCH PRE-FETCH: order_tracking_numbers for box lookup ===
+                $trackingBoxMap = [];
+                if (count($allTrackings) > 0) {
+                    $ph = implode(',', array_fill(0, count($allTrackings), '?'));
+                    $trkStmt = $pdo->prepare("SELECT tracking_number, order_id, box_number, parent_order_id FROM order_tracking_numbers WHERE tracking_number IN ($ph)");
+                    $trkStmt->execute($allTrackings);
+                    foreach ($trkStmt->fetchAll(PDO::FETCH_ASSOC) as $tr) {
+                        if (!isset($trackingBoxMap[$tr['tracking_number']])) {
+                            $trackingBoxMap[$tr['tracking_number']] = $tr;
+                        }
+                    }
+                }
+
                 $skippedItems = [];
                 foreach ($items as $it) {
                     $trackingNumber = trim((string) ($it['tracking_number'] ?? ''));
                     if ($trackingNumber === '')
                         continue;
 
-                    // Check if tracking exists in a DIFFERENT document
-                    $findExistingStmt->execute([$trackingNumber, $doc['company_id']]);
-                    $oldRecord = $findExistingStmt->fetch(PDO::FETCH_ASSOC);
+                    // Check if tracking exists in a DIFFERENT document (from pre-fetched map)
+                    $oldRecord = $existingMap[$trackingNumber] ?? null;
                     $forceImport = (bool) ($it['force_import'] ?? false);
                     if ($oldRecord && $oldRecord['document_id'] && (int) $oldRecord['document_id'] !== (int) $id) {
                         if (!$forceImport) {
-                            // Exists in another document and not forced — skip
                             $skippedItems[] = ['tracking_number' => $trackingNumber, 'existing_document_id' => (int) $oldRecord['document_id']];
                             continue;
                         }
-                        // force_import = true → allow adding to new document (keep old record intact, don't delete)
-                        // Skip the "same document" delete logic below and go straight to insert
                     }
 
                     $codAmount = (float) ($it['cod_amount'] ?? 0);
@@ -8182,10 +8241,9 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                         $createdBy
                     ]);
 
-                    // Update order_boxes.collected_amount for the matching box
+                    // Update order_boxes.collected_amount (from pre-fetched map)
                     if (!$forceImport) {
-                        $lookupTrackingStmt->execute([$trackingNumber]);
-                        $trackingRow = $lookupTrackingStmt->fetch(PDO::FETCH_ASSOC);
+                        $trackingRow = $trackingBoxMap[$trackingNumber] ?? null;
                         if ($trackingRow && $trackingRow['box_number'] !== null) {
                             $boxOrderId = $trackingRow['parent_order_id'] ?? $trackingRow['order_id'];
                             $boxNumber = (int) $trackingRow['box_number'];
