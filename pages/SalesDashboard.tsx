@@ -357,7 +357,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
               (user?.role === 'Admin Control' || user?.role === 'Super Admin')
                 ? monthlySales
                 : perfData?.metrics
-                  ? (perfData.metrics.newCustSales || 0) + (perfData.metrics.coreCustSales || 0) + (perfData.metrics.revivalCustSales || 0)
+                  ? (perfData.metrics.newCustSales || 0) + (perfData.metrics.coreCustSales || 0) + (perfData.metrics.revivalCustSales || 0) + (perfData.metrics.upsellSales || 0)
                   : monthlySales
             ).toLocaleString()}`}
             subtext="ยอดขายรวมตีกลับและ Upsell"
@@ -405,7 +405,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
               (user?.role === 'Admin Control' || user?.role === 'Super Admin')
                 ? monthlyOrders
                 : perfData?.metrics
-                  ? (perfData.metrics.newCustOrders || 0) + (perfData.metrics.coreCustOrders || 0) + (perfData.metrics.revivalCustOrders || 0)
+                  ? (perfData.metrics.newCustOrders || 0) + (perfData.metrics.coreCustOrders || 0) + (perfData.metrics.revivalCustOrders || 0) + (perfData.metrics.upsellOrders || 0)
                   : monthlyOrders
             ).toString()}
             subtext="ช่วงนี้"
