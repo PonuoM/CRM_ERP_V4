@@ -182,7 +182,7 @@ try {
         LEFT JOIN users u_order ON o.creator_id = u_order.id
         LEFT JOIN basket_config bc ON oi.basket_key_at_sale = bc.basket_key AND bc.company_id = 1
         $whereClause
-        ORDER BY o.order_date DESC, o.id DESC, oi.id ASC
+        ORDER BY o.order_date ASC, o.id ASC, oi.id ASC
         LIMIT ? OFFSET ?
     ";
     $allParams = array_merge($baseParams, [$pageSize, $offset]);
