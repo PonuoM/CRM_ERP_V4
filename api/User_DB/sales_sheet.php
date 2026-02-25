@@ -38,7 +38,7 @@ try {
     $customerType = isset($_GET['customer_type']) ? trim($_GET['customer_type']) : '';
     $search = isset($_GET['search']) ? trim($_GET['search']) : '';
     $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-    $pageSize = isset($_GET['pageSize']) ? min(10000, max(10, intval($_GET['pageSize']))) : 5000;
+    $pageSize = isset($_GET['pageSize']) ? min(10000, max(10, intval($_GET['pageSize']))) : 200;
 
     // Date range: inclusive start, exclusive end
     $startDate = sprintf('%04d-%02d-01 00:00:00', $year, $month);
