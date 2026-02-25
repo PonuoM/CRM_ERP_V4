@@ -476,6 +476,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string>("");
   const [exportProgress, setExportProgress] = useState<{
     current: number;
@@ -1203,38 +1204,32 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
   }, []);
 
   // Load recordings data once roles are loaded
+  const loadRecordings = async () => {
+    setIsLoading(true);
+    setIsDataLoading(true);
+    setAuthError(null);
+    try {
+      // getRecordingsData already handles authentication internally
+      const result = await getRecordingsData(currentUser, undefined, isPrivileged);
+      if (result.success && result.data) {
+        setRecordingsData(result.data);
+        if (result.token) setAccessToken(result.token);
+      } else {
+        setAuthError(result.error || 'Onecall authentication failed');
+      }
+    } catch (error: any) {
+      setAuthError(error?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ Onecall');
+    } finally {
+      setIsLoading(false);
+      setIsDataLoading(false);
+    }
+  };
+
   useEffect(() => {
     // Wait for roles to load so isPrivileged is accurate
     if (roles.length === 0) return;
     if (!isFirstLoad.current) return;
     isFirstLoad.current = false;
-
-    const loadRecordings = async () => {
-      setIsLoading(true);
-      setIsDataLoading(true);
-      try {
-        // First, authenticate to get the access token
-        const authResult = await authenticateOneCall();
-        if (authResult.success && authResult.token) {
-          setAccessToken(authResult.token);
-
-          // Then load recordings data with current user info
-          const result = await getRecordingsData(currentUser, undefined, isPrivileged);
-          if (result.success && result.data) {
-            setRecordingsData(result.data);
-          } else {
-            // Handle error silently
-          }
-        } else {
-          // Handle error silently
-        }
-      } catch (error) {
-        // Handle error silently
-      } finally {
-        setIsLoading(false);
-        setIsDataLoading(false);
-      }
-    };
 
     loadRecordings();
   }, [roles, isPrivileged]);
@@ -3501,16 +3496,36 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                           <tr>
                             <td colSpan={9} className="py-12 text-center">
                               <div className="flex flex-col items-center">
-                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                                  <Search className="w-6 h-6 text-gray-400" />
-                                </div>
-                                <p className="text-gray-500 text-sm font-medium">
-                                  ไม่พบข้อมูล
-                                </p>
-                                <p className="text-gray-400 text-xs mt-1">
-                                  ลองปรับเปลี่ยนเงื่อนไขการค้นหาหรือกดปุ่ม
-                                  "ดึงข้อมูล" เพื่อโหลดข้อมูลการโทร
-                                </p>
+                                {authError ? (
+                                  <>
+                                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-3">
+                                      <span className="text-xl">❌</span>
+                                    </div>
+                                    <p className="text-red-600 text-sm font-medium mb-2">
+                                      {authError}
+                                    </p>
+                                    <button
+                                      onClick={() => loadRecordings()}
+                                      disabled={isLoading}
+                                      className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                    >
+                                      {isLoading ? 'กำลังโหลด...' : '🔄 ลองอีกครั้ง'}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                                      <Search className="w-6 h-6 text-gray-400" />
+                                    </div>
+                                    <p className="text-gray-500 text-sm font-medium">
+                                      ไม่พบข้อมูล
+                                    </p>
+                                    <p className="text-gray-400 text-xs mt-1">
+                                      ลองปรับเปลี่ยนเงื่อนไขการค้นหาหรือกดปุ่ม
+                                      "ดึงข้อมูล" เพื่อโหลดข้อมูลการโทร
+                                    </p>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>

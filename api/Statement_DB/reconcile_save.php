@@ -294,8 +294,10 @@ try {
 
     // $statementAmount already set above
     // $statementAmount = (float) $stmtInfo["amount"];
-    if ($confirmedAmount === null) {
-      $confirmedAmount = $statementAmount;
+    if ($confirmedAmount === null || ($order && abs($confirmedAmount - $statementAmount) < 0.01 && abs($statementAmount - (float) $order['total_amount']) > 0.01)) {
+      // Use order's total_amount when no explicit confirmed_amount,
+      // or when confirmed_amount equals statement_amount but differs from order total (frontend fallback bug)
+      $confirmedAmount = $order ? (float) $order['total_amount'] : $statementAmount;
     }
     if ($confirmedAmount < 0) {
       $confirmedAmount = 0;
