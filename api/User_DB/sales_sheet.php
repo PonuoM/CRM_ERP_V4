@@ -180,7 +180,7 @@ try {
         LEFT JOIN products p ON oi.product_id = p.id
         LEFT JOIN users u_item ON oi.creator_id = u_item.id
         LEFT JOIN users u_order ON o.creator_id = u_order.id
-        LEFT JOIN basket_config bc ON oi.basket_key_at_sale = bc.basket_key AND bc.company_id = 1
+        LEFT JOIN basket_config bc ON oi.basket_key_at_sale = bc.id
         $whereClause
         ORDER BY o.order_date ASC, o.id ASC, oi.id ASC
         LIMIT ? OFFSET ?
