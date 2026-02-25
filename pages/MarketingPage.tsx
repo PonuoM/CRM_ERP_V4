@@ -2788,7 +2788,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       return Array.from(userMap.values());
                     })()}
                     selectedUsers={dashboardSelectedUsers}
-                    onChange={setDashboardSelectedUsers}
+                    onChange={(val: number[]) => { setDashboardSelectedUsers(val); if (val.length > 0) setDashboardSelectedAdsUsers([]); }}
                   />
                 </div>
 
@@ -2803,7 +2803,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         username: u.username
                       }))}
                     selectedUsers={dashboardSelectedAdsUsers}
-                    onChange={setDashboardSelectedAdsUsers}
+                    onChange={(val: number[]) => { setDashboardSelectedAdsUsers(val); if (val.length > 0) setDashboardSelectedUsers([]); }}
                   />
                 </div>
 

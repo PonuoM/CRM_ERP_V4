@@ -299,6 +299,7 @@ try {
                 SELECT 1 FROM marketing_ads_log mal
                 WHERE mal.page_id = o.sales_channel_page_id
                 AND mal.date = DATE(o.order_date)
+                AND mal.ads_cost > 0
                 AND $logWhereClauseForExists
             )
             GROUP BY o.sales_channel_page_id
@@ -316,6 +317,7 @@ try {
                 SELECT 1 FROM marketing_ads_log mal
                 WHERE mal.page_id = o.sales_channel_page_id
                 AND mal.date = DATE(o.order_date)
+                AND mal.ads_cost > 0
                 AND $logWhereClauseForExists
             )
             GROUP BY o.sales_channel_page_id
