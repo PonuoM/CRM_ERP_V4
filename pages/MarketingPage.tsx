@@ -1731,6 +1731,59 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           }
         }
 
+        // Add pages that have no data at all (no ads, no orders)
+        // Only when NOT filtering by ads user
+        if (dashboardSelectedAdsUsers.length === 0) {
+          const existingPageIds = new Set(mergedData.map((r: any) => String(r.page_id)));
+          let activePages = pages.filter((p: any) => p.active !== false);
+
+          // If filtering by manager, only add pages managed by selected users
+          if (dashboardSelectedUsers.length > 0) {
+            const managedPageIds = new Set(
+              marketingPageUsers
+                .filter((mpu: any) => dashboardSelectedUsers.includes(mpu.user_id))
+                .map((mpu: any) => mpu.page_id)
+            );
+            activePages = activePages.filter((p: any) => managedPageIds.has(p.id));
+          }
+
+          for (const page of activePages) {
+            if (!existingPageIds.has(String(page.id))) {
+              const managers = marketingPageUsers
+                .filter((mpu: any) => mpu.page_id === page.id)
+                .map((mpu: any) => {
+                  const u = marketingUsersList.find((u: any) => u.id === mpu.user_id);
+                  return u ? u.first_name : '';
+                })
+                .filter(Boolean)
+                .join(', ');
+
+              mergedData.push({
+                page_id: page.id,
+                page_name: page.name,
+                platform: page.platform || '',
+                page_type: '',
+                sell_product_type: '',
+                external_page_id: '',
+                user_id: null,
+                staff_first_name: '-',
+                staff_last_name: '',
+                ads_cost: 0, impressions: 0, reach: 0, clicks: 0,
+                total_sales: 0, total_orders: 0,
+                new_customer_orders: 0, reorder_customer_orders: 0,
+                new_customer_sales: 0, reorder_customer_sales: 0,
+                total_customers: 0,
+                returned_sales: 0, returned_orders: 0,
+                cancelled_sales: 0, cancelled_orders: 0,
+                page_managers: managers
+              });
+            }
+          }
+        }
+
+        // Sort A-Z by page name
+        mergedData.sort((a: any, b: any) => (a.page_name || '').localeCompare(b.page_name || '', 'th'));
+
         setDashboardData(mergedData);
       } else {
         setDashboardData([]);
