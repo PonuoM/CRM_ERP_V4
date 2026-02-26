@@ -3645,6 +3645,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                                            oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
                                            oi.creator_id, oi.parent_order_id, oi.basket_key_at_sale,
                                            p.sku as product_sku,
+                                           p.category as product_category,
+                                           p.report_category as product_report_category,
                                            pr.sku as promotion_sku,
                                            r.id as creator_role_id
                                     FROM order_items oi
@@ -3857,10 +3859,46 @@ function handle_orders(PDO $pdo, ?string $id): void
                     }
                 }
 
+                // Batch fetch COD payment dates for paginated orders
+                $codPaymentDateMap = [];
+                if (!empty($orderIds)) {
+                    try {
+                        $codSql = "SELECT 
+                                     REGEXP_REPLACE(cr.order_id, '-[0-9]+$', '') as clean_order_id,
+                                     cd.document_datetime
+                                   FROM cod_records cr
+                                   INNER JOIN cod_documents cd ON cr.document_id = cd.id
+                                   WHERE REGEXP_REPLACE(cr.order_id, '-[0-9]+$', '') IN ($parentPlaceholders)
+                                   ORDER BY cd.document_datetime DESC";
+                        $codStmt = $pdo->prepare($codSql);
+                        $codStmt->execute($orderIds);
+                        foreach ($codStmt->fetchAll() as $codRow) {
+                            $cleanId = $codRow['clean_order_id'];
+                            if (!isset($codPaymentDateMap[$cleanId])) {
+                                $codPaymentDateMap[$cleanId] = $codRow['document_datetime'];
+                            }
+                        }
+                    } catch (Throwable $e) {
+                        error_log('COD payment date query failed: ' . $e->getMessage());
+                    }
+                }
+
                 // Add items, slips, tracking details, boxes, reconcile, and airport data to each order
                 foreach ($orders as &$order) {
                     $order['items'] = $itemsMap[$order['id']] ?? [];
                     $order['slips'] = $slipsMap[$order['id']] ?? [];
+                    // Payment received date: Slip → transfer_date, COD → cod_document.document_datetime
+                    $slipDate = null;
+                    if (!empty($order['slips'])) {
+                        foreach ($order['slips'] as $slip) {
+                            if (!empty($slip['transfer_date'])) {
+                                $slipDate = $slip['transfer_date'];
+                                break;
+                            }
+                        }
+                    }
+                    $codDate = $codPaymentDateMap[$order['id']] ?? null;
+                    $order['payment_received_date'] = $slipDate ?? $codDate ?? null;
                     $order['tracking_details'] = $trackingMap[$order['id']] ?? [];
                     $order['trackingDetails'] = $order['tracking_details'];
                     $order['boxes'] = $boxesMap[$order['id']] ?? [];

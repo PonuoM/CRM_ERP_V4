@@ -241,6 +241,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               isFreebie: !!it.is_freebie,
               boxNumber: it.box_number || 1,
               basketKeyAtSale: it.basket_key_at_sale || null,
+              productCategory: it.product_category || null,
+              productReportCategory: it.product_report_category || null,
             })) : [],
             shippingCost: Number(r.shipping_cost) || 0,
             billDiscount: Number(r.bill_discount) || 0,
@@ -260,6 +262,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             customerPhone: r.customer_phone || r.phone || '',
             airportDeliveryDate: r.airport_delivery_date || '',
             amountPaid: Number(r.amount_paid) || 0,
+            paymentReceivedDate: r.payment_received_date || '',
           }));
 
         console.log('📊 Sample order with customer_type:', mappedOrders[0]);
@@ -484,8 +487,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         'รหัสสินค้า': lot.productCode || 'N/A',
         'ชื่อสินค้า': lot.productName || 'N/A',
         'หมายเลข Lot': lot.lotNumber || 'N/A',
-        'วันที่รับเข้า': lot.purchaseDate ? new Date(lot.purchaseDate).toLocaleDateString('th-TH') : '-',
-        'วันหมดอายุ': lot.expiryDate ? new Date(lot.expiryDate).toLocaleDateString('th-TH') : '-',
+        'วันที่รับเข้า': lot.purchaseDate ? new Date(lot.purchaseDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
+        'วันหมดอายุ': lot.expiryDate ? new Date(lot.expiryDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
         'จำนวนที่รับ': lot.quantityReceived || 0,
         'จำนวนคงเหลือ': lot.quantityRemaining || 0,
         'ราคาต้นทุน/หน่วย': `฿${(lot.unitCost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
@@ -694,7 +697,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
       const getDeliveryDate = () => {
         if (order.deliveryDate) {
-          return new Date(order.deliveryDate).toLocaleDateString('th-TH');
+          return new Date(order.deliveryDate).toLocaleDateString('th-TH-u-ca-gregory');
         }
         return '-';
       };
@@ -730,7 +733,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       const getAirportDeliveryDate = () => {
         const airportDate = (order as any).airportDeliveryDate;
         if (airportDate) {
-          return new Date(airportDate).toLocaleDateString('th-TH');
+          return new Date(airportDate).toLocaleDateString('th-TH-u-ca-gregory');
         }
         return '-';
       };
@@ -782,9 +785,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             productCode = product?.sku || '-';
           }
 
-          // ดึง category จาก products
+          // ดึง category จาก item (API ส่งมาจาก products table โดยตรง รวม inactive)
           const productForCategory = products.find(p => p.id === item.productId);
-          const productCategory = productForCategory?.category || '-';
+          const productCategory = (item as any).productCategory || productForCategory?.category || '-';
+          const productReportCategory = (item as any).productReportCategory || (productForCategory as any)?.report_category || '-';
 
           // กำหนดชื่อสินค้าและชื่อโปร
           let productName = item.productName || '-';
@@ -803,7 +807,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           }
 
           ordersRawReport.push({
-            'วันที่สั่งซื้อ': new Date(order.orderDate).toLocaleDateString('th-TH'),
+            'วันที่สั่งซื้อ': new Date(order.orderDate).toLocaleDateString('th-TH-u-ca-gregory'),
             'เลขคำสั่งซื้อ': order.id,
             'ผู้ขาย': getSeller(item.creatorId),
             'แผนก': getSellerRole(item.creatorId),
@@ -823,6 +827,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'รหัสสินค้า/โปร': productCode,
             'สินค้า': productName,
             'ประเภทสินค้า': productCategory,
+            'ประเภทสินค้า (รีพอร์ต)': productReportCategory,
             'ชื่อโปร': promoName,
             'ของแถม': item.isFreebie ? 'ใช่' : 'ไม่',
             'จำนวน (ชิ้น)': item.quantity || 0,
@@ -836,13 +841,14 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
             'สถานะการชำระเงิน': getPaymentComparisonStatus(),
             'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
+            'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
             'ตะกร้าขาย': (item as any).basketKeyAtSale || '-'
           });
         });
       } else {
         // ไม่มี items - แสดงแถวเดียวจากออเดอร์หลัก
         ordersRawReport.push({
-          'วันที่สั่งซื้อ': new Date(order.orderDate).toLocaleDateString('th-TH'),
+          'วันที่สั่งซื้อ': new Date(order.orderDate).toLocaleDateString('th-TH-u-ca-gregory'),
           'เลขคำสั่งซื้อ': order.id,
           'ผู้ขาย': getSeller(),
           'แผนก': getSellerRole(),
@@ -862,6 +868,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'รหัสสินค้า/โปร': '-',
           'สินค้า': '-',
           'ประเภทสินค้า': '-',
+          'ประเภทสินค้า (รีพอร์ต)': '-',
           'ชื่อโปร': '-',
           'ของแถม': 'ไม่',
           'จำนวน (ชิ้น)': 0,
@@ -875,6 +882,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
           'สถานะการชำระเงิน': getPaymentComparisonStatus(),
           'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
+          'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
           'ตะกร้าขาย': '-'
         });
       }
@@ -897,7 +905,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         'เบอร์โทร': customer.phone || '-',
         'จำนวนออเดอร์': customerOrders.length,
         'ยอดซื้อรวม (บาท)': `฿${totalSpent.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        'วันที่ออเดอร์ล่าสุด': lastOrder ? new Date(lastOrder).toLocaleDateString('th-TH') : '-',
+        'วันที่ออเดอร์ล่าสุด': lastOrder ? new Date(lastOrder).toLocaleDateString('th-TH-u-ca-gregory') : '-',
         'เกรดลูกค้า': grade,
         'สถานะลูกค้า': customer.lifecycleStatus || '-'
       };
@@ -976,7 +984,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const csvRows = rows.map((r: any) => ({
           'Order ID': r.order_id || '',
           'Sub Order ID': r.sub_order_id || '',
-          'วันที่สั่งซื้อ': r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH') : '-',
+          'วันที่สั่งซื้อ': r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH-u-ca-gregory') : '-',
           'ชื่อลูกค้า': `${r.customer_first_name || ''} ${r.customer_last_name || ''}`.trim() || '-',
           'เบอร์โทร': r.customer_phone || '-',
           'Tracking No.': r.tracking_number || '-',
@@ -984,7 +992,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'หมายเหตุ': r.return_note || '-',
           'ราคากล่อง': r.cod_amount || 0,
           'ยอดเก็บได้': r.collection_amount || 0,
-          'วันที่บันทึก': r.return_created_at ? new Date(r.return_created_at).toLocaleDateString('th-TH') : '-',
+          'วันที่บันทึก': r.return_created_at ? new Date(r.return_created_at).toLocaleDateString('th-TH-u-ca-gregory') : '-',
           'ช่องทางชำระ': r.payment_method || '-',
         }));
 
@@ -1284,14 +1292,14 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               }
 
               exportRows.push({
-                'วันที่สั่งซื้อ': order.order_date ? new Date(order.order_date).toLocaleDateString('th-TH') : '-',
+                'วันที่สั่งซื้อ': order.order_date ? new Date(order.order_date).toLocaleDateString('th-TH-u-ca-gregory') : '-',
                 'เลขคำสั่งซื้อ': order.id || '-',
                 'ผู้ขาย': (() => { const c = users.find(u => u.id === (item.creator_id ?? order.creator_id)); return c ? `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.username : '-'; })(),
                 'แผนก': (() => { const c = users.find(u => u.id === (item.creator_id ?? order.creator_id)); return c?.role || '-'; })(),
                 'ชื่อลูกค้า': customerName,
                 'เบอร์โทรลูกค้า': customerPhone,
                 'ประเภทลูกค้า': getCustomerTypeThai(order.customer_type || customer?.lifecycleStatus),
-                'วันที่จัดส่ง': order.delivery_date ? new Date(order.delivery_date).toLocaleDateString('th-TH') : '-',
+                'วันที่จัดส่ง': order.delivery_date ? new Date(order.delivery_date).toLocaleDateString('th-TH-u-ca-gregory') : '-',
                 'ช่องทางสั่งซื้อ': order.sales_channel || '-',
                 'เพจ': page?.name || '-',
                 'ช่องทางการชำระ': order.payment_method || '-',
@@ -1303,7 +1311,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 'ภาค': region,
                 'รหัสสินค้า/โปร': getProductCode(item),
                 'สินค้า': productName,
-                'ประเภทสินค้า': (() => { const p = products.find((pr: any) => pr.id === item.product_id); return p?.category || '-'; })(),
+                'ประเภทสินค้า': item.product_category || (() => { const p = products.find((pr: any) => pr.id === item.product_id); return p?.category || '-'; })(),
+                'ประเภทสินค้า (รีพอร์ต)': item.product_report_category || (() => { const p = products.find((pr: any) => pr.id === item.product_id); return (p as any)?.report_category || '-'; })(),
                 'ชื่อโปร': getPromoName(item, order.items || []),
                 'ของแถม': item.is_freebie ? 'ใช่' : 'ไม่',
                 'จำนวน (ชิ้น)': qty,
@@ -1312,7 +1321,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 'ยอดรวมรายการ': item.is_freebie ? 0 : itemTotal,
                 'หมายเลขกล่อง': String(item.box_number || 1),
                 'หมายเลขติดตาม': getTrackingForBox(order, item.box_number),
-                'วันที่จัดส่ง Airport': order.airport_delivery_date ? new Date(order.airport_delivery_date).toLocaleDateString('th-TH') : '-',
+                'วันที่จัดส่ง Airport': order.airport_delivery_date ? new Date(order.airport_delivery_date).toLocaleDateString('th-TH-u-ca-gregory') : '-',
                 'สถานะจาก Airport': order.airport_delivery_status || '-',
                 'สถานะออเดอร์': getOrderStatusThai(order.order_status || ''),
                 'สถานะการชำระเงิน': (() => {
@@ -1325,6 +1334,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                   return 'เกิน';
                 })(),
                 'สถานะสลิป': getSlipStatus(order),
+                'วันที่รับเงิน': order.payment_received_date ? new Date(order.payment_received_date).toLocaleDateString('th-TH-u-ca-gregory') : '-',
                 'ตะกร้าขาย': item.basket_key_at_sale || '-'
               });
             });
