@@ -52,6 +52,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'calls.overview', label: 'Calls Overview (ภาพรวมการโทร)' },
             { key: 'calls.details', label: 'Call Details (รายละเอียดการโทร)' },
             { key: 'calls.dtac', label: 'Dtac Onecall' },
+            { key: 'calls.import', label: 'Call Import (นำเข้าข้อมูลโทร)' },
         ]
     },
     'Inventory Management': {
