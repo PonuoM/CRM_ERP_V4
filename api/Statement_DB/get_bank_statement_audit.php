@@ -100,13 +100,16 @@ try {
       ':companyId' => $companyId,
       ':rangeStart' => $rangeStart,
       ':rangeEnd' => $rangeEnd,
+      ':slipRangeStart' => $rangeStart,
+      ':slipRangeEnd' => $rangeEnd,
       ':companyRecon' => $companyId
     ];
 
     $orderBankFilter = "";
     if ($bankAccountId > 0) {
-      $orderBankFilter = " AND (o.bank_account_id = :obankId OR o.bank_account_id IS NULL)";
+      $orderBankFilter = " AND (o.bank_account_id = :obankId OR o.bank_account_id IS NULL OR os.slip_bank_account_id = :oSlipBankId)";
       $orderParams[":obankId"] = $bankAccountId;
+      $orderParams[":oSlipBankId"] = $bankAccountId;
     }
 
     $orderSql = "
@@ -158,10 +161,12 @@ try {
         WHERE o.company_id = :companyId
           {$orderBankFilter}
           AND (o.payment_method IN ('Transfer', 'COD', 'PayAfter') OR os.total_slip > 0)
+          AND os.order_id IS NOT NULL
           AND o.order_status NOT IN ('Cancelled', 'Returned')
           AND (
             o.transfer_date BETWEEN :rangeStart AND :rangeEnd
             OR o.transfer_date IS NULL
+            OR os.slip_transfer_date BETWEEN :slipRangeStart AND :slipRangeEnd
           )
           AND (
             COALESCE(r.reconciled_amount, 0) < o.total_amount - 0.009

@@ -159,7 +159,11 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
             const data = await res.json();
 
             if (data.success) {
-                setOrders(data.data);
+                // Filter out cancelled orders (unless "แสดงทุกสถานะ" is checked)
+                const filtered = ignorePaymentStatus
+                    ? (data.data || [])
+                    : (data.data || []).filter((slip: any) => slip.order_status !== 'Cancelled');
+                setOrders(filtered);
                 // pagination in data.pagination
                 if (data.pagination) {
                     setTotalCount(data.pagination.total);
