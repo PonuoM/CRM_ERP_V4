@@ -23,6 +23,7 @@ interface EmployeeCallData {
     total_minutes: number;
     connected_calls: number;
     missed_calls: number;
+    talked_calls: number;
     total_calls: number;
     inbound_calls: number;
     outbound_calls: number;
@@ -193,6 +194,7 @@ const CallDetailsPageV2: React.FC<CallDetailsPageV2Props> = ({
                                         { key: "total_calls", label: "สายทั้งหมด", tip: "จำนวนสายทั้งหมดในช่วงเดือนที่เลือก" },
                                         { key: "connected_calls", label: "รับสาย", tip: "จำนวนสายที่มีการรับสนทนา" },
                                         { key: "missed_calls", label: "ไม่ได้รับ", tip: "จำนวนสายที่ไม่มีการรับสนทนา" },
+                                        { key: "talked_calls", label: "ได้คุย", tip: "สายที่รับและสนทนาตั้งแต่ 40 วินาทีขึ้นไป" },
                                         { key: "answer_rate", label: "% รับ", tip: "อัตราการรับสาย = สายที่รับ ÷ สายทั้งหมด × 100" },
                                         { key: "inbound_calls", label: "สายเข้า", tip: "สายที่โทรเข้ามา" },
                                         { key: "outbound_calls", label: "สายออก", tip: "สายที่โทรออกไป" },
@@ -221,7 +223,7 @@ const CallDetailsPageV2: React.FC<CallDetailsPageV2Props> = ({
                             <tbody className="divide-y divide-gray-200">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={13} className="py-12 text-center">
+                                        <td colSpan={14} className="py-12 text-center">
                                             <div className="flex flex-col items-center">
                                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mb-3"></div>
                                                 <p className="text-gray-500 text-sm font-medium">
@@ -259,6 +261,9 @@ const CallDetailsPageV2: React.FC<CallDetailsPageV2Props> = ({
                                                     <td className="py-3 px-3 text-sm text-center text-red-500 font-medium">
                                                         {employee.missed_calls}
                                                     </td>
+                                                    <td className="py-3 px-3 text-sm text-center text-violet-600 font-medium">
+                                                        {employee.talked_calls ?? 0}
+                                                    </td>
                                                     <td className="py-3 px-3 text-sm text-center">
                                                         <span
                                                             className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${employee.answer_rate >= 80
@@ -290,7 +295,7 @@ const CallDetailsPageV2: React.FC<CallDetailsPageV2Props> = ({
                                             ))
                                         ) : (
                                             <tr>
-                                                <td colSpan={13} className="py-12 text-center">
+                                                <td colSpan={14} className="py-12 text-center">
                                                     <div className="flex flex-col items-center">
                                                         <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
                                                             <UserIcon className="w-6 h-6 text-gray-400" />

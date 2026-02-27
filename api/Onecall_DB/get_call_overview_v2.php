@@ -56,6 +56,7 @@ try {
       COUNT(*) AS total_calls,
       SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS connected_calls,
       SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS missed_calls,
+      SUM(CASE WHEN status = 1 AND TIME_TO_SEC(duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
       ROUND(SUM(TIME_TO_SEC(duration)) / 60, 2) AS total_minutes,
       SUM(CASE WHEN rec_type = 1 THEN 1 ELSE 0 END) AS inbound_calls,
       SUM(CASE WHEN rec_type = 2 THEN 1 ELSE 0 END) AS outbound_calls
@@ -114,6 +115,7 @@ try {
         $totalCalls = $call ? (int) $call['total_calls'] : 0;
         $connected = $call ? (int) $call['connected_calls'] : 0;
         $missed = $call ? (int) $call['missed_calls'] : 0;
+        $talked = $call ? (int) $call['talked_calls'] : 0;
         $totalMinutes = $call ? (float) $call['total_minutes'] : 0;
         $inbound = $call ? (int) $call['inbound_calls'] : 0;
         $outbound = $call ? (int) $call['outbound_calls'] : 0;
@@ -127,6 +129,7 @@ try {
             'total_minutes' => $totalMinutes,
             'connected_calls' => $connected,
             'missed_calls' => $missed,
+            'talked_calls' => $talked,
             'total_calls' => $totalCalls,
             'inbound_calls' => $inbound,
             'outbound_calls' => $outbound,
