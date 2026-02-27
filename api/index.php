@@ -4524,11 +4524,46 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $hasBasketKeyAtSale = in_array('basket_key_at_sale', $existingColumns);
 
                 // Fetch current_basket_key from customer for statistics
+                // Smart mapping: distribution baskets (41-45) get mapped to segment keys
                 $customerBasketKey = null;
                 if ($hasBasketKeyAtSale && !empty($in['customerId'])) {
-                    $basketStmt = $pdo->prepare('SELECT current_basket_key FROM customers WHERE customer_id = ?');
+                    $basketStmt = $pdo->prepare('SELECT current_basket_key, assigned_to FROM customers WHERE customer_id = ?');
                     $basketStmt->execute([$in['customerId']]);
-                    $customerBasketKey = $basketStmt->fetchColumn() ?: null;
+                    $custRow = $basketStmt->fetch(PDO::FETCH_ASSOC);
+                    $rawBasketKey = $custRow ? ($custRow['current_basket_key'] ?: null) : null;
+                    $assignedTo = $custRow ? ($custRow['assigned_to'] ?? null) : null;
+
+                    // Distribution basket keys that are NOT in any segment group
+                    $distributionBasketKeys = [41, 42, 43, 44, 45];
+
+                    // Check if creator owns this customer (assigned_to matches creator)
+                    $isOwnCustomer = ($assignedTo !== null && (int)$assignedTo === (int)$creatorId);
+
+                    // Use raw basket key if: creator owns the customer AND basket is NOT a distribution basket
+                    if ($isOwnCustomer && $rawBasketKey !== null && !in_array((int)$rawBasketKey, $distributionBasketKeys)) {
+                        $customerBasketKey = $rawBasketKey;
+                    } else {
+                        // Map based on customerStatus from the frontend
+                        $customerStatus = $in['customerStatus'] ?? $in['customerType'] ?? null;
+                        switch ($customerStatus) {
+                            case 'New Customer':
+                                $customerBasketKey = 38; // ลูกค้าใหม่
+                                break;
+                            case 'Reorder Customer':
+                                $customerBasketKey = 39; // ลูกค้ารีออเดอร์ (Core)
+                                break;
+                            case 'Mined Lead':
+                                $customerBasketKey = 49; // ลูกค้าขุด (Revival)
+                                break;
+                            case 'Upsell':
+                                $customerBasketKey = 51; // Upsell
+                                break;
+                            default:
+                                // Fallback: use raw basket key if available, else 38
+                                $customerBasketKey = $rawBasketKey ?? 38;
+                                break;
+                        }
+                    }
                 }
 
                 // Build INSERT query dynamically based on available columns

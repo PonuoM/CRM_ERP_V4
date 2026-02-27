@@ -47,15 +47,16 @@ try {
 
     // For calls/orders - date filter conditions
     if ($isDaily) {
-        $dateFilterCalls = "DATE(ol.timestamp) = ?";
+        $dateFilterCalls = "DATE(cl.call_date) = ?";
         $dateFilterOrders = "DATE(o.order_date) = ?";
         $dateFilterAttendance = "DATE(uda.date) = ?";
         $dateParams = [$specificDate];
     } else {
-        $dateFilterCalls = "YEAR(ol.timestamp) = ? AND MONTH(ol.timestamp) = ?";
+        $dateFilterCalls = "DATE_FORMAT(cl.call_date, '%Y-%m') = ?";
         $dateFilterOrders = "YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?";
         $dateFilterAttendance = "YEAR(uda.date) = ? AND MONTH(uda.date) = ?";
         $dateParams = [$year, $month];
+        $dateParamsCalls = [sprintf('%04d-%02d', $year, $month)];
     }
 
     // Build user filter for Supervisor (Admin and CEO see all)
@@ -124,20 +125,25 @@ try {
     $visibleFilter = "u.id IN ($visibleIdsIn)";
 
     // ========================================
-    // 1. Get Call Data from onecall_log
+    // 1. Get Call Data from call_import_logs
     // ========================================
+    $callDateParam = $isDaily ? $dateParams : $dateParamsCalls;
     $sqlCalls = "
         SELECT 
             u.id AS user_id,
             u.first_name,
             u.last_name,
             u.phone AS telesale_phone,
-            COUNT(ol.id) AS total_calls,
-            SUM(CASE WHEN ol.duration >= 40 THEN 1 ELSE 0 END) AS answered_calls,
-            COALESCE(SUM(ol.duration), 0) / 60 AS total_minutes,
-            ROUND(COALESCE(AVG(CASE WHEN ol.duration > 0 THEN ol.duration END), 0) / 60, 2) AS avg_duration_minutes
+            COUNT(cl.id) AS total_calls,
+            SUM(CASE WHEN cl.status = 1 THEN 1 ELSE 0 END) AS connected_calls,
+            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+            SUM(CASE WHEN cl.status = 0 THEN 1 ELSE 0 END) AS missed_calls,
+            SUM(CASE WHEN cl.rec_type = 1 THEN 1 ELSE 0 END) AS inbound_calls,
+            SUM(CASE WHEN cl.rec_type = 2 THEN 1 ELSE 0 END) AS outbound_calls,
+            ROUND(COALESCE(SUM(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS total_minutes,
+            ROUND(COALESCE(AVG(CASE WHEN TIME_TO_SEC(cl.duration) > 0 THEN TIME_TO_SEC(cl.duration) END), 0) / 60, 2) AS avg_duration_minutes
         FROM users u
-        LEFT JOIN onecall_log ol ON ol.phone_telesale = u.phone
+        LEFT JOIN call_import_logs cl ON cl.matched_user_id = u.id
             AND $dateFilterCalls
         WHERE u.company_id = ?
             AND u.role LIKE '%telesale%'
@@ -146,7 +152,7 @@ try {
         GROUP BY u.id, u.first_name, u.last_name, u.phone
     ";
 
-    $callParams = array_merge($dateParams, [$companyId], $userParams);
+    $callParams = array_merge($callDateParam, [$companyId], $userParams);
     $stmt = $pdo->prepare($sqlCalls);
     $stmt->execute($callParams);
     $callData = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -202,11 +208,9 @@ try {
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN users u ON oi.creator_id = u.id
-        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
-            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.basket_key_at_sale = 51  -- IS upsell (basket 51)
             AND u.company_id = ?
@@ -261,11 +265,9 @@ try {
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN products p ON oi.product_id = p.id
         JOIN users u ON oi.creator_id = u.id
-        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
-            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
@@ -352,11 +354,9 @@ try {
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN users u ON oi.creator_id = u.id
-        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE o.company_id = ?
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
-            AND (ob.status IS NULL OR ob.status != 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($allSegmentKeysIn)
             AND u.company_id = ?
@@ -436,6 +436,39 @@ try {
     }
 
     // ========================================
+    // 6b. Returned Orders Data
+    // ========================================
+    $sqlReturned = "
+        SELECT 
+            oi.creator_id AS user_id,
+            COUNT(DISTINCT o.id) AS returned_orders,
+            COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS returned_sales
+        FROM order_items oi
+        JOIN orders o ON oi.parent_order_id = o.id
+        JOIN users u ON oi.creator_id = u.id
+        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
+        WHERE o.company_id = ?
+            AND $dateFilterOrders
+            AND (o.order_status = 'Returned' OR ob.status = 'RETURNED')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND u.company_id = ?
+            AND u.role LIKE '%telesale%'
+            AND $visibleFilter
+            $userFilter
+        GROUP BY oi.creator_id
+    ";
+
+    $returnedParams = array_merge([$companyId], $dateParams, [$companyId], $userParams);
+    $stmt = $pdo->prepare($sqlReturned);
+    $stmt->execute($returnedParams);
+    $returnedData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $returnedByUser = [];
+    foreach ($returnedData as $row) {
+        $returnedByUser[$row['user_id']] = $row;
+    }
+
+    // ========================================
     // 7. Combine All Data
     // ========================================
     $telesaleDetails = [];
@@ -443,13 +476,19 @@ try {
     foreach ($callsByUser as $userId => $callInfo) {
         $orders = $ordersByUser[$userId] ?? ['total_orders' => 0, 'total_sales' => 0];
         $upsell = $upsellByUser[$userId] ?? ['upsell_orders' => 0, 'upsell_sales' => 0];
+        $returned = $returnedByUser[$userId] ?? ['returned_orders' => 0, 'returned_sales' => 0];
         $aovCat = $aovByUserCategory[$userId] ?? ['fertilizer' => ['orders' => 0, 'sales' => 0], 'bio' => ['orders' => 0, 'sales' => 0]];
 
         // Call metrics
         $totalCalls = intval($callInfo['total_calls']);
-        $answeredCalls = intval($callInfo['answered_calls']);
+        $connectedCalls = intval($callInfo['connected_calls']);
+        $talkedCalls = intval($callInfo['talked_calls']);
+        $missedCalls = intval($callInfo['missed_calls']);
+        $inboundCalls = intval($callInfo['inbound_calls']);
+        $outboundCalls = intval($callInfo['outbound_calls']);
         $totalMinutes = floatval($callInfo['total_minutes']);
         $avgMinutesPerCall = floatval($callInfo['avg_duration_minutes']);
+        $answerRate = $totalCalls > 0 ? round(($connectedCalls / $totalCalls) * 100, 1) : 0;
 
         // Order metrics
         $totalOrders = intval($orders['total_orders']);
@@ -459,6 +498,10 @@ try {
         $upsellOrders = intval($upsell['upsell_orders']);
         $upsellSales = floatval($upsell['upsell_sales']);
 
+        // Returned metrics
+        $returnedOrders = intval($returned['returned_orders']);
+        $returnedSales = floatval($returned['returned_sales']);
+
         // Combined
         $combinedSales = $totalSales + $upsellSales;
 
@@ -466,7 +509,7 @@ try {
         $allOrders = $totalOrders + $upsellOrders;
 
         // Conversion rate
-        $conversionRate = $totalCalls > 0 ? round(($allOrders / $totalCalls) * 100, 2) : 0;
+        $conversionRate = $talkedCalls > 0 ? round(($allOrders / $talkedCalls) * 100, 2) : 0;
 
         // AOV by category
         $aovFertilizer = $aovCat['fertilizer']['orders'] > 0
@@ -545,13 +588,23 @@ try {
                 'revivalCustSales' => $revivalCustSales,
                 'revivalCustRate' => $revivalCustRate,
 
+                // Returned (ตีกลับ)
+                'returnedOrders' => $returnedOrders,
+                'returnedSales' => $returnedSales,
+
                 // Target
                 'targetAmount' => $targetAmount,
                 'targetProgress' => $targetProgress,
 
                 // Call metrics
                 'totalCalls' => $totalCalls,
-                'answeredCalls' => $answeredCalls,
+                'connectedCalls' => $connectedCalls,
+                'talkedCalls' => $talkedCalls,
+                'answeredCalls' => $connectedCalls,  // backward compat
+                'missedCalls' => $missedCalls,
+                'inboundCalls' => $inboundCalls,
+                'outboundCalls' => $outboundCalls,
+                'answerRate' => $answerRate,
                 'totalMinutes' => round($totalMinutes, 1),
                 'avgMinutesPerCall' => $avgMinutesPerCall,
 
@@ -572,7 +625,11 @@ try {
         'upsellSales' => 0,
         'combinedSales' => 0,
         'totalCalls' => 0,
+        'connectedCalls' => 0,
+        'talkedCalls' => 0,
         'answeredCalls' => 0,
+        'missedCalls' => 0,
+        'inboundCalls' => 0,
         'totalMinutes' => 0,
         'newCustCount' => 0,
         'coreCustCount' => 0,
@@ -583,6 +640,7 @@ try {
         'newCustSales' => 0,
         'coreCustSales' => 0,
         'revivalCustSales' => 0,
+        'returnedSales' => 0,
         'conversionRate' => 0,
     ];
 
@@ -593,7 +651,11 @@ try {
             $teamTotals['upsellSales'] += $ts['metrics']['upsellSales'];
             $teamTotals['combinedSales'] += $ts['metrics']['combinedSales'];
             $teamTotals['totalCalls'] += $ts['metrics']['totalCalls'];
-            $teamTotals['answeredCalls'] += $ts['metrics']['answeredCalls'];
+            $teamTotals['connectedCalls'] += $ts['metrics']['connectedCalls'];
+            $teamTotals['talkedCalls'] += $ts['metrics']['talkedCalls'];
+            $teamTotals['answeredCalls'] += $ts['metrics']['connectedCalls'];
+            $teamTotals['missedCalls'] += $ts['metrics']['missedCalls'];
+            $teamTotals['inboundCalls'] += $ts['metrics']['inboundCalls'];
             $teamTotals['totalMinutes'] += $ts['metrics']['totalMinutes'];
             $teamTotals['newCustCount'] += $ts['metrics']['newCustCount'];
             $teamTotals['coreCustCount'] += $ts['metrics']['coreCustCount'];
@@ -604,6 +666,7 @@ try {
             $teamTotals['newCustSales'] += $ts['metrics']['newCustSales'];
             $teamTotals['coreCustSales'] += $ts['metrics']['coreCustSales'];
             $teamTotals['revivalCustSales'] += $ts['metrics']['revivalCustSales'];
+            $teamTotals['returnedSales'] += $ts['metrics']['returnedSales'];
         }
 
         // Calculate team conversion rate (ได้คุย / ออเดอร์)
