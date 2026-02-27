@@ -53,6 +53,7 @@ try {
     COUNT(*) AS total_calls,
     SUM(CASE WHEN cil.status = 1 THEN 1 ELSE 0 END) AS answered_calls,
     SUM(CASE WHEN cil.status = 0 THEN 1 ELSE 0 END) AS missed_calls,
+    SUM(CASE WHEN cil.status = 1 AND TIME_TO_SEC(cil.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
     ROUND(SUM(TIME_TO_SEC(cil.duration)) / 60, 2) AS total_minutes,
     SUM(CASE WHEN cil.rec_type = 1 THEN 1 ELSE 0 END) AS inbound_calls,
     SUM(CASE WHEN cil.rec_type = 2 THEN 1 ELSE 0 END) AS outbound_calls,

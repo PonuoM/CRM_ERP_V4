@@ -455,6 +455,7 @@ const CallsDashboardV2: React.FC<CallsDashboardV2Props> = ({ user }) => {
                                     { key: "total_calls", label: "สายทั้งหมด", tip: "จำนวนสายทั้งหมดในช่วงเดือนที่เลือก" },
                                     { key: "answered_calls", label: "รับสาย", tip: "จำนวนสายที่มีการรับสนทนา" },
                                     { key: "missed_calls", label: "ไม่ได้รับ", tip: "จำนวนสายที่ไม่มีการรับสนทนา" },
+                                    { key: "talked_calls", label: "ได้คุย", tip: "สายที่รับและสนทนาตั้งแต่ 40 วินาทีขึ้นไป" },
                                     { key: "answer_rate", label: "% รับ", tip: "อัตราการรับสาย = สายที่รับ ÷ สายทั้งหมด × 100" },
                                     { key: "inbound_calls", label: "สายเข้า", tip: "สายที่โทรเข้ามา" },
                                     { key: "outbound_calls", label: "สายออก", tip: "สายที่โทรออกไป" },
@@ -483,7 +484,7 @@ const CallsDashboardV2: React.FC<CallsDashboardV2Props> = ({ user }) => {
                         <tbody className="divide-y divide-gray-100">
                             {employeeSummary.length === 0 ? (
                                 <tr>
-                                    <td colSpan={11} className="py-12 text-center text-gray-400">
+                                    <td colSpan={12} className="py-12 text-center text-gray-400">
                                         ไม่พบข้อมูล
                                     </td>
                                 </tr>
@@ -507,6 +508,9 @@ const CallsDashboardV2: React.FC<CallsDashboardV2Props> = ({ user }) => {
                                         </td>
                                         <td className="px-3 py-3 text-center text-red-500 font-medium">
                                             {emp.missed_calls}
+                                        </td>
+                                        <td className="px-3 py-3 text-center text-violet-600 font-medium">
+                                            {emp.talked_calls ?? 0}
                                         </td>
                                         <td className="px-3 py-3 text-center">
                                             <span

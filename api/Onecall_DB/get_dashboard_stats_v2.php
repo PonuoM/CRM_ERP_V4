@@ -53,6 +53,7 @@ try {
     COUNT(*) AS totalCalls,
     SUM(CASE WHEN cil.status = 1 THEN 1 ELSE 0 END) AS answeredCalls,
     SUM(CASE WHEN cil.status = 0 THEN 1 ELSE 0 END) AS missedCalls,
+    SUM(CASE WHEN cil.status = 1 AND TIME_TO_SEC(cil.duration) >= 40 THEN 1 ELSE 0 END) AS talkedCalls,
     ROUND(SUM(TIME_TO_SEC(cil.duration)) / 60, 2) AS totalMinutes,
     SUM(CASE WHEN cil.rec_type = 1 THEN 1 ELSE 0 END) AS inboundCalls,
     SUM(CASE WHEN cil.rec_type = 2 THEN 1 ELSE 0 END) AS outboundCalls,
@@ -68,6 +69,7 @@ try {
     $total = (int) ($row['totalCalls'] ?? 0);
     $answered = (int) ($row['answeredCalls'] ?? 0);
     $missed = (int) ($row['missedCalls'] ?? 0);
+    $talked = (int) ($row['talkedCalls'] ?? 0);
     $totalMin = (float) ($row['totalMinutes'] ?? 0);
     $inbound = (int) ($row['inboundCalls'] ?? 0);
     $outbound = (int) ($row['outboundCalls'] ?? 0);
@@ -86,6 +88,7 @@ try {
             "totalCalls" => $total,
             "answeredCalls" => $answered,
             "missedCalls" => $missed,
+            "talkedCalls" => $talked,
             "totalMinutes" => $totalMin,
             "avgMinutes" => $avgMinutes,
             "answerRate" => $answerRate,
