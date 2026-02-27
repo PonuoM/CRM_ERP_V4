@@ -297,6 +297,7 @@ try {
                      WHERE dc_t.order_id = o.id
                      ORDER BY dc_t.created_at DESC LIMIT 1
                     ) as last_tracker_name,
+                    (SELECT MAX(dc_c.is_complete) FROM debt_collection dc_c WHERE dc_c.order_id = o.id) as has_complete,
                     (SELECT COALESCE(SUM(os_p.amount), 0)
                      FROM order_slips os_p
                      WHERE os_p.order_id = o.id
@@ -314,8 +315,30 @@ try {
         $stmt->execute($params);
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Batch fetch order_items for all orders
+        $orderItemsMap = [];
+        if (!empty($orders)) {
+            $orderIds = array_column($orders, 'id');
+            $placeholders = str_repeat('?,', count($orderIds) - 1) . '?';
+            $itemsSql = "SELECT parent_order_id, product_name, SUM(quantity) as quantity
+                         FROM order_items 
+                         WHERE parent_order_id IN ($placeholders)
+                         AND is_freebie = 0
+                         GROUP BY parent_order_id, product_name
+                         ORDER BY parent_order_id, MIN(id)";
+            $itemsStmt = $pdo->prepare($itemsSql);
+            $itemsStmt->execute($orderIds);
+            $allItems = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($allItems as $item) {
+                $orderItemsMap[$item['parent_order_id']][] = [
+                    'productName' => $item['product_name'],
+                    'quantity' => (int) $item['quantity']
+                ];
+            }
+        }
+
         // Format Response
-        $formattedOrders = array_map(function ($order) {
+        $formattedOrders = array_map(function ($order) use ($orderItemsMap) {
             $totalAmount = (float) $order['total_amount'];
             $paidAmount = (float) ($order['amount_paid'] ?? 0);
             $collected = (float) $order['total_debt_collected'];
@@ -333,6 +356,20 @@ try {
                 $daysPassed = floor($diff / (60 * 60 * 24));
             }
 
+            // Determine Debt Status
+            $trackingCount = (int) $order['tracking_count'];
+            $hasComplete = (int) ($order['has_complete'] ?? 0);
+            $collected = (float) $order['total_debt_collected'];
+            if ($hasComplete === 1) {
+                $debtStatus = 'จบเคส';
+            } elseif ($collected > 0) {
+                $debtStatus = 'ขาดบางส่วน';
+            } elseif ($trackingCount > 0) {
+                $debtStatus = 'ตามแล้ว';
+            } else {
+                $debtStatus = 'ยังไม่ได้';
+            }
+
             return [
                 'id' => $order['id'],
                 'customerId' => $order['customer_id'],
@@ -347,7 +384,7 @@ try {
                     'lastName' => $order['last_name'],
                     'phone' => $order['phone']
                 ],
-                'trackingCount' => (int) $order['tracking_count'],
+                'trackingCount' => $trackingCount,
                 'totalDebtCollected' => $collected,
                 'remainingDebt' => $remainingDebt,
                 'pendingSlipAmount' => $pendingSlips,
@@ -355,7 +392,9 @@ try {
                 'customerReceivedDate' => $order['customer_received_date'],
                 'lastTrackingDate' => $order['last_tracking_date'],
                 'firstTrackingDate' => $order['first_tracking_date'],
-                'lastTrackerName' => $order['last_tracker_name'] ? trim($order['last_tracker_name']) : null
+                'lastTrackerName' => $order['last_tracker_name'] ? trim($order['last_tracker_name']) : null,
+                'debtStatus' => $debtStatus,
+                'orderItems' => $orderItemsMap[$order['id']] ?? []
             ];
         }, $orders);
 

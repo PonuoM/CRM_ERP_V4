@@ -187,12 +187,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       return;
     }
 
-    // Otherwise fetch from API (load once on mount, with date range for initial load)
-    // Only fetch if we don't already have data
-    if (fetchedOrders.length > 0 && !isLoading) {
-      return; // Already have data, don't refetch
-    }
-
+    // Fetch from API whenever date range changes
     const fetchData = async () => {
       setIsLoading(true);
       try {
@@ -201,10 +196,17 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           ? `&companyId=${currentUser.companyId}`
           : '';
 
-        // Fetch with current date range for initial load
+        // Fetch with current date range
         const { filterStartDate, filterEndDate } = getDateRange();
-        const startDateStr = filterStartDate.toISOString().split('T')[0];
-        const endDateStr = filterEndDate.toISOString().split('T')[0];
+        // Use local date format to avoid timezone issues (toISOString converts to UTC, shifts dates back in UTC+7)
+        const formatLocalDate = (d: Date) => {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+        const startDateStr = formatLocalDate(filterStartDate);
+        const endDateStr = formatLocalDate(filterEndDate);
 
         // Fetch orders with date filter (pageSize needed since backend defaults to 50)
         const ordersResponse = await apiFetch(`orders?pageSize=15000&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}${companyFilter}`);
@@ -238,11 +240,13 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               quantity: it.quantity || 0,
               pricePerUnit: it.price_per_unit || 0,
               discount: it.discount || 0,
+              netTotal: Number(it.net_total) || 0,
               isFreebie: !!it.is_freebie,
               boxNumber: it.box_number || 1,
               basketKeyAtSale: it.basket_key_at_sale || null,
               productCategory: it.product_category || null,
               productReportCategory: it.product_report_category || null,
+              creatorId: it.creator_id || null,
             })) : [],
             shippingCost: Number(r.shipping_cost) || 0,
             billDiscount: Number(r.bill_discount) || 0,
@@ -265,7 +269,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             paymentReceivedDate: r.payment_received_date || '',
           }));
 
-        console.log('📊 Sample order with customer_type:', mappedOrders[0]);
+        console.log('📊 Reports fetch:', startDateStr, '→', endDateStr, '=', mappedOrders.length, 'orders');
 
         setFetchedOrders(mappedOrders);
 
@@ -306,7 +310,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propOrders, currentUser]); // Only refetch when user or propOrders change, NOT date range
+  }, [propOrders, currentUser, dateRange, startDate, endDate]); // Re-fetch when date range changes
 
   // Fetch return summary when return-summary report is selected
   useEffect(() => {
@@ -316,8 +320,15 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       setIsReturnLoading(true);
       try {
         const { filterStartDate, filterEndDate } = getDateRange();
-        const startDateStr = filterStartDate.toISOString().split('T')[0];
-        const endDateStr = filterEndDate.toISOString().split('T')[0];
+        // Use local date format to avoid timezone issues (toISOString converts to UTC, shifts dates back in UTC+7)
+        const formatLocalDate = (d: Date) => {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+        const startDateStr = formatLocalDate(filterStartDate);
+        const endDateStr = formatLocalDate(filterEndDate);
         const isSuperAdmin = currentUser && String(currentUser.role).toLowerCase() === 'superadmin';
         const companyFilter = currentUser && !isSuperAdmin && currentUser.companyId
           ? `&companyId=${currentUser.companyId}` : '';
@@ -766,7 +777,9 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         // มี items - แสดงแต่ละรายการ
         order.items.forEach(item => {
           // ถ้าเป็นของแถม (isFreebie) ยอดรวมต้องเป็น 0
-          const itemTotal = item.isFreebie ? 0 : (item.pricePerUnit * item.quantity) - (item.discount || 0);
+          // EXTERNAL orders have price_per_unit=0, use net_total as fallback
+          const calculatedTotal = (item.pricePerUnit * item.quantity) - (item.discount || 0);
+          const itemTotal = item.isFreebie ? 0 : (calculatedTotal > 0 ? calculatedTotal : ((item as any).netTotal || 0));
 
           // กำหนด รหัสสินค้า/โปร
           let productCode = '-';
@@ -1062,8 +1075,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const endDateStr = formatLocalDate(filterEndDate);
 
 
-        // Fetch orders with date filter
-        const ordersResponse = await apiFetch(`orders?pageSize=5000${companyFilter}&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}`);
+        // Fetch orders with date filter (pageSize=15000 to match main fetch, avoid pagination truncation)
+        const ordersResponse = await apiFetch(`orders?pageSize=15000${companyFilter}&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}`);
         const ordersData = Array.isArray(ordersResponse)
           ? ordersResponse
           : (ordersResponse?.orders || ordersResponse?.data || []);
@@ -1206,9 +1219,12 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               const originalPrice = Number(item.price_per_unit) || 0;
               const originalDiscount = Number(item.discount) || 0;
               const qty = Number(item.quantity) || 0;
+              const netTotal = Number(item.net_total) || 0;
               // If Claim/Gift, discount = full price (so total = 0), else use original discount
               const effectiveDiscount = isClaimOrGift ? (qty * originalPrice) : originalDiscount;
-              const itemTotal = (qty * originalPrice) - effectiveDiscount;
+              // EXTERNAL orders have price_per_unit=0, use net_total as fallback
+              const calculatedTotal = (qty * originalPrice) - effectiveDiscount;
+              const itemTotal = calculatedTotal > 0 ? calculatedTotal : netTotal;
 
               // Helper function to translate customer type to Thai
               const getCustomerTypeThai = (customerType: string) => {
@@ -1375,7 +1391,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   const isReportDataAvailable = (reportType: ReportType): boolean => {
     switch (reportType) {
       case 'orders-raw':
-        return orders.length > 0;
+        return true; // Always available — data fetched on demand during export
       case 'stock':
         return warehouseStock.length > 0;
       case 'lot-stock':

@@ -317,22 +317,34 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
         });
         if (response.ok && response.orders) {
           const orders = response.orders;
-          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่สั่ง', 'วันที่ส่ง', 'ยอดรวม', 'ยอดเก็บแล้ว', 'ยอดคงเหลือ', 'วันค้าง', 'สถานะออเดอร์', 'สถานะชำระ', 'จำนวนติดตาม', 'ผู้ติดตามล่าสุด'];
-          const rows = orders.map((o: any) => [
-            o.id,
-            `${o.customerInfo?.firstName || ''} ${o.customerInfo?.lastName || ''}`.trim(),
-            o.customerInfo?.phone || '',
-            o.orderDate || '',
-            o.deliveryDate || '',
-            o.totalAmount,
-            o.totalDebtCollected,
-            o.remainingDebt,
-            o.daysPassed,
-            o.orderStatus,
-            o.paymentStatus,
-            o.trackingCount,
-            o.lastTrackerName || ''
-          ]);
+          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่สั่ง', 'วันที่ส่ง', 'ยอดรวม', 'ยอดเก็บแล้ว', 'ยอดคงเหลือ', 'วันค้าง', 'สถานะออเดอร์', 'สถานะชำระ', 'สถานะเคส', 'จำนวนติดตาม', 'ผู้ติดตามล่าสุด', 'สินค้าที่ขาย', 'จำนวนสินค้า'];
+          const rows: any[][] = [];
+          orders.forEach((o: any) => {
+            const items: { productName: string; quantity: number }[] = o.orderItems || [];
+            const baseRow = [
+              o.id,
+              `${o.customerInfo?.firstName || ''} ${o.customerInfo?.lastName || ''}`.trim(),
+              o.customerInfo?.phone || '',
+              o.orderDate || '',
+              o.deliveryDate || '',
+              o.totalAmount,
+              o.totalDebtCollected,
+              o.remainingDebt,
+              o.daysPassed,
+              o.orderStatus,
+              o.paymentStatus,
+              o.debtStatus || '',
+              o.trackingCount,
+              o.lastTrackerName || '',
+            ];
+            if (items.length === 0) {
+              rows.push([...baseRow, '', '']);
+            } else {
+              items.forEach((item: any) => {
+                rows.push([...baseRow, item.productName, item.quantity]);
+              });
+            }
+          });
 
           downloadCSV(headers, rows, `debt_collection_${activeTab}_${exportStartDate}_${exportEndDate}.csv`);
         } else {
