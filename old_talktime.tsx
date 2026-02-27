@@ -10,8 +10,6 @@ import {
     Coffee,
     Calendar,
     ChevronDown,
-    ChevronLeft,
-    ChevronRight,
     RefreshCw,
     TrendingUp,
     TrendingDown,
@@ -57,8 +55,8 @@ const authenticateOneCall = async () => {
             return { success: false, error: "OneCall credentials not found" };
         }
 
-        const username = usernameData.value?.replace(/^"|"$/g, "");
-        const password = passwordData.value?.replace(/^"|"$/g, "");
+        const username = usernameData.value?.replace(/^\"|\"$/g, "");
+        const password = passwordData.value?.replace(/^\"|\"$/g, "");
 
         if (!username || !password) {
             return { success: false, error: "OneCall credentials are empty" };
@@ -90,7 +88,7 @@ const authenticateOneCall = async () => {
 };
 
 // Fetch talk time data from OneCall API
-const fetchTalkTimeFromAPI = async (date: string, userPhones?: string[]) => {
+const fetchTalkTimeFromAPI = async (date: string, userPhone?: string) => {
     try {
         const authResult = await authenticateOneCall();
         if (!authResult.success || !authResult.token) {
@@ -99,20 +97,20 @@ const fetchTalkTimeFromAPI = async (date: string, userPhones?: string[]) => {
 
         // Format date for API (YYYYMMDD_HHMMSS format, UTC-7)
         const formatDateForAPI = (dateString: string, isEndDate: boolean = false) => {
-            const dateObj = new Date(dateString);
+            const date = new Date(dateString);
             if (isEndDate) {
-                dateObj.setHours(23, 59, 59, 999);
+                date.setHours(23, 59, 59, 999);
             } else {
-                dateObj.setHours(0, 0, 0, 0);
+                date.setHours(0, 0, 0, 0);
             }
-            dateObj.setHours(dateObj.getHours() - 7); // Convert to UTC
+            date.setHours(date.getHours() - 7); // Convert to UTC
 
-            const year = dateObj.getFullYear();
-            const month = String(dateObj.getMonth() + 1).padStart(2, "0");
-            const day = String(dateObj.getDate()).padStart(2, "0");
-            const hours = String(dateObj.getHours()).padStart(2, "0");
-            const minutes = String(dateObj.getMinutes()).padStart(2, "0");
-            const seconds = String(dateObj.getSeconds()).padStart(2, "0");
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const day = String(date.getDate()).padStart(2, "0");
+            const hours = String(date.getHours()).padStart(2, "0");
+            const minutes = String(date.getMinutes()).padStart(2, "0");
+            const seconds = String(date.getSeconds()).padStart(2, "0");
 
             return `${year}${month}${day}_${hours}${minutes}${seconds}`;
         };
@@ -148,31 +146,36 @@ const fetchTalkTimeFromAPI = async (date: string, userPhones?: string[]) => {
         }
 
         const responseData = await response.json();
-        const recordings = responseData.objects || [];
+        const recordings = responseData.objects || [];  // Changed from 'recordings' to 'objects'
 
-        console.log(`📞 OneCall API returned ${recordings.length} recordings`);
+        console.log(`📞 OneCall API returned ${recordings.length} recordings (total: ${responseData.resultCount || 0})`);
 
-        // Filter by user phones if specified
+        // Filter by user phone if specified
         let filteredRecordings = recordings;
-        if (userPhones && userPhones.length > 0) {
-            // Try multiple phone formats for matching all phones
-            const allPhoneFormats = userPhones.flatMap(phone => [
-                phone,                          // 66812345678
-                `+${phone}`,                    // +66812345678
-                phone.replace(/^66/, '0'),      // 0812345678
-            ]);
+        if (userPhone) {
+            // Try multiple phone formats for matching
+            const phoneFormats = [
+                userPhone,                          // 66812345678
+                `+${userPhone}`,                    // +66812345678
+                userPhone.replace(/^66/, '0'),      // 0812345678
+            ];
 
             filteredRecordings = recordings.filter((r: any) => {
-                const localPartyRaw = r.localParty || '';
-                const localPartyNoPlus = localPartyRaw.replace(/\+/g, '');
-                const remotePartyRaw = r.remoteParty || '';
-                const remotePartyNoPlus = remotePartyRaw.replace(/\+/g, '');
-
-                const localMatch = allPhoneFormats.includes(localPartyRaw) || allPhoneFormats.includes(localPartyNoPlus);
-                const remoteMatch = allPhoneFormats.includes(remotePartyRaw) || allPhoneFormats.includes(remotePartyNoPlus);
-
+                const localMatch = phoneFormats.some(format =>
+                    r.localParty === format || r.localParty?.replace(/\+/g, '') === userPhone
+                );
+                const remoteMatch = phoneFormats.some(format =>
+                    r.remoteParty === format || r.remoteParty?.replace(/\+/g, '') === userPhone
+                );
                 return localMatch || remoteMatch;
             });
+
+            console.log(`🔍 Filtered to ${filteredRecordings.length} recordings for phone ${userPhone}`);
+            console.log(`📊 Sample phone formats from API:`, recordings.slice(0, 5).map((r: any) => ({
+                localParty: r.localParty,
+                remoteParty: r.remoteParty
+            })));
+            console.log(`🔎 Phone formats we're matching:`, phoneFormats);
         }
 
         // Process to hourly format
@@ -283,17 +286,6 @@ interface SummaryData {
     avg_idle_minutes: number;
 }
 
-interface DailyMonthData {
-    date: string;
-    total_calls: number;
-    connected_calls: number;
-    talked_calls: number;
-    missed_calls: number;
-    total_minutes: number;
-    avg_minutes: number;
-    answer_rate: number;
-}
-
 interface TeamUser {
     id: number;
     name: string;
@@ -376,10 +368,8 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
     });
     const [selectedUserId, setSelectedUserId] = useState<string>("");
     const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
-    const [teamUsersLoaded, setTeamUsersLoaded] = useState(false);
     const [summary, setSummary] = useState<SummaryData | null>(null);
     const [hourlyData, setHourlyData] = useState<HourlyData[]>([]);
-    const [monthlyData, setMonthlyData] = useState<DailyMonthData[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -418,10 +408,7 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
 
     // Fetch team users for dropdown
     useEffect(() => {
-        if (!currentUserId || !currentCompanyId) {
-            setTeamUsersLoaded(true);
-            return;
-        }
+        if (!currentUserId || !currentCompanyId) return;
 
         const fetchTeamUsers = async () => {
             try {
@@ -444,8 +431,6 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                 }
             } catch (err) {
                 console.error("Failed to fetch team users:", err);
-            } finally {
-                setTeamUsersLoaded(true);
             }
         };
 
@@ -477,7 +462,6 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                 console.log(`✅ Loading from cache (age: ${Math.round((Date.now() - timestamp) / 1000)}s)`);
                 setHourlyData(data.hourly || []);
                 setSummary(data.summary || null);
-                setMonthlyData(data.monthly || []);
                 return true; // Cache hit
             }
         } catch (err) {
@@ -487,11 +471,11 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
     }, [getCacheKey]);
 
     // Save to cache helper
-    const saveToCache = useCallback((hourly: HourlyData[], summaryData: SummaryData | null, monthly: DailyMonthData[]) => {
+    const saveToCache = useCallback((hourly: HourlyData[], summaryData: SummaryData | null) => {
         try {
             const cacheKey = getCacheKey();
             localStorage.setItem(cacheKey, JSON.stringify({
-                data: { hourly, summary: summaryData, monthly },
+                data: { hourly, summary: summaryData },
                 timestamp: Date.now()
             }));
             console.log(`💾 Saved to cache: ${cacheKey}`);
@@ -500,7 +484,7 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
         }
     }, [getCacheKey]);
 
-    // Fetch talk time data
+    // Fetch talk time data - HYBRID APPROACH
     const fetchData = async () => {
         // Prevent duplicate calls
         if (fetchingRef.current) {
@@ -513,103 +497,76 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
         setError(null);
 
         try {
-            const params = new URLSearchParams({
-                date: selectedDate,
-            });
+            // Calculate days difference
+            const selectedDateObj = new Date(selectedDate);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            selectedDateObj.setHours(0, 0, 0, 0);
+            const daysDiff = Math.floor((today.getTime() - selectedDateObj.getTime()) / (1000 * 60 * 60 * 24));
 
-            if (currentCompanyId) {
-                params.append("company_id", String(currentCompanyId));
-            }
+            console.log(`📅 Date selected: ${selectedDate}, Days ago: ${daysDiff}`);
 
-            params.append("is_system", isSystem ? "1" : "0");
+            // Determine data source
+            const useAPI = daysDiff < 15;
+            console.log(`🔄 Data source: ${useAPI ? "OneCall API (recent)" : "Database (historical)"}`);
 
-            if (selectedUserId) {
-                params.append("user_id", selectedUserId);
-            } else if (currentUserId) {
-                params.append("user_id", String(currentUserId));
-            }
+            if (useAPI) {
+                // ===== USE ONECALL API =====
+                console.log("📞 Fetching from OneCall API...");
 
-            // Always fetch monthly data from DB in parallel
-            const monthlyPromise = fetch(`${apiBase}/Onecall_DB/get_talktime_daily_month.php?${params}`).then(res => res.json());
-
-            let hourlyDataRes: any = { success: false, error: "Not run" };
-
-            // Check if selected date is today (in local timezone)
-            const d = new Date();
-            const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            const isToday = selectedDate === todayStr;
-
-            if (isToday) {
-                console.log("📞 Fetching today's data from OneCall API directly...");
-                let userPhones: string[] | undefined;
+                // Get user phone for filtering (if not System user AND specific user selected)
+                let userPhone: string | undefined;
+                // Only filter by user if:
+                // 1. Not a system user (system users can see all when "All" is selected), OR
+                // 2. A specific user is selected (not empty string)
                 const shouldFilterByUser = !isSystem || (selectedUserId && selectedUserId !== "");
 
                 if (shouldFilterByUser) {
                     const userId = selectedUserId || String(currentUserId);
                     if (userId && userId !== "") {
-                        if (selectedUserId === "") {
-                            // "All Users" selected by a Supervisor (isSystem is false)
-                            // We need to fetch ALL phones of their team from teamUsers
-                            const phones = teamUsers
-                                .map(u => u.phone)
-                                .filter(p => p != null && p.trim() !== "")
-                                .map(p => p.replace(/^0/, "66"));
-
-                            if (phones.length > 0) {
-                                userPhones = phones;
-                                console.log(`🔍 Filtering by team phones: ${phones.length} users`);
-                            } else {
-                                console.log("🚫 Supervisor's team has no phones - returning empty data");
-                                hourlyDataRes = {
-                                    success: true,
-                                    summary: { total_calls: 0, talked_calls: 0, total_minutes: 0, avg_minutes: 0, avg_talk_minutes: 0, avg_idle_minutes: 0 },
-                                    hourly: []
-                                };
-                            }
+                        // Get phone from teamUsers array (already fetched) instead of API call
+                        const selectedUser = teamUsers.find(u => String(u.id) === userId);
+                        if (selectedUser && selectedUser.phone) {
+                            // Normalize phone to 66XXXXXXXXX format
+                            userPhone = selectedUser.phone.replace(/^0/, "66");
+                            console.log(`🔍 Filtering by phone: ${userPhone} (user: ${selectedUser.name})`);
                         } else {
-                            // Specific user selected
-                            const selectedUser = teamUsers.find(u => String(u.id) === userId);
-                            if (selectedUser && selectedUser.phone) {
-                                userPhones = [selectedUser.phone.replace(/^0/, "66")];
-                                console.log(`🔍 Filtering by phone: ${userPhones[0]} (user: ${selectedUser.name})`);
-                            } else if (!isSystem) {
+                            console.warn(`⚠️ No phone found for user ${userId}`);
+                            // For non-system users (Telesale), if no phone found, show empty data
+                            if (!isSystem) {
                                 console.log("🚫 Telesale user without phone - returning empty data");
-                                hourlyDataRes = {
-                                    success: true,
-                                    summary: { total_calls: 0, talked_calls: 0, total_minutes: 0, avg_minutes: 0, avg_talk_minutes: 0, avg_idle_minutes: 0 },
-                                    hourly: []
-                                };
+                                setSummary({
+                                    total_calls: 0,
+                                    talked_calls: 0,
+                                    total_minutes: 0,
+                                    avg_minutes: 0,
+                                    avg_talk_minutes: 0,
+                                    avg_idle_minutes: 0,
+                                });
+                                setHourlyData([]);
+                                return; // Exit early
                             }
                         }
                     }
+                } else {
+                    console.log("📊 Showing all users data (no phone filter)");
                 }
 
-                // If not early exited, fetch from API
-                if (!hourlyDataRes.success && hourlyDataRes.error === "Not run") {
-                    const apiResult = await fetchTalkTimeFromAPI(selectedDate, userPhones);
-                    if (apiResult.success) {
-                        hourlyDataRes = { success: true, summary: apiResult.summary, hourly: apiResult.hourly };
-                        console.log("✅ OneCall API data loaded successfully");
-                    } else {
-                        console.warn("⚠️ OneCall API failed, falling back to database...", apiResult.error);
-                        hourlyDataRes = await fetch(`${apiBase}/Onecall_DB/get_talktime_hourly.php?${params}`).then(res => res.json());
-                    }
+                const apiResult = await fetchTalkTimeFromAPI(selectedDate, userPhone);
+
+                if (apiResult.success) {
+                    setSummary(apiResult.summary);
+                    setHourlyData(apiResult.hourly || []);
+                    saveToCache(apiResult.hourly || [], apiResult.summary);
+                    console.log("✅ OneCall API data loaded successfully");
+                } else {
+                    console.warn("⚠️ OneCall API failed, falling back to database...");
+                    // Fallback to database
+                    await fetchFromDatabase();
                 }
             } else {
-                console.log("💾 Fetching historical data from Database...");
-                hourlyDataRes = await fetch(`${apiBase}/Onecall_DB/get_talktime_hourly.php?${params}`).then(res => res.json());
-            }
-
-            const monthlyDataRes = await monthlyPromise;
-
-            if (hourlyDataRes.success && monthlyDataRes.success) {
-                setSummary(hourlyDataRes.summary);
-                setHourlyData(hourlyDataRes.hourly || []);
-                setMonthlyData(monthlyDataRes.data || []);
-                saveToCache(hourlyDataRes.hourly || [], hourlyDataRes.summary, monthlyDataRes.data || []);
-                console.log("✅ Data loaded successfully");
-            } else {
-                setError(hourlyDataRes.error || monthlyDataRes.error || "Failed to load data");
+                // ===== USE DATABASE =====
+                await fetchFromDatabase();
             }
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : "Network error";
@@ -621,15 +578,48 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
         }
     };
 
+    // Fetch from database (fallback or historical data)
+    const fetchFromDatabase = async () => {
+        console.log("💾 Fetching from Database...");
+
+        const params = new URLSearchParams({
+            date: selectedDate,
+        });
+
+        if (currentCompanyId) {
+            params.append("company_id", String(currentCompanyId));
+        }
+
+        params.append("is_system", isSystem ? "1" : "0");
+
+        if (selectedUserId) {
+            params.append("user_id", selectedUserId);
+        } else if (currentUserId) {
+            params.append("user_id", String(currentUserId));
+        }
+
+        const res = await fetch(`${apiBase}/Onecall_DB/get_talktime_hourly.php?${params}`);
+        const data = await res.json();
+
+        if (data.success) {
+            setSummary(data.summary);
+            setHourlyData(data.hourly || []);
+            saveToCache(data.hourly || [], data.summary);
+            console.log("✅ Database data loaded successfully");
+        } else {
+            setError(data.error || "Failed to load data from database");
+        }
+    };
+
     useEffect(() => {
-        if (currentUserId && teamUsersLoaded) {
+        if (currentUserId) {
             // Try to load from cache first
             if (!loadFromCache()) {
                 // Cache miss - fetch from server
                 fetchData();
             }
         }
-    }, [selectedDate, selectedUserId, currentUserId, loadFromCache, teamUsersLoaded]);
+    }, [selectedDate, selectedUserId, currentUserId, loadFromCache]);
 
     // Manual refresh handler
     const handleManualRefresh = () => {
@@ -639,22 +629,6 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
         localStorage.removeItem(cacheKey);
         // Fetch new data
         fetchData();
-    };
-
-    // Date Navigation
-    const handlePrevDay = () => {
-        const date = new Date(selectedDate);
-        date.setDate(date.getDate() - 1);
-        // Correctly handle local vs UTC timezone string conversion
-        const prevDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-        setSelectedDate(prevDateStr);
-    };
-
-    const handleNextDay = () => {
-        const date = new Date(selectedDate);
-        date.setDate(date.getDate() + 1);
-        const nextDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-        setSelectedDate(nextDateStr);
     };
 
     // Find max for chart scaling
@@ -674,32 +648,14 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
 
                 <div className="flex items-center gap-3 flex-wrap">
                     {/* Date Picker */}
-                    <div className="flex items-center gap-1 bg-white px-1 py-1 rounded-lg border shadow-sm">
-                        <button
-                            onClick={handlePrevDay}
-                            className="p-1 hover:bg-gray-100 rounded text-gray-600 transition-colors"
-                            title="วันก่อนหน้า (Previous Day)"
-                        >
-                            <ChevronLeft className="w-5 h-5" />
-                        </button>
-
-                        <div className="flex items-center gap-2 px-2 border-x border-gray-200">
-                            <Calendar className="w-4 h-4 text-gray-400" />
-                            <input
-                                type="date"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                                className="bg-transparent outline-none text-sm cursor-pointer"
-                            />
-                        </div>
-
-                        <button
-                            onClick={handleNextDay}
-                            className="p-1 hover:bg-gray-100 rounded text-gray-600 transition-colors"
-                            title="วันถัดไป (Next Day)"
-                        >
-                            <ChevronRight className="w-5 h-5" />
-                        </button>
+                    <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border shadow-sm">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <input
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            className="bg-transparent outline-none text-sm"
+                        />
                     </div>
 
                     {/* User Selector (for Supervisor and System users) */}
@@ -896,107 +852,6 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                         {/* X-axis label */}
                         <div className="text-center text-sm text-gray-500 mt-4">ช่วงเวลา</div>
                     </div>
-                </div>
-            </div>
-
-            {/* Monthly Summary Table */}
-            <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-6">
-                <div className="p-4 sm:p-6 border-b border-gray-100 bg-white">
-                    <h2 className="text-lg font-semibold text-gray-900">สรุปข้อมูลการโทรรายวัน (ตลอดเดือน {new Date(selectedDate).toLocaleString('th-TH', { month: 'long', year: 'numeric' })})</h2>
-                    <p className="text-sm text-gray-500 mt-1">ภาพรวมการทำงานในแต่ละวันภายในเดือนที่เลือก</p>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left align-middle whitespace-nowrap">
-                        <thead className="text-xs text-gray-700 bg-gray-50 uppercase border-b">
-                            <tr>
-                                <th scope="col" className="px-5 py-4 font-semibold text-gray-900 border-r w-32">วันที่</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-gray-900 border-r w-32">วัน</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-gray-900">สาย<span className="text-xs text-gray-500 font-normal ml-1">(ทั้งหมด)</span></th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-orange-600" title="เวลาทั้งหมดของทุกสายที่โทร">นาที</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-emerald-600">รับสาย</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-blue-600" title="รับสายและคุยตั้งแต่ 40 วินาทีขึ้นไป">ได้คุย <span className="text-xs text-gray-500 font-normal ml-1">(≥40วิ)</span></th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-red-500">ไม่ได้รับ</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-gray-900">% รับสาย</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {monthlyData.length > 0 ? (
-                                monthlyData.map((row) => {
-                                    // Make weekend rows stand out slightly
-                                    const dateObj = new Date(row.date);
-                                    const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
-
-                                    return (
-                                        <tr
-                                            key={row.date}
-                                            className={`hover:bg-gray-50 transition-colors group ${isWeekend ? 'bg-orange-50/20' : ''} ${row.date === selectedDate ? 'bg-blue-50/40 text-blue-900' : ''}`}
-                                        >
-                                            <td className="px-5 py-3 border-r font-medium text-gray-900">
-                                                {row.date === selectedDate ? (
-                                                    <span className="flex items-center gap-2">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                                                        {dateObj.toLocaleDateString("en-GB")}
-                                                    </span>
-                                                ) : (
-                                                    dateObj.toLocaleDateString("en-GB")
-                                                )}
-                                            </td>
-                                            <td className="px-5 py-3 border-r text-gray-600">
-                                                {dateObj.toLocaleDateString("th-TH", { weekday: 'long' })}
-                                            </td>
-                                            <td className="px-5 py-3 text-center text-gray-700">{row.total_calls > 0 ? row.total_calls.toLocaleString() : '-'}</td>
-                                            <td className="px-5 py-3 text-center text-gray-700">{row.total_minutes > 0 ? row.total_minutes.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '-'}</td>
-                                            <td className="px-5 py-3 text-center text-emerald-600 font-medium">{row.connected_calls > 0 ? row.connected_calls.toLocaleString() : '-'}</td>
-                                            <td className="px-5 py-3 text-center font-medium text-blue-600">{row.talked_calls > 0 ? row.talked_calls.toLocaleString() : '-'}</td>
-                                            <td className="px-5 py-3 text-center text-red-500">{row.missed_calls > 0 ? row.missed_calls.toLocaleString() : '-'}</td>
-                                            <td className="px-5 py-3 text-center">
-                                                {row.total_calls > 0 ? (
-                                                    <span className={`inline-block px-1.5 py-0.5 rounded-full text-xs font-medium ${row.answer_rate >= 80 ? 'bg-emerald-100 text-emerald-700' : row.answer_rate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                                                        {row.answer_rate}%
-                                                    </span>
-                                                ) : '-'}
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            ) : (
-                                <tr>
-                                    <td colSpan={8} className="px-5 py-12 text-center text-gray-500">
-                                        <div className="flex flex-col items-center justify-center gap-2">
-                                            <PhoneOff className="w-8 h-8 text-gray-300" />
-                                            <span>ไม่มีข้อมูลการโทรในเดือนนี้</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-
-                        {/* Footer (Total Row) */}
-                        {monthlyData.length > 0 && (
-                            <tfoot className="bg-gray-100/80 font-bold border-t border-gray-200">
-                                <tr>
-                                    <td colSpan={2} className="px-5 py-4 border-r text-gray-900 text-right">รวมทั้งเดือน</td>
-                                    <td className="px-5 py-4 text-center text-gray-900">{monthlyData.reduce((sum, r) => sum + r.total_calls, 0).toLocaleString()}</td>
-                                    <td className="px-5 py-4 text-center text-gray-900">{monthlyData.reduce((sum, r) => sum + r.total_minutes, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                    <td className="px-5 py-4 text-center text-emerald-600 font-black">{monthlyData.reduce((sum, r) => sum + r.connected_calls, 0).toLocaleString()}</td>
-                                    <td className="px-5 py-4 text-center text-blue-600 font-black">{monthlyData.reduce((sum, r) => sum + r.talked_calls, 0).toLocaleString()}</td>
-                                    <td className="px-5 py-4 text-center text-red-600">{monthlyData.reduce((sum, r) => sum + r.missed_calls, 0).toLocaleString()}</td>
-                                    <td className="px-5 py-4 text-center text-gray-900">
-                                        {(() => {
-                                            const total = monthlyData.reduce((sum, r) => sum + r.total_calls, 0);
-                                            const connected = monthlyData.reduce((sum, r) => sum + r.connected_calls, 0);
-                                            return total > 0 ? (
-                                                <span className={`inline-block px-1.5 py-0.5 rounded-full text-xs font-medium ${(connected / total * 100) >= 80 ? 'bg-emerald-100 text-emerald-700' : (connected / total * 100) >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                                                    {(connected / total * 100).toFixed(2)}%
-                                                </span>
-                                            ) : '-';
-                                        })()}
-                                    </td>
-                                </tr>
-                            </tfoot>
-                        )}
-                    </table>
                 </div>
             </div>
 

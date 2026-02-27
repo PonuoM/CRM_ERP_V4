@@ -37,48 +37,50 @@ try {
   error_log("Is System: " . ($isSystem ? "YES" : "NO"));
   
   // Build WHERE clause
-  $where = "WHERE DATE(ol.`timestamp`) = :date";
+  $where = "WHERE DATE(cl.call_date) = :date";
   $params = [":date" => $date];
   
-  // Filter by company_id using onecall_batch
+  // Need to join users table to filter by company or user role visibility
+  $joinUsers = "JOIN users u ON u.id = cl.matched_user_id";
+  
+  // Filter by company_id 
   if (!empty($companyId)) {
-    $where .= " AND ob.company_id = :company_id";
+    $where .= " AND u.company_id = :company_id";
     $params[":company_id"] = $companyId;
     error_log("Added company filter: " . $companyId);
   }
   
-  // Filter by user phone ONLY if NOT system user
-  // System users should see ALL data in their company
+  // Filter by user ID ONLY if NOT system user, or if a specific user was requested
   if (!$isSystem && !empty($userId)) {
-    $uStmt = $pdo->prepare("SELECT phone FROM users WHERE id = :uid LIMIT 1");
-    $uStmt->execute([":uid" => $userId]);
-    $row = $uStmt->fetch(PDO::FETCH_ASSOC);
-    if ($row && !empty($row["phone"])) {
-      $normalized = normalize_phone_to_66($row["phone"]);
-      if (!empty($normalized)) {
-        $where .= " AND ol.phone_telesale = :userphone";
-        $params[":userphone"] = $normalized;
-        error_log("Added user phone filter: " . $normalized);
-      }
-    }
+    $where .= " AND cl.matched_user_id = :userid";
+    $params[":userid"] = $userId;
+    error_log("Added user ID filter: " . $userId);
+  } else if ($isSystem && !empty($userId)) {
+    // System user selected a specific user from dropdown
+    $where .= " AND cl.matched_user_id = :userid";
+    $params[":userid"] = $userId;
+    error_log("System user selected specific user: " . $userId);
   } else if ($isSystem) {
-    error_log("System user - NO user phone filter, showing ALL company data");
+    error_log("System user - NO user ID filter, showing ALL company data");
   }
+
+  // Telesales only
+  $where .= " AND u.role LIKE '%telesale%'";
   
   error_log("Final WHERE: " . $where);
   error_log("Params: " . json_encode($params));
   
   // Get hourly breakdown with company filtering
   $sql = "SELECT 
-            HOUR(ol.`timestamp`) AS hour,
+            HOUR(cl.start_time) AS hour,
             COUNT(*) AS total_calls,
-            SUM(CASE WHEN ol.duration >= 40 THEN 1 ELSE 0 END) AS talked_calls,
-            ROUND(SUM(ol.duration) / 60, 2) AS total_minutes,
-            ROUND(AVG(ol.duration) / 60, 2) AS avg_minutes
-          FROM onecall_log ol
-          LEFT JOIN onecall_batch ob ON ol.batch_id = ob.id
+            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+            ROUND(COALESCE(SUM(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS total_minutes,
+            ROUND(COALESCE(AVG(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS avg_minutes
+          FROM call_import_logs cl
+          $joinUsers
           $where
-          GROUP BY HOUR(ol.`timestamp`)
+          GROUP BY HOUR(cl.start_time)
           ORDER BY hour";
   
   error_log("SQL Query: " . $sql);
@@ -91,7 +93,7 @@ try {
   error_log("Query returned " . count($rows) . " hourly rows");
   
   // Test query without company filter to see if data exists
-  $testSQL = "SELECT COUNT(*) as total FROM onecall_log WHERE DATE(`timestamp`) = :date";
+  $testSQL = "SELECT COUNT(*) as total FROM call_import_logs WHERE DATE(call_date) = :date";
   $testStmt = $pdo->prepare($testSQL);
   $testStmt->execute([":date" => $date]);
   $testResult = $testStmt->fetch(PDO::FETCH_ASSOC);
@@ -125,12 +127,12 @@ try {
   // Get daily summary stats with company filtering
   $summarySQL = "SELECT 
                   COUNT(*) AS total_calls,
-                  SUM(CASE WHEN ol.duration >= 40 THEN 1 ELSE 0 END) AS talked_calls,
-                  ROUND(SUM(ol.duration) / 60, 2) AS total_minutes,
-                  ROUND(AVG(ol.duration) / 60, 2) AS avg_minutes,
-                  ROUND(AVG(CASE WHEN ol.duration >= 40 THEN ol.duration ELSE NULL END) / 60, 2) AS avg_talk_minutes
-                FROM onecall_log ol
-                LEFT JOIN onecall_batch ob ON ol.batch_id = ob.id
+                  SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+                  ROUND(COALESCE(SUM(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS total_minutes,
+                  ROUND(COALESCE(AVG(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS avg_minutes,
+                  ROUND(COALESCE(AVG(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN TIME_TO_SEC(cl.duration) ELSE NULL END), 0) / 60, 2) AS avg_talk_minutes
+                FROM call_import_logs cl
+                $joinUsers
                 $where";
   
   $summaryStmt = $pdo->prepare($summarySQL);
@@ -139,11 +141,11 @@ try {
   
   // Calculate idle time between calls (approximation) with company filtering
   $idleSQL = "SELECT 
-                TIMESTAMPDIFF(SECOND, LAG(ol.`timestamp`) OVER (ORDER BY ol.`timestamp`), ol.`timestamp`) AS gap
-              FROM onecall_log ol
-              LEFT JOIN onecall_batch ob ON ol.batch_id = ob.id
+                TIMESTAMPDIFF(SECOND, LAG(cl.start_time) OVER (ORDER BY cl.start_time), cl.start_time) AS gap
+              FROM call_import_logs cl
+              $joinUsers
               $where
-              ORDER BY ol.`timestamp`";
+              ORDER BY cl.start_time";
   $idleStmt = $pdo->prepare($idleSQL);
   $idleStmt->execute($params);
   $gaps = $idleStmt->fetchAll(PDO::FETCH_COLUMN);
