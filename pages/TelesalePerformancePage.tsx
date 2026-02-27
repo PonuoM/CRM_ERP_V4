@@ -696,7 +696,6 @@ export default function TelesalePerformancePage() {
                                 <SortableHeader label="นาที" field="totalMinutes" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="เวลาโทรรวม (นาที)" />
                                 <SortableHeader label="รับสาย" field="connectedCalls" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="สายที่รับ (status=1)" />
                                 <SortableHeader label="ได้คุย" field="talkedCalls" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="สายที่คุยได้ ≥40 วินาที (status=1 + duration≥40s)" />
-                                <SortableHeader label="สายเข้า" field="inboundCalls" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="สายที่โทรเข้ามา" />
                                 <SortableHeader label="ไม่ได้รับ" field="missedCalls" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="สายที่ไม่ได้รับ" />
                                 <SortableHeader label="%รับ" field="answerRate" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="อัตราการรับสาย = รับสาย ÷ สาย × 100" />
                                 <SortableHeader label="วันงาน" field="workingDays" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="วันที่ทำงาน" />
@@ -730,8 +729,8 @@ export default function TelesalePerformancePage() {
                                 <th className="border-l-2 border-gray-300"></th>
                                 {/* สาย group */}
                                 <th className="border-l-2 border-gray-300"></th>
-                                {/* นาที, รับสาย, ได้คุย, สายเข้า, ไม่ได้รับ, %รับ, วันงาน, นาที/สาย, นาที/วัน */}
-                                <th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                                {/* นาที, รับสาย, ได้คุย, ไม่ได้รับ, %รับ, วันงาน, นาที/สาย, นาที/วัน */}
+                                <th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -831,7 +830,6 @@ export default function TelesalePerformancePage() {
                                     <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes.toFixed(0)}</td>
                                     <td className="px-2 py-2 text-center text-emerald-600 font-medium">{formatNumber(ts.metrics.connectedCalls)}</td>
                                     <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.talkedCalls)}</td>
-                                    <td className="px-2 py-2 text-center text-blue-600">{formatNumber(ts.metrics.inboundCalls)}</td>
                                     <td className="px-2 py-2 text-center text-red-500">{formatNumber(ts.metrics.missedCalls)}</td>
                                     <td className="px-2 py-2 text-center">
                                         <span className={`inline-block px-1.5 py-0.5 rounded-full text-xs font-medium ${(ts.metrics.answerRate ?? 0) >= 80 ? 'bg-emerald-100 text-emerald-700' : (ts.metrics.answerRate ?? 0) >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
@@ -906,7 +904,6 @@ export default function TelesalePerformancePage() {
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>นาทีที่โทร<br /><span className="text-xs text-gray-500 font-normal">ทั้งหมด</span></th>
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>รับสาย</th>
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap cursor-help" rowSpan={2} title="นับเฉพาะสายที่รับแล้วคุยได้ตั้งแต่ 40 วินาทีขึ้นไป">ได้คุย<br /><span className="text-xs text-gray-500 font-normal">(≥40 วินาที)</span></th>
-                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>สายเข้า</th>
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>ไม่ได้รับ</th>
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>%รับ</th>
                                     {/* ลูกค้าใหม่ Group */}
@@ -951,7 +948,6 @@ export default function TelesalePerformancePage() {
                                             <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes > 0 ? ts.metrics.totalMinutes.toFixed(0) : '-'}</td>
                                             <td className="px-2 py-2 text-center text-emerald-600">{ts.metrics.connectedCalls || '-'}</td>
                                             <td className="px-2 py-2 text-center">{ts.metrics.talkedCalls || '-'}</td>
-                                            <td className="px-2 py-2 text-center text-blue-600">{ts.metrics.inboundCalls || '-'}</td>
                                             <td className="px-2 py-2 text-center text-red-500">{ts.metrics.missedCalls || '-'}</td>
                                             <td className="px-2 py-2 text-center">{ts.metrics.answerRate != null ? `${ts.metrics.answerRate}%` : '-'}</td>
                                             {/* ลูกค้าใหม่ */}
