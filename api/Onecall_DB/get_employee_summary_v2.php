@@ -16,7 +16,7 @@ try {
     $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
     $userIds = isset($_GET["user_ids"]) ? (string) $_GET["user_ids"] : null;
 
-    $where = "WHERE MONTH(cil.call_date) = ? AND YEAR(cil.call_date) = ? AND cil.matched_user_id IS NOT NULL";
+    $where = "WHERE MONTH(cil.call_date) = ? AND YEAR(cil.call_date) = ? AND cil.matched_user_id IS NOT NULL AND u.status = 'active'";
     $params = [$month, $year];
 
     if (!empty($userId)) {
@@ -62,6 +62,7 @@ try {
   LEFT JOIN users u ON u.id = cil.matched_user_id
   $where
   GROUP BY cil.matched_user_id, u.first_name, u.last_name, u.role, u.phone
+  HAVING COUNT(*) > 0
   ORDER BY total_calls DESC";
 
     $stmt = $pdo->prepare($sql);

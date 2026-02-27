@@ -16,7 +16,7 @@ try {
     $role = isset($_GET['role']) ? (string) $_GET['role'] : null;
 
     // Step 1: Determine which users to include
-    $userFilter = "role IN ('Telesale', 'Supervisor Telesale')";
+    $userFilter = "role IN ('Telesale', 'Supervisor Telesale') AND status = 'active'";
     $userParams = [];
 
     if (!empty($currentUserId) && $role === 'Supervisor Telesale') {
@@ -108,6 +108,10 @@ try {
     // Step 4: Merge
     $result = [];
     foreach ($userIds as $uid) {
+        // Skip users with no call data in the selected period
+        if (!isset($callData[$uid]) || (int) $callData[$uid]['total_calls'] === 0)
+            continue;
+
         $user = $userMap[$uid];
         $call = $callData[$uid] ?? null;
         $workingDays = $attData[$uid] ?? 0;
