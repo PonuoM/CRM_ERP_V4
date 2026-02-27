@@ -139,6 +139,7 @@ import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
 import SalesDashboard from "./pages/SalesDashboard";
 import CallsDashboard from "./pages/CallsDashboard";
+import CallsDashboardV2 from "./pages/CallsDashboardV2";
 import TalkTimeDashboard from "./pages/TalkTimeDashboard";
 import PermissionsPage from "./pages/PermissionsPage";
 import RoleManagementPage from "./pages/RoleManagementPage";
@@ -225,6 +226,7 @@ import BankAccountsManagementPage from "./pages/BankAccountsManagementPage";
 import TagsManagementPage from "./pages/TagsManagementPage";
 import CallHistoryPage from "./pages/CallHistoryPage";
 import CallDetailsPage from "./pages/CallDetailsPage";
+import CallDetailsPageV2 from "./pages/CallDetailsPageV2";
 import CallImportPage from "./pages/CallImportPage";
 import StockDocumentsPage from "./pages/StockDocumentsPage";
 import WarehouseStockViewPage from "./pages/WarehouseStockViewPage";
@@ -529,7 +531,9 @@ const App: React.FC = () => {
       'Dashboard': 'home.dashboard',
       'Sales Overview': 'home.sales_overview',
       'Calls Overview': 'calls.overview',
+      'Calls Overview V2': 'calls.overview_v2',
       'Call Details': 'calls.details',
+      'Call Details V2': 'calls.details_v2',
       'Customers': 'nav.customers',
       'Manage Customers': 'nav.manage_customers',
       'Orders': 'nav.orders',
@@ -6541,6 +6545,9 @@ const App: React.FC = () => {
     if (activePage === "Calls Overview") {
       return <CallsDashboard calls={callHistory} user={currentUser} />;
     }
+    if (activePage === "Calls Overview V2") {
+      return <CallsDashboardV2 user={currentUser} />;
+    }
     if (activePage === "Call Import") {
       return <CallImportPage currentUser={currentUser} />;
     }
@@ -6933,6 +6940,9 @@ const App: React.FC = () => {
     }
     if (activePage === "Call Details") {
       return <CallDetailsPage currentUser={currentUser} />;
+    }
+    if (activePage === "Call Details V2") {
+      return <CallDetailsPageV2 currentUser={currentUser} />;
     }
     if (activePage === "Call History" || activePage === "Dtac Onecall") {
       return (
