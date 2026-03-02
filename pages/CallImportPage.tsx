@@ -15,6 +15,7 @@ import {
     User as UserIcon,
     X,
     BarChart2,
+    Download,
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
 
@@ -144,6 +145,12 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
     const [isReportLoading, setIsReportLoading] = useState(false);
     const [reportDateFrom, setReportDateFrom] = useState("");
     const [reportDateTo, setReportDateTo] = useState("");
+
+    // Export
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportBatchId, setExportBatchId] = useState<number | null>(null);
+    const [exportDateFrom, setExportDateFrom] = useState("");
+    const [exportDateTo, setExportDateTo] = useState("");
 
     // ── CSV Preview ──
     const parseCSVPreview = (file: File) => {
@@ -362,7 +369,7 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
     // Load when switching tabs
     useEffect(() => {
         if (viewMode === "batches") fetchBatches(1);
-        if (viewMode === "logs") fetchLogs(1);
+        if (viewMode === "logs") { fetchLogs(1); fetchBatches(1); }
         if (viewMode === "report") fetchReport();
     }, [viewMode]);
 
@@ -376,6 +383,86 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
         setImportStartDate("");
         setImportEndDate("");
         setDuplicatePhones([]);
+    };
+
+    // ── Export Logs as CSV (paginated fetch) ──
+    const doExport = async () => {
+        setIsExporting(true);
+        try {
+            let allData: any[] = [];
+            let page = 1;
+            let hasMore = true;
+
+            while (hasMore) {
+                let url = `${apiBase}/Onecall_DB/get_call_imports.php?mode=export&company_id=${currentUser.companyId}&page=${page}`;
+                if (exportBatchId) url += `&batch_id=${exportBatchId}`;
+                if (exportDateFrom) url += `&date_from=${exportDateFrom}`;
+                if (exportDateTo) url += `&date_to=${exportDateTo}`;
+
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.success && Array.isArray(data.data)) {
+                    allData = [...allData, ...data.data];
+                    hasMore = data.hasMore === true;
+                    page++;
+                } else {
+                    alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
+                    return;
+                }
+            }
+
+            if (allData.length === 0) {
+                alert('ไม่พบข้อมูลตามเงื่อนไขที่กำหนด');
+                return;
+            }
+
+            const headers = [
+                'ID', 'BusinessGroupName', 'CallDate', 'CallOrigination', 'DisplayNumber',
+                'CallTermination', 'Status', 'StartTime', 'RingingDuration', 'AnswerdTime',
+                'TerminatedTime', 'TerminatedReason', 'ReasonChange', 'FinalNumber',
+                'Duration', 'RecType', 'ChargingGroup',
+                'AgentPhone', 'MatchedUser'
+            ];
+            const rows = allData.map((r: any) => [
+                r.record_id || '',
+                r.business_group_name || '',
+                r.call_date || '',
+                r.call_origination || '',
+                r.display_number || '',
+                r.call_termination || '',
+                r.status ?? '',
+                r.start_time || '',
+                r.ringing_duration || '',
+                r.answered_time || '',
+                r.terminated_time || '',
+                r.terminated_reason || '',
+                r.reason_change || '',
+                r.final_number || '',
+                r.duration || '',
+                r.rec_type ?? '',
+                r.charging_group || '',
+                r.agent_phone || '',
+                r.matched_first_name ? `${r.matched_first_name} ${r.matched_last_name || ''}`.trim() : '',
+            ]);
+            const csvContent = '\uFEFF' + headers.join(',') + '\n'
+                + rows.map((row: string[]) => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url2 = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url2;
+            const batchName = exportBatchId
+                ? batches.find(b => b.id === exportBatchId)?.file_name?.replace('.csv', '') || `batch_${exportBatchId}`
+                : 'all';
+            const dateLabel = exportDateFrom && exportDateTo ? `${exportDateFrom}_${exportDateTo}` : 'all_dates';
+            link.download = `call_export_${batchName}_${dateLabel}.csv`;
+            link.click();
+            URL.revokeObjectURL(url2);
+        } catch (err) {
+            console.error('Export error:', err);
+            alert('เกิดข้อผิดพลาดในการ Export');
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     // ═════════════════════════════════
@@ -841,6 +928,61 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
                         >
                             ค้นหา
                         </button>
+                    </div>
+
+                    {/* Export Section */}
+                    <div className="bg-white rounded-xl shadow-sm border p-4">
+                        <div className="flex flex-wrap items-end gap-3">
+                            <span className="text-sm font-medium text-gray-700 flex items-center gap-1.5 pb-2">
+                                <Download className="w-4 h-4 text-emerald-600" />
+                                Export ข้อมูล
+                            </span>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">ชื่อไฟล์ (Batch)</label>
+                                <select
+                                    value={exportBatchId ?? ''}
+                                    onChange={(e) => setExportBatchId(e.target.value ? Number(e.target.value) : null)}
+                                    className="border rounded-lg px-3 py-2 text-sm min-w-[200px]"
+                                >
+                                    <option value="">ทั้งหมด</option>
+                                    {batches.map((b) => (
+                                        <option key={b.id} value={b.id}>
+                                            {b.file_name} ({b.start_date || '-'} ~ {b.end_date || '-'})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">จากวันที่</label>
+                                <input
+                                    type="date"
+                                    value={exportDateFrom}
+                                    onChange={(e) => setExportDateFrom(e.target.value)}
+                                    className="border rounded-lg px-3 py-2 text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">ถึงวันที่</label>
+                                <input
+                                    type="date"
+                                    value={exportDateTo}
+                                    onChange={(e) => setExportDateTo(e.target.value)}
+                                    className="border rounded-lg px-3 py-2 text-sm"
+                                />
+                            </div>
+                            <button
+                                onClick={doExport}
+                                disabled={isExporting}
+                                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50 transition-colors"
+                            >
+                                {isExporting ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Download className="w-4 h-4" />
+                                )}
+                                {isExporting ? 'กำลัง Export...' : 'Download CSV'}
+                            </button>
+                        </div>
                     </div>
 
                     {/* Logs table */}

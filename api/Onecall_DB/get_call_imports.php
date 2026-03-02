@@ -151,6 +151,77 @@ if ($mode === 'report') {
 }
 
 // ═══════════════════════════════════════
+// MODE: export — export logs without pagination
+// ═══════════════════════════════════════
+if ($mode === 'export') {
+    $batchId = isset($_GET['batch_id']) ? intval($_GET['batch_id']) : null;
+    $companyId = isset($_GET['company_id']) ? intval($_GET['company_id']) : null;
+    $dateFrom = $_GET['date_from'] ?? null;
+    $dateTo = $_GET['date_to'] ?? null;
+    $search = $_GET['search'] ?? null;
+    $page = max(1, intval($_GET['page'] ?? 1));
+    $limit = 50000;
+    $offset = ($page - 1) * $limit;
+
+    $where = [];
+    $params = [];
+
+    if ($companyId) {
+        $where[] = "b.company_id = ?";
+        $params[] = $companyId;
+    }
+    if ($batchId) {
+        $where[] = "l.batch_id = ?";
+        $params[] = $batchId;
+    }
+    if ($dateFrom) {
+        $where[] = "l.call_date >= ?";
+        $params[] = $dateFrom;
+    }
+    if ($dateTo) {
+        $where[] = "l.call_date <= ?";
+        $params[] = $dateTo;
+    }
+    if ($search) {
+        $where[] = "(l.call_origination LIKE ? OR l.display_number LIKE ? OR l.call_termination LIKE ? OR l.agent_phone LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)";
+        $s = "%$search%";
+        $params = array_merge($params, [$s, $s, $s, $s, $s, $s]);
+    }
+
+    $whereSQL = count($where) > 0 ? "WHERE " . implode(" AND ", $where) : "";
+
+    // Count total
+    $countStmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM call_import_logs l LEFT JOIN users u ON u.id = l.matched_user_id LEFT JOIN call_import_batches b ON b.id = l.batch_id $whereSQL"
+    );
+    $countStmt->execute($params);
+    $total = (int) $countStmt->fetchColumn();
+
+    $sql = "SELECT l.*,
+                   u.first_name AS matched_first_name,
+                   u.last_name AS matched_last_name,
+                   u.phone AS matched_user_phone,
+                   b.file_name
+            FROM call_import_logs l
+            LEFT JOIN users u ON u.id = l.matched_user_id
+            LEFT JOIN call_import_batches b ON b.id = l.batch_id
+            $whereSQL
+            ORDER BY l.call_date DESC, l.start_time DESC
+            LIMIT $limit OFFSET $offset";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $logs = $stmt->fetchAll();
+
+    json_response([
+        "success" => true,
+        "data" => $logs,
+        "total" => $total,
+        "page" => $page,
+        "hasMore" => ($offset + count($logs)) < $total,
+    ]);
+}
+
+// ═══════════════════════════════════════
 // MODE: logs — list call import logs
 // ═══════════════════════════════════════
 $batchId = isset($_GET['batch_id']) ? intval($_GET['batch_id']) : null;
