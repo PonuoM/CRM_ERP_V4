@@ -220,11 +220,39 @@ foreach ($companies as $companyId) {
                     }
                 }
                 
-                // Fallback to last basket
+                // Smart fallback: find closest matching basket (ignoring blocked)
                 if (!$targetBasketKey && count($distributionBaskets) > 0) {
-                    $lastBasket = end($distributionBaskets);
-                    $targetBasketKey = $lastBasket['basket_key'];
-                    $matchedBy = "re-eval(fallback)";
+                    $closestBasket = null;
+                    $closestDistance = PHP_INT_MAX;
+                    
+                    foreach ($distributionBaskets as $db) {
+                        if (in_array($db['id'], $blockedTargets)) continue;
+                        
+                        // Distance = how far daysSinceOrder is from this basket's range
+                        if ($daysSinceOrder < $db['min_days']) {
+                            $dist = $db['min_days'] - $daysSinceOrder;
+                        } elseif ($daysSinceOrder > $db['max_days']) {
+                            $dist = $daysSinceOrder - $db['max_days'];
+                        } else {
+                            $dist = 0; // Perfect match (should have matched above)
+                        }
+                        
+                        if ($dist < $closestDistance) {
+                            $closestDistance = $dist;
+                            $closestBasket = $db;
+                        }
+                    }
+                    
+                    if ($closestBasket) {
+                        $targetBasketKey = $closestBasket['basket_key'];
+                        $matchedBy = "re-eval(closest:{$closestBasket['min_days']}-{$closestBasket['max_days']}d,gap:{$closestDistance}d)";
+                    } else {
+                        // No valid basket at all (all blocked) — skip and log error
+                        echo "  ⚠️ $name: No matching basket (days=$daysSinceOrder, all blocked!) - SKIPPED\n";
+                        $totalErrors++;
+                        $processed++;
+                        continue;
+                    }
                 }
             }
             

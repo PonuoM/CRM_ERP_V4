@@ -364,12 +364,31 @@ class BasketRoutingServiceV2 {
     
     /**
      * Get user's role ID
+     * Falls back to role text field if role_id is NULL
      */
     private function getUserRole(int $userId): ?int {
-        $stmt = $this->pdo->prepare("SELECT role_id FROM users WHERE id = ?");
+        $stmt = $this->pdo->prepare("SELECT role_id, role FROM users WHERE id = ?");
         $stmt->execute([$userId]);
-        $result = $stmt->fetchColumn();
-        return $result !== false ? (int)$result : null;
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return null;
+        
+        // ถ้ามี role_id ใช้เลย
+        if ($row['role_id'] !== null) {
+            return (int)$row['role_id'];
+        }
+        
+        // Fallback: ใช้ role (text) เพื่อ map เป็น role_id
+        $roleText = strtolower($row['role'] ?? '');
+        if ($roleText === 'telesale') {
+            error_log("[BasketRoutingV2] WARNING: User $userId has role_id=NULL but role='$roleText' - using fallback role_id=7");
+            return 7; // Telesale role ID
+        }
+        if ($roleText === 'supervisor telesale') {
+            error_log("[BasketRoutingV2] WARNING: User $userId has role_id=NULL but role='$roleText' - using fallback role_id=6");
+            return 6; // Supervisor Telesale role ID
+        }
+        
+        return null;
     }
     
     /**
@@ -423,7 +442,7 @@ class BasketRoutingServiceV2 {
             WHERE o.customer_id = ?
               AND o.order_status IN ('Pending', 'Picking', 'Shipping')
               AND o.order_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-              AND u.role_id IN (6, 7)
+              AND (u.role_id IN (6, 7) OR (u.role_id IS NULL AND LOWER(u.role) IN ('telesale', 'supervisor telesale')))
         ");
         $orderStmt->execute([$customerId]);
         $telesaleOrders = (int)$orderStmt->fetchColumn();
@@ -440,7 +459,7 @@ class BasketRoutingServiceV2 {
             WHERE o.customer_id = ?
               AND o.order_status IN ('Pending', 'Picking', 'Shipping')
               AND o.order_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-              AND u.role_id IN (6, 7)
+              AND (u.role_id IN (6, 7) OR (u.role_id IS NULL AND LOWER(u.role) IN ('telesale', 'supervisor telesale')))
         ");
         $itemStmt->execute([$customerId]);
         $telesaleItems = (int)$itemStmt->fetchColumn();

@@ -33,6 +33,7 @@ interface DistributionPreview {
 interface AgentWithBaskets extends User {
     basketCounts: Record<string, number>;
     totalCustomers: number;
+    isActive: boolean;
 }
 
 interface ResetCandidate {
@@ -256,6 +257,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     id: u.id || u.user_id,
                     firstName: u.firstName || u.first_name || '',
                     lastName: u.lastName || u.last_name || '',
+                    status: u.status || 'active',
+                    isActive: (u.status || 'active') === 'active',
                     role: u.role,
                     companyId: u.companyId || u.company_id,
                     username: u.username,
@@ -286,31 +289,12 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 }
             }
 
-            setAgents(telesales);
+            // Filter: Active agents always shown, Inactive only if they still have customers
+            const filtered = telesales.filter(agent => {
+                return agent.isActive || agent.totalCustomers > 0;
+            });
 
-            if (telesales.length > 0) {
-                try {
-                    const agentIds = telesales.map(a => a.id).join(',');
-                    const countRes = await apiFetch(
-                        `customers?action=count_by_baskets&assignedTo=${agentIds}&companyId=${currentUser?.companyId}`
-                    );
-
-                    if (countRes?.agents) {
-                        telesales.forEach(agent => {
-                            const stats = countRes.agents[agent.id];
-                            if (stats) {
-                                agent.basketCounts = stats.baskets || {};
-                                agent.totalCustomers = stats.total || 0;
-                            }
-                        });
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch basket counts:', error);
-                    // Keep empty counts on error
-                }
-            }
-
-            setAgents(telesales);
+            setAgents(filtered);
         } catch (error) {
             console.error('Failed to fetch agents:', error);
         } finally {
@@ -1303,43 +1287,52 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                 </tr>
                             </thead>
                             <tbody>
-                                {agents.map(agent => (
-                                    <tr
-                                        key={agent.id}
-                                        className={`border-t hover:bg-gray-50 cursor-pointer ${selectedAgents.includes(agent.id) ? 'bg-blue-50' : ''}`}
-                                        onClick={() => toggleAgent(agent.id)}
-                                    >
-                                        <td className="p-3">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedAgents.includes(agent.id)}
-                                                onChange={() => toggleAgent(agent.id)}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                            />
-                                        </td>
-                                        <td className="p-3 font-medium">
-                                            {agent.firstName} {agent.lastName}
-                                        </td>
-                                        <td className="p-3 text-center">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    openReclaimModal(agent);
-                                                }}
-                                                className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 border border-red-200"
-                                            >
-                                                ดึงคืน
-                                            </button>
-                                        </td>
-                                        <td className="p-3 text-center font-semibold text-gray-700">{agent.totalCustomers}</td>
-                                        {dashboardBaskets.map(basket => (
-                                            <td key={basket.basket_key} className="p-3 text-center text-gray-600 text-sm">
-                                                {agent.basketCounts?.[basket.basket_key] || 0}
+                                {agents.map(agent => {
+                                    const isInactive = !agent.isActive;
+                                    return (
+                                        <tr
+                                            key={agent.id}
+                                            className={`border-t ${isInactive ? 'opacity-60 bg-gray-50' : 'hover:bg-gray-50 cursor-pointer'} ${selectedAgents.includes(agent.id) ? 'bg-blue-50' : ''}`}
+                                            onClick={() => !isInactive && toggleAgent(agent.id)}
+                                        >
+                                            <td className="p-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedAgents.includes(agent.id)}
+                                                    onChange={() => toggleAgent(agent.id)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    disabled={isInactive}
+                                                    className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${isInactive ? 'cursor-not-allowed opacity-50' : ''}`}
+                                                />
                                             </td>
-                                        ))}
-                                    </tr>
-                                ))}
+                                            <td className="p-3 font-medium">
+                                                {agent.firstName} {agent.lastName}
+                                                {isInactive && (
+                                                    <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
+                                                        {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        openReclaimModal(agent);
+                                                    }}
+                                                    className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 border border-red-200"
+                                                >
+                                                    ดึงคืน
+                                                </button>
+                                            </td>
+                                            <td className="p-3 text-center font-semibold text-gray-700">{agent.totalCustomers}</td>
+                                            {dashboardBaskets.map(basket => (
+                                                <td key={basket.basket_key} className="p-3 text-center text-gray-600 text-sm">
+                                                    {agent.basketCounts?.[basket.basket_key] || 0}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>

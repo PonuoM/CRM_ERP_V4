@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../services/api';
-import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, RefreshCw, Users, Calendar, Package } from 'lucide-react';
+import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, RefreshCw, Users, Calendar, Package, ShieldCheck, Search, ArrowRight, CheckCircle2, XCircle, ChevronRight, ArrowLeft, Eye, UserX } from 'lucide-react';
 import { User } from '../types';
 
 interface BasketSettingsPageProps {
@@ -59,8 +59,60 @@ const BASKET_GROUPS = [
         label: 'คืน Pool',
         icon: RefreshCw,
         description: 'ตั้งค่าการคืนลูกค้ากลับ Pool อัตโนมัติ'
+    },
+    {
+        key: 'reevaluate',
+        label: 'ตรวจสอบถัง',
+        icon: ShieldCheck,
+        description: 'สแกนและแก้ไขลูกค้าที่อยู่ผิดถัง'
+    },
+    {
+        key: 'misassigned',
+        label: 'ลูกค้าหลงถัง',
+        icon: UserX,
+        description: 'คนขายจริง ≠ เจ้าของ (ถัง 39/40)'
     }
 ];
+
+interface ReevalSummary {
+    from_basket: number;
+    from_name: string;
+    to_basket: number;
+    to_name: string;
+    count: number;
+}
+
+interface ReevalCustomer {
+    customer_id: number;
+    name: string;
+    days_since_order: number;
+    current_basket: number;
+    current_basket_name: string;
+    correct_basket: number;
+    correct_basket_name: string;
+}
+
+interface ReevalDetailCustomer extends ReevalCustomer {
+    creator_name: string;
+    creator_id: number;
+    owner_name: string;
+    assigned_to: number;
+    latest_order_date: string;
+    latest_order_id: number;
+    is_own_sale: boolean;
+    reason: string;
+}
+
+interface ReevalResult {
+    success: boolean;
+    total_wrong: number;
+    summary: ReevalSummary[];
+    customers: ReevalCustomer[];
+    scanned_at?: string;
+    fixed?: number;
+    errors?: number;
+    fixed_at?: string;
+}
 
 const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) => {
     const user = currentUser;
@@ -71,6 +123,23 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
     const [activeGroup, setActiveGroup] = useState<string>('dashboard_v2');
     const [editingBasket, setEditingBasket] = useState<BasketConfig | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // Re-evaluate state
+    const [reevalScanning, setReevalScanning] = useState(false);
+    const [reevalFixing, setReevalFixing] = useState(false);
+    const [reevalResult, setReevalResult] = useState<ReevalResult | null>(null);
+    const [reevalFixResult, setReevalFixResult] = useState<ReevalResult | null>(null);
+    const [selectedTransitions, setSelectedTransitions] = useState<Set<string>>(new Set());
+    const [detailTransition, setDetailTransition] = useState<string | null>(null);
+    const [detailCustomers, setDetailCustomers] = useState<ReevalDetailCustomer[]>([]);
+    const [detailLoading, setDetailLoading] = useState(false);
+
+    // Misassigned state
+    const [misScanning, setMisScanning] = useState(false);
+    const [misResult, setMisResult] = useState<{ total: number; show_all: boolean; summary: { basket_id: number; basket_name: string; count: number }[]; cause_summary: { cause: string; cause_label: string; count: number }[]; customers: ReevalDetailCustomer[]; scanned_at: string } | null>(null);
+    const [misSelected, setMisSelected] = useState<Set<number>>(new Set());
+    const [misFixing, setMisFixing] = useState(false);
+    const [misShowAll, setMisShowAll] = useState(false);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -156,6 +225,105 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         }
     };
 
+    const handleReevalScan = async () => {
+        setReevalScanning(true);
+        setReevalResult(null);
+        setReevalFixResult(null);
+        setSelectedTransitions(new Set());
+        try {
+            const res = await apiFetch('cron/basket_reevaluate_api.php?action=scan');
+            setReevalResult(res);
+            // Auto-select all transitions
+            const allKeys = new Set<string>(res.summary.map((s: ReevalSummary) => `${s.from_basket}→${s.to_basket}`));
+            setSelectedTransitions(allKeys);
+        } catch (error) {
+            console.error('Scan failed:', error);
+            setMessage({ type: 'error', text: 'สแกนล้มเหลว' });
+        } finally {
+            setReevalScanning(false);
+        }
+    };
+
+    const selectedCount = reevalResult?.summary
+        .filter(s => selectedTransitions.has(`${s.from_basket}→${s.to_basket}`))
+        .reduce((sum, s) => sum + s.count, 0) ?? 0;
+
+    const handleReevalFix = async () => {
+        if (selectedTransitions.size === 0) return;
+        const transitions = Array.from(selectedTransitions);
+        if (!confirm(`ยืนยันแก้ไขลูกค้า ${selectedCount.toLocaleString()} คนที่เลือก?\n\nรายการที่เลือก:\n${transitions.join('\n')}\n\nการดำเนินการนี้จะย้ายลูกค้าไปถังที่ถูกต้องทันที`)) return;
+        setReevalFixing(true);
+        try {
+            const res = await apiFetch('cron/basket_reevaluate_api.php?action=fix', {
+                method: 'POST',
+                body: JSON.stringify({ transitions })
+            });
+            setReevalFixResult(res);
+            setReevalResult(null);
+            setSelectedTransitions(new Set());
+            setMessage({ type: 'success', text: `แก้ไขสำเร็จ ${res.fixed} คน` });
+        } catch (error) {
+            console.error('Fix failed:', error);
+            setMessage({ type: 'error', text: 'แก้ไขล้มเหลว' });
+        } finally {
+            setReevalFixing(false);
+        }
+    };
+
+    const handleViewDetail = async (transition: string) => {
+        setDetailLoading(true);
+        setDetailTransition(transition);
+        try {
+            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=detail&transition=${encodeURIComponent(transition)}`);
+            setDetailCustomers(res.customers || []);
+        } catch (error) {
+            console.error('Detail failed:', error);
+            setMessage({ type: 'error', text: 'โหลดรายละเอียดล้มเหลว' });
+            setDetailTransition(null);
+        } finally {
+            setDetailLoading(false);
+        }
+    };
+
+    // ---- Misassigned handlers ----
+    const handleMisScan = async () => {
+        setMisScanning(true);
+        setMisResult(null);
+        setMisSelected(new Set());
+        try {
+            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=misassigned&show_all=${misShowAll ? '1' : '0'}`);
+            setMisResult(res);
+            // Auto-select all
+            setMisSelected(new Set<number>(res.customers.map((c: ReevalDetailCustomer) => c.customer_id)));
+        } catch (error) {
+            console.error('Misassigned scan failed:', error);
+            setMessage({ type: 'error', text: 'สแกนลูกค้าหลงถังล้มเหลว' });
+        } finally {
+            setMisScanning(false);
+        }
+    };
+
+    const handleMisFix = async () => {
+        if (misSelected.size === 0) return;
+        const ids = Array.from(misSelected);
+        if (!confirm(`ยืนยันเปลี่ยนเจ้าของลูกค้า ${ids.length} คน?\n\nลูกค้าจะถูกย้ายไปให้คนที่สร้าง order ล่าสุด`)) return;
+        setMisFixing(true);
+        try {
+            const res = await apiFetch('cron/basket_reevaluate_api.php?action=fix_misassigned', {
+                method: 'POST',
+                body: JSON.stringify({ customer_ids: ids })
+            });
+            setMessage({ type: 'success', text: `เปลี่ยนเจ้าของสำเร็จ ${res.fixed} คน` });
+            setMisResult(null);
+            setMisSelected(new Set());
+        } catch (error) {
+            console.error('Fix misassigned failed:', error);
+            setMessage({ type: 'error', text: 'แก้ไขล้มเหลว' });
+        } finally {
+            setMisFixing(false);
+        }
+    };
+
     const filteredBaskets = baskets.filter(b => b.target_page === activeGroup);
 
     if (loading) {
@@ -216,7 +384,483 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
 
                     {/* Content */}
                     <div className="flex-1 bg-white rounded-2xl shadow-sm border p-6">
-                        {activeGroup === 'return_pool' ? (
+                        {activeGroup === 'reevaluate' ? (
+                            /* Re-evaluate Panel */
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                                    <ShieldCheck size={24} className="text-blue-600" />
+                                    ตรวจสอบ & แก้ไขถัง
+                                </h2>
+                                <p className="text-gray-500 text-sm mb-6">
+                                    สแกนหาลูกค้าที่อยู่ผิดถัง เทียบกับ days_since_order แล้วย้ายไปถังที่ถูกต้อง
+                                </p>
+
+                                {/* Scan Button */}
+                                <button
+                                    onClick={handleReevalScan}
+                                    disabled={reevalScanning}
+                                    className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 mb-6 shadow-sm"
+                                >
+                                    {reevalScanning ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
+                                    {reevalScanning ? 'กำลังสแกน...' : 'สแกนหาลูกค้าที่ผิดถัง'}
+                                </button>
+
+                                {/* Fix Result (after fix) */}
+                                {reevalFixResult && (
+                                    <div className="mb-6 p-6 bg-green-50 border border-green-200 rounded-xl">
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <CheckCircle2 size={28} className="text-green-600" />
+                                            <h3 className="text-lg font-bold text-green-800">แก้ไขเรียบร้อย!</h3>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-4 text-center">
+                                            <div className="bg-white rounded-lg p-3">
+                                                <div className="text-2xl font-bold text-gray-800">{reevalFixResult.total_wrong}</div>
+                                                <div className="text-xs text-gray-500">พบผิดถัง</div>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-3">
+                                                <div className="text-2xl font-bold text-green-600">{reevalFixResult.fixed}</div>
+                                                <div className="text-xs text-gray-500">แก้ไขแล้ว</div>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-3">
+                                                <div className="text-2xl font-bold text-red-600">{reevalFixResult.errors}</div>
+                                                <div className="text-xs text-gray-500">ผิดพลาด</div>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-3">แก้ไขเมื่อ: {reevalFixResult.fixed_at}</p>
+                                        <button
+                                            onClick={handleReevalScan}
+                                            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2"
+                                        >
+                                            <Search size={16} /> สแกนอีกครั้ง
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Scan Result */}
+                                {reevalResult && (
+                                    <div>
+                                        {/* Summary Header */}
+                                        <div className={`p-5 rounded-xl mb-6 ${reevalResult.total_wrong === 0 ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                                            <div className="flex items-center gap-3">
+                                                {reevalResult.total_wrong === 0
+                                                    ? <CheckCircle2 size={28} className="text-green-600" />
+                                                    : <AlertCircle size={28} className="text-amber-600" />
+                                                }
+                                                <div>
+                                                    <h3 className={`text-lg font-bold ${reevalResult.total_wrong === 0 ? 'text-green-800' : 'text-amber-800'}`}>
+                                                        {reevalResult.total_wrong === 0
+                                                            ? '✅ ทุกถังถูกต้อง!'
+                                                            : `⚠️ พบ ${reevalResult.total_wrong.toLocaleString()} คนอยู่ผิดถัง`
+                                                        }
+                                                    </h3>
+                                                    <p className="text-xs text-gray-500">สแกนเมื่อ: {reevalResult.scanned_at}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {reevalResult.total_wrong > 0 && (
+                                            <>
+                                                {/* Summary Table */}
+                                                <h4 className="font-semibold text-gray-700 mb-3">สรุปการย้าย</h4>
+                                                <div className="bg-white border rounded-xl overflow-hidden mb-6">
+                                                    <table className="w-full text-sm">
+                                                        <thead className="bg-gray-50">
+                                                            <tr>
+                                                                <th className="p-3 w-10">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={selectedTransitions.size === reevalResult.summary.length}
+                                                                        onChange={(e) => {
+                                                                            if (e.target.checked) {
+                                                                                setSelectedTransitions(new Set(reevalResult.summary.map(s => `${s.from_basket}→${s.to_basket}`)));
+                                                                            } else {
+                                                                                setSelectedTransitions(new Set());
+                                                                            }
+                                                                        }}
+                                                                        className="w-4 h-4 text-blue-600 rounded"
+                                                                    />
+                                                                </th>
+                                                                <th className="text-left p-3 font-medium text-gray-600">จากถัง</th>
+                                                                <th className="text-center p-3"></th>
+                                                                <th className="text-left p-3 font-medium text-gray-600">ไปถัง</th>
+                                                                <th className="text-right p-3 font-medium text-gray-600">จำนวน</th>
+                                                                <th className="p-3 w-10"></th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {reevalResult.summary.map((s, i) => {
+                                                                const key = `${s.from_basket}→${s.to_basket}`;
+                                                                const isChecked = selectedTransitions.has(key);
+                                                                return (
+                                                                    <tr key={i} className={`border-t cursor-pointer ${isChecked ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 opacity-60'}`}
+                                                                        onClick={() => {
+                                                                            const next = new Set(selectedTransitions);
+                                                                            if (next.has(key)) next.delete(key);
+                                                                            else next.add(key);
+                                                                            setSelectedTransitions(next);
+                                                                        }}
+                                                                    >
+                                                                        <td className="p-3">
+                                                                            <input type="checkbox" checked={isChecked} readOnly className="w-4 h-4 text-blue-600 rounded pointer-events-none" />
+                                                                        </td>
+                                                                        <td className="p-3">
+                                                                            <span className="text-red-600 font-medium">{s.from_name}</span>
+                                                                            <span className="text-xs text-gray-400 ml-1">(ID: {s.from_basket})</span>
+                                                                        </td>
+                                                                        <td className="text-center p-3"><ArrowRight size={16} className="text-gray-400 mx-auto" /></td>
+                                                                        <td className="p-3">
+                                                                            <span className="text-green-600 font-medium">{s.to_name}</span>
+                                                                            <span className="text-xs text-gray-400 ml-1">(ID: {s.to_basket})</span>
+                                                                        </td>
+                                                                        <td className="p-3 text-right font-bold">{s.count.toLocaleString()}</td>
+                                                                        <td className="p-3 text-center">
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); handleViewDetail(key); }}
+                                                                                className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded"
+                                                                                title="ดูรายชื่อทั้งหมด"
+                                                                            >
+                                                                                <Eye size={16} />
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                        <tfoot className="bg-gray-50 font-bold">
+                                                            <tr className="border-t-2">
+                                                                <td className="p-3" colSpan={5}>เลือก {selectedTransitions.size}/{reevalResult.summary.length} รายการ ({selectedCount.toLocaleString()} คน)</td>
+                                                                <td className="p-3 text-right text-blue-600">{reevalResult.total_wrong.toLocaleString()}</td>
+                                                            </tr>
+                                                        </tfoot>
+                                                    </table>
+                                                </div>
+
+                                                {/* Customer Preview */}
+                                                <h4 className="font-semibold text-gray-700 mb-3">
+                                                    ตัวอย่างลูกค้า {reevalResult.customers.length < reevalResult.total_wrong ? `(แสดง ${reevalResult.customers.length} จาก ${reevalResult.total_wrong.toLocaleString()})` : ''}
+                                                </h4>
+                                                <div className="bg-white border rounded-xl overflow-hidden mb-6 max-h-80 overflow-y-auto">
+                                                    <table className="w-full text-xs">
+                                                        <thead className="bg-gray-50 sticky top-0">
+                                                            <tr>
+                                                                <th className="text-left p-2 font-medium">ID</th>
+                                                                <th className="text-left p-2 font-medium">ชื่อ</th>
+                                                                <th className="text-right p-2 font-medium">วัน</th>
+                                                                <th className="text-left p-2 font-medium">ถังปัจจุบัน</th>
+                                                                <th className="text-center p-2"></th>
+                                                                <th className="text-left p-2 font-medium">ถังที่ถูก</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {reevalResult.customers.map(c => (
+                                                                <tr key={c.customer_id} className="border-t hover:bg-blue-50">
+                                                                    <td className="p-2 text-gray-500">{c.customer_id}</td>
+                                                                    <td className="p-2 font-medium">{c.name}</td>
+                                                                    <td className="p-2 text-right">{c.days_since_order}d</td>
+                                                                    <td className="p-2 text-red-600">{c.current_basket_name}</td>
+                                                                    <td className="p-2 text-center"><ArrowRight size={12} className="text-gray-400 mx-auto" /></td>
+                                                                    <td className="p-2 text-green-600 font-medium">{c.correct_basket_name}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                {/* Detail Panel */}
+                                                {detailTransition && (
+                                                    <div className="mb-6 bg-gray-50 border rounded-xl p-5">
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="flex items-center gap-3">
+                                                                <button onClick={() => setDetailTransition(null)} className="p-1 hover:bg-gray-200 rounded">
+                                                                    <ArrowLeft size={20} />
+                                                                </button>
+                                                                <h4 className="font-bold text-gray-800">
+                                                                    รายละเอียด: {detailTransition.replace('→', ' → ')}
+                                                                    {!detailLoading && <span className="text-sm font-normal text-gray-500 ml-2">({detailCustomers.length.toLocaleString()} คน)</span>}
+                                                                </h4>
+                                                            </div>
+                                                        </div>
+
+                                                        {detailLoading ? (
+                                                            <div className="flex items-center justify-center py-8">
+                                                                <Loader2 className="animate-spin text-blue-500" size={32} />
+                                                                <span className="ml-3 text-gray-500">กำลังโหลด...</span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="bg-white border rounded-xl overflow-hidden max-h-[500px] overflow-y-auto">
+                                                                <table className="w-full text-xs">
+                                                                    <thead className="bg-gray-100 sticky top-0">
+                                                                        <tr>
+                                                                            <th className="text-left p-2 font-semibold">#</th>
+                                                                            <th className="text-left p-2 font-semibold">ID</th>
+                                                                            <th className="text-left p-2 font-semibold">ชื่อลูกค้า</th>
+                                                                            <th className="text-left p-2 font-semibold">เจ้าของ (assigned)</th>
+                                                                            <th className="text-left p-2 font-semibold">คนสร้าง order</th>
+                                                                            <th className="text-left p-2 font-semibold">วันที่ order</th>
+                                                                            <th className="text-right p-2 font-semibold">วัน</th>
+                                                                            <th className="text-center p-2 font-semibold">ขายเอง?</th>
+                                                                            <th className="text-left p-2 font-semibold">ถังปัจจุบัน</th>
+                                                                            <th className="text-center p-2"></th>
+                                                                            <th className="text-left p-2 font-semibold">ถังที่ถูก</th>
+                                                                            <th className="text-left p-2 font-semibold min-w-[200px]">เหตุผล</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {detailCustomers.map((c, idx) => (
+                                                                            <tr key={c.customer_id} className="border-t hover:bg-blue-50">
+                                                                                <td className="p-2 text-gray-400">{idx + 1}</td>
+                                                                                <td className="p-2 text-gray-500">{c.customer_id}</td>
+                                                                                <td className="p-2 font-medium">{c.name}</td>
+                                                                                <td className="p-2">
+                                                                                    <span className="text-purple-600">{c.owner_name}</span>
+                                                                                    <span className="text-gray-400 text-[10px] ml-1">(#{c.assigned_to})</span>
+                                                                                </td>
+                                                                                <td className="p-2">
+                                                                                    <span className={c.is_own_sale ? 'text-green-600 font-medium' : 'text-orange-600'}>{c.creator_name}</span>
+                                                                                    <span className="text-gray-400 text-[10px] ml-1">(#{c.creator_id})</span>
+                                                                                </td>
+                                                                                <td className="p-2 text-gray-600">{c.latest_order_date}</td>
+                                                                                <td className="p-2 text-right font-medium">{c.days_since_order}d</td>
+                                                                                <td className="p-2 text-center">
+                                                                                    {c.is_own_sale
+                                                                                        ? <span className="text-green-600 font-bold">✓</span>
+                                                                                        : <span className="text-red-500">✗</span>
+                                                                                    }
+                                                                                </td>
+                                                                                <td className="p-2 text-red-600">{c.current_basket_name}</td>
+                                                                                <td className="p-2 text-center"><ArrowRight size={10} className="text-gray-400 mx-auto" /></td>
+                                                                                <td className="p-2 text-green-600 font-medium">{c.correct_basket_name}</td>
+                                                                                <td className="p-2 text-gray-500 text-[11px] leading-tight">{c.reason}</td>
+                                                                            </tr>
+                                                                        ))}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Fix Button */}
+                                                <div className="flex gap-3">
+                                                    <button
+                                                        onClick={handleReevalFix}
+                                                        disabled={reevalFixing || selectedTransitions.size === 0}
+                                                        className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                                    >
+                                                        {reevalFixing ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                                                        {reevalFixing ? 'กำลังแก้ไข...' : selectedTransitions.size === 0 ? 'เลือกรายการที่ต้องการแก้ไข' : `ยืนยันแก้ไข ${selectedCount.toLocaleString()} คน`}
+                                                    </button>
+                                                    <button
+                                                        onClick={handleReevalScan}
+                                                        disabled={reevalScanning}
+                                                        className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+                                                    >
+                                                        <RefreshCw size={20} /> สแกนใหม่
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ) : activeGroup === 'misassigned' ? (
+                            /* Misassigned Panel */
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                                    <UserX size={24} className="text-orange-600" />
+                                    ลูกค้าหลงถัง (Misassigned)
+                                </h2>
+                                <p className="text-gray-500 text-sm mb-6">
+                                    ค้นหาลูกค้าในถัง 39 (ส่วนตัว 1-2เดือน) และ 40 (โอกาสสุดท้าย) ที่คนขายจริง (Telesale) ไม่ใช่เจ้าของปัจจุบัน
+                                </p>
+
+                                <div className="flex items-center gap-4 mb-6">
+                                    <button
+                                        onClick={handleMisScan}
+                                        disabled={misScanning}
+                                        className="px-6 py-3 bg-orange-600 text-white rounded-xl hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                    >
+                                        {misScanning ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
+                                        {misScanning ? 'กำลังสแกน...' : 'สแกนหาลูกค้าหลงถัง'}
+                                    </button>
+                                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={misShowAll}
+                                            onChange={(e) => setMisShowAll(e.target.checked)}
+                                            className="w-4 h-4 rounded"
+                                        />
+                                        รวมที่ย้ายเอง (ผู้ดูแลย้าย)
+                                    </label>
+                                </div>
+
+                                {misResult && (
+                                    <div>
+                                        {/* Summary Header */}
+                                        <div className={`p-5 rounded-xl mb-6 ${misResult.total === 0 ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}`}>
+                                            <div className="flex items-center gap-3">
+                                                {misResult.total === 0
+                                                    ? <CheckCircle2 size={28} className="text-green-600" />
+                                                    : <UserX size={28} className="text-orange-600" />
+                                                }
+                                                <div>
+                                                    <h3 className={`text-lg font-bold ${misResult.total === 0 ? 'text-green-800' : 'text-orange-800'}`}>
+                                                        {misResult.total === 0
+                                                            ? '✅ ไม่พบลูกค้าหลงถัง!'
+                                                            : `⚠️ พบ ${misResult.total.toLocaleString()} คนหลงถัง`
+                                                        }
+                                                    </h3>
+                                                    <p className="text-xs text-gray-500">สแกนเมื่อ: {misResult.scanned_at}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {misResult.total > 0 && (
+                                            <>
+                                                {/* Summary by basket */}
+                                                <div className="flex gap-4 mb-6">
+                                                    {misResult.summary.map(s => (
+                                                        <div key={s.basket_id} className="bg-white border rounded-xl p-4 flex-1">
+                                                            <div className="text-sm text-gray-500">{s.basket_name} (ID: {s.basket_id})</div>
+                                                            <div className="text-2xl font-bold text-orange-600">{s.count.toLocaleString()}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Cause summary */}
+                                                {misResult.cause_summary && misResult.cause_summary.length > 0 && (
+                                                    <div className="flex gap-2 mb-6 flex-wrap">
+                                                        {misResult.cause_summary.map(cs => {
+                                                            const colors: Record<string, string> = {
+                                                                cron: 'bg-red-100 text-red-700 border-red-200',
+                                                                manual: 'bg-blue-100 text-blue-700 border-blue-200',
+                                                                sale: 'bg-green-100 text-green-700 border-green-200',
+                                                                reevaluate: 'bg-purple-100 text-purple-700 border-purple-200',
+                                                                unknown: 'bg-gray-100 text-gray-700 border-gray-200',
+                                                                other: 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                                            };
+                                                            return (
+                                                                <div key={cs.cause} className={`px-3 py-2 rounded-lg border text-sm font-medium ${colors[cs.cause] || colors.other}`}>
+                                                                    {cs.cause_label}: <strong>{cs.count}</strong>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {/* Customer table */}
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h4 className="font-semibold text-gray-700">
+                                                        รายชื่อลูกค้า ({misResult.customers.length.toLocaleString()} คน)
+                                                    </h4>
+                                                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={misSelected.size === misResult.customers.length}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setMisSelected(new Set(misResult.customers.map(c => c.customer_id)));
+                                                                } else {
+                                                                    setMisSelected(new Set());
+                                                                }
+                                                            }}
+                                                            className="w-4 h-4 rounded"
+                                                        />
+                                                        เลือกทั้งหมด
+                                                    </label>
+                                                </div>
+
+                                                <div className="bg-white border rounded-xl overflow-hidden mb-6 max-h-[500px] overflow-y-auto">
+                                                    <table className="w-full text-xs">
+                                                        <thead className="bg-gray-100 sticky top-0">
+                                                            <tr>
+                                                                <th className="p-2 w-8"></th>
+                                                                <th className="text-left p-2 font-semibold">#</th>
+                                                                <th className="text-left p-2 font-semibold">ID</th>
+                                                                <th className="text-left p-2 font-semibold">ชื่อลูกค้า</th>
+                                                                <th className="text-left p-2 font-semibold">ถัง</th>
+                                                                <th className="text-left p-2 font-semibold">เจ้าของปัจจุบัน</th>
+                                                                <th className="text-center p-2">→</th>
+                                                                <th className="text-left p-2 font-semibold">คนขายจริง</th>
+                                                                <th className="text-left p-2 font-semibold">วันที่ order</th>
+                                                                <th className="text-left p-2 font-semibold">วันที่ assign</th>
+                                                                <th className="text-right p-2 font-semibold">วัน</th>
+                                                                <th className="text-left p-2 font-semibold">สาเหตุ</th>
+                                                                <th className="text-left p-2 font-semibold min-w-[250px]">เหตุผล</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {misResult.customers.map((c, idx) => {
+                                                                const isChecked = misSelected.has(c.customer_id);
+                                                                return (
+                                                                    <tr key={c.customer_id}
+                                                                        className={`border-t cursor-pointer ${isChecked ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-gray-50 opacity-60'}`}
+                                                                        onClick={() => {
+                                                                            const next = new Set(misSelected);
+                                                                            if (next.has(c.customer_id)) next.delete(c.customer_id);
+                                                                            else next.add(c.customer_id);
+                                                                            setMisSelected(next);
+                                                                        }}
+                                                                    >
+                                                                        <td className="p-2">
+                                                                            <input type="checkbox" checked={isChecked} readOnly className="w-4 h-4 rounded pointer-events-none" />
+                                                                        </td>
+                                                                        <td className="p-2 text-gray-400">{idx + 1}</td>
+                                                                        <td className="p-2 text-gray-500">{c.customer_id}</td>
+                                                                        <td className="p-2 font-medium">{c.name}</td>
+                                                                        <td className="p-2 text-blue-600">{c.current_basket_name}</td>
+                                                                        <td className="p-2">
+                                                                            <span className="text-red-600 font-medium">{c.owner_name}</span>
+                                                                            <span className="text-gray-400 text-[10px] ml-1">(#{c.assigned_to})</span>
+                                                                        </td>
+                                                                        <td className="p-2 text-center"><ArrowRight size={12} className="text-gray-400 mx-auto" /></td>
+                                                                        <td className="p-2">
+                                                                            <span className="text-green-600 font-medium">{c.creator_name}</span>
+                                                                            <span className="text-gray-400 text-[10px] ml-1">(#{c.creator_id})</span>
+                                                                        </td>
+                                                                        <td className="p-2 text-gray-600">{c.latest_order_date}</td>
+                                                                        <td className="p-2 text-gray-600">{(c as any).basket_entered_date || '-'}</td>
+                                                                        <td className="p-2 text-right font-medium">{c.days_since_order}d</td>
+                                                                        <td className="p-2">
+                                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${(c as any).cause === 'cron' ? 'bg-red-100 text-red-700' :
+                                                                                (c as any).cause === 'manual' ? 'bg-blue-100 text-blue-700' :
+                                                                                    (c as any).cause === 'sale' ? 'bg-green-100 text-green-700' :
+                                                                                        (c as any).cause === 'reevaluate' ? 'bg-purple-100 text-purple-700' :
+                                                                                            'bg-gray-100 text-gray-600'
+                                                                                }`}>{(c as any).cause_label || '-'}</span>
+                                                                        </td>
+                                                                        <td className="p-2 text-gray-500 text-[11px] leading-tight">{c.reason}</td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                {/* Fix Button */}
+                                                <div className="flex gap-3">
+                                                    <button
+                                                        onClick={handleMisFix}
+                                                        disabled={misFixing || misSelected.size === 0}
+                                                        className="px-6 py-3 bg-orange-600 text-white rounded-xl hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                                    >
+                                                        {misFixing ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                                                        {misFixing ? 'กำลังย้าย...' : misSelected.size === 0 ? 'เลือกลูกค้าที่ต้องการย้าย' : `ยืนยันย้ายเจ้าของ ${misSelected.size} คน`}
+                                                    </button>
+                                                    <button
+                                                        onClick={handleMisScan}
+                                                        disabled={misScanning}
+                                                        className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+                                                    >
+                                                        <RefreshCw size={20} /> สแกนใหม่
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ) : activeGroup === 'return_pool' ? (
                             /* Return to Pool Config */
                             <div>
                                 <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
