@@ -2194,13 +2194,17 @@ export async function getTelesaleUpsellList(params: {
   return apiFetch(`Orders/get_upsell_orders.php?${queryParams.toString()}`);
 }
 
-export async function getReturnOrders(params?: { status?: string; page?: number; limit?: number; companyId?: number; search?: string }) {
+export async function getReturnOrders(params?: { status?: string; page?: number; limit?: number; companyId?: number; search?: string; orderDateFrom?: string; orderDateTo?: string; returnDateFrom?: string; returnDateTo?: string }) {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);
   if (params?.page) qs.set('page', String(params.page));
   if (params?.limit) qs.set('limit', String(params.limit));
   if (params?.companyId) qs.set('companyId', String(params.companyId));
   if (params?.search) qs.set('search', params.search);
+  if (params?.orderDateFrom) qs.set('orderDateFrom', params.orderDateFrom);
+  if (params?.orderDateTo) qs.set('orderDateTo', params.orderDateTo);
+  if (params?.returnDateFrom) qs.set('returnDateFrom', params.returnDateFrom);
+  if (params?.returnDateTo) qs.set('returnDateTo', params.returnDateTo);
 
   return apiFetch(`Orders/get_return_orders.php?${qs.toString()}`, {
     method: "GET",
@@ -2224,9 +2228,13 @@ export async function exportReturnOrders(params: { date_from: string; date_to: s
   });
 }
 
-export async function getReturnStats(companyId?: number) {
+export async function getReturnStats(params?: { companyId?: number; orderDateFrom?: string; orderDateTo?: string; returnDateFrom?: string; returnDateTo?: string }) {
   const qs = new URLSearchParams();
-  if (companyId) qs.set('companyId', String(companyId));
+  if (params?.companyId) qs.set('companyId', String(params.companyId));
+  if (params?.orderDateFrom) qs.set('orderDateFrom', params.orderDateFrom);
+  if (params?.orderDateTo) qs.set('orderDateTo', params.orderDateTo);
+  if (params?.returnDateFrom) qs.set('returnDateFrom', params.returnDateFrom);
+  if (params?.returnDateTo) qs.set('returnDateTo', params.returnDateTo);
 
   return apiFetch(`Orders/get_return_stats.php?${qs.toString()}`, {
     method: "GET",

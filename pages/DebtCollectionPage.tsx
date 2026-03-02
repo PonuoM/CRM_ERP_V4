@@ -769,15 +769,16 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                             )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-center">
-                            {isPendingFullyCovered ? (
-                              <span
-                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-md cursor-default"
-                                title={`มีสลิปยอด ฿${pendingSlipAmount.toLocaleString()} รอการตรวจสอบ`}
-                              >
-                                <Clock size={14} />
-                                รอตรวจสลิป
-                              </span>
-                            ) : (
+                            <div className="flex flex-col items-center gap-1">
+                              {isPendingFullyCovered && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-50 text-orange-600 text-[10px] font-medium rounded"
+                                  title={`มีสลิปยอด ฿${pendingSlipAmount.toLocaleString()} รอการตรวจสอบ`}
+                                >
+                                  <Clock size={10} />
+                                  มีการแนบสลิปนอกระบบติดตามหนี้ครบแล้ว
+                                </span>
+                              )}
                               <button
                                 onClick={() => handleTrackClick(order)}
                                 className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors"
@@ -785,7 +786,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                                 <FileText size={14} />
                                 ติดตาม
                               </button>
-                            )}
+                            </div>
                           </td>
 
                         </tr>

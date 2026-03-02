@@ -13,12 +13,32 @@ header('Content-Type: application/json; charset=utf-8');
 
 try {
     $companyId = intval($_GET['companyId'] ?? 0);
+    $orderDateFrom = trim($_GET['orderDateFrom'] ?? '');
+    $orderDateTo = trim($_GET['orderDateTo'] ?? '');
+    $returnDateFrom = trim($_GET['returnDateFrom'] ?? '');
+    $returnDateTo = trim($_GET['returnDateTo'] ?? '');
 
     $params = [];
-    $companyFilter = '';
+    $extraWhere = '';
     if ($companyId > 0) {
-        $companyFilter = 'AND o.company_id = ?';
+        $extraWhere .= ' AND o.company_id = ?';
         $params[] = $companyId;
+    }
+    if ($orderDateFrom !== '') {
+        $extraWhere .= ' AND DATE(o.order_date) >= ?';
+        $params[] = $orderDateFrom;
+    }
+    if ($orderDateTo !== '') {
+        $extraWhere .= ' AND DATE(o.order_date) <= ?';
+        $params[] = $orderDateTo;
+    }
+    if ($returnDateFrom !== '') {
+        $extraWhere .= ' AND DATE(ob.return_created_at) >= ?';
+        $params[] = $returnDateFrom;
+    }
+    if ($returnDateTo !== '') {
+        $extraWhere .= ' AND DATE(ob.return_created_at) <= ?';
+        $params[] = $returnDateTo;
     }
 
     $sql = "
@@ -26,7 +46,7 @@ try {
         FROM order_boxes ob
         LEFT JOIN orders o ON ob.order_id = o.id
         WHERE ob.return_status IS NOT NULL
-        $companyFilter
+        $extraWhere
         GROUP BY ob.return_status
     ";
 

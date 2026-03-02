@@ -158,6 +158,17 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     hasMore: false,
   });
 
+  // Filter Date Ranges
+  const [orderDateRange, setOrderDateRange] = useState<DateRange>(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1); start.setHours(0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0); end.setHours(23, 59, 59, 999);
+    return { start: start.toISOString(), end: end.toISOString() };
+  });
+  const [returnDateRange, setReturnDateRange] = useState<DateRange>({ start: '', end: '' });
+  const [orderDateShowAll, setOrderDateShowAll] = useState(false);
+  const [returnDateShowAll, setReturnDateShowAll] = useState(true);
+
   // Export State
   const [exportDateRange, setExportDateRange] = useState<DateRange>(() => {
     const end = new Date(); end.setHours(23, 59, 59, 999);
@@ -168,6 +179,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   // Tab counts from stats API (fetched once)
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+  const [statsLoading, setStatsLoading] = useState(false);
 
   useEffect(() => {
     if (managingOrder) {
@@ -323,29 +335,38 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   }, [managingOrder, verifiedOrders]);
 
   useEffect(() => {
-    // Reset to page 1 when tab changes, then fetch
+    // Reset to page 1 when tab or date range changes, then fetch
     setPagination(prev => ({ ...prev, page: 1 }));
-  }, [activeTab]);
+  }, [activeTab, orderDateRange, returnDateRange, orderDateShowAll, returnDateShowAll]);
 
   useEffect(() => {
     fetchVerifiedOrders();
-  }, [user.companyId, activeTab, pagination.page, filterSearch]);
+  }, [user.companyId, activeTab, pagination.page, filterSearch, orderDateRange, returnDateRange, orderDateShowAll, returnDateShowAll]);
 
   // Fetch stats once on mount + when tab data changes (after save/revert)
   const fetchReturnStats = async () => {
     try {
-      const res = await getReturnStats(user.companyId);
+      setStatsLoading(true);
+      const res = await getReturnStats({
+        companyId: user.companyId,
+        orderDateFrom: !orderDateShowAll && orderDateRange.start ? orderDateRange.start.split('T')[0] : undefined,
+        orderDateTo: !orderDateShowAll && orderDateRange.end ? orderDateRange.end.split('T')[0] : undefined,
+        returnDateFrom: !returnDateShowAll && returnDateRange.start ? returnDateRange.start.split('T')[0] : undefined,
+        returnDateTo: !returnDateShowAll && returnDateRange.end ? returnDateRange.end.split('T')[0] : undefined,
+      });
       if (res && res.status === 'success' && res.counts) {
         setTabCounts(res.counts);
       }
     } catch (err) {
       console.error('Failed to fetch return stats', err);
+    } finally {
+      setStatsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchReturnStats();
-  }, [user.companyId]);
+  }, [user.companyId, orderDateRange, returnDateRange, orderDateShowAll, returnDateShowAll]);
 
   const fetchVerifiedOrders = async () => {
     try {
@@ -356,7 +377,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         page: pagination.page,
         limit: pagination.limit,
         companyId: user.companyId,
-        search: filterSearch || undefined
+        search: filterSearch || undefined,
+        orderDateFrom: !orderDateShowAll && orderDateRange.start ? orderDateRange.start.split('T')[0] : undefined,
+        orderDateTo: !orderDateShowAll && orderDateRange.end ? orderDateRange.end.split('T')[0] : undefined,
+        returnDateFrom: !returnDateShowAll && returnDateRange.start ? returnDateRange.start.split('T')[0] : undefined,
+        returnDateTo: !returnDateShowAll && returnDateRange.end ? returnDateRange.end.split('T')[0] : undefined,
       });
 
       if (res && res.status === "success") {
@@ -1351,14 +1376,21 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 onClick={() => setActiveTab(tab.id as any)}
               >
                 {tab.label}
-                {tabCounts[tab.id] !== undefined && (
+                {statsLoading ? (
+                  <span className="inline-block w-4 h-4 ml-1">
+                    <svg className="animate-spin h-3.5 w-3.5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </span>
+                ) : tabCounts[tab.id] !== undefined ? (
                   <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.id
                     ? `bg-${tab.color}-100 text-${tab.color}-700`
                     : 'bg-gray-100 text-gray-500'
                     }`}>
                     {tabCounts[tab.id].toLocaleString()}
                   </span>
-                )}
+                ) : null}
               </button>
             ))}
             <div className="flex-1 min-w-[20px]"></div>
@@ -1389,6 +1421,54 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Date Range Filters */}
+      {mode === "list" && (
+        <div className="mb-4 bg-white p-4 rounded-lg shadow-sm border">
+          <div className="flex flex-wrap items-start gap-6">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">📅 วันที่สั่งซื้อ</span>
+                <div className="min-w-[280px]">
+                  <DateRangePicker
+                    value={orderDateRange}
+                    onApply={(range) => { setOrderDateRange(range); setOrderDateShowAll(false); }}
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-1.5 ml-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={orderDateShowAll}
+                  onChange={(e) => setOrderDateShowAll(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-500">ทั้งหมด (ไม่กรองวันที่สั่งซื้อ)</span>
+              </label>
+            </div>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">📋 วันที่ลงตีกลับ</span>
+                <div className="min-w-[280px]">
+                  <DateRangePicker
+                    value={returnDateRange}
+                    onApply={(range) => { setReturnDateRange(range); setReturnDateShowAll(false); }}
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-1.5 ml-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={returnDateShowAll}
+                  onChange={(e) => setReturnDateShowAll(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-500">ทั้งหมด (ไม่กรองวันที่ลงตีกลับ)</span>
+              </label>
             </div>
           </div>
         </div>
