@@ -405,3 +405,31 @@ if ($dbStatus === 'RETURNED') {
 - มี preset: วันนี้, เมื่อวาน, 7/30/60/90 วันย้อนหลัง, **เดือนนี้**, **เดือนที่แล้ว**
 - Default: 30 วันย้อนหลัง
 - CSV ใส่ BOM (`\uFEFF`) เพื่อรองรับ Excel ภาษาไทย
+
+## 17. อัปเดตล่าสุด (Change Log - 02/03/2026)
+
+### Date Range Filters (ตัวกรองช่วงวันที่)
+- **ตัวกรองวันที่สั่งซื้อ** (`orders.order_date`):
+  - ใช้ `DateRangePicker` component
+  - **Default = เดือนปัจจุบัน** (เมื่อเข้าหน้ามาครั้งแรก)
+  - Checkbox "ทั้งหมด" ใต้ตัวกรอง → ไม่กรองวันที่สั่งซื้อ
+- **ตัวกรองวันที่ลงตีกลับ** (`order_boxes.return_created_at`):
+  - ใช้ `DateRangePicker` component
+  - **Default = ทั้งหมด** (ไม่กรอง, checkbox ติ๊กไว้)
+  - Checkbox "ทั้งหมด" ใต้ตัวกรอง → ไม่กรองวันที่ลงตีกลับ
+- เมื่อเลือกช่วงวันที่ใหม่ → checkbox "ทั้งหมด" จะถูก uncheck อัตโนมัติ
+- เปลี่ยน filter จะ reset pagination กลับหน้า 1
+
+### Tab Counts สัมพันธ์กับ Filter วันที่
+- **`get_return_stats.php`**: เพิ่ม parameters `orderDateFrom`, `orderDateTo`, `returnDateFrom`, `returnDateTo`
+- **`api.ts`**: `getReturnStats` เปลี่ยนเป็นรับ object params (เดิมรับแค่ `companyId`)
+- **Frontend**: `fetchReturnStats` ส่ง date params เดียวกับ `fetchVerifiedOrders` + useEffect trigger เมื่อเปลี่ยน filter
+- **Loading Spinner บน Tab**: แสดง spinner เล็กๆ ข้างชื่อ Tab ขณะโหลดจำนวนรายการ
+
+### ไฟล์ที่แก้ไข
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `api/Orders/get_return_orders.php` | เพิ่ม 4 params: `orderDateFrom/To`, `returnDateFrom/To` |
+| `api/Orders/get_return_stats.php` | เพิ่ม 4 params เดียวกัน |
+| `services/api.ts` | อัปเดต `getReturnOrders` + `getReturnStats` |
+| `pages/ReturnManagementPage.tsx` | เพิ่ม state, DateRangePicker UI, checkbox, spinner |
