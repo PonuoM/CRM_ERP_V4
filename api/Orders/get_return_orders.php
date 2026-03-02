@@ -19,6 +19,10 @@ try {
     $limit = max(1, min(100, intval($_GET['limit'] ?? 20)));
     $companyId = intval($_GET['companyId'] ?? 0);
     $search = trim($_GET['search'] ?? '');
+    $orderDateFrom = trim($_GET['orderDateFrom'] ?? '');
+    $orderDateTo = trim($_GET['orderDateTo'] ?? '');
+    $returnDateFrom = trim($_GET['returnDateFrom'] ?? '');
+    $returnDateTo = trim($_GET['returnDateTo'] ?? '');
     $offset = ($page - 1) * $limit;
 
     // ─── Build WHERE conditions ───
@@ -47,6 +51,26 @@ try {
         $params[] = $searchWild;
         $params[] = $searchWild;
         $params[] = $searchWild;
+    }
+
+    // Filter by order_date range
+    if ($orderDateFrom !== '') {
+        $whereConditions[] = "DATE(o.order_date) >= ?";
+        $params[] = $orderDateFrom;
+    }
+    if ($orderDateTo !== '') {
+        $whereConditions[] = "DATE(o.order_date) <= ?";
+        $params[] = $orderDateTo;
+    }
+
+    // Filter by return_created_at range
+    if ($returnDateFrom !== '') {
+        $whereConditions[] = "DATE(ob.return_created_at) >= ?";
+        $params[] = $returnDateFrom;
+    }
+    if ($returnDateTo !== '') {
+        $whereConditions[] = "DATE(ob.return_created_at) <= ?";
+        $params[] = $returnDateTo;
     }
 
     $whereClause = count($whereConditions) > 0
