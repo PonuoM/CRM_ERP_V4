@@ -685,56 +685,65 @@ const DebtCollectionModal: React.FC<DebtCollectionModalProps> = ({
                                         )}
 
                                         {/* History Images */}
-                                        {record.slip_details && record.slip_details.length > 0 ? (
-                                            <div className="mt-2 grid grid-cols-3 gap-1">
-                                                {record.slip_details.map((slip: any, idx: number) => {
-                                                    const basePath = resolveApiBasePath().replace(/\/api$/, '');
-                                                    const imgUrl = `${basePath}/${slip.image_url}`;
-                                                    return (
-                                                        <button
-                                                            key={idx}
-                                                            type="button"
-                                                            onClick={() => setSelectedSlip(slip)}
-                                                            className="block aspect-square rounded overflow-hidden border border-gray-200 hover:opacity-80 hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer"
-                                                        >
-                                                            <img
-                                                                src={imgUrl}
-                                                                alt="evidence"
-                                                                className="w-full h-full object-cover"
-                                                                onError={(e) => {
-                                                                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=No+Image';
-                                                                }}
-                                                            />
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        ) : record.images && record.images.length > 0 ? (
-                                            <div className="mt-2 grid grid-cols-3 gap-1">
-                                                {record.images.map((img: string, idx: number) => {
-                                                    const basePath = resolveApiBasePath().replace(/\/api$/, '');
-                                                    const imgUrl = `${basePath}/${img}`;
-                                                    return (
-                                                        <a
-                                                            key={idx}
-                                                            href={imgUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="block aspect-square rounded overflow-hidden border border-gray-200 hover:opacity-80 transition-opacity"
-                                                        >
-                                                            <img
-                                                                src={imgUrl}
-                                                                alt="evidence"
-                                                                className="w-full h-full object-cover"
-                                                                onError={(e) => {
-                                                                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=No+Image';
-                                                                }}
-                                                            />
-                                                        </a>
-                                                    );
-                                                })}
-                                            </div>
-                                        ) : null}
+                                        {(() => {
+                                            const validSlips = (record.slip_details || []).filter((s: any) => s.image_url);
+                                            const validImages = (record.images || []).filter((img: string) => img);
+                                            if (validSlips.length > 0) {
+                                                return (
+                                                    <div className="mt-2 grid grid-cols-3 gap-1">
+                                                        {validSlips.map((slip: any, idx: number) => {
+                                                            const basePath = resolveApiBasePath().replace(/\/api$/, '');
+                                                            const imgUrl = `${basePath}/${slip.image_url}`;
+                                                            return (
+                                                                <button
+                                                                    key={idx}
+                                                                    type="button"
+                                                                    onClick={() => setSelectedSlip(slip)}
+                                                                    className="block aspect-square rounded overflow-hidden border border-gray-200 hover:opacity-80 hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer"
+                                                                >
+                                                                    <img
+                                                                        src={imgUrl}
+                                                                        alt="evidence"
+                                                                        className="w-full h-full object-cover"
+                                                                        onError={(e) => {
+                                                                            (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                                                                        }}
+                                                                    />
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            } else if (validImages.length > 0) {
+                                                return (
+                                                    <div className="mt-2 grid grid-cols-3 gap-1">
+                                                        {validImages.map((img: string, idx: number) => {
+                                                            const basePath = resolveApiBasePath().replace(/\/api$/, '');
+                                                            const imgUrl = `${basePath}/${img}`;
+                                                            return (
+                                                                <a
+                                                                    key={idx}
+                                                                    href={imgUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="block aspect-square rounded overflow-hidden border border-gray-200 hover:opacity-80 transition-opacity"
+                                                                >
+                                                                    <img
+                                                                        src={imgUrl}
+                                                                        alt="evidence"
+                                                                        className="w-full h-full object-cover"
+                                                                        onError={(e) => {
+                                                                            (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                                                                        }}
+                                                                    />
+                                                                </a>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
                                         <div className="text-xs text-gray-400 mt-1">
                                             โดย: {record.first_name}
                                         </div>
