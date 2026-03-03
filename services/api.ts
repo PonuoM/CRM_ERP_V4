@@ -39,7 +39,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
   // Direct file access for inventory and product modules (bypassing index.php router)
   // Direct file access for inventory and product modules (bypassing index.php router)
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('User_DB/') || path.startsWith('cron/')) {
+  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('User_DB/') || path.startsWith('cron/')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -2273,3 +2273,129 @@ export async function exportDebtCollection(params: { startDate: string; endDate:
   if (params.status) queryParams.append('status', params.status);
   return apiFetch(`Finance/export_debt_collection.php?${queryParams.toString()}`);
 }
+
+// ========== Inventory V2 APIs ==========
+
+export async function inv2ListSO(params?: {
+  company_id?: number; status?: string; warehouse_id?: number;
+  search?: string; start_date?: string; end_date?: string;
+  page?: number; pageSize?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.company_id) qs.set('company_id', String(params.company_id));
+  if (params?.status) qs.set('status', params.status);
+  if (params?.warehouse_id) qs.set('warehouse_id', String(params.warehouse_id));
+  if (params?.search) qs.set('search', params.search);
+  if (params?.start_date) qs.set('start_date', params.start_date);
+  if (params?.end_date) qs.set('end_date', params.end_date);
+  if (params?.page) qs.set('page', String(params.page));
+  if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+  return apiFetch(`inv2/so_list.php?${qs.toString()}`);
+}
+
+export async function inv2GetSO(id: number) {
+  return apiFetch(`inv2/so_get.php?id=${id}`);
+}
+
+export async function inv2SaveSO(data: any) {
+  return apiFetch('inv2/so_save.php', {
+    method: 'POST', body: JSON.stringify(data)
+  });
+}
+
+export async function inv2DeleteSO(id: number) {
+  return apiFetch(`inv2/so_delete.php?id=${id}`, { method: 'DELETE' });
+}
+
+export async function inv2ListReceive(params?: {
+  company_id?: number; warehouse_id?: number;
+  search?: string; start_date?: string; end_date?: string;
+  page?: number; pageSize?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.company_id) qs.set('company_id', String(params.company_id));
+  if (params?.warehouse_id) qs.set('warehouse_id', String(params.warehouse_id));
+  if (params?.search) qs.set('search', params.search);
+  if (params?.start_date) qs.set('start_date', params.start_date);
+  if (params?.end_date) qs.set('end_date', params.end_date);
+  if (params?.page) qs.set('page', String(params.page));
+  if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+  return apiFetch(`inv2/receive_list.php?${qs.toString()}`);
+}
+
+export async function inv2SaveReceive(data: any) {
+  return apiFetch('inv2/receive_save.php', {
+    method: 'POST', body: JSON.stringify(data)
+  });
+}
+
+export async function inv2ImportDispatch(data: {
+  user_id: number; company_id: number; notes?: string;
+  rows: Array<{ warehouse_id: number; product_id: number; variant?: string; quantity: number; reference_order_id?: string; notes?: string }>;
+}) {
+  return apiFetch('inv2/dispatch_import.php', {
+    method: 'POST', body: JSON.stringify(data)
+  });
+}
+
+export async function inv2ListDispatch(params?: {
+  company_id?: number; warehouse_id?: number;
+  search?: string; start_date?: string; end_date?: string;
+  page?: number; pageSize?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.company_id) qs.set('company_id', String(params.company_id));
+  if (params?.warehouse_id) qs.set('warehouse_id', String(params.warehouse_id));
+  if (params?.search) qs.set('search', params.search);
+  if (params?.start_date) qs.set('start_date', params.start_date);
+  if (params?.end_date) qs.set('end_date', params.end_date);
+  if (params?.page) qs.set('page', String(params.page));
+  if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+  return apiFetch(`inv2/dispatch_list.php?${qs.toString()}`);
+}
+
+export async function inv2SaveAdjustment(data: any) {
+  return apiFetch('inv2/adjust_save.php', {
+    method: 'POST', body: JSON.stringify(data)
+  });
+}
+
+export async function inv2ListStock(params?: {
+  company_id?: number; warehouse_id?: number; product_id?: number;
+  search?: string; hide_zero?: boolean;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.company_id) qs.set('company_id', String(params.company_id));
+  if (params?.warehouse_id) qs.set('warehouse_id', String(params.warehouse_id));
+  if (params?.product_id) qs.set('product_id', String(params.product_id));
+  if (params?.search) qs.set('search', params.search);
+  if (params?.hide_zero) qs.set('hide_zero', '1');
+  return apiFetch(`inv2/stock_view.php?${qs.toString()}`);
+}
+
+export async function inv2ListMovements(params?: {
+  company_id?: number; warehouse_id?: number; product_id?: number;
+  movement_type?: string; reference_type?: string;
+  search?: string; start_date?: string; end_date?: string;
+  page?: number; pageSize?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.company_id) qs.set('company_id', String(params.company_id));
+  if (params?.warehouse_id) qs.set('warehouse_id', String(params.warehouse_id));
+  if (params?.product_id) qs.set('product_id', String(params.product_id));
+  if (params?.movement_type) qs.set('movement_type', params.movement_type);
+  if (params?.reference_type) qs.set('reference_type', params.reference_type);
+  if (params?.search) qs.set('search', params.search);
+  if (params?.start_date) qs.set('start_date', params.start_date);
+  if (params?.end_date) qs.set('end_date', params.end_date);
+  if (params?.page) qs.set('page', String(params.page));
+  if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+  return apiFetch(`inv2/movements_list.php?${qs.toString()}`);
+}
+
+export async function inv2UploadImage(images: string[]) {
+  return apiFetch('inv2/upload_image.php', {
+    method: 'POST', body: JSON.stringify({ images })
+  });
+}
+

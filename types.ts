@@ -184,6 +184,128 @@ export interface StockMovement {
   createdAt: string;
 }
 
+// ========== Inventory V2 Types ==========
+export type Inv2SOStatus = 'Draft' | 'Ordered' | 'Partial' | 'Completed' | 'Cancelled';
+
+export interface Inv2StockOrder {
+  id: number;
+  so_number: string;
+  warehouse_id: number;
+  warehouse_name?: string;
+  order_date: string;
+  expected_date?: string;
+  status: Inv2SOStatus;
+  notes?: string;
+  images: string[];
+  item_count?: number;
+  created_by: number;
+  created_by_name?: string;
+  company_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Inv2StockOrderItem {
+  id?: number;
+  stock_order_id?: number;
+  product_id: number;
+  product_name?: string;
+  product_sku?: string;
+  variant?: string;
+  quantity: number;
+  received_quantity: number;
+  remaining_quantity?: number;
+  unit_cost?: number;
+  notes?: string;
+}
+
+export interface Inv2ReceiveDocument {
+  id: number;
+  doc_number: string;
+  stock_order_id?: number;
+  so_number?: string;
+  warehouse_id: number;
+  warehouse_name?: string;
+  receive_date: string;
+  notes?: string;
+  images: string[];
+  item_count?: number;
+  total_quantity?: number;
+  created_by: number;
+  created_by_name?: string;
+  company_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Inv2ReceiveItem {
+  id?: number;
+  receive_doc_id?: number;
+  so_item_id?: number;
+  product_id: number;
+  product_name?: string;
+  product_sku?: string;
+  variant?: string;
+  lot_number?: string;
+  quantity: number;
+  unit_cost?: number;
+  mfg_date?: string;
+  exp_date?: string;
+  notes?: string;
+}
+
+export interface Inv2Stock {
+  id: number;
+  warehouse_id: number;
+  warehouse_name?: string;
+  product_id: number;
+  product_name?: string;
+  product_sku?: string;
+  product_unit?: string;
+  variant?: string;
+  lot_number?: string;
+  quantity: number;
+  mfg_date?: string;
+  exp_date?: string;
+  unit_cost?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type Inv2MovementType = 'IN' | 'OUT' | 'ADJUST_IN' | 'ADJUST_OUT';
+
+export interface Inv2Movement {
+  id: number;
+  warehouse_id: number;
+  warehouse_name?: string;
+  product_id: number;
+  product_name?: string;
+  product_sku?: string;
+  variant?: string;
+  lot_number?: string;
+  movement_type: Inv2MovementType;
+  quantity: number;
+  reference_type?: string;
+  reference_id?: number;
+  reference_doc_number?: string;
+  reference_order_id?: string;
+  notes?: string;
+  images: string[];
+  created_by: number;
+  created_by_name?: string;
+  company_id: number;
+  created_at: string;
+}
+
+export interface Inv2DispatchRow {
+  warehouse_id: number;
+  product_id: number;
+  variant?: string;
+  quantity: number;
+  reference_order_id?: string;
+  notes?: string;
+}
+
 export enum CustomerLifecycleStatus {
   New = "New",
   Old = "Old",

@@ -31,6 +31,10 @@ import {
   ArrowLeftRight,
   MapPin,
   FileSpreadsheet,
+  ArrowDownToLine,
+  Upload,
+  History,
+  BarChart3,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -165,6 +169,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Telesale Performance": "ประสิทธิภาพ Telesale",
     "Attendance Management": "จัดการวันมาทำงาน",
     "Sales Sheet": "ยอดขาย (Sheet)",
+    "Warehouse V2": "คลังสินค้า V2",
+    "SO (คำสั่งซื้อ)": "คำสั่งซื้อ (SO)",
+    "รับเข้า V2": "รับเข้า",
+    "จ่ายออก V2": "จ่ายออก",
+    "ปรับปรุง V2": "ปรับปรุง",
+    "สต็อก V2": "สต็อกคงเหลือ",
+    "ประวัติ V2": "ประวัติทั้งหมด",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -250,6 +261,18 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Warehouse Allocation", icon: FileText, key: "inventory.allocations" },
         { label: "ส่งออกรายงานสต๊อค", icon: BarChart2, key: "inventory.reports" },
         { label: "Active Promotions", icon: BarChart2, key: "inventory.promotions" },
+      ]
+    },
+    {
+      label: "Warehouse V2",
+      icon: Package,
+      children: [
+        { label: "SO (คำสั่งซื้อ)", icon: ClipboardList, key: "inv2.so" },
+        { label: "รับเข้า V2", icon: ArrowDownToLine, key: "inv2.receive" },
+        { label: "จ่ายออก V2", icon: Upload, key: "inv2.dispatch" },
+        { label: "ปรับปรุง V2", icon: Settings, key: "inv2.adjustment" },
+        { label: "สต็อก V2", icon: BarChart3, key: "inv2.stock" },
+        { label: "ประวัติ V2", icon: History, key: "inv2.history" },
       ]
     },
     {

@@ -243,6 +243,12 @@ import CODManagementPage from "./pages/CODManagementPage";
 import AddressManagementPage from "./pages/AddressManagementPage";
 import GoogleSheetImportPage from "./pages/GoogleSheetImportPage";
 import InventoryReportsPage from "./pages/InventoryReportsPage";
+import Inv2StockOrderPage from "./pages/Inv2StockOrderPage";
+import Inv2ReceivePage from "./pages/Inv2ReceivePage";
+import Inv2DispatchPage from "./pages/Inv2DispatchPage";
+import Inv2AdjustmentPage from "./pages/Inv2AdjustmentPage";
+import Inv2StockViewPage from "./pages/Inv2StockViewPage";
+import Inv2HistoryPage from "./pages/Inv2HistoryPage";
 import StatementManagementPage from "./pages/StatementManagementPage";
 import usePersistentState from "./utils/usePersistentState";
 import { generateMainOrderId } from "./utils/orderIdGenerator";
@@ -7423,6 +7429,20 @@ const App: React.FC = () => {
             companyId={currentUser.companyId!}
           />
         );
+
+      // PROCESSED: Warehouse V2
+      case "SO (คำสั่งซื้อ)":
+        return <Inv2StockOrderPage companyId={currentUser.companyId!} userId={currentUser.id!} />;
+      case "รับเข้า V2":
+        return <Inv2ReceivePage companyId={currentUser.companyId!} userId={currentUser.id!} />;
+      case "จ่ายออก V2":
+        return <Inv2DispatchPage companyId={currentUser.companyId!} userId={currentUser.id!} />;
+      case "ปรับปรุง V2":
+        return <Inv2AdjustmentPage companyId={currentUser.companyId!} userId={currentUser.id!} />;
+      case "สต็อก V2":
+        return <Inv2StockViewPage companyId={currentUser.companyId!} />;
+      case "ประวัติ V2":
+        return <Inv2HistoryPage companyId={currentUser.companyId!} />;
 
       // PROCESSED: Finance
       case "nav.finance_approval":

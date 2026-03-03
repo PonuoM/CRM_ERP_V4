@@ -872,6 +872,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // Get active basket info
     const activeBasketInfo = baskets.find(b => b.basket_key === activeBasket);
+    const isHoldingBasketActive = activeBasket === 'holding_before_redistribute';
 
     if (loading) {
         return (
@@ -1149,21 +1150,34 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
             {/* Stats Cards - All Baskets in Grid */}
             <div className="grid grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
-                {baskets.map(basket => (
-                    <button
-                        key={basket.basket_key}
-                        onClick={() => setActiveBasket(basket.basket_key)}
-                        className={`bg-white p-3 rounded-xl shadow-sm border-2 transition-all hover:shadow-md text-left ${activeBasket === basket.basket_key
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-100 hover:border-blue-200'
-                            }`}
-                    >
-                        <p className="text-[11px] font-medium text-gray-500 mb-0.5 truncate">{basket.basket_name}</p>
-                        <div className={`text-xl font-bold ${activeBasket === basket.basket_key ? 'text-blue-600' : 'text-gray-900'}`}>
-                            {basketCounts[basket.basket_key]?.toLocaleString() || 0}
-                        </div>
-                    </button>
-                ))}
+                {baskets.map(basket => {
+                    const isHolding = basket.basket_key === 'holding_before_redistribute';
+                    const isActive = activeBasket === basket.basket_key;
+                    return (
+                        <button
+                            key={basket.basket_key}
+                            onClick={() => setActiveBasket(basket.basket_key)}
+                            className={`p-3 rounded-xl shadow-sm border-2 transition-all hover:shadow-md text-left ${isHolding
+                                    ? (isActive
+                                        ? 'border-amber-500 bg-amber-50'
+                                        : 'border-amber-200 bg-amber-50/50 hover:border-amber-400')
+                                    : (isActive
+                                        ? 'border-blue-500 bg-blue-50'
+                                        : 'border-gray-100 bg-white hover:border-blue-200')
+                                }`}
+                        >
+                            <p className={`text-[11px] font-medium mb-0.5 truncate ${isHolding ? 'text-amber-600' : 'text-gray-500'}`}>
+                                {isHolding ? '⏳ ' : ''}{basket.basket_name}
+                            </p>
+                            <div className={`text-xl font-bold ${isHolding
+                                    ? (isActive ? 'text-amber-600' : 'text-amber-700')
+                                    : (isActive ? 'text-blue-600' : 'text-gray-900')
+                                }`}>
+                                {basketCounts[basket.basket_key]?.toLocaleString() || 0}
+                            </div>
+                        </button>
+                    );
+                })}
 
                 {/* Total Card */}
                 <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-3 rounded-xl shadow-md text-white">
@@ -1174,177 +1188,194 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 </div>
             </div>
 
+            {/* Holding Basket Notice */}
+            {isHoldingBasketActive && (
+                <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-6 mb-6 text-center">
+                    <div className="text-amber-500 text-5xl mb-3">⏳</div>
+                    <h3 className="text-lg font-bold text-amber-800">ถังพักรอแจก</h3>
+                    <p className="text-amber-700 mt-2">
+                        ลูกค้าในถังนี้กำลังอยู่ระหว่างช่วงพัก 30 วัน
+                        ก่อนจะถูกย้ายไปถัง "หาคนดูแลใหม่" โดยอัตโนมัติ
+                    </p>
+                    <p className="text-amber-600 text-sm mt-1 font-medium">ไม่สามารถแจกลูกค้าจากถังนี้ได้</p>
+                </div>
+            )}
+
             {/* Section 1: Distribution Settings */}
-            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                    <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                    ตั้งค่าการแจก
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                        <label className="block text-sm text-gray-500 mb-2">สถานะการแจก</label>
-                        <select
-                            value={activeBasket}
-                            onChange={(e) => setActiveBasket(e.target.value)}
-                            className="w-full border rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                            {baskets.map(basket => (
-                                <option key={basket.basket_key} value={basket.basket_key}>
-                                    {basket.basket_name} ({basketCounts[basket.basket_key] || 0})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm text-gray-500 mb-2">จำนวนรวมที่ต้องการแจก</label>
-                        <input
-                            type="number"
-                            value={totalToDistribute}
-                            onChange={(e) => setTotalToDistribute(e.target.value)}
-                            className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            min={1}
-                            max={availableCount || 1000}
-                            placeholder={`มี ${availableCount} พร้อมแจก`}
-                        />
-                    </div>
-                    <div className="flex items-end">
-                        <button
-                            onClick={() => { fetchAllBasketCounts(); fetchCustomers(); fetchAgents(); }}
-                            className="px-4 py-2.5 border rounded-lg hover:bg-gray-50 flex items-center gap-2"
-                        >
-                            <RefreshCw size={16} className={loadingCustomers ? 'animate-spin' : ''} />
-                            รีเฟรช
-                        </button>
+            {!isHoldingBasketActive && (
+                <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                    <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                        <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">1</span>
+                        ตั้งค่าการแจก
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-sm text-gray-500 mb-2">สถานะการแจก</label>
+                            <select
+                                value={activeBasket}
+                                onChange={(e) => setActiveBasket(e.target.value)}
+                                className="w-full border rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                                {baskets.map(basket => (
+                                    <option key={basket.basket_key} value={basket.basket_key}>
+                                        {basket.basket_name} ({basketCounts[basket.basket_key] || 0})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm text-gray-500 mb-2">จำนวนรวมที่ต้องการแจก</label>
+                            <input
+                                type="number"
+                                value={totalToDistribute}
+                                onChange={(e) => setTotalToDistribute(e.target.value)}
+                                className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                min={1}
+                                max={availableCount || 1000}
+                                placeholder={`มี ${availableCount} พร้อมแจก`}
+                            />
+                        </div>
+                        <div className="flex items-end">
+                            <button
+                                onClick={() => { fetchAllBasketCounts(); fetchCustomers(); fetchAgents(); }}
+                                className="px-4 py-2.5 border rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                            >
+                                <RefreshCw size={16} className={loadingCustomers ? 'animate-spin' : ''} />
+                                รีเฟรช
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
 
 
 
 
             {/* Section 2: Target Employees - Table Layout */}
-            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
-                        <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                        เลือกพนักงานเป้าหมาย
-                    </h3>
-                    <div className="flex items-center gap-4">
-                        <div className="bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg">
-                            <span className="text-blue-700 font-semibold">มีรายชื่อพร้อมแจก: {availableCount.toLocaleString()} รายการ</span>
+            {!isHoldingBasketActive && (
+                <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
+                            <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">2</span>
+                            เลือกพนักงานเป้าหมาย
+                        </h3>
+                        <div className="flex items-center gap-4">
+                            <div className="bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg">
+                                <span className="text-blue-700 font-semibold">มีรายชื่อพร้อมแจก: {availableCount.toLocaleString()} รายการ</span>
+                            </div>
+                            <input
+                                type="number"
+                                value={totalToDistribute}
+                                onChange={(e) => setTotalToDistribute(e.target.value)}
+                                max={availableCount}
+                                min={1}
+                                className="w-32 border rounded-lg p-2 text-center"
+                                placeholder="จำนวนรวม"
+                            />
+                            {selectedAgents.length > 0 && parseInt(totalToDistribute) > 0 && (
+                                <span className="text-sm text-gray-500">
+                                    ≈ {Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length)} / คน
+                                </span>
+                            )}
+                            <button
+                                onClick={handleGeneratePreview}
+                                disabled={selectedAgents.length === 0 || availableCount === 0 || !totalToDistribute || parseInt(totalToDistribute) <= 0 || parseInt(totalToDistribute) > availableCount}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                <Eye size={16} />
+                                ดูตัวอย่างก่อนแจก
+                            </button>
                         </div>
-                        <input
-                            type="number"
-                            value={totalToDistribute}
-                            onChange={(e) => setTotalToDistribute(e.target.value)}
-                            max={availableCount}
-                            min={1}
-                            className="w-32 border rounded-lg p-2 text-center"
-                            placeholder="จำนวนรวม"
-                        />
-                        {selectedAgents.length > 0 && parseInt(totalToDistribute) > 0 && (
-                            <span className="text-sm text-gray-500">
-                                ≈ {Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length)} / คน
-                            </span>
-                        )}
-                        <button
-                            onClick={handleGeneratePreview}
-                            disabled={selectedAgents.length === 0 || availableCount === 0 || !totalToDistribute || parseInt(totalToDistribute) <= 0 || parseInt(totalToDistribute) > availableCount}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                            <Eye size={16} />
-                            ดูตัวอย่างก่อนแจก
-                        </button>
                     </div>
-                </div>
 
-                {loadingAgents ? (
-                    <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="p-3 text-left">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedAgents.length === agents.length && agents.length > 0}
-                                            onChange={selectAllAgents}
-                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                        />
-                                    </th>
-                                    <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
-                                    <th className="p-3 text-center font-medium text-gray-600">Action</th>
-                                    <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
-                                    {dashboardBaskets.map(basket => (
-                                        <th key={basket.basket_key} className="p-3 text-center font-medium text-gray-600 text-xs">
-                                            {basket.basket_name}
+                    {loadingAgents ? (
+                        <div className="flex items-center justify-center py-12">
+                            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="p-3 text-left">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedAgents.length === agents.length && agents.length > 0}
+                                                onChange={selectAllAgents}
+                                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                            />
                                         </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {agents.map(agent => {
-                                    const isInactive = !agent.isActive;
-                                    return (
-                                        <tr
-                                            key={agent.id}
-                                            className={`border-t ${isInactive ? 'opacity-60 bg-gray-50' : 'hover:bg-gray-50 cursor-pointer'} ${selectedAgents.includes(agent.id) ? 'bg-blue-50' : ''}`}
-                                            onClick={() => !isInactive && toggleAgent(agent.id)}
-                                        >
-                                            <td className="p-3">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedAgents.includes(agent.id)}
-                                                    onChange={() => toggleAgent(agent.id)}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    disabled={isInactive}
-                                                    className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${isInactive ? 'cursor-not-allowed opacity-50' : ''}`}
-                                                />
-                                            </td>
-                                            <td className="p-3 font-medium">
-                                                {agent.firstName} {agent.lastName}
-                                                {isInactive && (
-                                                    <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
-                                                        {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="p-3 text-center">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        openReclaimModal(agent);
-                                                    }}
-                                                    className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 border border-red-200"
-                                                >
-                                                    ดึงคืน
-                                                </button>
-                                            </td>
-                                            <td className="p-3 text-center font-semibold text-gray-700">{agent.totalCustomers}</td>
-                                            {dashboardBaskets.map(basket => (
-                                                <td key={basket.basket_key} className="p-3 text-center text-gray-600 text-sm">
-                                                    {agent.basketCounts?.[basket.basket_key] || 0}
+                                        <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
+                                        <th className="p-3 text-center font-medium text-gray-600">Action</th>
+                                        <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
+                                        {dashboardBaskets.map(basket => (
+                                            <th key={basket.basket_key} className="p-3 text-center font-medium text-gray-600 text-xs">
+                                                {basket.basket_name}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {agents.map(agent => {
+                                        const isInactive = !agent.isActive;
+                                        return (
+                                            <tr
+                                                key={agent.id}
+                                                className={`border-t ${isInactive ? 'opacity-60 bg-gray-50' : 'hover:bg-gray-50 cursor-pointer'} ${selectedAgents.includes(agent.id) ? 'bg-blue-50' : ''}`}
+                                                onClick={() => !isInactive && toggleAgent(agent.id)}
+                                            >
+                                                <td className="p-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedAgents.includes(agent.id)}
+                                                        onChange={() => toggleAgent(agent.id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        disabled={isInactive}
+                                                        className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${isInactive ? 'cursor-not-allowed opacity-50' : ''}`}
+                                                    />
                                                 </td>
-                                            ))}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                                                <td className="p-3 font-medium">
+                                                    {agent.firstName} {agent.lastName}
+                                                    {isInactive && (
+                                                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
+                                                            {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            openReclaimModal(agent);
+                                                        }}
+                                                        className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 border border-red-200"
+                                                    >
+                                                        ดึงคืน
+                                                    </button>
+                                                </td>
+                                                <td className="p-3 text-center font-semibold text-gray-700">{agent.totalCustomers}</td>
+                                                {dashboardBaskets.map(basket => (
+                                                    <td key={basket.basket_key} className="p-3 text-center text-gray-600 text-sm">
+                                                        {agent.basketCounts?.[basket.basket_key] || 0}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
 
-                <div className="mt-4 text-sm text-gray-500">
-                    เลือกแล้ว {selectedAgents.length} คน | จำนวนรวม: {totalToDistribute || 0} |
-                    <span className="font-semibold text-blue-600">
-                        ≈ {selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0} / คน
-                    </span>
+                    <div className="mt-4 text-sm text-gray-500">
+                        เลือกแล้ว {selectedAgents.length} คน | จำนวนรวม: {totalToDistribute || 0} |
+                        <span className="font-semibold text-blue-600">
+                            ≈ {selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0} / คน
+                        </span>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Customer Preview Table */}
             <div className="bg-white rounded-lg shadow-sm border p-6">

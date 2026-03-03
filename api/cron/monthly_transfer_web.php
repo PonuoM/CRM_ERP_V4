@@ -351,6 +351,125 @@ foreach ($companies as $companyId) {
         echo "\n";
     }
     
+    // ============================================================
+    // Step 3: ดึง distribution baskets ที่มี fail_after_days (ถังพัก)
+    // ============================================================
+    $holdingConfigStmt = $pdo->prepare("
+        SELECT *
+        FROM basket_config
+        WHERE is_active = 1
+          AND target_page = 'distribution'
+          AND fail_after_days IS NOT NULL
+          AND fail_after_days > 0
+    ");
+    $holdingConfigStmt->execute();
+    $holdingConfigs = $holdingConfigStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    echo "Distribution holding baskets with fail_after_days:\n";
+    foreach ($holdingConfigs as $hc) {
+        echo "  - {$hc['basket_name']} (ID:{$hc['id']}) → fail {$hc['fail_after_days']}d";
+        if ($hc['on_fail_basket_key']) {
+            echo " → {$hc['on_fail_basket_key']}";
+        }
+        echo "\n";
+    }
+    echo "\n";
+    
+    foreach ($holdingConfigs as $hConfig) {
+        if ($limit && $processed >= $limit) break;
+        
+        $hBasketId = (string)$hConfig['id'];
+        $hBasketKey = $hConfig['basket_key'];
+        $hBasketName = $hConfig['basket_name'];
+        $hFailDays = (int)$hConfig['fail_after_days'];
+        $hOnFailBasketKey = $hConfig['on_fail_basket_key'];
+        
+        echo "=== [HOLDING: $hBasketName] ID:$hBasketId ===\n";
+        
+        if (!$hOnFailBasketKey) {
+            echo "  ⚠️ No on_fail_basket_key configured - SKIPPED\n\n";
+            continue;
+        }
+        
+        $hTargetBasketId = $basketKeyToId[$hOnFailBasketKey] ?? null;
+        if (!$hTargetBasketId) {
+            echo "  ❌ Target '$hOnFailBasketKey' not found in basket_config! - SKIPPED\n\n";
+            $totalErrors++;
+            continue;
+        }
+        
+        $hTargetBasketName = $idToBasketName[$hTargetBasketId] ?? $hOnFailBasketKey;
+        
+        // หาลูกค้าที่อยู่ในถังพักครบกำหนด
+        $hLimitClause = $limit ? "LIMIT " . ($limit - $processed) : "";
+        $hCustomersStmt = $pdo->prepare("
+            SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
+                   c.current_basket_key, c.distribution_count,
+                   DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket
+            FROM customers c
+            WHERE c.company_id = ?
+              AND c.current_basket_key = ?
+              AND c.basket_entered_date IS NOT NULL
+              AND DATEDIFF(NOW(), c.basket_entered_date) >= ?
+            $hLimitClause
+        ");
+        $hCustomersStmt->execute([$companyId, $hBasketId, $hFailDays]);
+        $hCustomers = $hCustomersStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        echo "Found " . count($hCustomers) . " customers exceeding $hFailDays days in holding\n";
+        
+        if (count($hCustomers) === 0) {
+            echo "\n";
+            continue;
+        }
+        
+        foreach ($hCustomers as $hCust) {
+            if ($limit && $processed >= $limit) break;
+            
+            $hCustId = $hCust['customer_id'];
+            $hName = trim($hCust['first_name'] . ' ' . $hCust['last_name']);
+            $hDaysInBasket = $hCust['days_in_basket'];
+            
+            echo "  → $hName: {$hDaysInBasket}d in holding → $hTargetBasketName";
+            
+            if ($dryRun) {
+                echo " [DRY]\n";
+            } else {
+                try {
+                    // ถังปลายทางเป็น Distribution → keep assigned_to = NULL
+                    $hUpdateStmt = $pdo->prepare("
+                        UPDATE customers SET 
+                            current_basket_key = ?,
+                            basket_entered_date = NOW(),
+                            assigned_to = NULL,
+                            hold_until_date = NULL,
+                            distribution_count = distribution_count + 1
+                        WHERE customer_id = ?
+                    ");
+                    $hUpdateStmt->execute([$hTargetBasketId, $hCustId]);
+                    
+                    // Log transition
+                    $hLogTrans = $pdo->prepare("
+                        INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
+                        VALUES (?, ?, ?, 'monthly_cron', NULL, ?, NOW())
+                    ");
+                    $hTransNote = "Holding expired: '$hBasketName' ({$hDaysInBasket}d) -> $hTargetBasketName";
+                    $hLogTrans->execute([$hCustId, $hBasketId, $hTargetBasketId, $hTransNote]);
+                    
+                    echo " [OK]\n";
+                    $totalTransferred++;
+                    
+                } catch (Exception $e) {
+                    echo " [ERR]\n";
+                    $totalErrors++;
+                }
+            }
+            
+            $processed++;
+        }
+        echo "\n";
+    }
+    
     echo "--- Company $companyId Summary: Transferred=$totalTransferred, Errors=$totalErrors ---\n";
     $grandTotalTransferred += $totalTransferred;
     $grandTotalErrors += $totalErrors;
