@@ -364,12 +364,17 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         );
     };
 
-    // Select all agents
+    // Select all agents (only active ones)
+    const activeAgents = agents.filter(a => a.isActive);
     const selectAllAgents = () => {
-        if (selectedAgents.length === agents.length) {
-            setSelectedAgents([]);
+        const activeIds = activeAgents.map(a => a.id);
+        const allActiveSelected = activeIds.every(id => selectedAgents.includes(id));
+        if (allActiveSelected) {
+            // Uncheck all active agents, keep any manually selected inactive agents
+            setSelectedAgents(prev => prev.filter(id => !activeIds.includes(id)));
         } else {
-            setSelectedAgents(agents.map(a => a.id));
+            // Select all active agents + keep any manually selected inactive agents
+            setSelectedAgents(prev => [...new Set([...prev, ...activeIds])]);
         }
     };
 
@@ -1158,20 +1163,20 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             key={basket.basket_key}
                             onClick={() => setActiveBasket(basket.basket_key)}
                             className={`p-3 rounded-xl shadow-sm border-2 transition-all hover:shadow-md text-left ${isHolding
-                                    ? (isActive
-                                        ? 'border-amber-500 bg-amber-50'
-                                        : 'border-amber-200 bg-amber-50/50 hover:border-amber-400')
-                                    : (isActive
-                                        ? 'border-blue-500 bg-blue-50'
-                                        : 'border-gray-100 bg-white hover:border-blue-200')
+                                ? (isActive
+                                    ? 'border-amber-500 bg-amber-50'
+                                    : 'border-amber-200 bg-amber-50/50 hover:border-amber-400')
+                                : (isActive
+                                    ? 'border-blue-500 bg-blue-50'
+                                    : 'border-gray-100 bg-white hover:border-blue-200')
                                 }`}
                         >
                             <p className={`text-[11px] font-medium mb-0.5 truncate ${isHolding ? 'text-amber-600' : 'text-gray-500'}`}>
                                 {isHolding ? '⏳ ' : ''}{basket.basket_name}
                             </p>
                             <div className={`text-xl font-bold ${isHolding
-                                    ? (isActive ? 'text-amber-600' : 'text-amber-700')
-                                    : (isActive ? 'text-blue-600' : 'text-gray-900')
+                                ? (isActive ? 'text-amber-600' : 'text-amber-700')
+                                : (isActive ? 'text-blue-600' : 'text-gray-900')
                                 }`}>
                                 {basketCounts[basket.basket_key]?.toLocaleString() || 0}
                             </div>
@@ -1301,7 +1306,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                         <th className="p-3 text-left">
                                             <input
                                                 type="checkbox"
-                                                checked={selectedAgents.length === agents.length && agents.length > 0}
+                                                checked={activeAgents.length > 0 && activeAgents.every(a => selectedAgents.includes(a.id))}
                                                 onChange={selectAllAgents}
                                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             />
@@ -1322,8 +1327,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                         return (
                                             <tr
                                                 key={agent.id}
-                                                className={`border-t ${isInactive ? 'opacity-60 bg-gray-50' : 'hover:bg-gray-50 cursor-pointer'} ${selectedAgents.includes(agent.id) ? 'bg-blue-50' : ''}`}
-                                                onClick={() => !isInactive && toggleAgent(agent.id)}
+                                                className={`border-t ${isInactive ? 'opacity-60 bg-gray-50' : ''} hover:bg-gray-50 cursor-pointer ${selectedAgents.includes(agent.id) ? 'bg-blue-50' : ''}`}
+                                                onClick={() => toggleAgent(agent.id)}
                                             >
                                                 <td className="p-3">
                                                     <input
@@ -1331,8 +1336,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                         checked={selectedAgents.includes(agent.id)}
                                                         onChange={() => toggleAgent(agent.id)}
                                                         onClick={(e) => e.stopPropagation()}
-                                                        disabled={isInactive}
-                                                        className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${isInactive ? 'cursor-not-allowed opacity-50' : ''}`}
+                                                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                                     />
                                                 </td>
                                                 <td className="p-3 font-medium">
