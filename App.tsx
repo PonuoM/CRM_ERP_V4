@@ -150,6 +150,7 @@ import AttendanceReportPage from "./pages/AttendanceReportPage";
 import OrdersReportPage from "./pages/OrdersReportPage";
 import OrderTabSettingsPage from "./pages/OrderTabSettingsPage";
 import BasketSettingsPage from "./pages/BasketSettingsPage";
+import ExportTemplateSettingsPage from "./pages/ExportTemplateSettingsPage";
 import CustomerDistributionV2 from "./pages/CustomerDistributionV2";
 import TelesalePerformancePage from "./pages/TelesalePerformancePage";
 import AttendanceManagementPage from "./pages/AttendanceManagementPage";
@@ -7266,6 +7267,11 @@ const App: React.FC = () => {
       case "nav.distribution_v2":
       case "แจกงาน V2":
         return <CustomerDistributionV2 currentUser={currentUser} />;
+
+      case "Export Template Settings":
+      case "nav.export_template_settings":
+      case "ตั้งค่าการส่งออกข้อมูล":
+        return <ExportTemplateSettingsPage currentUser={currentUser} />;
 
       case "Telesale Performance":
       case "home.telesale_performance":

@@ -1932,11 +1932,51 @@ export async function logExport(params: {
   ordersCount: number;
   exportedBy: string;
   category?: string;
+  templateId?: number;
+  orderIds?: string[];
 }) {
   return apiFetch('exports', {
     method: 'POST',
     body: JSON.stringify(params)
   });
+}
+
+/**
+ * Fetch export templates for a company
+ */
+export async function fetchExportTemplates(companyId: number) {
+  return apiFetch(`Order_DB/export_templates.php?companyId=${companyId}`);
+}
+
+/**
+ * Set a template as default for the company
+ */
+export async function setDefaultTemplate(companyId: number, templateId: number, targetCompanyId?: number) {
+  const target = targetCompanyId ?? companyId;
+  return apiFetch(`Order_DB/export_templates.php?companyId=${companyId}&id=${templateId}&action=setDefault&targetCompanyId=${target}`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * List all company template defaults (for super admin)
+ */
+export async function listTemplateDefaults(companyId: number) {
+  return apiFetch(`Order_DB/export_templates.php?companyId=${companyId}&action=listDefaults`);
+}
+
+/**
+ * List companies (lightweight, for export template settings)
+ */
+export async function listExportCompanies() {
+  return apiFetch('Order_DB/companies.php');
+}
+
+/**
+ * Get order IDs linked to a specific export (for re-export)
+ */
+export async function getExportOrderIds(exportId: number) {
+  return apiFetch(`exports/${exportId}?orderItems=1`);
 }
 
 /**

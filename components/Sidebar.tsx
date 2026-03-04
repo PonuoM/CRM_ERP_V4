@@ -150,6 +150,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "COD Management": "จัดการยอด COD",
     "Order Tab Settings": "ตั้งค่าจัดการคำสั่งซื้อ",
     "Basket Settings": "ตั้งค่าถัง",
+    "Export Template Settings": "ตั้งค่าการส่งออกข้อมูล",
     "Distribution V2": "แจกงาน V2",
     "Finance": "การเงิน",
     "Accounting Audit": "ตรวจสอบจากบัญชี",
@@ -236,6 +237,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Order Tab Settings", icon: Settings, key: "nav.order_tab_settings" },
         { label: "Basket Settings", icon: Layers, key: "nav.basket_settings" },
         { label: "Distribution V2", icon: Users, key: "nav.distribution_v2" },
+        { label: "Export Template Settings", icon: FileSpreadsheet, key: "nav.export_template_settings" },
         { label: "Search", icon: Search, key: "nav.search" },
       ]
     },

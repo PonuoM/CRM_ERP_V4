@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText, XCircle, RotateCcw } from 'lucide-react';
-import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl, getTabRules, validateOrdersForExport } from '../services/api';
+import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl, getTabRules, validateOrdersForExport, fetchExportTemplates, getExportOrderIds } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
 import Spinner from '../components/Spinner';
@@ -50,6 +50,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [showExportHistory, setShowExportHistory] = useState(false);
   const [exportHistory, setExportHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [reExportingId, setReExportingId] = useState<number | null>(null);
+  const [historyTemplateSelection, setHistoryTemplateSelection] = useState<Record<number, number>>({});
   const [fOrderId, setFOrderId] = useState('');
   const [fTracking, setFTracking] = useState('');
   const [fOrderDate, setFOrderDate] = useState<{ start: string; end: string }>({ start: '', end: '' });
@@ -76,6 +78,35 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     valid: [],
     invalid: []
   });
+
+  // Export Template Modal States
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [exportTemplates, setExportTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  const openTemplateModal = async () => {
+    setShowTemplateModal(true);
+    setLoadingTemplates(true);
+    try {
+      const data = await fetchExportTemplates(user.companyId!);
+      const tpls = Array.isArray(data) ? data : [];
+      setExportTemplates(tpls);
+      // Auto-select default template
+      const def = tpls.find((t: any) => t.is_default) || tpls[0];
+      setSelectedTemplateId(def?.id ?? null);
+    } catch (e) {
+      console.error('Failed to load templates', e);
+      setExportTemplates([]);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const confirmTemplateAndExport = () => {
+    setShowTemplateModal(false);
+    handleExportAndProcessSelected();
+  };
 
   const runExport = async (ordersToExport: Order[]) => {
     // Show loading
@@ -135,7 +166,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       await onProcessOrders(payloadForProcess);
 
       // 5. Download CSV - ONLY for successful fetches
-      generateAndDownloadCsv(finalExportList);
+      const selectedTpl = exportTemplates.find(t => t.id === selectedTemplateId);
+      generateAndDownloadCsv(finalExportList, selectedTpl);
 
       // 6. Cleanup
       setSelectedIds([]);
@@ -752,7 +784,82 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     };
   };
 
-  const generateAndDownloadCsv = async (selectedOrders: Order[]) => {
+  /**
+   * Resolve a data_source expression to a value.
+   * Supports:
+   *  - Simple field: "product.sku" → value of product.sku
+   *  - Expression template: "{product.sku}-{item.quantity}" → "LATM01L001-5"
+   *  - Empty string: returns defaultValue or ''
+   */
+  const resolveDataSource = (
+    expr: string,
+    ctx: {
+      order: Order;
+      item: any;
+      product: any;
+      customer: any;
+      address: any;
+      onlineOrderId: string;
+      index: number;
+      codValue: string | number;
+      orderIdTotalAmount: string | number;
+      recipientName: string;
+      displayPhone: string;
+    },
+    defaultValue?: string | null
+  ): string | number => {
+    if (!expr) return defaultValue ?? '';
+
+    // Build lookup map of all fields (always return real values)
+    const fieldMap: Record<string, string | number> = {
+      'order.id': ctx.order.id,
+      'order.onlineOrderId': ctx.onlineOrderId,
+      'order.orderDate': ctx.order.orderDate?.substring(0, 10) ?? '',
+      'order.deliveryDate': ctx.order.deliveryDate?.substring(0, 10) ?? '',
+      'order.notes': ctx.order.notes ?? '',
+      'order.totalAmount': ctx.codValue === 'ใช่' ? ctx.orderIdTotalAmount : '',
+      'order.codFlag': ctx.codValue,
+      'order.paymentMethod': ctx.order.paymentMethod || '',
+      'order.orderStatus': ctx.order.orderStatus === 'Pending' ? 'ชำระแล้วรอตรวจสอบ' : (ctx.order.orderStatus || ''),
+      'order.shippingProvider': ctx.order.shippingProvider || '',
+      'order.trackingNumbers': ctx.order.trackingNumbers?.join(', ') || '',
+      'order.shippingCost': ctx.order.shippingCost ?? '',
+      'customer.phone': ctx.displayPhone,
+      'customer.email': ctx.customer?.email ?? '',
+      'address.recipientFullName': ctx.recipientName,
+      'address.recipientFirstName': ctx.address?.recipientFirstName || ctx.customer?.firstName || '',
+      'address.recipientLastName': ctx.address?.recipientLastName || ctx.customer?.lastName || '',
+      'address.street': ctx.address?.street || '',
+      'address.subdistrict': ctx.address?.subdistrict || '',
+      'address.district': ctx.address?.district || '',
+      'address.province': ctx.address?.province || '',
+      'address.postalCode': ctx.address?.postalCode || '',
+      'product.shop': ctx.product?.shop ?? 'N/A',
+      'product.sku': ctx.product?.sku ?? '',
+      'item.productName': ctx.item?.productName || '',
+      'item.quantity': ctx.item?.quantity ?? 0,
+      'item.pricePerUnit': ctx.item?.pricePerUnit ?? 0,
+    };
+
+    // Check if it's an expression with {field} syntax
+    if (expr.includes('{')) {
+      return expr.replace(/\{([^}]+)\}/g, (_match, fieldName) => {
+        const val = fieldMap[fieldName.trim()];
+        return val !== undefined ? String(val) : '';
+      });
+    }
+
+    // Simple field reference
+    if (fieldMap[expr] !== undefined) {
+      return fieldMap[expr];
+    }
+
+    return defaultValue ?? '';
+  };
+
+  const generateAndDownloadCsv = async (selectedOrders: Order[], template?: any, skipLog?: boolean) => {
+    // If template has columns, use template-based headers (any template including default)
+    const useTemplateHeaders = template && Array.isArray(template.columns) && template.columns.length > 0;
     // Generate HTML Table for XLS export to support Text formatting (mso-number-format)
     // This is required to force "Text" type for all cells as requested, which CSV cannot natively do.
     const headers = [
@@ -850,7 +957,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           const boxNumber = boxNumberMatch ? parseInt(boxNumberMatch[1], 10) : null;
 
           let recipientName = '';
-          if (index === 0) {
+          {
             const firstName = address?.recipientFirstName || customer?.firstName || '';
             const lastName = address?.recipientLastName || customer?.lastName || '';
             const fullName = `${firstName} ${lastName}`.trim();
@@ -862,19 +969,18 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           }
 
           let codValue: string | number = '';
-          if (index === 0) {
-            if (orderIdTotalAmount === 0 || !orderIdTotalAmount) {
-              codValue = 'ไม่';
-            } else if (order.paymentMethod === PaymentMethod.COD) {
-              codValue = 'ใช่';
-            } else {
-              codValue = 'ไม่';
-            }
+          if (orderIdTotalAmount === 0 || !orderIdTotalAmount) {
+            codValue = 'ไม่';
+          } else if (order.paymentMethod === PaymentMethod.COD) {
+            codValue = 'ใช่';
+          } else {
+            codValue = 'ไม่';
           }
 
           const product = item.productId ? products.find(p => p.id === item.productId) : null;
           const shopName = product?.shop ?? 'N/A';
-          const displayPhone = index === 0 ? (customer?.phone ? ((customer.phone.startsWith('0') || customer.phone.startsWith('+')) ? customer.phone : `0${customer.phone}`) : '') : '';
+          const rawPhone = customer?.phone || address?.phone || '';
+          const displayPhone = rawPhone ? ((rawPhone.startsWith('0') || rawPhone.startsWith('+')) ? rawPhone : `0${rawPhone}`) : '';
 
           const rowData: { [key: string]: string | number | undefined } = {
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
@@ -916,13 +1022,30 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'รูปแบบการชำระ': '',
           };
 
-          orderRows.push(headers.map(header => rowData[header]));
+          if (useTemplateHeaders) {
+            // Template-based: resolve each column via resolveDataSource
+            const tplColumns = [...template.columns].sort((a: any, b: any) => a.sort_order - b.sort_order);
+            const ctx = {
+              order, item, product, customer, address, onlineOrderId,
+              index, codValue, orderIdTotalAmount, recipientName, displayPhone,
+            };
+            orderRows.push(tplColumns.map((col: any) => {
+              const displayMode = col.display_mode || 'all';
+              if (displayMode === 'index' && index !== 0) return '';
+              return resolveDataSource(col.data_source || '', ctx, col.default_value);
+            }));
+          } else {
+            orderRows.push(headers.map(header => rowData[header]));
+          }
         });
       });
       return orderRows;
     });
 
-    const data = [headers, ...rows.map(row => row.map(cell => String(cell ?? '')))];
+    const finalHeaders = useTemplateHeaders
+      ? [...template.columns].sort((a: any, b: any) => a.sort_order - b.sort_order).map((c: any) => c.header_name)
+      : headers;
+    const data = [finalHeaders, ...rows.map(row => row.map(cell => String(cell ?? '')))];
     const ws = XLSX.utils.aoa_to_sheet(data);
 
     // Force every cell to be text type 's'
@@ -953,25 +1076,29 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    try {
-      // Ideally we would upload the buffer, but here we just convert array buffer to base64
-      let binary = '';
-      const bytes = new Uint8Array(wbout);
-      const len = bytes.byteLength;
-      for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const b64 = btoa(binary);
+    if (!skipLog) {
+      try {
+        // Ideally we would upload the buffer, but here we just convert array buffer to base64
+        let binary = '';
+        const bytes = new Uint8Array(wbout);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const b64 = btoa(binary);
 
-      await logExport({
-        filename,
-        contentBase64: b64,
-        ordersCount: selectedOrders.length,
-        exportedBy: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Unknown',
-        category: 'export_shipping_provider',
-      });
-    } catch (e) {
-      console.error('Failed to log export file', e);
+        await logExport({
+          filename,
+          contentBase64: b64,
+          ordersCount: selectedOrders.length,
+          exportedBy: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Unknown',
+          category: 'export_shipping_provider',
+          templateId: selectedTemplateId ?? undefined,
+          orderIds: selectedOrders.map(o => o.id),
+        });
+      } catch (e) {
+        console.error('Failed to log export file', e);
+      }
     }
   };
 
@@ -1460,7 +1587,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         <div className="flex items-center space-x-2">
           {activeTab !== 'waitingVerifySlip' && (
             <button
-              onClick={handleExportAndProcessSelected}
+              onClick={openTemplateModal}
               disabled={selectedIds.length === 0}
               className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1474,8 +1601,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 setShowExportHistory(true);
                 setLoadingHistory(true);
                 try {
-                  const data = await listExports('export_shipping_provider');
-                  setExportHistory(Array.isArray(data) ? data : []);
+                  const [histData, tplData] = await Promise.all([
+                    listExports('export_shipping_provider'),
+                    user.companyId ? fetchExportTemplates(user.companyId) : Promise.resolve([]),
+                  ]);
+                  setExportHistory(Array.isArray(histData) ? histData : []);
+                  const tpls = Array.isArray(tplData) ? tplData : [];
+                  setExportTemplates(tpls);
+                  // Pre-select default template for each history row
+                  const defTpl = tpls.find((t: any) => t.is_default) || tpls[0];
+                  if (defTpl) {
+                    const sel: Record<number, number> = {};
+                    (Array.isArray(histData) ? histData : []).forEach((h: any) => { sel[h.id] = defTpl.id; });
+                    setHistoryTemplateSelection(sel);
+                  }
                 } catch (e) {
                   console.error('Failed to load export history', e);
                   setExportHistory([]);
@@ -1807,6 +1946,62 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         {renderPagination(false)}
       </div>
 
+      {/* Export Template Selection Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">เลือก Template ส่งออกข้อมูล</h3>
+            {loadingTemplates ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin border-4 border-blue-500 border-t-transparent rounded-full w-8 h-8" />
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-60 overflow-y-auto">
+                {exportTemplates.map((tpl: any) => (
+                  <label
+                    key={tpl.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${selectedTemplateId === tpl.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}
+                  >
+                    <input
+                      type="radio"
+                      name="exportTemplate"
+                      checked={selectedTemplateId === tpl.id}
+                      onChange={() => setSelectedTemplateId(tpl.id)}
+                      className="accent-blue-600"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-800">{tpl.name}</div>
+                      <div className="text-xs text-gray-500">{tpl.columns?.length ?? 0} คอลัมน์</div>
+                    </div>
+                    {tpl.is_default ? (
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700 rounded-full">DEFAULT</span>
+                    ) : null}
+                  </label>
+                ))}
+                {exportTemplates.length === 0 && (
+                  <p className="text-center text-gray-400 py-4">ไม่มี Template</p>
+                )}
+              </div>
+            )}
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                onClick={() => setShowTemplateModal(false)}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border rounded-lg hover:bg-gray-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={confirmTemplateAndExport}
+                disabled={!selectedTemplateId || loadingTemplates}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50"
+              >
+                ยืนยันส่งออก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Export History Modal */}
       {showExportHistory && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1831,27 +2026,140 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                     <tr>
                       <th className="px-4 py-3">ชื่อไฟล์</th>
                       <th className="px-4 py-3">วันที่/เวลา</th>
-                      <th className="px-4 py-3">จำนวนออเดอร์</th>
+                      <th className="px-4 py-3">จำนวน</th>
                       <th className="px-4 py-3">ผู้ส่งออก</th>
-                      <th className="px-4 py-3">ดาวน์โหลดซ้ำ</th>
-                      <th className="px-4 py-3">การทำงาน</th>
+                      <th className="px-4 py-3">ดาวน์โหลดไฟล์เดิม</th>
+                      <th className="px-4 py-3 min-w-[200px]">ส่งออกซ้ำ (เลือก Template)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {exportHistory.map((exp: any) => (
                       <tr key={exp.id} className="border-b hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium text-gray-800">{exp.filename}</td>
-                        <td className="px-4 py-3">{new Date(exp.created_at).toLocaleString('th-TH')}</td>
+                        <td className="px-4 py-3 font-medium text-gray-800 max-w-[200px] truncate" title={exp.filename}>{exp.filename}</td>
+                        <td className="px-4 py-3 text-xs">{new Date(exp.created_at).toLocaleString('th-TH')}</td>
                         <td className="px-4 py-3">{exp.orders_count?.toLocaleString()}</td>
-                        <td className="px-4 py-3">{exp.exported_by || '-'}</td>
-                        <td className="px-4 py-3">{exp.download_count || 0}</td>
+                        <td className="px-4 py-3 text-xs">{exp.exported_by || '-'}</td>
                         <td className="px-4 py-3">
                           <a
                             href={downloadExportUrl(exp.id)}
-                            className="text-blue-600 hover:underline"
+                            className="text-blue-600 hover:underline text-xs"
                           >
                             ดาวน์โหลด
                           </a>
+                        </td>
+                        <td className="px-4 py-3">
+                          {!exp.template_id ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                              <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full font-medium">v.1</span>
+                              <span className="text-gray-400">ระบบเก่า</span>
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={historyTemplateSelection[exp.id] || ''}
+                                onChange={e => setHistoryTemplateSelection(prev => ({ ...prev, [exp.id]: Number(e.target.value) }))}
+                                className="px-2 py-1 border rounded text-xs bg-white min-w-[120px]"
+                              >
+                                {exportTemplates.map((t: any) => (
+                                  <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={async () => {
+                                  const tplId = historyTemplateSelection[exp.id];
+                                  if (!tplId) { alert('กรุณาเลือก Template'); return; }
+                                  setReExportingId(exp.id);
+                                  try {
+                                    const res: any = await getExportOrderIds(exp.id);
+                                    const orderIds: string[] = res?.orderIds || [];
+                                    if (orderIds.length === 0) { alert('ไม่พบข้อมูลออเดอร์ในประวัตินี้'); return; }
+
+                                    const results = await Promise.allSettled(orderIds.map(id => apiFetch(`orders/${encodeURIComponent(id)}`)));
+                                    const orders: Order[] = results
+                                      .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value)
+                                      .map(r => {
+                                        const o = r.value;
+                                        return {
+                                          id: String(o.id),
+                                          customerId: String(o.customer_id ?? ''),
+                                          companyId: Number(o.company_id ?? 0),
+                                          creatorId: Number(o.creator_id ?? 0),
+                                          orderDate: o.order_date,
+                                          deliveryDate: o.delivery_date,
+                                          shippingProvider: o.shipping_provider,
+                                          shippingAddress: {
+                                            recipientFirstName: o.recipient_first_name || '',
+                                            recipientLastName: o.recipient_last_name || '',
+                                            street: o.street || '',
+                                            subdistrict: o.subdistrict || '',
+                                            district: o.district || '',
+                                            province: o.province || '',
+                                            postalCode: o.postal_code || '',
+                                          },
+                                          items: Array.isArray(o.items) ? o.items.map((it: any, i: number) => ({
+                                            id: Number(it.id ?? i + 1),
+                                            productName: String(it.product_name ?? ''),
+                                            quantity: Number(it.quantity ?? 0),
+                                            pricePerUnit: Number(it.price_per_unit ?? 0),
+                                            discount: Number(it.discount ?? 0),
+                                            isFreebie: !!(it.is_freebie ?? 0),
+                                            boxNumber: Number(it.box_number ?? 0),
+                                            productId: it.product_id ? Number(it.product_id) : undefined,
+                                            orderId: it.order_id != null ? String(it.order_id) : undefined,
+                                            parentOrderId: it.parent_order_id != null ? String(it.parent_order_id) : undefined,
+                                          })) : [],
+                                          shippingCost: Number(o.shipping_cost ?? 0),
+                                          billDiscount: Number(o.bill_discount ?? 0),
+                                          totalAmount: Number(o.total_amount ?? 0),
+                                          paymentMethod: fromApiPaymentMethod(o.payment_method),
+                                          paymentStatus: fromApiPaymentStatus(o.payment_status ?? 'Unpaid'),
+                                          orderStatus: fromApiOrderStatus(o.order_status ?? 'Pending'),
+                                          trackingNumbers: Array.isArray(o.trackingNumbers)
+                                            ? o.trackingNumbers
+                                            : (typeof o.tracking_numbers === 'string' ? o.tracking_numbers.split(',').filter(Boolean) : []),
+                                          boxes: Array.isArray(o.boxes) ? o.boxes.map((b: any) => ({
+                                            boxNumber: Number(b.box_number ?? 0),
+                                            codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
+                                            collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
+                                            collectedAmount: Number(b.collected_amount ?? 0),
+                                            waivedAmount: Number(b.waived_amount ?? 0),
+                                            paymentMethod: b.payment_method ?? undefined,
+                                            status: b.status ?? undefined,
+                                            subOrderId: b.sub_order_id ?? undefined,
+                                          })) : [],
+                                          notes: o.notes ?? undefined,
+                                          customerInfo: (o.customer_id || o.customer_phone || o.phone) ? {
+                                            firstName: o.customer_first_name || '',
+                                            lastName: o.customer_last_name || '',
+                                            phone: o.phone || o.customer_phone || '',
+                                            street: o.customer_street || '',
+                                            subdistrict: o.customer_subdistrict || '',
+                                            district: o.customer_district || '',
+                                            province: o.customer_province || '',
+                                            postalCode: o.customer_postal_code || '',
+                                          } : undefined,
+                                        } as Order;
+                                      });
+
+                                    if (orders.length === 0) { alert('ไม่สามารถโหลดข้อมูลออเดอร์ได้'); return; }
+
+                                    const selectedTpl = exportTemplates.find((t: any) => t.id === tplId);
+                                    setSelectedTemplateId(tplId);
+                                    await generateAndDownloadCsv(orders, selectedTpl, true);
+                                  } catch (e) {
+                                    console.error('Re-export failed', e);
+                                    alert('ส่งออกซ้ำไม่สำเร็จ');
+                                  } finally {
+                                    setReExportingId(null);
+                                  }
+                                }}
+                                disabled={reExportingId === exp.id}
+                                className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
+                              >
+                                {reExportingId === exp.id ? 'กำลังสร้าง...' : 'ส่งออกซ้ำ'}
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}

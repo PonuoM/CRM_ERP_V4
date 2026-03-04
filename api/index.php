@@ -4537,10 +4537,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $distributionBasketKeys = [41, 42, 43, 44, 45];
 
                     // Check if creator owns this customer (assigned_to matches creator)
-                    $isOwnCustomer = ($assignedTo !== null && (int)$assignedTo === (int)$creatorId);
+                    $isOwnCustomer = ($assignedTo !== null && (int) $assignedTo === (int) $creatorId);
 
                     // Use raw basket key if: creator owns the customer AND basket is NOT a distribution basket
-                    if ($isOwnCustomer && $rawBasketKey !== null && !in_array((int)$rawBasketKey, $distributionBasketKeys)) {
+                    if ($isOwnCustomer && $rawBasketKey !== null && !in_array((int) $rawBasketKey, $distributionBasketKeys)) {
                         $customerBasketKey = $rawBasketKey;
                     } else {
                         // Map based on customerStatus from the frontend
@@ -7241,6 +7241,17 @@ function handle_exports(PDO $pdo, ?string $id): void
             readfile($path);
             exit;
         }
+        // Return order IDs linked to this export
+        if (isset($_GET['orderItems'])) {
+            try {
+                $stmt2 = $pdo->prepare('SELECT order_id FROM export_order_items WHERE export_id = ?');
+                $stmt2->execute([$id]);
+                $orderIds = $stmt2->fetchAll(PDO::FETCH_COLUMN, 0);
+                json_response(['ok' => true, 'orderIds' => $orderIds]);
+            } catch (Throwable $e) {
+                json_response(['ok' => true, 'orderIds' => []]);
+            }
+        }
         // Only download is supported for ID right now
         json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     } else {
@@ -7305,11 +7316,22 @@ function handle_exports(PDO $pdo, ?string $id): void
                     $ordersCount = (int) ($in['ordersCount'] ?? 0);
                     $exportedBy = $in['exportedBy'] ?? 'Unknown';
                     $category = $in['category'] ?? null;
+                    $templateId = isset($in['templateId']) ? (int) $in['templateId'] : null;
+                    $orderIds = $in['orderIds'] ?? [];
 
-                    $stmt = $pdo->prepare('INSERT INTO exports (filename, file_path, orders_count, user_id, exported_by, company_id, category) VALUES (?, ?, ?, ?, ?, ?, ?)');
-                    $stmt->execute([$safeName, $path, $ordersCount, $userId, $exportedBy, $companyId, $category]);
+                    $stmt = $pdo->prepare('INSERT INTO exports (filename, file_path, orders_count, user_id, exported_by, company_id, category, template_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                    $stmt->execute([$safeName, $path, $ordersCount, $userId, $exportedBy, $companyId, $category, $templateId]);
+                    $exportId = (int) $pdo->lastInsertId();
 
-                    json_response(['ok' => true, 'id' => $pdo->lastInsertId()]);
+                    // Save order IDs for re-download
+                    if (!empty($orderIds) && is_array($orderIds)) {
+                        $insStmt = $pdo->prepare('INSERT INTO export_order_items (export_id, order_id) VALUES (?, ?)');
+                        foreach ($orderIds as $oid) {
+                            $insStmt->execute([$exportId, (string) $oid]);
+                        }
+                    }
+
+                    json_response(['ok' => true, 'id' => $exportId]);
                 } catch (Throwable $e) {
                     json_response(['error' => 'EXPORT_LOG_FAILED', 'message' => $e->getMessage()], 500);
                 }
