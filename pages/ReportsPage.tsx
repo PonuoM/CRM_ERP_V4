@@ -994,20 +994,36 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           good: 'สภาพดี', damaged: 'ชำรุด', lost: 'สูญหาย'
         };
 
-        const csvRows = rows.map((r: any) => ({
-          'Order ID': r.order_id || '',
-          'Sub Order ID': r.sub_order_id || '',
-          'วันที่สั่งซื้อ': r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH-u-ca-gregory') : '-',
-          'ชื่อลูกค้า': `${r.customer_first_name || ''} ${r.customer_last_name || ''}`.trim() || '-',
-          'เบอร์โทร': r.customer_phone || '-',
-          'Tracking No.': r.tracking_number || '-',
-          'สถานะตีกลับ': statusThai[r.return_status] || r.return_status || '-',
-          'หมายเหตุ': r.return_note || '-',
-          'ราคากล่อง': r.cod_amount || 0,
-          'ยอดเก็บได้': r.collection_amount || 0,
-          'วันที่บันทึก': r.return_created_at ? new Date(r.return_created_at).toLocaleDateString('th-TH-u-ca-gregory') : '-',
-          'ช่องทางชำระ': r.payment_method || '-',
-        }));
+        // Group rows by order_id + box_number to determine first-row-of-group
+        let lastGroupKey = '';
+        const csvRows = rows.map((r: any) => {
+          const groupKey = `${r.order_id}-${r.box_number}`;
+          const isFirstRow = groupKey !== lastGroupKey;
+          lastGroupKey = groupKey;
+
+          // Item-level seller (from order_items.creator_id)
+          const itemSeller = (r.item_creator_first_name || r.item_creator_last_name)
+            ? `${r.item_creator_first_name || ''} ${r.item_creator_last_name || ''}`.trim()
+            : `${r.seller_first_name || ''} ${r.seller_last_name || ''}`.trim() || '-';
+
+          return {
+            'Order ID': isFirstRow ? (r.order_id || '') : '',
+            'Sub Order ID': isFirstRow ? (r.sub_order_id || '') : '',
+            'วันที่สั่งซื้อ': isFirstRow ? (r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH-u-ca-gregory') : '-') : '',
+            'ชื่อลูกค้า': isFirstRow ? (`${r.customer_first_name || ''} ${r.customer_last_name || ''}`.trim() || '-') : '',
+            'เบอร์โทร': isFirstRow ? (r.customer_phone || '-') : '',
+            'Tracking No.': isFirstRow ? (r.tracking_number || '-') : '',
+            'สถานะตีกลับ': isFirstRow ? (statusThai[r.return_status] || r.return_status || '-') : '',
+            'หมายเหตุ': isFirstRow ? (r.return_note || '-') : '',
+            'ราคากล่อง': isFirstRow ? (r.cod_amount || 0) : '',
+            'ยอดเก็บได้': isFirstRow ? (r.collection_amount || 0) : '',
+            'ชื่อสินค้า': r.item_product_name || '-',
+            'จำนวน': r.item_quantity || 0,
+            'ผู้ขาย': itemSeller,
+            'วันที่บันทึก': isFirstRow ? (r.return_created_at ? new Date(r.return_created_at).toLocaleDateString('th-TH-u-ca-gregory') : '-') : '',
+            'ช่องทางชำระ': isFirstRow ? (r.payment_method || '-') : '',
+          };
+        });
 
         downloadCSV(csvRows, `return-report_${startDateStr}_${endDateStr}`);
       } catch (error) {

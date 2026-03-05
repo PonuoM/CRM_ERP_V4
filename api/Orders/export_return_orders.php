@@ -67,15 +67,22 @@ try {
             u.last_name as seller_last_name,
             u.role as seller_role,
             (SELECT COALESCE(SUM(ob2.cod_amount), 0) FROM order_boxes ob2 WHERE ob2.order_id = ob.order_id) as total_cod_amount,
-            (SELECT COALESCE(SUM(ob2.collection_amount), 0) FROM order_boxes ob2 WHERE ob2.order_id = ob.order_id) as total_collection_amount
+            (SELECT COALESCE(SUM(ob2.collection_amount), 0) FROM order_boxes ob2 WHERE ob2.order_id = ob.order_id) as total_collection_amount,
+            oi.product_name as item_product_name,
+            oi.quantity as item_quantity,
+            oi.creator_id as item_creator_id,
+            ui.first_name as item_creator_first_name,
+            ui.last_name as item_creator_last_name
         FROM order_boxes ob
         LEFT JOIN order_tracking_numbers otn
             ON ob.order_id = otn.parent_order_id AND ob.box_number = otn.box_number
         LEFT JOIN orders o ON ob.order_id = o.id
         LEFT JOIN customers c ON o.customer_id = c.customer_id
         LEFT JOIN users u ON o.creator_id = u.id
+        LEFT JOIN order_items oi ON oi.order_id = ob.sub_order_id
+        LEFT JOIN users ui ON oi.creator_id = ui.id
         $whereClause
-        ORDER BY o.order_date DESC, ob.order_id, ob.box_number
+        ORDER BY o.order_date DESC, ob.order_id, ob.box_number, oi.id
     ";
 
     $stmt = $pdo->prepare($sql);
