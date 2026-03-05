@@ -840,13 +840,54 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       'item.quantity': ctx.item?.quantity ?? 0,
       'item.pricePerUnit': ctx.item?.pricePerUnit ?? 0,
     };
+    // Helper: resolve {field} placeholders in a sub-expression
+    const resolveFields = (s: string): string =>
+      s.replace(/\{([^}]+)\}/g, (_m, f) => {
+        const v = fieldMap[f.trim()];
+        return v !== undefined ? String(v) : '';
+      });
+
+    // Check for conditional expression: {if:field=value|THEN|ELSE}
+    // Supports: =, !=, >, <, >=, <=
+    const ifMatch = expr.match(/^\{if:(.+?)(=|!=|>=|<=|>|<)(.+?)\|(.+)\}$/);
+    if (ifMatch) {
+      const [, condField, operator, condValue, branches] = ifMatch;
+      const actualVal = fieldMap[condField.trim()];
+      const actual = actualVal !== undefined ? String(actualVal) : '';
+      const expected = condValue.trim();
+
+      // Split branches by top-level pipe (not inside nested {})
+      let depth = 0, splitIdx = -1;
+      for (let i = 0; i < branches.length; i++) {
+        if (branches[i] === '{') depth++;
+        else if (branches[i] === '}') depth--;
+        else if (branches[i] === '|' && depth === 0) { splitIdx = i; break; }
+      }
+
+      const thenExpr = splitIdx >= 0 ? branches.substring(0, splitIdx) : branches;
+      const elseExpr = splitIdx >= 0 ? branches.substring(splitIdx + 1) : '';
+
+      // Evaluate condition
+      let condResult = false;
+      const numActual = Number(actual);
+      const numExpected = Number(expected);
+      const bothNumeric = !isNaN(numActual) && !isNaN(numExpected);
+
+      switch (operator) {
+        case '=': condResult = bothNumeric ? numActual === numExpected : actual === expected; break;
+        case '!=': condResult = bothNumeric ? numActual !== numExpected : actual !== expected; break;
+        case '>': condResult = bothNumeric ? numActual > numExpected : actual > expected; break;
+        case '<': condResult = bothNumeric ? numActual < numExpected : actual < expected; break;
+        case '>=': condResult = bothNumeric ? numActual >= numExpected : actual >= expected; break;
+        case '<=': condResult = bothNumeric ? numActual <= numExpected : actual <= expected; break;
+      }
+
+      return resolveFields(condResult ? thenExpr : elseExpr);
+    }
 
     // Check if it's an expression with {field} syntax
     if (expr.includes('{')) {
-      return expr.replace(/\{([^}]+)\}/g, (_match, fieldName) => {
-        const val = fieldMap[fieldName.trim()];
-        return val !== undefined ? String(val) : '';
-      });
+      return resolveFields(expr);
     }
 
     // Simple field reference
