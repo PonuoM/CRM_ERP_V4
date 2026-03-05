@@ -22,9 +22,9 @@ try {
     $input = json_decode(file_get_contents("php://input"), true);
 
     // Required: cod_document_id
-    $codDocumentId = isset($input['cod_document_id']) ? (int)$input['cod_document_id'] : 0;
-    $companyId = isset($input['company_id']) ? (int)$input['company_id'] : 0;
-    $userId = isset($input['user_id']) ? (int)$input['user_id'] : 0;
+    $codDocumentId = isset($input['cod_document_id']) ? (int) $input['cod_document_id'] : 0;
+    $companyId = isset($input['company_id']) ? (int) $input['company_id'] : 0;
+    $userId = isset($input['user_id']) ? (int) $input['user_id'] : 0;
 
     if ($codDocumentId <= 0) {
         throw new Exception("Missing or invalid cod_document_id");
@@ -32,8 +32,9 @@ try {
 
     $pdo = db_connect();
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
+
     $pdo->beginTransaction();
+    set_audit_context($pdo, 'statement/confirm_cod_document');
 
     // 1. Validate COD document exists
     $docStmt = $pdo->prepare("
@@ -85,13 +86,13 @@ try {
         if (!empty($orderId) && !in_array($orderId, $orderIdsUpdated)) {
             // Get parent order id (remove sub-order suffix like -1, -2)
             $parentOrderId = preg_replace('/-\d+$/', '', $orderId);
-            
+
             // GUARD: Check if order has tracking (already shipped) before setting Delivered
             $trackingCheckStmt = $pdo->prepare(
                 "SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = :oid"
             );
             $trackingCheckStmt->execute([':oid' => $parentOrderId]);
-            $hasTracking = (int)$trackingCheckStmt->fetchColumn() > 0;
+            $hasTracking = (int) $trackingCheckStmt->fetchColumn() > 0;
 
             if ($hasTracking) {
                 // Has tracking = already shipped → safe to set Delivered

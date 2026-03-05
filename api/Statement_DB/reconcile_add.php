@@ -67,6 +67,7 @@ try {
     }
 
     $pdo->beginTransaction();
+    set_audit_context($pdo, 'statement/reconcile_add');
 
     // 4. Find existing batch for this statement, or create new one
     $batchStmt = $pdo->prepare("

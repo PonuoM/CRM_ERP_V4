@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 try {
     // 1. Connect DB
     $pdo = db_connect();
+    set_audit_context($pdo, 'finance/debt_collection');
 
     // 2. Authentication (Ideally we check auth first)
     $user = get_authenticated_user($pdo);
@@ -401,7 +402,7 @@ function handlePut($pdo, $id)
     $stmt->execute($params);
 
     // === Revert orders status when cancelling close case ===
-    if (isset($input['is_complete']) && (int)$input['is_complete'] === 0) {
+    if (isset($input['is_complete']) && (int) $input['is_complete'] === 0) {
         $recStmt = $pdo->prepare("SELECT order_id FROM debt_collection WHERE id = ?");
         $recStmt->execute([$id]);
         $rec = $recStmt->fetch(PDO::FETCH_ASSOC);

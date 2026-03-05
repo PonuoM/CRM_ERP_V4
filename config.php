@@ -185,6 +185,17 @@ function get_authenticated_user(PDO $pdo): ?array
  */
 function set_audit_context(PDO $pdo, string $apiSource, ?int $userId = null): void
 {
+  // Auto-detect user from auth token if not provided
+  if ($userId === null) {
+    try {
+      $user = get_authenticated_user($pdo);
+      if ($user && isset($user['id'])) {
+        $userId = (int) $user['id'];
+      }
+    } catch (Throwable $e) {
+      // Silently fail (e.g., cron jobs without auth)
+    }
+  }
   $pdo->exec("SET @audit_api_source = " . $pdo->quote($apiSource));
   $pdo->exec("SET @audit_user_id = " . ($userId !== null ? intval($userId) : 'NULL'));
 }

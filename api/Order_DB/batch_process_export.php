@@ -12,7 +12,7 @@ try {
     $orderIds = $input['orderIds'] ?? [];
     $targetStatus = $input['targetStatus'] ?? 'Picking';
     // User ID who performed the action (for activity log)
-    $actorId = $input['actorId'] ?? null; 
+    $actorId = $input['actorId'] ?? null;
     $actorName = $input['actorName'] ?? 'Unknown User';
 
     if (empty($orderIds)) {
@@ -20,9 +20,10 @@ try {
     }
 
     $pdo = db_connect();
-    
+
     // Start Transaction
     $pdo->beginTransaction();
+    set_audit_context($pdo, 'orders/batch_export');
 
     // 1. Fetch Orders to identify Customers and Creators
     // We need to know who created the order to assign ownership
@@ -38,7 +39,7 @@ try {
 
     // 2. Update Order Status
     $updateStmt = $pdo->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
-    
+
     // Prepare Data for Customer Updates
     $customerUpdates = []; // customer_id => creator_id (latest wins)
     $processedCount = 0;
@@ -47,7 +48,7 @@ try {
         // Skip if already correct status? (Optional, but good for idempotency)
         // Frontend logic forced update, so we do it.
         $updateStmt->execute([$targetStatus, $order['id']]);
-        
+
         if (!empty($order['customer_id']) && !empty($order['creator_id'])) {
             $customerUpdates[$order['customer_id']] = $order['creator_id'];
         }
@@ -59,7 +60,7 @@ try {
     if ($targetStatus === 'Picking' && !empty($customerUpdates)) {
         // Prepare expiration date (Now + 90 days)
         $ownershipExpires = date('Y-m-d H:i:s', strtotime('+90 days'));
-        
+
         $custStmt = $pdo->prepare("
             UPDATE customers 
             SET 
@@ -85,10 +86,11 @@ try {
         $activityParams = [];
         $activityRows = [];
         $now = date('Y-m-d H:i:s');
-        
+
         foreach ($orders as $order) {
-            if (empty($order['customer_id'])) continue;
-            
+            if (empty($order['customer_id']))
+                continue;
+
             $activityRows[] = "(?, ?, ?, ?, ?)";
             $activityParams[] = $order['customer_id']; // Assuming checking against PK/ID logic is handled by DB FK or flexible
             $activityParams[] = 'OrderStatusChanged'; // Enum or String

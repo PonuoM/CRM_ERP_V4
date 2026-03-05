@@ -38,6 +38,7 @@ foreach ($required_fields as $field) {
 try {
   // Database connection using PDO with UTF-8
   $conn = db_connect();
+  set_audit_context($conn, 'slip/insert');
 
   // Ensure bank_account table exists (create without foreign key first, then add FK if needed)
   $table_exists = $conn->query("SELECT COUNT(*) FROM information_schema.tables 

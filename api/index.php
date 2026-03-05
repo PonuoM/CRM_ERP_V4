@@ -66,6 +66,11 @@ $resource = $parts[0] ?? '';
 $id = $parts[1] ?? null;
 $action = $parts[2] ?? null;
 
+// Set audit context early for tracked resources (orders + customers)
+if (in_array($resource, ['orders', 'customers'])) {
+    set_audit_context($pdo, 'index/' . $resource . '_' . strtolower(method()));
+}
+
 if ($resource === 'notifications' && $action === null && $id !== null) {
     $action = $id;
     $id = null;
