@@ -47,7 +47,7 @@ function db_connect(): PDO
       // May be ignored by mysql driver, but harmless
       PDO::ATTR_TIMEOUT => 3,
       // CRITICAL: Force utf8mb4_unicode_ci collation at connection init to prevent MySQL 8 default utf8mb4_0900_ai_ci
-      PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci, time_zone = '+07:00', collation_connection = 'utf8mb4_unicode_ci'",
+      PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci, time_zone = '+07:00', collation_connection = 'utf8mb4_unicode_ci', @audit_api_source = 'unknown_api'",
     ];
     try {
       $pdo = new PDO($dsn, $DB_USER, $DB_PASS, $opts);
@@ -174,5 +174,16 @@ function get_authenticated_user(PDO $pdo): ?array
   $user = $stmt->fetch();
 
   return $user ?: null;
+}
+
+/**
+ * Set audit context for customer_audit_log trigger.
+ * Call this BEFORE any UPDATE on `customers` that changes assigned_to or current_basket_key.
+ * The MySQL TRIGGER reads @audit_api_source and @audit_user_id session variables.
+ */
+function set_audit_context(PDO $pdo, string $apiSource, ?int $userId = null): void
+{
+  $pdo->exec("SET @audit_api_source = " . $pdo->quote($apiSource));
+  $pdo->exec("SET @audit_user_id = " . ($userId !== null ? intval($userId) : 'NULL'));
 }
 

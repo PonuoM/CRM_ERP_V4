@@ -427,6 +427,7 @@ function handleBulkAssign($pdo, $companyId)
 
     $pdo->beginTransaction();
     try {
+        set_audit_context($pdo, 'basket_config/distribute');
         // Prepare statement to get old data before update (basket + current agent + previous agents)
         $getOldDataStmt = $pdo->prepare("
             SELECT current_basket_key, assigned_to, previous_assigned_to 
@@ -569,6 +570,7 @@ function handleReclaimCustomers($pdo, $companyId)
 
     $pdo->beginTransaction();
     try {
+        set_audit_context($pdo, 'basket_config/reclaim');
         $totalReclaimed = 0;
 
         // We need to map basket_key string to basket_config.id because current_basket_key stores ID
@@ -703,6 +705,7 @@ function handleTransferCustomers($pdo, $companyId)
 
     $pdo->beginTransaction();
     try {
+        set_audit_context($pdo, 'basket_config/transfer');
         // Select customers to transfer (from the specified agent and basket)
         $selectStmt = $pdo->prepare("
             SELECT customer_id, previous_assigned_to 

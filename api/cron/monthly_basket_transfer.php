@@ -21,7 +21,7 @@ $dryRun = in_array('--dry-run', $argv ?? []);
 $companyId = null;
 foreach ($argv ?? [] as $arg) {
     if (strpos($arg, '--company=') === 0) {
-        $companyId = (int)substr($arg, 10);
+        $companyId = (int) substr($arg, 10);
     }
 }
 
@@ -33,7 +33,8 @@ echo "===========================================\n\n";
 
 try {
     $pdo = db_connect();
-    
+    set_audit_context($pdo, 'cron/monthly_basket_transfer');
+
     // Get companies to process
     if ($companyId) {
         $companies = [['id' => $companyId]];
@@ -41,14 +42,14 @@ try {
         $stmt = $pdo->query("SELECT DISTINCT id FROM companies WHERE is_active = 1");
         $companies = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
-    
+
     $totalTransferred = 0;
     $totalErrors = 0;
-    
+
     foreach ($companies as $company) {
         $cid = $company['id'];
         echo "\n[Company $cid] Processing...\n";
-        
+
         // ============================================================
         // Step 1: โหลด basket configs ทั้งหมด
         // ============================================================
@@ -64,44 +65,46 @@ try {
         ");
         $allBasketsStmt->execute();
         $allBaskets = $allBasketsStmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         // สร้าง mappings
         $basketKeyToId = [];
         $idToBasketKey = [];
         $idToBasketName = [];
         $idToTargetPage = []; // NEW: เก็บ target_page ของแต่ละถัง
         $distributionBaskets = []; // สำหรับ re-evaluate
-        
+
         foreach ($allBaskets as $b) {
-            $basketKeyToId[$b['basket_key']] = (string)$b['id'];
-            $idToBasketKey[(string)$b['id']] = $b['basket_key'];
-            $idToBasketName[(string)$b['id']] = $b['basket_name'];
-            $idToTargetPage[(string)$b['id']] = $b['target_page']; // NEW
-            
+            $basketKeyToId[$b['basket_key']] = (string) $b['id'];
+            $idToBasketKey[(string) $b['id']] = $b['basket_key'];
+            $idToBasketName[(string) $b['id']] = $b['basket_name'];
+            $idToTargetPage[(string) $b['id']] = $b['target_page']; // NEW
+
             // เก็บ distribution baskets ที่มี days_range สำหรับ re-evaluate
-            if ($b['target_page'] === 'distribution' && 
-                $b['min_days_since_order'] !== null) {
+            if (
+                $b['target_page'] === 'distribution' &&
+                $b['min_days_since_order'] !== null
+            ) {
                 $distributionBaskets[] = [
-                    'id' => (string)$b['id'],
+                    'id' => (string) $b['id'],
                     'basket_key' => $b['basket_key'],
                     'basket_name' => $b['basket_name'],
-                    'min_days' => (int)$b['min_days_since_order'],
-                    'max_days' => $b['max_days_since_order'] !== null ? (int)$b['max_days_since_order'] : PHP_INT_MAX
+                    'min_days' => (int) $b['min_days_since_order'],
+                    'max_days' => $b['max_days_since_order'] !== null ? (int) $b['max_days_since_order'] : PHP_INT_MAX
                 ];
             }
         }
-        
+
         // เรียงลำดับ distribution baskets ตาม min_days (น้อยไปมาก)
-        usort($distributionBaskets, function($a, $b) {
+        usort($distributionBaskets, function ($a, $b) {
             return $a['min_days'] - $b['min_days'];
         });
-        
+
         echo "  Loaded " . count($allBaskets) . " basket configs\n";
         echo "  Distribution baskets for re-evaluate: " . count($distributionBaskets) . "\n";
         foreach ($distributionBaskets as $db) {
             echo "    - {$db['basket_name']}: {$db['min_days']}-{$db['max_days']} days\n";
         }
-        
+
         // ============================================================
         // Step 2: ดึง dashboard baskets ที่มี fail_after_days
         // ============================================================
@@ -116,20 +119,20 @@ try {
         ");
         $configStmt->execute();
         $configs = $configStmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         echo "\n  Found " . count($configs) . " dashboard baskets with fail_after_days\n";
-        
+
         foreach ($configs as $config) {
-            $basketId = (string)$config['id'];
+            $basketId = (string) $config['id'];
             $basketKey = $config['basket_key'];
             $basketName = $config['basket_name'];
-            $failDays = (int)$config['fail_after_days'];
+            $failDays = (int) $config['fail_after_days'];
             $onFailBasketKey = $config['on_fail_basket_key'];
-            $reevaluate = (bool)$config['on_fail_reevaluate'];
-            $holdDays = (int)($config['hold_days_before_redistribute'] ?? 0);
-            $maxDist = (int)($config['max_distribution_count'] ?? 0);
+            $reevaluate = (bool) $config['on_fail_reevaluate'];
+            $holdDays = (int) ($config['hold_days_before_redistribute'] ?? 0);
+            $maxDist = (int) ($config['max_distribution_count'] ?? 0);
             $blockedTargets = array_filter(explode(',', $config['blocked_target_baskets'] ?? ''));
-            
+
             echo "\n  [$basketName] ID:$basketId - fail after $failDays days";
             if ($reevaluate) {
                 echo " [RE-EVALUATE from config]";
@@ -137,7 +140,7 @@ try {
                 echo " → $onFailBasketKey";
             }
             echo "\n";
-            
+
             // ============================================================
             // Step 3: หาลูกค้าที่หมดเวลา
             // ============================================================
@@ -157,25 +160,26 @@ try {
             ");
             $customersStmt->execute([$cid, $basketId, $failDays]);
             $customers = $customersStmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             $count = count($customers);
             echo "    Found $count customers exceeding $failDays days\n";
-            
-            if ($count === 0) continue;
-            
+
+            if ($count === 0)
+                continue;
+
             foreach ($customers as $customer) {
                 $customerId = $customer['customer_id'];
                 $name = trim($customer['first_name'] . ' ' . $customer['last_name']);
                 $daysInBasket = $customer['days_in_basket'];
                 $daysSinceOrder = $customer['days_since_order'] ?? 9999;
-                $distCount = (int)$customer['distribution_count'];
-                
+                $distCount = (int) $customer['distribution_count'];
+
                 // ============================================================
                 // Step 4: กำหนดถังปลายทาง
                 // ============================================================
                 $targetBasketKey = $onFailBasketKey;
                 $matchedBy = 'on_fail_basket_key';
-                
+
                 if ($reevaluate) {
                     // ใช้ days_since_order หาถังจาก distribution baskets
                     $targetBasketKey = null;
@@ -190,7 +194,7 @@ try {
                             break;
                         }
                     }
-                    
+
                     // ถ้าไม่เจอถังที่ตรง ใช้ถังสุดท้าย (ancient)
                     if (!$targetBasketKey && count($distributionBaskets) > 0) {
                         $lastBasket = end($distributionBaskets);
@@ -198,7 +202,7 @@ try {
                         $matchedBy = "re-evaluate (fallback to last)";
                     }
                 }
-                
+
                 // Check max distribution count
                 if ($maxDist > 0 && $distCount >= $maxDist) {
                     $onMaxDistKey = $config['on_max_dist_basket_key'] ?? $targetBasketKey;
@@ -207,37 +211,37 @@ try {
                         $matchedBy = "max_distribution ($distCount/$maxDist)";
                     }
                 }
-                
+
                 if (!$targetBasketKey) {
                     echo "      - $name: ERROR - No target basket found!\n";
                     $totalErrors++;
                     continue;
                 }
-                
+
                 // แปลง basket_key → id
                 $targetBasketId = $basketKeyToId[$targetBasketKey] ?? null;
-                
+
                 if (!$targetBasketId) {
                     echo "      - $name: ERROR - Target '$targetBasketKey' not in config!\n";
                     $totalErrors++;
                     continue;
                 }
-                
+
                 $targetBasketName = $idToBasketName[$targetBasketId] ?? $targetBasketKey;
-                
+
                 echo "      - $name: {$daysInBasket}d in, {$daysSinceOrder}d since order";
                 echo " → $targetBasketName [$matchedBy]";
-                
+
                 if ($dryRun) {
                     echo " [DRY]\n";
                 } else {
                     try {
                         $holdUntil = $holdDays > 0 ? date('Y-m-d H:i:s', strtotime("+$holdDays days")) : null;
-                        
+
                         // NEW: เช็ค target_page ของถังปลายทาง
                         $targetPage = $idToTargetPage[$targetBasketId] ?? 'distribution';
                         $keepAssignedTo = ($targetPage === 'dashboard_v2');
-                        
+
                         if ($keepAssignedTo) {
                             // ถังปลายทางเป็น Dashboard → เก็บ assigned_to ไว้ (ยังอยู่กับ Telesale คนเดิม)
                             $updateStmt = $pdo->prepare("
@@ -264,7 +268,7 @@ try {
                             $updateStmt->execute([$targetBasketId, $holdUntil, $customerId]);
                             echo " [NULL assigned_to]";
                         }
-                        
+
                         // 1. Log transition (triggered_by = previous assigned agent)
                         $assignedTo = $customer['assigned_to'] ?? null;
                         $logStmt = $pdo->prepare("
@@ -273,8 +277,8 @@ try {
                             VALUES (?, ?, ?, 'monthly_cron', ?, ?, NOW())
                         ");
                         $logStmt->execute([
-                            $customerId, 
-                            $basketId, 
+                            $customerId,
+                            $basketId,
                             $targetBasketId,
                             $assignedTo,
                             "Exceeded $failDays days. Days since order: $daysSinceOrder. Method: $matchedBy"
@@ -286,10 +290,10 @@ try {
                             VALUES (?, ?, ?, ?, CURDATE(), NOW())
                         ");
                         $logReturn->execute([$customerId, $assignedTo, "Monthly Cron Fail ($name)", $daysSinceOrder]);
-                        
+
                         echo " [OK]\n";
                         $totalTransferred++;
-                        
+
                     } catch (Exception $e) {
                         echo " [ERROR: " . $e->getMessage() . "]\n";
                         $totalErrors++;
@@ -298,13 +302,13 @@ try {
             }
         }
     }
-    
+
     echo "\n===========================================\n";
     echo "Summary:\n";
     echo "  Total Transferred: $totalTransferred\n";
     echo "  Total Errors: $totalErrors\n";
     echo "===========================================\n";
-    
+
 } catch (Exception $e) {
     echo "FATAL ERROR: " . $e->getMessage() . "\n";
     exit(1);

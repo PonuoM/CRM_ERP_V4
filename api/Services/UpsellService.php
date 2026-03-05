@@ -9,11 +9,13 @@
  */
 
 // PDO is passed via constructor, no need to require config here
-class UpsellService {
+class UpsellService
+{
     private $pdo;
     private $companyId;
 
-    public function __construct($pdo, $companyId = 1) {
+    public function __construct($pdo, $companyId = 1)
+    {
         $this->pdo = $pdo;
         $this->companyId = $companyId;
     }
@@ -21,7 +23,8 @@ class UpsellService {
     /**
      * Get list of active Telesale users for Round-Robin
      */
-    private function getTelesaleUsers() {
+    private function getTelesaleUsers()
+    {
         $stmt = $this->pdo->prepare("
             SELECT u.id 
             FROM users u
@@ -37,9 +40,10 @@ class UpsellService {
     /**
      * Get next Telesale ID using Round-Robin
      */
-    public function getNextTelesaleId() {
+    public function getNextTelesaleId()
+    {
         $telesales = $this->getTelesaleUsers();
-        
+
         if (empty($telesales)) {
             return null; // No telesale available
         }
@@ -83,9 +87,10 @@ class UpsellService {
     /**
      * Assign order to next Telesale for Upsell
      */
-    public function assignOrderToTelesale($orderId) {
+    public function assignOrderToTelesale($orderId)
+    {
         $nextTelesaleId = $this->getNextTelesaleId();
-        
+
         if (!$nextTelesaleId) {
             return ['success' => false, 'error' => 'No telesale available'];
         }
@@ -108,7 +113,8 @@ class UpsellService {
      * Get Upsell orders for a specific Telesale
      * Only returns orders with status = 'pending'
      */
-    public function getUpsellOrdersForUser($userId) {
+    public function getUpsellOrdersForUser($userId)
+    {
         $stmt = $this->pdo->prepare("
             SELECT o.*, c.first_name, c.last_name, c.phone
             FROM orders o
@@ -127,7 +133,9 @@ class UpsellService {
      * Also moves the customer to New Customer Distribution (basket ID 52)
      * Note: Customer doesn't have owner at this point (still in Distribution pool)
      */
-    public function clearUpsellOnPicking($orderId) {
+    public function clearUpsellOnPicking($orderId)
+    {
+        set_audit_context($this->pdo, 'upsell/clear_on_picking');
         // 1. Clear upsell_user_id from order
         $stmt = $this->pdo->prepare("
             UPDATE orders 
@@ -135,14 +143,14 @@ class UpsellService {
             WHERE id = ?
         ");
         $stmt->execute([$orderId]);
-        
+
         // 2. Get customer_id from order
         $getCustomerStmt = $this->pdo->prepare("
             SELECT customer_id FROM orders WHERE id = ?
         ");
         $getCustomerStmt->execute([$orderId]);
         $customerId = $getCustomerStmt->fetchColumn();
-        
+
         if ($customerId) {
             // 3. Move customer to basket ID 52 (New Customer Distribution)
             // Note: Don't clear assigned_to because customer doesn't have owner at this point
@@ -154,7 +162,7 @@ class UpsellService {
                   AND (assigned_to IS NULL OR assigned_to = 0)
             ");
             $updateCustomerStmt->execute([$customerId]);
-            
+
             // 4. Log the transition
             $logStmt = $this->pdo->prepare("
                 INSERT INTO basket_transition_log 
@@ -163,16 +171,18 @@ class UpsellService {
             ");
             $logStmt->execute([$customerId]);
         }
-        
+
         return $stmt->rowCount() > 0;
     }
 
     /**
      * Handle successful Upsell sale - move customer to personal_1_2m
      */
-    public function handleUpsellSale($customerId, $orderId) {
+    public function handleUpsellSale($customerId, $orderId)
+    {
         require_once __DIR__ . '/BasketRoutingService.php';
-        
+        set_audit_context($this->pdo, 'upsell/sale');
+
         // Update customer basket
         $stmt = $this->pdo->prepare("
             UPDATE customers SET 
@@ -198,7 +208,9 @@ class UpsellService {
      * Handle failed/timeout Upsell - move customer to New Customer Distribution (ID 52)
      * Customer becomes unassigned and goes back to pool for redistribution
      */
-    public function handleUpsellNoSale($customerId, $reason = 'no_sale') {
+    public function handleUpsellNoSale($customerId, $reason = 'no_sale')
+    {
+        set_audit_context($this->pdo, 'upsell/no_sale');
         // Update customer basket to ID 52 (New Customer Distribution) and clear owner
         $stmt = $this->pdo->prepare("
             UPDATE customers SET 
@@ -225,7 +237,8 @@ class UpsellService {
     /**
      * Get customers currently in Upsell basket for a specific user
      */
-    public function getUpsellCustomersForUser($userId) {
+    public function getUpsellCustomersForUser($userId)
+    {
         $stmt = $this->pdo->prepare("
             SELECT c.*, o.id as order_id, o.order_date, o.total_amount
             FROM customers c

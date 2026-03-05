@@ -2287,6 +2287,7 @@ function handle_customers(PDO $pdo, ?string $id): void
 
             $pdo->beginTransaction();
             try {
+                set_audit_context($pdo, 'index/customer_update');
                 // Disable FK checks to allow updating PK/FKs
                 $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
 

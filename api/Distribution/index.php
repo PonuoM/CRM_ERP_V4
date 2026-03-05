@@ -71,6 +71,7 @@ function handleDistribute($pdo, $companyId)
 
     $pdo->beginTransaction();
 
+    set_audit_context($pdo, 'distribution_v2');
     $successIds = [];
     $failedIds = [];
     $agentStats = []; // agent_id => count
@@ -89,7 +90,7 @@ function handleDistribute($pdo, $companyId)
 
     // Get customer old data Stmt (before update)
     $getOldStmt = $pdo->prepare("SELECT current_basket_key, assigned_to FROM customers WHERE customer_id = ?");
-    
+
     // Log Stmt with assigned_to columns (use placeholders for Thai strings)
     $logStmt = $pdo->prepare("INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
 

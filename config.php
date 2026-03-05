@@ -49,7 +49,7 @@ function db_connect(): PDO
       // May be ignored by mysql driver, but harmless
       PDO::ATTR_TIMEOUT => 3,
       // CRITICAL: Force utf8mb4_unicode_ci collation at connection init to prevent MySQL 8 default utf8mb4_0900_ai_ci
-      PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci, time_zone = '+07:00', collation_connection = 'utf8mb4_unicode_ci'",
+      PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci, time_zone = '+07:00', collation_connection = 'utf8mb4_unicode_ci', @audit_api_source = 'unknown_api'",
     ];
     try {
       $pdo = new PDO($dsn, $DB_USER, $DB_PASS, $opts);
@@ -69,13 +69,13 @@ function db_connect(): PDO
   if ($lastError) {
     throw new RuntimeException(
       "MySQL connection failed for host " .
-        $DB_HOST .
-        ":" .
-        $DB_PORT .
-        " / db " .
-        $DB_NAME .
-        " - " .
-        $lastError->getMessage(),
+      $DB_HOST .
+      ":" .
+      $DB_PORT .
+      " / db " .
+      $DB_NAME .
+      " - " .
+      $lastError->getMessage(),
     );
   }
   throw new RuntimeException("MySQL connection failed (unknown error)");
@@ -116,15 +116,15 @@ function validate_auth(PDO $pdo): void
 {
   file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH CHECK: " . ($_SERVER['REQUEST_URI'] ?? 'unknown') . " Mem: " . memory_get_usage() . "\n", FILE_APPEND);
   $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
-  
+
   if (!$auth && function_exists('getallheaders')) {
-      $headers = getallheaders();
-      $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    $headers = getallheaders();
+    $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
   }
-  
+
   // Also check query param (for downloads)
   if (!$auth && isset($_GET['token'])) {
-      $auth = 'Bearer ' . $_GET['token'];
+    $auth = 'Bearer ' . $_GET['token'];
   }
 
   if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
@@ -151,18 +151,18 @@ function validate_auth(PDO $pdo): void
 function get_authenticated_user(PDO $pdo): ?array
 {
   $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
-  
+
   if (!$auth && function_exists('getallheaders')) {
-      $headers = getallheaders();
-      $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    $headers = getallheaders();
+    $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
   }
-  
+
   if (!$auth && isset($_GET['token'])) {
-      $auth = 'Bearer ' . $_GET['token'];
+    $auth = 'Bearer ' . $_GET['token'];
   }
 
   if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
-      return null;
+    return null;
   }
   $token = $matches[1];
 
@@ -176,4 +176,15 @@ function get_authenticated_user(PDO $pdo): ?array
   $user = $stmt->fetch();
 
   return $user ?: null;
+}
+
+/**
+ * Set audit context for customer_audit_log trigger.
+ * Call this BEFORE any UPDATE on `customers` that changes assigned_to or current_basket_key.
+ * The MySQL TRIGGER reads @audit_api_source and @audit_user_id session variables.
+ */
+function set_audit_context(PDO $pdo, string $apiSource, ?int $userId = null): void
+{
+  $pdo->exec("SET @audit_api_source = " . $pdo->quote($apiSource));
+  $pdo->exec("SET @audit_user_id = " . ($userId !== null ? intval($userId) : 'NULL'));
 }
