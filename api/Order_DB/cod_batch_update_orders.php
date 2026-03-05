@@ -96,6 +96,7 @@ try {
 
     // 3. Update each order
     $pdo->beginTransaction();
+    set_audit_context($pdo, 'orders/cod_batch_update');
     $updates = [];
 
     $updateStmt = $pdo->prepare("

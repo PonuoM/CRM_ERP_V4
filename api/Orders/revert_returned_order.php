@@ -68,6 +68,7 @@ try {
     }
 
     $pdo->beginTransaction();
+    set_audit_context($pdo, 'orders/revert_return');
 
     // ─── 1. Update orders.order_status ───
     $stmtUpdateOrder = $pdo->prepare("UPDATE orders SET order_status = ? WHERE id = ?");

@@ -1,7 +1,8 @@
 <?php
 require_once __DIR__ . '/../config.php';
 
-function handle_update_order_status(PDO $pdo) {
+function handle_update_order_status(PDO $pdo)
+{
     // Debug logging
     file_put_contents(__DIR__ . '/../../debug_log.txt', "Entered handle_update_order_status\n", FILE_APPEND);
 
@@ -12,7 +13,7 @@ function handle_update_order_status(PDO $pdo) {
 
     $data = json_input();
     file_put_contents(__DIR__ . '/../../debug_log.txt', "Data: " . print_r($data, true) . "\n", FILE_APPEND);
-    
+
     if (!isset($data['orderId']) || !isset($data['status'])) {
         file_put_contents(__DIR__ . '/../../debug_log.txt', "Missing params\n", FILE_APPEND);
         json_response(['error' => 'MISSING_PARAMETERS'], 400);
@@ -25,27 +26,28 @@ function handle_update_order_status(PDO $pdo) {
     file_put_contents(__DIR__ . '/../../debug_log.txt', "OrderId: $orderId, Status: $status\n", FILE_APPEND);
 
     // Validate status
-    $allowedStatuses = ['Claiming', 'BadDebt', 'Pending', 'Confirmed', 'Returned', 'Cancelled']; 
+    $allowedStatuses = ['Claiming', 'BadDebt', 'Pending', 'Confirmed', 'Returned', 'Cancelled'];
     if (!in_array($status, $allowedStatuses)) {
         file_put_contents(__DIR__ . '/../../debug_log.txt', "Status not allowed\n", FILE_APPEND);
     }
 
     try {
         file_put_contents(__DIR__ . '/../../debug_log.txt', "Preparing update...\n", FILE_APPEND);
-        
+
+        set_audit_context($pdo, 'orders/update_status');
         $sql = "UPDATE orders SET order_status = ?, notes = CONCAT(COALESCE(notes, ''), ' ', ?) WHERE id = ?";
         $stmt = $pdo->prepare($sql);
-        
+
         $noteContent = $note ? "\n[Status Update: $status] $note" : "";
-        
+
         $stmt->execute([$status, $noteContent, $orderId]);
-        
+
         file_put_contents(__DIR__ . '/../../debug_log.txt', "Execute success. RowCount: " . $stmt->rowCount() . "\n", FILE_APPEND);
 
         if ($stmt->rowCount() > 0) {
             json_response(['success' => true, 'message' => 'Order status updated']);
         } else {
-             // Check if order exists
+            // Check if order exists
             $check = $pdo->prepare("SELECT id FROM orders WHERE id = ?");
             $check->execute([$orderId]);
             if ($check->rowCount() === 0) {

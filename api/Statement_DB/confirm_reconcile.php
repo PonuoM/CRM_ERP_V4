@@ -24,6 +24,7 @@ try {
     $paymentMethod = $input['payment_method'] ?? null;
 
     $pdo = db_connect();
+    set_audit_context($pdo, 'statement/confirm_reconcile');
 
     // Get the current order_id from the reconcile log (don't trust frontend's comma-separated value)
     $logStmt = $pdo->prepare("SELECT order_id FROM statement_reconcile_logs WHERE id = :id");

@@ -30,6 +30,7 @@ try {
     }
 
     $pdo->beginTransaction();
+    set_audit_context($pdo, 'orders/save_return');
 
     $updatedCount = 0;
     $errors = [];
