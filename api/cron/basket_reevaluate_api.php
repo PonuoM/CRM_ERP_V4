@@ -18,6 +18,7 @@ try {
     $pdo = db_connect();
     set_audit_context($pdo, 'cron/basket_reevaluate');
     $action = $_GET['action'] ?? $_POST['action'] ?? 'scan';
+    $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : null;
 
     // ============================================================
     // Core query: find customers whose current basket is INVALID
@@ -64,6 +65,9 @@ try {
               OR (c.current_basket_key = 50 AND DATEDIFF(CURDATE(), lo.order_date) >= 1096)
           )
     ";
+    if ($companyId) {
+        $sql .= " AND c.company_id = " . $companyId;
+    }
 
     $stmt = $pdo->query($sql);
     $wrongCustomers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -286,13 +290,13 @@ try {
 
                 $logStmt = $pdo->prepare("
                     INSERT INTO basket_transition_log 
-                        (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
-                    VALUES (?, ?, ?, 'safety_reevaluate', ?, ?, NOW())
+                        (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at)
+                    VALUES (?, ?, ?, ?, ?, 'safety_reevaluate', ?, ?, NOW())
                 ");
                 $fromName = $basketNames[$fromBasket] ?? $fromBasket;
                 $toName = $basketNames[$toBasket] ?? $toBasket;
                 $note = "Safety re-evaluate: '$name' (Order: {$daysOrder}d) $fromName → $toName";
-                $logStmt->execute([$customerId, $fromBasket, $toBasket, $cust['assigned_to'], $note]);
+                $logStmt->execute([$customerId, $fromBasket, $toBasket, $cust['assigned_to'], $cust['assigned_to'], $cust['assigned_to'], $note]);
 
                 $fixed++;
             } catch (Exception $e) {
@@ -369,6 +373,9 @@ try {
               AND u_creator.role_id IN (6, 7)
               AND (u_creator.status IS NULL OR u_creator.status != 'inactive')
         ";
+        if ($companyId) {
+            $misSql .= " AND c.company_id = " . $companyId;
+        }
 
         $misStmt = $pdo->query($misSql);
         $misCustomers = $misStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -579,8 +586,8 @@ try {
 
                 $logStmt = $pdo->prepare("
                     INSERT INTO basket_transition_log 
-                        (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
-                    VALUES (?, ?, ?, 'reassign_owner', ?, ?, NOW())
+                        (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at)
+                    VALUES (?, ?, ?, ?, ?, 'reassign_owner', ?, ?, NOW())
                 ");
                 $name = trim($cust['first_name'] . ' ' . $cust['last_name']);
                 $fromOwner = trim($cust['owner_name']);
@@ -588,7 +595,7 @@ try {
                 $bk = $cust['current_basket_key'];
                 $bName = $basketNames2[$bk] ?? $bk;
                 $note = "Reassign: '$name' ถัง $bName — จาก {$fromOwner} (#{$cust['assigned_to']}) → {$toOwner} (#{$cust['latest_creator_id']})";
-                $logStmt->execute([$cust['customer_id'], $bk, $bk, $cust['latest_creator_id'], $note]);
+                $logStmt->execute([$cust['customer_id'], $bk, $bk, $cust['assigned_to'], $cust['latest_creator_id'], $cust['latest_creator_id'], $note]);
 
                 $fixed++;
             } catch (Exception $e) {

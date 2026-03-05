@@ -322,12 +322,13 @@ foreach ($companies as $companyId) {
 
                     // 1. Log transition (triggered_by = previous assigned agent)
                     $assignedTo = $customer['assigned_to'] ?? null;
+                    $assignedToNew = $keepAssignedTo ? $assignedTo : null;
                     $logTrans = $pdo->prepare("
-                        INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
-                        VALUES (?, ?, ?, 'monthly_cron', ?, ?, NOW())
+                        INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at)
+                        VALUES (?, ?, ?, ?, ?, 'monthly_cron', ?, ?, NOW())
                     ");
                     $transNote = "Auto-move from '$name' (In: {$daysInBasket}d, Order: {$daysSinceOrder}d) -> $targetBasketName";
-                    $logTrans->execute([$customerId, $basketId, $targetBasketId, $assignedTo, $transNote]);
+                    $logTrans->execute([$customerId, $basketId, $targetBasketId, $assignedTo, $assignedToNew, $assignedTo, $transNote]);
 
                     // 2. Log return/fail
                     $logReturn = $pdo->prepare("
@@ -449,12 +450,13 @@ foreach ($companies as $companyId) {
                     $hUpdateStmt->execute([$hTargetBasketId, $hCustId]);
                     
                     // Log transition
+                    $hAssignedToOld = $hCust['assigned_to'] ?? null;
                     $hLogTrans = $pdo->prepare("
-                        INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
-                        VALUES (?, ?, ?, 'monthly_cron', NULL, ?, NOW())
+                        INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at)
+                        VALUES (?, ?, ?, ?, NULL, 'monthly_cron', NULL, ?, NOW())
                     ");
                     $hTransNote = "Holding expired: '$hBasketName' ({$hDaysInBasket}d) -> $hTargetBasketName";
-                    $hLogTrans->execute([$hCustId, $hBasketId, $hTargetBasketId, $hTransNote]);
+                    $hLogTrans->execute([$hCustId, $hBasketId, $hTargetBasketId, $hAssignedToOld, $hTransNote]);
                     
                     echo " [OK]\n";
                     $totalTransferred++;

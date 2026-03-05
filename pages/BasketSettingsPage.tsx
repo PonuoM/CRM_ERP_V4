@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../services/api';
-import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, RefreshCw, Users, Calendar, Package, ShieldCheck, Search, ArrowRight, CheckCircle2, XCircle, ChevronRight, ArrowLeft, Eye, UserX } from 'lucide-react';
+import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, RefreshCw, Users, Calendar, Package, ShieldCheck, Search, ArrowRight, CheckCircle2, XCircle, ChevronRight, ArrowLeft, Eye, UserX, Building2 } from 'lucide-react';
 import { User } from '../types';
 
 interface BasketSettingsPageProps {
@@ -124,6 +124,12 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
     const [editingBasket, setEditingBasket] = useState<BasketConfig | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+    // Company selector state (Super Admin only)
+    const isSuperAdmin = user?.role === 'Super Admin';
+    const [companies, setCompanies] = useState<{ id: number; name: string }[]>([]);
+    const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+    const effectiveCompanyId = isSuperAdmin && selectedCompanyId ? selectedCompanyId : user?.companyId;
+
     // Re-evaluate state
     const [reevalScanning, setReevalScanning] = useState(false);
     const [reevalFixing, setReevalFixing] = useState(false);
@@ -141,12 +147,24 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
     const [misFixing, setMisFixing] = useState(false);
     const [misShowAll, setMisShowAll] = useState(false);
 
+    // Load companies list for Super Admin
+    useEffect(() => {
+        if (isSuperAdmin) {
+            apiFetch('Order_DB/companies.php').then((res: { id: number; name: string }[]) => {
+                setCompanies(res || []);
+                if (!selectedCompanyId && user?.companyId) {
+                    setSelectedCompanyId(user.companyId);
+                }
+            }).catch(console.error);
+        }
+    }, [isSuperAdmin]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             const [basketsResponse, returnResponse] = await Promise.all([
-                apiFetch(`basket_config.php?companyId=${user?.companyId}`),
-                apiFetch(`basket_config.php?action=return_config&companyId=${user?.companyId}`)
+                apiFetch(`basket_config.php?companyId=${effectiveCompanyId}`),
+                apiFetch(`basket_config.php?action=return_config&companyId=${effectiveCompanyId}`)
             ]);
             setBaskets(basketsResponse || []);
             setReturnConfig(returnResponse || {});
@@ -156,24 +174,24 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         } finally {
             setLoading(false);
         }
-    }, [user?.companyId]);
+    }, [effectiveCompanyId]);
 
     useEffect(() => {
-        if (user?.companyId) {
+        if (effectiveCompanyId) {
             fetchData();
         }
-    }, [user?.companyId, fetchData]);
+    }, [effectiveCompanyId, fetchData]);
 
     const handleSaveBasket = async (basket: BasketConfig) => {
         setSaving(true);
         try {
             if (basket.id) {
-                await apiFetch(`basket_config.php?id=${basket.id}&companyId=${user?.companyId}`, {
+                await apiFetch(`basket_config.php?id=${basket.id}&companyId=${effectiveCompanyId}`, {
                     method: 'PUT',
                     body: JSON.stringify(basket)
                 });
             } else {
-                await apiFetch(`basket_config.php?companyId=${user?.companyId}`, {
+                await apiFetch(`basket_config.php?companyId=${effectiveCompanyId}`, {
                     method: 'POST',
                     body: JSON.stringify(basket)
                 });
@@ -193,7 +211,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         if (!confirm('ต้องการลบถังนี้หรือไม่?')) return;
 
         try {
-            await apiFetch(`basket_config.php?id=${id}&companyId=${user?.companyId}`, {
+            await apiFetch(`basket_config.php?id=${id}&companyId=${effectiveCompanyId}`, {
                 method: 'DELETE'
             });
             setMessage({ type: 'success', text: 'ลบสำเร็จ' });
@@ -212,7 +230,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                 configToSave[key] = val.value;
             });
 
-            await apiFetch(`basket_config.php?action=return_config&companyId=${user?.companyId}`, {
+            await apiFetch(`basket_config.php?action=return_config&companyId=${effectiveCompanyId}`, {
                 method: 'PUT',
                 body: JSON.stringify(configToSave)
             });
@@ -231,7 +249,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         setReevalFixResult(null);
         setSelectedTransitions(new Set());
         try {
-            const res = await apiFetch('cron/basket_reevaluate_api.php?action=scan');
+            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=scan&companyId=${effectiveCompanyId}`);
             setReevalResult(res);
             // Auto-select all transitions
             const allKeys = new Set<string>(res.summary.map((s: ReevalSummary) => `${s.from_basket}→${s.to_basket}`));
@@ -254,7 +272,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         if (!confirm(`ยืนยันแก้ไขลูกค้า ${selectedCount.toLocaleString()} คนที่เลือก?\n\nรายการที่เลือก:\n${transitions.join('\n')}\n\nการดำเนินการนี้จะย้ายลูกค้าไปถังที่ถูกต้องทันที`)) return;
         setReevalFixing(true);
         try {
-            const res = await apiFetch('cron/basket_reevaluate_api.php?action=fix', {
+            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=fix&companyId=${effectiveCompanyId}`, {
                 method: 'POST',
                 body: JSON.stringify({ transitions })
             });
@@ -274,7 +292,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         setDetailLoading(true);
         setDetailTransition(transition);
         try {
-            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=detail&transition=${encodeURIComponent(transition)}`);
+            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=detail&companyId=${effectiveCompanyId}&transition=${encodeURIComponent(transition)}`);
             setDetailCustomers(res.customers || []);
         } catch (error) {
             console.error('Detail failed:', error);
@@ -291,7 +309,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         setMisResult(null);
         setMisSelected(new Set());
         try {
-            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=misassigned&show_all=${misShowAll ? '1' : '0'}`);
+            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=misassigned&companyId=${effectiveCompanyId}&show_all=${misShowAll ? '1' : '0'}`);
             setMisResult(res);
             // Auto-select all
             setMisSelected(new Set<number>(res.customers.map((c: ReevalDetailCustomer) => c.customer_id)));
@@ -309,7 +327,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         if (!confirm(`ยืนยันเปลี่ยนเจ้าของลูกค้า ${ids.length} คน?\n\nลูกค้าจะถูกย้ายไปให้คนที่สร้าง order ล่าสุด`)) return;
         setMisFixing(true);
         try {
-            const res = await apiFetch('cron/basket_reevaluate_api.php?action=fix_misassigned', {
+            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=fix_misassigned&companyId=${effectiveCompanyId}`, {
                 method: 'POST',
                 body: JSON.stringify({ customer_ids: ids })
             });
@@ -339,12 +357,28 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
             <div className="max-w-7xl mx-auto">
                 {/* Header */}
                 <div className="bg-white rounded-2xl shadow-sm border p-6 mb-6">
-                    <div className="flex items-center gap-3">
-                        <Settings className="w-8 h-8 text-blue-600" />
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-800">ตั้งค่าถัง (Basket Settings)</h1>
-                            <p className="text-gray-500">จัดการเงื่อนไขการจัดกลุ่มลูกค้าและการคืน Pool</p>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Settings className="w-8 h-8 text-blue-600" />
+                            <div>
+                                <h1 className="text-2xl font-bold text-gray-800">ตั้งค่าถัง (Basket Settings)</h1>
+                                <p className="text-gray-500">จัดการเงื่อนไขการจัดกลุ่มลูกค้าและการคืน Pool</p>
+                            </div>
                         </div>
+                        {isSuperAdmin && companies.length > 0 && (activeGroup === 'reevaluate' || activeGroup === 'misassigned') && (
+                            <div className="flex items-center gap-2">
+                                <Building2 size={20} className="text-gray-400" />
+                                <select
+                                    value={selectedCompanyId ?? ''}
+                                    onChange={(e) => setSelectedCompanyId(Number(e.target.value))}
+                                    className="px-4 py-2 border border-gray-300 rounded-xl bg-white text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                >
+                                    {companies.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                     </div>
                 </div>
 
