@@ -33,3 +33,60 @@ exemple_import/*
 host
 host_old
 !scripts/host
+
+# Sensitive / credentials
+MCP SQL SERVER.md
+api/mcp_config.json
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# SQL backups
+*.sql
+
+# PHP vendor (composer)
+vendor/
+
+# Temp & backup
+*.bak
+*.tmp
+
+# Debug, test & investigation scripts (non-production)
+check_*.php
+check_*.js
+check_*.sql
+debug_*.php
+debug_*.js
+debug_*.cjs
+test_*.php
+test_*.json
+test_*.csv
+investigate_*.php
+investigation_*.html
+temp_*.php
+temp_*.txt
+tmp_*.txt
+fix_*.php
+fix_*.js
+fix_*.cjs
+fix_*.py
+cleanup_*.php
+compare_*.php
+compare_*.js
+compare_*.cjs
+analyze_*.js
+smart_fix_*.js
+final_fix_*.js
+quick-fix*.ps1
+fix-*.ps1
+
+# Data files (should not be in repo)
+*.csv
+*.xlsx
+*.txt
+!README.txt
+
+# Temp & fix directories
+temp/
+fix_encoding/
