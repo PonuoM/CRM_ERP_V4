@@ -177,6 +177,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "ปรับปรุง V2": "ปรับปรุง",
     "สต็อก V2": "สต็อกคงเหลือ",
     "ประวัติ V2": "ประวัติทั้งหมด",
+    "Database Management": "จัดการฐานข้อมูล",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -325,7 +326,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Tags", icon: FileText, key: "data.tags" },
         { label: "Companies", icon: Briefcase, key: "data.companies" },
         { label: "Role Management", icon: Key, key: "data.roles" },
-        { label: "Addresses", icon: MapPin, key: "data.addresses" }, // Added Addresses item
+        { label: "Addresses", icon: MapPin, key: "data.addresses" },
+        { label: "Database Management", icon: Database, key: "data.database", allowRule: (u: UserType) => u.role === UserRole.SuperAdmin },
       ]
     },
     // Page Stats - Special Group for Marketing/Admins
