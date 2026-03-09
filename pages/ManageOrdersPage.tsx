@@ -33,7 +33,7 @@ const DateFilterButton: React.FC<{ label: string, value: string, activeValue: st
 );
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500, 9999];
-const SHIPPING_PROVIDERS = ["J&T Express", "Flash Express", "Kerry Express", "Aiport Logistic"];
+const SHIPPING_PROVIDERS = ["J&T Express", "Flash Express", "Kerry Express", "Aiport Logistic", "ไปรษณีย์ไทย"];
 
 const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, products, openModal, onProcessOrders, onCancelOrders, onUpdateShippingProvider }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

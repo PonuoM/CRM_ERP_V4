@@ -433,3 +433,44 @@ if ($dbStatus === 'RETURNED') {
 | `api/Orders/get_return_stats.php` | เพิ่ม 4 params เดียวกัน |
 | `services/api.ts` | อัปเดต `getReturnOrders` + `getReturnStats` |
 | `pages/ReturnManagementPage.tsx` | เพิ่ม state, DateRangePicker UI, checkbox, spinner |
+
+## 18. อัปเดตล่าสุด (Change Log - 09/03/2026)
+
+### Return Complete & Claim Feature
+เพิ่มฟีเจอร์ "ยืนยันจบเคส" และ "เคลม" สำหรับระบบจัดการตีกลับ
+
+#### Database
+- เพิ่ม 2 คอลัมน์ใน `order_boxes`:
+  - `return_complete` TINYINT(1) DEFAULT 0 — จบเคสแล้ว (สำหรับสภาพดี)
+  - `return_claim` DECIMAL(10,2) — จำนวนเงินเคลม (สำหรับเสียหาย/สูญหาย)
+- **Migration**: `api/Database/20260309_add_return_complete_claim.sql`
+
+#### Business Rules
+
+| สถานะ | ฟีเจอร์ใหม่ | ฟิลด์ |
+|---|---|---|
+| สภาพดี (`good`) | ✅ ยืนยันจบเคส (checkbox) | `return_complete = 1` |
+| เสียหาย (`damaged`) | 💰 เคลม (input จำนวนเงิน) | `return_claim = จำนวนเงิน` |
+| สูญหาย (`lost`) | 💰 เคลม (input จำนวนเงิน) | `return_claim = จำนวนเงิน` |
+
+- เมื่อ Undo (pending/delivered) → `return_complete = 0`, `return_claim = NULL`
+
+#### ไฟล์ที่แก้ไข
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `api/Database/20260309_add_return_complete_claim.sql` | [NEW] Migration เพิ่มคอลัมน์ |
+| `api/Orders/save_return_orders.php` | รับ return_complete/return_claim จาก payload, SET ใน return flow, CLEAR ใน undo flow |
+| `api/Orders/get_return_orders.php` | เพิ่ม return_complete, return_claim ใน SELECT query |
+| `pages/ReturnManagementPage.tsx` | เพิ่ม UI: checkbox จบเคส (good), input เคลม (damaged/lost), badge ใน VerifiedListTable |
+
+### Bulk Import: Extra Column Support
+- **Import สภาพดี (good)**: เพิ่มคอลัมน์ B สำหรับกำหนด "จบเคส" (dropdown: ยังไม่จบ / จบเคส)
+  - รองรับ Paste ค่า: `1`, `true`, `yes`, `จบ`, `จบเคส`, `y` = จบเคส | อื่นๆ = ยังไม่จบ
+- **Import เสียหาย/สูญหาย (damaged/lost)**: เพิ่มคอลัมน์ B สำหรับจำนวนเงินเคลม (number input)
+- **Paste Support**: วาง 2 คอลัมน์ (Tab/Comma separated) → คอลัมน์ A = Tracking, คอลัมน์ B = Extra value
+
+#### ไฟล์ที่แก้ไข
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `components/BulkReturnImport.tsx` | เพิ่ม extraValue, Column B UI, parseReturnComplete helper, enriched payload |
+

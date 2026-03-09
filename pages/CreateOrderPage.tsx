@@ -76,6 +76,7 @@ const SHIPPING_PROVIDERS = [
   "Flash Express",
   "Kerry Express",
   "Aiport Logistic",
+  "ไปรษณีย์ไทย",
 ];
 
 const sanitizeAddressValue = (value?: string | null): string => {

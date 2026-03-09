@@ -4,7 +4,7 @@
  * บันทึกสถานะการคืนสินค้าลงตาราง order_boxes
  * ใช้ order_boxes แทน order_returns
  *
- * Payload: { returns: [{ sub_order_id, status, note, tracking_number? }] }
+ * Payload: { returns: [{ sub_order_id, status, note, tracking_number?, return_complete?, return_claim? }] }
  *
  * Business Rules:
  * - Return statuses (returning, returned, good, damaged, lost):
@@ -41,6 +41,8 @@ try {
         $status = $item['status'] ?? 'returning';
         $note = $item['note'] ?? '';
         $trackingNumber = $item['tracking_number'] ?? '';
+        $returnComplete = isset($item['return_complete']) ? (int) $item['return_complete'] : 0;
+        $returnClaim = isset($item['return_claim']) ? (float) $item['return_claim'] : null;
 
         // ─── Resolve order_boxes row ───
         $boxRow = null;
@@ -94,6 +96,7 @@ try {
 
         if ($isReturn) {
             // Return flow: set collection_amount = 0, mark as RETURNED
+            // + return_complete (สำหรับ good) และ return_claim (สำหรับ damaged/lost)
             $stmtUpdate = $pdo->prepare("
                 UPDATE order_boxes
                 SET return_status = ?,
@@ -102,17 +105,21 @@ try {
                     status = 'RETURNED',
                     collected_amount = 0,
                     collection_amount = 0,
+                    return_complete = ?,
+                    return_claim = ?,
                     updated_at = NOW()
                 WHERE id = ?
             ");
-            $stmtUpdate->execute([$status, $note ?: null, $boxRow['id']]);
+            $stmtUpdate->execute([$status, $note ?: null, $returnComplete, $returnClaim, $boxRow['id']]);
         } else {
-            // Undo flow (pending, delivered, etc.): restore collection_amount = cod_amount, clear return_status
+            // Undo flow (pending, delivered, etc.): restore collection_amount = cod_amount, clear return fields
             $stmtUpdate = $pdo->prepare("
                 UPDATE order_boxes
                 SET return_status = NULL,
                     return_note = NULL,
                     return_created_at = NULL,
+                    return_complete = 0,
+                    return_claim = NULL,
                     status = UPPER(?),
                     collected_amount = 0,
                     collection_amount = cod_amount,
