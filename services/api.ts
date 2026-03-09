@@ -666,6 +666,7 @@ export const validateOrdersForExport = async (orderIds: string[], tabKey: string
 // Fix: make params optional
 export async function listOrders(params: {
   companyId?: number;
+  customerId?: string;
   page?: number;
   pageSize?: number;
   // Filter parameters
@@ -699,6 +700,7 @@ export async function listOrders(params: {
   const qs = new URLSearchParams();
   const safeParams = params || {};
   if (safeParams.companyId) qs.set("companyId", String(safeParams.companyId));
+  if (safeParams.customerId) qs.set("customerId", safeParams.customerId);
   if (safeParams.page) qs.set("page", String(safeParams.page));
   if (safeParams.pageSize) qs.set("pageSize", String(safeParams.pageSize));
 
