@@ -1924,6 +1924,43 @@ export async function validateReturnCandidates(candidates: { trackingNumber: str
 }
 
 /**
+ * Batch Export: fetch full order details + update status in ONE request
+ * Replaces N×GET + N×PUT with a single POST
+ */
+export async function batchExportOrders(params: {
+  orderIds: string[];
+  targetStatus?: string;
+  actorId?: number;
+  actorName?: string;
+}): Promise<{ success: boolean; processed: number; orders: any[]; error?: string }> {
+  const legacyBase = typeof window === "undefined" ? "/api" : resolveApiBasePath();
+  const url = `${legacyBase.replace(/\/$/, "")}/Order_DB/batch_process_export.php`;
+
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      orderIds: params.orderIds,
+      targetStatus: params.targetStatus ?? "Picking",
+      actorId: params.actorId,
+      actorName: params.actorName,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || "Batch export failed");
+  }
+  return data;
+}
+
+/**
  * Log CSV export to database
  */
 export async function logExport(params: {

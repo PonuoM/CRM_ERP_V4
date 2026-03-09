@@ -1,4 +1,22 @@
 <?php
+/**
+ * Batch Process Export API
+ * 
+ * Combines fetch + status update in ONE request:
+ * 1. Fetch full order details (items, boxes, tracking, customer) in bulk
+ * 2. Update order_status to targetStatus (e.g. Picking)
+ * 3. Update customer lifecycle & ownership
+ * 4. Log activities
+ * 5. Return full order data for CSV generation
+ *
+ * POST body: {
+ *   "orderIds": ["250101-00001", ...],
+ *   "targetStatus": "Picking",
+ *   "actorId": 123,
+ *   "actorName": "John Doe"
+ * }
+ * Response: { "success": true, "processed": 24, "orders": [{ full order data }] }
+ */
 require_once '../config.php';
 
 header('Content-Type: application/json');
@@ -11,54 +29,134 @@ try {
     $input = json_decode(file_get_contents('php://input'), true);
     $orderIds = $input['orderIds'] ?? [];
     $targetStatus = $input['targetStatus'] ?? 'Picking';
-    // User ID who performed the action (for activity log)
     $actorId = $input['actorId'] ?? null;
     $actorName = $input['actorName'] ?? 'Unknown User';
 
     if (empty($orderIds)) {
-        json_response(['success' => true, 'processed' => 0, 'message' => 'No orders provided']);
+        json_response(['success' => true, 'processed' => 0, 'orders' => [], 'message' => 'No orders provided']);
     }
 
-    $pdo = db_connect();
+    // Limit to 500
+    $orderIds = array_slice($orderIds, 0, 500);
 
-    // Start Transaction
-    $pdo->beginTransaction();
+    $pdo = db_connect();
     set_audit_context($pdo, 'orders/batch_export');
 
-    // 1. Fetch Orders to identify Customers and Creators
-    // We need to know who created the order to assign ownership
-    $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
-    $stmt = $pdo->prepare("SELECT id, customer_id, creator_id, order_status FROM orders WHERE id IN ($placeholders)");
-    $stmt->execute($orderIds);
-    $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $pdo->beginTransaction();
 
-    if (empty($orders)) {
+    $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+
+    // ═══════════════════════════════════════════════════════════
+    // 1. Fetch full order data
+    // ═══════════════════════════════════════════════════════════
+    $orderSql = "
+        SELECT o.*,
+               c.first_name AS customer_first_name,
+               c.last_name AS customer_last_name,
+               c.phone AS customer_phone,
+               c.street AS customer_street,
+               c.subdistrict AS customer_subdistrict,
+               c.district AS customer_district,
+               c.province AS customer_province,
+               c.postal_code AS customer_postal_code
+        FROM orders o
+        LEFT JOIN customers c ON c.customer_id = o.customer_id
+        WHERE o.id IN ($placeholders)
+    ";
+    $stmt = $pdo->prepare($orderSql);
+    $stmt->execute($orderIds);
+    $ordersRaw = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($ordersRaw)) {
         $pdo->rollBack();
         json_response(['error' => 'No matching orders found'], 404);
     }
 
+    // Index by order ID
+    $ordersById = [];
+    foreach ($ordersRaw as $o) {
+        $ordersById[$o['id']] = $o;
+        $ordersById[$o['id']]['items'] = [];
+        $ordersById[$o['id']]['boxes'] = [];
+        $ordersById[$o['id']]['tracking_details'] = [];
+    }
+    $foundIds = array_keys($ordersById);
+    $foundPlaceholders = implode(',', array_fill(0, count($foundIds), '?'));
+
+    // 1a. Fetch order_items
+    $itemsSql = "
+        SELECT oi.*, p.name AS product_name, p.sku, p.shop
+        FROM order_items oi
+        LEFT JOIN products p ON p.id = oi.product_id
+        WHERE oi.parent_order_id IN ($foundPlaceholders)
+        ORDER BY oi.parent_order_id, oi.id
+    ";
+    $itemsStmt = $pdo->prepare($itemsSql);
+    $itemsStmt->execute($foundIds);
+    foreach ($itemsStmt->fetchAll(PDO::FETCH_ASSOC) as $item) {
+        $oid = $item['parent_order_id'];
+        if (isset($ordersById[$oid])) {
+            $ordersById[$oid]['items'][] = $item;
+        }
+    }
+
+    // 1b. Fetch order_boxes
+    $boxesSql = "
+        SELECT ob.*
+        FROM order_boxes ob
+        WHERE ob.order_id IN ($foundPlaceholders)
+        ORDER BY ob.order_id, ob.box_number
+    ";
+    $boxesStmt = $pdo->prepare($boxesSql);
+    $boxesStmt->execute($foundIds);
+    foreach ($boxesStmt->fetchAll(PDO::FETCH_ASSOC) as $box) {
+        $oid = $box['order_id'];
+        if (isset($ordersById[$oid])) {
+            $ordersById[$oid]['boxes'][] = $box;
+        }
+    }
+
+    // 1c. Fetch tracking numbers
+    $trackSql = "
+        SELECT otn.*
+        FROM order_tracking_numbers otn
+        WHERE otn.parent_order_id IN ($foundPlaceholders)
+        ORDER BY otn.parent_order_id, otn.id
+    ";
+    $trackStmt = $pdo->prepare($trackSql);
+    $trackStmt->execute($foundIds);
+    foreach ($trackStmt->fetchAll(PDO::FETCH_ASSOC) as $track) {
+        $oid = $track['parent_order_id'];
+        if (isset($ordersById[$oid])) {
+            $ordersById[$oid]['tracking_details'][] = $track;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
     // 2. Update Order Status
+    // ═══════════════════════════════════════════════════════════
     $updateStmt = $pdo->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
 
-    // Prepare Data for Customer Updates
-    $customerUpdates = []; // customer_id => creator_id (latest wins)
+    $customerUpdates = [];
     $processedCount = 0;
 
-    foreach ($orders as $order) {
-        // Skip if already correct status? (Optional, but good for idempotency)
-        // Frontend logic forced update, so we do it.
-        $updateStmt->execute([$targetStatus, $order['id']]);
+    foreach ($ordersById as $orderId => &$order) {
+        $updateStmt->execute([$targetStatus, $orderId]);
 
         if (!empty($order['customer_id']) && !empty($order['creator_id'])) {
             $customerUpdates[$order['customer_id']] = $order['creator_id'];
         }
         $processedCount++;
-    }
 
+        // Update local order data to reflect new status
+        $order['order_status'] = $targetStatus;
+    }
+    unset($order);
+
+    // ═══════════════════════════════════════════════════════════
     // 3. Update Customers (Lifecycle & Ownership)
-    // "Picking" status implies a sale is confirmed enough to extend ownership.
+    // ═══════════════════════════════════════════════════════════
     if ($targetStatus === 'Picking' && !empty($customerUpdates)) {
-        // Prepare expiration date (Now + 90 days)
         $ownershipExpires = date('Y-m-d H:i:s', strtotime('+90 days'));
 
         $custStmt = $pdo->prepare("
@@ -68,33 +166,31 @@ try {
                 assigned_to = ?,
                 ownership_expires = ?,
                 followup_bonus_remaining = 1
-            WHERE id = ? OR pk = ?
+            WHERE customer_id = ?
         ");
 
         foreach ($customerUpdates as $custId => $creatorId) {
-            // Try to match both id (string) and pk (int) just in case
-            // Though usually customer_id in orders is the PK or String ID depending on schema version.
-            // Safe approach: Bind both to check.
-            // Note: $custId from orders might be int or string.
-            $custStmt->execute([$creatorId, $ownershipExpires, $custId, $custId]);
+            $custStmt->execute([$creatorId, $ownershipExpires, $custId]);
         }
     }
 
-    // 4. Log Activities (Bulk Insert for performance)
+    // ═══════════════════════════════════════════════════════════
+    // 4. Log Activities (Bulk Insert)
+    // ═══════════════════════════════════════════════════════════
     if (!empty($actorId)) {
         $activitySql = "INSERT INTO activities (customer_id, type, description, actor_name, timestamp) VALUES ";
         $activityParams = [];
         $activityRows = [];
         $now = date('Y-m-d H:i:s');
 
-        foreach ($orders as $order) {
+        foreach ($ordersById as $orderId => $order) {
             if (empty($order['customer_id']))
                 continue;
 
             $activityRows[] = "(?, ?, ?, ?, ?)";
-            $activityParams[] = $order['customer_id']; // Assuming checking against PK/ID logic is handled by DB FK or flexible
-            $activityParams[] = 'OrderStatusChanged'; // Enum or String
-            $activityParams[] = "อัปเดตสถานะคำสั่งซื้อ {$order['id']} เป็น '$targetStatus' (Batch Export)";
+            $activityParams[] = $order['customer_id'];
+            $activityParams[] = 'OrderStatusChanged';
+            $activityParams[] = "อัปเดตสถานะคำสั่งซื้อ {$orderId} เป็น '$targetStatus' (Batch Export)";
             $activityParams[] = $actorName;
             $activityParams[] = $now;
         }
@@ -108,10 +204,14 @@ try {
 
     $pdo->commit();
 
+    // ═══════════════════════════════════════════════════════════
+    // 5. Return full order data for CSV generation
+    // ═══════════════════════════════════════════════════════════
     json_response([
         'success' => true,
         'processed' => $processedCount,
-        'customerUpdates' => count($customerUpdates)
+        'customerUpdates' => count($customerUpdates),
+        'orders' => array_values($ordersById)
     ]);
 
 } catch (Throwable $e) {
