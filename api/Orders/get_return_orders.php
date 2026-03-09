@@ -91,6 +91,8 @@ try {
             ob.updated_at,
             ob.collected_amount as return_amount,
             ob.collection_amount,
+            ob.return_complete,
+            ob.return_claim,
             otn.tracking_number,
             o.total_amount,
             o.order_date,

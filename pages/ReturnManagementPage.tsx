@@ -74,6 +74,8 @@ interface VerifiedOrder {
   main_order_id?: string;
   updated_at?: string;
   total_boxes?: number;
+  return_complete?: number;
+  return_claim?: number;
 }
 
 const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
@@ -124,6 +126,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     note: string;
     items: any[];
     originalStatus: string; // Track initial status for constraints
+    returnComplete?: boolean;
+    returnClaim?: number;
   }
   const [manageRows, setManageRows] = useState<ManageRow[]>([]);
 
@@ -305,7 +309,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             ...row,
             status: verified.status as any,
             note: verified.note || "",
-            originalStatus: verified.status as any, // Store the status from DB
+            originalStatus: verified.status as any,
+            returnComplete: Number(verified.return_complete) === 1,
+            returnClaim: verified.return_claim != null ? Number(verified.return_claim) : undefined,
           };
         }
 
@@ -321,6 +327,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             status: matchedBox.return_status as any,
             note: matchedBox.return_note || "",
             originalStatus: matchedBox.return_status as any,
+            returnComplete: Number(matchedBox.return_complete) === 1,
+            returnClaim: matchedBox.return_claim != null ? Number(matchedBox.return_claim) : undefined,
           };
         }
 
@@ -516,7 +524,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         status: r.status || "returning", // Use row status directly (Manual Manage Mode)
         collected_amount: r.collectedAmount || 0,
         note: r.note || "",
-        tracking_number: r.trackingNumber // Essential for new flow
+        tracking_number: r.trackingNumber, // Essential for new flow
+        return_complete: r.returnComplete ? 1 : 0,
+        return_claim: r.returnClaim ?? null,
       }));
 
       const res = await saveReturnOrders(payload);
@@ -1190,7 +1200,16 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.note || "-"}
+                      <div className="flex flex-col gap-1">
+                        {item.note && <span>{item.note}</span>}
+                        {Number(item.return_complete) === 1 && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">✅ จบเคส</span>
+                        )}
+                        {item.return_claim != null && Number(item.return_claim) > 0 && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">💰 เคลม: ฿{Number(item.return_claim).toLocaleString()}</span>
+                        )}
+                        {!item.note && !Number(item.return_complete) && !(item.return_claim != null && Number(item.return_claim) > 0) && '-'}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
                       {new Date(item.updated_at || item.created_at).toLocaleString('th-TH')}
@@ -1778,6 +1797,21 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                                 เข้าคลัง - สภาพดี (Good)
                               </span>
                             </label>
+                            {row.status === "good" && (
+                              <label className="ml-6 flex items-center gap-2 cursor-pointer bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                                <input
+                                  type="checkbox"
+                                  checked={!!row.returnComplete}
+                                  onChange={(e) => {
+                                    const newRows = [...manageRows];
+                                    newRows[idx].returnComplete = e.target.checked;
+                                    setManageRows(newRows);
+                                  }}
+                                  className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                                />
+                                <span className="text-emerald-700 text-sm font-medium">✅ ยืนยันจบเคส</span>
+                              </label>
+                            )}
                             <label className="flex items-center gap-2 cursor-pointer">
                               <input
                                 type="radio"
@@ -1794,6 +1828,25 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                                 เข้าคลัง - เสียหาย (Damaged)
                               </span>
                             </label>
+                            {row.status === "damaged" && (
+                              <div className="ml-6 flex items-center gap-2 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200">
+                                <span className="text-rose-700 text-sm">💰 เคลม:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={row.returnClaim ?? ''}
+                                  onChange={(e) => {
+                                    const newRows = [...manageRows];
+                                    newRows[idx].returnClaim = e.target.value ? parseFloat(e.target.value) : undefined;
+                                    setManageRows(newRows);
+                                  }}
+                                  placeholder="จำนวนเงิน"
+                                  className="w-32 px-2 py-1 text-sm border border-rose-300 rounded focus:ring-rose-500 focus:border-rose-500"
+                                />
+                                <span className="text-rose-500 text-xs">บาท</span>
+                              </div>
+                            )}
 
                             {/* Lost Status */}
                             <label className="flex items-center gap-2 cursor-pointer">
@@ -1812,6 +1865,25 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                                 สูญหาย (Lost)
                               </span>
                             </label>
+                            {row.status === "lost" && (
+                              <div className="ml-6 flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-300">
+                                <span className="text-gray-700 text-sm">💰 เคลม:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={row.returnClaim ?? ''}
+                                  onChange={(e) => {
+                                    const newRows = [...manageRows];
+                                    newRows[idx].returnClaim = e.target.value ? parseFloat(e.target.value) : undefined;
+                                    setManageRows(newRows);
+                                  }}
+                                  placeholder="จำนวนเงิน"
+                                  className="w-32 px-2 py-1 text-sm border border-gray-400 rounded focus:ring-gray-500 focus:border-gray-500"
+                                />
+                                <span className="text-gray-500 text-xs">บาท</span>
+                              </div>
+                            )}
 
 
 

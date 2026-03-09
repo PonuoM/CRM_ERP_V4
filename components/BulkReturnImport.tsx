@@ -8,6 +8,7 @@ type ValidationStatus = 'valid' | 'duplicate' | 'error' | 'unchecked' | 'warning
 interface RowData {
     id: number;
     trackingNumber: string;
+    extraValue: string; // Column B: return_complete (good) or return_claim (damaged/lost)
     status: ValidationStatus;
     message: string;
     subOrderId?: string;
@@ -16,15 +17,22 @@ interface RowData {
 
 interface BulkReturnImportProps {
     mode: 'returning' | 'returned' | 'good' | 'damaged' | 'lost';
-    onImport: (items: { tracking_number: string; sub_order_id?: string; status: string; note: string }[]) => Promise<void>;
+    onImport: (items: { tracking_number: string; sub_order_id?: string; status: string; note: string; return_complete?: number; return_claim?: number | null }[]) => Promise<void>;
 }
 
 const createEmptyRow = (id: number): RowData => ({
     id,
     trackingNumber: '',
+    extraValue: '',
     status: 'unchecked',
     message: '',
 });
+
+// Parse return_complete from various formats
+const parseReturnComplete = (val: string): boolean => {
+    const v = val.trim().toLowerCase();
+    return ['1', 'true', 'yes', 'จบ', 'จบเคส', 'y'].includes(v);
+};
 
 const detectShippingProvider = (trackingNumber: string): string => {
     const trimmed = trackingNumber.trim().toUpperCase();
@@ -42,15 +50,23 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
     const [validating, setValidating] = useState(false);
     const [importing, setImporting] = useState(false);
 
-    const handleInputChange = (index: number, value: string) => {
+    const handleInputChange = (index: number, field: 'trackingNumber' | 'extraValue', value: string) => {
         const newRows = [...rows];
-        newRows[index].trackingNumber = value;
-        newRows[index].status = 'unchecked';
-        newRows[index].message = '';
-        newRows[index].subOrderId = undefined;
+        if (field === 'trackingNumber') {
+            newRows[index].trackingNumber = value;
+            newRows[index].status = 'unchecked';
+            newRows[index].message = '';
+            newRows[index].subOrderId = undefined;
+        } else {
+            newRows[index].extraValue = value;
+        }
         setRows(newRows);
         setIsVerified(false);
     };
+
+    // Whether this mode needs an extra column
+    const hasExtraColumn = mode === 'good' || mode === 'damaged' || mode === 'lost';
+    const extraColumnLabel = mode === 'good' ? 'จบเคส (1/0)' : 'จำนวนเงินเคลม';
 
     const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
         e.preventDefault();
@@ -64,38 +80,36 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
 
         const newRows = [...rows];
         pastedLines.forEach((line, i) => {
-            // Allow for OrderID + Tracking paste, but ignore OrderID? Or try to extract tracking if tab separated
-            // But user typically pastes just Tracking for returns or maybe OrderID + Tracking
-            // Let's assume Tracking is either the only column or the 2nd one if tab separated
             const parts = line.split(/[\t,]/);
-            let tracking = parts[0];
-            // Heuristic: if parts[1] looks like tracking (longer than 8 chars), use it?
-            // Or if parts[0] looks like OrderID (shorter)
+            let tracking = parts[0].trim();
+            let extra = '';
+
+            // Column B = extra value (return_complete or return_claim)
             if (parts.length > 1) {
-                // If col 2 exists, maybe that's tracking?
-                // Check tracking signature
-                if (parts[1].trim().length > 6) {
-                    tracking = parts[1];
+                const col2 = parts[1].trim();
+                if (hasExtraColumn) {
+                    // Use column B as extra value
+                    extra = col2;
+                } else if (col2.length > 6) {
+                    // Legacy: if col2 looks like tracking, use it
+                    tracking = col2;
                 }
             }
 
             const currentRowIndex = rowIndex + i;
+            const rowData: RowData = {
+                id: currentRowIndex < newRows.length ? newRows[currentRowIndex].id : newRows.length + 1,
+                trackingNumber: tracking,
+                extraValue: extra,
+                status: 'unchecked',
+                message: '',
+                subOrderId: undefined
+            };
+
             if (currentRowIndex < newRows.length) {
-                newRows[currentRowIndex] = {
-                    ...newRows[currentRowIndex],
-                    trackingNumber: tracking.trim(),
-                    status: 'unchecked',
-                    message: '',
-                    subOrderId: undefined
-                };
+                newRows[currentRowIndex] = rowData;
             } else {
-                newRows.push({
-                    id: newRows.length + 1,
-                    trackingNumber: tracking.trim(),
-                    status: 'unchecked',
-                    message: '',
-                    subOrderId: undefined
-                });
+                newRows.push(rowData);
             }
         });
 
@@ -215,12 +229,21 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
         try {
             const itemsToImport = rows
                 .filter(r => r.status === 'valid' || r.status === 'warning')
-                .map(r => ({
-                    tracking_number: r.trackingNumber,
-                    sub_order_id: r.subOrderId,
-                    status: mode, // Direct assignment from prop
-                    note: '' // Clear note as requested
-                }));
+                .map(r => {
+                    const item: any = {
+                        tracking_number: r.trackingNumber,
+                        sub_order_id: r.subOrderId,
+                        status: mode,
+                        note: '',
+                    };
+                    if (mode === 'good') {
+                        item.return_complete = parseReturnComplete(r.extraValue) ? 1 : 0;
+                    } else if (mode === 'damaged' || mode === 'lost') {
+                        const claimVal = parseFloat(r.extraValue);
+                        item.return_claim = !isNaN(claimVal) && claimVal > 0 ? claimVal : null;
+                    }
+                    return item;
+                });
 
             await onImport(itemsToImport);
             // Success handled by parent usually, but we can clear here
@@ -249,7 +272,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                         })
                     </h3>
                     <p className="text-sm text-gray-500">
-                        วางเลข Tracking (บรรทัดละ 1 เลข)
+                        วางเลข Tracking (บรรทัดละ 1 เลข){hasExtraColumn && <span className="ml-1">| คอลัมน์ B: {extraColumnLabel}</span>}
                     </p>
                 </div>
 
@@ -291,6 +314,9 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                         <tr>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">เลข Tracking</th>
+                            {hasExtraColumn && (
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-36">{extraColumnLabel}</th>
+                            )}
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ขนส่ง</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ออเดอร์ที่พบ</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">สถานะ</th>
@@ -305,7 +331,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                                     <input
                                         type="text"
                                         value={row.trackingNumber}
-                                        onChange={(e) => handleInputChange(index, e.target.value)}
+                                        onChange={(e) => handleInputChange(index, 'trackingNumber', e.target.value)}
                                         onPaste={handlePaste}
                                         data-index={index}
                                         className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${row.status === 'error' ? 'bg-red-50 border-red-300' :
@@ -314,6 +340,30 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                                         placeholder="เลข Tracking"
                                     />
                                 </td>
+                                {hasExtraColumn && (
+                                    <td className="px-4 py-2">
+                                        {mode === 'good' ? (
+                                            <select
+                                                value={row.extraValue || '0'}
+                                                onChange={(e) => handleInputChange(index, 'extraValue', e.target.value)}
+                                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm"
+                                            >
+                                                <option value="0">ยังไม่จบ</option>
+                                                <option value="1">จบเคส ✅</option>
+                                            </select>
+                                        ) : (
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={row.extraValue}
+                                                onChange={(e) => handleInputChange(index, 'extraValue', e.target.value)}
+                                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm"
+                                                placeholder="฿ เคลม"
+                                            />
+                                        )}
+                                    </td>
+                                )}
                                 <td className="px-4 py-2 text-sm text-gray-500">
                                     {detectShippingProvider(row.trackingNumber)}
                                 </td>

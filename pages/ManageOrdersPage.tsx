@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText, XCircle, RotateCcw } from 'lucide-react';
-import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl, getTabRules, validateOrdersForExport, fetchExportTemplates, getExportOrderIds } from '../services/api';
+import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl, getTabRules, validateOrdersForExport, fetchExportTemplates, getExportOrderIds, batchExportOrders } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
 import Spinner from '../components/Spinner';
@@ -33,7 +33,7 @@ const DateFilterButton: React.FC<{ label: string, value: string, activeValue: st
 );
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500, 9999];
-const SHIPPING_PROVIDERS = ["J&T Express", "Flash Express", "Kerry Express", "Aiport Logistic"];
+const SHIPPING_PROVIDERS = ["J&T Express", "Flash Express", "Kerry Express", "Aiport Logistic", "ไปรษณีย์ไทย"];
 
 const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, products, openModal, onProcessOrders, onCancelOrders, onUpdateShippingProvider }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -122,69 +122,41 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       });
     }
 
-    // Lazy Fetch Logic: Fetch details for ONE by ONE (or sequentially)
-    const finalExportList: Order[] = [];
-    const failedIds: string[] = [];
-    const payloadForProcess: { id: string; customerId?: string; creatorId?: number }[] = [];
-
-    // Loop through *each* selected order to fetch full details
-    // We do this sequentially to handle errors granularly
-    for (let i = 0; i < ordersToExport.length; i++) {
-      const liteOrder = ordersToExport[i];
-      try {
-        // 1. Fetch Full Details
-        const response = await apiFetch(`orders/${encodeURIComponent(liteOrder.id)}`);
-        if (!response || !response.id) {
-          throw new Error("Invalid response");
-        }
-
-        // 2. Map to Model
-        const fullOrder = mapApiOrderToModel(response);
-
-        // 3. Add to Success Lists
-        finalExportList.push(fullOrder);
-        payloadForProcess.push({
-          id: fullOrder.id,
-          customerId: fullOrder.customerId,
-          creatorId: fullOrder.creatorId,
-          items: fullOrder.items
-        });
-
-      } catch (err) {
-        console.error(`Failed to fetch details for export: ${liteOrder.id}`, err);
-        failedIds.push(liteOrder.id);
-      }
-      setExportProgress({ current: i + 1, total: ordersToExport.length });
-    }
-
     try {
-      if (finalExportList.length === 0) {
-        throw new Error("No orders could be retrieved for export.");
+      const orderIds = ordersToExport.map(o => o.id);
+
+      // Single batch API call: fetch full details + update status to Picking
+      const result = await batchExportOrders({
+        orderIds,
+        targetStatus: 'Picking',
+        actorId: user.id,
+        actorName: `${user.firstName} ${user.lastName}`,
+      });
+
+      setExportProgress({ current: ordersToExport.length, total: ordersToExport.length });
+
+      if (!result.success || !result.orders || result.orders.length === 0) {
+        throw new Error(result.error || 'No orders could be retrieved for export.');
       }
 
-      // 4. Call Process (Status Update Loop) - ONLY for successful fetches
-      await onProcessOrders(payloadForProcess);
+      // Map API response to Order model for CSV generation
+      const finalExportList: Order[] = result.orders.map((r: any) => mapApiOrderToModel(r));
 
-      // 5. Download CSV - ONLY for successful fetches
+      // Download CSV
       const selectedTpl = exportTemplates.find(t => t.id === selectedTemplateId);
       generateAndDownloadCsv(finalExportList, selectedTpl);
 
-      // 6. Cleanup
+      // Cleanup
       setSelectedIds([]);
       setRefreshCounter(prev => prev + 1);
 
-      // 7. Success UI with Summary
-      let msg = `ส่งออกและอัปเดตสำเร็จ ${finalExportList.length} รายการ`;
-      if (failedIds.length > 0) {
-        msg += `\n\n❌ ล้มเหลว ${failedIds.length} รายการ (ไม่ถูกดำเนินการ):\n${failedIds.join(', ')}`;
-      }
-      alert(msg);
-
+      // Success UI
+      alert(`ส่งออกและอัปเดตสำเร็จ ${finalExportList.length} รายการ`);
       setValidationModal(prev => ({ ...prev, isOpen: false }));
 
     } catch (error) {
       console.error('An error occurred during the export process:', error);
-      alert(`เกิดข้อผิดพลาด: ${error instanceof Error ? error.message : "Undefined error"}`);
+      alert(`เกิดข้อผิดพลาด: ${error instanceof Error ? error.message : 'Undefined error'}`);
     } finally {
       setIsProcessing(false);
       setExportProgress(null);
@@ -759,6 +731,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         netTotal: Number(it.net_total ?? 0),
         isPromotionParent: !!(it.is_promotion_parent ?? 0),
         creatorId: it.creator_id ? Number(it.creator_id) : (it.creatorId ? Number(it.creatorId) : undefined),
+        // Batch API enrichment: attach sku/shop directly from JOIN
+        sku: it.sku ?? undefined,
+        shop: it.shop ?? undefined,
       })) : [],
       shippingCost: Number(r.shipping_cost ?? 0),
       billDiscount: Number(r.bill_discount ?? 0),
@@ -768,7 +743,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       orderStatus: fromApiOrderStatus(r.order_status ?? 'Pending'),
       trackingNumbers: Array.isArray(r.trackingNumbers)
         ? r.trackingNumbers
-        : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : []),
+        : Array.isArray(r.tracking_details)
+          ? r.tracking_details.map((t: any) => t.tracking_number).filter(Boolean)
+          : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : []),
       boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({
         boxNumber: Number(b.box_number ?? 0),
         codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
@@ -1019,7 +996,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           }
 
           const product = item.productId ? products.find(p => p.id === item.productId) : null;
-          const shopName = product?.shop ?? 'N/A';
+          // Fallback to item-level sku/shop from batch API (enriched by JOIN)
+          const effectiveProduct = product || { sku: (item as any).sku, shop: (item as any).shop };
+          const shopName = effectiveProduct?.shop ?? 'N/A';
           const rawPhone = customer?.phone || address?.phone || '';
           const displayPhone = rawPhone ? ((rawPhone.startsWith('0') || rawPhone.startsWith('+')) ? rawPhone : `0${rawPhone}`) : '';
 
@@ -1048,7 +1027,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'ประเทศ': index === 0 ? 'ไทย' : '',
             'รับสินค้าที่ร้านหรือไม่': '',
             'รหัสสินค้าบนแพลตฟอร์ม': '',
-            'รหัสสินค้าในระบบ': item.quantity > 1 ? `${product?.sku ?? ''}-${item.quantity}` : (product?.sku ?? ''),
+            'รหัสสินค้าในระบบ': item.quantity > 1 ? `${effectiveProduct?.sku ?? ''}-${item.quantity}` : (effectiveProduct?.sku ?? ''),
             'ชื่อสินค้า': `${item.productName} ${item.quantity}`,
             'สีและรูปแบบ': '',
             'จำนวน': 1,
@@ -1067,7 +1046,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             // Template-based: resolve each column via resolveDataSource
             const tplColumns = [...template.columns].sort((a: any, b: any) => a.sort_order - b.sort_order);
             const ctx = {
-              order, item, product, customer, address, onlineOrderId,
+              order, item, product: effectiveProduct, customer, address, onlineOrderId,
               index, codValue, orderIdTotalAmount, recipientName, displayPhone,
             };
             orderRows.push(tplColumns.map((col: any) => {
