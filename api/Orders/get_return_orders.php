@@ -89,7 +89,7 @@ try {
             ob.return_note as note,
             ob.return_created_at as created_at,
             ob.updated_at,
-            ob.collected_amount as return_amount,
+            ob.cod_amount as return_amount,
             ob.collection_amount,
             ob.return_complete,
             ob.return_claim,

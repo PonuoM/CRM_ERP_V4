@@ -474,3 +474,134 @@ if ($dbStatus === 'RETURNED') {
 |---|---|
 | `components/BulkReturnImport.tsx` | เพิ่ม extraValue, Column B UI, parseReturnComplete helper, enriched payload |
 
+## 19. อัปเดตล่าสุด (Change Log - 09/03/2026 - Part 2)
+
+### UI Renovation — ปรับปรุง UI ทั้งหน้า Return Management
+
+ปรับปรุง UI ครั้งใหญ่เพื่อให้ดูทันสมัย สวยงาม ใช้งานง่ายขึ้น ไม่มีการแก้ไข API หรือ logic ใดๆ (ยกเว้น backend fix `cod_amount`)
+
+#### 1. Header Card (Title)
+- เปลี่ยนเป็น **White/Light Theme** (`bg-white`, `border-gray-200`, `shadow-sm`)
+- Icon badge สี sky-blue (`bg-sky-100`)
+- Search input ใช้ `bg-gray-50` กับ `rounded-xl`
+
+#### 2. Export Bar → Dropdown Button
+- **ลบ** แถบ Export bar เดิม (อยู่แยกแถวของตัวเอง)
+- **ย้าย** ไปเป็นปุ่ม **Export** สีฟ้า (`bg-sky-600`) ข้างปุ่ม Import ใน header
+- กดแล้วเปิด **popup dropdown** (`absolute`, `z-50`, `w-[380px]`) ให้เลือกช่วงเวลา + กด Export CSV
+- ปุ่ม Import ย่อข้อความเป็น "Import" (จาก "Import Tracking")
+
+#### 3. Tab Bar
+- เปลี่ยนเป็น **Pill-shaped buttons** ใน container `bg-gray-100 rounded-xl`
+- แต่ละ tab มี emoji icon: ⏳ 🚚 ✅ ⚠️ ❌
+- Active tab fill สีตามสถานะ (orange, emerald, rose, gray)
+- Count badges ใช้ `bg-white/30` บน active state
+- Loading state แสดง spinner เล็กข้าง label
+
+#### 4. Filter Bar
+- Consolidated เป็น compact inline row
+- Date pickers อยู่ข้างกัน คั่นด้วย vertical divider
+- Checkbox label ย่อเป็น "ทั้งหมด"
+
+#### 5. Table (VerifiedListTable) — คอลัมน์ใหม่
+- Order cards มี **sky-blue left accent bar** (`bg-sky-500`)
+- **ลบ** badge "ยอดบิล" ออก (เพราะ `orders.total_amount` ไม่ reliable)
+
+| คอลัมน์ | แหล่งข้อมูล | หมายเหตุ |
+|---|---|---|
+| Tracking No. | `otn.tracking_number` | font-mono |
+| Sub Order | `ob.sub_order_id` | font-mono |
+| **ราคากล่อง** (ใหม่) | `ob.cod_amount as return_amount` | จัดชิดขวา, แสดง ฿xxx |
+| สถานะ | `ob.return_status` | Pill badge + emoji |
+| **รายละเอียด** (ใหม่) | หลายฟิลด์ | แสดงเป็น inline badges: |
+| | `ob.return_complete` | ✅ จบเคส (สีเขียว) |
+| | `ob.return_claim` | 💰 เคลม ฿xxx (สีเหลือง) |
+| | `ob.return_note` | 📝 หมายเหตุ |
+| วันที่อัปเดต | `ob.updated_at` | |
+| จัดการ | — | ปุ่ม "ตรวจสอบ" |
+
+- Empty state: 📦 + ข้อความ + คำแนะนำ
+- Pagination: sky-blue page number, modern controls
+
+#### 6. Manage Modal — Card-Based Layout (ปรับ layout ใหม่ทั้งหมด)
+- เปลี่ยนจาก **Table layout** → **Card-based layout** (แยกราย Sub Order ID)
+- **Header**: Light theme สีขาว + subtitle "แยกราย Sub Order ID"
+- **Order info bar**: badges แสดง Order ID, รวม ฿0, Sub Orders count, จำนวนรายการ
+- **แต่ละ Card**:
+  - Left border accent color ตามสถานะ: orange(returning), emerald(good), rose(damaged), gray(lost), blue(delivered)
+  - Header: Tracking No. (font-mono bold) + Sub Order ID badge + **ราคากล่อง badge** (`bg-sky-50 text-sky-700`) + จบเคส badge + เคลม badge
+  - Product items แสดงเป็น rounded chips
+  - **Status selection**: Pill-style buttons (ไม่ใช่ radio) — กดเพื่อเลือกสถานะ
+  - Note input inline ใต้ status pills
+  - Claim input แสดงเมื่อเลือก damaged/lost
+- **Footer**: แสดงจำนวนรายการเปลี่ยนแปลง + ปุ่ม ยกเลิก/บันทึก
+
+#### 7. Backend Fix — ราคากล่อง
+- **`get_return_orders.php`**: เปลี่ยนจาก `ob.collected_amount` → `ob.cod_amount` as `return_amount`
+- **เหตุผล**: `collected_amount` จะถูกอัปเดตเป็น 0 เมื่อ import tracking ว่ากล่องตีกลับ ทำให้ราคาแสดงเป็น 0
+- `cod_amount` คือราคา COD ดั้งเดิมของกล่อง ไม่ถูกเปลี่ยนแปลง
+
+#### 8. ManageRow Interface — เพิ่ม `boxPrice`
+- เพิ่ม field `boxPrice?: number` ใน `ManageRow` interface
+- Merge logic ดึงค่าจาก `verified.return_amount` หรือ `matchedBox.cod_amount`
+- แสดงเป็น badge สีฟ้าบน modal cards
+
+#### ไฟล์ที่แก้ไข
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `pages/ReturnManagementPage.tsx` | UI renovation ทั้งหน้า: header, tabs, filters, table, modal, export dropdown |
+| `api/Orders/get_return_orders.php` | เปลี่ยน `collected_amount` → `cod_amount` สำหรับ return_amount |
+
+## 20. อัปเดต (Change Log - 10/03/2026)
+
+### VerifiedListTable — เปลี่ยนจาก Grouped Cards → Single Flat Table
+
+เปลี่ยน layout ตารางแสดงรายการตีกลับจาก **Card แยกตาม Order** เป็น **ตารางเดียว (Flat Table)** ทุกรายการรวมอยู่ในตารางเดียวกัน
+
+#### Checkbox + Bulk Case-Closed
+- เพิ่มคอลัมน์ **Checkbox** ทุกแถว + **Check-all** ที่ header (รองรับ indeterminate state)
+- **แสดงเฉพาะ Tab "✅ สภาพดี" (`good`)** เท่านั้น — tab อื่นไม่แสดง checkbox
+- State: `selectedIds: Set<number>`, `bulkSaving: boolean`
+- เมื่อเลือกรายการ → แสดง **Bulk Action Bar** ข้าง pagination:
+  - จำนวนที่เลือก + ปุ่ม "ยืนยันจบเคส" (สีเขียว) + ปุ่ม "ยกเลิก"
+- `handleBulkCaseClosed()` → เรียก `saveReturnOrders` พร้อม `return_complete: 1` ทุกรายการที่เลือก
+- หลัง save สำเร็จ → clear selection + refresh data
+
+#### เพิ่มคอลัมน์ Order ID
+- เพิ่มคอลัมน์ **Order ID** (ใช้ `main_order_id`) — คลิกเพื่อเปิด Order Detail Modal
+- แสดงวันที่สั่งซื้อ (`order_date`) เป็นข้อความเล็กใต้ Order ID
+
+#### Row Highlight
+- แถวที่ถูก check จะ highlight พื้น `bg-sky-50/60`
+
+### Pending Tab — แก้สี Active State
+- เปลี่ยน `activeBg` จาก `bg-white` → `bg-gray-600`
+- ก่อนหน้า: active tab สีขาว + text ขาว = มองไม่เห็น
+
+## 21. Multi-Tracking Same Box — Backend Dedup (10/03/2026)
+
+### สาเหตุปัญหา
+1 กล่อง (`order_boxes`) สามารถมี **2+ tracking numbers** ได้ (เช่น ย้ายรอบส่ง)
+ใน `order_tracking_numbers` tracking หลายเลขอาจ `box_number` เดียวกัน
+
+### แก้ไข: `save_return_orders.php`
+เพิ่ม **deduplication** — เมื่อ 2 tracking resolve ไป `box_id` เดียวกัน จะ update **แค่ครั้งเดียว** (row แรกชนะ):
+
+```php
+$processedBoxIds = []; // Track already-processed box IDs
+
+// ภายใน loop:
+if (in_array($boxRow['id'], $processedBoxIds)) {
+    continue; // Already updated this box
+}
+$processedBoxIds[] = $boxRow['id'];
+```
+
+- ป้องกัน redundant UPDATE บน row เดียวกัน
+- `updatedCount` นับถูกต้อง (ไม่นับซ้ำ)
+
+#### ไฟล์ที่แก้ไข
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `pages/ReturnManagementPage.tsx` | เปลี่ยน grouped cards → flat table, เพิ่ม checkbox/check-all, bulk case-closed, fix pending tab color |
+| `api/Orders/save_return_orders.php` | เพิ่ม `$processedBoxIds` dedup logic สำหรับ multi-tracking same box |
