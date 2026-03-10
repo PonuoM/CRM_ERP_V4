@@ -16,7 +16,7 @@ try {
 
     $companyId = isset($_GET['company_id']) ? (int) $_GET['company_id'] : 0;
     $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
-    $pageSize = isset($_GET['page_size']) ? min(100, max(10, (int) $_GET['page_size'])) : 20;
+    $pageSize = isset($_GET['page_size']) ? min(5000, max(10, (int) $_GET['page_size'])) : 20;
     $offset = ($page - 1) * $pageSize;
 
     if ($companyId <= 0) {
@@ -80,8 +80,11 @@ try {
     foreach ($types as $t) {
         $typeMap[$t['label']] = (int) $t['id'];
     }
-    $beforeSystemId = $typeMap['ยกเลิกก่อนเข้าระบบ'] ?? 1;
-    $afterSystemId = $typeMap['ยกเลิกหลังเข้าระบบ'] ?? 2;
+    // Fallback to first/second active type if labels don't match
+    $fallbackId1 = isset($types[0]) ? (int) $types[0]['id'] : 1;
+    $fallbackId2 = isset($types[1]) ? (int) $types[1]['id'] : $fallbackId1;
+    $beforeSystemId = $typeMap['ยกเลิกก่อนเข้าระบบ'] ?? $fallbackId1;
+    $afterSystemId = $typeMap['ยกเลิกหลังเข้าระบบ'] ?? $fallbackId2;
 
     // Analyze each cancelled order
     $results = [];
