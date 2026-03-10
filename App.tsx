@@ -138,6 +138,7 @@ import ReturnManagementPage from "./pages/ReturnManagementPage";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
 import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
+import MarketplacePage from "./pages/MarketplacePage";
 import SalesDashboard from "./pages/SalesDashboard";
 import CallsDashboard from "./pages/CallsDashboard";
 import CallsDashboardV2 from "./pages/CallsDashboardV2";
@@ -7634,6 +7635,14 @@ const App: React.FC = () => {
       case "Marketing User Management":
       case "จัดการผู้ใช้การตลาด-เพจ":
         return <MarketingPage currentUser={currentUser} view="userManagement" />;
+      case "Marketplace Dashboard":
+        return <MarketplacePage currentUser={currentUser} view="dashboard" />;
+      case "Marketplace Ads Input":
+        return <MarketplacePage currentUser={currentUser} view="adsInput" />;
+      case "Marketplace Sales Import":
+        return <MarketplacePage currentUser={currentUser} view="salesImport" />;
+      case "Marketplace Settings":
+        return <MarketplacePage currentUser={currentUser} view="settings" />;
       case "Companies":
       case "บริษัท":
         return <CompanyManagementPage />; // Assuming existence or similar

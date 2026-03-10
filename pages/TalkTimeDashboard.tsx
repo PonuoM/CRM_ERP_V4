@@ -455,11 +455,29 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
     // Cache configuration
     const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+    // One-time cleanup: clear all old talktime cache entries on mount
+    // This prevents stale data from old cache key format being served
+    useEffect(() => {
+        try {
+            const keysToRemove: string[] = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith("talktime_cache_")) {
+                    keysToRemove.push(key);
+                }
+            }
+            if (keysToRemove.length > 0) {
+                keysToRemove.forEach(key => localStorage.removeItem(key));
+                console.log(`🧹 Cleared ${keysToRemove.length} old talktime cache entries`);
+            }
+        } catch { }
+    }, []); // Run once on mount
+
     // Generate unique cache key per user + date
     const getCacheKey = useCallback(() => {
-        const userId = selectedUserId || String(currentUserId);
+        const userId = selectedUserId || (isSystem ? "all" : String(currentUserId));
         return `talktime_cache_${currentCompanyId}_${userId}_${selectedDate}`;
-    }, [currentCompanyId, selectedUserId, currentUserId, selectedDate]);
+    }, [currentCompanyId, selectedUserId, currentUserId, selectedDate, isSystem]);
 
     // Load from cache helper
     const loadFromCache = useCallback(() => {
@@ -473,12 +491,20 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
             // Check if cache is still valid (within 5 minutes)
             const isValid = Date.now() - timestamp < CACHE_DURATION;
 
-            if (isValid && data) {
+            // Skip cache if data is empty (0 calls) — force fresh fetch
+            const hasData = data?.summary?.total_calls > 0 || (data?.monthly?.length > 0);
+
+            if (isValid && data && hasData) {
                 console.log(`✅ Loading from cache (age: ${Math.round((Date.now() - timestamp) / 1000)}s)`);
                 setHourlyData(data.hourly || []);
                 setSummary(data.summary || null);
                 setMonthlyData(data.monthly || []);
                 return true; // Cache hit
+            }
+
+            // Remove stale or empty cache entry
+            if (!isValid || !hasData) {
+                localStorage.removeItem(cacheKey);
             }
         } catch (err) {
             console.error("Cache load error:", err);
@@ -525,7 +551,9 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
 
             if (selectedUserId) {
                 params.append("user_id", selectedUserId);
-            } else if (currentUserId) {
+            } else if (currentUserId && !isSystem) {
+                // Only auto-send current user's ID for non-system users (Telesale/Supervisor)
+                // System users with empty selectedUserId = "All Users" → don't filter
                 params.append("user_id", String(currentUserId));
             }
 

@@ -35,6 +35,7 @@ import {
   Upload,
   History,
   BarChart3,
+  ShoppingBag,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -165,6 +166,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Ads Input": "กรอกค่า Ads",
     "Ads History": "ประวัติการกรอก Ads",
     "Marketing User Management": "จัดการผู้ใช้การตลาด-เพจ",
+    "Marketplace": "Marketplace",
+    "Marketplace Dashboard": "แดชบอร์ด Marketplace",
+    "Marketplace Ads Input": "กรอกค่า Ads (Marketplace)",
+    "Marketplace Sales Import": "นำเข้ายอดขาย",
+    "Marketplace Settings": "ตั้งค่าร้านค้า",
     "Google Sheet Import": "อัพสถานะ Aiport",
     "Product Analysis": "วิเคราะห์ผลิตภัณฑ์",
     "Telesale Performance": "ประสิทธิภาพ Telesale",
@@ -351,6 +357,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Ads Input V2", icon: Pencil, key: "marketing.ads_input_v2" },
         { label: "Ads History", icon: Calendar, key: "marketing.ads_history" },
         { label: "Marketing User Management", icon: Users, key: "marketing.user_management" },
+      ]
+    },
+    {
+      label: "Marketplace",
+      icon: ShoppingBag,
+      children: [
+        { label: "Marketplace Dashboard", icon: BarChart2, key: "marketplace.dashboard" },
+        { label: "Marketplace Ads Input", icon: Pencil, key: "marketplace.ads_input" },
+        { label: "Marketplace Sales Import", icon: FileUp, key: "marketplace.sales_import" },
+        { label: "Marketplace Settings", icon: Settings, key: "marketplace.settings" },
       ]
     },
   ];

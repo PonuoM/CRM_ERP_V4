@@ -56,10 +56,21 @@ try {
     $params[":userid"] = $userId;
     error_log("Added user ID filter: " . $userId);
   } else if ($isSystem && !empty($userId)) {
-    // System user selected a specific user from dropdown
-    $where .= " AND cl.matched_user_id = :userid";
-    $params[":userid"] = $userId;
-    error_log("System user selected specific user: " . $userId);
+    // System user sent a user_id — check if it's actually a telesale
+    $checkStmt = $pdo->prepare("SELECT role FROM users WHERE id = :uid LIMIT 1");
+    $checkStmt->execute([":uid" => $userId]);
+    $checkRow = $checkStmt->fetch(PDO::FETCH_ASSOC);
+    $isTelesaleUser = $checkRow && stripos($checkRow["role"], "telesale") !== false;
+    
+    if ($isTelesaleUser) {
+      // Specific telesale user selected from dropdown
+      $where .= " AND cl.matched_user_id = :userid";
+      $params[":userid"] = $userId;
+      error_log("System user selected specific telesale: " . $userId);
+    } else {
+      // user_id is admin/CEO/non-telesale → ignore filter, show ALL telesales
+      error_log("System user sent non-telesale user_id ($userId), ignoring filter - showing ALL");
+    }
   } else if ($isSystem) {
     error_log("System user - NO user ID filter, showing ALL company data");
   }

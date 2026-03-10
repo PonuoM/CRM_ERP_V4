@@ -48,8 +48,17 @@ try {
     $where .= " AND cl.matched_user_id = :userid";
     $params[":userid"] = $userId;
   } else if ($isSystem && !empty($userId)) {
-    $where .= " AND cl.matched_user_id = :userid";
-    $params[":userid"] = $userId;
+    // System user sent a user_id — check if it's actually a telesale
+    $checkStmt = $pdo->prepare("SELECT role FROM users WHERE id = :uid LIMIT 1");
+    $checkStmt->execute([":uid" => $userId]);
+    $checkRow = $checkStmt->fetch(PDO::FETCH_ASSOC);
+    $isTelesaleUser = $checkRow && stripos($checkRow["role"], "telesale") !== false;
+    
+    if ($isTelesaleUser) {
+      $where .= " AND cl.matched_user_id = :userid";
+      $params[":userid"] = $userId;
+    }
+    // else: user_id is admin/non-telesale → ignore filter, show ALL telesales
   }
 
   // Telesales only
