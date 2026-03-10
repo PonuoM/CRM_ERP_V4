@@ -2195,7 +2195,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       0,
     );
     const subTotal = goodsSum - itemsDiscount;
-    const billDiscountAmount = (subTotal * (Number(billDiscount) || 0)) / 100;
+    const billDiscountAmount = Number(billDiscount) || 0;
     return subTotal + (Number(shippingCost) || 0) - billDiscountAmount;
   };
 
@@ -4532,8 +4532,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                     .filter((status) => {
                       if (showInputs) {
-                        // If modifiable, only allow keeping current status or cancelling
-                        // and exclude 'Completed' status
+                        // Managers can change to any status
+                        if (permission === 'manager') return true;
+                        // Non-managers: only allow keeping current status or cancelling
                         return (
                           status === currentOrder.orderStatus ||
                           status === OrderStatus.Cancelled
