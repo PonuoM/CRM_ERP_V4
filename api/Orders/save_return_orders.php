@@ -83,6 +83,12 @@ try {
         $returnStatuses = ['returning', 'returned', 'good', 'damaged', 'lost'];
         $isReturn = in_array($status, $returnStatuses);
 
+        // Business rule: จบเคส (return_complete=1) ทำได้เฉพาะสถานะ 'good' เท่านั้น
+        // หากเปลี่ยนจาก good → สถานะอื่น → reset return_complete = 0
+        if ($status !== 'good') {
+            $returnComplete = 0;
+        }
+
         // ─── Block undo (pending/delivered) if ALL boxes are already RETURNED ───
         // Return sub-status changes (returning→returned→good→damaged→lost) are still allowed
         $undoStatuses = ['pending', 'delivered'];

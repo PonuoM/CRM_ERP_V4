@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { User, Order, OrderStatus } from "../types";
 import { listOrders, saveReturnOrders, getReturnOrders, getReturnStats, getOrder, revertReturnedOrder, exportReturnOrders, uploadReturnImage, getReturnImages, deleteReturnImage } from "../services/api";
 import resolveApiBasePath from "../utils/apiBasePath";
@@ -1883,8 +1884,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       </div>
 
       {/* Import Status Modal */}
-      {isImportStatusModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+      {isImportStatusModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9990] p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
             <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
               <h3 className="font-bold text-gray-800">เลือกประเภทการนำเข้า</h3>
@@ -1948,11 +1949,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Bulk Import Modal */}
-      {isBulkImportOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      {isBulkImportOpen && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9990] p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden relative">
             <button
               onClick={() => setIsBulkImportOpen(false)}
@@ -1981,7 +1982,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
 
 
@@ -1991,8 +1992,8 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         onClose={() => setSelectedOrderId(null)}
         orderId={selectedOrderId}
       />
-      {managingOrder && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      {managingOrder && createPortal(
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9990] p-4">
           <div className="bg-gray-50 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
             {/* Modal Header */}
             <div className="px-6 py-4 bg-white border-b border-gray-200 flex justify-between items-center">
@@ -2276,12 +2277,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Confirmation Modal */}
       {
-        isConfirmSaveOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+        isConfirmSaveOpen && createPortal(
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9990] p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
               <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
                 <h3 className="font-bold text-gray-800">ยืนยันการบันทึก</h3>
@@ -2322,11 +2323,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               </div>
             </div>
           </div>
-        )
+        , document.body)
       }
       {/* Revert Returned Order Modal */}
-      {isRevertModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+      {isRevertModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9990] flex items-center justify-center">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
             <div className="px-6 py-4 border-b bg-amber-50 rounded-t-xl">
               <h3 className="text-lg font-semibold text-amber-800 flex items-center gap-2">
@@ -2379,7 +2380,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
       {/* Order Detail Modal */}
       <OrderDetailModal
         isOpen={!!selectedOrderId}
