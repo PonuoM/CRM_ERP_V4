@@ -18,6 +18,7 @@ try {
   $productIds = $_GET['product_ids'] ?? null; // Comma separated
   $userIds = $_GET['user_ids'] ?? null; // Comma separated
   $adsGroups = $_GET['ads_groups'] ?? null; // Comma separated
+  $pageIds = $_GET['page_ids'] ?? $_GET['page_id'] ?? null; // Single or comma separated
   
   $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
   $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -64,6 +65,16 @@ try {
     $params = array_merge($params, $adsGroupArray);
   }
 
+  // Page filter
+  if ($pageIds) {
+    $pageIdArray = array_filter(explode(',', $pageIds), 'is_numeric');
+    if (!empty($pageIdArray)) {
+      $placeholders = implode(',', array_fill(0, count($pageIdArray), '?'));
+      $whereClauses[] = "l.page_id IN ($placeholders)";
+      $params = array_merge($params, $pageIdArray);
+    }
+  }
+
   $whereSql = "";
   if (count($whereClauses) > 0) {
       $whereSql = "WHERE " . implode(" AND ", $whereClauses);
@@ -82,10 +93,12 @@ try {
             pr.name as product_name,
             pr.sku as product_sku,
             CONCAT(u.first_name, ' ', u.last_name) as user_fullname,
-            u.username as user_username
+            u.username as user_username,
+            pg.name as page_name
           FROM marketing_product_ads_log l
           LEFT JOIN products pr ON l.product_id = pr.id
           LEFT JOIN users u ON l.user_id = u.id
+          LEFT JOIN pages pg ON l.page_id = pg.id
           $whereSql
           ORDER BY l.date DESC, l.created_at DESC
           LIMIT $limit OFFSET $offset";

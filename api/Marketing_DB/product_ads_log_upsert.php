@@ -56,10 +56,11 @@ try {
         }
 
         if ($hasAdsGroup) {
-            // UPSERT by ads_group + date
+            // UPSERT by ads_group + page_id + date
+            $pageId = !empty($record['page_id']) ? intval($record['page_id']) : null;
             $stmt = $pdo->prepare("
-                INSERT INTO marketing_product_ads_log (ads_group, product_id, user_id, date, ads_cost, impressions, reach, clicks)
-                VALUES (?, NULL, ?, ?, ?, ?, ?, ?)
+                INSERT INTO marketing_product_ads_log (ads_group, page_id, product_id, user_id, date, ads_cost, impressions, reach, clicks)
+                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     user_id = VALUES(user_id),
                     ads_cost = VALUES(ads_cost),
@@ -71,6 +72,7 @@ try {
 
             $stmt->execute([
                 $record['ads_group'],
+                $pageId,
                 intval($record['user_id']),
                 $record['date'],
                 $adsCost,

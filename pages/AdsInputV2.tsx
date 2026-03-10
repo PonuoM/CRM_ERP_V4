@@ -60,6 +60,7 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
     // Mode: page or product
     const [mode, setMode] = useState<"page" | "product">("page");
     const [userProducts, setUserProducts] = useState<any[]>([]);
+    const [selectedPageId, setSelectedPageId] = useState<string>("");
 
     // Per-row edit unlock for system admin
     const [editingRows, setEditingRows] = useState<Set<number>>(new Set());
@@ -134,6 +135,11 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
             setOriginalRows([]);
             return;
         }
+        if (mode === "product" && !selectedPageId) {
+            setRows([]);
+            setOriginalRows([]);
+            return;
+        }
 
         setLoadingData(true);
         setSaveResult(null);
@@ -187,11 +193,12 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
                     groupedProducts.get(adsGroup)!.push(product);
                 }
 
-                // Fetch existing ads logs for this date
+                // Fetch existing ads logs for this date + page
                 const params = new URLSearchParams();
                 params.append("start_date", selectedDate);
                 params.append("end_date", selectedDate);
                 params.append("limit", "100000");
+                if (selectedPageId) params.append("page_id", selectedPageId);
 
                 const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_get_history.php?${params.toString()}`);
                 const result = await response.json();
@@ -233,14 +240,14 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
         } finally {
             setLoadingData(false);
         }
-    }, [selectedDate, userPages, userProducts, mode, currentUser.companyId]);
+    }, [selectedDate, userPages, userProducts, mode, currentUser.companyId, selectedPageId]);
 
     // Auto-load when date or mode changes
     useEffect(() => {
         if (!loading) {
             loadExistingData();
         }
-    }, [selectedDate, mode, loadExistingData, loading]);
+    }, [selectedDate, mode, selectedPageId, loadExistingData, loading]);
 
     // --- Handle input change ---
     const handleChange = (index: number, field: keyof AdsRow, value: string) => {
@@ -260,17 +267,34 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
         setSaveResult(null);
 
         try {
-            // Validate: if any field is filled, all 4 must be filled
-            for (const row of rows) {
+            // Validate: if any field is filled, all 4 must be filled (page mode only)
+            // Product mode: auto-fill empty fields with "0"
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
                 const filled = [row.adsCost, row.impressions, row.reach, row.clicks].filter(
                     (v) => v !== undefined && v !== null && v.toString().trim() !== ""
                 );
                 if (filled.length > 0 && filled.length < 4) {
-                    setSaveResult({
-                        type: "error",
-                        text: `กรุณากรอกข้อมูลให้ครบ 4 ช่องสำหรับ "${row.pageName}"`,
-                    });
-                    return;
+                    if (mode === "product") {
+                        // Auto-fill empty fields with "0"
+                        setRows((prev) => {
+                            const updated = [...prev];
+                            updated[i] = {
+                                ...updated[i],
+                                adsCost: updated[i].adsCost?.trim() || "0",
+                                impressions: updated[i].impressions?.trim() || "0",
+                                reach: updated[i].reach?.trim() || "0",
+                                clicks: updated[i].clicks?.trim() || "0",
+                            };
+                            return updated;
+                        });
+                    } else {
+                        setSaveResult({
+                            type: "error",
+                            text: `กรุณากรอกข้อมูลให้ครบ 4 ช่องสำหรับ "${row.pageName}"`,
+                        });
+                        return;
+                    }
                 }
             }
 
@@ -316,8 +340,9 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
                 if (mode === "page") {
                     base.page_id = r.pageId;
                 } else {
-                    // Product mode: use ads_group for grouping
+                    // Product mode: use ads_group + page_id for grouping
                     base.ads_group = r.adsGroup;
+                    if (selectedPageId) base.page_id = parseInt(selectedPageId);
                 }
                 return base;
             });
@@ -418,6 +443,25 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
                             />
                         </div>
 
+                        {/* Page selector for product mode */}
+                        {mode === "product" && userPages.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-500">เพจ:</span>
+                                <select
+                                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[160px]"
+                                    value={selectedPageId}
+                                    onChange={(e) => setSelectedPageId(e.target.value)}
+                                >
+                                    <option value="">-- เลือกเพจ --</option>
+                                    {userPages.map((p) => (
+                                        <option key={p.id} value={String(p.id)}>
+                                            {p.name} {p.platform ? `(${p.platform})` : ""}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
                         <span className="text-sm text-gray-600 font-medium hidden sm:inline">{displayDate}</span>
                     </div>
 
@@ -444,7 +488,7 @@ const AdsInputV2: React.FC<AdsInputV2Props> = ({ currentUser }) => {
 
                         <button
                             onClick={handleSave}
-                            disabled={saving || loadingData}
+                            disabled={saving || loadingData || (mode === "product" && !selectedPageId)}
                             className="inline-flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
                         >
                             {saving ? (
