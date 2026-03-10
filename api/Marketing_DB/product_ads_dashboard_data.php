@@ -55,6 +55,15 @@ try {
       $logParams = array_merge($logParams, $adsGroupArray);
     }
   }
+  // Page filter for product ads
+  if ($pageIds) {
+    $pIds = array_filter(explode(',', $pageIds), 'is_numeric');
+    if (!empty($pIds)) {
+      $in = str_repeat('?,', count($pIds) - 1) . '?';
+      $logWhere[] = "mal.page_id IN ($in)";
+      $logParams = array_merge($logParams, $pIds);
+    }
+  }
 
   $logWhereSql = implode(" AND ", $logWhere);
 
@@ -70,7 +79,15 @@ try {
     $orderWhere[] = "o.order_date <= ?";
     $orderParams[] = $dateTo;
   }
-  // page_ids filter removed from orders - only applies to ads log
+  // page_ids filter for orders via sales_channel_page_id
+  if ($pageIds) {
+    $pIds = array_filter(explode(',', $pageIds), 'is_numeric');
+    if (!empty($pIds)) {
+      $in = str_repeat('?,', count($pIds) - 1) . '?';
+      $orderWhere[] = "o.sales_channel_page_id IN ($in)";
+      $orderParams = array_merge($orderParams, $pIds);
+    }
+  }
   if ($userIds) {
     $uIds = array_filter(explode(',', $userIds), 'is_numeric');
     if (!empty($uIds)) {
@@ -87,10 +104,10 @@ try {
 
   $orderWhereSql = implode(" AND ", $orderWhere);
 
-  // Main Query: group by ads_group
+  // Main Query: use products.ads_group as driving table so all groups always appear
   $query = "
     SELECT 
-        ads_agg.ads_group,
+        grp.ads_group,
         COALESCE(ads_agg.total_ads_cost, 0) as ads_cost,
         COALESCE(ads_agg.total_impressions, 0) as impressions,
         COALESCE(ads_agg.total_reach, 0) as reach,
@@ -106,6 +123,11 @@ try {
         COALESCE(sales.cancelled_sales, 0) as cancelled_sales,
         COALESCE(sales.cancelled_orders, 0) as cancelled_orders
     FROM (
+        SELECT DISTINCT ads_group FROM products
+        WHERE ads_group IS NOT NULL AND ads_group != ''
+        " . ($companyId ? "AND company_id = ?" : "") . "
+    ) grp
+    LEFT JOIN (
         SELECT 
             mal.ads_group,
             SUM(mal.ads_cost) as total_ads_cost,
@@ -117,7 +139,7 @@ try {
         WHERE $logWhereSql
         AND mal.ads_group IS NOT NULL AND mal.ads_group != ''
         GROUP BY mal.ads_group
-    ) ads_agg
+    ) ads_agg ON grp.ads_group = ads_agg.ads_group
     LEFT JOIN (
         SELECT 
             p.ads_group,
@@ -135,7 +157,7 @@ try {
         WHERE $orderWhereSql
         AND p.ads_group IS NOT NULL AND p.ads_group != ''
         GROUP BY p.ads_group
-    ) sales ON ads_agg.ads_group = sales.ads_group
+    ) sales ON grp.ads_group = sales.ads_group
     LEFT JOIN (
         SELECT 
             p.ads_group,
@@ -149,12 +171,13 @@ try {
         AND $orderWhereSql
         AND p.ads_group IS NOT NULL AND p.ads_group != ''
         GROUP BY p.ads_group
-    ) returned_boxes ON ads_agg.ads_group = returned_boxes.ads_group
-    ORDER BY ads_agg.total_ads_cost DESC
+    ) returned_boxes ON grp.ads_group = returned_boxes.ads_group
+    ORDER BY ads_agg.total_ads_cost DESC, sales.total_sales DESC
   ";
 
-  // Merge params: logParams, orderParams, orderParams (returned_boxes)
-  $allParams = array_merge($logParams, $orderParams, $orderParams);
+  // Merge params: companyId (for products grp), logParams, orderParams, orderParams (returned_boxes)
+  $grpParams = $companyId ? [$companyId] : [];
+  $allParams = array_merge($grpParams, $logParams, $orderParams, $orderParams);
 
   $stmt = $conn->prepare($query);
   $stmt->execute($allParams);
