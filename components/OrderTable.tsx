@@ -1,6 +1,7 @@
-﻿import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Order, Customer, ModalType, OrderStatus, PaymentStatus, PaymentMethod, User, UserRole } from '../types';
 import { ShoppingCart } from 'lucide-react';
+import { getOrderCancellationsBatch } from '../services/api';
 
 // Upsell tag with orange-red gradient
 const UpsellTag: React.FC = () => {
@@ -368,6 +369,26 @@ const OrderTable: React.FC<OrderTableProps> = ({
     }
   }, [highlightedOrderId]);
 
+  // Fetch cancellation info for cancelled orders
+  const [cancellationMap, setCancellationMap] = useState<Record<string, { type_label: string; notes?: string }>>({});
+
+  useEffect(() => {
+    const cancelledIds = orders
+      .filter((o) => o.orderStatus === OrderStatus.Cancelled)
+      .map((o) => o.id);
+    if (cancelledIds.length === 0) {
+      setCancellationMap({});
+      return;
+    }
+    getOrderCancellationsBatch(cancelledIds)
+      .then((res) => {
+        if (res?.status === 'success' && res.data) {
+          setCancellationMap(res.data);
+        }
+      })
+      .catch(() => {});
+  }, [orders]);
+
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="overflow-x-auto">
@@ -530,7 +551,27 @@ const OrderTable: React.FC<OrderTableProps> = ({
                         <button onClick={() => onCancelOrder(order.id)} className="font-medium text-red-600 hover:underline ml-2">ยกเลิก</button>
                       )}
                   </td>
-                  <td className="px-6 py-4"><OrderStatusPipeline status={order.orderStatus} /></td>
+                  <td className="px-6 py-4">
+                    <OrderStatusPipeline status={order.orderStatus} />
+                    {order.orderStatus === OrderStatus.Cancelled && (
+                      <div className="mt-1">
+                        {cancellationMap[order.id] ? (
+                          <>
+                            <span className="text-xs text-orange-600 font-medium">
+                              {cancellationMap[order.id].type_label}
+                            </span>
+                            {cancellationMap[order.id].notes && (
+                              <div className="text-[11px] text-gray-400 mt-0.5 max-w-[180px] truncate" title={cancellationMap[order.id].notes}>
+                                หมายเหตุ: {cancellationMap[order.id].notes}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">ยังไม่ระบุประเภท</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               );
             })}

@@ -49,6 +49,7 @@ import {
   createOrder as apiCreateOrder,
   createOrderSlip,
   patchOrder as apiPatchOrder,
+  confirmCancellation,
   createCall,
   createAppointment,
   updateAppointment,
@@ -135,6 +136,8 @@ import ImportExportPage from "./pages/ImportExportPage";
 import CompanyManagementPage from "./pages/CompanyManagementPage";
 import WarehouseManagementPage from "./pages/WarehouseManagementPage";
 import ReturnManagementPage from "./pages/ReturnManagementPage";
+import CancelledClassificationPage from "./pages/CancelledClassificationPage";
+import CancellationSettingsPage from "./pages/CancellationSettingsPage";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
 import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
@@ -2768,6 +2771,16 @@ const App: React.FC = () => {
         // Call API to cancel order directly
         await apiPatchOrder(orderId, { orderStatus: "Cancelled" });
 
+        // Auto-classify as 'ยกเลิกก่อนเข้าระบบ' (type 1) when cancelling from Orders page
+        try {
+          await confirmCancellation(
+            [{ order_id: orderId, cancellation_type_id: 1 }],
+            currentUser.id
+          );
+        } catch (e) {
+          console.error('Failed to classify cancellation:', e);
+        }
+
         // Update local state if order exists there
         setOrders((prevOrders) =>
           prevOrders.map((o) =>
@@ -2840,6 +2853,11 @@ const App: React.FC = () => {
     for (const id of validIds) {
       try {
         await apiPatchOrder(id, { orderStatus: "Cancelled" });
+        // Auto-classify as 'ยกเลิกก่อนเข้าระบบ' (type 1)
+        await confirmCancellation(
+          [{ order_id: id, cancellation_type_id: 1 }],
+          currentUser.id
+        );
       } catch (e) {
         console.error("cancel API", e);
       }
@@ -7610,6 +7628,12 @@ const App: React.FC = () => {
         );
       case "จัดการตีกลับ":
         return <ReturnManagementPage user={currentUser} />;
+
+      case "จัดประเภทยกเลิก":
+        return <CancelledClassificationPage currentUser={currentUser} />;
+
+      case "ตั้งค่าการยกเลิก":
+        return <CancellationSettingsPage currentUser={currentUser} />;
 
       // PROCESSED: System / Roles
       case "Role Management":
