@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Order, OrderStatus } from "../types";
-import { listOrders, saveReturnOrders, getReturnOrders, getReturnStats, getOrder, revertReturnedOrder, exportReturnOrders } from "../services/api";
+import { listOrders, saveReturnOrders, getReturnOrders, getReturnStats, getOrder, revertReturnedOrder, exportReturnOrders, uploadReturnImage, getReturnImages, deleteReturnImage } from "../services/api";
+import resolveApiBasePath from "../utils/apiBasePath";
 import * as XLSX from "xlsx";
 import {
+  Camera,
   Search,
   Plus,
   Filter,
@@ -112,6 +114,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   // Search State
   const [searchTracking, setSearchTracking] = useState("");
+  const [searchOrderId, setSearchOrderId] = useState("");
   const [filterSearch, setFilterSearch] = useState("");
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
 
@@ -182,6 +185,20 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     return { start: start.toISOString(), end: end.toISOString() };
   });
   const [exporting, setExporting] = useState(false);
+
+  // Advanced Filters
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [advFilters, setAdvFilters] = useState({
+    caseStatus: '' as '' | 'closed' | 'open',
+    hasClaim: '' as '' | 'yes' | 'no',
+    claimMin: '',
+    claimMax: '',
+    amountMin: '',
+    amountMax: '',
+    hasImage: '' as '' | 'yes' | 'no',
+    hasNote: '' as '' | 'yes' | 'no',
+  });
+  const activeFilterCount = Object.values(advFilters).filter(v => v !== '').length;
 
   // Tab counts from stats API (fetched once)
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
@@ -353,7 +370,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   useEffect(() => {
     fetchVerifiedOrders();
-  }, [user.companyId, activeTab, pagination.page, filterSearch, orderDateRange, returnDateRange, orderDateShowAll, returnDateShowAll]);
+  }, [user.companyId, activeTab, pagination.page, pagination.limit, filterSearch, orderDateRange, returnDateRange, orderDateShowAll, returnDateShowAll, advFilters]);
 
   // Fetch stats once on mount + when tab data changes (after save/revert)
   const fetchReturnStats = async () => {
@@ -394,6 +411,15 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         orderDateTo: !orderDateShowAll && orderDateRange.end ? orderDateRange.end.split('T')[0] : undefined,
         returnDateFrom: !returnDateShowAll && returnDateRange.start ? returnDateRange.start.split('T')[0] : undefined,
         returnDateTo: !returnDateShowAll && returnDateRange.end ? returnDateRange.end.split('T')[0] : undefined,
+        // Advanced filters
+        caseStatus: advFilters.caseStatus || undefined,
+        hasClaim: advFilters.hasClaim || undefined,
+        claimMin: advFilters.claimMin || undefined,
+        claimMax: advFilters.claimMax || undefined,
+        amountMin: advFilters.amountMin || undefined,
+        amountMax: advFilters.amountMax || undefined,
+        hasImage: advFilters.hasImage || undefined,
+        hasNote: advFilters.hasNote || undefined,
       });
 
       if (res && res.status === "success") {
@@ -436,6 +462,32 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         setSearchTracking(""); // Clear search after found
       } else {
         alert("ไม่พบคำสั่งซื้อที่มีเลขพัสดุนี้");
+      }
+    } catch (err) {
+      console.error("Search failed", err);
+      alert("เกิดข้อผิดพลาดในการค้นหา");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearchByOrderId = async () => {
+    if (!searchOrderId.trim()) {
+      alert("กรุณาระบุเลข Order ID");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await listOrders({
+        companyId: user.companyId,
+        orderId: searchOrderId.trim(),
+        pageSize: 1,
+      });
+      if (res.ok && res.orders.length > 0) {
+        setManagingOrder(res.orders[0]);
+        setSearchOrderId("");
+      } else {
+        alert("ไม่พบคำสั่งซื้อที่มี Order ID นี้");
       }
     } catch (err) {
       console.error("Search failed", err);
@@ -1097,6 +1149,112 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     }
   };
 
+  // ─── ReturnImageGallery: inline component for each card ───
+  const ReturnImageGallery = ({ subOrderId }: { subOrderId: string }) => {
+    const [images, setImages] = useState<any[]>([]);
+    const [uploading, setUploading] = useState(false);
+    const [lightbox, setLightbox] = useState<string | null>(null);
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    // Resolve image URL: DB stores relative path like /CRM_ERP_V4/api/uploads/returns/...
+    // On Vite dev server we need the full Apache URL
+    const resolveImgUrl = (url: string) => {
+      if (!url) return '';
+      // If already absolute URL, return as-is
+      if (url.startsWith('http://') || url.startsWith('https://')) return url;
+      // Extract just the filename from the stored URL
+      const filename = url.split('/').pop() || '';
+      // Use the API base path to construct the full URL
+      const apiBase = resolveApiBasePath().replace(/\/$/, '');
+      return `${apiBase}/uploads/returns/${filename}`;
+    };
+
+    useEffect(() => {
+      if (subOrderId) {
+        getReturnImages(subOrderId).then((res: any) => {
+          if (res?.status === 'success') setImages(res.images || []);
+        }).catch(() => {});
+      }
+    }, [subOrderId]);
+
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setUploading(true);
+      try {
+        const res = await uploadReturnImage(subOrderId, file);
+        if (res?.success && res.image) {
+          setImages(prev => [res.image, ...prev]);
+        } else {
+          alert(res?.message || 'อัปโหลดไม่สำเร็จ');
+        }
+      } catch {
+        alert('เกิดข้อผิดพลาดในการอัปโหลด');
+      } finally {
+        setUploading(false);
+        if (fileRef.current) fileRef.current.value = '';
+      }
+    };
+
+    const handleDelete = async (id: number) => {
+      if (!confirm('ลบรูปนี้?')) return;
+      try {
+        const res = await deleteReturnImage(id);
+        if (res?.success) {
+          setImages(prev => prev.filter(img => img.id !== id));
+        }
+      } catch {
+        alert('ลบไม่สำเร็จ');
+      }
+    };
+
+    return (
+      <div className="mt-2 pt-2 border-t border-gray-100">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Camera size={13} className="text-gray-400" />
+          <span className="text-[11px] text-gray-500 font-medium">รูปพัสดุ ({images.length})</span>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="px-2 py-0.5 bg-sky-50 text-sky-600 border border-sky-200 rounded text-[10px] font-medium hover:bg-sky-100 disabled:opacity-50 transition-colors"
+          >
+            {uploading ? '⏳' : '📷 อัปโหลด'}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+        </div>
+        {images.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {images.map((img: any) => {
+              const fullUrl = resolveImgUrl(img.url);
+              return (
+                <div key={img.id} className="relative group">
+                  <img
+                    src={fullUrl}
+                    alt=""
+                    className="w-14 h-14 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => setLightbox(fullUrl)}
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleDelete(img.id); }}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                  >×</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {lightbox && (
+          <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center" onClick={() => setLightbox(null)}>
+            <img src={lightbox} alt="" className="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl" />
+            <button className="absolute top-4 right-4 text-white text-2xl font-bold hover:text-gray-300" onClick={() => setLightbox(null)}>✕</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const VerifiedListTable = () => {
     const isGoodTab = activeTab === "good";
 
@@ -1155,24 +1313,35 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
-              disabled={pagination.page === 1}
-              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors"
+          <div className="flex items-center gap-2">
+            <select
+              value={pagination.limit}
+              onChange={(e) => setPagination(prev => ({ ...prev, limit: Number(e.target.value), page: 1 }))}
+              className="px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-600 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer"
             >
-              <ChevronLeft size={18} />
-            </button>
-            <span className="px-3 py-1 bg-sky-50 text-sky-700 rounded-lg text-sm font-semibold min-w-[60px] text-center">
-              {pagination.page}
-            </span>
-            <button
-              onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-              disabled={!pagination.hasMore}
-              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors"
-            >
-              <ChevronRight size={18} />
-            </button>
+              {[50, 100, 200, 500, 1000, 2000].map(size => (
+                <option key={size} value={size}>{size} / หน้า</option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                disabled={pagination.page === 1}
+                className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="px-3 py-1 bg-sky-50 text-sky-700 rounded-lg text-sm font-semibold min-w-[60px] text-center">
+                {pagination.page}
+              </span>
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                disabled={!pagination.hasMore}
+                className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1329,8 +1498,19 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               />
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="ค้นหา Order ID..."
+                className="pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-sky-500 focus:border-transparent w-48 transition-all focus:bg-white"
+                value={searchOrderId}
+                onChange={(e) => setSearchOrderId(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearchByOrderId()}
+              />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
             <button
-              onClick={handleSearchByTracking}
+              onClick={() => { if (searchTracking.trim()) handleSearchByTracking(); else if (searchOrderId.trim()) handleSearchByOrderId(); }}
               disabled={loading}
               className="p-2 bg-sky-500 text-white rounded-xl hover:bg-sky-400 disabled:opacity-50 transition-colors shadow-sm"
             >
@@ -1571,6 +1751,120 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
               <span className="text-xs text-gray-500">ทั้งหมด</span>
             </label>
           </div>
+        </div>
+      )}
+
+      {/* Advanced Filters Toggle + Panel */}
+      {mode === "list" && (
+        <div>
+          <button
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              showAdvancedFilters || activeFilterCount > 0
+                ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            <Filter size={13} />
+            ตัวกรองเพิ่มเติม
+            {activeFilterCount > 0 && (
+              <span className="bg-sky-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{activeFilterCount}</span>
+            )}
+            <ChevronDown size={13} className={`transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+          </button>
+          {showAdvancedFilters && (
+            <div className="mt-2 bg-white/80 backdrop-blur-sm rounded-xl px-4 py-3 border border-gray-200 shadow-sm">
+              <div className="flex flex-wrap items-end gap-3">
+                {/* Case Status */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">สถานะเคส</label>
+                  <select
+                    value={advFilters.caseStatus}
+                    onChange={(e) => { setAdvFilters(prev => ({ ...prev, caseStatus: e.target.value as any })); setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer min-w-[120px]"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    <option value="open">🔓 ยังไม่จบเคส</option>
+                    <option value="closed">✅ จบเคสแล้ว</option>
+                  </select>
+                </div>
+                {/* Has Claim */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">การเคลม</label>
+                  <select
+                    value={advFilters.hasClaim}
+                    onChange={(e) => { setAdvFilters(prev => ({ ...prev, hasClaim: e.target.value as any })); setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer min-w-[120px]"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    <option value="yes">💰 มีเคลม</option>
+                    <option value="no">ไม่มีเคลม</option>
+                  </select>
+                </div>
+                {/* Claim Range */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">ยอดเคลม (฿)</label>
+                  <div className="flex items-center gap-1">
+                    <input type="number" min="0" placeholder="ต่ำสุด" value={advFilters.claimMin} onChange={(e) => setAdvFilters(prev => ({ ...prev, claimMin: e.target.value }))} className="w-20 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-sky-500" />
+                    <span className="text-gray-300 text-xs">—</span>
+                    <input type="number" min="0" placeholder="สูงสุด" value={advFilters.claimMax} onChange={(e) => setAdvFilters(prev => ({ ...prev, claimMax: e.target.value }))} className="w-20 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-sky-500" />
+                  </div>
+                </div>
+                {/* Amount Range */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">ราคากล่อง (฿)</label>
+                  <div className="flex items-center gap-1">
+                    <input type="number" min="0" placeholder="ต่ำสุด" value={advFilters.amountMin} onChange={(e) => setAdvFilters(prev => ({ ...prev, amountMin: e.target.value }))} className="w-20 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-sky-500" />
+                    <span className="text-gray-300 text-xs">—</span>
+                    <input type="number" min="0" placeholder="สูงสุด" value={advFilters.amountMax} onChange={(e) => setAdvFilters(prev => ({ ...prev, amountMax: e.target.value }))} className="w-20 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-sky-500" />
+                  </div>
+                </div>
+                {/* Has Image */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">รูปภาพ</label>
+                  <select
+                    value={advFilters.hasImage}
+                    onChange={(e) => { setAdvFilters(prev => ({ ...prev, hasImage: e.target.value as any })); setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer min-w-[100px]"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    <option value="yes">📷 มีรูป</option>
+                    <option value="no">ไม่มีรูป</option>
+                  </select>
+                </div>
+                {/* Has Note */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">หมายเหตุ</label>
+                  <select
+                    value={advFilters.hasNote}
+                    onChange={(e) => { setAdvFilters(prev => ({ ...prev, hasNote: e.target.value as any })); setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer min-w-[100px]"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    <option value="yes">📝 มีหมายเหตุ</option>
+                    <option value="no">ไม่มีหมายเหตุ</option>
+                  </select>
+                </div>
+                {/* Apply & Clear */}
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    onClick={() => { setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-3 py-1.5 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition-colors shadow-sm"
+                  >
+                    🔍 กรอง
+                  </button>
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={() => { setAdvFilters({ caseStatus: '', hasClaim: '', claimMin: '', claimMax: '', amountMin: '', amountMax: '', hasImage: '', hasNote: '' }); setPagination(prev => ({ ...prev, page: 1 })); }}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
+                    >
+                      ✕ ล้างตัวกรอง
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1938,6 +2232,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                             />
                           </div>
                         </div>
+
+                        {/* 📷 Image Upload Section */}
+                        {row.subOrderId && (
+                          <ReturnImageGallery subOrderId={row.subOrderId} />
+                        )}
                         {isOrderReturned && (row.status === 'pending' || row.status === 'delivered') && (
                           <p className="text-[11px] text-rose-500 mt-1.5 flex items-center gap-1">
                             <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-rose-100 text-rose-600 text-[9px] font-bold">!</span>

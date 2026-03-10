@@ -605,3 +605,27 @@ $processedBoxIds[] = $boxRow['id'];
 |---|---|
 | `pages/ReturnManagementPage.tsx` | เปลี่ยน grouped cards → flat table, เพิ่ม checkbox/check-all, bulk case-closed, fix pending tab color |
 | `api/Orders/save_return_orders.php` | เพิ่ม `$processedBoxIds` dedup logic สำหรับ multi-tracking same box |
+
+## 22. Return Image Upload (10/03/2026)
+
+เพิ่มความสามารถอัปโหลดรูปพัสดุตีกลับ (เช่น เสียหาย) ผูกกับ `sub_order_id`
+
+### Database
+- ตาราง `return_images` (id, sub_order_id, filename, url, created_at)
+- Migration: `api/Database/20260310_create_return_images.sql`
+
+### Backend APIs
+| ไฟล์ | Method | หน้าที่ |
+|---|---|---|
+| `api/Orders/upload_return_image.php` | POST (FormData) | อัปโหลดรูป → `api/uploads/returns/` + INSERT DB |
+| `api/Orders/get_return_images.php` | GET | ดึงรูปตาม sub_order_id |
+| `api/Orders/delete_return_image.php` | POST | ลบรูป (file + DB) |
+
+### Frontend
+- **API functions** (`services/api.ts`): `uploadReturnImage`, `getReturnImages`, `deleteReturnImage`
+- **`ReturnImageGallery`** component (inline ใน `ReturnManagementPage.tsx`)
+  - แสดง thumbnail grid (56x56px) + ปุ่ม "📷 อัปโหลด"
+  - Upload instant ผ่าน hidden file input (accept images)
+  - Hover thumbnail → ปุ่มลบ (กากบาทแดง)
+  - คลิก thumbnail → Lightbox แสดงรูปเต็ม
+  - แสดงใน Manage Modal ทุก Card ที่มี subOrderId
