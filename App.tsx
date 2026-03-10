@@ -49,6 +49,7 @@ import {
   createOrder as apiCreateOrder,
   createOrderSlip,
   patchOrder as apiPatchOrder,
+  confirmCancellation,
   createCall,
   createAppointment,
   updateAppointment,
@@ -135,6 +136,9 @@ import ImportExportPage from "./pages/ImportExportPage";
 import CompanyManagementPage from "./pages/CompanyManagementPage";
 import WarehouseManagementPage from "./pages/WarehouseManagementPage";
 import ReturnManagementPage from "./pages/ReturnManagementPage";
+import CancelledClassificationPage from "./pages/CancelledClassificationPage";
+import CancellationSettingsPage from "./pages/CancellationSettingsPage";
+import CancelConfirmModal from "./components/CancelConfirmModal";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
 import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
@@ -301,6 +305,7 @@ const App: React.FC = () => {
     type: null,
     data: null,
   });
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [createOrderInitialData, setCreateOrderInitialData] = useState<
     any | null
   >(null);
@@ -2760,30 +2765,39 @@ const App: React.FC = () => {
   };
 
   const handleCancelOrder = async (orderId: string) => {
-    if (
-      window.confirm(
-        "คุณต้องการยกเลิกคำสั่งซื้อนี้ใช่หรือไม่?",
-      )
-    ) {
+    setCancellingOrderId(orderId);
+  };
+
+  const handleConfirmCancel = async (orderId: string, cancellationTypeId: number, notes: string) => {
+    try {
+      // Call API to cancel order directly
+      await apiPatchOrder(orderId, { orderStatus: "Cancelled" });
+
+      // Classify the cancellation with the selected type and notes
       try {
-        // Call API to cancel order directly
-        await apiPatchOrder(orderId, { orderStatus: "Cancelled" });
-
-        // Update local state if order exists there
-        setOrders((prevOrders) =>
-          prevOrders.map((o) =>
-            o.id === orderId ? { ...o, orderStatus: OrderStatus.Cancelled } : o,
-          ),
+        await confirmCancellation(
+          [{ order_id: orderId, cancellation_type_id: cancellationTypeId, notes: notes || undefined }],
+          currentUser.id
         );
-
-        // Dispatch event to refresh data in pages
-        window.dispatchEvent(new CustomEvent('orderModalClosed'));
-
-        alert('ยกเลิกคำสั่งซื้อเรียบร้อยแล้ว');
       } catch (e) {
-        console.error("cancel API", e);
-        alert('เกิดข้อผิดพลาดในการยกเลิกคำสั่งซื้อ');
+        console.error('Failed to classify cancellation:', e);
       }
+
+      // Update local state if order exists there
+      setOrders((prevOrders) =>
+        prevOrders.map((o) =>
+          o.id === orderId ? { ...o, orderStatus: OrderStatus.Cancelled } : o,
+        ),
+      );
+
+      // Dispatch event to refresh data in pages
+      window.dispatchEvent(new CustomEvent('orderModalClosed'));
+
+      setCancellingOrderId(null);
+      alert('ยกเลิกคำสั่งซื้อเรียบร้อยแล้ว');
+    } catch (e) {
+      console.error("cancel API", e);
+      alert('เกิดข้อผิดพลาดในการยกเลิกคำสั่งซื้อ');
     }
   };
 
@@ -2841,6 +2855,11 @@ const App: React.FC = () => {
     for (const id of validIds) {
       try {
         await apiPatchOrder(id, { orderStatus: "Cancelled" });
+        // Auto-classify as 'ยกเลิกก่อนเข้าระบบ' (type 1)
+        await confirmCancellation(
+          [{ order_id: id, cancellation_type_id: 1 }],
+          currentUser.id
+        );
       } catch (e) {
         console.error("cancel API", e);
       }
@@ -7612,6 +7631,12 @@ const App: React.FC = () => {
       case "จัดการตีกลับ":
         return <ReturnManagementPage user={currentUser} />;
 
+      case "จัดประเภทยกเลิก":
+        return <CancelledClassificationPage currentUser={currentUser} />;
+
+      case "ตั้งค่าการยกเลิก":
+        return <CancellationSettingsPage currentUser={currentUser} />;
+
       // PROCESSED: System / Roles
       case "Role Management":
       case "จัดการ Roles":
@@ -8220,6 +8245,15 @@ const App: React.FC = () => {
           )
         }
       </div >
+
+      {/* Cancel Confirm Modal */}
+      {cancellingOrderId && (
+        <CancelConfirmModal
+          orderId={cancellingOrderId}
+          onConfirm={handleConfirmCancel}
+          onClose={() => setCancellingOrderId(null)}
+        />
+      )}
     </ToastProvider>
   );
 };

@@ -2513,3 +2513,46 @@ export async function inv2UploadImage(images: string[]) {
   });
 }
 
+// ========== Cancellation Types ==========
+
+export async function getCancellationTypes(): Promise<{ status: string; data: { id: number; label: string; description: string; sort_order: number }[] }> {
+  return apiFetch('Orders/get_cancellation_types.php');
+}
+
+export async function analyzeCancelledOrders(companyId: number, page: number = 1, pageSize: number = 20) {
+  const qs = new URLSearchParams();
+  qs.set('company_id', String(companyId));
+  qs.set('page', String(page));
+  qs.set('page_size', String(pageSize));
+  return apiFetch(`Orders/analyze_cancelled_orders.php?${qs.toString()}`);
+}
+
+export async function confirmCancellation(items: { order_id: string; cancellation_type_id: number; notes?: string }[], classifiedBy: number) {
+  return apiFetch('Orders/confirm_cancellation.php', {
+    method: 'POST',
+    body: JSON.stringify({ items, classified_by: classifiedBy }),
+  });
+}
+
+export async function manageCancellationTypes(method: 'GET' | 'POST' | 'PUT' | 'DELETE', data?: any) {
+  return apiFetch('Orders/manage_cancellation_types.php', {
+    method,
+    ...(data ? { body: JSON.stringify(data) } : {}),
+  });
+}
+
+export async function setDefaultCancellationType(defaultTypeId: number) {
+  return apiFetch('Orders/manage_cancellation_types.php', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'set_default', default_type_id: defaultTypeId }),
+  });
+}
+
+export async function getOrderCancellation(orderId: string) {
+  return apiFetch(`Orders/get_order_cancellation.php?order_id=${encodeURIComponent(orderId)}`);
+}
+
+export async function getOrderCancellationsBatch(orderIds: string[]) {
+  return apiFetch(`Orders/get_order_cancellations_batch.php?order_ids=${encodeURIComponent(orderIds.join(','))}`);
+}
+

@@ -58,6 +58,9 @@ import {
   listPromotions,
   apiFetch,
   patchOrder,
+  getCancellationTypes,
+  confirmCancellation,
+  getOrderCancellation,
 } from "../services/api";
 import {
   toLocalDatetimeString,
@@ -237,6 +240,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [fetchedCustomer, setFetchedCustomer] = useState<Customer | null>(null);
   const [fetchedActivities, setFetchedActivities] = useState<Activity[]>([]);
+
+  // Cancellation type states
+  const [cancellationTypes, setCancellationTypes] = useState<{ id: number; label: string; description: string }[]>([]);
+  const [selectedCancellationTypeId, setSelectedCancellationTypeId] = useState<number>(0); // 0 = ยังไม่ระบุ
+  const [cancellationNotes, setCancellationNotes] = useState<string>('');
+  const [cancellationError, setCancellationError] = useState<string>('');
+  const cancellationRef = useRef<HTMLDivElement>(null);
   const [hasSlipChanges, setHasSlipChanges] = useState(false);
 
   const [provinces, setProvinces] = useState<any[]>([]);
@@ -359,6 +369,21 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       }
     };
     loadPromotions();
+  }, []);
+
+  // Fetch cancellation types on mount
+  useEffect(() => {
+    const loadCancellationTypes = async () => {
+      try {
+        const result = await getCancellationTypes();
+        if (result?.status === 'success' && Array.isArray(result.data)) {
+          setCancellationTypes(result.data);
+        }
+      } catch (error) {
+        console.error('Error loading cancellation types:', error);
+      }
+    };
+    loadCancellationTypes();
   }, []);
 
   // Load districts when province selected
@@ -742,6 +767,25 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     setSlips(nextSlips);
 
     setSlipPreview(order.slipUrl || (nextSlips[0]?.url ?? null));
+
+    // Load existing cancellation data if order is cancelled
+    if ((hydrated.orderStatus === 'Cancelled') && hydrated.id) {
+      getOrderCancellation(hydrated.id).then((res) => {
+        if (res?.status === 'success' && res.data) {
+          setSelectedCancellationTypeId(Number(res.data.cancellation_type_id) || 0);
+          setCancellationNotes(res.data.notes || '');
+        } else {
+          setSelectedCancellationTypeId(0);
+          setCancellationNotes('');
+        }
+      }).catch(() => {
+        setSelectedCancellationTypeId(0);
+        setCancellationNotes('');
+      });
+    } else {
+      setSelectedCancellationTypeId(0);
+      setCancellationNotes('');
+    }
   }, [order.id]);
 
   const isModifiable = useMemo(() => {
@@ -2153,12 +2197,20 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       0,
     );
     const subTotal = goodsSum - itemsDiscount;
-    const billDiscountAmount = (subTotal * (Number(billDiscount) || 0)) / 100;
+    const billDiscountAmount = Number(billDiscount) || 0;
     return subTotal + (Number(shippingCost) || 0) - billDiscountAmount;
   };
 
   const handleSave = async () => {
     if (!currentUser) return;
+
+    // Validate cancellation type when status is Cancelled
+    if (currentOrder.orderStatus === OrderStatus.Cancelled && !selectedCancellationTypeId) {
+      setCancellationError('กรุณาเลือกประเภทการยกเลิกก่อน');
+      cancellationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    setCancellationError('');
 
     // Validate COD if applicable
     if (currentOrder.paymentMethod === PaymentMethod.COD) {
@@ -2327,6 +2379,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       boxes: finalBoxes, // Add generated boxes array
     };
 
+    // Save cancellation classification if order is being cancelled
+    if (currentOrder.orderStatus === OrderStatus.Cancelled && selectedCancellationTypeId) {
+      try {
+        await confirmCancellation(
+          [{ order_id: currentOrder.id, cancellation_type_id: selectedCancellationTypeId, notes: cancellationNotes || undefined }],
+          currentUser.id
+        );
+      } catch (err) {
+        console.error('Failed to save cancellation type:', err);
+      }
+    }
 
     setCurrentOrder(updatedOrder);
 
@@ -3072,7 +3135,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       const canEditItem = showInputs;
 
                       return (
-                        <tr key={item.id} className="border-b hover:bg-gray-50">
+                        <tr key={item.id ?? `item-${index}`} className="border-b hover:bg-gray-50">
                           <td className="px-3 py-2 text-xs text-gray-600 font-mono text-center">
                             {displayRowNumber}
                           </td>
@@ -4473,8 +4536,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                     .filter((status) => {
                       if (showInputs) {
-                        // If modifiable, only allow keeping current status or cancelling
-                        // and exclude 'Completed' status
+                        // Managers can change to any status
+                        if (permission === 'manager') return true;
+                        // Non-managers: only allow keeping current status or cancelling
                         return (
                           status === currentOrder.orderStatus ||
                           status === OrderStatus.Cancelled
@@ -4505,9 +4569,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       .split(",")
                       .map((t) => t.trim())
                       .filter(Boolean);
-
                     const deduped = Array.from(new Set(parts));
-
                     handleFieldChange("trackingNumbers", deduped);
                   }}
                   disabled={isLocked || permission === 'seller'}
@@ -4516,6 +4578,63 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 />
               </div>
             </div>
+
+              {/* Cancellation section — full width below, visible when status is Cancelled */}
+              {currentOrder.orderStatus === OrderStatus.Cancelled && cancellationTypes.length > 0 && (
+                <div ref={cancellationRef} className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-5 h-5 bg-orange-200 rounded-full flex items-center justify-center">
+                      <svg className="w-3 h-3 text-orange-700" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                    </div>
+                    <span className="text-xs font-semibold text-orange-800">ข้อมูลการยกเลิก</span>
+                  </div>
+
+                  {cancellationError && (
+                    <div className="mb-2 px-3 py-2 bg-red-50 border border-red-300 rounded-lg text-sm text-red-700 flex items-center gap-2 animate-pulse">
+                      <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                      {cancellationError}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-orange-700 mb-1">
+                        ประเภทการยกเลิก <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={selectedCancellationTypeId}
+                        onChange={(e) => {
+                          setSelectedCancellationTypeId(Number(e.target.value));
+                          if (Number(e.target.value)) setCancellationError('');
+                        }}
+                        disabled={isLocked && permission !== 'manager'}
+                        className={`w-full p-2 border border-orange-300 rounded-md shadow-sm bg-white text-orange-800 font-medium focus:ring-2 focus:ring-orange-400 focus:border-transparent ${isLocked && permission !== 'manager' ? 'cursor-not-allowed opacity-60' : ''} ${cancellationError ? 'border-red-400 ring-2 ring-red-200' : ''}`}
+                      >
+                        <option value={0}>-- ยังไม่ระบุ --</option>
+                        {cancellationTypes.map((ct) => (
+                          <option key={ct.id} value={ct.id}>
+                            {ct.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-orange-700 mb-1">
+                        หมายเหตุ <span className="text-gray-400">(ไม่บังคับ)</span>
+                      </label>
+                      <textarea
+                        value={cancellationNotes}
+                        onChange={(e) => setCancellationNotes(e.target.value)}
+                        disabled={isLocked && permission !== 'manager'}
+                        placeholder="ระบุเหตุผล..."
+                        rows={1}
+                        className={`w-full p-2 border border-orange-200 rounded-md shadow-sm bg-white text-sm text-gray-700 placeholder-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent resize-none ${isLocked && permission !== 'manager' ? 'cursor-not-allowed opacity-60' : ''}`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
           </InfoCard>
 
           <InfoCard icon={History} title="ประวัติออเดอร์">
