@@ -22,6 +22,8 @@
 - **การค้นหา (Search)**:
   - มีช่องค้นหา **Tracking No.** ด้านบน เพื่อค้นหาและจัดการรายการแบบเจาะจง
     - **Bulk Search**: รองรับการค้นหาหลาย Tracking Number พร้อมกันโดยคั่นด้วยเครื่องหมายจุลภาค (`,`)
+  - มีช่องค้นหา **Order ID** ด้านบน (ข้างช่อง Tracking)
+    - ใช้ `listOrders({ orderId })` API ค้นหา
   - เมื่อค้นพบ ระบบจะเปิด Modal จัดการของ Order นั้นทันที
 - **Modal จัดการ (Manage Modal)**:
   - **การแสดงผล**: แสดงแถวข้อมูลสำหรับจัดการตาม **Tracking Number** ที่ผูกไว้เท่านั้น
@@ -629,3 +631,66 @@ $processedBoxIds[] = $boxRow['id'];
   - Hover thumbnail → ปุ่มลบ (กากบาทแดง)
   - คลิก thumbnail → Lightbox แสดงรูปเต็ม
   - แสดงใน Manage Modal ทุก Card ที่มี subOrderId
+  - **URL Resolution**: ใช้ `resolveImgUrl()` helper เพื่อแปลง relative URL จาก DB (`/CRM_ERP_V4/api/uploads/returns/...`) เป็น URL ที่ใช้งานได้ทั้งบน Vite dev server (ผ่าน proxy) และ production
+
+## 23. Order ID Search (10/03/2026)
+
+เพิ่มช่องค้นหา **Order ID** ข้างช่อง Tracking No. ใน Header
+
+- ใช้ `listOrders({ orderId, companyId, pageSize: 1 })` แทน `getOrder()` (เพราะ `getOrder` ผ่าน index.php router ที่ return format ไม่ตรง)
+- กด Enter หรือคลิกปุ่ม 🔍 → เปิด Manage Modal ทันที
+- ปุ่ม search กลาง: ถ้ามี tracking ค้น tracking ก่อน, ถ้าว่างค้น order_id
+
+#### ไฟล์ที่แก้ไข
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `pages/ReturnManagementPage.tsx` | เพิ่ม `searchOrderId` state + `handleSearchByOrderId()` + UI input |
+
+## 24. Page Size Selector + Backend Limit (10/03/2026)
+
+### Frontend
+- เพิ่ม dropdown เลือก page size: **50, 100, 200, 500, 1000, 2000**
+- อยู่ข้าง pagination buttons (< page >)
+- เปลี่ยน size → reset page = 1 + re-fetch อัตโนมัติ
+- เพิ่ม `pagination.limit` ใน useEffect dependency array
+
+### Backend
+- `get_return_orders.php`: เพิ่ม limit cap จาก `min(100)` → `min(2000)`, default จาก 20 → 50
+
+## 25. Advanced Filters (10/03/2026)
+
+เพิ่มระบบตัวกรองเพิ่มเติม (collapsible panel) ใต้แถบวันที่
+
+### ตัวกรอง 6 รายการ
+| ตัวกรอง | Param | ค่า |
+|---|---|---|
+| สถานะเคส | `caseStatus` | `''` / `'open'` / `'closed'` |
+| การเคลม | `hasClaim` | `''` / `'yes'` / `'no'` |
+| ยอดเคลม (฿) | `claimMin`, `claimMax` | ตัวเลข |
+| ราคากล่อง (฿) | `amountMin`, `amountMax` | ตัวเลข |
+| รูปภาพ | `hasImage` | `''` / `'yes'` / `'no'` (subquery return_images) |
+| หมายเหตุ | `hasNote` | `''` / `'yes'` / `'no'` |
+
+### UI
+- ปุ่ม "ตัวกรองเพิ่มเติม" + badge จำนวน filter ที่ active
+- แผง collapsible: dropdowns + number inputs + ปุ่ม "กรอง" / "ล้างตัวกรอง"
+
+#### ไฟล์ที่แก้ไข
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `api/Orders/get_return_orders.php` | เพิ่ม WHERE conditions สำหรับ 6 filters |
+| `services/api.ts` | เพิ่ม params ใน `getReturnOrders()` |
+| `pages/ReturnManagementPage.tsx` | เพิ่ม state `advFilters`, UI panel, wire to API |
+
+## 26. Case-Closed Business Rule (10/03/2026)
+
+### กฎ: จบเคส (`return_complete=1`) ทำได้เฉพาะสถานะ `good` เท่านั้น
+
+- `save_return_orders.php`: ก่อน UPDATE จะเช็ค `if ($status !== 'good') → $returnComplete = 0`
+- ผล: หากเปลี่ยนจาก `good` → `damaged`/`lost`/`returning` → `return_complete` ถูก reset เป็น 0 อัตโนมัติ
+- undo flow (pending/delivered) ก็ reset เป็น 0 เช่นกัน (logic เดิม)
+
+## 27. Git Ignore Uploads (10/03/2026)
+
+- สร้าง `api/uploads/.gitignore` เพื่อ ignore ไฟล์อัปโหลดทั้งหมด (slips, returns)
+- เก็บเฉพาะ `.gitignore` ไว้เพื่อรักษาโครงสร้างโฟลเดอร์ใน repo
