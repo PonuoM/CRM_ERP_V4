@@ -2202,6 +2202,12 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const handleSave = async () => {
     if (!currentUser) return;
 
+    // Validate cancellation type when status is Cancelled
+    if (currentOrder.orderStatus === OrderStatus.Cancelled && !selectedCancellationTypeId) {
+      alert('กรุณาระบุประเภทการยกเลิกก่อนบันทึก');
+      return;
+    }
+
     // Validate COD if applicable
     if (currentOrder.paymentMethod === PaymentMethod.COD) {
       const codTotal =

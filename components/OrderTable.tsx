@@ -147,7 +147,6 @@ const OrderStatusPipeline: React.FC<{ status: OrderStatus }> = ({ status }) => {
     return (
       <div className="min-w-[200px]">
         {getStatusChip(status)}
-        <div className="text-xs text-gray-500 mt-1">{ORDER_STATUS_LABELS[status] ?? status}</div>
       </div>
     );
   }
