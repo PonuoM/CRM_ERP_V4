@@ -3292,6 +3292,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $customerName = $_GET['customerName'] ?? null;
                 $customerPhone = $_GET['customerPhone'] ?? null;
                 $customerPhone = $_GET['customerPhone'] ?? null;
+                $customerId = $_GET['customerId'] ?? null;
                 $creatorId = $_GET['creatorId'] ?? null;
                 $orderStatus = $_GET['orderStatus'] ?? null;
                 $manageTab = $_GET['tab'] ?? null;
@@ -3540,6 +3541,11 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $params[] = $nameLike;
                     $params[] = $nameLike;
                     $params[] = $nameLike;
+                }
+
+                if ($customerId) {
+                    $whereConditions[] = 'o.customer_id = ?';
+                    $params[] = $customerId;
                 }
 
                 if ($customerPhone) {

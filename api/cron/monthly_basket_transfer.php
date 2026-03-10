@@ -7,7 +7,8 @@
  * Logic การทำงาน:
  * 1. ดึง basket_config ที่มี fail_after_days > 0
  * 2. หาลูกค้าที่ current_basket_key = basket_config.id (เก็บเป็น string)
- * 3. เช็คว่า days_in_basket >= fail_after_days หรือไม่
+ * 3. เช็คว่า days_in_basket >= fail_after_days AND days_since_order >= fail_after_days
+ *    (ต้องอยู่ในถังครบ AND ไม่มีออเดอร์ใหม่ภายในช่วงเวลาที่กำหนด)
  * 4. ถ้าใช่ และ on_fail_reevaluate = true → ใช้ days_since_order หาถังจาก config
  * 5. ถ้าใช่ และ on_fail_reevaluate = false → ย้ายไป on_fail_basket_key
  * 
@@ -157,8 +158,12 @@ try {
                   AND c.current_basket_key = ?
                   AND c.basket_entered_date IS NOT NULL
                   AND DATEDIFF(NOW(), c.basket_entered_date) >= ?
+                  AND DATEDIFF(NOW(), COALESCE(
+                      c.last_order_date,
+                      (SELECT MAX(o.order_date) FROM orders o WHERE o.customer_id = c.customer_id OR o.customer_id = c.customer_ref_id)
+                  )) >= ?
             ");
-            $customersStmt->execute([$cid, $basketId, $failDays]);
+            $customersStmt->execute([$cid, $basketId, $failDays, $failDays]);
             $customers = $customersStmt->fetchAll(PDO::FETCH_ASSOC);
 
             $count = count($customers);

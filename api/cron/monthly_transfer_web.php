@@ -180,9 +180,13 @@ foreach ($companies as $companyId) {
               AND c.current_basket_key = ?
               AND c.basket_entered_date IS NOT NULL
               AND DATEDIFF(NOW(), c.basket_entered_date) >= ?
+              AND DATEDIFF(NOW(), COALESCE(
+                  c.last_order_date,
+                  (SELECT MAX(o.order_date) FROM orders o WHERE o.customer_id = c.customer_id OR o.customer_id = c.customer_ref_id)
+              )) >= ?
             $limitClause
         ");
-        $customersStmt->execute([$companyId, $basketId, $failDays]);
+        $customersStmt->execute([$companyId, $basketId, $failDays, $failDays]);
         $customers = $customersStmt->fetchAll(PDO::FETCH_ASSOC);
         
         echo "Found " . count($customers) . " customers exceeding $failDays days\n";

@@ -355,8 +355,8 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     if (!cid) return;
 
     setOrdersLoading(true);
-    // Use phone to search for orders since orders use different customer ID schemes
-    listOrders({ customerPhone: customer.phone, pageSize: 100 })
+    // Use customer_id (string key) for direct index lookup instead of phone search
+    listOrders({ customerId: customer.id, pageSize: 100 })
       .then((res: any) => {
         if (!mounted) return;
         const orderData = res?.orders || [];
@@ -387,7 +387,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       });
 
     return () => { mounted = false; };
-  }, [customer.id, customer.pk, customer.phone, refreshTrigger]);
+  }, [customer.id, customer.pk, refreshTrigger]);
 
   // Auto-fetch items for Pending orders to check upsell status immediately
   useEffect(() => {
@@ -395,24 +395,23 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     if (pendingOrders.length === 0) return;
 
     const checkUpsellForOrders = async () => {
+      // Batch: fetch all Pending orders in parallel instead of sequential N+1
+      const results = await Promise.allSettled(
+        pendingOrders.map(order => getOrder(order.id))
+      );
       const upsellOrderIds = new Set<string>();
-
-      for (const order of pendingOrders) {
-        try {
-          const response = await getOrder(order.id);
-          const items = response?.items ?? [];
-          // Check if any item has different creator_id than order creator
+      results.forEach((result, i) => {
+        if (result.status === 'fulfilled') {
+          const items = result.value?.items ?? [];
+          const order = pendingOrders[i];
           const hasUpsellItems = items.some(
             (item: any) => item.creator_id && order.creatorId && String(item.creator_id) !== String(order.creatorId)
           );
           if (hasUpsellItems) {
             upsellOrderIds.add(order.id);
           }
-        } catch (err) {
-          // Ignore errors, just don't show badge for this order
         }
-      }
-
+      });
       setUpsellDoneOrderIds(upsellOrderIds);
     };
 
