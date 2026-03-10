@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Order, OrderStatus } from "../types";
-import { listOrders, saveReturnOrders, getReturnOrders, getReturnStats, getOrder, revertReturnedOrder, exportReturnOrders } from "../services/api";
+import { listOrders, saveReturnOrders, getReturnOrders, getReturnStats, getOrder, revertReturnedOrder, exportReturnOrders, uploadReturnImage, getReturnImages, deleteReturnImage } from "../services/api";
+import resolveApiBasePath from "../utils/apiBasePath";
 import * as XLSX from "xlsx";
 import {
+  Camera,
   Search,
   Plus,
   Filter,
@@ -112,10 +114,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   // Search State
   const [searchTracking, setSearchTracking] = useState("");
+  const [searchOrderId, setSearchOrderId] = useState("");
   const [filterSearch, setFilterSearch] = useState("");
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
 
   // Manage Modal State
+  const [showExportPopup, setShowExportPopup] = useState(false);
   const [managingOrder, setManagingOrder] = useState<Order | null>(null);
   interface ManageRow {
     trackingNumber: string;
@@ -128,6 +132,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     originalStatus: string; // Track initial status for constraints
     returnComplete?: boolean;
     returnClaim?: number;
+    boxPrice?: number;
   }
   const [manageRows, setManageRows] = useState<ManageRow[]>([]);
 
@@ -180,6 +185,20 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     return { start: start.toISOString(), end: end.toISOString() };
   });
   const [exporting, setExporting] = useState(false);
+
+  // Advanced Filters
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [advFilters, setAdvFilters] = useState({
+    caseStatus: '' as '' | 'closed' | 'open',
+    hasClaim: '' as '' | 'yes' | 'no',
+    claimMin: '',
+    claimMax: '',
+    amountMin: '',
+    amountMax: '',
+    hasImage: '' as '' | 'yes' | 'no',
+    hasNote: '' as '' | 'yes' | 'no',
+  });
+  const activeFilterCount = Object.values(advFilters).filter(v => v !== '').length;
 
   // Tab counts from stats API (fetched once)
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
@@ -312,6 +331,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             originalStatus: verified.status as any,
             returnComplete: Number(verified.return_complete) === 1,
             returnClaim: verified.return_claim != null ? Number(verified.return_claim) : undefined,
+            boxPrice: verified.return_amount != null ? Number(verified.return_amount) : undefined,
           };
         }
 
@@ -329,6 +349,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             originalStatus: matchedBox.return_status as any,
             returnComplete: Number(matchedBox.return_complete) === 1,
             returnClaim: matchedBox.return_claim != null ? Number(matchedBox.return_claim) : undefined,
+            boxPrice: matchedBox.cod_amount != null ? Number(matchedBox.cod_amount) : undefined,
           };
         }
 
@@ -349,7 +370,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   useEffect(() => {
     fetchVerifiedOrders();
-  }, [user.companyId, activeTab, pagination.page, filterSearch, orderDateRange, returnDateRange, orderDateShowAll, returnDateShowAll]);
+  }, [user.companyId, activeTab, pagination.page, pagination.limit, filterSearch, orderDateRange, returnDateRange, orderDateShowAll, returnDateShowAll, advFilters]);
 
   // Fetch stats once on mount + when tab data changes (after save/revert)
   const fetchReturnStats = async () => {
@@ -390,6 +411,15 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         orderDateTo: !orderDateShowAll && orderDateRange.end ? orderDateRange.end.split('T')[0] : undefined,
         returnDateFrom: !returnDateShowAll && returnDateRange.start ? returnDateRange.start.split('T')[0] : undefined,
         returnDateTo: !returnDateShowAll && returnDateRange.end ? returnDateRange.end.split('T')[0] : undefined,
+        // Advanced filters
+        caseStatus: advFilters.caseStatus || undefined,
+        hasClaim: advFilters.hasClaim || undefined,
+        claimMin: advFilters.claimMin || undefined,
+        claimMax: advFilters.claimMax || undefined,
+        amountMin: advFilters.amountMin || undefined,
+        amountMax: advFilters.amountMax || undefined,
+        hasImage: advFilters.hasImage || undefined,
+        hasNote: advFilters.hasNote || undefined,
       });
 
       if (res && res.status === "success") {
@@ -432,6 +462,32 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         setSearchTracking(""); // Clear search after found
       } else {
         alert("ไม่พบคำสั่งซื้อที่มีเลขพัสดุนี้");
+      }
+    } catch (err) {
+      console.error("Search failed", err);
+      alert("เกิดข้อผิดพลาดในการค้นหา");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearchByOrderId = async () => {
+    if (!searchOrderId.trim()) {
+      alert("กรุณาระบุเลข Order ID");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await listOrders({
+        companyId: user.companyId,
+        orderId: searchOrderId.trim(),
+        pageSize: 1,
+      });
+      if (res.ok && res.orders.length > 0) {
+        setManagingOrder(res.orders[0]);
+        setSearchOrderId("");
+      } else {
+        alert("ไม่พบคำสั่งซื้อที่มี Order ID นี้");
       }
     } catch (err) {
       console.error("Search failed", err);
@@ -1057,355 +1113,565 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     }
   };
 
-  const VerifiedListTable = () => {
-    // Filter client-side REMOVED -> Now handled by API
-    // const filteredItems = verifiedOrders.filter(...) 
+  // Checkbox selection state for bulk actions
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
 
-    // Group strictly by main_order_id
-    const grouped = verifiedOrders.reduce(
-      (acc, v) => {
-        // Use main_order_id directly. If missing, treat as orphan (use tracking number as key)
-        const key = v.main_order_id || v.tracking_number;
+  const handleBulkCaseClosed = async () => {
+    if (selectedIds.size === 0) return;
+    const selected = verifiedOrders.filter(v => selectedIds.has(v.id));
+    if (!confirm(`ยืนยันจบเคส ${selected.length} รายการ?`)) return;
+    setBulkSaving(true);
+    try {
+      const payload = selected.map(v => ({
+        sub_order_id: v.sub_order_id || v.main_order_id || "",
+        status: v.status || "good",
+        collected_amount: 0,
+        note: v.note || "",
+        tracking_number: v.tracking_number,
+        return_complete: 1,
+        return_claim: v.return_claim ?? null,
+      }));
+      const res = await saveReturnOrders(payload);
+      if (res && res.status === "success") {
+        alert(`จบเคสสำเร็จ ${res.updatedCount || selected.length} รายการ`);
+        setSelectedIds(new Set());
+        fetchVerifiedOrders();
+        fetchReturnStats();
+      } else {
+        alert("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
+      }
+    } catch (err) {
+      console.error(err);
+      alert("เกิดข้อผิดพลาดในการบันทึก");
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
-        if (!acc[key]) {
-          acc[key] = {
-            displayId: key,
-            items: [],
-            totalAmount: v.total_amount || 0,
-            orderDate: v.order_date || "",
-            totalBoxes: v.total_boxes || 0,
-          };
+  // ─── ReturnImageGallery: inline component for each card ───
+  const ReturnImageGallery = ({ subOrderId }: { subOrderId: string }) => {
+    const [images, setImages] = useState<any[]>([]);
+    const [uploading, setUploading] = useState(false);
+    const [lightbox, setLightbox] = useState<string | null>(null);
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    // Resolve image URL: DB stores relative path like /CRM_ERP_V4/api/uploads/returns/...
+    // On Vite dev server we need the full Apache URL
+    const resolveImgUrl = (url: string) => {
+      if (!url) return '';
+      // If already absolute URL, return as-is
+      if (url.startsWith('http://') || url.startsWith('https://')) return url;
+      // Extract just the filename from the stored URL
+      const filename = url.split('/').pop() || '';
+      // Use the API base path to construct the full URL
+      const apiBase = resolveApiBasePath().replace(/\/$/, '');
+      return `${apiBase}/uploads/returns/${filename}`;
+    };
+
+    useEffect(() => {
+      if (subOrderId) {
+        getReturnImages(subOrderId).then((res: any) => {
+          if (res?.status === 'success') setImages(res.images || []);
+        }).catch(() => {});
+      }
+    }, [subOrderId]);
+
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setUploading(true);
+      try {
+        const res = await uploadReturnImage(subOrderId, file);
+        if (res?.success && res.image) {
+          setImages(prev => [res.image, ...prev]);
+        } else {
+          alert(res?.message || 'อัปโหลดไม่สำเร็จ');
         }
-        acc[key].items.push(v);
-        return acc;
-      },
-      {} as Record<
-        string,
-        { displayId: string; items: typeof verifiedOrders; totalAmount: number; orderDate: string; totalBoxes: number }
-      >,
-    );
+      } catch {
+        alert('เกิดข้อผิดพลาดในการอัปโหลด');
+      } finally {
+        setUploading(false);
+        if (fileRef.current) fileRef.current.value = '';
+      }
+    };
 
-    const sortedGroups = Object.values(grouped).sort((a, b) => {
-      // Sort by latest item in group
-      const maxA = Math.max(...a.items.map((i) => new Date(i.updated_at || i.created_at).getTime()));
-      const maxB = Math.max(...b.items.map((i) => new Date(i.updated_at || i.created_at).getTime()));
-      return maxB - maxA;
-    });
+    const handleDelete = async (id: number) => {
+      if (!confirm('ลบรูปนี้?')) return;
+      try {
+        const res = await deleteReturnImage(id);
+        if (res?.success) {
+          setImages(prev => prev.filter(img => img.id !== id));
+        }
+      } catch {
+        alert('ลบไม่สำเร็จ');
+      }
+    };
 
     return (
-      <div className="space-y-4">
-        {/* Pagination Controls */}
-        <div className="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border mb-4">
-          <span className="text-sm text-gray-600">
-            หน้า {pagination.page} {filterSearch && '(ค้นหา)'}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
-              disabled={pagination.page === 1}
-              className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <span className="px-3 py-1 bg-gray-100 rounded text-sm font-medium">
-              หน้า {pagination.page}
-            </span>
-            <button
-              onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-              disabled={!pagination.hasMore}
-              className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
+      <div className="mt-2 pt-2 border-t border-gray-100">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Camera size={13} className="text-gray-400" />
+          <span className="text-[11px] text-gray-500 font-medium">รูปพัสดุ ({images.length})</span>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="px-2 py-0.5 bg-sky-50 text-sky-600 border border-sky-200 rounded text-[10px] font-medium hover:bg-sky-100 disabled:opacity-50 transition-colors"
+          >
+            {uploading ? '⏳' : '📷 อัปโหลด'}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
         </div>
-
-        {sortedGroups.map((group) => (
-          <div key={group.displayId} className="bg-white shadow rounded-lg overflow-hidden border">
-            <div className="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
-              <div>
-                <span
-                  className="font-semibold text-blue-600 cursor-pointer hover:underline"
-                  onClick={() => setSelectedOrderId(group.displayId)}
-                >Order: {group.displayId}</span>
-                {group.orderDate && <span className="text-xs text-gray-500 ml-2">({new Date(group.orderDate).toLocaleDateString('th-TH')})</span>}
-              </div>
-              <div className="flex items-center gap-3 text-sm text-gray-600">
-                <span>{group.items.length}{group.totalBoxes > group.items.length ? ` จาก ${group.totalBoxes}` : ''} กล่อง</span>
-                <span>ยอดบิล: {group.totalAmount.toLocaleString()}</span>
-                <button
-                  onClick={() => {
-                    setRevertOrderId(group.displayId);
-                    setRevertNewStatus("Shipping");
-                    setIsRevertModalOpen(true);
-                  }}
-                  className="ml-2 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-300 rounded-md text-xs font-medium hover:bg-amber-100 flex items-center gap-1 transition-colors"
-                  title="ยกเลิกสถานะตีกลับทั้ง Order"
-                >
-                  <RotateCcw size={12} />
-                  ยกเลิกตีกลับ
-                </button>
-              </div>
-            </div>
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Tracking No.
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Sub Order ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    สถานะ
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    หมายเหตุ
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    วันที่อัปเดต
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    จัดการ
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {group.items.map((item, idx) => (
-                  <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {item.tracking_number}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.sub_order_id || "-"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${item.status.toLowerCase() === 'returning' ? 'bg-orange-100 text-orange-800' :
-                        item.status.toLowerCase() === 'good' ? 'bg-green-100 text-green-800' :
-                          item.status.toLowerCase() === 'damaged' ? 'bg-red-100 text-red-800' :
-                            item.status.toLowerCase() === 'lost' ? 'bg-gray-100 text-gray-800' :
-                              'bg-gray-100 text-gray-800'
-                        }`}>
-                        {(() => {
-                          const s = item.status.toLowerCase();
-                          switch (s) {
-                            case 'returning': return 'กำลังตีกลับ';
-                            case 'good': return 'เข้าคลัง (สภาพดี)';
-                            case 'damaged': return 'เข้าคลัง (เสียหาย)';
-                            case 'lost': return 'สูญหาย';
-                            case 'pending': return 'รอการดำเนินการ';
-                            default: return item.status;
-                          }
-                        })()}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div className="flex flex-col gap-1">
-                        {item.note && <span>{item.note}</span>}
-                        {Number(item.return_complete) === 1 && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">✅ จบเคส</span>
-                        )}
-                        {item.return_claim != null && Number(item.return_claim) > 0 && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">💰 เคลม: ฿{Number(item.return_claim).toLocaleString()}</span>
-                        )}
-                        {!item.note && !Number(item.return_complete) && !(item.return_claim != null && Number(item.return_claim) > 0) && '-'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                      {new Date(item.updated_at || item.created_at).toLocaleString('th-TH')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                      <button
-                        onClick={() => handleManageVerified(item)} // This uses item, assuming handleManageVerified takes VerifiedOrder
-                        className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1 rounded"
-                      >
-                        ตรวจสอบ
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {images.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {images.map((img: any) => {
+              const fullUrl = resolveImgUrl(img.url);
+              return (
+                <div key={img.id} className="relative group">
+                  <img
+                    src={fullUrl}
+                    alt=""
+                    className="w-14 h-14 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => setLightbox(fullUrl)}
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleDelete(img.id); }}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                  >×</button>
+                </div>
+              );
+            })}
           </div>
-        ))}
-        {sortedGroups.length === 0 && (
-          <div className="text-center py-10 text-gray-500 bg-white rounded-lg shadow">ไม่พบข้อมูล</div>
+        )}
+        {lightbox && (
+          <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center" onClick={() => setLightbox(null)}>
+            <img src={lightbox} alt="" className="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl" />
+            <button className="absolute top-4 right-4 text-white text-2xl font-bold hover:text-gray-300" onClick={() => setLightbox(null)}>✕</button>
+          </div>
         )}
       </div>
     );
   };
 
+  const VerifiedListTable = () => {
+    const isGoodTab = activeTab === "good";
+
+    // Flatten all items and sort by updated_at desc
+    const allItems = [...verifiedOrders].sort((a, b) => {
+      return new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime();
+    });
+
+    const allIds = allItems.map(i => i.id);
+    const allSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
+    const someSelected = allIds.some(id => selectedIds.has(id));
+
+    const toggleAll = () => {
+      if (allSelected) {
+        setSelectedIds(new Set());
+      } else {
+        setSelectedIds(new Set(allIds));
+      }
+    };
+
+    const toggleOne = (id: number) => {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    };
+
+    return (
+      <div className="space-y-3">
+        {/* Pagination + Bulk Action Bar */}
+        <div className="flex justify-between items-center bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">
+              หน้า <span className="font-semibold text-gray-800">{pagination.page}</span>
+              {filterSearch && <span className="ml-1 text-sky-600">(ค้นหา: {filterSearch})</span>}
+            </span>
+            {isGoodTab && selectedIds.size > 0 && (
+              <div className="flex items-center gap-2 ml-2 pl-3 border-l border-gray-200">
+                <span className="text-sm font-medium text-sky-700">เลือก {selectedIds.size} รายการ</span>
+                <button
+                  onClick={handleBulkCaseClosed}
+                  disabled={bulkSaving}
+                  className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                >
+                  <CheckCircle size={13} />
+                  {bulkSaving ? 'กำลังบันทึก...' : 'ยืนยันจบเคส'}
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="px-2 py-1.5 text-gray-500 hover:text-gray-700 rounded-lg text-xs transition-colors"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={pagination.limit}
+              onChange={(e) => setPagination(prev => ({ ...prev, limit: Number(e.target.value), page: 1 }))}
+              className="px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-600 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer"
+            >
+              {[50, 100, 200, 500, 1000, 2000].map(size => (
+                <option key={size} value={size}>{size} / หน้า</option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                disabled={pagination.page === 1}
+                className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="px-3 py-1 bg-sky-50 text-sky-700 rounded-lg text-sm font-semibold min-w-[60px] text-center">
+                {pagination.page}
+              </span>
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                disabled={!pagination.hasMore}
+                className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Single Flat Table */}
+        {allItems.length > 0 ? (
+          <div className="bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            <table className="min-w-full">
+              <thead>
+                <tr className="bg-gray-50/80 border-b border-gray-200">
+                  {isGoodTab && (
+                    <th className="px-3 py-2.5 text-center w-10">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                        onChange={toggleAll}
+                        className="w-4 h-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                      />
+                    </th>
+                  )}
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Order ID</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Tracking No.</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Sub Order</th>
+                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">ราคากล่อง</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">สถานะ</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">รายละเอียด</th>
+                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider">วันที่อัปเดต</th>
+                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {allItems.map((item) => {
+                  const isChecked = selectedIds.has(item.id);
+                  return (
+                    <tr key={`${item.id}-${item.tracking_number}`} className={`transition-colors ${isChecked ? 'bg-sky-50/60' : 'hover:bg-gray-50/60'}`}>
+                      {isGoodTab && (
+                        <td className="px-3 py-2.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleOne(item.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                          />
+                        </td>
+                      )}
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <span
+                          className="font-semibold text-sky-700 cursor-pointer hover:text-sky-900 text-sm transition-colors"
+                          onClick={() => setSelectedOrderId(item.main_order_id || item.sub_order_id)}
+                        >
+                          #{item.main_order_id || '-'}
+                        </span>
+                        {item.order_date && (
+                          <div className="text-[10px] text-gray-400">{new Date(item.order_date).toLocaleDateString('th-TH')}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-sm">
+                        <span className="font-mono font-medium text-gray-800">{item.tracking_number}</span>
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs text-gray-500 font-mono">
+                        {item.sub_order_id || "-"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-right text-sm">
+                        {item.return_amount != null && Number(item.return_amount) > 0 ? (
+                          <span className="font-semibold text-gray-800">฿{Number(item.return_amount).toLocaleString()}</span>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-lg ${item.status.toLowerCase() === 'returning' ? 'bg-orange-100 text-orange-800' :
+                          item.status.toLowerCase() === 'good' ? 'bg-emerald-100 text-emerald-800' :
+                            item.status.toLowerCase() === 'damaged' ? 'bg-rose-100 text-rose-800' :
+                              item.status.toLowerCase() === 'lost' ? 'bg-gray-200 text-gray-700' :
+                                'bg-gray-100 text-gray-700'
+                          }`}>
+                          {(() => {
+                            const s = item.status.toLowerCase();
+                            switch (s) {
+                              case 'returning': return '🚚 กำลังตีกลับ';
+                              case 'good': return '✅ สภาพดี';
+                              case 'damaged': return '⚠️ เสียหาย';
+                              case 'lost': return '❌ สูญหาย';
+                              case 'pending': return '⏳ รอดำเนินการ';
+                              default: return item.status;
+                            }
+                          })()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-sm">
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          {Number(item.return_complete) === 1 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-100 text-emerald-800">✅ จบเคส</span>
+                          )}
+                          {item.return_claim != null && Number(item.return_claim) > 0 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-800">💰 เคลม ฿{Number(item.return_claim).toLocaleString()}</span>
+                          )}
+                          {item.note && <span className="text-gray-600 text-xs">📝 {item.note}</span>}
+                          {!item.note && !Number(item.return_complete) && !(item.return_claim != null && Number(item.return_claim) > 0) && <span className="text-gray-300 text-xs">-</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-center text-xs text-gray-500">
+                        {new Date(item.updated_at || item.created_at).toLocaleString('th-TH')}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-center">
+                        <button
+                          onClick={() => handleManageVerified(item)}
+                          className="px-3 py-1.5 bg-sky-50 text-sky-700 rounded-lg text-xs font-semibold hover:bg-sky-100 border border-sky-200 transition-colors"
+                        >
+                          ตรวจสอบ
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-16 bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="text-5xl mb-4">📦</div>
+            <p className="text-gray-500 font-medium">ไม่พบข้อมูลรายการตีกลับ</p>
+            <p className="text-gray-400 text-sm mt-1">ลองปรับตัวกรองวันที่หรือเปลี่ยนแท็บ</p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          <ArrowLeftRight className="text-blue-600" />
-          จัดการสินค้าตีกลับ (Return Management)
-        </h2>
-        <div className="flex gap-2">
-          <div className="flex gap-2 mr-2">
-            <input
-              type="text"
-              placeholder="ค้นหา Tracking No..."
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 w-48"
-              value={searchTracking}
-              onChange={(e) => setSearchTracking(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearchByTracking()}
-            />
+    <div className="p-4 md:p-6 space-y-4">
+      {/* Header */}
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200">
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <div className="p-1.5 bg-sky-100 rounded-lg">
+                <ArrowLeftRight size={20} className="text-sky-600" />
+              </div>
+              จัดการสินค้าตีกลับ
+            </h2>
+            <p className="text-gray-400 text-xs mt-0.5 ml-10">Return Management — ตรวจสอบและจัดการพัสดุตีกลับ</p>
+          </div>
+          <div className="flex gap-2 items-center">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="ค้นหา Tracking No..."
+                className="pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-sky-500 focus:border-transparent w-52 transition-all focus:bg-white"
+                value={searchTracking}
+                onChange={(e) => setSearchTracking(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearchByTracking()}
+              />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="ค้นหา Order ID..."
+                className="pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-sky-500 focus:border-transparent w-48 transition-all focus:bg-white"
+                value={searchOrderId}
+                onChange={(e) => setSearchOrderId(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearchByOrderId()}
+              />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
             <button
-              onClick={handleSearchByTracking}
+              onClick={() => { if (searchTracking.trim()) handleSearchByTracking(); else if (searchOrderId.trim()) handleSearchByOrderId(); }}
               disabled={loading}
-              className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
+              className="p-2 bg-sky-500 text-white rounded-xl hover:bg-sky-400 disabled:opacity-50 transition-colors shadow-sm"
             >
               <Search size={16} />
             </button>
-          </div>
-
-          <input
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            ref={fileInputRef}
-            className="hidden"
-            onChange={handleFileUpload}
-          />
-          <button
-            onClick={() => setIsImportStatusModalOpen(true)}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-2"
-          >
-            <Upload size={16} /> ใส่เลข Tracking จำนวนมาก
-          </button>
-        </div>
-      </div>
-
-      {/* Export Section */}
-      <div className="mb-4 bg-white p-4 rounded-lg shadow-sm border">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium text-gray-700">📦 Export ข้อมูลตีกลับ</span>
-          <div className="w-auto min-w-[320px]">
-            <DateRangePicker
-              value={exportDateRange}
-              onApply={(range) => setExportDateRange(range)}
+            <div className="w-px h-8 bg-gray-200 mx-1" />
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              ref={fileInputRef}
+              className="hidden"
+              onChange={handleFileUpload}
             />
+            <button
+              onClick={() => setIsImportStatusModalOpen(true)}
+              className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm font-medium hover:bg-emerald-400 flex items-center gap-2 transition-colors shadow-sm"
+            >
+              <Upload size={15} /> Import
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowExportPopup(!showExportPopup)}
+                disabled={exporting}
+                className="px-4 py-2 bg-sky-600 text-white rounded-xl text-sm font-medium hover:bg-sky-500 flex items-center gap-2 transition-colors shadow-sm disabled:opacity-50"
+              >
+                <Download size={15} />
+                {exporting ? 'Exporting...' : 'Export'}
+              </button>
+              {showExportPopup && (
+                <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-xl border border-gray-200 p-4 z-50 w-[380px]">
+                  <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">เลือกช่วงเวลา Export</p>
+                  <div className="mb-3">
+                    <DateRangePicker
+                      value={exportDateRange}
+                      onApply={(range) => setExportDateRange(range)}
+                    />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setExporting(true);
+                      try {
+                        const dateFrom = exportDateRange.start.split('T')[0];
+                        const dateTo = exportDateRange.end.split('T')[0];
+                        const res = await exportReturnOrders({
+                          date_from: dateFrom,
+                          date_to: dateTo,
+                          companyId: user.companyId,
+                        });
+                        if (res?.success && Array.isArray(res.data)) {
+                          if (res.data.length === 0) {
+                            alert('ไม่พบข้อมูลในช่วงวันที่ที่เลือก');
+                            return;
+                          }
+                          const statusMap: Record<string, string> = {
+                            returning: 'กำลังตีกลับ',
+                            good: 'เข้าคลัง (สภาพดี)',
+                            damaged: 'เข้าคลัง (เสียหาย)',
+                            lost: 'สูญหาย',
+                            pending: 'รอการดำเนินการ',
+                            delivered: 'ส่งสำเร็จ',
+                          };
+                          const headers = [
+                            'Order ID', 'Sub Order ID', 'วันที่สั่งซื้อ', 'ชื่อจริง', 'นามสกุล', 'เบอร์โทร',
+                            'Tracking No.', 'สถานะตีกลับ', 'หมายเหตุ',
+                            'ราคากล่อง', 'ยอดเก็บได้', 'วันที่บันทึกตีกลับ',
+                            'สถานะกล่อง', 'ช่องทางชำระ',
+                            'ที่อยู่', 'แขวง/ตำบล', 'เขต/อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์',
+                            'ชื่อผู้ขาย', 'นามสกุลผู้ขาย', 'ตำแหน่งผู้ขาย',
+                            'ยอดเต็ม', 'ยอดคงเหลือ'
+                          ];
+                          const rows = res.data.map((r: any) => ([
+                            r.order_id || '',
+                            r.sub_order_id || '',
+                            r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH') : '',
+                            r.customer_first_name || '',
+                            r.customer_last_name || '',
+                            r.customer_phone || '',
+                            r.tracking_number || '',
+                            statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
+                            r.return_note || '',
+                            r.cod_amount ?? 0,
+                            r.collection_amount ?? 0,
+                            r.return_created_at ? new Date(r.return_created_at).toLocaleString('th-TH') : '',
+                            statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
+                            r.payment_method || '',
+                            r.shipping_street || '',
+                            r.shipping_subdistrict || '',
+                            r.shipping_district || '',
+                            r.shipping_province || '',
+                            r.shipping_postal_code || '',
+                            r.seller_first_name || '',
+                            r.seller_last_name || '',
+                            r.seller_role || '',
+                            r.total_cod_amount ?? 0,
+                            r.total_collection_amount ?? 0,
+                          ]));
+                          const csvContent = '\uFEFF' + headers.join(',') + '\n'
+                            + rows.map((row: any[]) => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+                          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = `return_orders_${dateFrom}_${dateTo}.csv`;
+                          link.click();
+                          URL.revokeObjectURL(url);
+                          setShowExportPopup(false);
+                        } else {
+                          alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
+                        }
+                      } catch (err) {
+                        console.error('Export error:', err);
+                        alert('เกิดข้อผิดพลาดในการ Export');
+                      } finally {
+                        setExporting(false);
+                      }
+                    }}
+                    disabled={exporting}
+                    className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+                  >
+                    <Download size={14} />
+                    {exporting ? 'Exporting...' : 'Export CSV'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-          <button
-            onClick={async () => {
-              setExporting(true);
-              try {
-                const dateFrom = exportDateRange.start.split('T')[0];
-                const dateTo = exportDateRange.end.split('T')[0];
-                const res = await exportReturnOrders({
-                  date_from: dateFrom,
-                  date_to: dateTo,
-                  companyId: user.companyId,
-                });
-                if (res?.success && Array.isArray(res.data)) {
-                  if (res.data.length === 0) {
-                    alert('ไม่พบข้อมูลในช่วงวันที่ที่เลือก');
-                    return;
-                  }
-                  const statusMap: Record<string, string> = {
-                    returning: 'กำลังตีกลับ',
-                    good: 'เข้าคลัง (สภาพดี)',
-                    damaged: 'เข้าคลัง (เสียหาย)',
-                    lost: 'สูญหาย',
-                    pending: 'รอการดำเนินการ',
-                    delivered: 'ส่งสำเร็จ',
-                  };
-                  const headers = [
-                    'Order ID', 'Sub Order ID', 'วันที่สั่งซื้อ', 'ชื่อจริง', 'นามสกุล', 'เบอร์โทร',
-                    'Tracking No.', 'สถานะตีกลับ', 'หมายเหตุ',
-                    'ราคากล่อง', 'ยอดเก็บได้', 'วันที่บันทึกตีกลับ',
-                    'สถานะกล่อง', 'ช่องทางชำระ',
-                    'ที่อยู่', 'แขวง/ตำบล', 'เขต/อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์',
-                    'ชื่อผู้ขาย', 'นามสกุลผู้ขาย', 'ตำแหน่งผู้ขาย',
-                    'ยอดเต็ม', 'ยอดคงเหลือ'
-                  ];
-                  const rows = res.data.map((r: any) => ([
-                    r.order_id || '',
-                    r.sub_order_id || '',
-                    r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH') : '',
-                    r.customer_first_name || '',
-                    r.customer_last_name || '',
-                    r.customer_phone || '',
-                    r.tracking_number || '',
-                    statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
-                    r.return_note || '',
-                    r.cod_amount ?? 0,
-                    r.collection_amount ?? 0,
-                    r.return_created_at ? new Date(r.return_created_at).toLocaleString('th-TH') : '',
-                    statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
-                    r.payment_method || '',
-                    r.shipping_street || '',
-                    r.shipping_subdistrict || '',
-                    r.shipping_district || '',
-                    r.shipping_province || '',
-                    r.shipping_postal_code || '',
-                    r.seller_first_name || '',
-                    r.seller_last_name || '',
-                    r.seller_role || '',
-                    r.total_cod_amount ?? 0,
-                    r.total_collection_amount ?? 0,
-                  ]));
-                  const csvContent = '\uFEFF' + headers.join(',') + '\n'
-                    + rows.map((row: any[]) => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-                  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                  const url = URL.createObjectURL(blob);
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = `return_orders_${dateFrom}_${dateTo}.csv`;
-                  link.click();
-                  URL.revokeObjectURL(url);
-                } else {
-                  alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
-                }
-              } catch (err) {
-                console.error('Export error:', err);
-                alert('เกิดข้อผิดพลาดในการ Export');
-              } finally {
-                setExporting(false);
-              }
-            }}
-            disabled={exporting}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50 transition-colors"
-          >
-            <Download size={16} />
-            {exporting ? 'กำลัง Export...' : 'Export CSV'}
-          </button>
-          <span className="text-xs text-gray-400">(ข้อมูลตีกลับทั้งหมด)</span>
         </div>
       </div>
 
-      {/* Tabs Row - Moved Here */}
+      {/* Tabs */}
       {mode === "list" && (
-        <div className="mb-6">
-          <div className="flex border-b overflow-x-auto">
+        <div>
+          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
             {[
-              { id: "pending", label: "รอการดำเนินการ", color: "gray" },
-              { id: "returning", label: "กำลังตีกลับ", color: "orange" },
-              { id: "good", label: "เข้าคลัง (สภาพดี)", color: "green" },
-              { id: "damaged", label: "เข้าคลัง (เสียหาย)", color: "red" },
-              { id: "lost", label: "สูญหาย", color: "gray" },
+              { id: "pending", label: "รอดำเนินการ", icon: "⏳", bg: "bg-gray-100", activeBg: "bg-gray-600", text: "text-gray-700", badge: "bg-gray-200 text-gray-700" },
+              { id: "returning", label: "กำลังตีกลับ", icon: "🚚", bg: "bg-gray-100", activeBg: "bg-orange-500", text: "text-orange-700", badge: "bg-orange-200 text-orange-800" },
+              { id: "good", label: "เข้าคลัง (สภาพดี)", icon: "✅", bg: "bg-gray-100", activeBg: "bg-emerald-500", text: "text-emerald-700", badge: "bg-emerald-200 text-emerald-800" },
+              { id: "damaged", label: "เข้าคลัง (เสียหาย)", icon: "⚠️", bg: "bg-gray-100", activeBg: "bg-rose-500", text: "text-rose-700", badge: "bg-rose-200 text-rose-800" },
+              { id: "lost", label: "สูญหาย", icon: "❌", bg: "bg-gray-100", activeBg: "bg-gray-600", text: "text-gray-700", badge: "bg-gray-300 text-gray-700" },
             ].map((tab) => (
               <button
                 key={tab.id}
-                className={`px-4 py-2 font-medium text-sm focus:outline-none whitespace-nowrap flex items-center gap-1.5 ${activeTab === tab.id
-                  ? `border-b-2 border-${tab.color}-500 text-${tab.color}-600`
-                  : "text-gray-500 hover:text-gray-700"
+                className={`px-4 py-2.5 font-medium text-sm rounded-lg focus:outline-none whitespace-nowrap flex items-center gap-2 transition-all duration-200 ${activeTab === tab.id
+                  ? `${tab.activeBg} text-white shadow-md scale-[1.02]`
+                  : `${tab.bg} ${tab.text} hover:bg-gray-200`
                   }`}
                 onClick={() => setActiveTab(tab.id as any)}
               >
-                {tab.label}
+                <span className="text-sm">{tab.icon}</span>
+                <span>{tab.label}</span>
                 {statsLoading ? (
-                  <span className="inline-block w-4 h-4 ml-1">
-                    <svg className="animate-spin h-3.5 w-3.5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <span className="inline-block w-4 h-4">
+                    <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   </span>
                 ) : tabCounts[tab.id] !== undefined ? (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.id
-                    ? `bg-${tab.color}-100 text-${tab.color}-700`
-                    : 'bg-gray-100 text-gray-500'
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${activeTab === tab.id
+                    ? 'bg-white/30 text-white'
+                    : tab.badge
                     }`}>
                     {tabCounts[tab.id].toLocaleString()}
                   </span>
@@ -1414,12 +1680,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             ))}
             <div className="flex-1 min-w-[20px]"></div>
             {/* Filter Search */}
-            <div className="p-2 flex items-center gap-2">
+            <div className="p-1 flex items-center gap-2">
               <div className="relative">
                 <input
                   type="text"
                   placeholder="ค้นหาเลขออเดอร์ / เบอร์โทร..."
-                  className="pl-8 pr-8 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 w-56"
+                  className="pl-8 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent w-56 shadow-sm transition-all"
                   value={filterSearch}
                   onChange={(e) => {
                     setFilterSearch(e.target.value);
@@ -1447,54 +1713,163 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
       {/* Date Range Filters */}
       {mode === "list" && (
-        <div className="mb-4 bg-white p-4 rounded-lg shadow-sm border">
-          <div className="flex flex-wrap items-start gap-6">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">📅 วันที่สั่งซื้อ</span>
-                <div className="min-w-[280px]">
-                  <DateRangePicker
-                    value={orderDateRange}
-                    onApply={(range) => { setOrderDateRange(range); setOrderDateShowAll(false); }}
-                  />
-                </div>
-              </div>
-              <label className="flex items-center gap-1.5 ml-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={orderDateShowAll}
-                  onChange={(e) => setOrderDateShowAll(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-xs text-gray-500">ทั้งหมด (ไม่กรองวันที่สั่งซื้อ)</span>
-              </label>
+        <div className="flex flex-wrap items-center gap-4 bg-white/80 backdrop-blur-sm rounded-xl px-4 py-2.5 border border-gray-200 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">📅 วันสั่งซื้อ</span>
+            <div className="min-w-[260px]">
+              <DateRangePicker
+                value={orderDateRange}
+                onApply={(range) => { setOrderDateRange(range); setOrderDateShowAll(false); }}
+              />
             </div>
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">📋 วันที่ลงตีกลับ</span>
-                <div className="min-w-[280px]">
-                  <DateRangePicker
-                    value={returnDateRange}
-                    onApply={(range) => { setReturnDateRange(range); setReturnDateShowAll(false); }}
-                  />
-                </div>
-              </div>
-              <label className="flex items-center gap-1.5 ml-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={returnDateShowAll}
-                  onChange={(e) => setReturnDateShowAll(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-xs text-gray-500">ทั้งหมด (ไม่กรองวันที่ลงตีกลับ)</span>
-              </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={orderDateShowAll}
+                onChange={(e) => setOrderDateShowAll(e.target.checked)}
+                className="rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+              />
+              <span className="text-xs text-gray-500">ทั้งหมด</span>
+            </label>
+          </div>
+          <div className="w-px h-6 bg-gray-200 mx-1" />
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">📋 วันลงตีกลับ</span>
+            <div className="min-w-[260px]">
+              <DateRangePicker
+                value={returnDateRange}
+                onApply={(range) => { setReturnDateRange(range); setReturnDateShowAll(false); }}
+              />
             </div>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={returnDateShowAll}
+                onChange={(e) => setReturnDateShowAll(e.target.checked)}
+                className="rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+              />
+              <span className="text-xs text-gray-500">ทั้งหมด</span>
+            </label>
           </div>
         </div>
       )}
 
-      {/* Verified List Content */}
-      <div className="mt-6">
+      {/* Advanced Filters Toggle + Panel */}
+      {mode === "list" && (
+        <div>
+          <button
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              showAdvancedFilters || activeFilterCount > 0
+                ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            <Filter size={13} />
+            ตัวกรองเพิ่มเติม
+            {activeFilterCount > 0 && (
+              <span className="bg-sky-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{activeFilterCount}</span>
+            )}
+            <ChevronDown size={13} className={`transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+          </button>
+          {showAdvancedFilters && (
+            <div className="mt-2 bg-white/80 backdrop-blur-sm rounded-xl px-4 py-3 border border-gray-200 shadow-sm">
+              <div className="flex flex-wrap items-end gap-3">
+                {/* Case Status */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">สถานะเคส</label>
+                  <select
+                    value={advFilters.caseStatus}
+                    onChange={(e) => { setAdvFilters(prev => ({ ...prev, caseStatus: e.target.value as any })); setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer min-w-[120px]"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    <option value="open">🔓 ยังไม่จบเคส</option>
+                    <option value="closed">✅ จบเคสแล้ว</option>
+                  </select>
+                </div>
+                {/* Has Claim */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">การเคลม</label>
+                  <select
+                    value={advFilters.hasClaim}
+                    onChange={(e) => { setAdvFilters(prev => ({ ...prev, hasClaim: e.target.value as any })); setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer min-w-[120px]"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    <option value="yes">💰 มีเคลม</option>
+                    <option value="no">ไม่มีเคลม</option>
+                  </select>
+                </div>
+                {/* Claim Range */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">ยอดเคลม (฿)</label>
+                  <div className="flex items-center gap-1">
+                    <input type="number" min="0" placeholder="ต่ำสุด" value={advFilters.claimMin} onChange={(e) => setAdvFilters(prev => ({ ...prev, claimMin: e.target.value }))} className="w-20 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-sky-500" />
+                    <span className="text-gray-300 text-xs">—</span>
+                    <input type="number" min="0" placeholder="สูงสุด" value={advFilters.claimMax} onChange={(e) => setAdvFilters(prev => ({ ...prev, claimMax: e.target.value }))} className="w-20 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-sky-500" />
+                  </div>
+                </div>
+                {/* Amount Range */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">ราคากล่อง (฿)</label>
+                  <div className="flex items-center gap-1">
+                    <input type="number" min="0" placeholder="ต่ำสุด" value={advFilters.amountMin} onChange={(e) => setAdvFilters(prev => ({ ...prev, amountMin: e.target.value }))} className="w-20 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-sky-500" />
+                    <span className="text-gray-300 text-xs">—</span>
+                    <input type="number" min="0" placeholder="สูงสุด" value={advFilters.amountMax} onChange={(e) => setAdvFilters(prev => ({ ...prev, amountMax: e.target.value }))} className="w-20 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-sky-500" />
+                  </div>
+                </div>
+                {/* Has Image */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">รูปภาพ</label>
+                  <select
+                    value={advFilters.hasImage}
+                    onChange={(e) => { setAdvFilters(prev => ({ ...prev, hasImage: e.target.value as any })); setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer min-w-[100px]"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    <option value="yes">📷 มีรูป</option>
+                    <option value="no">ไม่มีรูป</option>
+                  </select>
+                </div>
+                {/* Has Note */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">หมายเหตุ</label>
+                  <select
+                    value={advFilters.hasNote}
+                    onChange={(e) => { setAdvFilters(prev => ({ ...prev, hasNote: e.target.value as any })); setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-sky-500 focus:border-transparent cursor-pointer min-w-[100px]"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    <option value="yes">📝 มีหมายเหตุ</option>
+                    <option value="no">ไม่มีหมายเหตุ</option>
+                  </select>
+                </div>
+                {/* Apply & Clear */}
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    onClick={() => { setPagination(prev => ({ ...prev, page: 1 })); }}
+                    className="px-3 py-1.5 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition-colors shadow-sm"
+                  >
+                    🔍 กรอง
+                  </button>
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={() => { setAdvFilters({ caseStatus: '', hasClaim: '', claimMin: '', claimMax: '', amountMin: '', amountMax: '', hasImage: '', hasNote: '' }); setPagination(prev => ({ ...prev, page: 1 })); }}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
+                    >
+                      ✕ ล้างตัวกรอง
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Content */}
+      <div>
         {loading ? (
           <div className="bg-white shadow rounded-lg p-12 flex flex-col items-center justify-center gap-4">
             <Spinner size="lg" />
@@ -1616,348 +1991,291 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         onClose={() => setSelectedOrderId(null)}
         orderId={selectedOrderId}
       />
-      {/* Manage Modal */}
       {managingOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-              <h3 className="font-bold text-gray-800">
-                จัดการสินค้าตีกลับ (แยกราย Sub Order ID)
-              </h3>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-50 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-white border-b border-gray-200 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-gray-800 text-lg">จัดการสินค้าตีกลับ</h3>
+                <p className="text-xs text-gray-400 mt-0.5">แยกราย Sub Order ID</p>
+              </div>
               <button
                 onClick={() => setManagingOrder(null)}
-                className="text-gray-400 hover:text-gray-600"
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <X size={20} />
+                <X size={20} className="text-gray-400" />
               </button>
             </div>
 
-            <div className="p-4 border-b bg-blue-50 text-sm text-blue-800">
-              Order ID: <b>{managingOrder.id}</b> | รวม{" "}
-              {getOrderAmount(managingOrder).toLocaleString()} บาท
-              {(() => {
-                // Count unique sub order IDs for this order
-                const uniqueSubOrderIds = [
-                  ...new Set(
-                    manageRows.map((r) => r.subOrderId).filter((id) => id),
-                  ),
-                ];
-                if (uniqueSubOrderIds.length > 1) {
-                  return (
-                    <div className="mt-1 text-xs">
-                      Sub Orders:{" "}
-                      {uniqueSubOrderIds.map((id, idx) => (
-                        <span key={id}>
-                          {idx > 0 && ", "}
-                          <span className="font-mono">{id}</span>
-                        </span>
-                      ))}
-                    </div>
-                  );
-                }
-                return null;
-              })()}
+            {/* Order Info Bar */}
+            <div className="px-6 py-3 bg-white border-b border-gray-100">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="bg-sky-50 text-sky-700 px-3 py-1.5 rounded-lg text-sm font-semibold">Order #{managingOrder.id}</span>
+                <span className="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium">รวม ฿{getOrderAmount(managingOrder).toLocaleString()}</span>
+                {(() => {
+                  const uniqueSubOrderIds = [
+                    ...new Set(
+                      manageRows.map((r) => r.subOrderId).filter((id) => id),
+                    ),
+                  ];
+                  if (uniqueSubOrderIds.length > 1) {
+                    return (
+                      <span className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-mono">
+                        {uniqueSubOrderIds.length} Sub Orders
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+                <span className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium">📦 {manageRows.length} รายการ</span>
+              </div>
             </div>
 
-            <div className="p-0 overflow-auto flex-1">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      เลขพัสดุ
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      รหัสย่อย
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      รายการสินค้า
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      สถานะ
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      หมายเหตุ
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {manageRows.map((row, idx) => {
-                    // Check if the ORDER itself has order_status = 'Returned'
-                    const orderStatus = (managingOrder as any)?.orderStatus || (managingOrder as any)?.order_status || '';
-                    const isOrderReturned = orderStatus.toLowerCase() === 'returned';
-                    // Manual override: No rules. Always allow changing status.
-                    return (
-                      <tr
-                        key={idx}
-                        className={
-                          row.status === "delivered"
-                            ? "bg-green-50"
-                            : row.status === "returning"
-                              ? "bg-orange-50"
-                              : row.status === "delivering"
-                                ? "bg-blue-50"
-                                : row.status === "good"
-                                  ? "bg-green-100"
-                                  : row.status === "damaged"
-                                    ? "bg-red-100"
-                                    : row.status === "lost"
-                                      ? "bg-gray-200"
-                                      : ""
-                        }
-                      >
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {row.trackingNumber}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500 font-mono">
-                          {row.subOrderId || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {row.items && row.items.length > 0 ? (
-                            <ul className="list-disc list-inside text-xs">
-                              {row.items.map((item: any, i: number) => (
-                                <li
-                                  key={i}
-                                  className="whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]"
-                                >
-                                  {item.name ||
-                                    item.productName ||
-                                    item.product_name ||
-                                    "Unknown Product"}
-                                  <span className="text-gray-500 ml-1">
-                                    x{item.quantity || 1}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <span className="text-gray-400 italic text-xs">
-                              - No items -
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <div className="flex flex-col gap-2">
-                            <label className={`flex items-center gap-2 ${isOrderReturned ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-                              title={isOrderReturned ? 'ทุกกล่องตีกลับครบแล้ว กรุณาใช้ปุ่ม "ยกเลิกตีกลับ"' : ''}
-                            >
-                              <input
-                                type="radio"
-                                name={"status-" + idx}
-                                checked={row.status === "pending"}
-                                disabled={isOrderReturned}
-                                onChange={() => {
-                                  const newRows = [...manageRows];
-                                  newRows[idx].status = "pending";
-                                  setManageRows(newRows);
-                                }}
-                                className="text-gray-600 focus:ring-gray-500"
-                              />
-                              <span className="text-gray-600">
-                                รอดำเนินการ
-                              </span>
-                              {isOrderReturned && (
-                                <span className="relative group ml-1">
-                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 text-[10px] font-bold cursor-help">?</span>
-                                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                    Order นี้ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม &quot;ยกเลิกตีกลับ&quot; แทน
-                                  </span>
-                                </span>
-                              )}
-                            </label>
-                            {/* Returning Status */}
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={"status-" + idx}
-                                checked={row.status === "returning"}
-                                onChange={() => {
-                                  const newRows = [...manageRows];
-                                  newRows[idx].status = "returning";
-                                  setManageRows(newRows);
-                                }}
-                                className="text-orange-600 focus:ring-orange-500"
-                              />
-                              <span className="text-orange-700">กำลังตีกลับ</span>
-                            </label>
+            {/* Card-based Items */}
+            <div className="flex-1 overflow-auto p-4 space-y-3">
+              {manageRows.map((row, idx) => {
+                const orderStatus = (managingOrder as any)?.orderStatus || (managingOrder as any)?.order_status || '';
+                const isOrderReturned = orderStatus.toLowerCase() === 'returned';
 
-                            {/* Good / Damaged / Lost Status Options */}
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={"status-" + idx}
-                                checked={row.status === "good"}
-                                onChange={() => {
-                                  const newRows = [...manageRows];
-                                  newRows[idx].status = "good";
-                                  setManageRows(newRows);
-                                }}
-                                className="text-emerald-600 focus:ring-emerald-500"
-                              />
-                              <span className="text-emerald-700">
-                                เข้าคลัง - สภาพดี (Good)
-                              </span>
-                            </label>
-                            {row.status === "good" && (
-                              <label className="ml-6 flex items-center gap-2 cursor-pointer bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
-                                <input
-                                  type="checkbox"
-                                  checked={!!row.returnComplete}
-                                  onChange={(e) => {
-                                    const newRows = [...manageRows];
-                                    newRows[idx].returnComplete = e.target.checked;
-                                    setManageRows(newRows);
-                                  }}
-                                  className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
-                                />
-                                <span className="text-emerald-700 text-sm font-medium">✅ ยืนยันจบเคส</span>
-                              </label>
+                // Determine card accent color based on status
+                const statusAccent = row.status === 'returning' ? 'border-l-orange-400'
+                  : row.status === 'good' ? 'border-l-emerald-400'
+                    : row.status === 'damaged' ? 'border-l-rose-400'
+                      : row.status === 'lost' ? 'border-l-gray-400'
+                        : row.status === 'delivered' ? 'border-l-blue-400'
+                          : 'border-l-gray-200';
+
+                return (
+                  <div key={idx} className={`bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden border-l-4 ${statusAccent} transition-all duration-200 hover:shadow-md`}>
+                    <div className="p-4">
+                      {/* Top row: Tracking info */}
+                      <div className="flex items-start gap-4 mb-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-mono font-bold text-gray-800 text-sm">{row.trackingNumber}</span>
+                            {row.subOrderId && (
+                              <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-[10px] font-mono">{row.subOrderId}</span>
                             )}
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={"status-" + idx}
-                                checked={row.status === "damaged"}
-                                onChange={() => {
-                                  const newRows = [...manageRows];
-                                  newRows[idx].status = "damaged";
-                                  setManageRows(newRows);
-                                }}
-                                className="text-rose-600 focus:ring-rose-500"
-                              />
-                              <span className="text-rose-700">
-                                เข้าคลัง - เสียหาย (Damaged)
-                              </span>
-                            </label>
-                            {row.status === "damaged" && (
-                              <div className="ml-6 flex items-center gap-2 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200">
-                                <span className="text-rose-700 text-sm">💰 เคลม:</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={row.returnClaim ?? ''}
-                                  onChange={(e) => {
-                                    const newRows = [...manageRows];
-                                    newRows[idx].returnClaim = e.target.value ? parseFloat(e.target.value) : undefined;
-                                    setManageRows(newRows);
-                                  }}
-                                  placeholder="จำนวนเงิน"
-                                  className="w-32 px-2 py-1 text-sm border border-rose-300 rounded focus:ring-rose-500 focus:border-rose-500"
-                                />
-                                <span className="text-rose-500 text-xs">บาท</span>
-                              </div>
+                            {row.boxPrice != null && row.boxPrice > 0 && (
+                              <span className="bg-sky-50 text-sky-700 px-2 py-0.5 rounded-md text-[11px] font-semibold">฿{row.boxPrice.toLocaleString()}</span>
                             )}
-
-                            {/* Lost Status */}
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={"status-" + idx}
-                                checked={row.status === "lost"}
-                                onChange={() => {
-                                  const newRows = [...manageRows];
-                                  newRows[idx].status = "lost";
-                                  setManageRows(newRows);
-                                }}
-                                className="text-gray-600 focus:ring-gray-500"
-                              />
-                              <span className="text-gray-700">
-                                สูญหาย (Lost)
-                              </span>
-                            </label>
-                            {row.status === "lost" && (
-                              <div className="ml-6 flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-300">
-                                <span className="text-gray-700 text-sm">💰 เคลม:</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={row.returnClaim ?? ''}
-                                  onChange={(e) => {
-                                    const newRows = [...manageRows];
-                                    newRows[idx].returnClaim = e.target.value ? parseFloat(e.target.value) : undefined;
-                                    setManageRows(newRows);
-                                  }}
-                                  placeholder="จำนวนเงิน"
-                                  className="w-32 px-2 py-1 text-sm border border-gray-400 rounded focus:ring-gray-500 focus:border-gray-500"
-                                />
-                                <span className="text-gray-500 text-xs">บาท</span>
-                              </div>
+                            {row.returnComplete && (
+                              <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-[11px] font-semibold">✅ จบเคส</span>
                             )}
-
-
-
-                            <label className={`flex items-center gap-2 ${isOrderReturned ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-                              title={isOrderReturned ? 'ทุกกล่องตีกลับครบแล้ว กรุณาใช้ปุ่ม "ยกเลิกตีกลับ"' : ''}
-                            >
-                              <input
-                                type="radio"
-                                name={"status-" + idx}
-                                checked={row.status === "delivered"}
-                                disabled={isOrderReturned}
-                                onChange={() => {
-                                  const newRows = [...manageRows];
-                                  newRows[idx].status = "delivered";
-                                  setManageRows(newRows);
-                                }}
-                                className="text-green-600 focus:ring-green-500"
-                              />
-                              <span className="text-green-700">
-                                ส่งสำเร็จ (Delivered)
-                              </span>
-                              {isOrderReturned && (
-                                <span className="relative group ml-1">
-                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 text-[10px] font-bold cursor-help">?</span>
-                                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                    Order นี้ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม &quot;ยกเลิกตีกลับ&quot; แทน
-                                  </span>
-                                </span>
-                              )}
-                            </label>
-
-                            <div className="border-t my-1"></div>
-
-
+                            {row.returnClaim != null && row.returnClaim > 0 && (
+                              <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md text-[11px] font-semibold">💰 เคลม ฿{row.returnClaim.toLocaleString()}</span>
+                            )}
                           </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm align-top">
-                          <input
-                            type="text"
-                            value={row.note}
-                            onChange={(e) => {
+                          {/* Products */}
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {row.items && row.items.length > 0 ? (
+                              row.items.map((item: any, i: number) => (
+                                <span key={i} className="inline-flex items-center bg-gray-50 border border-gray-100 rounded-md px-2 py-0.5 text-[11px] text-gray-600">
+                                  {item.name || item.productName || item.product_name || 'Unknown'}
+                                  <span className="text-gray-400 ml-1">x{item.quantity || 1}</span>
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-gray-300 text-xs italic">ไม่มีรายการสินค้า</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status Selection - Pill Buttons */}
+                      <div className="border-t border-gray-100 pt-3">
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {/* Pending */}
+                          <button
+                            type="button"
+                            disabled={isOrderReturned}
+                            onClick={() => {
                               const newRows = [...manageRows];
-                              newRows[idx].note = e.target.value;
+                              newRows[idx].status = "pending";
                               setManageRows(newRows);
                             }}
-                            placeholder="เพิ่มหมายเหตุ..."
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
-                            disabled={row.status === "pending"}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${row.status === 'pending'
+                              ? 'bg-gray-700 text-white border-gray-700 shadow-sm'
+                              : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                              } ${isOrderReturned ? 'opacity-30 cursor-not-allowed' : ''}`}
+                          >
+                            ⏳ รอดำเนินการ
+                          </button>
+                          {/* Returning */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newRows = [...manageRows];
+                              newRows[idx].status = "returning";
+                              setManageRows(newRows);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${row.status === 'returning'
+                              ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                              : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'
+                              }`}
+                          >
+                            🚚 กำลังตีกลับ
+                          </button>
+                          {/* Good */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newRows = [...manageRows];
+                              newRows[idx].status = "good";
+                              setManageRows(newRows);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${row.status === 'good'
+                              ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                              : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
+                              }`}
+                          >
+                            ✅ สภาพดี
+                          </button>
+                          {/* Damaged */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newRows = [...manageRows];
+                              newRows[idx].status = "damaged";
+                              setManageRows(newRows);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${row.status === 'damaged'
+                              ? 'bg-rose-500 text-white border-rose-500 shadow-sm'
+                              : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'
+                              }`}
+                          >
+                            ⚠️ เสียหาย
+                          </button>
+                          {/* Lost */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newRows = [...manageRows];
+                              newRows[idx].status = "lost";
+                              setManageRows(newRows);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${row.status === 'lost'
+                              ? 'bg-gray-600 text-white border-gray-600 shadow-sm'
+                              : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                              }`}
+                          >
+                            ❌ สูญหาย
+                          </button>
+                          {/* Delivered */}
+                          <button
+                            type="button"
+                            disabled={isOrderReturned}
+                            onClick={() => {
+                              const newRows = [...manageRows];
+                              newRows[idx].status = "delivered";
+                              setManageRows(newRows);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${row.status === 'delivered'
+                              ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                              : 'bg-white text-blue-500 border-blue-200 hover:bg-blue-50'
+                              } ${isOrderReturned ? 'opacity-30 cursor-not-allowed' : ''}`}
+                          >
+                            📦 ส่งสำเร็จ
+                          </button>
+                        </div>
+
+                        {/* Sub-options for specific statuses */}
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          {row.status === "good" && (
+                            <label className="flex items-center gap-2 cursor-pointer bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                              <input
+                                type="checkbox"
+                                checked={!!row.returnComplete}
+                                onChange={(e) => {
+                                  const newRows = [...manageRows];
+                                  newRows[idx].returnComplete = e.target.checked;
+                                  setManageRows(newRows);
+                                }}
+                                className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <span className="text-emerald-700 text-xs font-medium">✅ ยืนยันจบเคส</span>
+                            </label>
+                          )}
+                          {(row.status === "damaged" || row.status === "lost") && (
+                            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${row.status === 'damaged' ? 'bg-rose-50 border-rose-200' : 'bg-gray-50 border-gray-200'}`}>
+                              <span className={`text-xs font-medium ${row.status === 'damaged' ? 'text-rose-700' : 'text-gray-700'}`}>💰 เคลม:</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={row.returnClaim ?? ''}
+                                onChange={(e) => {
+                                  const newRows = [...manageRows];
+                                  newRows[idx].returnClaim = e.target.value ? parseFloat(e.target.value) : undefined;
+                                  setManageRows(newRows);
+                                }}
+                                placeholder="จำนวนเงิน"
+                                className={`w-28 px-2 py-1 text-sm border rounded-lg focus:ring-2 ${row.status === 'damaged' ? 'border-rose-300 focus:ring-rose-500' : 'border-gray-300 focus:ring-gray-500'}`}
+                              />
+                              <span className="text-gray-400 text-xs">บาท</span>
+                            </div>
+                          )}
+                          {/* Note input */}
+                          <div className="flex-1 min-w-[200px]">
+                            <input
+                              type="text"
+                              value={row.note}
+                              onChange={(e) => {
+                                const newRows = [...manageRows];
+                                newRows[idx].note = e.target.value;
+                                setManageRows(newRows);
+                              }}
+                              placeholder="เพิ่มหมายเหตุ..."
+                              className="w-full px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent focus:bg-white transition-all"
+                              disabled={row.status === "pending"}
+                            />
+                          </div>
+                        </div>
+
+                        {/* 📷 Image Upload Section */}
+                        {row.subOrderId && (
+                          <ReturnImageGallery subOrderId={row.subOrderId} />
+                        )}
+                        {isOrderReturned && (row.status === 'pending' || row.status === 'delivered') && (
+                          <p className="text-[11px] text-rose-500 mt-1.5 flex items-center gap-1">
+                            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-rose-100 text-rose-600 text-[9px] font-bold">!</span>
+                            Order นี้ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม &quot;ยกเลิกตีกลับ&quot; แทน
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
-              <button
-                onClick={() => setManagingOrder(null)}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                ยกเลิก
-              </button>
-              <button
-                onClick={handleManageSave}
-                disabled={loading}
-                className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-              >
-                {loading ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
-              </button>
+            {/* Footer */}
+            <div className="px-6 py-4 bg-white border-t border-gray-200 flex justify-between items-center">
+              <span className="text-xs text-gray-400">
+                {manageRows.filter(r => r.status !== 'pending').length} / {manageRows.length} รายการมีการเปลี่ยนแปลง
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setManagingOrder(null)}
+                  className="px-5 py-2 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleManageSave}
+                  disabled={loading}
+                  className="px-5 py-2 bg-sky-600 text-white rounded-xl text-sm font-semibold hover:bg-sky-700 focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50 transition-colors flex items-center gap-2 shadow-sm"
+                >
+                  {loading && (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  )}
+                  {loading ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
+                </button>
+              </div>
             </div>
-          </div >
-        </div >
+          </div>
+        </div>
       )}
 
       {/* Confirmation Modal */}

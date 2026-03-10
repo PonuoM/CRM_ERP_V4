@@ -39,7 +39,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
   // Direct file access for inventory and product modules (bypassing index.php router)
   // Direct file access for inventory and product modules (bypassing index.php router)
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('User_DB/') || path.startsWith('cron/')) {
+  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('User_DB/') || path.startsWith('cron/') || path.startsWith('Database/')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -864,6 +864,32 @@ export async function saveReturnOrders(returns: any[]) {
   return apiFetch("Orders/save_return_orders.php", {
     method: "POST",
     body: JSON.stringify({ returns }),
+  });
+}
+
+// Return Images
+export async function uploadReturnImage(subOrderId: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("sub_order_id", subOrderId);
+  const token = localStorage.getItem("authToken");
+  const headers: any = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const apiBasePath = resolveApiBasePath();
+  const res = await fetch(`${apiBasePath.replace(/\/$/, "")}/Orders/upload_return_image.php`, {
+    method: "POST", headers, body: form,
+  });
+  return res.json();
+}
+
+export async function getReturnImages(subOrderId: string) {
+  return apiFetch(`Orders/get_return_images.php?sub_order_id=${encodeURIComponent(subOrderId)}`);
+}
+
+export async function deleteReturnImage(id: number) {
+  return apiFetch("Orders/delete_return_image.php", {
+    method: "POST",
+    body: JSON.stringify({ id }),
   });
 }
 
@@ -2273,7 +2299,7 @@ export async function getTelesaleUpsellList(params: {
   return apiFetch(`Orders/get_upsell_orders.php?${queryParams.toString()}`);
 }
 
-export async function getReturnOrders(params?: { status?: string; page?: number; limit?: number; companyId?: number; search?: string; orderDateFrom?: string; orderDateTo?: string; returnDateFrom?: string; returnDateTo?: string }) {
+export async function getReturnOrders(params?: { status?: string; page?: number; limit?: number; companyId?: number; search?: string; orderDateFrom?: string; orderDateTo?: string; returnDateFrom?: string; returnDateTo?: string; caseStatus?: string; hasClaim?: string; claimMin?: string; claimMax?: string; amountMin?: string; amountMax?: string; hasImage?: string; hasNote?: string }) {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);
   if (params?.page) qs.set('page', String(params.page));
@@ -2284,6 +2310,15 @@ export async function getReturnOrders(params?: { status?: string; page?: number;
   if (params?.orderDateTo) qs.set('orderDateTo', params.orderDateTo);
   if (params?.returnDateFrom) qs.set('returnDateFrom', params.returnDateFrom);
   if (params?.returnDateTo) qs.set('returnDateTo', params.returnDateTo);
+  // Advanced filters
+  if (params?.caseStatus) qs.set('caseStatus', params.caseStatus);
+  if (params?.hasClaim) qs.set('hasClaim', params.hasClaim);
+  if (params?.claimMin) qs.set('claimMin', params.claimMin);
+  if (params?.claimMax) qs.set('claimMax', params.claimMax);
+  if (params?.amountMin) qs.set('amountMin', params.amountMin);
+  if (params?.amountMax) qs.set('amountMax', params.amountMax);
+  if (params?.hasImage) qs.set('hasImage', params.hasImage);
+  if (params?.hasNote) qs.set('hasNote', params.hasNote);
 
   return apiFetch(`Orders/get_return_orders.php?${qs.toString()}`, {
     method: "GET",

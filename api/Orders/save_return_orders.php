@@ -35,6 +35,7 @@ try {
     $updatedCount = 0;
     $errors = [];
     $affectedOrderIds = []; // Track order_ids that need total_amount recalc
+    $processedBoxIds = []; // Track already-processed box IDs (dedup for multi-tracking same box)
 
     foreach ($returns as $item) {
         $subOrderId = $item['sub_order_id'] ?? '';
@@ -71,6 +72,12 @@ try {
             $errors[] = "Box not found for sub_order_id=$subOrderId tracking=$trackingNumber";
             continue;
         }
+
+        // ─── Dedup: skip if this box was already processed (multi-tracking same box) ───
+        if (in_array($boxRow['id'], $processedBoxIds)) {
+            continue; // Already updated this box from another tracking row
+        }
+        $processedBoxIds[] = $boxRow['id'];
 
         // ─── Determine if this is a return or an undo ───
         $returnStatuses = ['returning', 'returned', 'good', 'damaged', 'lost'];

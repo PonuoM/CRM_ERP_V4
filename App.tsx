@@ -102,6 +102,7 @@ import ProductManagementPage from "./pages/ProductManagementPage";
 import TelesaleSummaryDashboard from "./pages/TelesaleSummaryDashboard";
 import PancakeUserIntegrationPage from "./pages/PancakeUserIntegrationPage";
 import ManageOrdersPage from "./pages/ManageOrdersPage";
+import DatabaseManagementPage from "./pages/DatabaseManagementPage";
 import DebtCollectionPage from "./pages/DebtCollectionPage";
 import UserManagementModal from "./components/UserManagementModal";
 import AllOrdersSentPage from "./pages/Accounting/AllOrdersSentPage";
@@ -7649,6 +7650,10 @@ const App: React.FC = () => {
 
       case "UpsellOrder":
         return null;
+
+      case "Database Management":
+      case "จัดการฐานข้อมูล":
+        return <DatabaseManagementPage />;
 
       default:
         // Fallback or 404

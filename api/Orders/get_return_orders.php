@@ -16,13 +16,22 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     $status = $_GET['status'] ?? '';
     $page = max(1, intval($_GET['page'] ?? 1));
-    $limit = max(1, min(100, intval($_GET['limit'] ?? 20)));
+    $limit = max(1, min(2000, intval($_GET['limit'] ?? 50)));
     $companyId = intval($_GET['companyId'] ?? 0);
     $search = trim($_GET['search'] ?? '');
     $orderDateFrom = trim($_GET['orderDateFrom'] ?? '');
     $orderDateTo = trim($_GET['orderDateTo'] ?? '');
     $returnDateFrom = trim($_GET['returnDateFrom'] ?? '');
     $returnDateTo = trim($_GET['returnDateTo'] ?? '');
+    // Advanced filters
+    $caseStatus = trim($_GET['caseStatus'] ?? '');       // 'closed' | 'open'
+    $hasClaim = trim($_GET['hasClaim'] ?? '');             // 'yes' | 'no'
+    $claimMin = trim($_GET['claimMin'] ?? '');
+    $claimMax = trim($_GET['claimMax'] ?? '');
+    $amountMin = trim($_GET['amountMin'] ?? '');
+    $amountMax = trim($_GET['amountMax'] ?? '');
+    $hasImage = trim($_GET['hasImage'] ?? '');             // 'yes' | 'no'
+    $hasNote = trim($_GET['hasNote'] ?? '');               // 'yes' | 'no'
     $offset = ($page - 1) * $limit;
 
     // ─── Build WHERE conditions ───
@@ -73,6 +82,55 @@ try {
         $params[] = $returnDateTo;
     }
 
+    // ─── Advanced Filters ───
+    // Case status
+    if ($caseStatus === 'closed') {
+        $whereConditions[] = "ob.return_complete = 1";
+    } elseif ($caseStatus === 'open') {
+        $whereConditions[] = "(ob.return_complete IS NULL OR ob.return_complete = 0)";
+    }
+
+    // Has claim
+    if ($hasClaim === 'yes') {
+        $whereConditions[] = "ob.return_claim IS NOT NULL AND ob.return_claim > 0";
+    } elseif ($hasClaim === 'no') {
+        $whereConditions[] = "(ob.return_claim IS NULL OR ob.return_claim = 0)";
+    }
+
+    // Claim amount range
+    if ($claimMin !== '') {
+        $whereConditions[] = "ob.return_claim >= ?";
+        $params[] = floatval($claimMin);
+    }
+    if ($claimMax !== '') {
+        $whereConditions[] = "ob.return_claim <= ?";
+        $params[] = floatval($claimMax);
+    }
+
+    // Box amount range (cod_amount)
+    if ($amountMin !== '') {
+        $whereConditions[] = "ob.cod_amount >= ?";
+        $params[] = floatval($amountMin);
+    }
+    if ($amountMax !== '') {
+        $whereConditions[] = "ob.cod_amount <= ?";
+        $params[] = floatval($amountMax);
+    }
+
+    // Has image
+    if ($hasImage === 'yes') {
+        $whereConditions[] = "EXISTS (SELECT 1 FROM return_images ri WHERE ri.sub_order_id = ob.sub_order_id)";
+    } elseif ($hasImage === 'no') {
+        $whereConditions[] = "NOT EXISTS (SELECT 1 FROM return_images ri WHERE ri.sub_order_id = ob.sub_order_id)";
+    }
+
+    // Has note
+    if ($hasNote === 'yes') {
+        $whereConditions[] = "ob.return_note IS NOT NULL AND ob.return_note != ''";
+    } elseif ($hasNote === 'no') {
+        $whereConditions[] = "(ob.return_note IS NULL OR ob.return_note = '')";
+    }
+
     $whereClause = count($whereConditions) > 0
         ? "WHERE " . implode(" AND ", $whereConditions)
         : "";
@@ -89,7 +147,7 @@ try {
             ob.return_note as note,
             ob.return_created_at as created_at,
             ob.updated_at,
-            ob.collected_amount as return_amount,
+            ob.cod_amount as return_amount,
             ob.collection_amount,
             ob.return_complete,
             ob.return_claim,
