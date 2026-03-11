@@ -155,11 +155,22 @@ try {
 
     // ═══════════════════════════════════════════════════════════
     // 3. Update Customers (Lifecycle & Ownership)
+    //    - assigned_to จะอัปเดตเฉพาะเมื่อผู้ขายเป็น Telesale (role_id 6,7)
+    //    - ถ้าผู้ขายไม่ใช่ Telesale จะอัปเดตเฉพาะ lifecycle/ownership/followup
     // ═══════════════════════════════════════════════════════════
     if ($targetStatus === 'Picking' && !empty($customerUpdates)) {
         $ownershipExpires = date('Y-m-d H:i:s', strtotime('+90 days'));
 
-        $custStmt = $pdo->prepare("
+        // Lookup which creator IDs are Telesale (role_id 6 = Telesale, 7 = Supervisor Telesale)
+        $creatorIds = array_unique(array_values($customerUpdates));
+        $creatorPlaceholders = implode(',', array_fill(0, count($creatorIds), '?'));
+        $roleStmt = $pdo->prepare("SELECT id FROM users WHERE id IN ($creatorPlaceholders) AND role_id IN (6, 7)");
+        $roleStmt->execute($creatorIds);
+        $telesaleUserIds = $roleStmt->fetchAll(PDO::FETCH_COLUMN, 0);
+        $telesaleSet = array_flip($telesaleUserIds);
+
+        // Statement WITH assigned_to update (for Telesale sellers)
+        $custStmtWithAssign = $pdo->prepare("
             UPDATE customers 
             SET 
                 lifecycle_status = 'Old3Months',
@@ -169,8 +180,24 @@ try {
             WHERE customer_id = ?
         ");
 
+        // Statement WITHOUT assigned_to update (for non-Telesale sellers)
+        $custStmtNoAssign = $pdo->prepare("
+            UPDATE customers 
+            SET 
+                lifecycle_status = 'Old3Months',
+                ownership_expires = ?,
+                followup_bonus_remaining = 1
+            WHERE customer_id = ?
+        ");
+
         foreach ($customerUpdates as $custId => $creatorId) {
-            $custStmt->execute([$creatorId, $ownershipExpires, $custId]);
+            if (isset($telesaleSet[$creatorId])) {
+                // ผู้ขายเป็น Telesale → อัปเดต assigned_to ด้วย
+                $custStmtWithAssign->execute([$creatorId, $ownershipExpires, $custId]);
+            } else {
+                // ผู้ขายไม่ใช่ Telesale → ไม่แตะ assigned_to
+                $custStmtNoAssign->execute([$ownershipExpires, $custId]);
+            }
         }
     }
 
