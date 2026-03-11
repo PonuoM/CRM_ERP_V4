@@ -1390,9 +1390,22 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   };
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6 bg-gray-50/50 min-h-screen">
+      {/* Page Header */}
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Page Stats</h1>
+            <p className="text-xs text-gray-500">สถิติเพจ · ข้อมูลจากระบบ Pages.fm</p>
+          </div>
+        </div>
+      </div>
+
       {/* Controls */}
-      <div className="bg-white border rounded-lg p-4 mb-6">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 shadow-sm">
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-gray-500" />
@@ -1672,12 +1685,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       </div>
 
       {/* Chart */}
-      <div className="mb-6">
+      <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <MultiLineChart title="ภาพรวมของหน้า" series={chartData.series} yLabel="จำนวน" xLabelEvery={(typeof rangeDays === 'number' && rangeDays >= 60) || rangeDays === 'thisMonth' || rangeDays === 'lastMonth' ? 4 : 1} />
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {/* Create tooltip text for previous period date range */}
         {(() => {
           const prevPeriodStart = new Date(startDate);
@@ -1767,10 +1780,10 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       </div>
 
       {/* Table */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 overflow-auto">
-        <div className="flex items-center justify-between mb-2">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-4">
-            <h3 className="text-md font-semibold text-gray-700">
+            <h3 className="text-sm font-semibold text-gray-800">
               รายละเอียดสถิติ {usePageStats && selectedPage ? `(เพจ: ${selectedPage === 'ALL' ? 'ทั้งหมด' : pages.find(p => (p.page_id || p.id.toString()) === selectedPage)?.name})` : ''}
             </h3>
             {usePageStats && (
@@ -1797,8 +1810,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-[1800px] w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-gray-600">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600 text-xs uppercase tracking-wider">
                 <th className="px-3 py-2 text-left whitespace-nowrap min-w-[150px]">เวลา</th>
                 <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">ลูกค้าใหม่</th>
                 <th className="px-3 py-2 text-right whitespace-nowrap min-w-[120px]">เบอร์โทรศัพท์ทั้งหมด</th>
@@ -1929,7 +1942,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                     }
 
                     return (
-                      <tr key={index} className="border-t border-gray-100">
+                      <tr key={index} className={`border-t border-gray-100 hover:bg-blue-50/40 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                         <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{formattedDate}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{item.new_customer_count}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{item.uniq_phone_number_count}</td>
@@ -1966,8 +1979,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                   });
                 })()
               ) : (
-                daily.map(r => (
-                  <tr key={r.date} className="border-t border-gray-100">
+                daily.map((r, idx) => (
+                  <tr key={r.date} className={`border-t border-gray-100 hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                     <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{r.date}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">{r.newCustomers}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">{r.totalPhones}</td>

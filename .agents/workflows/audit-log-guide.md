@@ -142,3 +142,93 @@ IF NOT (OLD.new_field <=> NEW.new_field) THEN
 END IF;
 ```
 จากนั้น DROP trigger เดิม แล้วสร้างใหม่
+
+## SQL สร้าง Trigger
+
+> ใช้เมื่อต้อง DROP แล้วสร้าง trigger ใหม่ เช่น เพิ่มฟิลด์ หรือปิด trigger ชั่วคราว
+
+### Customer Audit Trigger
+
+**ไฟล์ต้นฉบับ:** `api/Order_DB/create_customer_audit_log.sql`
+**ตาราง:** `customers` → `customer_audit_log`
+**Trigger:** `trg_customer_audit_update`
+**ติดตาม:** `assigned_to`, `current_basket_key`
+
+```sql
+DROP TRIGGER IF EXISTS trg_customer_audit_update;
+
+DELIMITER $$
+CREATE TRIGGER trg_customer_audit_update
+BEFORE UPDATE ON customers
+FOR EACH ROW
+BEGIN
+  IF NOT (OLD.assigned_to <=> NEW.assigned_to) THEN
+    INSERT INTO customer_audit_log (customer_id, field_name, old_value, new_value, api_source, changed_by)
+    VALUES (OLD.customer_id, 'assigned_to',
+      CAST(OLD.assigned_to AS CHAR), CAST(NEW.assigned_to AS CHAR),
+      IFNULL(@audit_api_source, 'direct_db'), @audit_user_id);
+  END IF;
+
+  IF NOT (OLD.current_basket_key <=> NEW.current_basket_key) THEN
+    INSERT INTO customer_audit_log (customer_id, field_name, old_value, new_value, api_source, changed_by)
+    VALUES (OLD.customer_id, 'current_basket_key',
+      CAST(OLD.current_basket_key AS CHAR), CAST(NEW.current_basket_key AS CHAR),
+      IFNULL(@audit_api_source, 'direct_db'), @audit_user_id);
+  END IF;
+END$$
+DELIMITER ;
+```
+
+### Order Audit Trigger
+
+**ไฟล์ต้นฉบับ:** `api/Order_DB/create_order_audit_log.sql`
+**ตาราง:** `orders` → `order_audit_log`
+**Trigger:** `trg_order_audit_update`
+**ติดตาม:** `order_status`, `payment_status`, `total_amount`
+
+```sql
+DROP TRIGGER IF EXISTS trg_order_audit_update;
+
+DELIMITER $$
+CREATE TRIGGER trg_order_audit_update
+BEFORE UPDATE ON orders
+FOR EACH ROW
+BEGIN
+  IF NOT (OLD.order_status <=> NEW.order_status) THEN
+    INSERT INTO order_audit_log (order_id, field_name, old_value, new_value, api_source, changed_by)
+    VALUES (OLD.id, 'order_status',
+      OLD.order_status, NEW.order_status,
+      IFNULL(@audit_api_source, 'direct_db'), @audit_user_id);
+  END IF;
+
+  IF NOT (OLD.payment_status <=> NEW.payment_status) THEN
+    INSERT INTO order_audit_log (order_id, field_name, old_value, new_value, api_source, changed_by)
+    VALUES (OLD.id, 'payment_status',
+      OLD.payment_status, NEW.payment_status,
+      IFNULL(@audit_api_source, 'direct_db'), @audit_user_id);
+  END IF;
+
+  IF NOT (OLD.total_amount <=> NEW.total_amount) THEN
+    INSERT INTO order_audit_log (order_id, field_name, old_value, new_value, api_source, changed_by)
+    VALUES (OLD.id, 'total_amount',
+      CAST(OLD.total_amount AS CHAR), CAST(NEW.total_amount AS CHAR),
+      IFNULL(@audit_api_source, 'direct_db'), @audit_user_id);
+  END IF;
+END$$
+DELIMITER ;
+```
+
+## ปิด/เปิด Trigger ชั่วคราว
+
+> ใช้เมื่อต้อง UPDATE `customers` โดยอ่านจาก `customer_audit_log` ในคำสั่งเดียวกัน
+
+```sql
+-- 1. ปิด trigger
+DROP TRIGGER IF EXISTS trg_customer_audit_update;
+
+-- 2. รัน UPDATE ที่ต้องการ ...
+
+-- 3. สร้าง trigger กลับ (copy SQL จาก section ด้านบน)
+```
+
+⚠️ ระหว่าง trigger ปิดอยู่ การเปลี่ยนแปลงจะ **ไม่ถูกบันทึก** → สร้าง trigger กลับทันที
