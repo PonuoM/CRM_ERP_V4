@@ -6500,14 +6500,22 @@ function handle_customer_blocks(PDO $pdo, ?string $id): void
             try {
                 $stmt = $pdo->prepare('INSERT INTO customer_blocks (customer_id, reason, blocked_by, blocked_at, active) VALUES (?, ?, ?, NOW(), 1)');
                 $stmt->execute([$customerId, $reason, $blockedBy]);
-                // Remove assignment and flag as blocked
+                // Remove assignment, flag as blocked, and move to block_customer basket (ID 55)
                 try {
                     // Try to find customer by customer_ref_id or customer_id, then update using customer_id (PK)
-                    $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                    $findStmt = $pdo->prepare('SELECT customer_id, current_basket_key FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
                     $findStmt->execute([$customerId, is_numeric($customerId) ? (int) $customerId : null]);
                     $customer = $findStmt->fetch();
                     if ($customer && $customer['customer_id']) {
-                        $pdo->prepare('UPDATE customers SET assigned_to = NULL, is_blocked = 1 WHERE customer_id = ?')->execute([$customer['customer_id']]);
+                        $oldBasketKey = $customer['current_basket_key'];
+                        set_audit_context($pdo, 'customer_blocks/block');
+                        $pdo->prepare('UPDATE customers SET assigned_to = NULL, is_blocked = 1, current_basket_key = 55, basket_entered_date = NOW() WHERE customer_id = ?')->execute([$customer['customer_id']]);
+
+                        // Log basket transition
+                        try {
+                            $pdo->prepare('INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, notes, created_at) VALUES (?, ?, 55, ?, ?, NOW())')
+                                ->execute([$customer['customer_id'], $oldBasketKey, 'blocked', 'Customer blocked: ' . $reason]);
+                        } catch (Throwable $logErr) { /* ignore log failure */ }
                     }
                 } catch (Throwable $e) { /* ignore */
                 }
@@ -6539,18 +6547,30 @@ function handle_customer_blocks(PDO $pdo, ?string $id): void
             try {
                 $pdo->prepare('UPDATE customer_blocks SET ' . implode(', ', $fields) . ' WHERE id = ?')->execute($params);
                 if ($active === 0) {
-                    // clear block flag on customer
+                    // clear block flag on customer and move out of block_customer basket
                     try {
                         $cidStmt = $pdo->prepare('SELECT customer_id FROM customer_blocks WHERE id=?');
                         $cidStmt->execute([(int) $id]);
                         $cid = $cidStmt->fetchColumn();
                         if ($cid) {
                             // Find customer by customer_ref_id (from customer_blocks) or customer_id, then update using customer_id (PK)
-                            $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                            $findStmt = $pdo->prepare('SELECT customer_id, current_basket_key FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
                             $findStmt->execute([$cid, is_numeric($cid) ? (int) $cid : null]);
                             $customer = $findStmt->fetch();
                             if ($customer && $customer['customer_id']) {
-                                $pdo->prepare('UPDATE customers SET is_blocked = 0 WHERE customer_id = ?')->execute([$customer['customer_id']]);
+                                $oldBasketKey = $customer['current_basket_key'];
+                                set_audit_context($pdo, 'customer_blocks/unblock');
+                                // Move to ลูกค้าใหม่ Distribution (basket 52) if currently in block_customer basket
+                                $newBasketKey = ((int)$oldBasketKey === 55) ? 52 : $oldBasketKey;
+                                $pdo->prepare('UPDATE customers SET is_blocked = 0, current_basket_key = ?, basket_entered_date = NOW() WHERE customer_id = ?')->execute([$newBasketKey, $customer['customer_id']]);
+
+                                // Log basket transition if basket changed
+                                if ((int)$oldBasketKey !== (int)$newBasketKey) {
+                                    try {
+                                        $pdo->prepare('INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, notes, created_at) VALUES (?, ?, ?, ?, ?, NOW())')
+                                            ->execute([$customer['customer_id'], $oldBasketKey, $newBasketKey, 'unblocked', 'Customer unblocked']);
+                                    } catch (Throwable $logErr) { /* ignore */ }
+                                }
                             }
                         }
                     } catch (Throwable $e) { /* ignore */
