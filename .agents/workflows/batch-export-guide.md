@@ -64,25 +64,37 @@ description: คู่มืออธิบายการทำงาน Batch 
 UPDATE orders SET order_status = {targetStatus} WHERE id = {orderId}
 ```
 
-พร้อมเก็บ mapping `customerUpdates[customer_id] = creator_id` สำหรับ Step 3
+พร้อมเก็บ mapping `customerSaleDates[customer_id] = delivery_date` (fallback: order_date) สำหรับ Step 3  
+ถ้า customer มีหลาย order ใน batch เดียวกัน → ใช้ delivery_date ล่าสุด
 
 ---
 
 ### Step 3 — อัปเดตข้อมูลลูกค้า (เฉพาะ targetStatus = 'Picking')
 
 > [!IMPORTANT]
-> `assigned_to` อัปเดตเฉพาะเมื่อผู้ขาย (creator) เป็น **Telesale** (`role_id IN (6, 7)`)
+> **ไม่แตะ `assigned_to`** — ปล่อยให้ cron/basket routing จัดการ  
+> Logic ตรงกับ `recordSale()` ใน `ownership_handler.php`
 
-**ขั้นตอน:**
-1. ดึง `creator_id` ทั้งหมด → query `users WHERE role_id IN (6, 7)` เพื่อดูว่าใครเป็น Telesale
-2. แบ่งเป็น 2 กรณี:
+```sql
+UPDATE customers SET 
+    lifecycle_status = 'Old3Months',
+    ownership_expires = {delivery_date + 90 days, max NOW+90},
+    has_sold_before = 1,
+    last_sale_date = {delivery_date},
+    follow_up_count = 0,
+    followup_bonus_remaining = 1
+WHERE customer_id = ?
+```
 
-| ผู้ขาย | `lifecycle_status` | `assigned_to` | `ownership_expires` | `followup_bonus_remaining` |
-|--------|:------------------:|:-------------:|:-------------------:|:--------------------------:|
-| **Telesale** (role 6, 7) | → `Old3Months` | → `creator_id` | → `+90 วัน` | → `1` |
-| **อื่น ๆ** | → `Old3Months` | ❌ **ไม่แตะ** | → `+90 วัน` | → `1` |
-
-**เหตุผล:** ป้องกันไม่ให้ลูกค้าหลุดจากระบบแจกงานเมื่อผู้ขายไม่ใช่ Telesale (เช่น Admin หรือ Packer สร้าง order)
+| คอลัม | ค่า | หมายเหตุ |
+|--------|-----|----------|
+| `lifecycle_status` | `'Old3Months'` | |
+| `ownership_expires` | `delivery_date + 90 วัน` | cap ที่ max 90 วันจากวันนี้ |
+| `has_sold_before` | `1` | |
+| `last_sale_date` | `delivery_date` | fallback: `order_date` |
+| `follow_up_count` | `0` | reset |
+| `followup_bonus_remaining` | `1` | reset |
+| `assigned_to` | ❌ ไม่แตะ | |
 
 ---
 
@@ -121,5 +133,4 @@ orders ─────────┬──→ order_items ──→ products
                 ├──→ order_boxes
                 ├──→ order_tracking_numbers
                 └──→ customers
-                     └──→ users (assigned_to, creator_id)
 ```
