@@ -8,7 +8,8 @@ type ValidationStatus = 'valid' | 'duplicate' | 'error' | 'unchecked' | 'warning
 interface RowData {
     id: number;
     trackingNumber: string;
-    extraValue: string; // Column B: return_complete (good) or return_claim (damaged/lost)
+    note: string; // Column B: หมายเหตุ (ทุก mode)
+    extraValue: string; // Column C: return_complete (good) or return_claim (damaged/lost)
     status: ValidationStatus;
     message: string;
     subOrderId?: string;
@@ -23,6 +24,7 @@ interface BulkReturnImportProps {
 const createEmptyRow = (id: number): RowData => ({
     id,
     trackingNumber: '',
+    note: '',
     extraValue: '',
     status: 'unchecked',
     message: '',
@@ -50,13 +52,15 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
     const [validating, setValidating] = useState(false);
     const [importing, setImporting] = useState(false);
 
-    const handleInputChange = (index: number, field: 'trackingNumber' | 'extraValue', value: string) => {
+    const handleInputChange = (index: number, field: 'trackingNumber' | 'note' | 'extraValue', value: string) => {
         const newRows = [...rows];
         if (field === 'trackingNumber') {
             newRows[index].trackingNumber = value;
             newRows[index].status = 'unchecked';
             newRows[index].message = '';
             newRows[index].subOrderId = undefined;
+        } else if (field === 'note') {
+            newRows[index].note = value;
         } else {
             newRows[index].extraValue = value;
         }
@@ -81,25 +85,17 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
         const newRows = [...rows];
         pastedLines.forEach((line, i) => {
             const parts = line.split(/[\t,]/);
-            let tracking = parts[0].trim();
-            let extra = '';
-
-            // Column B = extra value (return_complete or return_claim)
-            if (parts.length > 1) {
-                const col2 = parts[1].trim();
-                if (hasExtraColumn) {
-                    // Use column B as extra value
-                    extra = col2;
-                } else if (col2.length > 6) {
-                    // Legacy: if col2 looks like tracking, use it
-                    tracking = col2;
-                }
-            }
+            const tracking = parts[0].trim();
+            // Column B = หมายเหตุ (note) — ทุก mode
+            const note = parts.length > 1 ? parts[1].trim() : '';
+            // Column C = extra value (return_complete or return_claim) — เฉพาะ good/damaged/lost
+            const extra = parts.length > 2 && hasExtraColumn ? parts[2].trim() : '';
 
             const currentRowIndex = rowIndex + i;
             const rowData: RowData = {
                 id: currentRowIndex < newRows.length ? newRows[currentRowIndex].id : newRows.length + 1,
                 trackingNumber: tracking,
+                note,
                 extraValue: extra,
                 status: 'unchecked',
                 message: '',
@@ -234,7 +230,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                         tracking_number: r.trackingNumber,
                         sub_order_id: r.subOrderId,
                         status: mode,
-                        note: '',
+                        note: r.note || '',
                     };
                     if (mode === 'good') {
                         item.return_complete = parseReturnComplete(r.extraValue) ? 1 : 0;
@@ -272,7 +268,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                         })
                     </h3>
                     <p className="text-sm text-gray-500">
-                        วางเลข Tracking (บรรทัดละ 1 เลข){hasExtraColumn && <span className="ml-1">| คอลัมน์ B: {extraColumnLabel}</span>}
+                        วางเลข Tracking (บรรทัดละ 1 เลข) | คอลัมน์ B: หมายเหตุ{hasExtraColumn && <span className="ml-1">| คอลัมน์ C: {extraColumnLabel}</span>}
                     </p>
                 </div>
 
@@ -314,6 +310,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                         <tr>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">เลข Tracking</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-40">หมายเหตุ</th>
                             {hasExtraColumn && (
                                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-36">{extraColumnLabel}</th>
                             )}
@@ -338,6 +335,15 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                                             row.status === 'duplicate' ? 'bg-yellow-50 border-yellow-300' : ''
                                             }`}
                                         placeholder="เลข Tracking"
+                                    />
+                                </td>
+                                <td className="px-4 py-2">
+                                    <input
+                                        type="text"
+                                        value={row.note}
+                                        onChange={(e) => handleInputChange(index, 'note', e.target.value)}
+                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                        placeholder="หมายเหตุ"
                                     />
                                 </td>
                                 {hasExtraColumn && (

@@ -1954,14 +1954,16 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       {/* Bulk Import Modal */}
       {isBulkImportOpen && createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9990] p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden relative">
-            <button
-              onClick={() => setIsBulkImportOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-10"
-            >
-              <X size={24} />
-            </button>
-            <div className="flex-1 overflow-hidden p-1">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+            <div className="flex justify-end items-center px-4 py-2 border-b border-gray-100 bg-gray-50 rounded-t-2xl shrink-0">
+              <button
+                onClick={() => setIsBulkImportOpen(false)}
+                className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
               <BulkReturnImport
                 key={bulkImportMode}
                 mode={bulkImportMode}
