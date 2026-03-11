@@ -1307,9 +1307,22 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
   return (
     <>
-      <div className="p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">สถิติการมีส่วนร่วม</h2>
+      <div className="p-4 md:p-6 bg-gray-50/50 min-h-screen">
+        {/* Page Header */}
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <Activity className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Engagement Insights</h1>
+              <p className="text-xs text-gray-500">สถิติการมีส่วนร่วม · ปฏิสัมพันธ์กับลูกค้า</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 shadow-sm">
+        <div className="flex items-center gap-3 flex-wrap">
           <DateRangePicker value={range} onApply={setRange} />
           {/* Page Selection */}
           <div className="flex items-center gap-2">
@@ -1418,12 +1431,13 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             </button>
           )}
         </div>
+        </div>
 
         {/* Top gauges */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-5 rounded-lg border">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm border-t-4 border-t-emerald-400">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-gray-700">ปฏิสัมพันธ์กับลูกค้า</h3>
+              <h3 className="text-sm font-bold text-gray-800">ปฏิสัมพันธ์กับลูกค้า</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
               {useEngagementData && engagementData && engagementData.data ? (
@@ -1467,9 +1481,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
               )}
             </div>
           </div>
-          <div className="bg-white p-5 rounded-lg border">
+          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm border-t-4 border-t-blue-400">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-gray-700">สั่งซื้อ</h3>
+              <h3 className="text-sm font-bold text-gray-800">สั่งซื้อ</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
               {useEngagementData && engagementData && engagementData.data ? (
@@ -1520,12 +1534,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         </div>
 
         {/* Table */}
-        <div className="bg-white p-5 rounded-lg border">
-          <div className="flex items-center justify-between mb-3">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <div className="flex items-center gap-2 text-sm">
-              <button onClick={() => setActiveTab('time')} className={`px-3 py-1.5 rounded-md ${activeTab === 'time' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>ตามเวลา</button>
-              <button onClick={() => setActiveTab('user')} className={`px-3 py-1.5 rounded-md ${activeTab === 'user' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>ตามพนักงาน</button>
-              <button onClick={() => setActiveTab('page')} className={`px-3 py-1.5 rounded-md ${activeTab === 'page' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>ตามเพจ</button>
+              <div className="flex bg-gray-100 rounded-lg p-0.5">
+                <button onClick={() => setActiveTab('time')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'time' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>ตามเวลา</button>
+                <button onClick={() => setActiveTab('user')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'user' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>ตามพนักงาน</button>
+                <button onClick={() => setActiveTab('page')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'page' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>ตามเพจ</button>
+              </div>
               <div className="text-sm text-gray-500">
                 กำลังแสดงข้อมูล: {selectedPageId === 'all' ? 'ทุกเพจ' : pageSearchTerm || 'ทุกเพจ'}
               </div>
@@ -1539,13 +1555,13 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           {activeTab === 'time' && (
             <div className="overflow-auto">
               <table className="min-w-[1200px] w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-gray-600">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600 text-xs uppercase tracking-wider">
                     <th className="px-3 py-2 text-left">เวลา</th>
                     <th className="px-3 py-2 text-center" colSpan={4}>ปฏิสัมพันธ์กับลูกค้า</th>
                     <th className="px-3 py-2 text-center" colSpan={4}>สร้างคำสั่งซื้อ</th>
                   </tr>
-                  <tr className="bg-gray-50 text-gray-600">
+                  <tr className="bg-gray-50 text-gray-500 text-xs">
                     <th className="px-3 py-2 text-left"> </th>
                     <th className="px-3 py-2 text-right">ลูกค้าใหม่</th>
                     <th className="px-3 py-2 text-right">ลูกค้าเก่า</th>
@@ -1583,7 +1599,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                         const newOrderCount = orderCount - oldOrderCount;
 
                         return (
-                          <tr key={date} className="border-t border-gray-100">
+                          <tr key={date} className={`border-t border-gray-100 hover:bg-emerald-50/40 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                             <td className="px-3 py-2 text-gray-700">{date}</td>
                             <td className="px-3 py-2 text-right">{newCustomerReplied}</td>
                             <td className="px-3 py-2 text-right">{oldCustomerReplied}</td>
@@ -1598,8 +1614,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                       });
                     })()
                   ) : (
-                    rows.map(r => (
-                      <tr key={r.date} className="border-t border-gray-100">
+                    rows.map((r, idx) => (
+                      <tr key={r.date} className={`border-t border-gray-100 hover:bg-emerald-50/40 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                         <td className="px-3 py-2 text-gray-700">{r.date}</td>
                         <td className="px-3 py-2 text-right">{r.newInteract}</td>
                         <td className="px-3 py-2 text-right">{r.oldInteract}</td>
