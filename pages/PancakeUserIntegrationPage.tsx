@@ -642,8 +642,19 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                     <UserX className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-600">ไม่พบข้อมูลเพจ</p>
                     <p className="text-sm text-gray-500 mt-2">
-                      กรุณาอัปเดตข้อมูลเพจจากหน้า Pages Management
+                      กรุณาอัปเดตข้อมูลเพจจากหน้า จัดการผู้ใช้การตลาด-เพจ
                     </p>
+                    <button
+                      onClick={() => {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('page', 'Marketing User Management');
+                        window.location.href = url.toString();
+                      }}
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      ไปหน้าจัดการผู้ใช้การตลาด-เพจ
+                    </button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -137,7 +137,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Promotion History": "ประวัติโปรโมชั่น",
     "Create Promotion": "สร้างโปรโมชั่น",
     "Engagement Stats": "สถิติการมีส่วนร่วม",
-    "Pancake User Mapping": "Pancake User Mapping",
+    "Pancake User Mapping": "เชื่อมต่อผู้ใช้ Pancake",
     "Page Stats": "สถิติหน้า",
     "Page Performance": "ประสิทธิภาพหน้า",
     "Engagement Insights": "ข้อมูลเชิงลึกการมีส่วนร่วม",

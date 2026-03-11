@@ -301,7 +301,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   }), { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 }), [rows]);
 
   // Chart options (semi gauge)
-  const makeSemiGauge = (valuePct: number, color: string) => ({
+  const makeSemiGauge = (valuePct: number, color: string, label?: string) => ({
     series: [Math.max(0, Math.min(100, Number(valuePct.toFixed(2))))],
     options: {
       chart: { type: 'radialBar', toolbar: { show: false } },
@@ -312,18 +312,18 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           hollow: { size: '60%' },
           track: { background: '#F3F4F6' },
           dataLabels: {
-            name: { show: false },
+            name: { show: !!label, fontSize: '13px', offsetY: 16, color: '#6B7280' },
             value: { offsetY: -2, fontSize: '20px', formatter: (v: any) => `${v}%` }
           }
         }
       },
       colors: [color],
-      labels: ['Percent'],
+      labels: [label || 'Percent'],
     } as any
   });
 
-  const talkGauge = makeSemiGauge(talkRate, '#34D399');
-  const orderRate = makeSemiGauge(totalCalls > 0 ? (totalOrders / totalCalls) * 100 : 0, '#3B82F6');
+  const talkGauge = makeSemiGauge(talkRate, '#34D399', 'อัตราคุยได้');
+  const orderRate = makeSemiGauge(totalCalls > 0 ? (totalOrders / totalCalls) * 100 : 0, '#3B82F6', 'อัตราสั่งซื้อ');
 
   // Aggregations for tabs (per user, per page)
   const activeAdminUsers = useMemo(() => {
@@ -1315,7 +1315,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
               <Activity className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Engagement Insights</h1>
+              <h1 className="text-xl font-bold text-gray-900">ข้อมูลเชิงลึกการมีส่วนร่วม</h1>
               <p className="text-xs text-gray-500">สถิติการมีส่วนร่วม · ปฏิสัมพันธ์กับลูกค้า</p>
             </div>
           </div>
@@ -1411,27 +1411,36 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           </div>
           <button
             onClick={fetchEngagementData}
-            className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
+            className="border rounded-md px-4 py-1.5 text-sm flex items-center gap-1.5 bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-sm"
             disabled={isSearching}
           >
             <Search className="w-4 h-4" /> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
           </button>
+          <div className="h-5 w-px bg-gray-300" />
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
+            className="border border-gray-300 rounded-md px-3 py-1.5 text-sm flex items-center gap-1 text-gray-700 bg-white hover:bg-gray-50"
           >
-            <Download className="w-4 h-4" /> ดาวน์โหลด CSV
+            <Download className="w-4 h-4" /> CSV
           </button>
           {isStoreDbEnabled && (
             <button
               onClick={() => setIsUploadModalOpen(true)}
-              className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
+              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm flex items-center gap-1 text-gray-700 bg-white hover:bg-gray-50"
             >
-              <Save className="w-4 h-4" /> อัปโหลดข้อมูล
+              <Save className="w-4 h-4" /> อัปโหลด
             </button>
           )}
         </div>
         </div>
+
+        {/* Info banner when Pancake data not yet fetched */}
+        {!useEngagementData && (
+          <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-sm text-blue-700">
+            <Search className="w-4 h-4 flex-shrink-0" />
+            <span>กำลังแสดงข้อมูลจากระบบภายใน — กด <strong>ค้นหา</strong> เพื่อดึงข้อมูลจาก Pancake API</span>
+          </div>
+        )}
 
         {/* Top gauges */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
@@ -1453,7 +1462,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   // Create new gauge options for engagement data
                   const engagementGauge = makeSemiGauge(
                     totalEngagement > 0 ? (totalNewCustomerReplied / totalEngagement) * 100 : 0,
-                    '#34D399'
+                    '#34D399',
+                    'อัตราลูกค้าใหม่'
                   );
 
                   return (
@@ -1503,7 +1513,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   // Create new gauge options for order data
                   const orderGauge = makeSemiGauge(
                     totalEngagement > 0 ? (totalOrders / totalEngagement) * 100 : 0,
-                    '#3B82F6'
+                    '#3B82F6',
+                    'อัตราสั่งซื้อ'
                   );
 
                   return (

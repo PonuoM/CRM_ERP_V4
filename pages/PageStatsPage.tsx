@@ -1398,7 +1398,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Page Stats</h1>
+            <h1 className="text-xl font-bold text-gray-900">ประสิทธิภาพหน้า</h1>
             <p className="text-xs text-gray-500">สถิติเพจ · ข้อมูลจากระบบ Pages.fm</p>
           </div>
         </div>
@@ -1650,17 +1650,25 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={fetchPageStats}
+              className="border rounded-md px-4 py-2 text-sm flex items-center gap-1.5 bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-sm"
+              disabled={isSearching || !selectedPage}
+            >
+              <Search className="w-4 h-4" /> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
+            </button>
+            <div className="h-5 w-px bg-gray-300" />
+            <button
               onClick={() => setRangeDays(rangeDays)}
-              className={`border rounded-md px-3 py-2 text-sm flex items-center gap-1 ${usePageStats ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center gap-1 text-gray-700 bg-white hover:bg-gray-50 ${usePageStats ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={usePageStats}
             >
               <RefreshCcw className="w-4 h-4" /> รีเฟรช
             </button>
             <button
               onClick={() => setIsExportModalOpen(true)}
-              className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center gap-1 text-gray-700 bg-white hover:bg-gray-50"
             >
-              <Download className="w-4 h-4" /> ดาวน์โหลด CSV
+              <Download className="w-4 h-4" /> CSV
             </button>
             {isStoreDbEnabled && (
               <button
@@ -1668,21 +1676,22 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                   setIsDatabaseModalOpen(true);
                   fetchExistingDateRanges();
                 }}
-                className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center gap-1 text-gray-700 bg-white hover:bg-gray-50"
               >
-                <Save className="w-4 h-4" /> อัปเดต Database
+                <Save className="w-4 h-4" /> อัปเดต DB
               </button>
             )}
-            <button
-              onClick={fetchPageStats}
-              className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
-              disabled={isSearching || !selectedPage}
-            >
-              <Search className="w-4 h-4" /> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
-            </button>
           </div>
         </div>
       </div>
+
+      {/* Info banner when Pancake data not yet fetched */}
+      {!usePageStats && (
+        <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-sm text-blue-700">
+          <Search className="w-4 h-4 flex-shrink-0" />
+          <span>กำลังแสดงข้อมูลจากระบบภายใน — กด <strong>ค้นหา</strong> เพื่อดึงข้อมูลจาก Pancake API</span>
+        </div>
+      )}
 
       {/* Chart */}
       <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -1812,7 +1821,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           <table className="min-w-[1800px] w-full text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600 text-xs uppercase tracking-wider">
-                <th className="px-3 py-2 text-left whitespace-nowrap min-w-[150px]">เวลา</th>
+                <th className="px-3 py-2 text-left whitespace-nowrap min-w-[150px] sticky left-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">เวลา</th>
                 <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">ลูกค้าใหม่</th>
                 <th className="px-3 py-2 text-right whitespace-nowrap min-w-[120px]">เบอร์โทรศัพท์ทั้งหมด</th>
                 <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">เบอร์โทรใหม่</th>
@@ -1943,7 +1952,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
                     return (
                       <tr key={index} className={`border-t border-gray-100 hover:bg-blue-50/40 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                        <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{formattedDate}</td>
+                        <td className={`px-3 py-2 text-gray-700 whitespace-nowrap sticky left-0 z-10 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>{formattedDate}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{item.new_customer_count}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{item.uniq_phone_number_count}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{item.phone_number_count}</td>
@@ -1981,7 +1990,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               ) : (
                 daily.map((r, idx) => (
                   <tr key={r.date} className={`border-t border-gray-100 hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{r.date}</td>
+                    <td className={`px-3 py-2 text-gray-700 whitespace-nowrap sticky left-0 z-10 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>{r.date}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">{r.newCustomers}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">{r.totalPhones}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">{r.newPhones}</td>
