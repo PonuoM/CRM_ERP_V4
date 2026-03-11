@@ -2356,6 +2356,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     ) ? (() => {
       const boxAmounts: Record<number, number> = {};
       (currentOrder.items || []).forEach((item) => {
+        const isFreebie = item.isFreebie || (item as any).is_freebie;
+        if (isFreebie) return; // ไม่รวมของแถมในการคำนวณ COD
         const bn = item.boxNumber || 1;
         const itemNet = ((item.pricePerUnit || 0) * (item.quantity || 0)) - (item.discount || 0);
         boxAmounts[bn] = (boxAmounts[bn] || 0) + itemNet;

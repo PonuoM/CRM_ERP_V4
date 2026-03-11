@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { apiFetch } from "../services/api";
 
 interface MarketplacePageProps {
@@ -41,17 +41,23 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
     const [editingStoreId, setEditingStoreId] = useState<number | null>(null);
     const [showStoreForm, setShowStoreForm] = useState(false);
 
-    // Ads Input
-    const [adsStoreId, setAdsStoreId] = useState<string>("");
-    const [adsDate, setAdsDate] = useState(() => new Date().toISOString().slice(0, 10));
-    const [adsForm, setAdsForm] = useState({ ads_cost: "", impressions: "", clicks: "" });
-    const [adsSaveMsg, setAdsSaveMsg] = useState("");
+    // Ads Input V2 style
+    const [adsDate, setAdsDate] = useState("");
+    const [adsRows, setAdsRows] = useState<{ storeId: number; storeName: string; platform: string; adsCost: string; impressions: string; clicks: string; existingId?: number; lastUser?: string; }[]>([]);
+    const [adsOriginalRows, setAdsOriginalRows] = useState<typeof adsRows>([]);
+    const [adsLoadingData, setAdsLoadingData] = useState(false);
+    const [adsSaving, setAdsSaving] = useState(false);
+    const [adsSaveResult, setAdsSaveResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-    // Sales Import
-    const [salesStoreId, setSalesStoreId] = useState<string>("");
-    const [salesDate, setSalesDate] = useState(() => new Date().toISOString().slice(0, 10));
-    const [salesForm, setSalesForm] = useState({ total_sales: "", total_orders: "", returns_amount: "", cancelled_amount: "" });
-    const [salesSaveMsg, setSalesSaveMsg] = useState("");
+    // CSV Sales Import
+    const [csvFile, setCsvFile] = useState<File | null>(null);
+    const [csvPreview, setCsvPreview] = useState<string[][]>([]);
+    const [csvImporting, setCsvImporting] = useState(false);
+    const [csvResult, setCsvResult] = useState<any>(null);
+    const [importBatches, setImportBatches] = useState<any[]>([]);
+    const [viewBatchId, setViewBatchId] = useState<number | null>(null);
+    const [batchOrders, setBatchOrders] = useState<any[]>([]);
+    const [batchSummary, setBatchSummary] = useState<any>(null);
 
     // Dashboard
     const [dashDateFrom, setDashDateFrom] = useState(() => {
@@ -109,112 +115,190 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
         } catch (e) { alert("Error saving store"); }
     };
 
-    const handleDeleteStore = async (id: number) => {
-        if (!confirm("ต้องการลบร้านค้านี้?")) return;
+    const handleToggleStoreActive = async (store: Store) => {
+        const newActive = Number(store.active) === 1 ? 0 : 1;
+        const action = newActive ? "เปิดใช้งาน" : "ปิดใช้งาน";
+        if (!confirm(`ต้องการ${action}ร้านค้า "${store.name}"?`)) return;
         try {
-            await apiFetch(`Marketplace/stores_delete.php`, {
-                method: "POST",
-                body: JSON.stringify({ id, company_id: companyId }),
-            });
-            loadStores();
-        } catch (e) { alert("Error deleting store"); }
-    };
-
-    // ==================== ADS INPUT ====================
-    const handleSaveAds = async () => {
-        if (!adsStoreId || !adsDate) {
-            alert("กรุณาเลือกร้านค้าและวันที่");
-            return;
-        }
-        try {
-            const json = await apiFetch(`Marketplace/ads_log_upsert.php`, {
+            const json = await apiFetch(`Marketplace/stores_upsert.php`, {
                 method: "POST",
                 body: JSON.stringify({
-                    store_id: adsStoreId,
-                    date: adsDate,
-                    ads_cost: adsForm.ads_cost || 0,
-                    impressions: adsForm.impressions || 0,
-                    clicks: adsForm.clicks || 0,
-                    user_id: currentUser?.id,
+                    id: store.id,
+                    name: store.name,
+                    platform: store.platform,
+                    url: store.url,
+                    manager_user_id: store.manager_user_id,
+                    active: newActive,
+                    company_id: companyId,
                 }),
             });
-            if (json.success) {
-                setAdsSaveMsg("✅ บันทึกเรียบร้อย");
-                setTimeout(() => setAdsSaveMsg(""), 3000);
-            } else {
-                alert(json.error || "Error");
-            }
-        } catch (e) { alert("Error saving ads"); }
+            if (json.success) loadStores();
+            else alert(json.error || "Error");
+        } catch (e: any) { alert(e?.message || "Error toggling store"); }
     };
 
-    // Load existing ads data when store/date changes
-    useEffect(() => {
-        if (!adsStoreId || !adsDate || view !== "adsInput") return;
-        (async () => {
-            try {
-                const json = await apiFetch(`Marketplace/ads_log_list.php?store_id=${adsStoreId}&date_from=${adsDate}&date_to=${adsDate}`);
-                if (json.success && json.data?.length > 0) {
-                    const row = json.data[0];
-                    setAdsForm({
-                        ads_cost: String(row.ads_cost || ""),
-                        impressions: String(row.impressions || ""),
-                        clicks: String(row.clicks || ""),
-                    });
-                } else {
-                    setAdsForm({ ads_cost: "", impressions: "", clicks: "" });
-                }
-            } catch (e) { /* ignore */ }
-        })();
-    }, [adsStoreId, adsDate, view]);
+    const activeStores = useMemo(() => stores.filter(s => s.active), [stores]);
 
-    // ==================== SALES IMPORT ====================
-    const handleSaveSales = async () => {
-        if (!salesStoreId || !salesDate) {
-            alert("กรุณาเลือกร้านค้าและวันที่");
-            return;
-        }
+    // ==================== ADS INPUT (V2 Style) ====================
+    const loadAdsData = useCallback(async () => {
+        if (!adsDate || activeStores.length === 0) { setAdsRows([]); setAdsOriginalRows([]); return; }
+        setAdsLoadingData(true);
+        setAdsSaveResult(null);
         try {
-            const json = await apiFetch(`Marketplace/sales_import_upsert.php`, {
-                method: "POST",
-                body: JSON.stringify({
-                    store_id: salesStoreId,
-                    date: salesDate,
-                    total_sales: salesForm.total_sales || 0,
-                    total_orders: salesForm.total_orders || 0,
-                    returns_amount: salesForm.returns_amount || 0,
-                    cancelled_amount: salesForm.cancelled_amount || 0,
-                    user_id: currentUser?.id,
-                }),
+            const json = await apiFetch(`Marketplace/ads_log_list.php?date_from=${adsDate}&date_to=${adsDate}&company_id=${companyId}`);
+            const existingLogs: any[] = json.success && Array.isArray(json.data) ? json.data : [];
+            const logsMap = new Map<number, any>();
+            for (const log of existingLogs) logsMap.set(Number(log.store_id), log);
+
+            const newRows = activeStores.map(s => {
+                const existing = logsMap.get(Number(s.id));
+                return {
+                    storeId: s.id, storeName: s.name, platform: s.platform,
+                    adsCost: existing?.ads_cost ? String(existing.ads_cost) : '',
+                    impressions: existing?.impressions ? String(existing.impressions) : '',
+                    clicks: existing?.clicks ? String(existing.clicks) : '',
+                    existingId: existing?.id ? Number(existing.id) : undefined,
+                    lastUser: existing?.user_id ? `ID:${existing.user_id}` : undefined,
+                };
             });
-            if (json.success) {
-                setSalesSaveMsg("✅ บันทึกเรียบร้อย");
-                setTimeout(() => setSalesSaveMsg(""), 3000);
-            } else {
-                alert(json.error || "Error");
-            }
-        } catch (e) { alert("Error saving sales"); }
+            setAdsRows(newRows);
+            setAdsOriginalRows(JSON.parse(JSON.stringify(newRows)));
+        } catch (e) { console.error(e); }
+        finally { setAdsLoadingData(false); }
+    }, [adsDate, activeStores, companyId]);
+
+    useEffect(() => {
+        if (view === 'adsInput') loadAdsData();
+    }, [view, adsDate, loadAdsData]);
+
+    const handleAdsChange = (index: number, field: string, value: string) => {
+        setAdsRows(prev => { const u = [...prev]; u[index] = { ...u[index], [field]: value }; return u; });
+        setAdsSaveResult(null);
     };
 
-    // Load existing sales data
-    useEffect(() => {
-        if (!salesStoreId || !salesDate || view !== "salesImport") return;
-        (async () => {
-            try {
-                const json = await apiFetch(`Marketplace/sales_import_list.php?store_id=${salesStoreId}&date_from=${salesDate}&date_to=${salesDate}`);
-                if (json.success && json.data?.length > 0) {
-                    const row = json.data[0];
-                    setSalesForm({
-                        total_sales: String(row.total_sales || ""),
-                        total_orders: String(row.total_orders || ""),
-                        returns_amount: String(row.returns_amount || ""),
-                        cancelled_amount: String(row.cancelled_amount || ""),
-                    });
-                } else {
-                    setSalesForm({ total_sales: "", total_orders: "", returns_amount: "", cancelled_amount: "" });
+    const handleAdsSaveAll = async () => {
+        if (adsSaving) return;
+        setAdsSaving(true);
+        setAdsSaveResult(null);
+        try {
+            const changed = adsRows.filter((r, i) => {
+                const hasData = r.adsCost.trim();
+                if (!hasData) return false;
+                if (!r.existingId) return true; // new
+                const orig = adsOriginalRows[i];
+                return !orig || r.adsCost !== orig.adsCost;
+            });
+            if (changed.length === 0) { setAdsSaveResult({ type: 'error', text: 'ไม่มีข้อมูลที่เปลี่ยนแปลง' }); return; }
+
+            const records = changed.map(r => ({
+                store_id: r.storeId, date: adsDate, user_id: currentUser?.id,
+                ads_cost: r.adsCost ? parseFloat(r.adsCost) : 0,
+                impressions: 0,
+                clicks: 0,
+            }));
+
+            const json = await apiFetch('Marketplace/ads_log_upsert.php', {
+                method: 'POST', body: JSON.stringify({ records }),
+            });
+            if (json.success) {
+                const d = json.data || {};
+                setAdsSaveResult({ type: 'success', text: `บันทึกสำเร็จ! (เพิ่มใหม่ ${d.inserted || 0}, อัปเดต ${d.updated || 0})` });
+                await loadAdsData();
+            } else {
+                setAdsSaveResult({ type: 'error', text: json.error || 'Error' });
+            }
+        } catch (e: any) {
+            setAdsSaveResult({ type: 'error', text: e?.message || 'Error' });
+        } finally { setAdsSaving(false); }
+    };
+
+    // ==================== CSV SALES IMPORT ====================
+    const handleCsvSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setCsvFile(file);
+        setCsvResult(null);
+        // Preview first 10 rows
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            let text = ev.target?.result as string;
+            if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            const rows = lines.slice(0, 11).map(l => {
+                const cols: string[] = [];
+                let inQuote = false, cur = '';
+                for (const ch of l) {
+                    if (ch === '"') { inQuote = !inQuote; }
+                    else if (ch === ',' && !inQuote) { cols.push(cur); cur = ''; }
+                    else cur += ch;
                 }
-            } catch (e) { /* ignore */ }
-        })();
-    }, [salesStoreId, salesDate, view]);
+                cols.push(cur);
+                return cols;
+            });
+            setCsvPreview(rows);
+        };
+        reader.readAsText(file, 'utf-8');
+    };
+
+    const handleCsvImport = async () => {
+        if (!csvFile) return;
+        setCsvImporting(true);
+        setCsvResult(null);
+        try {
+            const formData = new FormData();
+            formData.append('csv_file', csvFile);
+            formData.append('company_id', String(companyId));
+            formData.append('user_id', String(currentUser?.id));
+            const res = await fetch(`${window.location.origin}${(await import('../appBasePath')).default}api/Marketplace/sales_csv_import.php`, {
+                method: 'POST', body: formData
+            });
+            const json = await res.json();
+            setCsvResult(json);
+            if (json.success) { loadImportBatches(); loadStores(); setCsvFile(null); setCsvPreview([]); }
+        } catch (e: any) {
+            setCsvResult({ success: false, error: e?.message || 'Error' });
+        } finally { setCsvImporting(false); }
+    };
+
+    const loadImportBatches = useCallback(async () => {
+        try {
+            const json = await apiFetch(`Marketplace/import_batches_list.php?company_id=${companyId}`);
+            if (json.success) setImportBatches(json.data || []);
+        } catch (e) { /* ignore */ }
+    }, [companyId]);
+
+    const loadBatchOrders = useCallback(async (batchId: number) => {
+        try {
+            const json = await apiFetch(`Marketplace/sales_orders_list.php?batch_id=${batchId}&company_id=${companyId}&limit=200`);
+            if (json.success) { setBatchOrders(json.data || []); setBatchSummary(json.summary || null); }
+        } catch (e) { /* ignore */ }
+    }, [companyId]);
+
+    const handleDeleteBatch = async (batch: any) => {
+        if (!confirm(`ต้องการลบ Batch "${batch.filename}" (${batch.imported_rows} รายการ)? ข้อมูลจะถูกลบทั้งหมดและไม่สามารถกู้คืนได้`)) return;
+        try {
+            const json = await apiFetch(`Marketplace/import_batch_delete.php`, {
+                method: 'POST',
+                body: JSON.stringify({ batch_id: batch.id, company_id: companyId }),
+            });
+            if (json.success) {
+                if (viewBatchId === batch.id) { setViewBatchId(null); setBatchOrders([]); setBatchSummary(null); }
+                loadImportBatches();
+            } else { alert(json.error || 'Error'); }
+        } catch (e: any) { alert(e?.message || 'Error deleting batch'); }
+    };
+
+    useEffect(() => {
+        if (view === 'salesImport') loadImportBatches();
+    }, [view, loadImportBatches]);
+
+    useEffect(() => {
+        if (viewBatchId) loadBatchOrders(viewBatchId);
+    }, [viewBatchId, loadBatchOrders]);
+
+    const downloadTemplate = () => {
+        window.open(`${window.location.origin}${(window as any).__APP_BASE || '/beta_test/'}api/Marketplace/sales_csv_template.php`, '_blank');
+    };
 
     // ==================== DASHBOARD ====================
     const loadDashboard = useCallback(async () => {
@@ -233,7 +317,6 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
         setDashLoading(false);
     }, [companyId, dashDateFrom, dashDateTo, dashStoreFilter]);
 
-    const activeStores = stores.filter(s => s.active);
     // Only show users with role_id 5 or is_system = 1
     const filteredUsers = users.filter((u: any) => {
         const rid = Number(u.role_id || 0);
@@ -354,7 +437,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                                     <div className="flex items-center gap-2">
                                         <input
                                             type="checkbox"
-                                            checked={storeForm.active === 1}
+                                            checked={Number(storeForm.active) === 1}
                                             onChange={e => setStoreForm(p => ({ ...p, active: e.target.checked ? 1 : 0 }))}
                                         />
                                         <label className="text-sm">เปิดใช้งาน</label>
@@ -408,7 +491,13 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                                         <td className="px-4 py-3 text-center">
                                             <button
                                                 onClick={() => {
-                                                    setStoreForm(s);
+                                                    setStoreForm({
+                                                        name: s.name,
+                                                        platform: s.platform,
+                                                        url: s.url,
+                                                        manager_user_id: s.manager_user_id ? String(s.manager_user_id) : null,
+                                                        active: Number(s.active),
+                                                    });
                                                     setEditingStoreId(s.id);
                                                     setShowStoreForm(true);
                                                 }}
@@ -417,10 +506,10 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                                                 แก้ไข
                                             </button>
                                             <button
-                                                onClick={() => handleDeleteStore(s.id)}
-                                                className="text-red-600 hover:underline text-xs"
+                                                onClick={() => handleToggleStoreActive(s)}
+                                                className={`text-xs ${Number(s.active) === 1 ? "text-orange-600 hover:underline" : "text-green-600 hover:underline"}`}
                                             >
-                                                ลบ
+                                                {Number(s.active) === 1 ? "ปิดใช้งาน" : "เปิดใช้งาน"}
                                             </button>
                                         </td>
                                     </tr>
@@ -431,140 +520,280 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                 </section>
             )}
 
-            {/* ==================== ADS INPUT ==================== */}
+            {/* ==================== ADS INPUT (V2 Style) ==================== */}
             {view === "adsInput" && (
                 <section>
-                    <h2 className="text-lg font-semibold mb-4">กรอกค่า Ads (Marketplace)</h2>
-                    <div className="bg-white rounded-lg shadow p-6 max-w-xl">
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label className={labelClass}>ร้านค้า *</label>
-                                <select className={inputClass} value={adsStoreId} onChange={e => setAdsStoreId(e.target.value)}>
-                                    <option value="">เลือกร้านค้า...</option>
-                                    {activeStores.map(s => <option key={s.id} value={s.id}>{s.name} ({s.platform})</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className={labelClass}>วันที่ *</label>
-                                <input type="date" className={inputClass} value={adsDate} onChange={e => setAdsDate(e.target.value)} />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 mb-4">
-                            <div>
-                                <label className={labelClass}>ค่าแอด</label>
-                                <input
-                                    type="number"
-                                    className={inputClass}
-                                    value={adsForm.ads_cost}
-                                    onChange={e => setAdsForm(p => ({ ...p, ads_cost: e.target.value }))}
-                                    placeholder="0.00"
-                                />
-                            </div>
-                            <div>
-                                <label className={labelClass}>Impressions</label>
-                                <input
-                                    type="number"
-                                    className={inputClass}
-                                    value={adsForm.impressions}
-                                    onChange={e => setAdsForm(p => ({ ...p, impressions: e.target.value }))}
-                                    placeholder="0"
-                                />
-                            </div>
-                            <div>
-                                <label className={labelClass}>Clicks</label>
-                                <input
-                                    type="number"
-                                    className={inputClass}
-                                    value={adsForm.clicks}
-                                    onChange={e => setAdsForm(p => ({ ...p, clicks: e.target.value }))}
-                                    placeholder="0"
-                                />
-                            </div>
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 className="text-lg font-semibold">กรอกค่า Ads (Marketplace)</h2>
+                            <p className="text-xs text-gray-500">กรอกข้อมูลค่าโฆษณาประจำวัน • 1 ร้านค้า 1 วัน ลงได้ 1 ครั้ง</p>
                         </div>
                         <div className="flex items-center gap-3">
-                            <button
-                                onClick={handleSaveAds}
-                                disabled={!adsStoreId || !adsDate}
-                                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 text-sm"
-                            >
-                                บันทึก
+                            <button onClick={loadAdsData} disabled={adsLoadingData} className="px-3 py-2 border rounded-md text-sm hover:bg-gray-100 disabled:opacity-50">
+                                โหลดใหม่
                             </button>
-                            {adsSaveMsg && <span className="text-green-600 text-sm">{adsSaveMsg}</span>}
+                            <button
+                                onClick={handleAdsSaveAll}
+                                disabled={adsSaving || adsLoadingData}
+                                className="px-5 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 text-sm font-medium"
+                            >
+                                {adsSaving ? 'กำลังบันทึก...' : '💾 บันทึกทั้งหมด'}
+                            </button>
                         </div>
+                    </div>
+
+                    {/* Date picker */}
+                    <div className="bg-white rounded-lg shadow px-4 py-3 mb-4 flex items-center gap-4">
+                        <span className="text-sm font-medium text-gray-600">📅 วันที่:</span>
+                        <input type="date" className={inputClass + ' w-44'} value={adsDate} onChange={e => setAdsDate(e.target.value)} />
+                        <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 1); setAdsDate(d.toISOString().slice(0, 10)); }} className="px-3 py-1.5 text-xs border rounded hover:bg-gray-100">เมื่อวาน</button>
+                        <button onClick={() => setAdsDate(new Date().toISOString().slice(0, 10))} className="px-3 py-1.5 text-xs border rounded hover:bg-gray-100">วันนี้</button>
+                    </div>
+
+                    {/* Save result */}
+                    {adsSaveResult && (
+                        <div className={`p-3 rounded-md text-sm mb-4 ${adsSaveResult.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                            {adsSaveResult.type === 'success' ? '✅' : '❌'} {adsSaveResult.text}
+                        </div>
+                    )}
+
+                    {/* Table */}
+                    <div className="bg-white rounded-lg shadow overflow-x-auto">
+                        {adsLoadingData ? (
+                            <div className="py-12 text-center text-gray-400">กำลังโหลด...</div>
+                        ) : adsRows.length === 0 ? (
+                            <div className="py-12 text-center text-gray-400">ไม่มีร้านค้า กรุณาเพิ่มร้านค้าก่อน</div>
+                        ) : (
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50 text-gray-700">
+                                    <tr>
+                                        <th className="px-3 py-2.5 text-left">ร้านค้า</th>
+                                        <th className="px-3 py-2.5 text-left">แพลตฟอร์ม</th>
+                                        <th className="px-3 py-2.5 text-right">💰 ค่า Ads</th>
+                                        <th className="px-3 py-2.5 text-center">สถานะ</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {adsRows.map((row, idx) => {
+                                        const orig = adsOriginalRows[idx];
+                                        const isChanged = orig && row.adsCost !== orig.adsCost;
+                                        const hasData = row.adsCost.trim();
+                                        const isLocked = !!row.existingId && !isChanged;
+                                        return (
+                                            <tr key={row.storeId} className={`border-b hover:bg-gray-50 ${isLocked ? 'bg-green-50/50' : ''}`}>
+                                                <td className="px-3 py-2 font-medium">{row.storeName}</td>
+                                                <td className="px-3 py-2 text-gray-500 text-xs">{row.platform}</td>
+                                                <td className="px-2 py-1.5">
+                                                    <input type="number" step="0.01" className={`w-full text-right px-2 py-1.5 border rounded text-sm ${isLocked ? 'bg-gray-50 text-gray-500' : ''}`}
+                                                        value={row.adsCost} onChange={e => handleAdsChange(idx, 'adsCost', e.target.value)} placeholder="0.00" />
+                                                </td>
+                                                <td className="px-3 py-2 text-center text-xs">
+                                                    {isLocked ? (
+                                                        <span className="text-green-600 font-medium">✅ บันทึกแล้ว</span>
+                                                    ) : isChanged ? (
+                                                        <span className="text-amber-600 font-medium">✏️ แก้ไข</span>
+                                                    ) : hasData ? (
+                                                        <span className="text-blue-600">ใหม่</span>
+                                                    ) : (
+                                                        <span className="text-gray-300">—</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        )}
                     </div>
                 </section>
             )}
 
-            {/* ==================== SALES IMPORT ==================== */}
+            {/* ==================== CSV SALES IMPORT ==================== */}
             {view === "salesImport" && (
                 <section>
-                    <h2 className="text-lg font-semibold mb-4">นำเข้ายอดขาย (Marketplace)</h2>
-                    <div className="bg-white rounded-lg shadow p-6 max-w-xl">
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label className={labelClass}>ร้านค้า *</label>
-                                <select className={inputClass} value={salesStoreId} onChange={e => setSalesStoreId(e.target.value)}>
-                                    <option value="">เลือกร้านค้า...</option>
-                                    {activeStores.map(s => <option key={s.id} value={s.id}>{s.name} ({s.platform})</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className={labelClass}>วันที่ *</label>
-                                <input type="date" className={inputClass} value={salesDate} onChange={e => setSalesDate(e.target.value)} />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label className={labelClass}>ยอดขาย</label>
-                                <input
-                                    type="number"
-                                    className={inputClass}
-                                    value={salesForm.total_sales}
-                                    onChange={e => setSalesForm(p => ({ ...p, total_sales: e.target.value }))}
-                                    placeholder="0.00"
-                                />
-                            </div>
-                            <div>
-                                <label className={labelClass}>จำนวนออเดอร์</label>
-                                <input
-                                    type="number"
-                                    className={inputClass}
-                                    value={salesForm.total_orders}
-                                    onChange={e => setSalesForm(p => ({ ...p, total_orders: e.target.value }))}
-                                    placeholder="0"
-                                />
-                            </div>
-                            <div>
-                                <label className={labelClass}>ตีกลับ</label>
-                                <input
-                                    type="number"
-                                    className={inputClass}
-                                    value={salesForm.returns_amount}
-                                    onChange={e => setSalesForm(p => ({ ...p, returns_amount: e.target.value }))}
-                                    placeholder="0.00"
-                                />
-                            </div>
-                            <div>
-                                <label className={labelClass}>ยกเลิก</label>
-                                <input
-                                    type="number"
-                                    className={inputClass}
-                                    value={salesForm.cancelled_amount}
-                                    onChange={e => setSalesForm(p => ({ ...p, cancelled_amount: e.target.value }))}
-                                    placeholder="0.00"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold">นำเข้ายอดขาย (CSV)</h2>
+                        <button onClick={downloadTemplate} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
+                            📥 ดาวน์โหลด Template
+                        </button>
+                    </div>
+
+                    {/* Upload Area */}
+                    <div className="bg-white rounded-lg shadow p-6 mb-4">
+                        <div className="flex items-center gap-4 mb-4">
+                            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md text-sm font-medium text-gray-700 transition-colors">
+                                📁 เลือกไฟล์ CSV
+                                <input type="file" accept=".csv" onChange={handleCsvSelect} className="hidden" />
+                            </label>
+                            {csvFile && <span className="text-sm text-gray-600 bg-gray-50 px-3 py-1.5 rounded border">{csvFile.name}</span>}
                             <button
-                                onClick={handleSaveSales}
-                                disabled={!salesStoreId || !salesDate}
+                                onClick={handleCsvImport}
+                                disabled={!csvFile || csvImporting}
                                 className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 text-sm"
                             >
-                                บันทึก
+                                {csvImporting ? "กำลังนำเข้า..." : "📤 นำเข้าข้อมูล"}
                             </button>
-                            {salesSaveMsg && <span className="text-green-600 text-sm">{salesSaveMsg}</span>}
                         </div>
+
+                        {/* Result */}
+                        {csvResult && (
+                            <div className={`p-3 rounded-md text-sm mb-4 ${csvResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                                {csvResult.success ? (
+                                    <div>
+                                        <p>✅ นำเข้าสำเร็จ — <b>{csvResult.imported_rows}</b> รายการ
+                                            {csvResult.skipped_rows > 0 && <span className="text-amber-600"> (ข้าม {csvResult.skipped_rows} รายการ)</span>}</p>
+                                        {csvResult.created_stores?.length > 0 && (
+                                            <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200 text-blue-700">
+                                                <p className="font-medium">🏪 สร้างร้านค้าใหม่อัตโนมัติ {csvResult.created_stores.length} ร้าน:</p>
+                                                <ul className="list-disc list-inside mt-1">
+                                                    {csvResult.created_stores.map((s: any, i: number) => (
+                                                        <li key={i}>{s.name} ({s.platform})</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <p className="font-medium mb-2">❌ {csvResult.error}</p>
+                                        {csvResult.unknown_products?.length > 0 && (
+                                            <div className="mt-2">
+                                                <p className="text-xs font-medium mb-2">รหัสสินค้าที่ไม่พบในระบบ:</p>
+                                                <div className="space-y-1.5">
+                                                    {csvResult.unknown_products.slice(0, 5).map((item: any, i: number) => (
+                                                        <div key={i} className="flex items-start gap-2 bg-white rounded px-3 py-1.5 text-xs border border-red-100">
+                                                            <span className="font-mono font-bold text-red-700 whitespace-nowrap">{item.sku}</span>
+                                                            <span className="text-gray-500">— บรรทัดที่ {item.line_display} ({item.count} แถว)</span>
+                                                        </div>
+                                                    ))}
+                                                    {csvResult.unknown_products.length > 5 && (
+                                                        <p className="text-xs text-red-500 italic mt-1">และยังมีอีก {csvResult.unknown_products.length - 5} รายการ...</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* CSV Preview */}
+                        {csvPreview.length > 0 && (
+                            <div>
+                                <h3 className="text-sm font-medium text-gray-600 mb-2">ตัวอย่างข้อมูล ({csvPreview.length - 1} แถวแรก)</h3>
+                                <div className="overflow-x-auto border rounded-md">
+                                    <table className="text-xs whitespace-nowrap">
+                                        <thead className="bg-gray-100">
+                                            <tr>
+                                                {csvPreview[0]?.map((h, i) => (
+                                                    <th key={i} className="px-2 py-1 text-left font-medium text-gray-600 border-b">{h || `Col${i + 1}`}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {csvPreview.slice(1).map((row, ri) => (
+                                                <tr key={ri} className="border-b hover:bg-gray-50">
+                                                    {row.map((cell, ci) => (
+                                                        <td key={ci} className="px-2 py-1">{cell.length > 30 ? cell.slice(0, 30) + '...' : cell}</td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Import History */}
+                    <div className="bg-white rounded-lg shadow">
+                        <div className="px-4 py-3 border-b">
+                            <h3 className="font-semibold text-sm">ประวัติการนำเข้า</h3>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left">วันที่</th>
+                                        <th className="px-3 py-2 text-left">ไฟล์</th>
+                                        <th className="px-3 py-2 text-right">นำเข้า</th>
+                                        <th className="px-3 py-2 text-right">ข้าม</th>
+                                        <th className="px-3 py-2 text-left">ผู้นำเข้า</th>
+                                        <th className="px-3 py-2 text-center">จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {importBatches.length === 0 ? (
+                                        <tr><td colSpan={6} className="text-center py-6 text-gray-400">ยังไม่มีข้อมูลการนำเข้า</td></tr>
+                                    ) : importBatches.map((b: any) => (
+                                        <tr key={b.id} className="border-b hover:bg-gray-50">
+                                            <td className="px-3 py-2 text-xs text-gray-500">{new Date(b.created_at).toLocaleString('th-TH')}</td>
+                                            <td className="px-3 py-2 text-xs">{b.filename}</td>
+                                            <td className="px-3 py-2 text-right font-medium text-green-600">{b.imported_rows}</td>
+                                            <td className="px-3 py-2 text-right text-amber-600">{b.skipped_rows || 0}</td>
+                                            <td className="px-3 py-2 text-xs">{b.first_name} {b.last_name || ''}</td>
+                                            <td className="px-3 py-2 text-center">
+                                                <button onClick={() => setViewBatchId(viewBatchId === b.id ? null : b.id)} className="text-blue-600 hover:underline text-xs mr-2">
+                                                    {viewBatchId === b.id ? 'ซ่อน' : 'ดูรายการ'}
+                                                </button>
+                                                <button onClick={() => handleDeleteBatch(b)} className="text-red-500 hover:underline text-xs">
+                                                    ลบ
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Batch Detail */}
+                        {viewBatchId && (
+                            <div className="px-4 py-3 border-t bg-blue-50">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-sm font-semibold text-blue-800">รายการ Batch #{viewBatchId}</h4>
+                                    {batchSummary && (
+                                        <div className="flex gap-4 text-xs">
+                                            <span>ยอดรวม: <b className="text-green-700">{Number(batchSummary.sum_sales || 0).toLocaleString()}</b> ฿</span>
+                                            <span>ออเดอร์: <b>{batchSummary.unique_orders}</b></span>
+                                            <span>จัดส่ง: <b className="text-blue-600">{batchSummary.shipped_count}</b></span>
+                                            <span>ยกเลิก: <b className="text-red-600">{batchSummary.cancelled_count}</b></span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                                    <table className="w-full text-xs">
+                                        <thead className="bg-white sticky top-0">
+                                            <tr>
+                                                <th className="px-2 py-1 text-left">รหัส</th>
+                                                <th className="px-2 py-1 text-left">สินค้า</th>
+                                                <th className="px-2 py-1 text-right">จำนวน</th>
+                                                <th className="px-2 py-1 text-right">ราคา</th>
+                                                <th className="px-2 py-1 text-left">วันสั่ง</th>
+                                                <th className="px-2 py-1 text-left">สถานะ</th>
+                                                <th className="px-2 py-1 text-left">เลขพัสดุ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {batchOrders.map((o: any) => (
+                                                <tr key={o.id} className={`border-b ${o.order_status === 'ยกเลิกแล้ว' ? 'bg-red-50 text-red-400' : ''}`}>
+                                                    <td className="px-2 py-1">{o.product_code}</td>
+                                                    <td className="px-2 py-1 max-w-[200px] truncate">{o.product_name}</td>
+                                                    <td className="px-2 py-1 text-right">{o.quantity}</td>
+                                                    <td className="px-2 py-1 text-right">{Number(o.total_price).toLocaleString()}</td>
+                                                    <td className="px-2 py-1">{o.order_date || '-'}</td>
+                                                    <td className="px-2 py-1">
+                                                        <span className={`px-1.5 py-0.5 rounded text-xs ${o.order_status === 'จัดส่งแล้ว' ? 'bg-green-100 text-green-700' : o.order_status === 'ยกเลิกแล้ว' ? 'bg-red-100 text-red-700' : 'bg-gray-100'}`}>
+                                                            {o.order_status || o.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-2 py-1 text-gray-500">{o.tracking_number || '-'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </section>
             )}

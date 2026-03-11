@@ -9,6 +9,42 @@ try {
   $conn = db_connect();
   $input = json_decode(file_get_contents("php://input"), true);
 
+  // Support batch records (V2 style)
+  if (isset($input['records']) && is_array($input['records'])) {
+    $stmt = $conn->prepare("
+      INSERT INTO marketplace_ads_log (store_id, date, ads_cost, impressions, clicks, user_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        ads_cost = VALUES(ads_cost),
+        impressions = VALUES(impressions),
+        clicks = VALUES(clicks),
+        user_id = VALUES(user_id)
+    ");
+    $inserted = 0; $updated = 0; $skipped = 0;
+    foreach ($input['records'] as $rec) {
+      $storeId = $rec['store_id'] ?? null;
+      $date = $rec['date'] ?? null;
+      $userId = $rec['user_id'] ?? null;
+      if (!$storeId || !$date || !$userId) { $skipped++; continue; }
+      $stmt->execute([
+        $storeId, $date,
+        $rec['ads_cost'] ?? 0,
+        $rec['impressions'] ?? 0,
+        $rec['clicks'] ?? 0,
+        $userId
+      ]);
+      $affected = $stmt->rowCount();
+      if ($affected === 1) $inserted++;
+      elseif ($affected === 2) $updated++;
+      else $skipped++;
+    }
+    echo json_encode(["success" => true, "data" => [
+      "inserted" => $inserted, "updated" => $updated, "skipped" => $skipped
+    ]]);
+    exit;
+  }
+
+  // Legacy single-record support
   $storeId = $input['store_id'] ?? null;
   $date = $input['date'] ?? null;
   $adsCost = $input['ads_cost'] ?? 0;
