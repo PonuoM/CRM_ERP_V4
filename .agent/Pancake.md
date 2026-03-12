@@ -11,6 +11,7 @@
 | Page Stats | `Page Stats` / `Page Performance` | `pages/PageStatsPage.tsx` | สถิติรายเพจ (ลูกค้าใหม่, แชท, คอมเม้น, ออเดอร์) |
 | Engagement Insights | `Engagement Insights` | `pages/EngagementStatsPage.tsx` | สถิติ Engagement (ลูกค้าใหม่/เก่า ที่ตอบกลับ, อัตราสั่งซื้อ) |
 | Pancake User Mapping | `Pancake User Mapping` | `pages/PancakeUserIntegrationPage.tsx` | เชื่อมต่อผู้ใช้ CRM กับผู้ใช้ Pancake |
+| Pages Management | `Pages` / `เพจ` | `pages/PagesManagementPage.tsx` | จัดการเพจ (CRUD, Sync จาก Pancake, toggle สถานะ) |
 
 ---
 
@@ -235,8 +236,115 @@ GET  https://pages.fm/api/public_api/v1/pages/{pageId}/statistics/customer_engag
 
 ---
 
-## Retry Mechanism
+### Retry Mechanism
 ทั้ง EngagementStatsPage และ PageStatsPage มี `fetchWithRetry()`:
 - retry สูงสุด 3 ครั้ง
 - exponential backoff (1s, 2s, 4s)
 - retry เฉพาะกรณี "Server internal error"
+
+### Token Error Modal
+Component: `components/PancakeTokenErrorModal.tsx`
+- แสดงเมื่อ `generate_page_access_token` ล้มเหลวบางเพจ
+- แสดงชื่อเพจ, Page ID, error message จาก API
+- แสดงจำนวนสำเร็จ vs ล้มเหลว
+- ใช้ร่วมกันทั้ง PageStatsPage และ EngagementStatsPage
+
+---
+
+## 4. PagesManagementPage — จัดการเพจ
+
+### หน้าที่
+จัดการเพจทั้งหมดในระบบ — ดู, เพิ่ม, แก้ไข, ลบ, sync จาก Pancake, toggle เปิด/ปิดใช้งาน
+
+### ฟีเจอร์หลัก
+
+#### 1. Sync จาก Pancake (`syncPagesWithDatabase()`)
+เรียก Pancake API เพื่อดึงรายชื่อเพจ → sync ลง DB 3 ขั้นตอน:
+
+```
+Pancake API (GET /api/v1/pages)
+  ↓ ดึง activated + inactivated pages
+sync_pages.php          → upsert ข้อมูลเพจ
+  ↓
+sync_page_users.php     → upsert ผู้ใช้ของเพจ
+  ↓
+sync_page_list_user.php → upsert ความสัมพันธ์เพจ-ผู้ใช้
+```
+
+#### 2. เพิ่มเพจ Manual
+- เพิ่มเพจที่ไม่ได้มาจาก Pancake (page_type = `manual`)
+- กรอก: ชื่อ, Platform, URL, ประเภทสินค้า
+- เรียก `insert_manual_page.php`
+
+#### 3. Toggle สถานะ (เปิด/ปิดใช้งาน)
+- กดสวิตช์ → เรียก `toggle_page_status.php`
+- เพจ active = ใช้ใน dropdown ค้นหาของหน้า Page Stats, Engagement
+
+#### 4. จัดการเพจ (`ManagePageButton`)
+- แก้ไข: Display Name, Sell Product Type, URL
+- เพจ Pancake: ชื่อ System ล็อค (แก้ได้เฉพาะ Display Name)
+- เพจ Manual: แก้ชื่อได้ (sync display_name → name)
+
+#### 5. ลบเพจ
+- ลบได้เฉพาะเพจ `page_type = 'manual'`
+- เรียก `delete_page.php`
+
+#### 6. ปิดใช้งาน Pancake ทั้งหมด
+- ปิด active ทุกเพจ Pancake ของบริษัท
+- เรียก `disable_pancake_pages.php`
+
+#### 7. Env: แสดงเพจ Pancake ในหน้าสร้างออเดอร์
+- Toggle `PANCAKE_SHOW_IN_CREATE_ORDER` = `1`/`0`
+- ควบคุมว่าจะแสดงเพจ Pancake ใน CreateOrderPage หรือไม่
+
+### ตัวกรอง
+| ตัวกรอง | ค่า |
+|---------|-----|
+| คำค้น | ค้นหาชื่อเพจ |
+| ทีม | ทั้งหมด (ยังไม่ใช้จริง) |
+| สถานะ | ทั้งหมด / ใช้งาน / ไม่ใช้งาน |
+| ประเภทเพจ | ทั้งหมด / Pancake / เพจที่เพิ่มเอง / [env types] |
+
+### ตารางแสดงข้อมูล
+| คอลัมน์ | คำอธิบาย |
+|---------|----------|
+| ชื่อเพจ | icon platform + display_name หรือ name |
+| ประเภทเพจ | badge: Pancake / Manual / อื่นๆ จาก env |
+| URL | ลิงก์เพจ (ถ้ามี) |
+| สถานะ | toggle เปิด/ปิด |
+| Admin | จำนวนผู้ดูแลเพจ (`user_count`) |
+| Marketing | จำนวน marketing user (`marketing_user_count`) |
+| จัดการ | ปุ่มแก้ไข (ManagePageButton) |
+| ลบ | ปุ่มลบ (เฉพาะ manual) |
+
+### เพจที่ถูกซ่อน (Hidden Pages)
+- เพจที่ `still_in_list = 0` (ถูกลบจาก Pancake แล้ว)
+- กดปุ่ม "แสดงเพจที่ถูกซ่อน" เพื่อดู
+- ยังสามารถ toggle สถานะ / จัดการ / ลบได้
+
+### Sub-components
+| Component | หน้าที่ |
+|-----------|---------|
+| `ManagePageButton` | Modal แก้ไขเพจ (display_name, sell_product_type, url) |
+| `SellProductTypeInput` | Input + dropdown ค้นหาประเภทสินค้า (จาก `getSellProductTypes()`) |
+| `PageTypeDisplay` | Badge แสดงประเภทเพจ (สีตาม type) |
+| `PageIconFront` | Icon ตาม platform |
+| `PancakeEnvOffSidebar` | Sidebar จัดการ env (ปุ่ม ⚙️ มุมขวาล่าง, เฉพาะ SuperAdmin/AdminControl) |
+
+### Backend APIs
+| API | Method | หน้าที่ |
+|-----|--------|---------|
+| `Page_DB/env_manager.php` | GET/POST | ดึง/ตั้งค่า env variables (Access Token, page_store_db ฯลฯ) |
+| `Page_DB/sync_pages.php` | POST | Sync เพจจาก Pancake ลง DB |
+| `Page_DB/sync_page_users.php` | POST | Sync ผู้ใช้เพจจาก Pancake ลง DB |
+| `Page_DB/sync_page_list_user.php` | POST | Sync ความสัมพันธ์เพจ-ผู้ใช้ |
+| `Marketing_DB/insert_manual_page.php` | POST | เพิ่มเพจ manual |
+| `Marketing_DB/toggle_page_status.php` | POST | เปลี่ยนสถานะ active/inactive |
+| `Marketing_DB/delete_page.php` | POST | ลบเพจ manual |
+| `Marketing_DB/disable_pancake_pages.php` | POST | ปิดใช้งาน Pancake ทั้งหมด |
+
+### Pancake API ที่ใช้
+```
+GET https://pages.fm/api/v1/pages?access_token={ACCESS_TOKEN}
+→ Response: { categorized: { activated: [...], inactivated: [...] } }
+```

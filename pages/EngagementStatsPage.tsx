@@ -6,6 +6,7 @@ import StatCard from '@/components/StatCard_EngagementPage';
 import DateRangePicker, { DateRange } from '@/components/DateRangePicker';
 import PageIconFront from '@/components/PageIconFront';
 import PancakeEnvOffSidebar from '@/components/PancakeEnvOffSidebar';
+import PancakeTokenErrorModal, { TokenError } from '@/components/PancakeTokenErrorModal';
 import resolveApiBasePath from '@/utils/apiBasePath';
 import { listPages } from '@/services/api';
 
@@ -43,7 +44,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     return { start: start.toISOString(), end: end.toISOString() };
   });
   const [activeTab, setActiveTab] = useState<'time' | 'user' | 'page'>('time');
-  const [pageSearchTerm, setPageSearchTerm] = useState<string>('');
+  const [pageSearchTerm, setPageSearchTerm] = useState<string>('ทั้งหมด');
   const [isSelectOpen, setIsSelectOpen] = useState<boolean>(false);
   const [pageSelectError, setPageSelectError] = useState<string>('');
   const [allPages, setAllPages] = useState<Array<{ id: number, name: string, page_id: string }>>([]);
@@ -95,6 +96,11 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   const [isAccessTokenWarningOpen, setIsAccessTokenWarningOpen] = useState<boolean>(false);
   const [wasEnvSidebarOpened, setWasEnvSidebarOpened] = useState<boolean>(false);
   const [isStoreDbEnabled, setIsStoreDbEnabled] = useState<boolean>(true); // Default to enabled
+
+  // Token error modal state
+  const [tokenErrors, setTokenErrors] = useState<TokenError[]>([]);
+  const [tokenErrorSuccessCount, setTokenErrorSuccessCount] = useState<number>(0);
+  const [isTokenErrorModalOpen, setIsTokenErrorModalOpen] = useState<boolean>(false);
 
   // State for all pages engagement data
   const [allPagesEngagementData, setAllPagesEngagementData] = useState<Record<string, any>>({});
@@ -478,7 +484,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         // Fetch data from all pages
         const activePagesList = allPages.filter(p => {
           const isActive = p.active === 1 || p.active === true;
-          return isActive;
+          const isPancake = (p as any).page_type === 'pancake';
+          const isInList = (p as any).still_in_list !== 0;
+          return isActive && isPancake && isInList;
         });
 
         if (activePagesList.length === 0) {
@@ -486,7 +494,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         }
 
         const allEngagementData: any[] = [];
-        const failedPages: string[] = [];
+        const fetchTokenErrors: TokenError[] = [];
         const successPages: string[] = [];
 
         for (const page of activePagesList) {
@@ -505,14 +513,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             );
 
             if (!tokenResponse.ok) {
-              failedPages.push(`${page.name} (ไม่สามารถสร้าง token)`);
+              fetchTokenErrors.push({ pageName: page.name, pageId: String(pageId), message: 'ไม่สามารถเชื่อมต่อ API ได้' });
               continue;
             }
 
             const tokenData = await tokenResponse.json();
 
             if (!tokenData.success || !tokenData.page_access_token) {
-              failedPages.push(`${page.name} (token ไม่ถูกต้อง)`);
+              fetchTokenErrors.push({ pageName: page.name, pageId: String(pageId), message: tokenData.message || 'ไม่สามารถสร้าง token ได้' });
               continue;
             }
 
@@ -523,7 +531,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             );
 
             if (!engagementResponse.ok) {
-              failedPages.push(`${page.name} (ไม่สามารถดึงข้อมูล)`);
+              fetchTokenErrors.push({ pageName: page.name, pageId: String(pageId), message: 'ไม่สามารถดึงข้อมูล engagement ได้' });
               continue;
             }
 
@@ -551,20 +559,29 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                 });
               }
             } else {
-              failedPages.push(`${page.name} (ไม่มีข้อมูล)`);
+              fetchTokenErrors.push({ pageName: page.name, pageId: String(pageId), message: 'ไม่มีข้อมูล' });
             }
           } catch (error) {
-            failedPages.push(`${page.name} (${error instanceof Error ? error.message : 'Unknown error'})`);
+            fetchTokenErrors.push({ pageName: page.name, pageId: String(pageId), message: error instanceof Error ? error.message : 'Unknown error' });
             // Continue with other pages even if one fails
           }
         }
 
         if (allEngagementData.length === 0) {
-          let errorMessage = `ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้\n\nเพจที่พยายามดึงข้อมูล: ${activePagesList.length} เพจ`;
-          if (failedPages.length > 0) {
-            errorMessage += `\n\nเพจที่ล้มเหลว:\n${failedPages.join('\n')}`;
+          let errorMessage = `ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้`;
+          if (fetchTokenErrors.length > 0) {
+            setTokenErrors(fetchTokenErrors);
+            setTokenErrorSuccessCount(0);
+            setIsTokenErrorModalOpen(true);
           }
           throw new Error(errorMessage);
+        }
+
+        // Show token error modal if there were partial failures
+        if (fetchTokenErrors.length > 0) {
+          setTokenErrors(fetchTokenErrors);
+          setTokenErrorSuccessCount(successPages.length);
+          setIsTokenErrorModalOpen(true);
         }
 
         // Aggregate data from all pages
@@ -1375,6 +1392,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                     ทั้งหมด
                   </div>
                   {allPages
+                    .filter(page => (page as any).active && (page as any).page_type === 'pancake')
                     .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) || pageSearchTerm === 'ทั้งหมด')
                     .map((page) => (
                       <div
@@ -2718,6 +2736,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           </div>
         )}
       </div>
+
+      {/* Token Error Modal */}
+      <PancakeTokenErrorModal
+        isOpen={isTokenErrorModalOpen}
+        onClose={() => setIsTokenErrorModalOpen(false)}
+        errors={tokenErrors}
+        successCount={tokenErrorSuccessCount}
+      />
     </>
   );
 };

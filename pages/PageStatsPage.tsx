@@ -5,6 +5,7 @@ import StatCard from '@/components/StatCard_EngagementPage';
 import MultiLineChart from '@/components/MultiLineChart';
 import PageIconFront from '@/components/PageIconFront';
 import PancakeEnvOffSidebar from '@/components/PancakeEnvOffSidebar';
+import PancakeTokenErrorModal, { TokenError } from '@/components/PancakeTokenErrorModal';
 import resolveApiBasePath from '@/utils/apiBasePath';
 import { listPages } from '@/services/api';
 
@@ -56,13 +57,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [pages, setPages] = useState<Array<{ id: number, name: string, page_id: string, platform?: string }>>([]);
-  const [selectedPage, setSelectedPage] = useState<string>('');
+  const [selectedPage, setSelectedPage] = useState<string>('ALL');
   const [pageStatsData, setPageStatsData] = useState<any[]>([]);
   const [prevPageStatsData, setPrevPageStatsData] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [usePageStats, setUsePageStats] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'hourly' | 'daily'>('daily');
-  const [pageSearchTerm, setPageSearchTerm] = useState<string>('');
+  const [pageSearchTerm, setPageSearchTerm] = useState<string>('ทั้งหมด');
   const [isSelectOpen, setIsSelectOpen] = useState<boolean>(false);
   const [useCustomDateRange, setUseCustomDateRange] = useState<boolean>(false);
   const [customDateRange, setCustomDateRange] = useState<string>('');
@@ -108,6 +109,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [isAccessTokenWarningOpen, setIsAccessTokenWarningOpen] = useState<boolean>(false);
   const [wasEnvSidebarOpened, setWasEnvSidebarOpened] = useState<boolean>(false);
   const [isStoreDbEnabled, setIsStoreDbEnabled] = useState<boolean>(true); // Default to enabled
+
+  // Token error modal state
+  const [tokenErrors, setTokenErrors] = useState<TokenError[]>([]);
+  const [tokenErrorSuccessCount, setTokenErrorSuccessCount] = useState<number>(0);
+  const [isTokenErrorModalOpen, setIsTokenErrorModalOpen] = useState<boolean>(false);
 
   // Get current user from localStorage
   useEffect(() => {
@@ -1222,7 +1228,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
       if (selectedPage === 'ALL') {
         // Fetch data for all pages
-        const pagesToFetch = pages.filter(page => page.page_id || page.id.toString());
+        const pagesToFetch = pages.filter(page => (page as any).active && (page as any).page_type === 'pancake' && (page as any).still_in_list !== 0 && (page.page_id || page.id.toString()));
+        const fetchTokenErrors: TokenError[] = [];
+        let fetchSuccessCount = 0;
 
         for (const page of pagesToFetch) {
           const pageId = page.page_id || page.id.toString();
@@ -1239,16 +1247,20 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             );
 
             if (!tokenResponse.ok) {
-              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId} ได้`);
+              const pageName = pages.find(p => (p.page_id || p.id.toString()) === pageId)?.name || pageId;
+              fetchTokenErrors.push({ pageName, pageId, message: 'ไม่สามารถเชื่อมต่อ API ได้' });
               continue;
             }
 
             const tokenData = await tokenResponse.json();
 
             if (!tokenData.success || !tokenData.page_access_token) {
-              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId}: ` + (tokenData.message || 'Unknown error'));
+              const pageName = pages.find(p => (p.page_id || p.id.toString()) === pageId)?.name || pageId;
+              fetchTokenErrors.push({ pageName, pageId, message: tokenData.message || 'ไม่สามารถสร้าง token ได้' });
               continue;
             }
+
+            fetchSuccessCount++;
 
             // Fetch current period data
             const statsResponse = await fetchWithRetry(
@@ -1292,6 +1304,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           } catch (error) {
             console.error(`Error fetching data for page ${pageId}:`, error);
           }
+        }
+
+        // Show token error modal if there were failures
+        if (fetchTokenErrors.length > 0) {
+          setTokenErrors(fetchTokenErrors);
+          setTokenErrorSuccessCount(fetchSuccessCount);
+          setIsTokenErrorModalOpen(true);
         }
 
         // Sort data from newest to oldest
@@ -1622,6 +1641,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                     ทั้งหมด
                   </div>
                   {pages
+                    .filter(page => (page as any).active && (page as any).page_type === 'pancake')
                     .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) || pageSearchTerm === 'ทั้งหมด')
                     .map((page) => (
                       <div
@@ -2863,6 +2883,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           </div>
         </div>
       )}
+
+      {/* Token Error Modal */}
+      <PancakeTokenErrorModal
+        isOpen={isTokenErrorModalOpen}
+        onClose={() => setIsTokenErrorModalOpen(false)}
+        errors={tokenErrors}
+        successCount={tokenErrorSuccessCount}
+      />
     </div>
   );
 };
