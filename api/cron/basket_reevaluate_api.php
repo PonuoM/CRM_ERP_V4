@@ -612,6 +612,323 @@ try {
         exit;
     }
 
+    // ============================================================
+    // ACTION: upsell_stuck → customers in basket 51 without Pending orders
+    // ============================================================
+    if ($action === 'upsell_stuck') {
+        $upsellSql = "
+            SELECT 
+                c.customer_id,
+                c.first_name,
+                c.last_name,
+                c.assigned_to,
+                c.current_basket_key,
+                c.basket_entered_date,
+                c.company_id,
+                DATEDIFF(NOW(), c.basket_entered_date) AS days_in_basket,
+                c.last_order_date,
+                CONCAT(COALESCE(u_owner.first_name,''), ' ', COALESCE(u_owner.last_name,'')) AS owner_name,
+                u_owner.role AS owner_role,
+                bc.basket_name AS current_basket_name
+            FROM customers c
+            LEFT JOIN users u_owner ON u_owner.id = c.assigned_to
+            LEFT JOIN basket_config bc ON bc.id = c.current_basket_key
+            WHERE c.current_basket_key = 51
+              AND COALESCE(c.is_blocked, 0) = 0
+              AND NOT EXISTS (
+                  SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id AND o.order_status = 'Pending'
+              )
+        ";
+        if ($companyId) {
+            $upsellSql .= " AND c.company_id = " . $companyId;
+        }
+        $upsellSql .= " ORDER BY c.basket_entered_date ASC";
+
+        $uStmt = $pdo->query($upsellSql);
+        $stuckCustomers = $uStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Load basket names
+        $nameStmt2 = $pdo->query("SELECT id, basket_name FROM basket_config");
+        $bNames = [];
+        while ($row = $nameStmt2->fetch(PDO::FETCH_ASSOC)) {
+            $bNames[$row['id']] = $row['basket_name'];
+        }
+
+        // Prepare order lookup
+        $orderStmt = $pdo->prepare("
+            SELECT id, order_status, order_date, creator_id, company_id
+            FROM orders WHERE customer_id = ? ORDER BY order_date DESC
+        ");
+
+        // Prepare transition log lookup (last entry into basket 51)
+        $transStmt = $pdo->prepare("
+            SELECT tl.from_basket_key, tl.to_basket_key, tl.transition_type, tl.triggered_by, tl.notes, tl.created_at,
+                   CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS triggered_by_name
+            FROM basket_transition_log tl
+            LEFT JOIN users u ON u.id = tl.triggered_by
+            WHERE tl.customer_id = ? AND tl.to_basket_key = 51
+            ORDER BY tl.created_at DESC LIMIT 1
+        ");
+
+        // Prepare creator name lookup
+        $creatorStmt = $pdo->prepare("SELECT id, first_name, last_name, role, role_id FROM users WHERE id = ?");
+
+        // Status summary
+        $statusSummary = [];
+        $customers = [];
+
+        foreach ($stuckCustomers as $sc) {
+            $cid = (int) $sc['customer_id'];
+
+            // Fetch all orders
+            $orderStmt->execute([$cid]);
+            $orders = $orderStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Enrich orders with creator names
+            $enrichedOrders = [];
+            $latestNonCancelledOrder = null;
+            foreach ($orders as $ord) {
+                $creatorName = '';
+                $creatorRole = '';
+                $creatorRoleId = null;
+                if ($ord['creator_id']) {
+                    $creatorStmt->execute([$ord['creator_id']]);
+                    $cr = $creatorStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($cr) {
+                        $creatorName = trim($cr['first_name'] . ' ' . $cr['last_name']);
+                        $creatorRole = $cr['role'] ?? '';
+                        $creatorRoleId = (int) ($cr['role_id'] ?? 0);
+                    }
+                }
+                $enrichedOrders[] = [
+                    'id' => $ord['id'],
+                    'status' => $ord['order_status'],
+                    'date' => $ord['order_date'],
+                    'creator_id' => (int) $ord['creator_id'],
+                    'creator_name' => $creatorName,
+                    'creator_role' => $creatorRole,
+                    'company_id' => (int) $ord['company_id'],
+                ];
+
+                // Track latest non-cancelled order for correct basket calculation
+                if (!$latestNonCancelledOrder && !in_array($ord['order_status'], ['Cancelled', 'CANCELLED', 'Returned'])) {
+                    $latestNonCancelledOrder = $ord;
+                    $latestNonCancelledOrder['creator_role_id'] = $creatorRoleId;
+                }
+            }
+
+            // Count statuses
+            foreach ($enrichedOrders as $eo) {
+                $s = $eo['status'];
+                if (!isset($statusSummary[$s])) $statusSummary[$s] = 0;
+                $statusSummary[$s]++;
+            }
+
+            // Fetch transition log
+            $transStmt->execute([$cid]);
+            $transition = $transStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+            // Calculate correct basket
+            $correctBasket = 38; // Default: new customer
+            $correctReason = '';
+            if ($latestNonCancelledOrder) {
+                $days = (int) ((time() - strtotime($latestNonCancelledOrder['order_date'])) / 86400);
+                $isTelesaleCreator = in_array($latestNonCancelledOrder['creator_role_id'], [6, 7]);
+                $isOwnSale = $isTelesaleCreator && ($latestNonCancelledOrder['creator_id'] == $sc['assigned_to']);
+
+                if ($isOwnSale) {
+                    if ($days <= 60) { $correctBasket = 39; $correctReason = "ขายเอง, {$days}d <= 60d"; }
+                    elseif ($days <= 90) { $correctBasket = 40; $correctReason = "ขายเอง, {$days}d (61-90d)"; }
+                    elseif ($days <= 180) { $correctBasket = 46; $correctReason = "ขายเอง, {$days}d (91-180d)"; }
+                    elseif ($days <= 365) { $correctBasket = 48; $correctReason = "{$days}d (181-365d)"; }
+                    elseif ($days <= 1095) { $correctBasket = 49; $correctReason = "{$days}d (1-3y)"; }
+                    else { $correctBasket = 50; $correctReason = "{$days}d (3y+)"; }
+                } elseif ($isTelesaleCreator) {
+                    if ($days <= 90) { $correctBasket = 47; $correctReason = "Telesale อื่นขาย, {$days}d <= 90d"; }
+                    elseif ($days <= 180) { $correctBasket = 46; $correctReason = "{$days}d (91-180d)"; }
+                    elseif ($days <= 365) { $correctBasket = 48; $correctReason = "{$days}d (181-365d)"; }
+                    elseif ($days <= 1095) { $correctBasket = 49; $correctReason = "{$days}d (1-3y)"; }
+                    else { $correctBasket = 50; $correctReason = "{$days}d (3y+)"; }
+                } else {
+                    // Non-telesale creator
+                    if ($days <= 60) { $correctBasket = 38; $correctReason = "ไม่ใช่ Telesale สร้าง, {$days}d <= 60d"; }
+                    elseif ($days <= 90) { $correctBasket = 47; $correctReason = "ไม่ใช่ Telesale, {$days}d (61-90d)"; }
+                    elseif ($days <= 180) { $correctBasket = 46; $correctReason = "{$days}d (91-180d)"; }
+                    elseif ($days <= 365) { $correctBasket = 48; $correctReason = "{$days}d (181-365d)"; }
+                    elseif ($days <= 1095) { $correctBasket = 49; $correctReason = "{$days}d (1-3y)"; }
+                    else { $correctBasket = 50; $correctReason = "{$days}d (3y+)"; }
+                }
+            } else {
+                // All orders cancelled/returned
+                $correctBasket = 38;
+                $correctReason = "ทุก order ถูกยกเลิก/คืน → กลับ pool ลูกค้าใหม่";
+            }
+
+            $customers[] = [
+                'customer_id' => (int) $sc['customer_id'],
+                'name' => trim($sc['first_name'] . ' ' . $sc['last_name']),
+                'company_id' => (int) $sc['company_id'],
+                'assigned_to' => (int) $sc['assigned_to'],
+                'owner_name' => trim($sc['owner_name']),
+                'owner_role' => $sc['owner_role'] ?? '',
+                'basket_entered_date' => $sc['basket_entered_date'],
+                'days_in_basket' => (int) $sc['days_in_basket'],
+                'orders' => $enrichedOrders,
+                'order_statuses' => implode(', ', array_unique(array_column($enrichedOrders, 'status'))),
+                'total_orders' => count($enrichedOrders),
+                'transition' => $transition ? [
+                    'from' => (int) ($transition['from_basket_key'] ?? 0),
+                    'from_name' => $bNames[$transition['from_basket_key'] ?? 0] ?? '-',
+                    'type' => $transition['transition_type'],
+                    'by_name' => trim($transition['triggered_by_name']),
+                    'notes' => $transition['notes'],
+                    'date' => $transition['created_at'],
+                ] : null,
+                'correct_basket' => $correctBasket,
+                'correct_basket_name' => $bNames[$correctBasket] ?? "Basket $correctBasket",
+                'correct_reason' => $correctReason,
+            ];
+        }
+
+        // Build summary by correct basket destination
+        $destSummary = [];
+        foreach ($customers as $c) {
+            $dest = $c['correct_basket'];
+            if (!isset($destSummary[$dest])) {
+                $destSummary[$dest] = [
+                    'basket_id' => $dest,
+                    'basket_name' => $c['correct_basket_name'],
+                    'count' => 0
+                ];
+            }
+            $destSummary[$dest]['count']++;
+        }
+
+        echo json_encode([
+            'success' => true,
+            'total' => count($customers),
+            'status_summary' => $statusSummary,
+            'destination_summary' => array_values($destSummary),
+            'customers' => $customers,
+            'scanned_at' => date('Y-m-d H:i:s'),
+        ]);
+        exit;
+    }
+
+    // ============================================================
+    // ACTION: fix_upsell_stuck → Move selected customers out of basket 51
+    // ============================================================
+    if ($action === 'fix_upsell_stuck') {
+        $body = json_decode(file_get_contents('php://input'), true);
+        $customerIds = $body['customer_ids'] ?? [];
+
+        if (empty($customerIds)) {
+            echo json_encode(['success' => false, 'error' => 'No customer IDs provided']);
+            exit;
+        }
+
+        // Load basket names
+        $nameStmt3 = $pdo->query("SELECT id, basket_name FROM basket_config");
+        $bNames3 = [];
+        while ($row = $nameStmt3->fetch(PDO::FETCH_ASSOC)) {
+            $bNames3[$row['id']] = $row['basket_name'];
+        }
+
+        // Verify these customers are actually in basket 51
+        $placeholders = implode(',', array_map('intval', $customerIds));
+        $verifyStmt = $pdo->query("
+            SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to, c.current_basket_key
+            FROM customers c
+            WHERE c.customer_id IN ($placeholders)
+              AND c.current_basket_key = 51
+              AND COALESCE(c.is_blocked, 0) = 0
+        ");
+        $toFix = $verifyStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // For each customer, calculate correct basket (same logic as scan)
+        $orderStmt2 = $pdo->prepare("
+            SELECT id, order_status, order_date, creator_id 
+            FROM orders WHERE customer_id = ? AND order_status NOT IN ('Cancelled','CANCELLED','Returned')
+            ORDER BY order_date DESC LIMIT 1
+        ");
+        $creatorStmt2 = $pdo->prepare("SELECT role_id FROM users WHERE id = ?");
+
+        $fixed = 0;
+        $errors = 0;
+        $results = [];
+
+        $updateStmt = $pdo->prepare("UPDATE customers SET current_basket_key = ?, basket_entered_date = NOW() WHERE customer_id = ?");
+        $logStmt = $pdo->prepare("
+            INSERT INTO basket_transition_log 
+                (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at)
+            VALUES (?, 51, ?, ?, ?, 'upsell_stuck_fix', ?, ?, NOW())
+        ");
+
+        foreach ($toFix as $cust) {
+            try {
+                $cid = (int) $cust['customer_id'];
+                $assignedTo = (int) $cust['assigned_to'];
+
+                // Calculate correct basket
+                $orderStmt2->execute([$cid]);
+                $latestOrder = $orderStmt2->fetch(PDO::FETCH_ASSOC);
+
+                $correctBasket = 38;
+                if ($latestOrder) {
+                    $days = (int) ((time() - strtotime($latestOrder['order_date'])) / 86400);
+                    $creatorStmt2->execute([$latestOrder['creator_id']]);
+                    $creatorInfo = $creatorStmt2->fetch(PDO::FETCH_ASSOC);
+                    $isTelesale = $creatorInfo && in_array($creatorInfo['role_id'], [6, 7]);
+                    $isOwn = $isTelesale && ($latestOrder['creator_id'] == $assignedTo);
+
+                    if ($isOwn) {
+                        if ($days <= 60) $correctBasket = 39;
+                        elseif ($days <= 90) $correctBasket = 40;
+                        elseif ($days <= 180) $correctBasket = 46;
+                        elseif ($days <= 365) $correctBasket = 48;
+                        elseif ($days <= 1095) $correctBasket = 49;
+                        else $correctBasket = 50;
+                    } elseif ($isTelesale) {
+                        if ($days <= 90) $correctBasket = 47;
+                        elseif ($days <= 180) $correctBasket = 46;
+                        elseif ($days <= 365) $correctBasket = 48;
+                        elseif ($days <= 1095) $correctBasket = 49;
+                        else $correctBasket = 50;
+                    } else {
+                        if ($days <= 60) $correctBasket = 38;
+                        elseif ($days <= 90) $correctBasket = 47;
+                        elseif ($days <= 180) $correctBasket = 46;
+                        elseif ($days <= 365) $correctBasket = 48;
+                        elseif ($days <= 1095) $correctBasket = 49;
+                        else $correctBasket = 50;
+                    }
+                }
+
+                $updateStmt->execute([$correctBasket, $cid]);
+
+                $name = trim($cust['first_name'] . ' ' . $cust['last_name']);
+                $toName = $bNames3[$correctBasket] ?? "Basket $correctBasket";
+                $note = "Upsell stuck fix: '$name' Basket 51 → $toName";
+                $logStmt->execute([$cid, $correctBasket, $assignedTo, $assignedTo, $assignedTo, $note]);
+
+                $fixed++;
+                $results[] = ['customer_id' => $cid, 'to_basket' => $correctBasket, 'status' => 'ok'];
+            } catch (Exception $e) {
+                $errors++;
+                $results[] = ['customer_id' => $cid, 'error' => $e->getMessage()];
+            }
+        }
+
+        echo json_encode([
+            'success' => true,
+            'fixed' => $fixed,
+            'errors' => $errors,
+            'results' => $results,
+            'fixed_at' => date('Y-m-d H:i:s')
+        ]);
+        exit;
+    }
+
     echo json_encode(['success' => false, 'error' => 'Invalid action']);
 
 } catch (Exception $e) {

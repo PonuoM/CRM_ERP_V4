@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../services/api';
-import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, RefreshCw, Users, Calendar, Package, ShieldCheck, Search, ArrowRight, CheckCircle2, XCircle, ChevronRight, ArrowLeft, Eye, UserX, Building2 } from 'lucide-react';
+import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, RefreshCw, Users, Calendar, Package, ShieldCheck, Search, ArrowRight, CheckCircle2, XCircle, ChevronRight, ChevronDown, ArrowLeft, Eye, UserX, Building2, AlertTriangle } from 'lucide-react';
 import { User } from '../types';
 
 interface BasketSettingsPageProps {
@@ -71,6 +71,12 @@ const BASKET_GROUPS = [
         label: 'ลูกค้าหลงถัง',
         icon: UserX,
         description: 'คนขายจริง ≠ เจ้าของ (ถัง 39/40)'
+    },
+    {
+        key: 'upsell_stuck',
+        label: 'ค้าง Upsell',
+        icon: AlertTriangle,
+        description: 'ลูกค้าค้าง Basket 51 ไม่มี order Pending'
     }
 ];
 
@@ -146,6 +152,14 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
     const [misSelected, setMisSelected] = useState<Set<number>>(new Set());
     const [misFixing, setMisFixing] = useState(false);
     const [misShowAll, setMisShowAll] = useState(false);
+
+    // Upsell stuck state
+    const [upScanning, setUpScanning] = useState(false);
+    const [upFixing, setUpFixing] = useState(false);
+    const [upResult, setUpResult] = useState<any>(null);
+    const [upSelected, setUpSelected] = useState<Set<number>>(new Set());
+    const [upExpanded, setUpExpanded] = useState<Set<number>>(new Set());
+    const [upFixResult, setUpFixResult] = useState<any>(null);
 
     // Load companies list for Super Admin
     useEffect(() => {
@@ -342,6 +356,67 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         }
     };
 
+    // Upsell stuck handlers
+    const handleUpScan = async () => {
+        setUpScanning(true);
+        setUpResult(null);
+        setUpFixResult(null);
+        setUpSelected(new Set());
+        setUpExpanded(new Set());
+        try {
+            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=upsell_stuck&companyId=${effectiveCompanyId}`);
+            setUpResult(res);
+            // Auto-select all
+            setUpSelected(new Set(res.customers.map((c: any) => c.customer_id)));
+        } catch (error) {
+            console.error('Upsell scan failed:', error);
+            setMessage({ type: 'error', text: 'สแกนล้มเหลว' });
+        } finally {
+            setUpScanning(false);
+        }
+    };
+
+    const handleUpFix = async () => {
+        if (upSelected.size === 0) return;
+        if (!confirm(`ยืนยันย้ายลูกค้า ${upSelected.size} คนออกจาก Basket 51 ไปถังที่ถูกต้อง?`)) return;
+        setUpFixing(true);
+        try {
+            const res = await apiFetch(`cron/basket_reevaluate_api.php?action=fix_upsell_stuck&companyId=${effectiveCompanyId}`, {
+                method: 'POST',
+                body: JSON.stringify({ customer_ids: Array.from(upSelected) })
+            });
+            setUpFixResult(res);
+            setUpResult(null);
+            setUpSelected(new Set());
+            setMessage({ type: 'success', text: `แก้ไขสำเร็จ ${res.fixed} คน` });
+        } catch (error) {
+            console.error('Upsell fix failed:', error);
+            setMessage({ type: 'error', text: 'แก้ไขล้มเหลว' });
+        } finally {
+            setUpFixing(false);
+        }
+    };
+
+    const toggleUpExpand = (id: number) => {
+        setUpExpanded(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const statusColor = (s: string) => {
+        switch (s) {
+            case 'Delivered': return 'bg-green-100 text-green-700';
+            case 'Cancelled': case 'CANCELLED': return 'bg-red-100 text-red-700';
+            case 'Shipping': return 'bg-blue-100 text-blue-700';
+            case 'Picking': return 'bg-yellow-100 text-yellow-700';
+            case 'PreApproved': return 'bg-purple-100 text-purple-700';
+            case 'Returned': return 'bg-orange-100 text-orange-700';
+            default: return 'bg-gray-100 text-gray-600';
+        }
+    };
+
     const filteredBaskets = baskets.filter(b => b.target_page === activeGroup);
 
     if (loading) {
@@ -365,7 +440,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                 <p className="text-gray-500">จัดการเงื่อนไขการจัดกลุ่มลูกค้าและการคืน Pool</p>
                             </div>
                         </div>
-                        {isSuperAdmin && companies.length > 0 && (activeGroup === 'reevaluate' || activeGroup === 'misassigned') && (
+                        {isSuperAdmin && companies.length > 0 && (activeGroup === 'reevaluate' || activeGroup === 'misassigned' || activeGroup === 'upsell_stuck') && (
                             <div className="flex items-center gap-2">
                                 <Building2 size={20} className="text-gray-400" />
                                 <select
@@ -884,6 +959,256 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                     <button
                                                         onClick={handleMisScan}
                                                         disabled={misScanning}
+                                                        className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+                                                    >
+                                                        <RefreshCw size={20} /> สแกนใหม่
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ) : activeGroup === 'upsell_stuck' ? (
+                            /* Upsell Stuck Panel */
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                                    <AlertTriangle size={24} className="text-amber-600" />
+                                    ลูกค้าค้าง Upsell (Basket 51)
+                                </h2>
+                                <p className="text-gray-500 text-sm mb-6">
+                                    สแกนหาลูกค้าที่อยู่ใน Basket 51 (อัพเซล) แต่ไม่มี order ที่ Pending อยู่ — พร้อมหลักฐานรายการ order ทั้งหมด
+                                </p>
+
+                                <button
+                                    onClick={handleUpScan}
+                                    disabled={upScanning}
+                                    className="px-6 py-3 bg-amber-600 text-white rounded-xl hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2 mb-6 shadow-sm"
+                                >
+                                    {upScanning ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
+                                    {upScanning ? 'กำลังสแกน...' : 'สแกนหาลูกค้าค้าง Upsell'}
+                                </button>
+
+                                {/* Fix Result */}
+                                {upFixResult && (
+                                    <div className="mb-6 p-6 bg-green-50 border border-green-200 rounded-xl">
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <CheckCircle2 size={28} className="text-green-600" />
+                                            <h3 className="text-lg font-bold text-green-800">แก้ไขเรียบร้อย!</h3>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4 text-center">
+                                            <div className="bg-white rounded-lg p-3">
+                                                <div className="text-2xl font-bold text-green-600">{upFixResult.fixed}</div>
+                                                <div className="text-xs text-gray-500">แก้ไขแล้ว</div>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-3">
+                                                <div className="text-2xl font-bold text-red-600">{upFixResult.errors}</div>
+                                                <div className="text-xs text-gray-500">ผิดพลาด</div>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-3">แก้ไขเมื่อ: {upFixResult.fixed_at}</p>
+                                        <button onClick={handleUpScan} className="mt-4 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm flex items-center gap-2">
+                                            <Search size={16} /> สแกนอีกครั้ง
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Scan Result */}
+                                {upResult && (
+                                    <div>
+                                        {/* Summary Header */}
+                                        <div className={`p-5 rounded-xl mb-6 ${upResult.total === 0 ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                                            <div className="flex items-center gap-3">
+                                                {upResult.total === 0
+                                                    ? <CheckCircle2 size={28} className="text-green-600" />
+                                                    : <AlertTriangle size={28} className="text-amber-600" />
+                                                }
+                                                <div>
+                                                    <h3 className={`text-lg font-bold ${upResult.total === 0 ? 'text-green-800' : 'text-amber-800'}`}>
+                                                        {upResult.total === 0
+                                                            ? '✅ ไม่พบลูกค้าค้าง Upsell!'
+                                                            : `⚠️ พบ ${upResult.total.toLocaleString()} คนค้างใน Basket 51`
+                                                        }
+                                                    </h3>
+                                                    <p className="text-xs text-gray-500">สแกนเมื่อ: {upResult.scanned_at}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {upResult.total > 0 && (
+                                            <>
+                                                {/* Status Summary Cards */}
+                                                <h4 className="font-semibold text-gray-700 mb-3">สรุปสถานะ Order</h4>
+                                                <div className="flex gap-3 mb-4 flex-wrap">
+                                                    {Object.entries(upResult.status_summary as Record<string, number>).map(([status, count]) => (
+                                                        <div key={status} className={`px-3 py-2 rounded-lg border text-sm font-medium ${statusColor(status)}`}>
+                                                            {status}: <strong>{(count as number).toLocaleString()}</strong>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Destination Summary */}
+                                                <h4 className="font-semibold text-gray-700 mb-3">ถังปลายทาง</h4>
+                                                <div className="flex gap-3 mb-6 flex-wrap">
+                                                    {(upResult.destination_summary as { basket_id: number; basket_name: string; count: number }[]).map(d => (
+                                                        <div key={d.basket_id} className="bg-white border rounded-xl p-3 min-w-[120px]">
+                                                            <div className="text-xs text-gray-500">{d.basket_name}</div>
+                                                            <div className="text-xl font-bold text-amber-600">{d.count.toLocaleString()}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Customer Table with Evidence */}
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h4 className="font-semibold text-gray-700">
+                                                        รายชื่อลูกค้า ({upResult.customers.length.toLocaleString()} คน)
+                                                    </h4>
+                                                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={upSelected.size === upResult.customers.length}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setUpSelected(new Set(upResult.customers.map((c: any) => c.customer_id)));
+                                                                } else {
+                                                                    setUpSelected(new Set());
+                                                                }
+                                                            }}
+                                                            className="w-4 h-4 rounded"
+                                                        />
+                                                        เลือกทั้งหมด
+                                                    </label>
+                                                </div>
+
+                                                <div className="bg-white border rounded-xl overflow-hidden mb-6 max-h-[600px] overflow-y-auto">
+                                                    <table className="w-full text-xs">
+                                                        <thead className="bg-gray-100 sticky top-0">
+                                                            <tr>
+                                                                <th className="p-2 w-8"></th>
+                                                                <th className="p-2 w-8"></th>
+                                                                <th className="text-left p-2 font-semibold">ID</th>
+                                                                <th className="text-left p-2 font-semibold">ชื่อลูกค้า</th>
+                                                                <th className="text-left p-2 font-semibold">เจ้าของ</th>
+                                                                <th className="text-right p-2 font-semibold">วันค้าง</th>
+                                                                <th className="text-left p-2 font-semibold">Orders</th>
+                                                                <th className="text-left p-2 font-semibold">สถานะ Order</th>
+                                                                <th className="text-center p-2"><ArrowRight size={12} /></th>
+                                                                <th className="text-left p-2 font-semibold">ถังที่ถูกต้อง</th>
+                                                                <th className="text-left p-2 font-semibold min-w-[150px]">เหตุผล</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {upResult.customers.map((c: any) => {
+                                                                const isChecked = upSelected.has(c.customer_id);
+                                                                const isExpanded = upExpanded.has(c.customer_id);
+                                                                return (
+                                                                    <React.Fragment key={c.customer_id}>
+                                                                        <tr
+                                                                            className={`border-t cursor-pointer ${isChecked ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50 opacity-70'}`}
+                                                                            onClick={() => {
+                                                                                const next = new Set(upSelected);
+                                                                                if (next.has(c.customer_id)) next.delete(c.customer_id);
+                                                                                else next.add(c.customer_id);
+                                                                                setUpSelected(next);
+                                                                            }}
+                                                                        >
+                                                                            <td className="p-2">
+                                                                                <input type="checkbox" checked={isChecked} readOnly className="w-4 h-4 rounded pointer-events-none" />
+                                                                            </td>
+                                                                            <td className="p-2">
+                                                                                <button
+                                                                                    onClick={(e) => { e.stopPropagation(); toggleUpExpand(c.customer_id); }}
+                                                                                    className="p-1 hover:bg-gray-200 rounded"
+                                                                                    title="ดูหลักฐาน"
+                                                                                >
+                                                                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                                                </button>
+                                                                            </td>
+                                                                            <td className="p-2 text-gray-500">{c.customer_id}</td>
+                                                                            <td className="p-2 font-medium">{c.name}</td>
+                                                                            <td className="p-2">
+                                                                                <span className="text-purple-600">{c.owner_name}</span>
+                                                                                <span className="text-gray-400 text-[10px] ml-1">({c.owner_role})</span>
+                                                                            </td>
+                                                                            <td className="p-2 text-right font-bold text-red-600">{c.days_in_basket}d</td>
+                                                                            <td className="p-2 text-gray-600">{c.total_orders}</td>
+                                                                            <td className="p-2">
+                                                                                {c.order_statuses.split(', ').map((s: string) => (
+                                                                                    <span key={s} className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium mr-1 ${statusColor(s)}`}>{s}</span>
+                                                                                ))}
+                                                                            </td>
+                                                                            <td className="p-2 text-center"><ArrowRight size={10} className="text-gray-400 mx-auto" /></td>
+                                                                            <td className="p-2 text-green-600 font-medium">{c.correct_basket_name}</td>
+                                                                            <td className="p-2 text-gray-500 text-[11px]">{c.correct_reason}</td>
+                                                                        </tr>
+
+                                                                        {/* Expanded Evidence */}
+                                                                        {isExpanded && (
+                                                                            <tr>
+                                                                                <td colSpan={11} className="p-0">
+                                                                                    <div className="bg-gray-50 p-4 border-t">
+                                                                                        {/* Transition Info */}
+                                                                                        {c.transition && (
+                                                                                            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs">
+                                                                                                <strong>เข้า Basket 51:</strong> {c.transition.date} | 
+                                                                                                ประเภท: <span className="font-medium">{c.transition.type}</span> | 
+                                                                                                โดย: <span className="text-blue-600">{c.transition.by_name}</span> | 
+                                                                                                จาก: {c.transition.from_name}
+                                                                                                {c.transition.notes && <div className="text-gray-500 mt-1">หมายเหตุ: {c.transition.notes}</div>}
+                                                                                            </div>
+                                                                                        )}
+
+                                                                                        {/* Orders Table */}
+                                                                                        <table className="w-full text-xs bg-white border rounded-lg">
+                                                                                            <thead className="bg-gray-100">
+                                                                                                <tr>
+                                                                                                    <th className="text-left p-2 font-semibold">Order ID</th>
+                                                                                                    <th className="text-left p-2 font-semibold">สถานะ</th>
+                                                                                                    <th className="text-left p-2 font-semibold">วันที่</th>
+                                                                                                    <th className="text-left p-2 font-semibold">ผู้สร้าง</th>
+                                                                                                    <th className="text-left p-2 font-semibold">Role</th>
+                                                                                                    <th className="text-left p-2 font-semibold">Co.</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody>
+                                                                                                {c.orders.map((o: any) => (
+                                                                                                    <tr key={o.id} className="border-t hover:bg-gray-50">
+                                                                                                        <td className="p-2 font-mono text-gray-600">{o.id}</td>
+                                                                                                        <td className="p-2">
+                                                                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${statusColor(o.status)}`}>{o.status}</span>
+                                                                                                        </td>
+                                                                                                        <td className="p-2 text-gray-600">{o.date}</td>
+                                                                                                        <td className="p-2">{o.creator_name} <span className="text-gray-400 text-[10px]">#{o.creator_id}</span></td>
+                                                                                                        <td className="p-2 text-gray-500">{o.creator_role}</td>
+                                                                                                        <td className="p-2 text-gray-500">{o.company_id}</td>
+                                                                                                    </tr>
+                                                                                                ))}
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        )}
+                                                                    </React.Fragment>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                {/* Fix Button */}
+                                                <div className="flex gap-3">
+                                                    <button
+                                                        onClick={handleUpFix}
+                                                        disabled={upFixing || upSelected.size === 0}
+                                                        className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                                    >
+                                                        {upFixing ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                                                        {upFixing ? 'กำลังแก้ไข...' : upSelected.size === 0 ? 'เลือกลูกค้าที่ต้องการแก้' : `ยืนยันแก้ไข ${upSelected.size} คน`}
+                                                    </button>
+                                                    <button
+                                                        onClick={handleUpScan}
+                                                        disabled={upScanning}
                                                         className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
                                                     >
                                                         <RefreshCw size={20} /> สแกนใหม่
