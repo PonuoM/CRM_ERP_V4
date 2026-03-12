@@ -229,12 +229,44 @@ try {
     $pdo->commit();
 
     // ═══════════════════════════════════════════════════════════
+    // 4.5. Trigger Basket Routing V2 (AFTER commit)
+    //      เหมือน hook ใน api/index.php lines 5869-5899
+    //      ต้องอยู่หลัง commit เพราะ BasketRoutingServiceV2 มี transaction ของตัวเอง
+    // ═══════════════════════════════════════════════════════════
+    try {
+        require_once __DIR__ . '/../Services/BasketRoutingServiceV2.php';
+        $router = new BasketRoutingServiceV2($pdo);
+        $routingResults = [];
+
+        foreach ($ordersById as $orderId => $order) {
+            try {
+                $triggeredBy = $actorId ? (int)$actorId : 0;
+                $result = $router->handleOrderStatusChange(
+                    $orderId,
+                    $targetStatus,
+                    $triggeredBy
+                );
+                if ($result) {
+                    $routingResults[$orderId] = $result;
+                }
+            } catch (Exception $routeError) {
+                error_log("[BatchExport] Basket routing error for order #$orderId: " . $routeError->getMessage());
+                $routingResults[$orderId] = ['error' => $routeError->getMessage()];
+            }
+        }
+    } catch (Throwable $routeLoadError) {
+        error_log("[BatchExport] Failed to load BasketRoutingServiceV2: " . $routeLoadError->getMessage());
+        $routingResults = ['load_error' => $routeLoadError->getMessage()];
+    }
+
+    // ═══════════════════════════════════════════════════════════
     // 5. Return full order data for CSV generation
     // ═══════════════════════════════════════════════════════════
     json_response([
         'success' => true,
         'processed' => $processedCount,
         'customerUpdates' => count($customerSaleDates),
+        'basketRouting' => $routingResults ?? [],
         'orders' => array_values($ordersById)
     ]);
 

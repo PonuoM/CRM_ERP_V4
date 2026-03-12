@@ -8,6 +8,10 @@ description: คู่มืออธิบายการทำงาน Batch 
 **Method:** `POST`  
 **วัตถุประสงค์:** รวม fetch + status update ใน request เดียว สำหรับ export ออเดอร์เป็น CSV
 
+> [!NOTE]
+> **ไฟล์เก่า:** `pages/ManageOrdersPage.tsx` เป็นไฟล์ frontend ที่มี export flow ต้นฉบับ ก่อนจะเปลี่ยนมาใช้ batch API  
+> Flow เดิม: `ManageOrdersPage` → `onProcessOrders` → `api/index.php PATCH /orders/{id}` (ทีละ order) → trigger BasketRoutingServiceV2
+
 ---
 
 ## Request / Response
@@ -95,6 +99,30 @@ WHERE customer_id = ?
 | `follow_up_count` | `0` | reset |
 | `followup_bonus_remaining` | `1` | reset |
 | `assigned_to` | ❌ ไม่แตะ | |
+
+---
+
+### Step 3.5 — Basket Routing V2 (หลัง commit)
+
+> [!IMPORTANT]
+> เรียก **หลัง commit** เพราะ `BasketRoutingServiceV2->transitionTo()` มี transaction ของตัวเอง  
+> ตรงกับ pattern ใน `api/index.php` lines 5869-5899
+
+```php
+$router = new BasketRoutingServiceV2($pdo);
+foreach ($ordersById as $orderId => $order) {
+    $router->handleOrderStatusChange($orderId, $targetStatus, $actorId);
+}
+```
+
+BasketRoutingServiceV2 จะจัดการย้ายตะกร้าลูกค้าตาม business rules:
+- **Picking + Basket 51 + Telesale ขาย** → 39 (ขายได้)
+- **Picking + Basket 51 + ไม่มี Telesale** → 38 (ขายไม่ได้)
+- **Picking + Basket 53** → 52 (New Customer Distribution)
+- **Picking + มี owner + Telesale** → 39
+- **Picking + มี owner + Admin** → 51
+- **Picking + ไม่มี owner + Telesale** → 39 + assign owner
+- **Picking + ไม่มี owner + Admin** → 52
 
 ---
 
