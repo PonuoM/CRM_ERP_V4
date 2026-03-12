@@ -1,5 +1,5 @@
 <?php
-// Dispatch List API — List dispatch batches
+// Dispatch List API — List dispatch batches from inv2_dispatch_batches
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
@@ -15,35 +15,28 @@ try {
     $pageSize = isset($_GET['pageSize']) ? min(100, max(1, (int)$_GET['pageSize'])) : 20;
     $offset = ($page - 1) * $pageSize;
 
-    $where = ["m.reference_type = 'dispatch'"];
+    $where = ["1=1"];
     $params = [];
 
-    if (!empty($_GET['company_id'])) { $where[] = "m.company_id = ?"; $params[] = $_GET['company_id']; }
-    if (!empty($_GET['warehouse_id'])) { $where[] = "m.warehouse_id = ?"; $params[] = $_GET['warehouse_id']; }
-    if (!empty($_GET['start_date'])) { $where[] = "DATE(m.created_at) >= ?"; $params[] = $_GET['start_date']; }
-    if (!empty($_GET['end_date'])) { $where[] = "DATE(m.created_at) <= ?"; $params[] = $_GET['end_date']; }
-    if (!empty($_GET['search'])) { $where[] = "(m.reference_doc_number LIKE ? OR m.reference_order_id LIKE ?)"; $params[] = "%{$_GET['search']}%"; $params[] = "%{$_GET['search']}%"; }
+    if (!empty($_GET['company_id'])) { $where[] = "b.company_id = ?"; $params[] = $_GET['company_id']; }
+    if (!empty($_GET['search'])) {
+        $where[] = "(b.batch_doc_number LIKE ? OR b.filename LIKE ? OR b.notes LIKE ?)";
+        $s = "%{$_GET['search']}%";
+        $params[] = $s; $params[] = $s; $params[] = $s;
+    }
 
     $whereSql = implode(" AND ", $where);
 
-    // Group by batch doc number
-    $countSql = "SELECT COUNT(DISTINCT m.reference_doc_number) FROM inv2_movements m WHERE $whereSql";
+    $countSql = "SELECT COUNT(*) FROM inv2_dispatch_batches b WHERE $whereSql";
     $stmt = $pdo->prepare($countSql);
     $stmt->execute($params);
     $total = (int)$stmt->fetchColumn();
 
-    $sql = "SELECT m.reference_doc_number as batch_doc_number,
-                   MIN(m.created_at) as dispatch_date,
-                   COUNT(*) as movement_count,
-                   SUM(m.quantity) as total_quantity,
-                   COUNT(DISTINCT m.product_id) as product_count,
-                   COUNT(DISTINCT m.warehouse_id) as warehouse_count,
-                   CONCAT(u.first_name, ' ', u.last_name) as created_by_name
-            FROM inv2_movements m
-            LEFT JOIN users u ON m.created_by = u.id
+    $sql = "SELECT b.*, CONCAT(u.first_name, ' ', u.last_name) as created_by_name
+            FROM inv2_dispatch_batches b
+            LEFT JOIN users u ON b.created_by = u.id
             WHERE $whereSql
-            GROUP BY m.reference_doc_number, u.first_name, u.last_name
-            ORDER BY MIN(m.created_at) DESC
+            ORDER BY b.created_at DESC
             LIMIT $pageSize OFFSET $offset";
 
     $stmt = $pdo->prepare($sql);

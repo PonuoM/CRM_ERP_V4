@@ -22,18 +22,23 @@ try {
     $userId = $input['user_id'] ?? 1;
     $companyId = $input['company_id'] ?? 1;
     $items = $input['items'] ?? [];
+    $customDocNumber = $input['doc_number'] ?? null;
 
     if (!$warehouseId) throw new Exception('Warehouse ID required');
     if (empty($items)) throw new Exception('At least one item required');
 
     $pdo->beginTransaction();
 
-    // Generate doc number: RCV-YYYYMMDD-XXXXX
-    $datePart = date('Ymd', strtotime($receiveDate));
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM inv2_receive_documents WHERE doc_number LIKE ?");
-    $stmt->execute(["RCV-$datePart-%"]);
-    $count = (int)$stmt->fetchColumn();
-    $docNumber = "RCV-$datePart-" . str_pad($count + 1, 5, '0', STR_PAD_LEFT);
+    // Generate doc number: use custom if provided, otherwise auto RCV-YYYYMMDD-XXXXX
+    if ($customDocNumber && trim($customDocNumber) !== '') {
+        $docNumber = trim($customDocNumber);
+    } else {
+        $datePart = date('Ymd', strtotime($receiveDate));
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inv2_receive_documents WHERE doc_number LIKE ?");
+        $stmt->execute(["RCV-$datePart-%"]);
+        $count = (int)$stmt->fetchColumn();
+        $docNumber = "RCV-$datePart-" . str_pad($count + 1, 5, '0', STR_PAD_LEFT);
+    }
 
     // Create receive document
     $pdo->prepare("INSERT INTO inv2_receive_documents (doc_number, stock_order_id, warehouse_id, receive_date, notes, images, created_by, company_id) VALUES (?,?,?,?,?,?,?,?)")

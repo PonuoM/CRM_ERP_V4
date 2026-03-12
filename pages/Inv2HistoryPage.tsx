@@ -59,7 +59,7 @@ const Inv2HistoryPage: React.FC<Inv2HistoryPageProps> = ({ companyId }) => {
     useEffect(() => { loadData(); }, [loadData]);
 
     return (
-        <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+        <div style={{ padding: '24px' }}>
             {/* Header */}
             <div style={{ marginBottom: '24px' }}>
                 <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1a1a2e', margin: 0 }}>

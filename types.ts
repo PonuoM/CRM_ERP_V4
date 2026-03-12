@@ -190,10 +190,13 @@ export type Inv2SOStatus = 'Draft' | 'Ordered' | 'Partial' | 'Completed' | 'Canc
 export interface Inv2StockOrder {
   id: number;
   so_number: string;
+  source_location?: string;
+  customer_vendor?: string;
   warehouse_id: number;
   warehouse_name?: string;
   order_date: string;
   expected_date?: string;
+  delivery_location?: string;
   status: Inv2SOStatus;
   notes?: string;
   images: string[];
@@ -213,6 +216,8 @@ export interface Inv2StockOrderItem {
   product_sku?: string;
   variant?: string;
   quantity: number;
+  department?: string;
+  delivery_date?: string;
   received_quantity: number;
   remaining_quantity?: number;
   unit_cost?: number;

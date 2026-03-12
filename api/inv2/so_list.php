@@ -31,7 +31,9 @@ try {
         $params[] = $_GET['warehouse_id'];
     }
     if (!empty($_GET['search'])) {
-        $where[] = "(so.so_number LIKE ? OR so.notes LIKE ?)";
+        $where[] = "(so.so_number LIKE ? OR so.notes LIKE ? OR so.source_location LIKE ? OR so.customer_vendor LIKE ?)";
+        $params[] = "%{$_GET['search']}%";
+        $params[] = "%{$_GET['search']}%";
         $params[] = "%{$_GET['search']}%";
         $params[] = "%{$_GET['search']}%";
     }

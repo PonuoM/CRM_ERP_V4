@@ -25,6 +25,9 @@ try {
     $userId = $input['user_id'] ?? 1;
     $companyId = $input['company_id'] ?? 1;
     $items = $input['items'] ?? [];
+    $sourceLocation = $input['source_location'] ?? null;
+    $customerVendor = $input['customer_vendor'] ?? null;
+    $deliveryLocation = $input['delivery_location'] ?? null;
 
     if (!$warehouseId) throw new Exception('Warehouse ID required');
     if (empty($items)) throw new Exception('At least one item required');
@@ -38,8 +41,8 @@ try {
         $existing = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$existing) throw new Exception("SO not found");
 
-        $pdo->prepare("UPDATE inv2_stock_orders SET warehouse_id=?, order_date=?, expected_date=?, status=?, notes=?, images=? WHERE id=?")
-            ->execute([$warehouseId, $orderDate, $expectedDate, $status, $notes, json_encode($images), $id]);
+        $pdo->prepare("UPDATE inv2_stock_orders SET warehouse_id=?, order_date=?, expected_date=?, status=?, notes=?, images=?, source_location=?, customer_vendor=?, delivery_location=? WHERE id=?")
+            ->execute([$warehouseId, $orderDate, $expectedDate, $status, $notes, json_encode($images), $sourceLocation, $customerVendor, $deliveryLocation, $id]);
 
         // Delete old items that are not yet received, then re-insert
         // Keep items that have received_quantity > 0
@@ -58,8 +61,8 @@ try {
             $soNumber = "SO-$datePart-" . str_pad($count + 1, 5, '0', STR_PAD_LEFT);
         }
 
-        $pdo->prepare("INSERT INTO inv2_stock_orders (so_number, warehouse_id, order_date, expected_date, status, notes, images, created_by, company_id) VALUES (?,?,?,?,?,?,?,?,?)")
-            ->execute([$soNumber, $warehouseId, $orderDate, $expectedDate, $status, $notes, json_encode($images), $userId, $companyId]);
+        $pdo->prepare("INSERT INTO inv2_stock_orders (so_number, warehouse_id, order_date, expected_date, status, notes, images, created_by, company_id, source_location, customer_vendor, delivery_location) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+            ->execute([$soNumber, $warehouseId, $orderDate, $expectedDate, $status, $notes, json_encode($images), $userId, $companyId, $sourceLocation, $customerVendor, $deliveryLocation]);
         $id = $pdo->lastInsertId();
     }
 
@@ -78,12 +81,12 @@ try {
 
         if ($existingItem) {
             // Update existing item
-            $pdo->prepare("UPDATE inv2_stock_order_items SET product_id=?, variant=?, quantity=?, unit_cost=?, notes=? WHERE id=?")
-                ->execute([$productId, $item['variant'] ?? null, $item['quantity'], $item['unit_cost'] ?? null, $item['notes'] ?? null, $existingItem]);
+            $pdo->prepare("UPDATE inv2_stock_order_items SET product_id=?, variant=?, quantity=?, unit_cost=?, notes=?, department=?, delivery_date=? WHERE id=?")
+                ->execute([$productId, $item['variant'] ?? null, $item['quantity'], $item['unit_cost'] ?? null, $item['notes'] ?? null, $item['department'] ?? null, $item['delivery_date'] ?? null, $existingItem]);
         } else {
             // Insert new item
-            $pdo->prepare("INSERT INTO inv2_stock_order_items (stock_order_id, product_id, variant, quantity, unit_cost, notes) VALUES (?,?,?,?,?,?)")
-                ->execute([$id, $productId, $item['variant'] ?? null, $item['quantity'], $item['unit_cost'] ?? null, $item['notes'] ?? null]);
+            $pdo->prepare("INSERT INTO inv2_stock_order_items (stock_order_id, product_id, variant, quantity, unit_cost, notes, department, delivery_date) VALUES (?,?,?,?,?,?,?,?)")
+                ->execute([$id, $productId, $item['variant'] ?? null, $item['quantity'], $item['unit_cost'] ?? null, $item['notes'] ?? null, $item['department'] ?? null, $item['delivery_date'] ?? null]);
         }
     }
 

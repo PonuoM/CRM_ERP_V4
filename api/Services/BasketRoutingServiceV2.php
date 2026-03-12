@@ -555,7 +555,11 @@ class BasketRoutingServiceV2
         ?string $notes = null,
         bool $preserveDate = false
     ): array {
-        $this->pdo->beginTransaction();
+        // Check if already in a transaction (e.g. called from batch_process_export)
+        $ownTransaction = !$this->pdo->inTransaction();
+        if ($ownTransaction) {
+            $this->pdo->beginTransaction();
+        }
 
         try {
             set_audit_context($this->pdo, 'basket_routing_v2/' . $transitionType);
@@ -622,8 +626,10 @@ class BasketRoutingServiceV2
                 error_log("[BasketRoutingV2] INSERT SUCCESS: log_id=" . $this->pdo->lastInsertId());
             }
 
-            $this->pdo->commit();
-            error_log("[BasketRoutingV2] COMMIT SUCCESS");
+            if ($ownTransaction) {
+                $this->pdo->commit();
+                error_log("[BasketRoutingV2] COMMIT SUCCESS");
+            }
 
             return [
                 'success' => true,
@@ -638,7 +644,9 @@ class BasketRoutingServiceV2
             ];
 
         } catch (Exception $e) {
-            $this->pdo->rollBack();
+            if ($ownTransaction) {
+                $this->pdo->rollBack();
+            }
             error_log("[BasketRoutingV2] TRANSACTION ERROR: " . $e->getMessage());
             throw $e;
         }

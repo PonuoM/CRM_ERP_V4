@@ -2443,6 +2443,16 @@ export async function inv2SaveReceive(data: any) {
   });
 }
 
+export async function inv2GetReceiveDoc(docId: number) {
+  return apiFetch(`inv2/receive_get.php?doc_id=${docId}`);
+}
+
+export async function inv2DeleteReceive(docId: number) {
+  return apiFetch('inv2/receive_delete.php', {
+    method: 'POST', body: JSON.stringify({ doc_id: docId })
+  });
+}
+
 export async function inv2ImportDispatch(data: {
   user_id: number; company_id: number; notes?: string;
   rows: Array<{ warehouse_id: number; product_id: number; variant?: string; quantity: number; reference_order_id?: string; notes?: string }>;
@@ -2466,6 +2476,16 @@ export async function inv2ListDispatch(params?: {
   if (params?.page) qs.set('page', String(params.page));
   if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
   return apiFetch(`inv2/dispatch_list.php?${qs.toString()}`);
+}
+
+export async function inv2GetDispatchBatch(batchId: number) {
+  return apiFetch(`inv2/dispatch_get.php?batch_id=${batchId}`);
+}
+
+export async function inv2DeleteDispatch(batchId: number) {
+  return apiFetch('inv2/dispatch_delete.php', {
+    method: 'POST', body: JSON.stringify({ batch_id: batchId })
+  });
 }
 
 export async function inv2SaveAdjustment(data: any) {

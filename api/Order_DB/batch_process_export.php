@@ -18,6 +18,7 @@
  * Response: { "success": true, "processed": 24, "orders": [{ full order data }] }
  */
 require_once '../config.php';
+require_once __DIR__ . '/../Services/BasketRoutingServiceV2.php';
 
 header('Content-Type: application/json');
 
@@ -41,6 +42,9 @@ try {
 
     $pdo = db_connect();
     set_audit_context($pdo, 'orders/batch_export');
+
+    // Create basket router instance
+    $basketRouter = new BasketRoutingServiceV2($pdo);
 
     $pdo->beginTransaction();
 
@@ -139,6 +143,7 @@ try {
 
     $customerUpdates = [];
     $processedCount = 0;
+    $basketRoutingResults = [];
 
     foreach ($ordersById as $orderId => &$order) {
         $updateStmt->execute([$targetStatus, $orderId]);
@@ -147,6 +152,25 @@ try {
             $customerUpdates[$order['customer_id']] = $order['creator_id'];
         }
         $processedCount++;
+
+        // ═══════════════════════════════════════════════════════════
+        // 2b. Trigger Basket Routing (Event-Driven)
+        //     This updates current_basket_key based on business rules
+        // ═══════════════════════════════════════════════════════════
+        try {
+            $routeResult = $basketRouter->handleOrderStatusChange(
+                $orderId, 
+                $targetStatus, 
+                (int) ($actorId ?? 0)
+            );
+            if ($routeResult) {
+                $basketRoutingResults[] = $routeResult;
+                error_log("[BatchExport] Basket routing for order $orderId: " . json_encode($routeResult));
+            }
+        } catch (Exception $routeEx) {
+            // Don't fail the entire batch for a routing error
+            error_log("[BatchExport] Basket routing error for order $orderId: " . $routeEx->getMessage());
+        }
 
         // Update local order data to reflect new status
         $order['order_status'] = $targetStatus;
@@ -157,6 +181,7 @@ try {
     // 3. Update Customers (Lifecycle & Ownership)
     //    - assigned_to จะอัปเดตเฉพาะเมื่อผู้ขายเป็น Telesale (role_id 6,7)
     //    - ถ้าผู้ขายไม่ใช่ Telesale จะอัปเดตเฉพาะ lifecycle/ownership/followup
+    //    NOTE: current_basket_key is now handled by BasketRoutingServiceV2 above
     // ═══════════════════════════════════════════════════════════
     if ($targetStatus === 'Picking' && !empty($customerUpdates)) {
         $ownershipExpires = date('Y-m-d H:i:s', strtotime('+90 days'));

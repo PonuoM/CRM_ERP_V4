@@ -48,7 +48,7 @@ const ProductSearch: React.FC<{
             <button type="button" onClick={() => { setOpen(!open); setQ(''); }}
                 style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', textAlign: 'left', color: selected ? '#1e293b' : '#94a3b8', minHeight: '30px' }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                    {selected ? `${selected.name} (${selected.sku})` : '— เลือกสินค้า —'}
+                    {selected ? `${selected.sku || '—'}` : '— เลือกสินค้า —'}
                 </span>
                 <ChevronDown size={14} style={{ flexShrink: 0, color: '#94a3b8', transform: open ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
             </button>
@@ -70,12 +70,79 @@ const ProductSearch: React.FC<{
                                 onMouseLeave={e => { if (p.id !== value) e.currentTarget.style.background = '#fff'; }}>
                                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.id === value ? '#3b82f6' : '#e2e8f0', flexShrink: 0 }} />
                                 <div>
-                                    <div style={{ fontWeight: 600, color: '#1e293b' }}>{p.name}</div>
-                                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>{p.sku}</div>
+                                    <div style={{ fontWeight: 600, color: '#1e293b' }}>{p.sku}</div>
+                                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>{p.name}</div>
                                 </div>
                             </button>
                         ))}
                     </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+/* ═══════ Department ComboBox (ฝ่ายผลิต) ═══════ */
+const DEPT_STORAGE_KEY = 'inv2_so_departments';
+
+const DepartmentComboBox: React.FC<{
+    value: string;
+    onChange: (val: string) => void;
+}> = ({ value, onChange }) => {
+    const [open, setOpen] = useState(false);
+    const [q, setQ] = useState('');
+    const ref = useRef<HTMLDivElement>(null);
+
+    // Load saved departments from localStorage
+    const getSavedDepts = (): string[] => {
+        try {
+            const raw = localStorage.getItem(DEPT_STORAGE_KEY);
+            return raw ? JSON.parse(raw) : [];
+        } catch { return []; }
+    };
+
+    const saveDept = (dept: string) => {
+        if (!dept.trim()) return;
+        const existing = getSavedDepts();
+        if (!existing.includes(dept.trim())) {
+            const updated = [dept.trim(), ...existing].slice(0, 50);
+            localStorage.setItem(DEPT_STORAGE_KEY, JSON.stringify(updated));
+        }
+    };
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const savedDepts = getSavedDepts();
+    const filtered = q ? savedDepts.filter(d => d.toLowerCase().includes(q.toLowerCase())) : savedDepts;
+
+    return (
+        <div ref={ref} style={{ position: 'relative' }}>
+            <input
+                value={value || ''}
+                onChange={e => { onChange(e.target.value); setQ(e.target.value); }}
+                onFocus={() => setOpen(true)}
+                onBlur={() => {
+                    // Save department value when field loses focus
+                    if (value?.trim()) saveDept(value.trim());
+                }}
+                placeholder="พิมพ์หรือเลือก..."
+                style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+            />
+            {open && filtered.length > 0 && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#fff', borderRadius: '8px', border: '1.5px solid #e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50, maxHeight: '160px', overflow: 'auto' }}>
+                    {filtered.map((d, i) => (
+                        <button key={i} type="button"
+                            onMouseDown={e => { e.preventDefault(); onChange(d); setOpen(false); }}
+                            style={{ width: '100%', padding: '6px 12px', border: 'none', background: d === value ? '#eff6ff' : '#fff', cursor: 'pointer', textAlign: 'left', fontSize: '12px', color: '#334155', transition: 'background 0.1s' }}
+                            onMouseEnter={e => { if (d !== value) e.currentTarget.style.background = '#f8fafc'; }}
+                            onMouseLeave={e => { if (d !== value) e.currentTarget.style.background = '#fff'; }}>
+                            {d}
+                        </button>
+                    ))}
                 </div>
             )}
         </div>
@@ -101,12 +168,16 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
     const [formNotes, setFormNotes] = useState('');
     const [formImages, setFormImages] = useState<string[]>([]);
     const [formItems, setFormItems] = useState<Inv2StockOrderItem[]>([]);
+    // New fields
+    const [formSourceLocation, setFormSourceLocation] = useState('');
+    const [formCustomerVendor, setFormCustomerVendor] = useState('');
+    const [formDeliveryLocation, setFormDeliveryLocation] = useState('');
 
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
             const [soRes, whRes, pRes] = await Promise.all([
-                inv2ListSO({ company_id: companyId, status: statusFilter || undefined, search: search || undefined }),
+                inv2ListSO({ company_id: companyId, search: search || undefined }),
                 listWarehouses(companyId), listProducts(companyId),
             ]);
             setOrders(soRes?.data || []);
@@ -114,15 +185,18 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
             setProducts(Array.isArray(pRes) ? pRes : pRes?.data || []);
         } catch (e) { console.error(e); }
         setLoading(false);
-    }, [companyId, statusFilter, search]);
+    }, [companyId, search]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    const filteredOrders = statusFilter ? orders.filter(o => o.status === statusFilter) : orders;
 
     const openCreateModal = () => {
         setEditingOrder(null); setFormSONumber(''); setFormWarehouse(warehouses[0]?.id || 0);
         setFormOrderDate(new Date().toISOString().slice(0, 10)); setFormExpectedDate('');
         setFormStatus('Ordered'); setFormNotes(''); setFormImages([]);
-        setFormItems([{ product_id: 0, variant: '', quantity: 0, received_quantity: 0, unit_cost: undefined, notes: '' }]);
+        setFormSourceLocation(''); setFormCustomerVendor(''); setFormDeliveryLocation('');
+        setFormItems([{ product_id: 0, variant: '', quantity: 0, received_quantity: 0, unit_cost: undefined, notes: '', department: '', delivery_date: '' }]);
         setShowModal(true);
     };
 
@@ -134,19 +208,36 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
                 setEditingOrder(h); setFormSONumber(h.so_number || ''); setFormWarehouse(h.warehouse_id);
                 setFormOrderDate(h.order_date); setFormExpectedDate(h.expected_date || '');
                 setFormStatus(h.status); setFormNotes(h.notes || ''); setFormImages(h.images || []);
-                setFormItems(res.data.items.length > 0 ? res.data.items : [{ product_id: 0, variant: '', quantity: 0, received_quantity: 0, unit_cost: undefined, notes: '' }]);
+                setFormSourceLocation(h.source_location || '');
+                setFormCustomerVendor(h.customer_vendor || '');
+                setFormDeliveryLocation(h.delivery_location || '');
+                setFormItems(res.data.items.length > 0 ? res.data.items : [{ product_id: 0, variant: '', quantity: 0, received_quantity: 0, unit_cost: undefined, notes: '', department: '', delivery_date: '' }]);
                 setShowModal(true);
             }
         } catch { alert('โหลดข้อมูล SO ไม่สำเร็จ'); }
     };
 
     const handleSave = async () => {
-        if (!formWarehouse) return alert('เลือกคลังสินค้า');
         const validItems = formItems.filter(i => i.product_id && i.quantity > 0);
         if (validItems.length === 0) return alert('เพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
         setSaving(true);
         try {
-            await inv2SaveSO({ id: editingOrder?.id || undefined, so_number: formSONumber || undefined, warehouse_id: formWarehouse, order_date: formOrderDate, expected_date: formExpectedDate || null, status: formStatus, notes: formNotes || null, images: formImages, items: validItems, user_id: userId, company_id: companyId });
+            await inv2SaveSO({
+                id: editingOrder?.id || undefined,
+                so_number: formSONumber || undefined,
+                warehouse_id: formWarehouse || warehouses[0]?.id || 0,
+                order_date: formOrderDate,
+                expected_date: formExpectedDate || null,
+                status: formStatus,
+                notes: formNotes || null,
+                images: formImages,
+                items: validItems,
+                user_id: userId,
+                company_id: companyId,
+                source_location: formSourceLocation || null,
+                customer_vendor: formCustomerVendor || null,
+                delivery_location: formDeliveryLocation || null,
+            });
             setShowModal(false); loadData();
         } catch (e: any) { alert('บันทึกไม่สำเร็จ: ' + (e?.message || '')); }
         setSaving(false);
@@ -157,7 +248,7 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
         try { await inv2DeleteSO(so.id); loadData(); } catch (e: any) { alert('ลบไม่ได้: ' + (e?.data?.error || e?.message || '')); }
     };
 
-    const addItem = () => setFormItems([...formItems, { product_id: 0, variant: '', quantity: 0, received_quantity: 0, unit_cost: undefined, notes: '' }]);
+    const addItem = () => setFormItems([...formItems, { product_id: 0, variant: '', quantity: 0, received_quantity: 0, unit_cost: undefined, notes: '', department: '', delivery_date: formExpectedDate || '' }]);
     const removeItem = (idx: number) => setFormItems(formItems.filter((_, i) => i !== idx));
     const updateItem = (idx: number, field: string, value: any) => setFormItems(formItems.map((item, i) => i === idx ? { ...item, [field]: value } : item));
 
@@ -172,10 +263,9 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
     };
 
     const totalQty = formItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
-    const totalCost = formItems.reduce((s, i) => s + ((Number(i.quantity) || 0) * (Number(i.unit_cost) || 0)), 0);
 
     return (
-        <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+        <div style={{ padding: '24px' }}>
             {/* Page Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <div>
@@ -189,41 +279,62 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
                 </button>
             </div>
 
-            {/* Filters */}
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            {/* Status Tabs */}
+            <div style={{ display: 'flex', gap: '0', marginBottom: '16px', background: '#f1f5f9', borderRadius: '10px', padding: '4px', overflow: 'hidden' }}>
+                {([
+                    { key: '', label: 'ทั้งหมด', color: '#6b7280' },
+                    { key: 'Ordered', label: 'รอรับเข้า', color: '#3b82f6' },
+                    { key: 'Partial', label: 'รับบางส่วน', color: '#f59e0b' },
+                    { key: 'Completed', label: 'รับครบแล้ว', color: '#22c55e' },
+                ] as const).map(tab => {
+                    const isActive = statusFilter === tab.key;
+                    const count = tab.key ? orders.filter(o => o.status === tab.key).length : orders.length;
+                    return (
+                        <button key={tab.key} onClick={() => setStatusFilter(tab.key)}
+                            style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                background: isActive ? '#fff' : 'transparent',
+                                color: isActive ? tab.color || '#374151' : '#94a3b8',
+                                boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            }}>
+                            {isActive && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: tab.color }}></span>}
+                            {tab.label}
+                            <span style={{ padding: '1px 7px', borderRadius: '10px', fontSize: '11px', fontWeight: 700, background: isActive ? `${tab.color}18` : '#e2e8f0', color: isActive ? tab.color : '#94a3b8' }}>{count}</span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Search */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
                 <div style={{ position: 'relative', flex: '1 1 300px' }}>
                     <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                     <input placeholder="ค้นหา SO..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px' }} />
                 </div>
-                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: '10px 16px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', minWidth: '140px' }}>
-                    <option value="">ทุกสถานะ</option>
-                    {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
             </div>
 
             {/* List Table */}
             <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 {loading ? (
                     <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}><Loader2 className="animate-spin" size={32} style={{ margin: '0 auto 8px' }} /> กำลังโหลด...</div>
-                ) : orders.length === 0 ? (
+                ) : filteredOrders.length === 0 ? (
                     <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>ไม่พบรายการ SO</div>
                 ) : (
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead><tr style={{ background: '#f8fafc' }}>
-                            {['เลขที่ SO', 'คลัง', 'วันที่สั่ง', 'วันที่คาด', 'สถานะ', 'รายการ', 'หมายเหตุ', ''].map(h => (
+                            {['เลขที่ SO', 'จากสถานที่ผลิต', 'ลูกค้า/ผู้ขาย', 'วันที่สั่ง', 'วันที่ส่งมอบ', 'สถานะ', 'รายการ', ''].map(h => (
                                 <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #e5e7eb', textTransform: 'uppercase' }}>{h}</th>
                             ))}
                         </tr></thead>
                         <tbody>
-                            {orders.map(so => (
+                            {filteredOrders.map(so => (
                                 <tr key={so.id} style={{ borderBottom: '1px solid #f3f4f6' }} onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
                                     <td style={{ padding: '12px 16px', fontWeight: 600, color: '#1a1a2e', fontSize: '14px' }}>{so.so_number}</td>
-                                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151' }}>{so.warehouse_name}</td>
+                                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151' }}>{so.source_location || '—'}</td>
+                                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151' }}>{so.customer_vendor || '—'}</td>
                                     <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151' }}>{so.order_date}</td>
                                     <td style={{ padding: '12px 16px', fontSize: '14px', color: '#6b7280' }}>{so.expected_date || '—'}</td>
                                     <td style={{ padding: '12px 16px' }}><span className={STATUS_COLORS[so.status]} style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>{STATUS_LABELS[so.status]}</span></td>
                                     <td style={{ padding: '12px 16px', fontSize: '14px', color: '#6b7280' }}>{so.item_count || 0} รายการ</td>
-                                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#9ca3af', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{so.notes || '—'}</td>
                                     <td style={{ padding: '12px 16px' }}>
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <button onClick={() => openEditModal(so)} style={{ padding: '6px', background: '#ede9fe', border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#7c3aed' }}><Eye size={16} /></button>
@@ -279,30 +390,44 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
                                     <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
                                         <input value={formSONumber} onChange={e => setFormSONumber(e.target.value)} placeholder="Auto (ถ้าไม่ระบุ)" style={inputStyle} />
                                     </div>
-                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>คลังสินค้า</div>
+                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>จากสถานที่ผลิต</div>
                                     <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0' }}>
+                                        <input value={formSourceLocation} onChange={e => setFormSourceLocation(e.target.value)} placeholder="ระบุสถานที่ผลิต" style={inputStyle} />
+                                    </div>
+                                    {/* Row 2 */}
+                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>ลูกค้า/ผู้ขาย</div>
+                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
+                                        <input value={formCustomerVendor} onChange={e => setFormCustomerVendor(e.target.value)} placeholder="ระบุลูกค้าหรือผู้ขาย" style={inputStyle} />
+                                    </div>
+                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>วันที่สั่ง</div>
+                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0' }}>
+                                        <input type="date" value={formOrderDate} onChange={e => setFormOrderDate(e.target.value)} style={inputStyle} />
+                                    </div>
+                                    {/* Row 3 */}
+                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>วันที่ส่งมอบ</div>
+                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
+                                        <input type="date" value={formExpectedDate} onChange={e => setFormExpectedDate(e.target.value)} style={inputStyle} />
+                                    </div>
+                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>สถานที่จัดส่ง</div>
+                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0' }}>
+                                        <input value={formDeliveryLocation} onChange={e => setFormDeliveryLocation(e.target.value)} placeholder="ระบุสถานที่จัดส่ง" style={inputStyle} />
+                                    </div>
+                                    {/* Row 4 */}
+                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>คลังสินค้า</div>
+                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
                                         <select value={formWarehouse} onChange={e => setFormWarehouse(Number(e.target.value))} style={selectStyle}>
                                             <option value={0}>— เลือกคลัง —</option>
                                             {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                                         </select>
                                     </div>
-                                    {/* Row 2 */}
-                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>วันที่สั่งซื้อ</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
-                                        <input type="date" value={formOrderDate} onChange={e => setFormOrderDate(e.target.value)} style={inputStyle} />
-                                    </div>
-                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>วันที่คาดว่าจะเข้า</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0' }}>
-                                        <input type="date" value={formExpectedDate} onChange={e => setFormExpectedDate(e.target.value)} style={inputStyle} />
-                                    </div>
-                                    {/* Row 3 */}
-                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>สถานะ</div>
-                                    <div style={{ padding: '10px 14px', borderRight: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>สถานะ</div>
+                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: STATUS_DOT[formStatus] }} />
                                         <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>{STATUS_LABELS[formStatus]}</span>
                                     </div>
+                                    {/* Row 5 */}
                                     <div style={{ padding: '10px 14px', background: '#f0f9ff', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#1e40af', display: 'flex', alignItems: 'center' }}>หมายเหตุ</div>
-                                    <div style={{ padding: '10px 14px' }}>
+                                    <div style={{ padding: '10px 14px' }} className="col-span-3">
                                         <input value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="—" style={inputStyle} />
                                     </div>
                                 </div>
@@ -323,12 +448,12 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
                                         <tr>
                                             {[
                                                 { label: 'No.', w: '44px', align: 'center' as const },
-                                                { label: 'สินค้า', w: '30%' },
-                                                { label: 'รุ่น' },
-                                                { label: 'จำนวน', align: 'right' as const },
-                                                { label: 'ราคา/หน่วย', align: 'right' as const },
-                                                { label: 'จำนวนเงิน', align: 'right' as const },
-                                                ...(editingOrder ? [{ label: 'รับแล้ว', align: 'right' as const }] : []),
+                                                { label: 'รหัสสินค้า', w: '22%' },
+                                                { label: 'ชื่อสินค้า', w: '20%' },
+                                                { label: 'จำนวน', w: '80px', align: 'right' as const },
+                                                { label: 'ฝ่ายผลิต', w: '18%' },
+                                                { label: 'วันที่ส่งมอบ', w: '130px' },
+                                                { label: 'หมายเหตุ' },
                                                 { label: '', w: '40px', align: 'center' as const },
                                             ].map((col, i) => (
                                                 <th key={i} style={{ padding: '10px 12px', textAlign: col.align || 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', background: '#f1f5f9', borderBottom: '2px solid #e2e8f0', textTransform: 'uppercase', letterSpacing: '0.04em', ...(col.w ? { width: col.w } : {}) }}>{col.label}</th>
@@ -337,24 +462,28 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
                                     </thead>
                                     <tbody>
                                         {formItems.map((item, idx) => {
-                                            const lineTotal = (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0);
+                                            const selectedProduct = products.find(p => p.id === item.product_id);
                                             return (
                                                 <tr key={idx} style={{ background: idx % 2 === 0 ? '#fff' : '#fafbfc' }}>
                                                     <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: '12px', color: '#94a3b8', borderBottom: '1px solid #f1f5f9', fontWeight: 600 }}>{idx + 1}</td>
                                                     <td style={{ padding: '8px 8px', borderBottom: '1px solid #f1f5f9' }}>
                                                         <ProductSearch products={products} value={item.product_id} onChange={id => updateItem(idx, 'product_id', id)} />
                                                     </td>
-                                                    <td style={{ padding: '8px 8px', borderBottom: '1px solid #f1f5f9' }}>
-                                                        <input value={item.variant || ''} onChange={e => updateItem(idx, 'variant', e.target.value)} placeholder="—" style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }} />
+                                                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #f1f5f9', fontSize: '12px', color: '#334155' }}>
+                                                        {selectedProduct ? selectedProduct.name : <span style={{ color: '#94a3b8' }}>—</span>}
                                                     </td>
                                                     <td style={{ padding: '8px 8px', borderBottom: '1px solid #f1f5f9', textAlign: 'right' }}>
                                                         <input type="number" min={0} value={item.quantity || ''} onChange={e => updateItem(idx, 'quantity', Number(e.target.value))} style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px', width: '80px', textAlign: 'right' }} />
                                                     </td>
-                                                    <td style={{ padding: '8px 8px', borderBottom: '1px solid #f1f5f9', textAlign: 'right' }}>
-                                                        <input type="number" min={0} step="0.01" value={item.unit_cost ?? ''} onChange={e => updateItem(idx, 'unit_cost', e.target.value ? Number(e.target.value) : undefined)} style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px', width: '90px', textAlign: 'right' }} />
+                                                    <td style={{ padding: '8px 8px', borderBottom: '1px solid #f1f5f9' }}>
+                                                        <DepartmentComboBox value={item.department || ''} onChange={val => updateItem(idx, 'department', val)} />
                                                     </td>
-                                                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 600, fontSize: '13px', color: '#334155' }}>{lineTotal ? lineTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '0.00'}</td>
-                                                    {editingOrder && <td style={{ padding: '8px 12px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', color: '#16a34a', fontWeight: 700, fontSize: '13px' }}>{Number(item.received_quantity || 0).toLocaleString()}</td>}
+                                                    <td style={{ padding: '8px 8px', borderBottom: '1px solid #f1f5f9' }}>
+                                                        <input type="date" value={item.delivery_date || formExpectedDate || ''} onChange={e => updateItem(idx, 'delivery_date', e.target.value)} style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }} />
+                                                    </td>
+                                                    <td style={{ padding: '8px 8px', borderBottom: '1px solid #f1f5f9' }}>
+                                                        <input value={item.notes || ''} onChange={e => updateItem(idx, 'notes', e.target.value)} placeholder="—" style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }} />
+                                                    </td>
                                                     <td style={{ padding: '8px 8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
                                                         <button onClick={() => removeItem(idx)} style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#fef2f2', border: '1px solid #fecaca', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>✕</button>
                                                     </td>
@@ -365,11 +494,8 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
                                     <tfoot>
                                         <tr style={{ background: 'linear-gradient(90deg, #f0f9ff, #eff6ff)' }}>
                                             <td colSpan={3} style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#1e40af', fontSize: '13px', borderTop: '2px solid #bfdbfe' }}>จำนวนรวม</td>
-                                            <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#1e40af', fontSize: '14px', borderTop: '2px solid #bfdbfe' }}>{totalQty.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
-                                            <td style={{ padding: '12px', borderTop: '2px solid #bfdbfe' }}></td>
-                                            <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#1e40af', fontSize: '14px', borderTop: '2px solid #bfdbfe' }}>฿{totalCost.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
-                                            {editingOrder && <td style={{ padding: '12px', borderTop: '2px solid #bfdbfe' }}></td>}
-                                            <td style={{ padding: '12px', borderTop: '2px solid #bfdbfe' }}></td>
+                                            <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#1e40af', fontSize: '14px', borderTop: '2px solid #bfdbfe' }}>{totalQty.toLocaleString('th-TH')}</td>
+                                            <td colSpan={4} style={{ padding: '12px', borderTop: '2px solid #bfdbfe' }}></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -398,7 +524,7 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
                             <span style={{ fontSize: '12px', color: '#64748b' }}>{editingOrder ? `สร้างเมื่อ: ${editingOrder.created_at}` : '📄 เอกสารใหม่'}</span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <span style={{ fontSize: '12px', color: '#475569', fontWeight: 600 }}>
-                                    {formItems.filter(i => i.product_id).length} รายการ &nbsp;|&nbsp; {totalQty.toLocaleString()} ชิ้น &nbsp;|&nbsp; <span style={{ color: '#1e40af' }}>฿{totalCost.toLocaleString()}</span>
+                                    {formItems.filter(i => i.product_id).length} รายการ &nbsp;|&nbsp; {totalQty.toLocaleString()} ชิ้น
                                 </span>
                                 <button onClick={() => setShowModal(false)} style={{ padding: '8px 20px', background: '#fff', color: '#64748b', border: '1.5px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>ยกเลิก</button>
                                 <button onClick={handleSave} disabled={saving} style={{ padding: '8px 24px', background: saving ? '#93c5fd' : 'linear-gradient(135deg, #3b82f6, #6366f1)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(59,130,246,0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}>
