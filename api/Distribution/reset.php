@@ -28,6 +28,8 @@ try {
         handleGetResetSummary($pdo, $companyId);
     } elseif ($action === 'get_assign_history') {
         handleGetAssignHistory($pdo, $companyId);
+    } elseif ($action === 'get_agents_in_checks') {
+        handleGetAgentsInChecks($pdo, $companyId);
     } else {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid action']);
@@ -88,19 +90,66 @@ function handleGetAssignHistory($pdo, $companyId)
     ]);
 }
 
-// Helper to get total count
-function getCandidatesCount($pdo, $companyId, $targetCount)
+// Helper to build agent filter subquery
+function buildAgentFilterClause($agentIds, $agentMode, &$params, $companyId) {
+    if (!$agentIds || count($agentIds) === 0) return '';
+    $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
+    
+    if ($agentMode === 'all') {
+        // Must have been assigned to ALL selected agents
+        $clause = " AND cac.customer_id IN (SELECT customer_id FROM customer_assign_check WHERE user_id IN ($placeholders) AND company_id = ? GROUP BY customer_id HAVING COUNT(DISTINCT user_id) = ?)";
+        foreach ($agentIds as $aid) { $params[] = (int) $aid; }
+        $params[] = $companyId;
+        $params[] = count($agentIds);
+    } else {
+        // ANY of the selected agents
+        $clause = " AND cac.customer_id IN (SELECT customer_id FROM customer_assign_check WHERE user_id IN ($placeholders) AND company_id = ?)";
+        foreach ($agentIds as $aid) { $params[] = (int) $aid; }
+        $params[] = $companyId;
+    }
+    return $clause;
+}
+
+// Helper to get total count (with optional search/agent_ids filters)
+function getCandidatesCount($pdo, $companyId, $targetCount, $search = null, $agentIds = null, $agentMode = 'any')
 {
-    $stmt = $pdo->prepare("
+    $params = [];
+    $whereExtra = '';
+    $joinExtra = '';
+
+    $params[] = $companyId;
+    if ($agentIds && count($agentIds) > 0) {
+        $joinExtra = ' JOIN customers c2 ON cac.customer_id = c2.customer_id';
+        $whereExtra .= buildAgentFilterClause($agentIds, $agentMode, $params, $companyId);
+    }
+
+    if ($search) {
+        if (!$agentIds || count($agentIds) === 0) {
+            $joinExtra = ' JOIN customers c2 ON cac.customer_id = c2.customer_id';
+        }
+        $like = '%' . $search . '%';
+        $whereExtra .= ' AND (c2.first_name LIKE ? OR c2.last_name LIKE ? OR c2.phone LIKE ? OR c2.customer_id LIKE ?)';
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+    }
+    $params[] = $targetCount;
+
+    $sql = "
         SELECT COUNT(*) FROM (
-            SELECT customer_id 
-            FROM customer_assign_check 
-            WHERE company_id = ? 
-            GROUP BY customer_id 
-            HAVING COUNT(id) = ?
+            SELECT cac.customer_id 
+            FROM customer_assign_check cac
+            $joinExtra
+            WHERE cac.company_id = ?
+            $whereExtra
+            GROUP BY cac.customer_id 
+            HAVING COUNT(cac.id) = ?
         ) as sub
-    ");
-    $stmt->execute([$companyId, $targetCount]);
+    ";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     return $stmt->fetchColumn();
 }
 
@@ -110,6 +159,14 @@ function handleGetCandidates($pdo, $companyId)
     $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
     $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 20;
     $offset = ($page - 1) * $limit;
+    $search = isset($_GET['search']) && $_GET['search'] !== '' ? trim($_GET['search']) : null;
+    // Support comma-separated agent IDs + mode (any/all)
+    $agentIds = null;
+    $agentMode = $_GET['agent_mode'] ?? 'any'; // 'any' or 'all'
+    if (isset($_GET['agent_ids']) && $_GET['agent_ids'] !== '') {
+        $agentIds = array_filter(array_map('intval', explode(',', $_GET['agent_ids'])));
+        if (empty($agentIds)) $agentIds = null;
+    }
 
     if (!is_numeric($targetCount)) {
         http_response_code(400);
@@ -117,31 +174,52 @@ function handleGetCandidates($pdo, $companyId)
         return;
     }
 
-    // Get Total Count
-    $total = getCandidatesCount($pdo, $companyId, $targetCount);
+    // Get Total Count with filters
+    $total = getCandidatesCount($pdo, $companyId, $targetCount, $search, $agentIds, $agentMode);
 
-    // Efficient query using Covering Index + Join + Pagination
-    $stmt = $pdo->prepare("
+    // Build query with filters
+    $params = [];
+    $whereExtra = '';
+
+    $params[] = $companyId;
+    if ($agentIds && count($agentIds) > 0) {
+        $whereExtra .= buildAgentFilterClause($agentIds, $agentMode, $params, $companyId);
+    }
+    if ($search) {
+        $like = '%' . $search . '%';
+        $whereExtra .= ' AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)';
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+    }
+    $params[] = $targetCount;
+    $params[] = $limit;
+    $params[] = $offset;
+
+    $sql = "
         SELECT 
             c.customer_id as id, 
             c.customer_id as code, 
             c.first_name, 
-            c.last_name, 
-            COUNT(cac.id) as assigned_count
+            c.last_name,
+            c.phone,
+            COUNT(cac.id) as assigned_count,
+            GROUP_CONCAT(DISTINCT CONCAT(u.first_name, ' ', u.last_name) ORDER BY cac.created_at DESC SEPARATOR ', ') as agent_names
         FROM customer_assign_check cac
         JOIN customers c ON cac.customer_id = c.customer_id
+        JOIN users u ON cac.user_id = u.id
         WHERE cac.company_id = ?
+        $whereExtra
         GROUP BY cac.customer_id
         HAVING COUNT(cac.id) = ?
         LIMIT ? OFFSET ?
-    ");
-    // Bind parameters for LIMIT/OFFSET (must be integers for some PDO drivers)
-    $stmt->bindValue(1, $companyId, PDO::PARAM_INT);
-    $stmt->bindValue(2, $targetCount, PDO::PARAM_INT);
-    $stmt->bindValue(3, $limit, PDO::PARAM_INT);
-    $stmt->bindValue(4, $offset, PDO::PARAM_INT);
-    $stmt->execute();
+    ";
 
+
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     echo json_encode([
@@ -151,6 +229,24 @@ function handleGetCandidates($pdo, $companyId)
         'page' => $page,
         'limit' => $limit,
         'total_pages' => ceil($total / $limit)
+    ]);
+}
+
+function handleGetAgentsInChecks($pdo, $companyId)
+{
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT u.id, u.first_name, u.last_name
+        FROM customer_assign_check cac
+        JOIN users u ON cac.user_id = u.id
+        WHERE cac.company_id = ?
+        ORDER BY u.first_name, u.last_name
+    ");
+    $stmt->execute([$companyId]);
+    $agents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        'ok' => true,
+        'agents' => $agents
     ]);
 }
 
