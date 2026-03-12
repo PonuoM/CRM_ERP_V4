@@ -43,8 +43,6 @@ try {
     $pdo = db_connect();
     set_audit_context($pdo, 'orders/batch_export');
 
-    // Create basket router instance
-    $basketRouter = new BasketRoutingServiceV2($pdo);
 
     $pdo->beginTransaction();
 
@@ -141,36 +139,24 @@ try {
     // ═══════════════════════════════════════════════════════════
     $updateStmt = $pdo->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
 
-    $customerUpdates = [];
+    // Collect customer_id => delivery_date (or order_date as fallback)
+    $customerSaleDates = [];
     $processedCount = 0;
-    $basketRoutingResults = [];
 
     foreach ($ordersById as $orderId => &$order) {
         $updateStmt->execute([$targetStatus, $orderId]);
 
-        if (!empty($order['customer_id']) && !empty($order['creator_id'])) {
-            $customerUpdates[$order['customer_id']] = $order['creator_id'];
+        if (!empty($order['customer_id'])) {
+            // ใช้ delivery_date ถ้ามี ไม่งั้นใช้ order_date (เหมือน recordSale)
+            $saleDate = $order['delivery_date'] ?? $order['order_date'] ?? date('Y-m-d');
+            // ถ้า customer มีหลาย order ใน batch เดียวกัน ใช้อันล่าสุด
+            if (!isset($customerSaleDates[$order['customer_id']]) || $saleDate > $customerSaleDates[$order['customer_id']]) {
+                $customerSaleDates[$order['customer_id']] = $saleDate;
+            }
         }
         $processedCount++;
 
-        // ═══════════════════════════════════════════════════════════
-        // 2b. Trigger Basket Routing (Event-Driven)
-        //     This updates current_basket_key based on business rules
-        // ═══════════════════════════════════════════════════════════
-        try {
-            $routeResult = $basketRouter->handleOrderStatusChange(
-                $orderId, 
-                $targetStatus, 
-                (int) ($actorId ?? 0)
-            );
-            if ($routeResult) {
-                $basketRoutingResults[] = $routeResult;
-                error_log("[BatchExport] Basket routing for order $orderId: " . json_encode($routeResult));
-            }
-        } catch (Exception $routeEx) {
-            // Don't fail the entire batch for a routing error
-            error_log("[BatchExport] Basket routing error for order $orderId: " . $routeEx->getMessage());
-        }
+
 
         // Update local order data to reflect new status
         $order['order_status'] = $targetStatus;
@@ -179,50 +165,41 @@ try {
 
     // ═══════════════════════════════════════════════════════════
     // 3. Update Customers (Lifecycle & Ownership)
-    //    - assigned_to จะอัปเดตเฉพาะเมื่อผู้ขายเป็น Telesale (role_id 6,7)
-    //    - ถ้าผู้ขายไม่ใช่ Telesale จะอัปเดตเฉพาะ lifecycle/ownership/followup
-    //    NOTE: current_basket_key is now handled by BasketRoutingServiceV2 above
+    //    - ไม่แตะ assigned_to (ปล่อยให้ cron/basket routing จัดการ)
+    //    - ใช้ delivery_date + 90 days สำหรับ ownership_expires (max 90 days จากวันนี้)
+    //    - เหมือน logic ของ recordSale ใน ownership_handler.php
+    //    NOTE: current_basket_key is handled by BasketRoutingServiceV2 in Section 4.5
     // ═══════════════════════════════════════════════════════════
-    if ($targetStatus === 'Picking' && !empty($customerUpdates)) {
-        $ownershipExpires = date('Y-m-d H:i:s', strtotime('+90 days'));
+    if ($targetStatus === 'Picking' && !empty($customerSaleDates)) {
+        $now = new DateTime();
+        $maxAllowed = (clone $now)->add(new DateInterval('P90D'));
 
-        // Lookup which creator IDs are Telesale (role_id 6 = Telesale, 7 = Supervisor Telesale)
-        $creatorIds = array_unique(array_values($customerUpdates));
-        $creatorPlaceholders = implode(',', array_fill(0, count($creatorIds), '?'));
-        $roleStmt = $pdo->prepare("SELECT id FROM users WHERE id IN ($creatorPlaceholders) AND role_id IN (6, 7)");
-        $roleStmt->execute($creatorIds);
-        $telesaleUserIds = $roleStmt->fetchAll(PDO::FETCH_COLUMN, 0);
-        $telesaleSet = array_flip($telesaleUserIds);
-
-        // Statement WITH assigned_to update (for Telesale sellers)
-        $custStmtWithAssign = $pdo->prepare("
-            UPDATE customers 
-            SET 
-                lifecycle_status = 'Old3Months',
-                assigned_to = ?,
-                ownership_expires = ?,
-                followup_bonus_remaining = 1
-            WHERE customer_id = ?
-        ");
-
-        // Statement WITHOUT assigned_to update (for non-Telesale sellers)
-        $custStmtNoAssign = $pdo->prepare("
+        $custStmt = $pdo->prepare("
             UPDATE customers 
             SET 
                 lifecycle_status = 'Old3Months',
                 ownership_expires = ?,
+                has_sold_before = 1,
+                last_sale_date = ?,
+                follow_up_count = 0,
                 followup_bonus_remaining = 1
             WHERE customer_id = ?
         ");
 
-        foreach ($customerUpdates as $custId => $creatorId) {
-            if (isset($telesaleSet[$creatorId])) {
-                // ผู้ขายเป็น Telesale → อัปเดต assigned_to ด้วย
-                $custStmtWithAssign->execute([$creatorId, $ownershipExpires, $custId]);
-            } else {
-                // ผู้ขายไม่ใช่ Telesale → ไม่แตะ assigned_to
-                $custStmtNoAssign->execute([$ownershipExpires, $custId]);
+        foreach ($customerSaleDates as $custId => $saleDate) {
+            $deliveryDate = new DateTime($saleDate);
+            $newExpiry = (clone $deliveryDate)->add(new DateInterval('P90D'));
+
+            // Cap at max 90 days from today (เหมือน recordSale)
+            if ($newExpiry > $maxAllowed) {
+                $newExpiry = clone $maxAllowed;
             }
+
+            $custStmt->execute([
+                $newExpiry->format('Y-m-d H:i:s'),
+                $deliveryDate->format('Y-m-d H:i:s'),
+                $custId
+            ]);
         }
     }
 
@@ -257,12 +234,44 @@ try {
     $pdo->commit();
 
     // ═══════════════════════════════════════════════════════════
+    // 4.5. Trigger Basket Routing V2 (AFTER commit)
+    //      เหมือน hook ใน api/index.php lines 5869-5899
+    //      ต้องอยู่หลัง commit เพราะ BasketRoutingServiceV2 มี transaction ของตัวเอง
+    // ═══════════════════════════════════════════════════════════
+    try {
+        require_once __DIR__ . '/../Services/BasketRoutingServiceV2.php';
+        $router = new BasketRoutingServiceV2($pdo);
+        $routingResults = [];
+
+        foreach ($ordersById as $orderId => $order) {
+            try {
+                $triggeredBy = $actorId ? (int)$actorId : 0;
+                $result = $router->handleOrderStatusChange(
+                    $orderId,
+                    $targetStatus,
+                    $triggeredBy
+                );
+                if ($result) {
+                    $routingResults[$orderId] = $result;
+                }
+            } catch (Exception $routeError) {
+                error_log("[BatchExport] Basket routing error for order #$orderId: " . $routeError->getMessage());
+                $routingResults[$orderId] = ['error' => $routeError->getMessage()];
+            }
+        }
+    } catch (Throwable $routeLoadError) {
+        error_log("[BatchExport] Failed to load BasketRoutingServiceV2: " . $routeLoadError->getMessage());
+        $routingResults = ['load_error' => $routeLoadError->getMessage()];
+    }
+
+    // ═══════════════════════════════════════════════════════════
     // 5. Return full order data for CSV generation
     // ═══════════════════════════════════════════════════════════
     json_response([
         'success' => true,
         'processed' => $processedCount,
-        'customerUpdates' => count($customerUpdates),
+        'customerUpdates' => count($customerSaleDates),
+        'basketRouting' => $routingResults ?? [],
         'orders' => array_values($ordersById)
     ]);
 

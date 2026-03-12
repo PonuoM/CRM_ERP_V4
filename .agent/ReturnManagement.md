@@ -694,3 +694,26 @@ $processedBoxIds[] = $boxRow['id'];
 
 - สร้าง `api/uploads/.gitignore` เพื่อ ignore ไฟล์อัปโหลดทั้งหมด (slips, returns)
 - เก็บเฉพาะ `.gitignore` ไว้เพื่อรักษาโครงสร้างโฟลเดอร์ใน repo
+
+## 28. Import Notes Column — หมายเหตุทุกสถานะ (11/03/2026)
+
+### การเปลี่ยนแปลง
+เพิ่มคอลัมน์ **หมายเหตุ (Note)** ในหน้า Bulk Import ให้ใช้ได้ทุก mode (returning, returned, good, damaged, lost)
+
+### รูปแบบคอลัมน์ใหม่
+
+| Column | เดิม | ใหม่ |
+|--------|------|------|
+| A | เลข Tracking | เลข Tracking |
+| B | extra value (เฉพาะ good/damaged/lost) | **หมายเหตุ** (ทุก mode) |
+| C | — | extra value (เฉพาะ good/damaged/lost) |
+
+### Paste Support
+- วาง 2 คอลัมน์: `Tracking [TAB/,] หมายเหตุ`
+- วาง 3 คอลัมน์: `Tracking [TAB/,] หมายเหตุ [TAB/,] extra`
+- หมายเหตุจะถูกส่งในฟิลด์ `note` ของ payload
+
+### ไฟล์ที่แก้ไข
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `components/BulkReturnImport.tsx` | เพิ่ม `note` ใน RowData, คอลัมน์หมายเหตุหลัง Tracking, ปรับ paste/import logic |

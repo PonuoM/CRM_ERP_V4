@@ -134,7 +134,7 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
         try {
           console.log("Starting to sync page users...");
           const pageUsersResponse = await fetch(
-            "api/Page_DB/sync_page_users.php",
+            `${resolveApiBasePath()}/Page_DB/sync_page_users.php`,
             {
               method: "POST",
               headers: {
@@ -175,7 +175,7 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
           try {
             console.log("Starting to sync page list user relationships...");
             const pageListUserResponse = await fetch(
-              "api/Page_DB/sync_page_list_user.php",
+              `${resolveApiBasePath()}/Page_DB/sync_page_list_user.php`,
               {
                 method: "POST",
                 headers: {
@@ -341,10 +341,19 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [pageTypes, setPageTypes] = useState<{ [key: string]: string }>({});
   const [loadingPageTypes, setLoadingPageTypes] = useState(false);
 
-  // Pancake Show In Create Order Env
   const [pancakeShowInCreateOrder, setPancakeShowInCreateOrder] = useState(false);
   const [loadingPancakeEnv, setLoadingPancakeEnv] = useState(false);
   const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState(false);
+
+  // API Test state
+  const [isTesting, setIsTesting] = useState(false);
+  const [testProgress, setTestProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const [isTestResultModalOpen, setIsTestResultModalOpen] = useState(false);
+  const [testFailedActive, setTestFailedActive] = useState<Array<{ page: Page; message: string; checked: boolean }>>([]);
+  const [testSuccessInactive, setTestSuccessInactive] = useState<Array<{ page: Page; checked: boolean }>>([]);
+  const [isApplyingTestResult, setIsApplyingTestResult] = useState(false);
+  const [testAllSuccess, setTestAllSuccess] = useState<Array<{ page: Page }>>([]);
+  const [testAllFailed, setTestAllFailed] = useState<Array<{ page: Page; message: string }>>([]);
 
   // Fetch page types from env
   const fetchPageTypes = async () => {
@@ -707,6 +716,94 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               disabled={syncing}
             >
               {syncing ? "กำลังอัปเดต..." : "อัปเดตข้อมูล Pancake"}
+            </button>
+            <button
+              className="px-4 py-2 bg-amber-500 text-white rounded-md text-sm disabled:opacity-50"
+              onClick={async () => {
+                if (!currentUser?.companyId) {
+                  alert("ไม่พบข้อมูลผู้ใช้");
+                  return;
+                }
+
+                setIsTesting(true);
+                try {
+                  // Get access token
+                  const envResponse = await fetch(
+                    `${apiBase}/Page_DB/env_manager.php?key=ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`
+                  );
+                  if (!envResponse.ok) {
+                    alert("ไม่สามารถดึง Access Token ได้");
+                    return;
+                  }
+                  const envData = await envResponse.json();
+                  const accessToken = envData?.value || '';
+                  if (!accessToken) {
+                    alert("ไม่พบ ACCESS_TOKEN");
+                    return;
+                  }
+
+                  // Get visible Pancake pages
+                  const pancakePages = visiblePagesForCompany.filter(p => p.page_type === 'pancake');
+                  if (pancakePages.length === 0) {
+                    alert("ไม่พบเพจ Pancake ที่จะทดสอบ");
+                    return;
+                  }
+
+                  setTestProgress({ current: 0, total: pancakePages.length });
+
+                  const failedActive: Array<{ page: Page; message: string; checked: boolean }> = [];
+                  const successInactive: Array<{ page: Page; checked: boolean }> = [];
+                  const allSuccess: Array<{ page: Page }> = [];
+                  const allFailed: Array<{ page: Page; message: string }> = [];
+
+                  for (let i = 0; i < pancakePages.length; i++) {
+                    const page = pancakePages[i];
+                    const pageId = page.page_id || page.id.toString();
+                    try {
+                      const tokenResponse = await fetch(
+                        `https://pages.fm/api/v1/pages/${pageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+                      );
+                      const tokenData = tokenResponse.ok ? await tokenResponse.json() : null;
+                      const isSuccess = tokenData?.success && tokenData?.page_access_token;
+
+                      if (isSuccess) {
+                        allSuccess.push({ page });
+                        if (!page.active) {
+                          successInactive.push({ page, checked: true });
+                        }
+                      } else {
+                        const msg = tokenData?.message || 'ไม่สามารถสร้าง token ได้';
+                        allFailed.push({ page, message: msg });
+                        if (page.active) {
+                          failedActive.push({ page, message: msg, checked: true });
+                        }
+                      }
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : 'Network error';
+                      allFailed.push({ page, message: msg });
+                      if (page.active) {
+                        failedActive.push({ page, message: msg, checked: true });
+                      }
+                    }
+                    setTestProgress({ current: i + 1, total: pancakePages.length });
+                  }
+
+                  setTestFailedActive(failedActive);
+                  setTestSuccessInactive(successInactive);
+                  setTestAllSuccess(allSuccess);
+                  setTestAllFailed(allFailed);
+                  setIsTestResultModalOpen(true);
+                } catch (error) {
+                  console.error('Test API error:', error);
+                  alert('เกิดข้อผิดพลาด: ' + (error instanceof Error ? error.message : 'Unknown'));
+                } finally {
+                  setIsTesting(false);
+                }
+              }}
+              disabled={isTesting || syncing}
+            >
+              {isTesting ? `ทดสอบ ${testProgress.current}/${testProgress.total}` : '🔍 ทดสอบดึงข้อมูล Pancake'}
             </button>
             <button
               className="px-4 py-2 bg-red-600 text-white rounded-md text-sm disabled:opacity-50"
@@ -1326,6 +1423,154 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
           fetchPancakeEnv();
         }}
       />
+
+      {/* API Test Result Modal */}
+      {isTestResultModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden max-h-[85vh] flex flex-col">
+            {/* Header */}
+            <div className="px-5 py-4 bg-gray-50 border-b flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-gray-800">ผลการทดสอบ API</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  สำเร็จ <span className="text-green-600 font-semibold">{testAllSuccess.length}</span> เพจ ·{' '}
+                  ล้มเหลว <span className="text-red-600 font-semibold">{testAllFailed.length}</span> เพจ
+                </p>
+              </div>
+              <button onClick={() => setIsTestResultModalOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-200">
+                <span className="text-lg">✕</span>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+              {/* Section 1: Failed + Active → suggest deactivate */}
+              {testFailedActive.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-red-500 text-lg">⚠️</span>
+                    <h4 className="text-sm font-bold text-gray-800">เพจที่ API ล้มเหลว แต่ยังเปิดใช้งานอยู่ ({testFailedActive.length})</h4>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-2">เลือกเพจที่ต้องการ<strong className="text-red-600">ปิดการใช้งาน</strong></p>
+                  <div className="space-y-1.5">
+                    {testFailedActive.map((item, idx) => (
+                      <label key={idx} className="flex items-start gap-2.5 px-3 py-2.5 bg-red-50 border border-red-100 rounded-lg cursor-pointer hover:bg-red-100/60">
+                        <input
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={() => setTestFailedActive(prev => prev.map((x, i) => i === idx ? { ...x, checked: !x.checked } : x))}
+                          className="mt-0.5 accent-red-600"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <PageIconFront platform={(item.page as any).platform || 'unknown'} />
+                            <span className="text-sm font-medium text-gray-800 truncate">{(item.page as any).display_name || item.page.name}</span>
+                            <span className="px-1.5 py-0.5 text-[10px] rounded bg-green-100 text-green-700">active</span>
+                          </div>
+                          <p className="text-xs text-red-600 mt-0.5">{item.message}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Section 2: Success + Inactive → suggest activate */}
+              {testSuccessInactive.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-green-500 text-lg">✅</span>
+                    <h4 className="text-sm font-bold text-gray-800">เพจที่ API สำเร็จ แต่ปิดใช้งานอยู่ ({testSuccessInactive.length})</h4>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-2">เลือกเพจที่ต้องการ<strong className="text-green-600">เปิดการใช้งาน</strong></p>
+                  <div className="space-y-1.5">
+                    {testSuccessInactive.map((item, idx) => (
+                      <label key={idx} className="flex items-start gap-2.5 px-3 py-2.5 bg-green-50 border border-green-100 rounded-lg cursor-pointer hover:bg-green-100/60">
+                        <input
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={() => setTestSuccessInactive(prev => prev.map((x, i) => i === idx ? { ...x, checked: !x.checked } : x))}
+                          className="mt-0.5 accent-green-600"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <PageIconFront platform={(item.page as any).platform || 'unknown'} />
+                            <span className="text-sm font-medium text-gray-800 truncate">{(item.page as any).display_name || item.page.name}</span>
+                            <span className="px-1.5 py-0.5 text-[10px] rounded bg-gray-200 text-gray-600">inactive</span>
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* No action needed */}
+              {testFailedActive.length === 0 && testSuccessInactive.length === 0 && (
+                <div className="text-center py-8">
+                  <span className="text-4xl">🎉</span>
+                  <p className="text-sm font-medium text-gray-800 mt-3">สถานะเพจทั้งหมดถูกต้อง</p>
+                  <p className="text-xs text-gray-500 mt-1">ไม่มีเพจที่ต้องเปลี่ยนสถานะ</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3.5 bg-gray-50 border-t flex items-center justify-between flex-shrink-0">
+              <p className="text-xs text-gray-500">
+                {
+                  (testFailedActive.filter(x => x.checked).length + testSuccessInactive.filter(x => x.checked).length) > 0
+                    ? `จะเปลี่ยนสถานะ ${testFailedActive.filter(x => x.checked).length + testSuccessInactive.filter(x => x.checked).length} เพจ`
+                    : 'ไม่มีเพจที่เลือก'
+                }
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsTestResultModalOpen(false)}
+                  className="px-4 py-1.5 text-sm border rounded-lg hover:bg-gray-100"
+                >
+                  ปิด
+                </button>
+                {(testFailedActive.some(x => x.checked) || testSuccessInactive.some(x => x.checked)) && (
+                  <button
+                    onClick={async () => {
+                      setIsApplyingTestResult(true);
+                      try {
+                        for (const item of testFailedActive.filter(x => x.checked)) {
+                          await fetch(`${apiBase}/Marketing_DB/toggle_page_status.php`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ page_id: item.page.id, active: 0, company_id: currentUser?.companyId }),
+                          });
+                        }
+                        for (const item of testSuccessInactive.filter(x => x.checked)) {
+                          await fetch(`${apiBase}/Marketing_DB/toggle_page_status.php`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ page_id: item.page.id, active: 1, company_id: currentUser?.companyId }),
+                          });
+                        }
+                        setIsTestResultModalOpen(false);
+                        fetchPages();
+                        alert('อัปเดตสถานะเพจเรียบร้อยแล้ว');
+                      } catch (error) {
+                        console.error('Error applying test result:', error);
+                        alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
+                      } finally {
+                        setIsApplyingTestResult(false);
+                      }
+                    }}
+                    disabled={isApplyingTestResult}
+                    className="px-4 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isApplyingTestResult ? 'กำลังอัปเดต...' : 'ยืนยันเปลี่ยนสถานะ'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 };

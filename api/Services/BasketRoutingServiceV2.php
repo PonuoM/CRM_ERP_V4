@@ -73,6 +73,12 @@ class BasketRoutingServiceV2
             $customer = $order['customer'];
             error_log("[BasketRoutingV2] Loaded: customer_id={$customer['customer_id']}, basket={$customer['current_basket_key']}, assigned_to={$customer['assigned_to']}");
 
+            // Skip routing for blocked customers — basket 55 must not be overwritten
+            if (!empty($customer['is_blocked'])) {
+                error_log("[BasketRoutingV2] ABORT: Customer #{$customer['customer_id']} is blocked, skipping basket routing");
+                return null;
+            }
+
             // 2. Route based on status
             switch ($newStatus) {
                 case 'Pending':
@@ -339,7 +345,8 @@ class BasketRoutingServiceV2
                 c.last_name,
                 c.current_basket_key,
                 c.assigned_to,
-                c.basket_entered_date
+                c.basket_entered_date,
+                c.is_blocked
             FROM orders o
             JOIN customers c ON o.customer_id = c.customer_id OR o.customer_id = c.customer_ref_id
             WHERE o.id = ?
@@ -363,7 +370,8 @@ class BasketRoutingServiceV2
                 'last_name' => $row['last_name'],
                 'current_basket_key' => $row['current_basket_key'],
                 'assigned_to' => $row['assigned_to'],
-                'basket_entered_date' => $row['basket_entered_date']
+                'basket_entered_date' => $row['basket_entered_date'],
+                'is_blocked' => $row['is_blocked'] ?? 0
             ]
         ];
     }
@@ -694,6 +702,7 @@ class BasketRoutingServiceV2
                 WHERE c.current_basket_key = ?
                   AND c.basket_entered_date IS NOT NULL
                   AND DATEDIFF(NOW(), c.basket_entered_date) >= ?
+                  AND COALESCE(c.is_blocked, 0) = 0
             ");
             $stmt->execute([$config['id'], $config['fail_after_days']]);
             $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);

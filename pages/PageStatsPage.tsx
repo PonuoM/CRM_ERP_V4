@@ -5,6 +5,7 @@ import StatCard from '@/components/StatCard_EngagementPage';
 import MultiLineChart from '@/components/MultiLineChart';
 import PageIconFront from '@/components/PageIconFront';
 import PancakeEnvOffSidebar from '@/components/PancakeEnvOffSidebar';
+import PancakeTokenErrorModal, { TokenError } from '@/components/PancakeTokenErrorModal';
 import resolveApiBasePath from '@/utils/apiBasePath';
 import { listPages } from '@/services/api';
 
@@ -56,13 +57,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [pages, setPages] = useState<Array<{ id: number, name: string, page_id: string, platform?: string }>>([]);
-  const [selectedPage, setSelectedPage] = useState<string>('');
+  const [selectedPage, setSelectedPage] = useState<string>('ALL');
   const [pageStatsData, setPageStatsData] = useState<any[]>([]);
   const [prevPageStatsData, setPrevPageStatsData] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [usePageStats, setUsePageStats] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'hourly' | 'daily'>('daily');
-  const [pageSearchTerm, setPageSearchTerm] = useState<string>('');
+  const [pageSearchTerm, setPageSearchTerm] = useState<string>('ทั้งหมด');
   const [isSelectOpen, setIsSelectOpen] = useState<boolean>(false);
   const [useCustomDateRange, setUseCustomDateRange] = useState<boolean>(false);
   const [customDateRange, setCustomDateRange] = useState<string>('');
@@ -108,6 +109,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [isAccessTokenWarningOpen, setIsAccessTokenWarningOpen] = useState<boolean>(false);
   const [wasEnvSidebarOpened, setWasEnvSidebarOpened] = useState<boolean>(false);
   const [isStoreDbEnabled, setIsStoreDbEnabled] = useState<boolean>(true); // Default to enabled
+
+  // Token error modal state
+  const [tokenErrors, setTokenErrors] = useState<TokenError[]>([]);
+  const [tokenErrorSuccessCount, setTokenErrorSuccessCount] = useState<number>(0);
+  const [isTokenErrorModalOpen, setIsTokenErrorModalOpen] = useState<boolean>(false);
 
   // Get current user from localStorage
   useEffect(() => {
@@ -1222,7 +1228,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
       if (selectedPage === 'ALL') {
         // Fetch data for all pages
-        const pagesToFetch = pages.filter(page => page.page_id || page.id.toString());
+        const pagesToFetch = pages.filter(page => (page as any).active && (page as any).page_type === 'pancake' && (page as any).still_in_list !== 0 && (page.page_id || page.id.toString()));
+        const fetchTokenErrors: TokenError[] = [];
+        let fetchSuccessCount = 0;
 
         for (const page of pagesToFetch) {
           const pageId = page.page_id || page.id.toString();
@@ -1239,16 +1247,20 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             );
 
             if (!tokenResponse.ok) {
-              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId} ได้`);
+              const pageName = pages.find(p => (p.page_id || p.id.toString()) === pageId)?.name || pageId;
+              fetchTokenErrors.push({ pageName, pageId, message: 'ไม่สามารถเชื่อมต่อ API ได้' });
               continue;
             }
 
             const tokenData = await tokenResponse.json();
 
             if (!tokenData.success || !tokenData.page_access_token) {
-              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId}: ` + (tokenData.message || 'Unknown error'));
+              const pageName = pages.find(p => (p.page_id || p.id.toString()) === pageId)?.name || pageId;
+              fetchTokenErrors.push({ pageName, pageId, message: tokenData.message || 'ไม่สามารถสร้าง token ได้' });
               continue;
             }
+
+            fetchSuccessCount++;
 
             // Fetch current period data
             const statsResponse = await fetchWithRetry(
@@ -1292,6 +1304,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           } catch (error) {
             console.error(`Error fetching data for page ${pageId}:`, error);
           }
+        }
+
+        // Show token error modal if there were failures
+        if (fetchTokenErrors.length > 0) {
+          setTokenErrors(fetchTokenErrors);
+          setTokenErrorSuccessCount(fetchSuccessCount);
+          setIsTokenErrorModalOpen(true);
         }
 
         // Sort data from newest to oldest
@@ -1398,7 +1417,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Page Stats</h1>
+            <h1 className="text-xl font-bold text-gray-900">ประสิทธิภาพหน้า</h1>
             <p className="text-xs text-gray-500">สถิติเพจ · ข้อมูลจากระบบ Pages.fm</p>
           </div>
         </div>
@@ -1622,6 +1641,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                     ทั้งหมด
                   </div>
                   {pages
+                    .filter(page => (page as any).active && (page as any).page_type === 'pancake')
                     .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) || pageSearchTerm === 'ทั้งหมด')
                     .map((page) => (
                       <div
@@ -1650,17 +1670,25 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={fetchPageStats}
+              className="border rounded-md px-4 py-2 text-sm flex items-center gap-1.5 bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-sm"
+              disabled={isSearching || !selectedPage}
+            >
+              <Search className="w-4 h-4" /> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
+            </button>
+            <div className="h-5 w-px bg-gray-300" />
+            <button
               onClick={() => setRangeDays(rangeDays)}
-              className={`border rounded-md px-3 py-2 text-sm flex items-center gap-1 ${usePageStats ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center gap-1 text-gray-700 bg-white hover:bg-gray-50 ${usePageStats ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={usePageStats}
             >
               <RefreshCcw className="w-4 h-4" /> รีเฟรช
             </button>
             <button
               onClick={() => setIsExportModalOpen(true)}
-              className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center gap-1 text-gray-700 bg-white hover:bg-gray-50"
             >
-              <Download className="w-4 h-4" /> ดาวน์โหลด CSV
+              <Download className="w-4 h-4" /> CSV
             </button>
             {isStoreDbEnabled && (
               <button
@@ -1668,21 +1696,22 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                   setIsDatabaseModalOpen(true);
                   fetchExistingDateRanges();
                 }}
-                className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center gap-1 text-gray-700 bg-white hover:bg-gray-50"
               >
-                <Save className="w-4 h-4" /> อัปเดต Database
+                <Save className="w-4 h-4" /> อัปเดต DB
               </button>
             )}
-            <button
-              onClick={fetchPageStats}
-              className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
-              disabled={isSearching || !selectedPage}
-            >
-              <Search className="w-4 h-4" /> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
-            </button>
           </div>
         </div>
       </div>
+
+      {/* Info banner when Pancake data not yet fetched */}
+      {!usePageStats && (
+        <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-sm text-blue-700">
+          <Search className="w-4 h-4 flex-shrink-0" />
+          <span>กำลังแสดงข้อมูลจากระบบภายใน — กด <strong>ค้นหา</strong> เพื่อดึงข้อมูลจาก Pancake API</span>
+        </div>
+      )}
 
       {/* Chart */}
       <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -1812,7 +1841,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           <table className="min-w-[1800px] w-full text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600 text-xs uppercase tracking-wider">
-                <th className="px-3 py-2 text-left whitespace-nowrap min-w-[150px]">เวลา</th>
+                <th className="px-3 py-2 text-left whitespace-nowrap min-w-[150px] sticky left-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">เวลา</th>
                 <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">ลูกค้าใหม่</th>
                 <th className="px-3 py-2 text-right whitespace-nowrap min-w-[120px]">เบอร์โทรศัพท์ทั้งหมด</th>
                 <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">เบอร์โทรใหม่</th>
@@ -1943,7 +1972,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
                     return (
                       <tr key={index} className={`border-t border-gray-100 hover:bg-blue-50/40 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                        <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{formattedDate}</td>
+                        <td className={`px-3 py-2 text-gray-700 whitespace-nowrap sticky left-0 z-10 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>{formattedDate}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{item.new_customer_count}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{item.uniq_phone_number_count}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{item.phone_number_count}</td>
@@ -1981,7 +2010,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               ) : (
                 daily.map((r, idx) => (
                   <tr key={r.date} className={`border-t border-gray-100 hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{r.date}</td>
+                    <td className={`px-3 py-2 text-gray-700 whitespace-nowrap sticky left-0 z-10 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>{r.date}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">{r.newCustomers}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">{r.totalPhones}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">{r.newPhones}</td>
@@ -2854,6 +2883,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           </div>
         </div>
       )}
+
+      {/* Token Error Modal */}
+      <PancakeTokenErrorModal
+        isOpen={isTokenErrorModalOpen}
+        onClose={() => setIsTokenErrorModalOpen(false)}
+        errors={tokenErrors}
+        successCount={tokenErrorSuccessCount}
+      />
     </div>
   );
 };

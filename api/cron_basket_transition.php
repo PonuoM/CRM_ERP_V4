@@ -46,6 +46,7 @@ foreach ($configs as $config) {
         WHERE current_basket_key = ? 
         AND assigned_to IS NOT NULL AND assigned_to != 0
         AND basket_entered_date < DATE_SUB(NOW(), INTERVAL ? DAY)
+        AND COALESCE(is_blocked, 0) = 0
     ";
 
     $cStmt = $pdo->prepare($sql);
@@ -115,6 +116,7 @@ $sql = "
     SET current_basket_key = 'mid_basket_1_3_years', basket_entered_date = NOW()
     WHERE current_basket_key = 'mid_basket_6_12'
     AND last_order_date < DATE_SUB(NOW(), INTERVAL 365 DAY)
+    AND COALESCE(is_blocked, 0) = 0
 ";
 $cnt = $pdo->exec($sql);
 if ($cnt > 0)
@@ -127,6 +129,7 @@ $sql = "
     SET current_basket_key = 'ancient', basket_entered_date = NOW()
     WHERE current_basket_key = 'mid_basket_1_3_years'
     AND last_order_date < DATE_SUB(NOW(), INTERVAL 1095 DAY)
+    AND COALESCE(is_blocked, 0) = 0
 ";
 $cnt = $pdo->exec($sql);
 if ($cnt > 0)
