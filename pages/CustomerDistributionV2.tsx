@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { mapCustomerFromApi } from '../utils/customerMapper';
 import Spinner from '../components/Spinner';
+import BlockedCustomersModal from '../components/BlockedCustomersModal';
 
 interface CustomerDistributionV2Props {
     currentUser?: User | null;
@@ -91,6 +92,30 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [resetTotalPages, setResetTotalPages] = useState(1);
     const [resetOptions, setResetOptions] = useState<{ assigned_count: number; customer_count: number }[]>([]);
     const RESET_PAGE_SIZE = 50;
+
+    // Blocked Customer Modal State
+    const [blockedModalOpen, setBlockedModalOpen] = useState(false);
+    const [blockedCustomers, setBlockedCustomers] = useState<any[]>([]);
+    const [loadingBlocked, setLoadingBlocked] = useState(false);
+
+    const fetchBlockedCustomers = useCallback(async () => {
+        setLoadingBlocked(true);
+        try {
+            const res = await apiFetch(`get_blocked_customers.php?company_id=${currentUser?.companyId}`);
+            if (res?.success) {
+                setBlockedCustomers(res.data || []);
+            }
+        } catch (e) {
+            console.error('Failed to fetch blocked customers:', e);
+        } finally {
+            setLoadingBlocked(false);
+        }
+    }, [currentUser?.companyId]);
+
+    const handleBlockedBasketClick = () => {
+        setBlockedModalOpen(true);
+        fetchBlockedCustomers();
+    };
 
     // Summary Modal State
     const [summaryModalOpen, setSummaryModalOpen] = useState(false);
@@ -234,10 +259,16 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         const counts: Record<string, number> = {};
         await Promise.all(baskets.map(async (basket) => {
             try {
-                const response = await apiFetch(
-                    `basket_config.php?action=basket_customers&basket_key=${basket.basket_key}&companyId=${currentUser?.companyId}&limit=1`
-                );
-                counts[basket.basket_key] = response?.count || 0;
+                if (basket.basket_key === 'block_customer') {
+                    // Blocked customers use separate API (basket_customers filters is_blocked=0)
+                    const res = await apiFetch(`get_blocked_customers.php?company_id=${currentUser?.companyId}`);
+                    counts[basket.basket_key] = res?.success ? (res.data?.length || 0) : 0;
+                } else {
+                    const response = await apiFetch(
+                        `basket_config.php?action=basket_customers&basket_key=${basket.basket_key}&companyId=${currentUser?.companyId}&limit=1`
+                    );
+                    counts[basket.basket_key] = response?.count || 0;
+                }
             } catch {
                 counts[basket.basket_key] = 0;
             }
@@ -378,9 +409,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
     };
 
-    // Generate preview with Smart Allocation
-    // This ensures customers are not assigned to agents they were previously assigned to
-    const handleGeneratePreview = () => {
+    // Generate preview with Conflict-Aware Smart Allocation
+    // Fetches real conflict data from customer_assign_check, then uses
+    // Most-Constrained-First + greedy agent selection to minimize duplicates
+    const handleGeneratePreview = async () => {
         if (selectedAgents.length === 0) {
             setMessage({ type: 'error', text: 'กรุณาเลือกพนักงานอย่างน้อย 1 คน' });
             return;
@@ -392,62 +424,132 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
         // Calculate per-person count from total
         const total = parseInt(totalToDistribute) || 0;
-        const count = selectedAgents.length > 0 ? Math.floor(total / selectedAgents.length) : 0;
-        const customerPool = [...customers]; // Make a copy of the pool
-        const previewData: DistributionPreview[] = [];
-        const assignedCustomerIds = new Set<string>(); // Track assigned customers
-
-        // Helper function to parse previous_assigned_to (can be JSON string or array)
-        const getPreviousAgents = (customer: Customer): number[] => {
-            const prev = customer.previous_assigned_to;
-            if (!prev) return [];
-            if (Array.isArray(prev)) return prev;
-            if (typeof prev === 'string') {
-                try {
-                    const parsed = JSON.parse(prev);
-                    return Array.isArray(parsed) ? parsed : [];
-                } catch {
-                    return [];
-                }
-            }
-            return [];
-        };
-
-        // Round-robin allocation: for each agent, find eligible customers
-        for (const agentId of selectedAgents) {
-            const agent = agents.find(a => a.id === agentId);
-            if (!agent) continue;
-
-            const agentCustomers: Customer[] = [];
-
-            // Find customers that:
-            // 1. Are not yet assigned in this batch
-            // 2. Were NOT previously assigned to this agent
-            for (const customer of customerPool) {
-                if (agentCustomers.length >= count) break;
-
-                const customerId = customer.customer_id?.toString() || customer.id;
-                if (assignedCustomerIds.has(customerId)) continue;
-
-                const previousAgents = getPreviousAgents(customer);
-                if (previousAgents.includes(agentId)) continue; // Skip if previously assigned
-
-                agentCustomers.push(customer);
-                assignedCustomerIds.add(customerId);
-            }
-
-            previewData.push({
-                agentId,
-                agentName: `${agent.firstName} ${agent.lastName}`,
-                customers: agentCustomers
-            });
+        const perPerson = selectedAgents.length > 0 ? Math.floor(total / selectedAgents.length) : 0;
+        if (perPerson <= 0) {
+            setMessage({ type: 'error', text: 'จำนวนไม่เพียงพอสำหรับแจกให้พนักงานที่เลือก' });
+            return;
         }
 
-        // Check if any agent got less than expected
-        const expectedPerAgent = selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0;
-        const shortfall = previewData.filter(p => p.customers.length < expectedPerAgent);
+        const customerPool = [...customers];
+
+        // ═══════════════════════════════════════════
+        // 1. Fetch conflict data from backend
+        // ═══════════════════════════════════════════
+        let conflictMap: Record<string, number[]> = {};
+        try {
+            const customerIds = customerPool
+                .map(c => c.customer_id?.toString() || c.id)
+                .slice(0, 5000) // limit
+                .join(',');
+            if (customerIds) {
+                const res = await apiFetch(
+                    `Distribution/index.php?action=get_assign_checks&companyId=${currentUser?.companyId}&customer_ids=${encodeURIComponent(customerIds)}`
+                );
+                if (res?.ok && res.conflicts) {
+                    conflictMap = res.conflicts;
+                }
+            }
+        } catch (e) {
+            console.warn('[Distribution] Failed to fetch conflict data, falling back to previous_assigned_to', e);
+        }
+
+        // Helper: get conflict agents for a customer (merge backend + local data)
+        const getConflictAgents = (customer: Customer): number[] => {
+            const cid = customer.customer_id?.toString() || customer.id;
+            const backendConflicts = conflictMap[cid] || [];
+            // Also check previous_assigned_to from customer data as fallback
+            const prev = customer.previous_assigned_to;
+            let localConflicts: number[] = [];
+            if (prev) {
+                if (Array.isArray(prev)) localConflicts = prev;
+                else if (typeof prev === 'string') {
+                    try { localConflicts = JSON.parse(prev) || []; } catch { /* ignore */ }
+                }
+            }
+            // Merge and deduplicate
+            return [...new Set([...backendConflicts, ...localConflicts])];
+        };
+
+        // ═══════════════════════════════════════════
+        // 2. Sort customers: Most Constrained First
+        //    (ลูกค้าที่เคยอยู่กับ agent หลายคน → จัดก่อน)
+        // ═══════════════════════════════════════════
+        const selectedSet = new Set(selectedAgents);
+        customerPool.sort((a, b) => {
+            const conflictsA = getConflictAgents(a).filter(id => selectedSet.has(id)).length;
+            const conflictsB = getConflictAgents(b).filter(id => selectedSet.has(id)).length;
+            return conflictsB - conflictsA; // more conflicts first
+        });
+
+        // ═══════════════════════════════════════════
+        // 3. Greedy Assignment
+        // ═══════════════════════════════════════════
+        const quota: Record<number, number> = {};
+        const assigned: Record<number, Customer[]> = {};
+        selectedAgents.forEach(id => {
+            quota[id] = perPerson;
+            assigned[id] = [];
+        });
+        const usedCustomers = new Set<string>();
+
+        // Pass 1: Assign without conflicts
+        for (const customer of customerPool) {
+            const cid = customer.customer_id?.toString() || customer.id;
+            if (usedCustomers.has(cid)) continue;
+
+            const conflicts = getConflictAgents(customer);
+            const conflictSet = new Set(conflicts);
+
+            // Find best agent: no conflict + fewest assignments so far + has quota
+            const bestAgent = selectedAgents
+                .filter(id => quota[id] > 0 && !conflictSet.has(id))
+                .sort((a, b) => assigned[a].length - assigned[b].length)[0];
+
+            if (bestAgent !== undefined) {
+                assigned[bestAgent].push(customer);
+                quota[bestAgent]--;
+                usedCustomers.add(cid);
+            }
+
+            // Stop early if all quotas filled
+            if (selectedAgents.every(id => quota[id] <= 0)) break;
+        }
+
+        // Pass 2: Fallback — fill remaining quotas (allow conflicts)
+        for (const customer of customerPool) {
+            if (selectedAgents.every(id => quota[id] <= 0)) break;
+
+            const cid = customer.customer_id?.toString() || customer.id;
+            if (usedCustomers.has(cid)) continue;
+
+            // Find agent with most remaining quota
+            const fallbackAgent = selectedAgents
+                .filter(id => quota[id] > 0)
+                .sort((a, b) => quota[b] - quota[a])[0];
+
+            if (fallbackAgent !== undefined) {
+                assigned[fallbackAgent].push(customer);
+                quota[fallbackAgent]--;
+                usedCustomers.add(cid);
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // 4. Build preview
+        // ═══════════════════════════════════════════
+        const previewData: DistributionPreview[] = selectedAgents.map(agentId => {
+            const agent = agents.find(a => a.id === agentId);
+            return {
+                agentId,
+                agentName: agent ? `${agent.firstName} ${agent.lastName}` : `Agent ${agentId}`,
+                customers: assigned[agentId] || []
+            };
+        });
+
+        // Check shortfall
+        const shortfall = previewData.filter(p => p.customers.length < perPerson);
         if (shortfall.length > 0) {
-            const names = shortfall.map(p => `${p.agentName} (${p.customers.length}/${expectedPerAgent})`).join(', ');
+            const names = shortfall.map(p => `${p.agentName} (${p.customers.length}/${perPerson})`).join(', ');
             setMessage({
                 type: 'error',
                 text: `⚠️ บางพนักงานได้ลูกค้าน้อยกว่าที่กำหนดเนื่องจากมีลูกค้าซ้ำ: ${names}`
@@ -1161,7 +1263,13 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     return (
                         <button
                             key={basket.basket_key}
-                            onClick={() => setActiveBasket(basket.basket_key)}
+                            onClick={() => {
+                                if (basket.basket_key === 'block_customer') {
+                                    handleBlockedBasketClick();
+                                    return;
+                                }
+                                setActiveBasket(basket.basket_key);
+                            }}
                             className={`p-3 rounded-xl shadow-sm border-2 transition-all hover:shadow-md text-left ${isHolding
                                 ? (isActive
                                     ? 'border-amber-500 bg-amber-50'
@@ -1171,8 +1279,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                     : 'border-gray-100 bg-white hover:border-blue-200')
                                 }`}
                         >
-                            <p className={`text-[11px] font-medium mb-0.5 truncate ${isHolding ? 'text-amber-600' : 'text-gray-500'}`}>
-                                {isHolding ? '⏳ ' : ''}{basket.basket_name}
+                            <p className={`text-[11px] font-medium mb-0.5 truncate ${basket.basket_key === 'block_customer' ? 'text-red-600' : isHolding ? 'text-amber-600' : 'text-gray-500'}`}>
+                                {basket.basket_key === 'block_customer' ? '🚫 ' : isHolding ? '⏳ ' : ''}{basket.basket_name}
                             </p>
                             <div className={`text-xl font-bold ${isHolding
                                 ? (isActive ? 'text-amber-600' : 'text-amber-700')
@@ -1741,6 +1849,21 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     </div>
                 )
             }
+
+            {/* Blocked Customers Modal */}
+            <BlockedCustomersModal
+                isOpen={blockedModalOpen}
+                onClose={() => setBlockedModalOpen(false)}
+                blockedCustomers={blockedCustomers}
+                loading={loadingBlocked}
+                baskets={baskets.map(b => ({ id: b.id, basket_key: b.basket_key, basket_name: b.basket_name }))}
+                currentUserId={currentUser?.id || 0}
+                companyId={currentUser?.companyId || 0}
+                onUnblockSuccess={() => {
+                    fetchBlockedCustomers();
+                    fetchAllBasketCounts();
+                }}
+            />
         </div >
     );
 };

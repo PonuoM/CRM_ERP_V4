@@ -30,14 +30,12 @@
 - **การเลือก**: ติ๊กเลือกพนักงานที่ต้องการให้ได้รับงาน (สามารถ Select All ได้)
 
 ### ขั้นตอนที่ 3: ดูตัวอย่างและตรวจสอบ (Preview & Logic)
-- กดปุ่ม **"ดูตัวอย่างก่อนแจก" (Preview)** ระบบจะจำลองการแจกรายชื่อโดยใช้ **Smart Allocation Logic**:
-   1. **Round-Robin (Pruning)**:
-      - วนแจกให้พนักงานทีละคน
-      - **Logic ใหม่**: ใช้ตาราง `customer_assign_check` เพื่อบันทึกประวัติว่าลูกค้าเคยอยู่กับใครในรอบปัจจุบัน
-      - หากเจอประวัติซ้ำ -> ข้ามพนักงานคนนั้น (Pruning)
-      - หากข้ามจนครบทุกคนแล้วยังลงไม่ได้ -> ถือว่า "วนซ้ำ" (Shortfall)
-   2. **Previous Owner Check**: (Logic เดิมถูกรวมเข้าไปใน Pruning แล้ว)
-   3. **Fallback Loop**: หากแจกไม่ครบเนื่องจากติดเงื่อนไขซ้ำ ระบบจะแจ้งเตือน (Shortfall Alert) ให้ผู้ใช้ตัดสินใจว่าจะหาคนใหม่มาเติมหรือไม่
+- กดปุ่ม **"ดูตัวอย่างก่อนแจก" (Preview)** ระบบจะจำลองการแจกรายชื่อโดยใช้ **Conflict-Aware Smart Allocation**:
+   1. **ดึง Conflict Data** (async): เรียก API `Distribution/index.php?action=get_assign_checks` เพื่อดึงประวัติว่าลูกค้าแต่ละคนเคยอยู่กับ agent ใดบ้างจากตาราง `customer_assign_check`
+   2. **Most Constrained First**: เรียงลูกค้าตามจำนวน conflict มากสุดก่อน เพราะมีตัวเลือก agent น้อยกว่า ต้องจัดก่อนจึงจะเหลือตัวเลือกให้
+   3. **Greedy Assignment (Pass 1)**: วนลูกค้าทีละคน → หา agent ที่ดีที่สุด (ไม่ซ้ำ + ได้ลูกค้าน้อยสุดในรอบนี้ + ยังมี quota)
+   4. **Fallback (Pass 2)**: ลูกค้าที่ conflict ครบทุก agent แล้ว → ยอมให้ agent ที่ได้น้อยสุด (allow conflict)
+   5. **Shortfall Alert**: หากแจกไม่ครบ ระบบจะแจ้งเตือนว่าพนักงานคนไหนได้น้อยกว่าโควต้า
 
 ### ขั้นตอนที่ 4: ยืนยันการแจก (Execute)
 - เมื่อกดแจก ระบบจะเรียก API `Distribution/index.php?action=distribute`
@@ -96,38 +94,74 @@
    - **Reset Selected**: เลือกติ๊กถูกรายบุคคลแล้วกด Reset (ยืนยันด้วย Modal สีส้ม)
    - **Reset All**: กดปุ่มแดงเพื่อล้าง *ทั้งหมด* ตามจำนวนที่ค้นหาเจอ (ยืนยันด้วย Modal สีแดง)
 
-## 7. สรุปผลการแจก (Summary Modal) [NEW]
+## 8. ตะกร้าลูกค้าบล็อค (Blocked Customer Modal) [NEW]
+
+ตะกร้า **block_customer** (basket 55) จะไม่เข้า flow แจกปกติ → เปิด Modal พิเศษแทน
+
+### UI Components
+- **Basket Card**: แสดง 🚫 + ตัวอักษรสีแดง, จำนวนดึงจาก `get_blocked_customers.php` (ไม่ใช่ `basket_customers`)
+- **BlockedCustomersModal** (`components/BlockedCustomersModal.tsx`)
+  - Header: จำนวนลูกค้าบล็อค + ปุ่ม "🔍 ตรวจสอบ Sync"
+  - Filter: ค้นหาชื่อ/เบอร์/รหัส + dropdown กรองสาเหตุ
+  - Table: checkbox, ชื่อ, เบอร์, สาเหตุบล็อค, บล็อคโดย, วันที่
+  - Footer: badge "เลือก N คน" + dropdown ตะกร้าปลายทาง (เฉพาะ target_page='distribution') + ปุ่ม "ปลดบล็อค"
+
+### ปลดบล็อค (Batch Unblock)
+1. เลือก checkbox หลายรายชื่อ
+2. เลือกตะกร้าปลายทาง (dropdown)
+3. กด "✅ ปลดบล็อค" → POST `customer_blocks` body: `{ action: 'batch_unblock', block_ids, target_basket_key, unblockedBy }`
+4. ผลลัพธ์: `customer_blocks.active=0` + `customers.is_blocked=0` + `current_basket_key={target}`
+
+### ตรวจสอบ Sync
+- กดปุ่ม "🔍 ตรวจสอบ Sync" → เรียก `get_blocked_customers.php?action=check_mismatched`
+- ค้นหาลูกค้า `is_blocked=1` ที่ `current_basket_key ≠ 55`
+- แสดงชื่อ, ตะกร้าปัจจุบัน, ประเภท (target_page)
+- ปุ่มยืนยัน "📦 ย้ายทั้งหมดเข้าตะกร้าบล็อค" → POST `get_blocked_customers.php?action=fix_mismatched`
+
+## 9. สรุปผลการแจก (Summary Modal)
 หลังการแจกระบบจะแสดง Modal สรุปผล:
 - **ยอดรวม**: สำเร็จ / ล้มเหลว
 - **รายพนักงาน**: ตารางแสดงยอดที่พนักงานแต่ละคนได้รับจริง
 - **Retry Loop**: หากแจกไม่ครบโควต้า (Shortfall) จะมีปุ่ม **"แจกเพิ่มส่วนที่ขาด"** เพื่อให้ระบบค้นหาลูกค้าใหม่มาเติมให้ครบโดยอัตโนมัติ
 
-## 8. การทำงานเชิงเทคนิค (Technical Implementation)
+## 10. การทำงานเชิงเทคนิค (Technical Implementation)
 
 ### 8.1 Main Component
 - **File**: `pages/CustomerDistributionV2.tsx`
 - **State Management**: ใช้ `useState` และ `useEffect` จัดการข้อมูล Baskets, Agents, และ Customers
 - **UI Components**: ใช้ Modal ที่เขียนขึ้นเองแทน `window.confirm` เพื่อความสวยงาม (ConfirmationModal)
 
-### 8.2 Key API Endpoints
+### 10.2 Key API Endpoints
 - **GET** `basket_config.php`: ดึงการตั้งค่าถัง
-- **POST** `Distribution/index.php`: `distribute` (Logic การแจกใหม่)
+- **GET** `Distribution/index.php?action=get_assign_checks`: ดึงข้อมูล conflict (ลูกค้าเคยอยู่กับ agent ใดบ้าง) สำหรับ preview
+- **POST** `Distribution/index.php?action=distribute`: Logic การแจกใหม่ + เช็คซ้ำ + บันทึก `customer_assign_check`
 - **POST** `Distribution/reset.php`:
   - `get_candidates`: ดึงรายชื่อสำหรับ Reset (support pagination)
   - `manual_reset`: สั่งล้างข้อมูล (`mode='selected'` หรือ `'all'`)
   - `get_assign_history`: ดึงประวัติการแจกของลูกค้า
+- **GET** `get_blocked_customers.php`: ดึงรายชื่อ blocked (active=1, MAX(id))
+- **GET** `get_blocked_customers.php?action=check_mismatched`: หาลูกค้า is_blocked=1 ที่ basket ≠ 55
+- **POST** `get_blocked_customers.php?action=fix_mismatched`: ย้ายลูกค้า is_blocked=1 เข้า basket 55
+- **POST** `customer_blocks` body `{action:'batch_unblock'}`: ปลดบล็อคหลายคน + เลือกตะกร้าปลายทาง
 
 ### 8.3 Data Logic
-- **Round Robin Logic**:
+- **Conflict-Aware Allocation** (Frontend — `handleGeneratePreview`):
+  1. เรียก API `get_assign_checks` ดึง conflict map: `{ customer_id: [agent_ids] }`
+  2. Merge กับ `previous_assigned_to` จากข้อมูลลูกค้า (fallback)
+  3. เรียงลูกค้าตาม conflict มากสุดก่อน (Most Constrained First)
+  4. Pass 1: Greedy assign — หา agent ที่ไม่ซ้ำ + ได้น้อยสุด
+  5. Pass 2: Fallback — ยอมให้ agent ที่ได้น้อยสุด (ถ้า conflict ทุก agent)
+- **Backend Safety Net** (`Distribution/index.php?action=distribute`):
   - ใช้ตาราง `customer_assign_check` (เก็บประวัติการแจกในรอบปัจจุบัน)
   - ใช้ฟิลด์ `current_round` ในตาราง `customers` (นับรอบการวน)
-  - **Pruning**: ก่อนแจกจะเช็ค `customer_assign_check` ว่าเคยแจกพนักงานคนนี้ในรอบ `current_round` หรือไม่
-  - **Auto Increment**: เมื่อแจกครบทุกคน (หรือครบตามจำนวน Sale), ระบบจะเคลียร์ `customer_assign_check` และ +1 ให้ `current_round` อัตโนมัติ
+  - **Pruning**: เช็ค `customer_assign_check` ว่าเคยแจกพนักงานคนนี้หรือยัง → skip ถ้าซ้ำ
+  - **Auto Increment**: เมื่อแจกครบทุก agent → เคลียร์ `customer_assign_check` + เพิ่ม `current_round`
 
 ### 8.4 Database Schema Changes
 - **Tables**: `customer_assign_check`
 - **Columns**: `customers.current_round` (INT DEFAULT 1)
 
-## 9. ข้อควรระวัง (Notes)
+## 11. ข้อควรระวัง (Notes)
 - **Upsell Basket**: ถัง Upsell มักจะมี Logic พิเศษที่เชื่อมโยงกับถังหลัก
 - **Concurrency**: ข้อมูลจำนวนลูกค้า "พร้อมแจก" อาจเปลี่ยนแปลงได้ถ้ามี Admin หลายคนทำงานพร้อมกัน
+- **Blocked Basket Count**: ตะกร้า block_customer ดึงจำนวนจาก `get_blocked_customers.php` (ไม่ใช่ `basket_customers` ซึ่งกรอง is_blocked=0)

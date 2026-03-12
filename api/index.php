@@ -6491,6 +6491,56 @@ function handle_customer_blocks(PDO $pdo, ?string $id): void
             break;
         case 'POST':
             $in = json_input();
+            $action = $in['action'] ?? '';
+
+            // Batch unblock: unblock multiple customers and move to target basket
+            if ($action === 'batch_unblock') {
+                $blockIds = $in['block_ids'] ?? [];
+                $targetBasketKey = (int) ($in['target_basket_key'] ?? 0);
+                $unblockedBy = (int) ($in['unblockedBy'] ?? 0);
+                if (empty($blockIds) || !$targetBasketKey || !$unblockedBy) {
+                    json_response(['error' => 'VALIDATION_FAILED', 'message' => 'block_ids, target_basket_key, unblockedBy required'], 400);
+                }
+                $results = ['success' => 0, 'failed' => 0, 'errors' => []];
+                foreach ($blockIds as $blockId) {
+                    try {
+                        // 1. Update customer_blocks
+                        $pdo->prepare('UPDATE customer_blocks SET active = 0, unblocked_by = ?, unblocked_at = NOW() WHERE id = ? AND active = 1')
+                            ->execute([$unblockedBy, (int) $blockId]);
+
+                        // 2. Find customer and update
+                        $cidStmt = $pdo->prepare('SELECT customer_id FROM customer_blocks WHERE id = ?');
+                        $cidStmt->execute([(int) $blockId]);
+                        $cid = $cidStmt->fetchColumn();
+                        if ($cid) {
+                            $findStmt = $pdo->prepare('SELECT customer_id, current_basket_key FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                            $findStmt->execute([$cid, is_numeric($cid) ? (int) $cid : null]);
+                            $customer = $findStmt->fetch();
+                            if ($customer && $customer['customer_id']) {
+                                $oldBasketKey = $customer['current_basket_key'];
+                                set_audit_context($pdo, 'customer_blocks/batch_unblock');
+                                $pdo->prepare('UPDATE customers SET is_blocked = 0, current_basket_key = ?, basket_entered_date = NOW() WHERE customer_id = ?')
+                                    ->execute([$targetBasketKey, $customer['customer_id']]);
+                                // Log transition
+                                if ((int)$oldBasketKey !== $targetBasketKey) {
+                                    try {
+                                        $pdo->prepare('INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, notes, created_at) VALUES (?, ?, ?, ?, ?, NOW())')
+                                            ->execute([$customer['customer_id'], $oldBasketKey, $targetBasketKey, 'unblocked', 'Batch unblock from Distribution V2']);
+                                    } catch (Throwable $logErr) { /* ignore */ }
+                                }
+                            }
+                        }
+                        $results['success']++;
+                    } catch (Throwable $e) {
+                        $results['failed']++;
+                        $results['errors'][] = "block_id=$blockId: " . $e->getMessage();
+                    }
+                }
+                json_response(['ok' => true, 'results' => $results]);
+                break;
+            }
+
+            // Original single-customer block logic
             $customerId = $in['customerId'] ?? '';
             $reason = trim((string) ($in['reason'] ?? ''));
             $blockedBy = (int) ($in['blockedBy'] ?? 0);

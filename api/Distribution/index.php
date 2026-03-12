@@ -15,6 +15,8 @@ $companyId = $_GET['companyId'] ?? 1;
 try {
     if ($action === 'distribute') {
         handleDistribute($pdo, $companyId);
+    } elseif ($action === 'get_assign_checks') {
+        handleGetAssignChecks($pdo, $companyId);
     } else {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid action']);
@@ -174,4 +176,56 @@ function handleDistribute($pdo, $companyId)
         $pdo->rollBack();
         throw $e;
     }
+}
+
+/**
+ * Return assign-check history: which agents each customer has been assigned to.
+ * GET ?action=get_assign_checks&companyId=1&customer_ids=CUS001,CUS002,...
+ * Response: { "ok": true, "conflicts": { "CUS001": [3,5], "CUS002": [1] } }
+ */
+function handleGetAssignChecks($pdo, $companyId)
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        http_response_code(405);
+        echo json_encode(['error' => 'GET required']);
+        return;
+    }
+
+    $idsParam = $_GET['customer_ids'] ?? '';
+    if (empty($idsParam)) {
+        echo json_encode(['ok' => true, 'conflicts' => new \stdClass()]);
+        return;
+    }
+
+    $ids = array_filter(array_map('trim', explode(',', $idsParam)));
+    if (count($ids) === 0) {
+        echo json_encode(['ok' => true, 'conflicts' => new \stdClass()]);
+        return;
+    }
+
+    // Batch query: get all assign checks for these customers
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $pdo->prepare("
+        SELECT customer_id, user_id
+        FROM customer_assign_check
+        WHERE customer_id IN ($placeholders)
+        AND company_id = ?
+    ");
+    $params = $ids;
+    $params[] = $companyId;
+    $stmt->execute($params);
+
+    $conflicts = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $cid = $row['customer_id'];
+        if (!isset($conflicts[$cid])) {
+            $conflicts[$cid] = [];
+        }
+        $conflicts[$cid][] = (int) $row['user_id'];
+    }
+
+    echo json_encode([
+        'ok' => true,
+        'conflicts' => empty($conflicts) ? new \stdClass() : $conflicts
+    ]);
 }

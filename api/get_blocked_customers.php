@@ -20,6 +20,77 @@ if (!function_exists('cors') || !function_exists('db_connect') || !function_exis
 
 cors();
 
+$action = $_GET['action'] ?? '';
+
+// ─── Action: check_mismatched ───
+// Find customers with is_blocked=1 but current_basket_key != 55
+if ($action === 'check_mismatched') {
+    try {
+        $pdo = db_connect();
+        $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : null;
+
+        $sql = "SELECT c.customer_id, c.customer_ref_id, c.first_name, c.last_name, c.phone,
+                       c.current_basket_key, bc.basket_name AS current_basket_name, bc.target_page
+                FROM customers c
+                LEFT JOIN basket_config bc ON c.current_basket_key = bc.id
+                WHERE c.is_blocked = 1
+                  AND (c.current_basket_key != 55 OR c.current_basket_key IS NULL)";
+        if ($companyId) {
+            $sql .= " AND c.company_id = :company_id";
+        }
+        $sql .= " ORDER BY c.first_name";
+
+        $stmt = $pdo->prepare($sql);
+        if ($companyId) {
+            $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        json_response(["success" => true, "data" => $rows, "count" => count($rows)]);
+    } catch (Throwable $e) {
+        json_response(["success" => false, "error" => $e->getMessage()], 500);
+    }
+    exit;
+}
+
+// ─── Action: fix_mismatched ───
+// Move is_blocked=1 customers to basket 55
+if ($action === 'fix_mismatched') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        json_response(["success" => false, "error" => "POST required"], 405);
+        exit;
+    }
+    try {
+        $pdo = db_connect();
+        $input = json_decode(file_get_contents('php://input'), true);
+        $customerIds = $input['customer_ids'] ?? [];
+        if (empty($customerIds)) {
+            json_response(["success" => false, "error" => "customer_ids required"], 400);
+            exit;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+        $stmt = $pdo->prepare("UPDATE customers SET current_basket_key = 55, basket_entered_date = NOW() WHERE customer_id IN ($placeholders) AND is_blocked = 1");
+        $stmt->execute($customerIds);
+        $affected = $stmt->rowCount();
+
+        // Log transitions
+        foreach ($customerIds as $cid) {
+            try {
+                $pdo->prepare('INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, notes, created_at) VALUES (?, NULL, 55, ?, ?, NOW())')
+                    ->execute([$cid, 'sync_fix', 'Auto-fix: is_blocked=1 but not in basket 55']);
+            } catch (Throwable $e) { /* ignore */ }
+        }
+
+        json_response(["success" => true, "affected" => $affected]);
+    } catch (Throwable $e) {
+        json_response(["success" => false, "error" => $e->getMessage()], 500);
+    }
+    exit;
+}
+
+// ─── Default: list blocked customers ───
 try {
     $pdo = db_connect();
     $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : null;
@@ -38,7 +109,7 @@ try {
                 u.username AS blocker_username,
                 CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) AS blocker_name
             FROM customer_blocks cb
-            JOIN customers c ON (cb.customer_id = c.customer_id OR cb.customer_id = c.customer_ref_id)
+            JOIN customers c ON (cb.customer_id = c.customer_ref_id OR cb.customer_id = c.customer_id)
             LEFT JOIN users u ON cb.blocked_by = u.id
             WHERE cb.active = 1
               AND (c.is_blocked = 1 OR c.bucket_type = 'blocked')";

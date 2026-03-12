@@ -64,7 +64,7 @@ api/index.php → handle_customer_blocks()
   └─ INSERT INTO basket_transition_log (type='blocked')
 ```
 
-### ปลดบล็อค (Unblock)
+### ปลดบล็อค (Unblock — ทีละคน)
 ```
 หน้า CustomerDistributionPage → modal "ลูกค้าที่ถูกบล็อค" → กดปุ่ม "ปลดบล็อค"
   ↓
@@ -81,6 +81,37 @@ api/index.php → handle_customer_blocks()
   └─ INSERT INTO basket_transition_log (type='unblocked')
 ```
 
+### ปลดบล็อค (Batch Unblock — หลายคน + เลือกตะกร้าปลายทาง) [NEW]
+```
+หน้า Distribution V2 → กดตะกร้า "ลูกค้าบล็อค" → เปิด BlockedCustomersModal
+  → เลือก checkbox หลายรายชื่อ + เลือกตะกร้าปลายทาง → กด "ปลดบล็อค"
+  ↓
+POST /api/customer_blocks  body: { action: 'batch_unblock', block_ids, target_basket_key, unblockedBy }
+  ↓
+api/index.php → handle_customer_blocks() — action='batch_unblock'
+  Loop ทุก block_id:
+  ├─ UPDATE customer_blocks SET active=0, unblocked_by, unblocked_at
+  ├─ UPDATE customers SET
+  │    is_blocked = 0,
+  │    current_basket_key = {target_basket_key},
+  │    basket_entered_date = NOW()
+  └─ INSERT INTO basket_transition_log (type='unblocked')
+```
+
+### ตรวจสอบ Sync (Check Mismatched) [NEW]
+```
+BlockedCustomersModal → กดปุ่ม "ตรวจสอบ Sync"
+  ↓
+GET /api/get_blocked_customers.php?action=check_mismatched&company_id=X
+  → SELECT customers WHERE is_blocked=1 AND current_basket_key != 55
+  → แสดงรายชื่อ + ตะกร้าปัจจุบัน + target_page
+  ↓
+(ถ้าพบ) กดปุ่ม "ย้ายทั้งหมดเข้าตะกร้าบล็อค"
+  ↓
+POST /api/get_blocked_customers.php?action=fix_mismatched
+  → UPDATE customers SET current_basket_key=55 WHERE customer_id IN (...)
+```
+
 ---
 
 ## ไฟล์ที่เกี่ยวข้อง
@@ -90,6 +121,8 @@ api/index.php → handle_customer_blocks()
 |------|--------|
 | `pages/CustomerDetailPage.tsx` | ปุ่ม "บล็อค" (line ~1796-1829) |
 | `pages/CustomerDistributionPage.tsx` | Modal ดู/ปลด blocked, นับจำนวน blocked, กรอง blocked ออกจากรายชื่อแจก |
+| `pages/CustomerDistributionV2.tsx` | ตะกร้า block_customer card → เปิด BlockedCustomersModal (ไม่เข้า flow แจก) |
+| `components/BlockedCustomersModal.tsx` | [NEW] Modal แสดงรายชื่อบล็อค + filter + multi-select + batch unblock + sync check |
 | `pages/CustomerPoolsPage.tsx` | Tab "blocked" แยก, กรอง blocked ออกจาก ready/basket/assigned |
 | `services/api.ts` | `createCustomerBlock()`, `unblockCustomerBlock()` |
 | `services/syncService.ts` | เช็ค `mapped.isBlocked` เมื่อ sync |
@@ -99,8 +132,8 @@ api/index.php → handle_customer_blocks()
 ### Backend
 | ไฟล์ | หน้าที่ |
 |------|--------|
-| `api/index.php` | `handle_customer_blocks()` — CRUD สำหรับ block/unblock |
-| `api/get_blocked_customers.php` | API ดึงรายชื่อ blocked ทั้งหมด (ใช้ใน Distribution modal) |
+| `api/index.php` | `handle_customer_blocks()` — CRUD + batch_unblock สำหรับ block/unblock |
+| `api/get_blocked_customers.php` | API ดึงรายชื่อ blocked + check_mismatched + fix_mismatched |
 | `api/Services/BasketRoutingServiceV2.php` | Guard: skip routing ถ้า `is_blocked=1` |
 | `api/cron_basket_transition.php` | กรอง `is_blocked=0` (3 จุด) |
 | `api/customer/bulk_distribute.php` | กรอง blocked ก่อนแจกงาน |
