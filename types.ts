@@ -649,6 +649,70 @@ export interface Product {
   status?: string;
 }
 
+// ========== Product Quota System ==========
+
+export interface QuotaProduct {
+  id: number;
+  productId: number;
+  companyId: number;
+  displayName: string;
+  csvLabel?: string;
+  quotaCost: number;            // จำนวนโควตาที่ต้องใช้ต่อ 1 ชิ้น (default 1)
+  productName?: string;   // joined from products
+  productSku?: string;    // joined from products
+  productPrice?: number;  // joined from products
+  isActive: boolean;
+}
+
+export interface QuotaRateSchedule {
+  id: number;
+  quotaProductId: number;
+  salesPerQuota: number;
+  effectiveDate: string;          // YYYY-MM-DD
+  orderDateField: 'order_date' | 'delivery_date';
+  quotaMode: 'reset' | 'cumulative';
+  resetIntervalDays: number;
+  resetDayOfMonth?: number;           // 1-28: รีเซ็ตทุกวันที่ X ของเดือน
+  resetAnchorDate?: string;       // YYYY-MM-DD
+  createdBy?: number;
+  createdByName?: string;         // joined
+  createdAt?: string;
+}
+
+export interface QuotaAllocation {
+  id: number;
+  quotaProductId: number;
+  userId: number;
+  companyId: number;
+  quantity: number;
+  source: 'auto' | 'admin';
+  sourceDetail?: string;
+  allocatedBy?: number;
+  periodStart?: string;
+  periodEnd?: string;
+  createdAt: string;
+  // joined
+  userFirstName?: string;
+  userLastName?: string;
+  allocatedByFirstName?: string;
+  allocatedByLastName?: string;
+}
+
+export interface QuotaSummary {
+  userId: number;
+  userName: string;
+  role: string;
+  totalSales: number;
+  totalAutoQuota: number;
+  totalAdminQuota: number;
+  totalQuota: number;
+  totalUsed: number;
+  remaining: number;
+  periodStart?: string;
+  periodEnd?: string;
+  quotaMode: string;
+}
+
 export interface Page {
   id: number;
   name: string;

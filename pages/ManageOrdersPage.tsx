@@ -1,4 +1,4 @@
-﻿
+
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
@@ -7,6 +7,7 @@ import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText, XCircle, RotateCcw } from 'lucide-react';
 import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl, getTabRules, validateOrdersForExport, fetchExportTemplates, getExportOrderIds, batchExportOrders } from '../services/api';
 import { apiFetch } from '../services/api';
+import { listQuotaProducts } from '../services/quotaApi';
 import usePersistentState from '../utils/usePersistentState';
 import Spinner from '../components/Spinner';
 
@@ -102,6 +103,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       setLoadingTemplates(false);
     }
   };
+
+  // Preload quota products for resolveDataSource → item.quotaCsvLabel
+  useEffect(() => {
+    if (user?.companyId) {
+      listQuotaProducts(user.companyId).then(data => {
+        (window as any).__quotaProductsCache = data;
+      }).catch(() => {});
+    }
+  }, [user?.companyId]);
 
   const confirmTemplateAndExport = () => {
     setShowTemplateModal(false);
@@ -816,6 +826,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       'item.productName': ctx.item?.productName || '',
       'item.quantity': ctx.item?.quantity ?? 0,
       'item.pricePerUnit': ctx.item?.pricePerUnit ?? 0,
+      // Quota CSV label: use quota-specific label if this product is a quota product
+      'item.quotaCsvLabel': (() => {
+        const pid = ctx.item?.productId ?? ctx.product?.id;
+        if (!pid) return ctx.item?.productName || '';
+        const qp = (window as any).__quotaProductsCache?.find((q: any) => q.productId === pid);
+        return qp?.csvLabel || qp?.displayName || ctx.item?.productName || '';
+      })(),
     };
     // Helper: resolve {field} placeholders in a sub-expression
     const resolveFields = (s: string): string =>

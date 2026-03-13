@@ -100,6 +100,7 @@ import ProductAnalysisPage from "./pages/ProductAnalysisPage";
 import CustomerDistributionPage from "./pages/CustomerDistributionPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import ProductManagementPage from "./pages/ProductManagementPage";
+import QuotaSettingsPage from "./pages/QuotaSettingsPage";
 import TelesaleSummaryDashboard from "./pages/TelesaleSummaryDashboard";
 import PancakeUserIntegrationPage from "./pages/PancakeUserIntegrationPage";
 import ManageOrdersPage from "./pages/ManageOrdersPage";
@@ -6693,6 +6694,14 @@ const App: React.FC = () => {
           openModal={openModal}
           currentUser={currentUser}
           allCompanies={companies}
+        />
+      );
+    }
+    if (activePage === "Quota Settings") {
+      return (
+        <QuotaSettingsPage
+          currentUser={currentUser}
+          products={companyProducts}
         />
       );
     }
