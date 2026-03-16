@@ -1567,47 +1567,57 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                           }
                           const statusMap: Record<string, string> = {
                             returning: 'กำลังตีกลับ',
-                            good: 'เข้าคลัง (สภาพดี)',
-                            damaged: 'เข้าคลัง (เสียหาย)',
+                            returned: 'สภาพดี',
+                            good: 'สภาพดี',
+                            damaged: 'ชำรุด',
                             lost: 'สูญหาย',
                             pending: 'รอการดำเนินการ',
                             delivered: 'ส่งสำเร็จ',
                           };
                           const headers = [
-                            'Order ID', 'Sub Order ID', 'วันที่สั่งซื้อ', 'ชื่อจริง', 'นามสกุล', 'เบอร์โทร',
-                            'Tracking No.', 'สถานะตีกลับ', 'หมายเหตุ',
-                            'ราคากล่อง', 'ยอดเก็บได้', 'วันที่บันทึกตีกลับ',
-                            'สถานะกล่อง', 'ช่องทางชำระ',
+                            'Order ID', 'Sub Order ID', 'วันที่สั่งซื้อ',
+                            'ชื่อลูกค้า', 'เบอร์โทร',
                             'ที่อยู่', 'แขวง/ตำบล', 'เขต/อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์',
-                            'ชื่อผู้ขาย', 'นามสกุลผู้ขาย', 'ตำแหน่งผู้ขาย',
-                            'ยอดเต็ม', 'ยอดคงเหลือ'
+                            'Tracking No.', 'สถานะตีกลับ', 'หมายเหตุ',
+                            'ราคากล่อง', 'ยอดเก็บได้',
+                            'ชื่อสินค้า', 'จำนวน', 'ผู้ขาย',
+                            'วันที่บันทึก', 'ช่องทางชำระ',
                           ];
-                          const rows = res.data.map((r: any) => ([
-                            r.order_id || '',
-                            r.sub_order_id || '',
-                            r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH') : '',
-                            r.customer_first_name || '',
-                            r.customer_last_name || '',
-                            r.customer_phone || '',
-                            r.tracking_number || '',
-                            statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
-                            r.return_note || '',
-                            r.cod_amount ?? 0,
-                            r.collection_amount ?? 0,
-                            r.return_created_at ? new Date(r.return_created_at).toLocaleString('th-TH') : '',
-                            statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
-                            r.payment_method || '',
-                            r.shipping_street || '',
-                            r.shipping_subdistrict || '',
-                            r.shipping_district || '',
-                            r.shipping_province || '',
-                            r.shipping_postal_code || '',
-                            r.seller_first_name || '',
-                            r.seller_last_name || '',
-                            r.seller_role || '',
-                            r.total_cod_amount ?? 0,
-                            r.total_collection_amount ?? 0,
-                          ]));
+                          // Group rows by order_id + box_number
+                          let lastGroupKey = '';
+                          const rows = res.data.map((r: any) => {
+                            const groupKey = `${r.order_id}-${r.box_number}`;
+                            const isFirstRow = groupKey !== lastGroupKey;
+                            lastGroupKey = groupKey;
+
+                            const customerName = `${r.customer_first_name || ''} ${r.customer_last_name || ''}`.trim() || '-';
+                            const itemSeller = (r.item_creator_first_name || r.item_creator_last_name)
+                              ? `${r.item_creator_first_name || ''} ${r.item_creator_last_name || ''}`.trim()
+                              : `${r.seller_first_name || ''} ${r.seller_last_name || ''}`.trim() || '-';
+
+                            return [
+                              isFirstRow ? (r.order_id || '') : '',
+                              isFirstRow ? (r.sub_order_id || '') : '',
+                              isFirstRow ? (r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH') : '-') : '',
+                              isFirstRow ? customerName : '',
+                              isFirstRow ? (r.customer_phone || '-') : '',
+                              isFirstRow ? (r.shipping_street || '-') : '',
+                              isFirstRow ? (r.shipping_subdistrict || '-') : '',
+                              isFirstRow ? (r.shipping_district || '-') : '',
+                              isFirstRow ? (r.shipping_province || '-') : '',
+                              isFirstRow ? (r.shipping_postal_code || '-') : '',
+                              isFirstRow ? (r.tracking_number || '-') : '',
+                              statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
+                              isFirstRow ? (r.return_note || '-') : '',
+                              isFirstRow ? (r.cod_amount ?? 0) : '',
+                              isFirstRow ? (r.collection_amount ?? 0) : '',
+                              r.item_product_name || '-',
+                              r.item_quantity || 0,
+                              itemSeller,
+                              isFirstRow ? (r.return_created_at ? new Date(r.return_created_at).toLocaleString('th-TH') : '-') : '',
+                              isFirstRow ? (r.payment_method || '-') : '',
+                            ];
+                          });
                           const csvContent = '\uFEFF' + headers.join(',') + '\n'
                             + rows.map((row: any[]) => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
                           const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

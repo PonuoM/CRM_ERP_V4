@@ -159,6 +159,18 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
     setOpen(false);
   };
 
+  const [dropdownAlign, setDropdownAlign] = useState<'left' | 'right'>('left');
+
+  // Measure position when opening to decide alignment
+  useEffect(() => {
+    if (open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const spaceRight = window.innerWidth - rect.left;
+      // Calendar popup is ~640px wide; if not enough space on the right, align right
+      setDropdownAlign(spaceRight < 680 ? 'right' : 'left');
+    }
+  }, [open]);
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -170,7 +182,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
       </button>
 
       {open && (
-        <div className="absolute z-[60] mt-2 bg-white rounded-xl shadow-xl border border-gray-200 p-5 w-auto" style={{ minWidth: '640px' }}>
+        <div className={`absolute z-[60] mt-2 bg-white rounded-xl shadow-xl border border-gray-200 p-5 w-auto ${dropdownAlign === 'right' ? 'right-0' : 'left-0'}`} style={{ minWidth: '640px' }}>
           {/* Preset Buttons */}
           <div className="flex flex-wrap gap-1.5 mb-4">
             {[
