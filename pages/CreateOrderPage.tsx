@@ -434,7 +434,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     null,
   );
   const [upsellSelectorTab, setUpsellSelectorTab] = useState<
-    "products" | "promotions"
+    "products" | "promotions" | "quota"
   >("products");
   const [upsellSelectorSearchTerm, setUpsellSelectorSearchTerm] = useState("");
   const [upsellSlips, setUpsellSlips] = useState<UpsellSlip[]>([]);
@@ -1737,7 +1737,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [productSelectorOpen, setProductSelectorOpen] = useState(false);
 
-  const [selectorTab, setSelectorTab] = useState<"products" | "promotions">(
+  const [selectorTab, setSelectorTab] = useState<"products" | "promotions" | "quota">(
     "products",
   );
 
@@ -6529,6 +6529,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             onSearchChange={setUpsellSelectorSearchTerm}
             onSelectProduct={handleUpsellAddProductById}
             onSelectPromotion={handleUpsellAddPromotionById}
+            companyId={currentUser?.companyId}
+            currentUserId={currentUser?.id}
           />
         </div>
       </div>
@@ -9514,6 +9516,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   onSearchChange={setSelectorSearchTerm}
                   onSelectProduct={addProductById}
                   onSelectPromotion={addPromotionByIdFixed}
+                  companyId={currentUser?.companyId}
+                  currentUserId={currentUser?.id}
                 />
               </div>
             )}

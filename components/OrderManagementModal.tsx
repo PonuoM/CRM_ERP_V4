@@ -277,7 +277,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   // Product Selector Modal states
   const [productSelectorOpen, setProductSelectorOpen] = useState(false);
-  const [selectorTab, setSelectorTab] = useState<"products" | "promotions">(
+  const [selectorTab, setSelectorTab] = useState<"products" | "promotions" | "quota">(
     "products",
   );
   const [selectorSearchTerm, setSelectorSearchTerm] = useState("");
@@ -4800,6 +4800,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         onSearchChange={setSelectorSearchTerm}
         onSelectProduct={handleSelectProduct}
         onSelectPromotion={handleSelectPromotion}
+        companyId={currentUser?.companyId}
+        currentUserId={currentUser?.id}
       />
     </>
   );

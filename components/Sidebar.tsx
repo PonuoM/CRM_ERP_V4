@@ -184,6 +184,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "สต็อก V2": "สต็อกคงเหลือ",
     "ประวัติ V2": "ประวัติทั้งหมด",
     "Database Management": "จัดการฐานข้อมูล",
+    "Quota Settings": "ตั้งค่าโควตา",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -328,6 +329,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       children: [
         { label: "Users", icon: Users, key: "data.users" },
         { label: "Products", icon: Package, key: "data.products" },
+        { label: "Quota Settings", icon: Package, key: "data.quota_settings" },
         { label: "Pages", icon: Share2, key: "data.pages" },
         { label: "Platforms", icon: Share2, key: "data.platforms" },
         { label: "Bank Accounts", icon: Database, key: "data.bank_accounts" },
