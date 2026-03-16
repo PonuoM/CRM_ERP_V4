@@ -9,7 +9,7 @@ import type { Product, User, QuotaProduct, QuotaRateSchedule, QuotaAllocation, Q
 import {
   listQuotaProducts, createQuotaProduct, createQuotaProductWithNew, updateQuotaProduct,
   listRateSchedules, createRateSchedule, updateRateSchedule, deleteRateSchedule, getActiveRate,
-  getQuotaSummary, allocateQuota, listQuotaAllocations,
+  getQuotaSummary, allocateQuota, listQuotaAllocations, confirmQuota,
 } from '../services/quotaApi';
 import { listProducts } from '../services/api';
 
@@ -40,11 +40,17 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     salesPerQuota: '',
     effectiveDate: new Date().toISOString().split('T')[0],
     orderDateField: 'order_date' as 'order_date' | 'delivery_date',
-    quotaMode: 'reset' as 'reset' | 'cumulative',
+    quotaMode: 'reset' as 'reset' | 'cumulative' | 'confirm',
     resetType: 'monthly' as 'interval' | 'monthly',
     resetIntervalDays: '30',
     resetDayOfMonth: '1',
     resetAnchorDate: new Date().toISOString().split('T')[0],
+    calcPeriodStart: '',
+    calcPeriodEnd: '',
+    usageStartDate: '',
+    usageEndDate: '',
+    requireConfirm: true,
+    scopeProductIds: [] as number[],
   });
   const [editingRate, setEditingRate] = useState<QuotaRateSchedule | null>(null);
 
@@ -62,6 +68,9 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyUser, setHistoryUser] = useState<QuotaSummary | null>(null);
   const [historyData, setHistoryData] = useState<QuotaAllocation[]>([]);
+
+  // Delete confirm modal
+  const [deleteTarget, setDeleteTarget] = useState<QuotaRateSchedule | null>(null);
 
   const companyId = currentUser.companyId;
 
@@ -99,7 +108,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   // Load rates when quota product is selected
   useEffect(() => {
     if (selectedQuotaProduct) {
-      loadRates(selectedQuotaProduct.id);
+      loadRates(selectedQuotaProduct.id || 'global');
     }
   }, [selectedQuotaProduct]);
 
@@ -110,7 +119,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     }
   }, [summaryQuotaProduct, activeTab]);
 
-  const loadRates = async (qpId: number) => {
+  const loadRates = async (qpId: number | 'global') => {
     try {
       const data = await listRateSchedules(qpId);
       setRateSchedules(data);
@@ -218,9 +227,29 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
   // -- Rate Schedule --
   const handleSaveRate = async () => {
-    if (!selectedQuotaProduct || !rateForm.salesPerQuota || !rateForm.effectiveDate) {
+    if (!selectedQuotaProduct || !rateForm.salesPerQuota || (!rateForm.effectiveDate && rateForm.quotaMode !== 'confirm')) {
       alert('กรุณากรอกข้อมูลให้ครบ');
       return;
+    }
+
+    // Validate confirm mode dates
+    if (rateForm.quotaMode === 'confirm') {
+      if (!rateForm.calcPeriodStart || !rateForm.calcPeriodEnd) {
+        alert('กรุณาระบุช่วงออเดอร์คำนวณ (เริ่มต้น และ สิ้นสุด)');
+        return;
+      }
+      if (rateForm.calcPeriodStart >= rateForm.calcPeriodEnd) {
+        alert('ช่วงออเดอร์เริ่มต้นต้องน้อยกว่าสิ้นสุด');
+        return;
+      }
+      if (!rateForm.usageStartDate) {
+        alert('กรุณาระบุวันเริ่มใช้โควตา');
+        return;
+      }
+      if (rateForm.usageEndDate && rateForm.usageStartDate >= rateForm.usageEndDate) {
+        alert('วันเริ่มใช้ต้องน้อยกว่าวันหมดอายุ');
+        return;
+      }
     }
 
     // Warn when creating/updating to a "reset" rate — all cumulative quota will be lost
@@ -247,30 +276,41 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
         await updateRateSchedule({
           id: editingRate.id,
           salesPerQuota: parseFloat(rateForm.salesPerQuota),
-          effectiveDate: rateForm.effectiveDate,
+          effectiveDate: rateForm.quotaMode === 'confirm' ? rateForm.calcPeriodStart : rateForm.effectiveDate,
           orderDateField: rateForm.orderDateField,
           quotaMode: rateForm.quotaMode,
           resetIntervalDays: parseInt(rateForm.resetIntervalDays) || 30,
           resetDayOfMonth: (rateForm.quotaMode === 'reset' && rateForm.resetType === 'monthly') ? parseInt(rateForm.resetDayOfMonth) || 1 : null,
           resetAnchorDate: (rateForm.quotaMode === 'reset' && rateForm.resetType === 'interval') ? rateForm.resetAnchorDate : null,
+          calcPeriodStart: rateForm.quotaMode === 'confirm' ? rateForm.calcPeriodStart || null : null,
+          calcPeriodEnd: rateForm.quotaMode === 'confirm' ? rateForm.calcPeriodEnd || null : null,
+          usageStartDate: rateForm.quotaMode === 'confirm' ? rateForm.usageStartDate || null : null,
+          usageEndDate: rateForm.quotaMode === 'confirm' ? rateForm.usageEndDate || null : null,
+          requireConfirm: rateForm.quotaMode === 'confirm' ? rateForm.requireConfirm : undefined,
         });
       } else {
         // Create new rate
         await createRateSchedule({
           quotaProductId: selectedQuotaProduct.id,
           salesPerQuota: parseFloat(rateForm.salesPerQuota),
-          effectiveDate: rateForm.effectiveDate,
+          effectiveDate: rateForm.quotaMode === 'confirm' ? rateForm.calcPeriodStart : rateForm.effectiveDate,
           orderDateField: rateForm.orderDateField,
           quotaMode: rateForm.quotaMode,
           resetIntervalDays: parseInt(rateForm.resetIntervalDays) || 30,
           resetDayOfMonth: (rateForm.quotaMode === 'reset' && rateForm.resetType === 'monthly') ? parseInt(rateForm.resetDayOfMonth) || 1 : undefined,
           resetAnchorDate: (rateForm.quotaMode === 'reset' && rateForm.resetType === 'interval') ? rateForm.resetAnchorDate : undefined,
+          calcPeriodStart: rateForm.quotaMode === 'confirm' ? rateForm.calcPeriodStart : undefined,
+          calcPeriodEnd: rateForm.quotaMode === 'confirm' ? rateForm.calcPeriodEnd : undefined,
+          usageStartDate: rateForm.quotaMode === 'confirm' ? rateForm.usageStartDate : undefined,
+          usageEndDate: rateForm.quotaMode === 'confirm' ? rateForm.usageEndDate : undefined,
+          requireConfirm: rateForm.quotaMode === 'confirm' ? rateForm.requireConfirm : undefined,
+          scopeProductIds: rateForm.scopeProductIds.length > 0 ? rateForm.scopeProductIds : undefined,
           createdBy: currentUser.id,
         });
       }
       setShowRateForm(false);
       setEditingRate(null);
-      loadRates(selectedQuotaProduct.id);
+      loadRates(selectedQuotaProduct.id || 'global');
     } catch (e) {
       alert('Error: ' + (e as Error).message);
     }
@@ -343,6 +383,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   ];
 
   return (
+    <>
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-6">
@@ -643,14 +684,22 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-500 mb-1">เลือกสินค้าโควตา</label>
               <select
-                value={selectedQuotaProduct?.id || ''}
+                value={selectedQuotaProduct?.id ?? ''}
                 onChange={e => {
-                  const qp = activeQuotaProducts.find(x => x.id === parseInt(e.target.value));
-                  setSelectedQuotaProduct(qp || null);
+                  const val = e.target.value;
+                  if (val === '0') {
+                    // Global virtual product
+                    setSelectedQuotaProduct({ id: 0, productId: 0, companyId: currentUser.companyId, displayName: '🌐 ทั้งหมด (Global)', isActive: true, quotaCost: 1 } as any);
+                    loadRates('global');
+                  } else {
+                    const qp = activeQuotaProducts.find(x => x.id === parseInt(val));
+                    setSelectedQuotaProduct(qp || null);
+                  }
                 }}
                 className="w-full border rounded-lg px-3 py-2 text-sm"
               >
                 {activeQuotaProducts.length === 0 && <option value="">-- ไม่มีสินค้าโควตา --</option>}
+                <option value="0">🌐 ทั้งหมด (Global)</option>
                 {activeQuotaProducts.map(qp => (
                   <option key={qp.id} value={qp.id}>{qp.displayName} ({qp.productSku})</option>
                 ))}
@@ -669,7 +718,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
           {/* Rate Form Modal */}
           {showRateForm && selectedQuotaProduct && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
                 <div className="p-5 border-b flex justify-between items-center">
                   <h3 className="text-lg font-semibold text-gray-800">
                     {editingRate ? 'แก้ไขอัตราโควตา' : 'สร้างอัตราโควตาใหม่'} — {selectedQuotaProduct.displayName}
@@ -678,7 +727,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                     <X size={20} />
                   </button>
                 </div>
-                <div className="p-5 space-y-4">
+                <div className="p-5 space-y-4 overflow-y-auto flex-1">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">ยอดขาย (บาท) ต่อ 1 โควตา *</label>
                     <input
@@ -690,6 +739,36 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       min="1"
                     />
                   </div>
+
+                  {/* Scope Checkboxes — only when creating from Global */}
+                  {selectedQuotaProduct.id === 0 && (
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">สินค้าที่ใช้โควตานี้ได้</label>
+                      <p className="text-xs text-gray-500 mb-2">ไม่เลือก = ใช้ได้กับทุกสินค้า (Global)</p>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {activeQuotaProducts.map(qp => (
+                          <label key={qp.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-100 rounded px-2 py-1">
+                            <input
+                              type="checkbox"
+                              checked={rateForm.scopeProductIds.includes(qp.id)}
+                              onChange={e => {
+                                setRateForm(prev => ({
+                                  ...prev,
+                                  scopeProductIds: e.target.checked
+                                    ? [...prev.scopeProductIds, qp.id]
+                                    : prev.scopeProductIds.filter(id => id !== qp.id),
+                                }));
+                              }}
+                              className="rounded text-indigo-600"
+                            />
+                            <span>{qp.displayName}</span>
+                            {qp.productSku && <span className="text-gray-400">({qp.productSku})</span>}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {rateForm.quotaMode !== 'confirm' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">มีผลตั้งแต่วันที่ *</label>
                     <input
@@ -699,6 +778,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       className="w-full border rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">คำนวณจากออเดอร์ตาม</label>
                     <select
@@ -713,7 +793,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">โหมดโควตา</label>
                     <div className="flex gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label className={`flex items-center gap-2 ${editingRate ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
                         <input
                           type="radio"
                           name="quotaMode"
@@ -721,10 +801,11 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                           checked={rateForm.quotaMode === 'reset'}
                           onChange={() => setRateForm(prev => ({ ...prev, quotaMode: 'reset' }))}
                           className="accent-indigo-600"
+                          disabled={!!editingRate}
                         />
                         <span className="text-sm">รีเซ็ตตามรอบ</span>
                       </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label className={`flex items-center gap-2 ${editingRate ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
                         <input
                           type="radio"
                           name="quotaMode"
@@ -732,10 +813,26 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                           checked={rateForm.quotaMode === 'cumulative'}
                           onChange={() => setRateForm(prev => ({ ...prev, quotaMode: 'cumulative' }))}
                           className="accent-indigo-600"
+                          disabled={!!editingRate}
                         />
                         <span className="text-sm">สะสม</span>
                       </label>
+                      <label className={`flex items-center gap-2 ${editingRate ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                        <input
+                          type="radio"
+                          name="quotaMode"
+                          value="confirm"
+                          checked={rateForm.quotaMode === 'confirm'}
+                          onChange={() => setRateForm(prev => ({ ...prev, quotaMode: 'confirm' }))}
+                          className="accent-indigo-600"
+                          disabled={!!editingRate}
+                        />
+                        <span className="text-sm">กำหนดเอง</span>
+                      </label>
                     </div>
+                    {editingRate && (
+                      <p className="text-xs text-amber-600 mt-1">⚠️ ไม่สามารถเปลี่ยนโหมดได้ กรุณาสร้างอัตราใหม่แทน</p>
+                    )}
                   </div>
                   {rateForm.quotaMode === 'reset' && (
                     <>
@@ -805,6 +902,74 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       )}
                     </>
                   )}
+                  {rateForm.quotaMode === 'confirm' && (
+                    <>
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+                        <p className="font-medium">โหมดกำหนดเอง: กำหนดช่วงออเดอร์คำนวณ, วันเริ่มใช้งาน, วันหมดอายุ และรูปแบบการยืนยันได้อย่างอิสระ</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ช่วงออเดอร์ที่ใช้คำนวณ (เริ่มต้น) *</label>
+                        <input
+                          type="date"
+                          value={rateForm.calcPeriodStart}
+                          onChange={e => setRateForm(prev => ({ ...prev, calcPeriodStart: e.target.value }))}
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ช่วงออเดอร์ที่ใช้คำนวณ (สิ้นสุด) *</label>
+                        <input
+                          type="date"
+                          value={rateForm.calcPeriodEnd}
+                          onChange={e => setRateForm(prev => ({ ...prev, calcPeriodEnd: e.target.value }))}
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">โควตาเริ่มใช้งานได้ตั้งแต่วันที่ *</label>
+                        <input
+                          type="date"
+                          value={rateForm.usageStartDate}
+                          onChange={e => setRateForm(prev => ({ ...prev, usageStartDate: e.target.value }))}
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">โควตาหมดอายุวันที่</label>
+                        <input
+                          type="date"
+                          value={rateForm.usageEndDate}
+                          onChange={e => setRateForm(prev => ({ ...prev, usageEndDate: e.target.value }))}
+                          className={`w-full border rounded-lg px-3 py-2 text-sm ${!rateForm.usageEndDate ? 'opacity-50' : ''}`}
+                          disabled={!rateForm.usageEndDate && rateForm.usageEndDate === ''}
+                        />
+                        <label className="flex items-center gap-2 cursor-pointer mt-2">
+                          <input
+                            type="checkbox"
+                            checked={!rateForm.usageEndDate}
+                            onChange={e => setRateForm(prev => ({ ...prev, usageEndDate: e.target.checked ? '' : new Date().toISOString().split('T')[0] }))}
+                            className="accent-indigo-600 w-4 h-4"
+                          />
+                          <span className="text-xs text-gray-500">ติ๊กเพื่อให้โควตาไม่มีวันหมดอายุ</span>
+                        </label>
+                      </div>
+                      <div className="border rounded-lg p-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={rateForm.requireConfirm}
+                            onChange={e => setRateForm(prev => ({ ...prev, requireConfirm: e.target.checked }))}
+                            className="accent-indigo-600 w-4 h-4"
+                          />
+                          <span className="text-sm font-medium text-gray-700">รอ Admin ยืนยันก่อนใช้งาน</span>
+                        </label>
+                        <div className="mt-2 text-xs text-gray-500 space-y-1">
+                          <p>✅ <strong>เปิด</strong>: โควตาจะถูก freeze ตอนที่ Admin กดยืนยัน คำนวณได้เท่าไหร่ก็ได้เท่านั้น ไม่เปลี่ยนแปลงภายหลัง</p>
+                          <p>❌ <strong>ปิด</strong>: โควตาจะคำนวณอัตโนมัติตลอดเวลา หากมีออเดอร์เพิ่มในช่วงคำนวณ โควตาจะเพิ่มขึ้นอัตโนมัติ</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="p-5 border-t flex justify-end gap-3">
                   <button onClick={() => setShowRateForm(false)} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
@@ -830,25 +995,78 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
               ) : (
                 <div className="space-y-3">
                   {rateSchedules.map((rate, idx) => {
-                    const isActive = idx === 0 && new Date(rate.effectiveDate) <= new Date();
-                    const isFuture = new Date(rate.effectiveDate) > new Date();
+                    const today = new Date().toISOString().split('T')[0];
+                    const effectivePassed = rate.effectiveDate <= today;
+
+                    // Confirm mode: active based on usage period
+                    let isActive = false;
+                    let isFuture = !effectivePassed;
+                    let isExpired = false;
+                    let isBeforeUsage = false;
+                    let statusLabel = '';
+                    let statusColor = '';
+
+                    if (rate.quotaMode === 'confirm') {
+                      const usageStart = rate.usageStartDate || rate.effectiveDate;
+                      const usageEnd = rate.usageEndDate;
+                      const startOk = !usageStart || today >= usageStart;
+                      const endOk = !usageEnd || today <= usageEnd;
+
+                      if (usageEnd && today > usageEnd) {
+                        isExpired = true;
+                        statusLabel = 'หมดอายุ';
+                        statusColor = 'bg-red-400 text-white';
+                      } else if (usageStart && today < usageStart) {
+                        isBeforeUsage = true;
+                        isFuture = true;
+                        statusLabel = 'ยังไม่เริ่มใช้';
+                        statusColor = 'bg-amber-500 text-white';
+                      } else if (effectivePassed && startOk && endOk) {
+                        isActive = true;
+                        statusLabel = 'ใช้งานอยู่';
+                        statusColor = 'bg-indigo-600 text-white';
+                      } else if (!effectivePassed) {
+                        statusLabel = 'กำหนดล่วงหน้า';
+                        statusColor = 'bg-amber-500 text-white';
+                      }
+                    } else {
+                      // Reset / Cumulative: idx===0 is active
+                      isActive = idx === 0 && effectivePassed;
+                      if (isActive) {
+                        statusLabel = 'ใช้งานอยู่';
+                        statusColor = 'bg-indigo-600 text-white';
+                      } else if (isFuture) {
+                        statusLabel = 'กำหนดล่วงหน้า';
+                        statusColor = 'bg-amber-500 text-white';
+                      } else {
+                        statusLabel = 'เก่า';
+                        statusColor = 'bg-gray-300 text-gray-600';
+                      }
+                    }
+
                     return (
                       <div
                         key={rate.id}
                         className={`border rounded-lg p-4 ${
-                          isActive ? 'border-indigo-300 bg-indigo-50' : isFuture ? 'border-amber-200 bg-amber-50' : 'border-gray-200'
+                          isActive ? 'border-indigo-300 bg-indigo-50' : (isFuture || isBeforeUsage) ? 'border-amber-200 bg-amber-50' : isExpired ? 'border-red-200 bg-red-50' : 'border-gray-200'
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            {isActive && <span className="bg-indigo-600 text-white text-xs px-2 py-0.5 rounded-full">ใช้งานอยู่</span>}
-                            {isFuture && <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full">กำหนดล่วงหน้า</span>}
-                            {!isActive && !isFuture && <span className="bg-gray-300 text-gray-600 text-xs px-2 py-0.5 rounded-full">เก่า</span>}
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${statusColor}`}>{statusLabel}</span>
                             <span className="font-medium text-gray-800">
                               ฿{Number(rate.salesPerQuota).toLocaleString()} / 1 โควตา
                             </span>
                           </div>
                           <span className="text-xs text-gray-400">มีผล: {rate.effectiveDate}</span>
+                          {/* Show scope labels for global/scoped rates */}
+                          {rate.quotaProductId === 0 || rate.quotaProductId === null || rate.quotaProductId === undefined ? (
+                            <span className="text-xs text-indigo-500">
+                              {rate.scopeProductIds && rate.scopeProductIds.length > 0
+                                ? `📌 ${rate.scopeProductIds.map(id => activeQuotaProducts.find(p => p.id === id)?.displayName || `#${id}`).join(', ')}`
+                                : '🌐 ทุกสินค้า'}
+                            </span>
+                          ) : null}
                           <div className="flex gap-1">
                             <button
                               onClick={() => {
@@ -862,6 +1080,12 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                   resetIntervalDays: String(rate.resetIntervalDays),
                                   resetDayOfMonth: String(rate.resetDayOfMonth || 1),
                                   resetAnchorDate: rate.resetAnchorDate || new Date().toISOString().split('T')[0],
+                                  calcPeriodStart: rate.calcPeriodStart || '',
+                                  calcPeriodEnd: rate.calcPeriodEnd || '',
+                                  usageStartDate: rate.usageStartDate || '',
+                                  usageEndDate: rate.usageEndDate || '',
+                                  requireConfirm: rate.requireConfirm !== false,
+                                  scopeProductIds: rate.scopeProductIds || [],
                                 });
                                 setShowRateForm(true);
                               }}
@@ -871,16 +1095,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                               <Edit size={14} />
                             </button>
                             <button
-                              onClick={async () => {
-                                if (!window.confirm(`ลบอัตราโควตา ฿${Number(rate.salesPerQuota).toLocaleString()} / 1 โควตา (มีผล ${rate.effectiveDate})?`)) return;
-                                try {
-                                  await deleteRateSchedule(rate.id);
-                                  if (selectedQuotaProduct) {
-                                    const rates = await listRateSchedules(selectedQuotaProduct.id);
-                                    setRateSchedules(rates);
-                                  }
-                                } catch (e) { console.error(e); }
-                              }}
+                              onClick={() => setDeleteTarget(rate)}
                               className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50"
                               title="ลบ"
                             >
@@ -941,7 +1156,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
               <Calendar size={16} />
               <span>
                 รอบปัจจุบัน: {summaryData[0].periodStart} — {summaryData[0].periodEnd}
-                {summaryData[0].quotaMode && ` (${summaryData[0].quotaMode === 'reset' ? 'รีเซ็ตตามรอบ' : 'สะสม'})`}
+                {summaryData[0].quotaMode && ` (${summaryData[0].quotaMode === 'reset' ? 'รีเซ็ตตามรอบ' : summaryData[0].quotaMode === 'cumulative' ? 'สะสม' : 'กำหนดเอง'})`}
               </span>
             </div>
           )}
@@ -1000,10 +1215,18 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className={`font-mono font-bold text-lg ${
+                          row.isExpired ? 'text-gray-400 line-through' :
+                          row.isBeforeUsageStart ? 'text-gray-400' :
                           Number(row.remaining) > 0 ? 'text-green-600' : Number(row.remaining) === 0 ? 'text-gray-400' : 'text-red-600'
                         }`}>
-                          {Number(row.remaining)}
+                          {row.isExpired ? '0 (หมดอายุ)' : row.isBeforeUsageStart ? '0 (ยังไม่เริ่มใช้)' : Number(row.remaining)}
                         </span>
+                        {row.isBeforeUsageStart && (
+                          <div className="text-xs text-blue-500 mt-0.5">เริ่มใช้: {summaryData[0]?.periodStart}</div>
+                        )}
+                        {row.usageEndDate && !row.isExpired && !row.isBeforeUsageStart && (
+                          <div className="text-xs text-amber-500 mt-0.5">หมดอายุ: {row.usageEndDate}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -1026,6 +1249,29 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                           >
                             <Eye size={16} />
                           </button>
+                          {row.quotaMode === 'confirm' && row.rateScheduleId && row.requireConfirm === 1 && !row.isBeforeUsageStart && (
+                            <button
+                              onClick={async () => {
+                                if (!summaryQuotaProduct) return;
+                                try {
+                                  const res = await confirmQuota({
+                                    quotaProductId: summaryQuotaProduct.id,
+                                    userId: row.userId,
+                                    rateScheduleId: row.rateScheduleId!,
+                                    confirmedBy: currentUser.id,
+                                  });
+                                  alert(`ยืนยันโควตาสำเร็จ (${res.confirmedQuota} โควตา จากยอดขาย ฿${Number(res.totalSales).toLocaleString()})`);
+                                  loadSummary(summaryQuotaProduct.id);
+                                } catch (e) {
+                                  alert('Error: ' + (e as Error).message);
+                                }
+                              }}
+                              className={`p-1 rounded ${row.isConfirmed ? 'text-green-500 hover:text-green-700 hover:bg-green-50' : 'text-amber-500 hover:text-amber-700 hover:bg-amber-50'}`}
+                              title={row.isConfirmed ? `ยืนยันแล้ว (กดเพื่ออัปเดต)` : `กดยืนยันโควตา (${row.pendingAutoQuota ?? 0} รอยืนยัน)`}
+                            >
+                              <CheckCircle size={16} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1141,6 +1387,50 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
         </div>
       )}
     </div>
+
+    {/* Delete Confirm Modal */}
+    {deleteTarget && (
+      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+              <Trash2 size={20} className="text-red-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800">ยืนยันการลบ</h3>
+          </div>
+          <p className="text-sm text-gray-600 mb-1">ต้องการลบอัตราโควตานี้หรือไม่?</p>
+          <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
+            <p className="font-medium text-gray-800">฿{Number(deleteTarget.salesPerQuota).toLocaleString()} / 1 โควตา</p>
+            <p className="text-gray-500">มีผล: {deleteTarget.effectiveDate}</p>
+            <p className="text-gray-500">Mode: {deleteTarget.quotaMode === 'reset' ? 'รีเซ็ตตามรอบ' : deleteTarget.quotaMode === 'cumulative' ? 'สะสม' : 'กำหนดเอง'}</p>
+          </div>
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => setDeleteTarget(null)}
+              className="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50"
+            >
+              ยกเลิก
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  await deleteRateSchedule(deleteTarget.id);
+                  if (selectedQuotaProduct) {
+                    const rates = await listRateSchedules(selectedQuotaProduct.id || 'global');
+                    setRateSchedules(rates);
+                  }
+                } catch (e) { console.error(e); }
+                setDeleteTarget(null);
+              }}
+              className="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700"
+            >
+              ลบอัตราโควตา
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 };
 

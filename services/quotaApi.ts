@@ -74,21 +74,28 @@ export async function getActiveRate(quotaProductId: number): Promise<QuotaRateSc
   return res.data ? mapRateSchedule(res.data) : null;
 }
 
-export async function listRateSchedules(quotaProductId: number): Promise<QuotaRateSchedule[]> {
-  const res = await apiFetch(`${QUOTA_API}?action=list_rates&quotaProductId=${quotaProductId}`);
+export async function listRateSchedules(quotaProductId: number | 'global'): Promise<QuotaRateSchedule[]> {
+  const qpParam = quotaProductId === 'global' || quotaProductId === 0 ? 'global' : String(quotaProductId);
+  const res = await apiFetch(`${QUOTA_API}?action=list_rates&quotaProductId=${qpParam}`);
   return (res.data || []).map(mapRateSchedule);
 }
 
 export async function createRateSchedule(payload: {
-  quotaProductId: number;
+  quotaProductId: number;  // 0 = global
   salesPerQuota: number;
   effectiveDate: string;
   orderDateField: 'order_date' | 'delivery_date';
-  quotaMode: 'reset' | 'cumulative';
+  quotaMode: 'reset' | 'cumulative' | 'confirm';
   resetIntervalDays: number;
   resetDayOfMonth?: number;
   resetAnchorDate?: string;
+  calcPeriodStart?: string;
+  calcPeriodEnd?: string;
+  usageStartDate?: string;
+  usageEndDate?: string;
+  requireConfirm?: boolean;
   createdBy?: number;
+  scopeProductIds?: number[];  // multi-product scope
 }): Promise<{ success: boolean; id?: number }> {
   return apiFetch(QUOTA_API, {
     method: 'POST',
@@ -101,10 +108,15 @@ export async function updateRateSchedule(payload: {
   salesPerQuota?: number;
   effectiveDate?: string;
   orderDateField?: 'order_date' | 'delivery_date';
-  quotaMode?: 'reset' | 'cumulative';
+  quotaMode?: 'reset' | 'cumulative' | 'confirm';
   resetIntervalDays?: number;
   resetDayOfMonth?: number | null;
   resetAnchorDate?: string | null;
+  calcPeriodStart?: string | null;
+  calcPeriodEnd?: string | null;
+  usageStartDate?: string | null;
+  usageEndDate?: string | null;
+  requireConfirm?: boolean | null;
 }): Promise<{ success: boolean }> {
   return apiFetch(QUOTA_API, {
     method: 'POST',
@@ -116,6 +128,18 @@ export async function deleteRateSchedule(id: number): Promise<{ success: boolean
   return apiFetch(QUOTA_API, {
     method: 'POST',
     body: JSON.stringify({ action: 'delete_rate', id }),
+  });
+}
+
+export async function confirmQuota(payload: {
+  quotaProductId: number;
+  userId: number;
+  rateScheduleId: number;
+  confirmedBy?: number;
+}): Promise<{ success: boolean; confirmedQuota?: number; totalSales?: number }> {
+  return apiFetch(QUOTA_API, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'confirm_quota', ...payload }),
   });
 }
 
@@ -237,9 +261,15 @@ function mapRateSchedule(r: any): QuotaRateSchedule {
     resetIntervalDays: Number(r.reset_interval_days || 30),
     resetDayOfMonth: r.reset_day_of_month != null ? Number(r.reset_day_of_month) : undefined,
     resetAnchorDate: r.reset_anchor_date || undefined,
+    calcPeriodStart: r.calc_period_start || undefined,
+    calcPeriodEnd: r.calc_period_end || undefined,
+    usageStartDate: r.usage_start_date || undefined,
+    usageEndDate: r.usage_end_date || undefined,
+    requireConfirm: r.require_confirm != null ? r.require_confirm == 1 : undefined,
     createdBy: r.created_by ? Number(r.created_by) : undefined,
     createdByName: r.created_by_name || undefined,
     createdAt: r.created_at || undefined,
+    scopeProductIds: (r.scope_product_ids || []).map(Number),
   };
 }
 

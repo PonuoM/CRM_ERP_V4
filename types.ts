@@ -670,13 +670,19 @@ export interface QuotaRateSchedule {
   salesPerQuota: number;
   effectiveDate: string;          // YYYY-MM-DD
   orderDateField: 'order_date' | 'delivery_date';
-  quotaMode: 'reset' | 'cumulative';
+  quotaMode: 'reset' | 'cumulative' | 'confirm';
   resetIntervalDays: number;
   resetDayOfMonth?: number;           // 1-28: รีเซ็ตทุกวันที่ X ของเดือน
   resetAnchorDate?: string;       // YYYY-MM-DD
+  calcPeriodStart?: string;       // YYYY-MM-DD (confirm mode)
+  calcPeriodEnd?: string;         // YYYY-MM-DD (confirm mode)
+  usageStartDate?: string;        // YYYY-MM-DD (confirm mode)
+  usageEndDate?: string;          // YYYY-MM-DD (confirm mode: วันหมดอายุ)
+  requireConfirm?: boolean;       // confirm mode: true=รอ admin ยืนยัน, false=ไม่ต้อง
   createdBy?: number;
   createdByName?: string;         // joined
   createdAt?: string;
+  scopeProductIds?: number[];     // multi-product scope (empty = global when quotaProductId = null)
 }
 
 export interface QuotaAllocation {
@@ -685,7 +691,7 @@ export interface QuotaAllocation {
   userId: number;
   companyId: number;
   quantity: number;
-  source: 'auto' | 'admin';
+  source: 'auto' | 'admin' | 'auto_confirmed';
   sourceDetail?: string;
   allocatedBy?: number;
   periodStart?: string;
@@ -711,6 +717,13 @@ export interface QuotaSummary {
   periodStart?: string;
   periodEnd?: string;
   quotaMode: string;
+  pendingAutoQuota?: number;    // confirm mode: โควตาที่คำนวณได้แต่ยังไม่ยืนยัน
+  isConfirmed?: boolean;        // confirm mode: ยืนยันแล้วหรือยัง
+  isExpired?: boolean;          // confirm mode: หมดอายุแล้วหรือยัง
+  usageEndDate?: string;        // confirm mode: วันหมดอายุ
+  requireConfirm?: number;      // confirm mode: 1=รอยืนยัน, 0=ไม่ต้อง
+  isBeforeUsageStart?: boolean; // confirm mode: ยังไม่ถึงวันเริ่มใช้
+  rateScheduleId?: number;      // rate schedule id ที่ active
 }
 
 export interface Page {

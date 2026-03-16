@@ -77,6 +77,9 @@ try {
             case 'use_quota':
                 handleUseQuota($conn, $data);
                 break;
+            case 'confirm_quota':
+                handleConfirmQuota($conn, $data);
+                break;
             default:
                 json_response(['error' => 'Unknown action: ' . $action], 400);
         }
@@ -101,7 +104,7 @@ function handleListProducts(PDO $conn) {
         SELECT qp.*, p.name AS product_name, p.sku AS product_sku, p.price AS product_price
         FROM quota_products qp
         LEFT JOIN products p ON p.id = qp.product_id
-        WHERE qp.company_id = :companyId
+        WHERE qp.company_id = :companyId AND qp.deleted_at IS NULL
         ORDER BY qp.is_active DESC, qp.display_name ASC
     ");
     $stmt->execute([':companyId' => $companyId]);
@@ -111,39 +114,72 @@ function handleListProducts(PDO $conn) {
 }
 
 function handleGetRate(PDO $conn) {
-    $quotaProductId = intval($_GET['quotaProductId'] ?? 0);
-    if (!$quotaProductId) {
+    $raw = $_GET['quotaProductId'] ?? '';
+    $isGlobal = ($raw === 'global' || $raw === '0');
+    $quotaProductId = intval($raw);
+    if (!$isGlobal && !$quotaProductId) {
         json_response(['error' => 'quotaProductId required'], 400);
     }
 
     // Get currently active rate (effective_date <= NOW, latest)
-    $stmt = $conn->prepare("
-        SELECT * FROM quota_rate_schedules
-        WHERE quota_product_id = :qpId AND effective_date <= CURDATE()
-        ORDER BY effective_date DESC
-        LIMIT 1
-    ");
-    $stmt->execute([':qpId' => $quotaProductId]);
+    if ($isGlobal) {
+        $stmt = $conn->prepare("
+            SELECT * FROM quota_rate_schedules
+            WHERE quota_product_id IS NULL AND effective_date <= CURDATE() AND deleted_at IS NULL
+            ORDER BY effective_date DESC
+            LIMIT 1
+        ");
+        $stmt->execute();
+    } else {
+        $stmt = $conn->prepare("
+            SELECT * FROM quota_rate_schedules
+            WHERE quota_product_id = :qpId AND effective_date <= CURDATE() AND deleted_at IS NULL
+            ORDER BY effective_date DESC
+            LIMIT 1
+        ");
+        $stmt->execute([':qpId' => $quotaProductId]);
+    }
     $rate = $stmt->fetch();
 
     json_response(['success' => true, 'data' => $rate ?: null]);
 }
 
 function handleListRates(PDO $conn) {
-    $quotaProductId = intval($_GET['quotaProductId'] ?? 0);
-    if (!$quotaProductId) {
+    $raw = $_GET['quotaProductId'] ?? '';
+    $isGlobal = ($raw === 'global' || $raw === '0');
+    $quotaProductId = intval($raw);
+    if (!$isGlobal && !$quotaProductId) {
         json_response(['error' => 'quotaProductId required'], 400);
     }
 
-    $stmt = $conn->prepare("
-        SELECT qrs.*, u.first_name AS created_by_name
-        FROM quota_rate_schedules qrs
-        LEFT JOIN users u ON u.id = qrs.created_by
-        WHERE qrs.quota_product_id = :qpId
-        ORDER BY qrs.effective_date DESC
-    ");
-    $stmt->execute([':qpId' => $quotaProductId]);
+    if ($isGlobal) {
+        $stmt = $conn->prepare("
+            SELECT qrs.*, u.first_name AS created_by_name
+            FROM quota_rate_schedules qrs
+            LEFT JOIN users u ON u.id = qrs.created_by
+            WHERE qrs.quota_product_id IS NULL AND qrs.deleted_at IS NULL
+            ORDER BY qrs.effective_date DESC
+        ");
+        $stmt->execute();
+    } else {
+        $stmt = $conn->prepare("
+            SELECT qrs.*, u.first_name AS created_by_name
+            FROM quota_rate_schedules qrs
+            LEFT JOIN users u ON u.id = qrs.created_by
+            WHERE qrs.quota_product_id = :qpId AND qrs.deleted_at IS NULL
+            ORDER BY qrs.effective_date DESC
+        ");
+        $stmt->execute([':qpId' => $quotaProductId]);
+    }
     $rates = $stmt->fetchAll();
+
+    // Attach scope product IDs for each rate
+    foreach ($rates as &$rate) {
+        $stmtScope = $conn->prepare("SELECT quota_product_id FROM quota_rate_scope WHERE rate_schedule_id = :rid");
+        $stmtScope->execute([':rid' => $rate['id']]);
+        $rate['scope_product_ids'] = array_column($stmtScope->fetchAll(), 'quota_product_id');
+    }
+    unset($rate);
 
     json_response(['success' => true, 'data' => $rates]);
 }
@@ -180,6 +216,7 @@ function handleListAllocations(PDO $conn) {
         $params[':companyId'] = $companyId;
     }
 
+    $where[] = 'qa.deleted_at IS NULL';
     $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
     $stmt = $conn->prepare("
@@ -233,6 +270,13 @@ function handleSummary(PDO $conn) {
             'periodStart' => $calc['periodStart'],
             'periodEnd' => $calc['periodEnd'],
             'quotaMode' => $calc['quotaMode'],
+            'pendingAutoQuota' => $calc['pendingAutoQuota'] ?? null,
+            'isConfirmed' => $calc['isConfirmed'] ?? null,
+            'isExpired' => $calc['isExpired'] ?? false,
+            'usageEndDate' => $calc['usageEndDate'] ?? null,
+            'requireConfirm' => $calc['requireConfirm'] ?? null,
+            'isBeforeUsageStart' => $calc['isBeforeUsageStart'] ?? false,
+            'rateScheduleId' => $calc['rateScheduleId'] ?? null,
         ];
     }
 
@@ -254,29 +298,71 @@ function handleCreateProduct(PDO $conn, array $data) {
         json_response(['error' => 'productId, companyId, displayName required'], 400);
     }
 
-    $stmt = $conn->prepare("
-        INSERT INTO quota_products (product_id, company_id, display_name, csv_label, quota_cost)
-        VALUES (:productId, :companyId, :displayName, :csvLabel, :quotaCost)
-        ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), csv_label = VALUES(csv_label), quota_cost = VALUES(quota_cost), is_active = 1
-    ");
-    $stmt->execute([
-        ':productId' => $productId,
-        ':companyId' => $companyId,
-        ':displayName' => $displayName,
-        ':csvLabel' => $csvLabel,
-        ':quotaCost' => $quotaCost,
-    ]);
-
-    $id = $conn->lastInsertId() ?: null;
-    // If ON DUPLICATE KEY UPDATE fired, get the existing ID
-    if (!$id) {
-        $stmt2 = $conn->prepare("SELECT id FROM quota_products WHERE product_id = :pid AND company_id = :cid");
-        $stmt2->execute([':pid' => $productId, ':cid' => $companyId]);
-        $row = $stmt2->fetch();
-        $id = $row['id'] ?? null;
+    // Fetch source product data
+    $srcStmt = $conn->prepare("SELECT * FROM products WHERE id = :id");
+    $srcStmt->execute([':id' => $productId]);
+    $srcProduct = $srcStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$srcProduct) {
+        json_response(['error' => 'Source product not found'], 404);
     }
 
-    json_response(['success' => true, 'id' => $id]);
+    $conn->beginTransaction();
+    try {
+        // 1. Duplicate product with QT- prefix SKU
+        $newSku = 'QT-' . ($srcProduct['sku'] ?? 'UNKNOWN');
+        // Ensure unique SKU — append number if duplicate
+        $checkSku = $conn->prepare("SELECT COUNT(*) FROM products WHERE sku = :sku AND company_id = :cid");
+        $checkSku->execute([':sku' => $newSku, ':cid' => $companyId]);
+        if ($checkSku->fetchColumn() > 0) {
+            $counter = 2;
+            while (true) {
+                $trySku = $newSku . '-' . $counter;
+                $checkSku->execute([':sku' => $trySku, ':cid' => $companyId]);
+                if ($checkSku->fetchColumn() == 0) {
+                    $newSku = $trySku;
+                    break;
+                }
+                $counter++;
+            }
+        }
+
+        $dupStmt = $conn->prepare("
+            INSERT INTO products (sku, name, description, category, unit, cost, price, stock, company_id, shop, status)
+            VALUES (:sku, :name, :desc, :category, :unit, :cost, :price, 0, :companyId, :shop, 'Active')
+        ");
+        $dupStmt->execute([
+            ':sku' => $newSku,
+            ':name' => $displayName,
+            ':desc' => $srcProduct['description'] ?? '',
+            ':category' => $srcProduct['category'] ?? '',
+            ':unit' => $srcProduct['unit'] ?? 'ชิ้น',
+            ':cost' => $srcProduct['cost'] ?? 0,
+            ':price' => $srcProduct['price'] ?? 0,
+            ':companyId' => $companyId,
+            ':shop' => $srcProduct['shop'] ?? '',
+        ]);
+        $newProductId = $conn->lastInsertId();
+
+        // 2. Create quota_product referencing the duplicate
+        $qpStmt = $conn->prepare("
+            INSERT INTO quota_products (product_id, company_id, display_name, csv_label, quota_cost)
+            VALUES (:productId, :companyId, :displayName, :csvLabel, :quotaCost)
+        ");
+        $qpStmt->execute([
+            ':productId' => $newProductId,
+            ':companyId' => $companyId,
+            ':displayName' => $displayName,
+            ':csvLabel' => $csvLabel,
+            ':quotaCost' => $quotaCost,
+        ]);
+        $quotaProductId = $conn->lastInsertId();
+
+        $conn->commit();
+        json_response(['success' => true, 'id' => $quotaProductId, 'productId' => $newProductId]);
+    } catch (Exception $e) {
+        $conn->rollBack();
+        json_response(['error' => 'Failed to create: ' . $e->getMessage()], 500);
+    }
 }
 
 function handleCreateProductWithQuota(PDO $conn, array $data) {
@@ -383,14 +469,14 @@ function handleCreateRate(PDO $conn, array $data) {
     $resetAnchorDate = $data['resetAnchorDate'] ?? null;
     $createdBy = intval($data['createdBy'] ?? 0) ?: null;
 
-    if (!$quotaProductId || $salesPerQuota <= 0 || !$effectiveDate) {
-        json_response(['error' => 'quotaProductId, salesPerQuota (>0), effectiveDate required'], 400);
+    if ($salesPerQuota <= 0 || !$effectiveDate) {
+        json_response(['error' => 'salesPerQuota (>0), effectiveDate required'], 400);
     }
 
     if (!in_array($orderDateField, ['order_date', 'delivery_date'])) {
         $orderDateField = 'order_date';
     }
-    if (!in_array($quotaMode, ['reset', 'cumulative'])) {
+    if (!in_array($quotaMode, ['reset', 'cumulative', 'confirm'])) {
         $quotaMode = 'reset';
     }
     // Validate day of month (1-28)
@@ -398,14 +484,21 @@ function handleCreateRate(PDO $conn, array $data) {
         $resetDayOfMonth = null;
     }
 
+    // Confirm mode fields
+    $calcPeriodStart = $data['calcPeriodStart'] ?? null;
+    $calcPeriodEnd = $data['calcPeriodEnd'] ?? null;
+    $usageStartDate = $data['usageStartDate'] ?? null;
+    $usageEndDate = $data['usageEndDate'] ?? null;
+    $requireConfirm = isset($data['requireConfirm']) ? (intval($data['requireConfirm']) ? 1 : 0) : 1;
+
     $stmt = $conn->prepare("
         INSERT INTO quota_rate_schedules 
-            (quota_product_id, sales_per_quota, effective_date, order_date_field, quota_mode, reset_interval_days, reset_day_of_month, reset_anchor_date, created_by)
+            (quota_product_id, sales_per_quota, effective_date, order_date_field, quota_mode, reset_interval_days, reset_day_of_month, reset_anchor_date, calc_period_start, calc_period_end, usage_start_date, usage_end_date, require_confirm, created_by)
         VALUES 
-            (:qpId, :sPerQ, :effDate, :odf, :qm, :rid, :rdom, :rad, :cb)
+            (:qpId, :sPerQ, :effDate, :odf, :qm, :rid, :rdom, :rad, :cps, :cpe, :usd, :ued, :rc, :cb)
     ");
     $stmt->execute([
-        ':qpId' => $quotaProductId,
+        ':qpId' => $quotaProductId ?: null,
         ':sPerQ' => $salesPerQuota,
         ':effDate' => $effectiveDate,
         ':odf' => $orderDateField,
@@ -414,9 +507,28 @@ function handleCreateRate(PDO $conn, array $data) {
         ':rdom' => $resetDayOfMonth,
         ':rad' => $resetAnchorDate,
         ':cb' => $createdBy,
+        ':cps' => $calcPeriodStart,
+        ':cpe' => $calcPeriodEnd,
+        ':usd' => $usageStartDate,
+        ':ued' => $usageEndDate,
+        ':rc' => $requireConfirm,
     ]);
 
-    json_response(['success' => true, 'id' => $conn->lastInsertId()]);
+    $newRateId = $conn->lastInsertId();
+
+    // Insert scope rows if provided (multi-product)
+    $scopeProductIds = $data['scopeProductIds'] ?? [];
+    if (!empty($scopeProductIds) && is_array($scopeProductIds)) {
+        $scopeStmt = $conn->prepare("INSERT INTO quota_rate_scope (rate_schedule_id, quota_product_id) VALUES (:rid, :qpid)");
+        foreach ($scopeProductIds as $spId) {
+            $spId = intval($spId);
+            if ($spId > 0) {
+                $scopeStmt->execute([':rid' => $newRateId, ':qpid' => $spId]);
+            }
+        }
+    }
+
+    json_response(['success' => true, 'id' => $newRateId]);
 }
 
 function handleUpdateRate(PDO $conn, array $data) {
@@ -442,7 +554,7 @@ function handleUpdateRate(PDO $conn, array $data) {
         $params[':odf'] = $odf;
     }
     if (isset($data['quotaMode'])) {
-        $qm = in_array($data['quotaMode'], ['reset', 'cumulative']) ? $data['quotaMode'] : 'reset';
+        $qm = in_array($data['quotaMode'], ['reset', 'cumulative', 'confirm']) ? $data['quotaMode'] : 'reset';
         $fields[] = 'quota_mode = :qm';
         $params[':qm'] = $qm;
     }
@@ -459,6 +571,26 @@ function handleUpdateRate(PDO $conn, array $data) {
     if (array_key_exists('resetAnchorDate', $data)) {
         $fields[] = 'reset_anchor_date = :rad';
         $params[':rad'] = $data['resetAnchorDate'];
+    }
+    if (array_key_exists('calcPeriodStart', $data)) {
+        $fields[] = 'calc_period_start = :cps';
+        $params[':cps'] = $data['calcPeriodStart'];
+    }
+    if (array_key_exists('calcPeriodEnd', $data)) {
+        $fields[] = 'calc_period_end = :cpe';
+        $params[':cpe'] = $data['calcPeriodEnd'];
+    }
+    if (array_key_exists('usageStartDate', $data)) {
+        $fields[] = 'usage_start_date = :usd';
+        $params[':usd'] = $data['usageStartDate'];
+    }
+    if (array_key_exists('usageEndDate', $data)) {
+        $fields[] = 'usage_end_date = :ued';
+        $params[':ued'] = $data['usageEndDate'];
+    }
+    if (array_key_exists('requireConfirm', $data)) {
+        $fields[] = 'require_confirm = :rc';
+        $params[':rc'] = intval($data['requireConfirm']) ? 1 : 0;
     }
 
     if (empty($fields)) {
@@ -477,8 +609,74 @@ function handleDeleteRate(PDO $conn, array $data) {
         json_response(['error' => 'id required'], 400);
     }
 
-    $conn->prepare("DELETE FROM quota_rate_schedules WHERE id = :id")->execute([':id' => $id]);
+    $conn->prepare("UPDATE quota_rate_schedules SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL")->execute([':id' => $id]);
     json_response(['success' => true]);
+}
+
+function handleConfirmQuota(PDO $conn, array $data) {
+    $quotaProductId = intval($data['quotaProductId'] ?? 0);
+    $userId = intval($data['userId'] ?? 0);
+    $rateScheduleId = intval($data['rateScheduleId'] ?? 0);
+    $confirmedBy = intval($data['confirmedBy'] ?? 0) ?: null;
+
+    if (!$quotaProductId || !$userId || !$rateScheduleId) {
+        json_response(['error' => 'quotaProductId, userId, rateScheduleId required'], 400);
+    }
+
+    // Get rate schedule
+    $stmtRate = $conn->prepare("SELECT * FROM quota_rate_schedules WHERE id = :id AND deleted_at IS NULL");
+    $stmtRate->execute([':id' => $rateScheduleId]);
+    $rate = $stmtRate->fetch(PDO::FETCH_ASSOC);
+    if (!$rate || $rate['quota_mode'] !== 'confirm') {
+        json_response(['error' => 'Rate schedule not found or not in confirm mode'], 400);
+    }
+
+    // Calculate auto quota from the specified order date range
+    $dateCol = ($rate['order_date_field'] === 'delivery_date') ? 'o.delivery_date' : 'o.order_date';
+    $calcStart = $rate['calc_period_start'];
+    $calcEnd = $rate['calc_period_end'];
+    $salesPerQuota = floatval($rate['sales_per_quota']);
+
+    if (!$calcStart || !$calcEnd || $salesPerQuota <= 0) {
+        json_response(['error' => 'Rate schedule missing calc_period or salesPerQuota'], 400);
+    }
+
+    $totalSales = _calcSalesInPeriod($conn, $userId, $quotaProductId, $dateCol, $calcStart, $calcEnd);
+    $autoQuota = floor($totalSales / $salesPerQuota);
+
+    // Get company_id from quota_product
+    $stmtQP = $conn->prepare("SELECT company_id FROM quota_products WHERE id = :id AND deleted_at IS NULL");
+    $stmtQP->execute([':id' => $quotaProductId]);
+    $qp = $stmtQP->fetch();
+    $companyId = $qp['company_id'] ?? 0;
+
+    // Delete existing auto_confirmed for this rate+user (re-confirm overwrites)
+    $conn->prepare("
+        UPDATE quota_allocations SET deleted_at = NOW()
+        WHERE quota_product_id = :qpId AND user_id = :uid AND source = 'auto_confirmed' AND source_detail = :rsId AND deleted_at IS NULL
+    ")->execute([':qpId' => $quotaProductId, ':uid' => $userId, ':rsId' => (string)$rateScheduleId]);
+
+    // Insert confirmed allocation
+    $usageStart = $rate['usage_start_date'] ?? $rate['effective_date'];
+    $conn->prepare("
+        INSERT INTO quota_allocations (quota_product_id, user_id, company_id, quantity, source, source_detail, allocated_by, period_start, period_end)
+        VALUES (:qpId, :uid, :cid, :qty, 'auto_confirmed', :rsId, :ab, :ps, :pe)
+    ")->execute([
+        ':qpId' => $quotaProductId,
+        ':uid' => $userId,
+        ':cid' => $companyId,
+        ':qty' => $autoQuota,
+        ':rsId' => (string)$rateScheduleId,
+        ':ab' => $confirmedBy,
+        ':ps' => $calcStart,
+        ':pe' => $calcEnd,
+    ]);
+
+    json_response([
+        'success' => true,
+        'confirmedQuota' => $autoQuota,
+        'totalSales' => $totalSales,
+    ]);
 }
 
 function handleAllocate(PDO $conn, array $data) {
@@ -557,7 +755,7 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
     // 1. Get the latest active rate schedule
     $stmtRate = $conn->prepare("
         SELECT * FROM quota_rate_schedules
-        WHERE quota_product_id = :qpId AND effective_date <= CURDATE()
+        WHERE quota_product_id = :qpId AND effective_date <= CURDATE() AND deleted_at IS NULL
         ORDER BY effective_date DESC
         LIMIT 1
     ");
@@ -581,7 +779,7 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
     }
 
     // 2. Get the quota product info
-    $stmtQP = $conn->prepare("SELECT * FROM quota_products WHERE id = :qpId");
+    $stmtQP = $conn->prepare("SELECT * FROM quota_products WHERE id = :qpId AND deleted_at IS NULL");
     $stmtQP->execute([':qpId' => $quotaProductId]);
     $qp = $stmtQP->fetch();
     if (!$qp) {
@@ -646,12 +844,12 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
         $totalSales = _calcSalesInPeriod($conn, $userId, $quotaProductId, $dateCol, $periodStart, $periodEnd);
         $autoQuota = ($salesPerQuota > 0) ? floor($totalSales / $salesPerQuota) : 0;
 
-    } else {
+    } elseif ($quotaMode === 'cumulative') {
         // ====== CUMULATIVE MODE — Segmented Rate Calculation ======
         // Get ALL rates (oldest first) to build segments
         $stmtAll = $conn->prepare("
             SELECT * FROM quota_rate_schedules
-            WHERE quota_product_id = :qpId AND effective_date <= CURDATE()
+            WHERE quota_product_id = :qpId AND effective_date <= CURDATE() AND deleted_at IS NULL
             ORDER BY effective_date ASC
         ");
         $stmtAll->execute([':qpId' => $quotaProductId]);
@@ -695,6 +893,58 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
         $totalSales = $grandTotalSales;
         $periodStart = $overallStart;
         $periodEnd = $today;
+    } else {
+        // ====== CONFIRM MODE ======
+        $calcStart = $latestRate['calc_period_start'];
+        $calcEnd = $latestRate['calc_period_end'];
+        $usageStartDate = $latestRate['usage_start_date'] ?? $latestRate['effective_date'];
+
+        $periodStart = $calcStart;
+        $periodEnd = $calcEnd;
+
+        if ($calcStart && $calcEnd) {
+            $totalSales = _calcSalesInPeriod($conn, $userId, $quotaProductId, $dateCol, $calcStart, $calcEnd);
+            $pendingAutoQuota = ($salesPerQuota > 0) ? floor($totalSales / $salesPerQuota) : 0;
+        } else {
+            $totalSales = 0;
+            $pendingAutoQuota = 0;
+        }
+
+        // Determine if require_confirm is on
+        $requireConfirm = intval($latestRate['require_confirm'] ?? 1);
+
+        if ($requireConfirm) {
+            // FREEZE mode: check for confirmed allocation
+            $stmtConf = $conn->prepare("
+                SELECT COALESCE(SUM(quantity), 0) AS confirmed_total
+                FROM quota_allocations
+                WHERE quota_product_id = :qpId AND user_id = :uid AND source = 'auto_confirmed'
+                AND source_detail = :rsId AND deleted_at IS NULL
+            ");
+            $stmtConf->execute([':qpId' => $quotaProductId, ':uid' => $userId, ':rsId' => (string)$latestRate['id']]);
+            $confRow = $stmtConf->fetch();
+            $confirmedQuota = floatval($confRow['confirmed_total']);
+            $isConfirmed = $confirmedQuota > 0;
+            $autoQuota = $confirmedQuota;
+        } else {
+            // NO-CONFIRM mode: use live calculation directly
+            $isConfirmed = null; // not applicable
+            $autoQuota = $pendingAutoQuota;
+        }
+
+        // Check expiry: if usage_end_date is set and today > usage_end_date, quota is expired
+        $usageEndDate = $latestRate['usage_end_date'] ?? null;
+        $isExpired = false;
+        if ($usageEndDate && date('Y-m-d') > $usageEndDate) {
+            $isExpired = true;
+        }
+
+        // Check if before usage start date
+        $isBeforeUsageStart = false;
+        if ($usageStartDate && date('Y-m-d') < $usageStartDate) {
+            $autoQuota = 0;
+            $isBeforeUsageStart = true;
+        }
     }
 
     // 5. Get admin-added quota for this period
@@ -703,7 +953,7 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
         FROM quota_allocations
         WHERE quota_product_id = :qpId
         AND user_id = :userId
-        AND source = 'admin'
+        AND source = 'admin' AND deleted_at IS NULL
     ";
     $adminParams = [':qpId' => $quotaProductId, ':userId' => $userId];
     
@@ -723,7 +973,7 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
         SELECT COALESCE(SUM(quantity_used), 0) AS total_used
         FROM quota_usage
         WHERE quota_product_id = :qpId
-        AND user_id = :userId
+        AND user_id = :userId AND deleted_at IS NULL
     ";
     $usageParams = [':qpId' => $quotaProductId, ':userId' => $userId];
 
@@ -742,6 +992,88 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
     $totalQuota = $autoQuota + $adminQuota;
     $remaining = $totalQuota - $totalUsed;
 
+    // 8. Global/Scoped quota — rates where quota_product_id IS NULL
+    //    that either have no scope (global) or scope includes this product
+    $globalAutoQuota = 0;
+    $globalAdminQuota = 0;
+    $globalUsed = 0;
+
+    $stmtGlobalRate = $conn->prepare("
+        SELECT qrs.* FROM quota_rate_schedules qrs
+        WHERE qrs.quota_product_id IS NULL AND qrs.effective_date <= CURDATE() AND qrs.deleted_at IS NULL
+        AND (
+            NOT EXISTS (SELECT 1 FROM quota_rate_scope s WHERE s.rate_schedule_id = qrs.id)
+            OR EXISTS (SELECT 1 FROM quota_rate_scope s WHERE s.rate_schedule_id = qrs.id AND s.quota_product_id = :qpId)
+        )
+        ORDER BY qrs.effective_date DESC
+        LIMIT 1
+    ");
+    $stmtGlobalRate->execute([':qpId' => $quotaProductId]);
+    $globalRate = $stmtGlobalRate->fetch();
+
+    if ($globalRate) {
+        $gSalesPerQuota = floatval($globalRate['sales_per_quota']);
+        $gDateCol = ($globalRate['order_date_field'] === 'delivery_date') ? 'o.delivery_date' : 'o.order_date';
+        $gMode = $globalRate['quota_mode'];
+
+        // Calculate global auto quota (same sales, different rate)
+        if ($gMode === 'confirm') {
+            $gCalcStart = $globalRate['calc_period_start'];
+            $gCalcEnd = $globalRate['calc_period_end'];
+            $gUsageStart = $globalRate['usage_start_date'] ?? $globalRate['effective_date'];
+            $gUsageEnd = $globalRate['usage_end_date'] ?? null;
+            $gRequireConfirm = intval($globalRate['require_confirm'] ?? 1);
+
+            // Check if before usage start or expired
+            $gIsActive = true;
+            if ($gUsageStart && date('Y-m-d') < $gUsageStart) $gIsActive = false;
+            if ($gUsageEnd && date('Y-m-d') > $gUsageEnd) $gIsActive = false;
+
+            if ($gIsActive && $gCalcStart && $gCalcEnd) {
+                $gSales = _calcSalesInPeriod($conn, $userId, $quotaProductId, $gDateCol, $gCalcStart, $gCalcEnd);
+                $gPending = ($gSalesPerQuota > 0) ? floor($gSales / $gSalesPerQuota) : 0;
+
+                if ($gRequireConfirm) {
+                    $stmtGConf = $conn->prepare("
+                        SELECT COALESCE(SUM(quantity), 0) AS t FROM quota_allocations
+                        WHERE quota_product_id IS NULL AND user_id = :uid AND source = 'auto_confirmed'
+                        AND source_detail = :rsId AND deleted_at IS NULL
+                    ");
+                    $stmtGConf->execute([':uid' => $userId, ':rsId' => (string)$globalRate['id']]);
+                    $globalAutoQuota = floatval($stmtGConf->fetch()['t']);
+                } else {
+                    $globalAutoQuota = $gPending;
+                }
+            }
+        } else {
+            // reset/cumulative for global — use period from product-specific
+            if ($periodStart && $periodEnd && $gSalesPerQuota > 0) {
+                $gSales = _calcSalesInPeriod($conn, $userId, $quotaProductId, $gDateCol, $periodStart, $periodEnd);
+                $globalAutoQuota = floor($gSales / $gSalesPerQuota);
+            }
+        }
+
+        // Global admin-added quota
+        $stmtGAdmin = $conn->prepare("
+            SELECT COALESCE(SUM(quantity), 0) AS t FROM quota_allocations
+            WHERE quota_product_id IS NULL AND user_id = :uid AND source = 'admin' AND deleted_at IS NULL
+        ");
+        $stmtGAdmin->execute([':uid' => $userId]);
+        $globalAdminQuota = floatval($stmtGAdmin->fetch()['t']);
+
+        // Global usage
+        $stmtGUsage = $conn->prepare("
+            SELECT COALESCE(SUM(quantity_used), 0) AS t FROM quota_usage
+            WHERE quota_product_id IS NULL AND user_id = :uid AND deleted_at IS NULL
+        ");
+        $stmtGUsage->execute([':uid' => $userId]);
+        $globalUsed = floatval($stmtGUsage->fetch()['t']);
+    }
+
+    $globalRemaining = ($globalAutoQuota + $globalAdminQuota) - $globalUsed;
+    $totalQuota += ($globalAutoQuota + $globalAdminQuota);
+    $remaining = $totalQuota - $totalUsed - $globalUsed;
+
     return [
         'autoQuota' => $autoQuota,
         'adminQuota' => $adminQuota,
@@ -753,6 +1085,17 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
         'quotaMode' => $quotaMode,
         'periodStart' => $periodStart,
         'periodEnd' => $periodEnd,
+        'pendingAutoQuota' => $pendingAutoQuota ?? null,
+        'isConfirmed' => $isConfirmed ?? null,
+        'isExpired' => $isExpired ?? false,
+        'usageEndDate' => $latestRate['usage_end_date'] ?? null,
+        'requireConfirm' => isset($latestRate['require_confirm']) ? intval($latestRate['require_confirm']) : null,
+        'isBeforeUsageStart' => $isBeforeUsageStart ?? false,
+        'rateScheduleId' => $latestRate['id'] ?? null,
+        'globalAutoQuota' => $globalAutoQuota,
+        'globalAdminQuota' => $globalAdminQuota,
+        'globalUsed' => $globalUsed,
+        'globalRemaining' => $globalRemaining,
     ];
 }
 
@@ -767,7 +1110,7 @@ function _calcSalesInPeriod(PDO $conn, int $userId, int $quotaProductId, string 
         FROM order_items oi
         JOIN orders o ON o.id = oi.parent_order_id
         WHERE oi.creator_id = :userId
-        AND o.company_id = (SELECT company_id FROM quota_products WHERE id = :qpId)
+        AND o.company_id = (SELECT company_id FROM quota_products WHERE id = :qpId AND deleted_at IS NULL)
         AND o.order_status != 'Cancelled'
         AND $dateCol >= :periodStart
         AND $dateCol < :periodEnd
