@@ -61,6 +61,8 @@ function ensure_reconcile_tables(PDO $pdo): void
       confirmed_amount DECIMAL(12,2) DEFAULT NULL,
       reconcile_type VARCHAR(20) NOT NULL DEFAULT 'Order',
       auto_matched TINYINT(1) NOT NULL DEFAULT 0,
+      created_by INT DEFAULT NULL,
+      confirmed_by INT DEFAULT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
       UNIQUE KEY uniq_statement_order (statement_log_id, order_id),
@@ -88,6 +90,14 @@ function ensure_reconcile_tables(PDO $pdo): void
   } catch (PDOException $e) {
     // Ignore if the index does not exist or already changed.
   }
+
+  // Migration: Add created_by and confirmed_by columns for audit trail
+  try {
+    $pdo->exec("ALTER TABLE statement_reconcile_logs ADD COLUMN created_by INT DEFAULT NULL AFTER auto_matched");
+  } catch (PDOException $e) { /* Column already exists */ }
+  try {
+    $pdo->exec("ALTER TABLE statement_reconcile_logs ADD COLUMN confirmed_by INT DEFAULT NULL AFTER created_by");
+  } catch (PDOException $e) { /* Column already exists */ }
 }
 
 function normalize_date(string $value, bool $endOfDay = false): string
@@ -217,9 +227,9 @@ try {
 
   $insertLogStmt = $pdo->prepare("
     INSERT INTO statement_reconcile_logs
-      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched, note, confirmed_payment_method)
+      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched, created_by, note, confirmed_payment_method)
     VALUES
-      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :reconcileType, :autoMatched, :note, :paymentMethod)
+      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :reconcileType, :autoMatched, :createdBy, :note, :paymentMethod)
   ");
 
   $orderUpdateStmt = $pdo->prepare("
@@ -419,6 +429,7 @@ try {
           ":confirmedAmount" => $confirmedAmount,
           ":reconcileType" => $reconcileType,
           ":autoMatched" => $autoMatched,
+          ":createdBy" => $userId,
           ":note" => $note,
           ":paymentMethod" => $order ? ($order['payment_method'] ?? null) : null,
         ]);
