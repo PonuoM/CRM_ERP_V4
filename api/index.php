@@ -257,6 +257,25 @@ try {
                     }
                 }
 
+                // 2.4c Query freebie items per order (ของแถม)
+                $freebiesByParent = [];
+                if (!empty($parentIds)) {
+                    $freebieSql = "SELECT parent_order_id, 
+                                   COUNT(*) as freebie_count,
+                                   COALESCE(SUM(quantity * price_per_unit), 0) as freebie_value
+                                  FROM order_items 
+                                  WHERE parent_order_id IN ($pPlaceholders) AND is_freebie = 1
+                                  GROUP BY parent_order_id";
+                    $freebieStmt = $pdo->prepare($freebieSql);
+                    $freebieStmt->execute($parentIds);
+                    while ($fr = $freebieStmt->fetch(PDO::FETCH_ASSOC)) {
+                        $freebiesByParent[$fr['parent_order_id']] = [
+                            'count' => (int) $fr['freebie_count'],
+                            'value' => (float) $fr['freebie_value'],
+                        ];
+                    }
+                }
+
                 // 2.5 Count how many trackings map to each box (parentId + boxNumber)
                 $trackingsPerBox = [];
                 foreach ($trackingRows as $tr) {
@@ -357,6 +376,7 @@ try {
                         }
                     }
 
+                    $freebieInfo = $freebiesByParent[$parentId] ?? null;
                     $results[] = [
                         'trackingNumber' => $original,
                         'status' => 'found',
@@ -368,6 +388,9 @@ try {
                         'totalSlipAmount' => $slipsByParent[$parentId] ?? 0,
                         'message' => $multipleTrackingsInBox ? 'ตรวจสอบแล้ว (หลาย tracking ใน box เดียวกัน)' : 'ตรวจสอบแล้ว',
                         'multipleTrackingsInBox' => $multipleTrackingsInBox,
+                        'hasFreebie' => $freebieInfo ? true : false,
+                        'freebieValue' => $freebieInfo ? $freebieInfo['value'] : 0,
+                        'freebieCount' => $freebieInfo ? $freebieInfo['count'] : 0,
                     ];
                 }
 

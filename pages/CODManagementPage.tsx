@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useToast } from "../components/Toast";
 import {
   User,
@@ -72,6 +72,8 @@ interface RowData {
   forceImport?: boolean; // NEW: Skip order update, just record for total matching
   boxExpectedAmount?: number; // Full box total when multiple trackings share same box
   multiTracking?: boolean; // Flag: this tracking shares a box with other trackings
+  hasFreebie?: boolean; // ออเดอร์มีของแถม
+  freebieValue?: number; // มูลค่าของแถม
 }
 
 interface ExistingDocument {
@@ -597,6 +599,11 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               message = 'ระบุยอดเงินไม่ถูกต้อง';
             }
 
+            // เพิ่มข้อความของแถมถ้ามี
+            if (apiResult.hasFreebie && apiResult.freebieValue > 0) {
+              message += ` 🎁 มีของแถม ฿${apiResult.freebieValue.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+            }
+
             validatedRows[index] = {
               ...row,
               status,
@@ -605,6 +612,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               orderAmount: expected,
               difference: isAmountValid ? difference : undefined,
               amountPaid: apiResult.amountPaid,
+              hasFreebie: apiResult.hasFreebie || false,
+              freebieValue: apiResult.freebieValue || 0,
             };
           }
         }
