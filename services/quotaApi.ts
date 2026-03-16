@@ -231,6 +231,28 @@ export async function getQuotaSummary(
   return res.data || [];
 }
 
+export async function getSummaryByRate(
+  companyId: number,
+  rateScheduleId: number | 'all',
+): Promise<QuotaSummary[]> {
+  const res = await apiFetch(
+    `${QUOTA_API}?action=summary_by_rate&companyId=${companyId}&rateScheduleId=${rateScheduleId}`,
+  );
+  return res.data || [];
+}
+
+export async function bulkConfirmQuota(payload: {
+  rateScheduleId: number;
+  userIds: number[];
+  confirmedBy?: number;
+  companyId: number;
+}): Promise<{ success: boolean; confirmed: number; results: Array<{ userId: number; confirmedQuota: number; totalSales: number }> }> {
+  return apiFetch(QUOTA_API, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'bulk_confirm_quota', ...payload }),
+  });
+}
+
 // ============================================================
 // Mappers — snake_case → camelCase
 // ============================================================

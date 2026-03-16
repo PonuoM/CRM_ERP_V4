@@ -27,6 +27,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   // Close on click outside
   useEffect(() => {
@@ -159,21 +160,10 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
     setOpen(false);
   };
 
-  const [dropdownAlign, setDropdownAlign] = useState<'left' | 'right'>('left');
-
-  // Measure position when opening to decide alignment
-  useEffect(() => {
-    if (open && ref.current) {
-      const rect = ref.current.getBoundingClientRect();
-      const spaceRight = window.innerWidth - rect.left;
-      // Calendar popup is ~640px wide; if not enough space on the right, align right
-      setDropdownAlign(spaceRight < 680 ? 'right' : 'left');
-    }
-  }, [open]);
-
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={btnRef}
         onClick={() => setOpen(o => !o)}
         className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex items-center gap-2 bg-white hover:border-gray-300 transition-colors shadow-sm"
       >
@@ -181,8 +171,20 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
         <span className="text-gray-700">{display}</span>
       </button>
 
-      {open && (
-        <div className={`absolute z-[60] mt-2 bg-white rounded-xl shadow-xl border border-gray-200 p-5 w-auto ${dropdownAlign === 'right' ? 'right-0' : 'left-0'}`} style={{ minWidth: '640px' }}>
+      {open && (() => {
+        const rect = btnRef.current?.getBoundingClientRect();
+        const popoverHeight = 480; // estimated height of the calendar popover
+        const popoverWidth = 660;
+        const spaceBelow = window.innerHeight - (rect?.bottom ?? 0);
+        const spaceAbove = rect?.top ?? 0;
+        // If not enough space below and more space above, flip to top
+        const top = (spaceBelow < popoverHeight && spaceAbove > spaceBelow)
+          ? Math.max(4, (rect?.top ?? popoverHeight) - popoverHeight - 4)
+          : (rect?.bottom ?? 0) + 4;
+        const left = rect?.left ?? 0;
+        const adjustedLeft = (left + popoverWidth > window.innerWidth) ? Math.max(0, (rect?.right ?? popoverWidth) - popoverWidth) : left;
+        return (
+        <div className="fixed z-[9999] bg-white rounded-xl shadow-xl border border-gray-200 p-5 w-auto" style={{ minWidth: '640px', top: `${top}px`, left: `${adjustedLeft}px`, maxHeight: `${Math.max(spaceBelow, spaceAbove) - 8}px`, overflowY: 'auto' }}>
           {/* Preset Buttons */}
           <div className="flex flex-wrap gap-1.5 mb-4">
             {[
@@ -252,7 +254,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
