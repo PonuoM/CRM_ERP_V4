@@ -36,10 +36,18 @@ export const PaymentStatusChip: React.FC<{ status?: PaymentStatus | null }> = ({
   switch (status) {
     case PaymentStatus.Paid:
       return <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ชำระแล้ว</span>;
+    case PaymentStatus.Approved:
+      return <span className="bg-emerald-100 text-emerald-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">อนุมัติแล้ว</span>;
+    case PaymentStatus.PreApproved:
+      return <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">รอตรวจสอบยอด</span>;
+    case PaymentStatus.Verified:
+      return <span className="bg-cyan-100 text-cyan-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ยืนยันสลิปแล้ว</span>;
     case PaymentStatus.PendingVerification:
       return <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">รอตรวจสอบ</span>;
     case PaymentStatus.Unpaid:
       return <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ยังไม่ชำระ</span>;
+    case PaymentStatus.Cancelled:
+      return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ยกเลิก</span>;
     default:
       return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
   }

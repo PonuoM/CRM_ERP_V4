@@ -155,6 +155,13 @@ try {
             break;
         case 'validate_cod_tracking':
             if (method() === 'POST') {
+                // SECURITY: Get authenticated user's company_id
+                $authUser = get_authenticated_user($pdo);
+                $companyId = $authUser ? ($authUser['company_id'] ?? null) : null;
+                if (!$companyId) {
+                    json_response(['error' => 'UNAUTHORIZED', 'message' => 'Company not found'], 401);
+                }
+
                 $input = json_decode(file_get_contents('php://input'), true);
                 $items = $input['items'] ?? [];
                 if (empty($items)) {
@@ -197,7 +204,10 @@ try {
                         o.payment_status
                     FROM order_tracking_numbers t
                     JOIN orders o ON t.parent_order_id = o.id
-                    WHERE LOWER(REPLACE(REPLACE(t.tracking_number, ' ', ''), '\t', '')) IN ($placeholders)";
+                    WHERE LOWER(REPLACE(REPLACE(t.tracking_number, ' ', ''), '\t', '')) IN ($placeholders)
+                      AND o.company_id = ?";
+
+                $trackingsWithCompany = array_merge($trackingsToCheck, [$companyId]);
 
                 // Debug: Log the SQL query
                 error_log("[validate_cod_tracking] SQL: " . $sql);
@@ -206,7 +216,7 @@ try {
                 // The $trackingsToCheck array contains already-normalized (lowercase, no whitespace) values
 
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute($trackingsToCheck);
+                $stmt->execute($trackingsWithCompany);
                 $trackingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                 // Debug: Log raw result

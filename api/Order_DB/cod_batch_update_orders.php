@@ -100,7 +100,7 @@ try {
     $updates = [];
 
     $updateStmt = $pdo->prepare("
-    UPDATE orders SET amount_paid = ?, payment_status = ?, order_status = CASE WHEN ? = 'preapproved' THEN 'PreApproved' ELSE order_status END
+    UPDATE orders SET amount_paid = ?, payment_status = ?, order_status = CASE WHEN ? = 'PreApproved' THEN 'PreApproved' ELSE order_status END
     WHERE id = ? AND company_id = ?
   ");
 
@@ -109,7 +109,7 @@ try {
         $slipTotal = $slipTotals[$orderId] ?? 0;
         $totalPaid = round($codTotal + $slipTotal, 2);
 
-        $paymentStatus = $totalPaid > 0 ? 'preapproved' : 'pending_verification';
+        $paymentStatus = $totalPaid > 0 ? 'PreApproved' : 'PendingVerification';
 
         $updateStmt->execute([$totalPaid, $paymentStatus, $paymentStatus, $orderId, $companyId]);
 
