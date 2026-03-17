@@ -332,12 +332,19 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                                 </thead>
                                 <tbody>
                                     {promotions
-                                        .filter(
-                                            (pr) =>
-                                                pr.active &&
-                                                (!searchTerm ||
-                                                    pr.name.toLowerCase().includes(searchTerm.toLowerCase()))
-                                        )
+                                        .filter((pr) => {
+                                            if (!pr.active) return false;
+                                            // Check end_date expiry
+                                            const endDate = (pr as any).end_date ?? (pr as any).endDate;
+                                            if (endDate && endDate !== '0000-00-00') {
+                                                const expiry = new Date(endDate);
+                                                expiry.setHours(23, 59, 59, 999);
+                                                if (expiry < new Date()) return false;
+                                            }
+                                            // Search filter
+                                            if (searchTerm && !pr.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+                                            return true;
+                                        })
                                         .map((p) => (
                                             <tr key={p.id} className="border-b hover:bg-gray-50">
                                                 <td className="p-2 align-top">{p.name}</td>

@@ -228,9 +228,10 @@ child order_items.net_total = promotion_items.price_override × parent order_ite
 |-----------|----------|
 | `OrderManagementModal.tsx` | Collapse/expand, edit qty, CornerDownRight, ChevronDown/Right |
 | `OrderDetailModal.tsx` | Collapse/expand (read-only), CornerDownRight, smaller text, 'เซ็ต' badge |
-| `CreateOrderPage.tsx` | เลือกผ่าน `ProductSelectorModal` (tab โปรโมชั่นถูกลบ) |
+| `CreateOrderPage.tsx` | เลือกผ่าน `ProductSelectorModal` |
+| `ProductSelectorModal.tsx` | Tab โปรโมชั่น — filter: `active && !expired(end_date) && searchTerm` |
 
-> **Note:** tab 'โปรโมชั่น/เซ็ตสินค้า' ใน `CreateOrderPage` ถูกลบออกแล้ว (ไม่ได้ใช้)
+> **Note:** tab 'โปรโมชั่น/เซ็ตสินค้า' ที่เคยอยู่ inline ใน `CreateOrderPage` ถูกลบออกแล้ว แต่ tab ใน `ProductSelectorModal` ยังใช้งานอยู่
 
 ---
 

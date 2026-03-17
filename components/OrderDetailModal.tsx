@@ -55,6 +55,13 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
         setLoading(true);
         try {
             const data = await getOrder(orderId!);
+            // Normalize: PHP may return items/slips as object with non-sequential keys for sub-orders
+            if (data && data.items && !Array.isArray(data.items)) {
+                data.items = Object.values(data.items);
+            }
+            if (data && data.slips && !Array.isArray(data.slips)) {
+                data.slips = Object.values(data.slips);
+            }
             setOrder(data);
         } catch (err) {
             console.error("Failed to load order", err);
