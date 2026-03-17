@@ -109,7 +109,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     if (user?.companyId) {
       listQuotaProducts(user.companyId).then(data => {
         (window as any).__quotaProductsCache = data;
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }, [user?.companyId]);
 

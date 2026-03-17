@@ -21,13 +21,13 @@ try {
   if ($companyId) { $adsWhere[] = "ms.company_id = ?"; $adsParams[] = $companyId; }
   if ($storeId) { $adsWhere[] = "mal.store_id = ?"; $adsParams[] = $storeId; }
 
-  // Sales WHERE
+  // Sales WHERE (reads from marketplace_sales_orders — raw CSV imported data)
   $salesWhere = ["1=1"];
   $salesParams = [];
-  if ($dateFrom) { $salesWhere[] = "msi.date >= ?"; $salesParams[] = $dateFrom; }
-  if ($dateTo) { $salesWhere[] = "msi.date <= ?"; $salesParams[] = $dateTo; }
+  if ($dateFrom) { $salesWhere[] = "mso.order_date >= ?"; $salesParams[] = $dateFrom; }
+  if ($dateTo) { $salesWhere[] = "mso.order_date <= ?"; $salesParams[] = $dateTo; }
   if ($companyId) { $salesWhere[] = "ms2.company_id = ?"; $salesParams[] = $companyId; }
-  if ($storeId) { $salesWhere[] = "msi.store_id = ?"; $salesParams[] = $storeId; }
+  if ($storeId) { $salesWhere[] = "mso.store_id = ?"; $salesParams[] = $storeId; }
 
   $adsWhereSql = implode(" AND ", $adsWhere);
   $salesWhereSql = implode(" AND ", $salesWhere);
@@ -63,15 +63,15 @@ try {
       GROUP BY mal.store_id
     ) ads ON ms_main.id = ads.store_id
     LEFT JOIN (
-      SELECT msi.store_id,
-             SUM(msi.total_sales) as total_sales,
-             SUM(msi.total_orders) as total_orders,
-             SUM(msi.returns_amount) as total_returns,
-             SUM(msi.cancelled_amount) as total_cancelled
-      FROM marketplace_sales_import msi
-      JOIN marketplace_stores ms2 ON msi.store_id = ms2.id
+      SELECT mso.store_id,
+             SUM(mso.total_price) as total_sales,
+             COUNT(DISTINCT mso.online_order_id) as total_orders,
+             SUM(CASE WHEN mso.order_status IN ('คืนสินค้า','ตีกลับ') THEN mso.total_price ELSE 0 END) as total_returns,
+             SUM(CASE WHEN mso.order_status = 'ยกเลิกแล้ว' THEN mso.total_price ELSE 0 END) as total_cancelled
+      FROM marketplace_sales_orders mso
+      JOIN marketplace_stores ms2 ON mso.store_id = ms2.id
       WHERE $salesWhereSql
-      GROUP BY msi.store_id
+      GROUP BY mso.store_id
     ) sales ON ms_main.id = sales.store_id
     WHERE $storeWhereSql
     ORDER BY ads.total_ads_cost DESC, sales.total_sales DESC
