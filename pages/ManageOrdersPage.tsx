@@ -516,8 +516,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     Array.isArray(order.trackingNumbers) && order.trackingNumbers.some((tn) => (tn || '').trim().length > 0);
 
   const qualifiesForAccountReview = (order: Order) => {
-    // Claim and FreeGift skip accounting review entirely
-    if (order.paymentMethod === PaymentMethod.Claim || order.paymentMethod === PaymentMethod.FreeGift) {
+    // Claim, FreeGift, and DiscountCoupon skip accounting review entirely
+    if (order.paymentMethod === PaymentMethod.Claim || order.paymentMethod === PaymentMethod.FreeGift || order.paymentMethod === PaymentMethod.DiscountCoupon) {
       return false;
     }
 
@@ -693,6 +693,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       case 'PayAfter': return PaymentMethod.PayAfter as any;
       case 'Claim': return PaymentMethod.Claim as any;
       case 'FreeGift': return PaymentMethod.FreeGift as any;
+      case 'DiscountCoupon': return PaymentMethod.DiscountCoupon as any;
       default: return PaymentMethod.COD as any;
     }
   };
@@ -1714,6 +1715,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 <option value={PaymentMethod.PayAfter}>รับสินค้าก่อน</option>
                 <option value={PaymentMethod.Claim}>ส่งเคลม</option>
                 <option value={PaymentMethod.FreeGift}>ส่งของแถม</option>
+                <option value={PaymentMethod.DiscountCoupon}>คูปองส่วนลด</option>
               </select>
             </div>
             <div>

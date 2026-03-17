@@ -4669,6 +4669,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $paymentMethod = 'Claim';
                     } else if ($paymentMethodStr === 'FreeGift' || $paymentMethodStr === 'free_gift' || $paymentMethodStr === 'freegift' || $paymentMethodStr === 'ส่งของแถม') {
                         $paymentMethod = 'FreeGift';
+                    } else if ($paymentMethodStr === 'DiscountCoupon' || $paymentMethodStr === 'discount_coupon' || $paymentMethodStr === 'discountcoupon' || $paymentMethodStr === 'คูปองส่วนลด' || $paymentMethodStr === 'coupon') {
+                        $paymentMethod = 'DiscountCoupon';
                     } else {
                         // If value doesn't match any known pattern, log warning and set to null
                         error_log('Warning: Unknown payment method value: ' . $paymentMethodStr);

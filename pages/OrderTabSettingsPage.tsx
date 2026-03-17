@@ -125,7 +125,8 @@ const PAYMENT_METHODS = [
     'COD',
     'PayAfter',
     'Claim',
-    'FreeGift'
+    'FreeGift',
+    'DiscountCoupon'
 ];
 
 const PAYMENT_STATUSES = [

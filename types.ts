@@ -498,6 +498,7 @@ export enum PaymentMethod {
   PayAfter = "PayAfter",
   Claim = "Claim",
   FreeGift = "FreeGift",
+  DiscountCoupon = "DiscountCoupon",
 }
 
 export enum OrderStatus {

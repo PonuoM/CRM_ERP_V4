@@ -27,7 +27,7 @@ BEGIN
 
     SELECT CAST(payment_method AS CHAR), 
            CASE 
-               WHEN payment_method IN ('Claim', 'FreeGift') THEN 0
+               WHEN payment_method IN ('Claim', 'FreeGift', 'DiscountCoupon') THEN 0
                ELSE COALESCE(cod_amount, total_amount, 0)
            END
     INTO v_order_payment, v_expected_total
@@ -89,7 +89,7 @@ BEGIN
 
     SELECT CAST(payment_method AS CHAR), 
            CASE 
-               WHEN payment_method IN ('Claim', 'FreeGift') THEN 0
+               WHEN payment_method IN ('Claim', 'FreeGift', 'DiscountCoupon') THEN 0
                ELSE COALESCE(cod_amount, total_amount, 0)
            END
     INTO v_order_payment, v_expected_total

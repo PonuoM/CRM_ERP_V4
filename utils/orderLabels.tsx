@@ -26,6 +26,12 @@ export const PaymentMethodChip: React.FC<{ method: PaymentMethod }> = ({ method 
       return <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">โอนเงิน</span>;
     case PaymentMethod.PayAfter:
       return <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">จ่ายปลายทาง</span>;
+    case PaymentMethod.Claim:
+      return <span className="bg-amber-100 text-amber-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ส่งเคลม</span>;
+    case PaymentMethod.FreeGift:
+      return <span className="bg-teal-100 text-teal-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ส่งของแถม</span>;
+    case PaymentMethod.DiscountCoupon:
+      return <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">คูปองส่วนลด</span>;
     default:
       return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
   }

@@ -110,6 +110,9 @@ export const getPaymentMethodChip = (method: PaymentMethod | undefined | null) =
   if (method === PaymentMethod.FreeGift || methodStr === "FreeGift" || methodStr === "freegift" || methodStr === "ส่งของแถม") {
     return <span className="bg-pink-100 text-pink-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ส่งของแถม</span>;
   }
+  if (method === PaymentMethod.DiscountCoupon || methodStr === "DiscountCoupon" || methodStr === "discountcoupon" || methodStr === "คูปองส่วนลด") {
+    return <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">คูปองส่วนลด</span>;
+  }
 
   return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
 };

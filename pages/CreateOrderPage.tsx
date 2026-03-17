@@ -741,6 +741,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       return PaymentMethod.PayAfter;
     }
 
+    if (
+      ["discountcoupon", "discount_coupon", "discount-coupon", "คูปองส่วนลด", "coupon"].includes(val)
+    ) {
+      return PaymentMethod.DiscountCoupon;
+    }
+
     return undefined;
   };
 
@@ -8448,6 +8454,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </option>
                       <option value={PaymentMethod.Claim}>ส่งเคลม</option>
                       <option value={PaymentMethod.FreeGift}>ส่งของแถม</option>
+                      <option value={PaymentMethod.DiscountCoupon}>คูปองส่วนลด</option>
                     </select>
                   </div>
 

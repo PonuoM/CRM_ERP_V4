@@ -79,6 +79,9 @@ export const fromApiPaymentMethod = (s: any): PaymentMethod => {
     if (value === "freegift" || value === "free_gift" || value === "ส่งของแถม") {
         return "FreeGift" as PaymentMethod;
     }
+    if (value === "discountcoupon" || value === "discount_coupon" || value === "คูปองส่วนลด" || value === "coupon") {
+        return "DiscountCoupon" as PaymentMethod;
+    }
     // Default to COD if unknown or empty, as seen in legacy logic
     return PaymentMethod.COD;
 };
