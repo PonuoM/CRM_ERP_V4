@@ -1147,11 +1147,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const isFreeFlag = !!part.isFreebie || !!part.is_freebie;
 
+      const rawOverride = part.price_override !== null && part.price_override !== undefined
+        ? Number(part.price_override)
+        : null;
       const itemPrice = isFreeFlag
         ? 0
-        : part.price_override !== null && part.price_override !== undefined
-          ? Number(part.price_override)
-          : prod.price;
+        : prod.price;
 
       const newId = Date.now() + Math.floor(Math.random() * 1000);
 
@@ -1163,6 +1164,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         quantity: qty,
 
         pricePerUnit: itemPrice,
+
+        priceOverride: isFreeFlag ? undefined : (rawOverride ?? undefined),
 
         discount: 0,
 
@@ -1180,7 +1183,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       newItemsToAdd.push(productLineItem);
 
       if (!isFreeFlag) {
-        totalPromotionPrice += itemPrice * qty;
+        // price_override is the total for the line, product price needs qty multiplication
+        totalPromotionPrice += rawOverride !== null ? rawOverride : (itemPrice * qty);
       }
     }
 
@@ -4257,8 +4261,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         // Force child boxNumber to match parent
         patched.boxNumber = parentBox;
 
-        // Scale child quantity by parent quantity (e.g. promo x2)
-        patched.quantity = (item.quantity || 0) * parentQty;
+        // Scale child quantity using originalQuantity (base ratio per 1 set) × parentQty
+        // IMPORTANT: Do NOT use item.quantity here — it's already been scaled by the UI onChange handler
+        patched.quantity = (item.originalQuantity || item.quantity || 0) * parentQty;
 
         return patched;
       });
@@ -5079,15 +5084,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const isFreeFlag = !!part.isFreebie || !!part.is_freebie;
 
-      // IMPORTANT: Always use price_override for promotion items if available
-
-      // If price_override is null or 0 and item is not a freebie, use the regular product price
-
+      // IMPORTANT: pricePerUnit uses product price (for display/reference)
+      // priceOverride passes promotion_items.price_override for backend to set net_total directly
+      const rawOverride = part.price_override !== null && part.price_override !== undefined
+        ? Number(part.price_override)
+        : null;
       const itemPrice = isFreeFlag
         ? 0
-        : part.price_override !== null && part.price_override !== undefined
-          ? Number(part.price_override)
-          : prod.price;
+        : prod.price;
 
       // Create a separate line item for each product in the promotion
 
@@ -5101,6 +5105,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         quantity: qty,
 
         pricePerUnit: itemPrice,
+
+        priceOverride: isFreeFlag ? undefined : (rawOverride ?? undefined),
 
         discount: 0,
 
@@ -5124,9 +5130,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       newLockedIds.push(newId);
 
       if (!isFreeFlag) {
-        // Updated logic: if price override exists, it's the total price for the line (do not multiply by qty)
-        if (part.price_override !== null && part.price_override !== undefined) {
-          totalSetPrice += Number(part.price_override);
+        // price_override is the total price for the line (do not multiply by qty)
+        if (rawOverride !== null) {
+          totalSetPrice += rawOverride;
         } else {
           totalSetPrice += itemPrice * qty;
         }
@@ -8772,17 +8778,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         สินค้าปกติ
                       </button>
                     </li>
-                    <li className="mr-2">
-                      <button
-                        onClick={() => setSelectorTab("promotions")}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === "promotions"
-                          ? "text-blue-600 border-blue-600"
-                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-                          }`}
-                      >
-                        โปรโมชั่น/เซ็ตสินค้า
-                      </button>
-                    </li>
+
+
                   </ul>
 
                   {(() => {

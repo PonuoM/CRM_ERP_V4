@@ -166,10 +166,12 @@ const getRelativeTime = (timestamp: string) => {
 const formatISODate = (date: Date) => date.toISOString().slice(0, 10);
 
 const computeOrderTotal = (order: Order) => {
-  // Filter out freebie items before calculating total
+  // Filter out freebie items and child promotion items before calculating total
+  // Child items (parentItemId != null) are already included in the parent promotion's net_total
   const nonFreebieItems = (order.items || []).filter((item: any) => {
     const isFreebie = item.isFreebie || item.is_freebie;
-    return !isFreebie;
+    const isChildItem = item.parentItemId || item.parent_item_id;
+    return !isFreebie && !isChildItem;
   });
 
   const itemsTotal = nonFreebieItems.reduce((sum, item) => {
@@ -948,7 +950,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const parentItemId = Date.now();
     const parentItem = {
       id: parentItemId,
-      productId: 0, // No specific product for parent
+      productId: undefined, // No specific product for parent (must be null/undefined, NOT 0 — FK constraint)
       productName:
         promotion.name || promotion.sku || `โปรโมชั่น #${promotion.id}`,
       quantity: 1,
@@ -962,19 +964,29 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     };
 
     // Create child items for each product in promotion
-    const childItems = promotion.items.map((item: any, index: number) => ({
-      id: Date.now() + index + 1,
-      productId: item.productId || item.product_id,
-      productName: item.product_name || item.product?.name || item.sku || "",
-      quantity: item.quantity || 1,
-      originalQuantity: item.quantity || 1, // Store original quantity for multiplication
-      pricePerUnit: item.product_price ? Number(item.product_price) : 0, // Use product_price for unit price
-      discount: 0,
-      isFreebie: item.isFreebie || item.is_freebie || false,
-      boxNumber: 1,
-      creatorId: currentUser.id,
-      parentItemId: parentItemId, // Link to parent
-    }));
+    // pricePerUnit = product price (for display)
+    // priceOverride = promotion_items.price_override (backend uses this × parent qty for net_total)
+    const childItems = promotion.items.map((item: any, index: number) => {
+      const isFreebie = item.isFreebie || item.is_freebie || false;
+      const priceOverride = item.priceOverride ?? item.price_override;
+      const productPrice = item.product_price ? Number(item.product_price) : 0;
+      const qty = Number(item.quantity || 1);
+
+      return {
+        id: Date.now() + index + 1,
+        productId: item.productId || item.product_id,
+        productName: item.product_name || item.product?.name || item.sku || "",
+        quantity: qty,
+        originalQuantity: qty,
+        pricePerUnit: isFreebie ? 0 : productPrice,
+        priceOverride: isFreebie ? undefined : (priceOverride != null ? Number(priceOverride) : undefined),
+        discount: 0,
+        isFreebie,
+        boxNumber: 1,
+        creatorId: currentUser.id,
+        parentItemId: parentItemId, // Link to parent
+      };
+    });
 
     setCurrentOrder((prev) => {
       let boxes = prev.boxes || [];
@@ -2179,7 +2191,12 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     shippingCost: number,
     billDiscount: number,
   ) => {
-    const goodsSum = items.reduce(
+    // Exclude child promotion items (parentItemId != null) to avoid double-counting
+    const billableItems = items.filter((item: any) => {
+      const isChildItem = item.parentItemId || item.parent_item_id;
+      return !isChildItem;
+    });
+    const goodsSum = billableItems.reduce(
       (acc, item) => {
         const isFreebie = item.isFreebie || (item as any).is_freebie;
         const price = Number(item.pricePerUnit || (item as any).price_per_unit || 0);
@@ -2188,7 +2205,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       },
       0,
     );
-    const itemsDiscount = items.reduce(
+    const itemsDiscount = billableItems.reduce(
       (acc, item) => {
         const isFreebie = item.isFreebie || (item as any).is_freebie;
         const disc = Number(item.discount || (item as any).discount || 0);
@@ -3215,18 +3232,20 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                   // If this is a promotion parent, update all children quantities
                                   if ((item as any).isPromotionParent) {
                                     const parentId = item.id;
+                                    const oldParentQty = Number(item.quantity) || 1;
                                     setCurrentOrder((prev) => ({
                                       ...prev,
-                                      items: prev.items.map((i) =>
-                                        (i as any).parentItemId === parentId
-                                          ? {
-                                            ...i,
-                                            quantity:
-                                              ((i as any).originalQuantity ||
-                                                1) * newQuantity,
-                                          }
-                                          : i,
-                                      ),
+                                      items: prev.items.map((i) => {
+                                        if ((i as any).parentItemId !== parentId) return i;
+                                        // Use originalQuantity if available (newly created), otherwise derive from current qty / old parent qty
+                                        const baseQty = (i as any).originalQuantity != null
+                                          ? Number((i as any).originalQuantity)
+                                          : Math.round(Number(i.quantity || 0) / oldParentQty);
+                                        return {
+                                          ...i,
+                                          quantity: baseQty * newQuantity,
+                                        };
+                                      }),
                                     }));
                                   }
                                 }}
@@ -3239,11 +3258,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                   (p) => p.id === (item as any).parentItemId,
                                 );
                                 const parentQty = Number(parent?.quantity) || 1;
-                                const originalQty = Number(
-                                  (item as any).originalQuantity ??
-                                  item.quantity ?? 0
-                                );
-                                return originalQty * parentQty;
+                                const originalQty = (item as any).originalQuantity;
+                                // If originalQuantity exists (newly created item in memory), scale it
+                                // If not (loaded from DB), item.quantity is already the final scaled value
+                                if (originalQty != null) {
+                                  return Number(originalQty) * parentQty;
+                                }
+                                return Number(item.quantity) || 0;
                               })()
                             ) : (
                               Number(item.quantity) || 0
@@ -4328,7 +4349,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         const rowBg = idx % 2 === 0 ? "bg-white" : "bg-gray-50";
 
                         return (
-                          <tr key={box.boxNumber} className={rowBg}>
+                          <tr key={`box-${idx}`} className={rowBg}>
                             <td className="px-3 py-2 font-medium text-gray-800">
                               <div className="flex flex-col leading-tight">
                                 <span>กล่อง {box.boxNumber}</span>

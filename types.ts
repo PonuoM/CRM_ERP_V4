@@ -542,6 +542,7 @@ export interface LineItem {
   originalQuantity?: number; // NEW: จำนวนเริ่มต้นต่อ 1 หน่วยของ parent (สำหรับคำนวณ)
   sku?: string; // NEW: SKU specific to this line item (useful for promotion items)
   order_id?: string; // NEW: Sub-order ID (e.g., ORD-001-1)
+  priceOverride?: number; // NEW: promotion_items.price_override (backend uses this for child net_total)
 }
 
 export interface CodBox {

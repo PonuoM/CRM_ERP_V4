@@ -2765,20 +2765,25 @@ function handle_promotions(PDO $pdo, ?string $id): void
             if (!$id)
                 json_response(['error' => 'ID_REQUIRED'], 400);
 
-            // Check if promotion is used in any orders
-            $check = $pdo->prepare('SELECT COUNT(*) FROM order_items WHERE promotion_id = ?');
-            $check->execute([$id]);
-            if ($check->fetchColumn() > 0) {
-                json_response([
-                    'error' => 'PROMOTION_IN_USE',
-                    'message' => 'ไม่สามารถแก้ไขโปรโมชั่นที่มีการสั่งซื้อแล้ว กรุณาปิดใช้งานแทน'
-                ], 400);
-                return;
-            }
-
             $in = json_input();
             if (!$in || !is_array($in)) {
                 $in = [];
+            }
+
+            // Check if this is only an active-status toggle (no items, no other fields)
+            $isActiveOnlyToggle = (count($in) === 1 && array_key_exists('active', $in));
+
+            // Check if promotion is used in any orders — but allow toggling active status
+            if (!$isActiveOnlyToggle) {
+                $check = $pdo->prepare('SELECT COUNT(*) FROM order_items WHERE promotion_id = ?');
+                $check->execute([$id]);
+                if ($check->fetchColumn() > 0) {
+                    json_response([
+                        'error' => 'PROMOTION_IN_USE',
+                        'message' => 'ไม่สามารถแก้ไขโปรโมชั่นที่มีการสั่งซื้อแล้ว กรุณาปิดใช้งานแทน'
+                    ], 400);
+                    return;
+                }
             }
 
             $pdo->beginTransaction();
@@ -4909,7 +4914,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $ins->execute([
                                 $orderIdForItem,
                                 $mainOrderId,
-                                $it['productId'] ?? null,
+                                !empty($it['productId']) ? (int)$it['productId'] : null,
                                 $it['productName'] ?? null,
                                 $quantity,
                                 $pricePerUnit,
@@ -4942,7 +4947,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $ins->execute([
                                 $orderIdForItem,
                                 $mainOrderId,
-                                $it['productId'] ?? null,
+                                !empty($it['productId']) ? (int)$it['productId'] : null,
                                 $it['productName'] ?? null,
                                 $quantity,
                                 $pricePerUnit,
@@ -4975,10 +4980,38 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $boxNumber = isset($it['boxNumber']) ? (int) $it['boxNumber'] : 1;
                             $orderIdForItem = $getOrderIdForBox($boxNumber);
                             [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
+
+                            // --- Resolve priceOverride and parentQty ---
+                            $overridePrice = isset($it['priceOverride']) ? (float) $it['priceOverride'] : (isset($it['price_override']) ? (float) $it['price_override'] : null);
+                            $parentQty = 1;
+                            $parentPromotionId = null;
+                            foreach ($in['items'] as $parentItem) {
+                                $pid = $parentItem['id'] ?? null;
+                                if ($pid !== null && (string)$pid === (string)$clientParent && !empty($parentItem['isPromotionParent'])) {
+                                    $parentQty = max(1, (int)($parentItem['quantity'] ?? 1));
+                                    $parentPromotionId = $parentItem['promotionId'] ?? $parentItem['promotion_id'] ?? null;
+                                    break;
+                                }
+                            }
+
+                            // If priceOverride not in payload, look it up from promotion_items table
+                            if ($overridePrice === null && $parentPromotionId !== null && !empty($it['productId'])) {
+                                $poStmt = $pdo->prepare('SELECT price_override FROM promotion_items WHERE promotion_id = ? AND product_id = ? LIMIT 1');
+                                $poStmt->execute([(int)$parentPromotionId, (int)$it['productId']]);
+                                $poRow = $poStmt->fetch();
+                                if ($poRow && $poRow['price_override'] !== null) {
+                                    $overridePrice = (float) $poRow['price_override'];
+                                }
+                            }
+
+                            // Apply override: net_total = priceOverride × parentQuantity
+                            if ($overridePrice !== null && !$isFreebie) {
+                                $netTotal = $overridePrice * $parentQty;
+                            }
                             $ins->execute([
                                 $orderIdForItem,
                                 $mainOrderId,
-                                $it['productId'] ?? null,
+                                !empty($it['productId']) ? (int)$it['productId'] : null,
                                 $it['productName'] ?? null,
                                 $quantity,
                                 $pricePerUnit,
@@ -5761,7 +5794,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $ins->execute([
                                 $orderIdForItem,
                                 $id,
-                                $it['productId'] ?? null,
+                                !empty($it['productId']) ? (int)$it['productId'] : null,
                                 $it['productName'] ?? null,
                                 $quantity,
                                 $pricePerUnit,
@@ -5794,7 +5827,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $ins->execute([
                                 $orderIdForItem,
                                 $id,
-                                $it['productId'] ?? null,
+                                !empty($it['productId']) ? (int)$it['productId'] : null,
                                 $it['productName'] ?? null,
                                 $quantity,
                                 $pricePerUnit,
@@ -5827,6 +5860,34 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $boxNumber = isset($it['boxNumber']) ? (int) $it['boxNumber'] : 1;
                             $orderIdForItem = $getOrderIdForBox($boxNumber);
                             [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
+
+                            // --- Resolve priceOverride and parentQty ---
+                            $overridePrice = isset($it['priceOverride']) ? (float) $it['priceOverride'] : (isset($it['price_override']) ? (float) $it['price_override'] : null);
+                            $parentQty = 1;
+                            $parentPromotionId = null;
+                            foreach ($in['items'] as $parentItem) {
+                                $pid = $parentItem['id'] ?? null;
+                                if ($pid !== null && (string)$pid === (string)$clientParent && !empty($parentItem['isPromotionParent'])) {
+                                    $parentQty = max(1, (int)($parentItem['quantity'] ?? 1));
+                                    $parentPromotionId = $parentItem['promotionId'] ?? $parentItem['promotion_id'] ?? null;
+                                    break;
+                                }
+                            }
+
+                            // If priceOverride not in payload, look it up from promotion_items table
+                            if ($overridePrice === null && $parentPromotionId !== null && !empty($it['productId'])) {
+                                $poStmt = $pdo->prepare('SELECT price_override FROM promotion_items WHERE promotion_id = ? AND product_id = ? LIMIT 1');
+                                $poStmt->execute([(int)$parentPromotionId, (int)$it['productId']]);
+                                $poRow = $poStmt->fetch();
+                                if ($poRow && $poRow['price_override'] !== null) {
+                                    $overridePrice = (float) $poRow['price_override'];
+                                }
+                            }
+
+                            // Apply override: net_total = priceOverride × parentQuantity
+                            if ($overridePrice !== null && !$isFreebie) {
+                                $netTotal = $overridePrice * $parentQty;
+                            }
                             $ins->execute([
                                 $orderIdForItem,
                                 $id,
@@ -7032,8 +7093,10 @@ function handle_order_slips(PDO $pdo, ?string $id): void
             }
             $url = null;
             // Handle both data URL format (data:image/...) and raw base64
-            if (preg_match('/^data:(image\/(png|jpeg|jpg|gif));base64,(.*)$/', $content, $m)) {
-                $ext = $m[2] === 'jpeg' ? 'jpg' : $m[2];
+            if (preg_match('/^data:(image\/(png|jpeg|jpg|gif|webp|bmp|svg\+xml));base64,(.*)$/s', $content, $m)) {
+                $ext = $m[2];
+                if ($ext === 'jpeg') $ext = 'jpg';
+                if ($ext === 'svg+xml') $ext = 'svg';
                 $data = base64_decode($m[3]);
                 if ($data !== false) {
                     $fname = 'slip_' . preg_replace('/[^A-Za-z0-9_-]+/', '', $orderId) . '_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 6) . '.' . $ext;
@@ -7042,26 +7105,31 @@ function handle_order_slips(PDO $pdo, ?string $id): void
                         $url = 'api/uploads/slips/' . $fname;
                     }
                 }
-            } else if (preg_match('/^[A-Za-z0-9+\/]+=*$/', $content)) {
-                // Raw base64 string (without data URL prefix)
-                $data = base64_decode($content);
-                if ($data !== false) {
-                    // Try to detect image type from data
-                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-                    $mimeType = finfo_buffer($finfo, $data);
-                    finfo_close($finfo);
-                    $ext = 'jpg'; // default
-                    if (strpos($mimeType, 'png') !== false)
-                        $ext = 'png';
-                    else if (strpos($mimeType, 'jpeg') !== false || strpos($mimeType, 'jpg') !== false)
-                        $ext = 'jpg';
-                    else if (strpos($mimeType, 'gif') !== false)
-                        $ext = 'gif';
+            } else {
+                // Raw base64 string (strip any whitespace/newlines)
+                $cleanContent = preg_replace('/\s+/', '', $content);
+                if (preg_match('/^[A-Za-z0-9+\/]+=*$/', $cleanContent)) {
+                    $data = base64_decode($cleanContent);
+                    if ($data !== false) {
+                        // Try to detect image type from data
+                        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                        $mimeType = finfo_buffer($finfo, $data);
+                        finfo_close($finfo);
+                        $ext = 'jpg'; // default
+                        if (strpos($mimeType, 'png') !== false)
+                            $ext = 'png';
+                        else if (strpos($mimeType, 'jpeg') !== false || strpos($mimeType, 'jpg') !== false)
+                            $ext = 'jpg';
+                        else if (strpos($mimeType, 'gif') !== false)
+                            $ext = 'gif';
+                        else if (strpos($mimeType, 'webp') !== false)
+                            $ext = 'webp';
 
-                    $fname = 'slip_' . preg_replace('/[^A-Za-z0-9_-]+/', '', $orderId) . '_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 6) . '.' . $ext;
-                    $path = $baseDir . DIRECTORY_SEPARATOR . $fname;
-                    if (file_put_contents($path, $data) !== false) {
-                        $url = 'api/uploads/slips/' . $fname;
+                        $fname = 'slip_' . preg_replace('/[^A-Za-z0-9_-]+/', '', $orderId) . '_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 6) . '.' . $ext;
+                        $path = $baseDir . DIRECTORY_SEPARATOR . $fname;
+                        if (file_put_contents($path, $data) !== false) {
+                            $url = 'api/uploads/slips/' . $fname;
+                        }
                     }
                 }
             }

@@ -6,6 +6,7 @@ import Modal from './Modal';
 interface PromotionModalProps {
   promotion: Promotion | null;
   products: Product[];
+  companyId?: number;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -13,6 +14,7 @@ interface PromotionModalProps {
 const PromotionModal: React.FC<PromotionModalProps> = ({
   promotion,
   products,
+  companyId = 1,
   isOpen,
   onClose
 }) => {
@@ -187,7 +189,7 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
         name: formData.name,
         sku: formData.sku,
         description: formData.description,
-        company_id: 1,
+        company_id: companyId,
         active: formData.active,
         start_date: formatDateForAPI(formData.startDate),
         end_date: formatDateForAPI(formData.endDate),
