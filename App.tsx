@@ -6996,7 +6996,7 @@ const App: React.FC = () => {
       activePage === "Promotion History" ||
       activePage === "Create Promotion"
     ) {
-      return <PromotionsPage />;
+      return <PromotionsPage currentUser={currentUser} />;
     }
 
     if (activePage === "UpsellOrder") {
@@ -7550,17 +7550,17 @@ const App: React.FC = () => {
       case "โปรโมชั่นที่กำลังใช้งาน":
       case "Promo Active":
       case "promo.active":
-        return <PromotionsPage key="active" view="active" />;
+        return <PromotionsPage key="active" view="active" currentUser={currentUser} />;
       case "Promotion History":
       case "ประวัติโปรโมชั่น":
       case "Promo History":
       case "promo.history":
-        return <PromotionsPage key="history" view="history" />;
+        return <PromotionsPage key="history" view="history" currentUser={currentUser} />;
       case "Create Promotion":
       case "สร้างโปรโมชั่นใหม่":
       case "Promo Create":
       case "promo.create":
-        return <PromotionsPage key="create" view="create" />;
+        return <PromotionsPage key="create" view="create" currentUser={currentUser} />;
 
       case "All Slips":
       case SLIP_ALL_LABEL:

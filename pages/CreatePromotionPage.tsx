@@ -4,11 +4,13 @@ import { apiFetch } from '../services/api';
 
 interface CreatePromotionPageProps {
   products: Product[];
+  companyId?: number;
   onSuccess: () => void;
 }
 
 const CreatePromotionPage: React.FC<CreatePromotionPageProps> = ({
   products,
+  companyId = 1,
   onSuccess
 }) => {
   const [formData, setFormData] = useState({
@@ -101,7 +103,7 @@ const CreatePromotionPage: React.FC<CreatePromotionPageProps> = ({
         name: formData.name,
         sku: formData.sku,
         description: formData.description,
-        company_id: 1,
+        company_id: companyId,
         active: formData.active,
         start_date: formData.startDate || null,
         end_date: formData.endDate || null,

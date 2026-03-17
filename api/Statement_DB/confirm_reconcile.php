@@ -19,6 +19,7 @@ try {
     }
 
     $id = (int) $input['id'];
+    $userId = isset($input['user_id']) ? (int) $input['user_id'] : null;
     $orderId = $input['order_id'] ?? null;
     $orderAmount = isset($input['order_amount']) ? (float) $input['order_amount'] : null;
     $paymentMethod = $input['payment_method'] ?? null;
@@ -49,6 +50,7 @@ try {
     $sql = "UPDATE statement_reconcile_logs 
             SET confirmed_at = NOW(),
                 confirmed_action = 'Confirmed',
+                confirmed_by = :confirmedBy,
                 confirmed_order_id = :confirmedOrderId,
                 confirmed_order_amount = :orderAmount,
                 confirmed_payment_method = :paymentMethod
@@ -56,6 +58,7 @@ try {
 
     $stmt = $pdo->prepare($sql);
     $result = $stmt->execute([
+        ':confirmedBy' => $userId,
         ':confirmedOrderId' => $existingOrderId,
         ':orderAmount' => $orderAmount,
         ':paymentMethod' => $paymentMethod,

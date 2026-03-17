@@ -10,10 +10,12 @@ type PromotionsView = 'active' | 'history' | 'create';
 
 interface PromotionsPageProps {
   view?: PromotionsView;
+  currentUser?: any;
 }
 
-const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
+const PromotionsPage: React.FC<PromotionsPageProps> = ({ view, currentUser }) => {
   const [currentView, setCurrentView] = useState<PromotionsView>(view || 'active');
+  const companyId = currentUser?.companyId || currentUser?.company_id || 1;
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,8 +30,8 @@ const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
     const loadData = async () => {
       try {
         const [promotionsData, productsData] = await Promise.all([
-          listPromotions(),
-          listProducts()
+          listPromotions(companyId),
+          listProducts(companyId)
         ]);
         setPromotions(Array.isArray(promotionsData) ? promotionsData : []);
         setProducts(Array.isArray(productsData) ? productsData : []);
@@ -45,7 +47,7 @@ const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
 
   const refreshPromotions = async () => {
     try {
-      const promotionsData = await listPromotions();
+      const promotionsData = await listPromotions(companyId);
       setPromotions(Array.isArray(promotionsData) ? promotionsData : []);
     } catch (error) {
       console.error('Error refreshing promotions:', error);
@@ -85,6 +87,7 @@ const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
             promotions={activePromotions}
             products={products}
             onRefresh={refreshPromotions}
+            companyId={companyId}
           />
         );
       case 'history':
@@ -94,12 +97,14 @@ const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
             promotions={historyPromotions}
             products={products}
             onRefresh={refreshPromotions}
+            companyId={companyId}
           />
         );
       case 'create':
         return (
           <CreatePromotionPage
             products={products}
+            companyId={companyId}
             onSuccess={() => {
               refreshPromotions();
               setCurrentView('active');

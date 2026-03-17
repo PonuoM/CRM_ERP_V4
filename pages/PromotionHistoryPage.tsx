@@ -6,6 +6,7 @@ interface PromotionHistoryPageProps {
   promotions: Promotion[];
   products: Product[];
   onRefresh: () => void;
+  companyId?: number;
 }
 
 const PromotionHistoryPage: React.FC<PromotionHistoryPageProps> = ({

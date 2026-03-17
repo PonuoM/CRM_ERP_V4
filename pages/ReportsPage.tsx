@@ -990,7 +990,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         }
 
         const statusThai: { [key: string]: string } = {
-          returning: 'กำลังตีกลับ', returned: 'เข้าคลัง',
+          returning: 'กำลังตีกลับ', returned: 'สภาพดี',
           good: 'สภาพดี', damaged: 'ชำรุด', lost: 'สูญหาย'
         };
 
@@ -1012,8 +1012,13 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'วันที่สั่งซื้อ': isFirstRow ? (r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH-u-ca-gregory') : '-') : '',
             'ชื่อลูกค้า': isFirstRow ? (`${r.customer_first_name || ''} ${r.customer_last_name || ''}`.trim() || '-') : '',
             'เบอร์โทร': isFirstRow ? (r.customer_phone || '-') : '',
+            'ที่อยู่': isFirstRow ? (r.shipping_street || '-') : '',
+            'แขวง/ตำบล': isFirstRow ? (r.shipping_subdistrict || '-') : '',
+            'เขต/อำเภอ': isFirstRow ? (r.shipping_district || '-') : '',
+            'จังหวัด': isFirstRow ? (r.shipping_province || '-') : '',
+            'รหัสไปรษณีย์': isFirstRow ? (r.shipping_postal_code || '-') : '',
             'Tracking No.': isFirstRow ? (r.tracking_number || '-') : '',
-            'สถานะตีกลับ': isFirstRow ? (statusThai[r.return_status] || r.return_status || '-') : '',
+            'สถานะตีกลับ': statusThai[r.return_status] || r.return_status || '-',
             'หมายเหตุ': isFirstRow ? (r.return_note || '-') : '',
             'ราคากล่อง': isFirstRow ? (r.cod_amount || 0) : '',
             'ยอดเก็บได้': isFirstRow ? (r.collection_amount || 0) : '',

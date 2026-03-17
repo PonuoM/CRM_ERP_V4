@@ -118,9 +118,9 @@ try {
     // 5. INSERT new reconcile log (no replace)
     $insertStmt = $pdo->prepare("
     INSERT INTO statement_reconcile_logs
-      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched, note, confirmed_payment_method)
+      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched, created_by, note, confirmed_payment_method)
     VALUES
-      (:batchId, :stmtId, :orderId, :stmtAmount, :confirmedAmount, 'Order', 0, NULL, :paymentMethod)
+      (:batchId, :stmtId, :orderId, :stmtAmount, :confirmedAmount, 'Order', 0, :createdBy, NULL, :paymentMethod)
   ");
     $insertStmt->execute([
         ":batchId" => $batchId,
@@ -128,6 +128,7 @@ try {
         ":orderId" => $orderId,
         ":stmtAmount" => $statementAmount,
         ":confirmedAmount" => $confirmedAmount,
+        ":createdBy" => $userId,
         ":paymentMethod" => $order['payment_method'] ?? null,
     ]);
     $reconcileLogId = (int) $pdo->lastInsertId();

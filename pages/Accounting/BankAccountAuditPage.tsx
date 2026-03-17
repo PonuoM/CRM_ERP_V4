@@ -493,6 +493,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     method: 'POST',
                     body: JSON.stringify({
                         id: rid,
+                        user_id: currentUser.id,
                         order_amount: log.order_amount,
                         payment_method: log.payment_method
                     })
@@ -572,6 +573,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                         method: 'POST',
                         body: JSON.stringify({
                             id: rid,
+                            user_id: currentUser.id,
                             order_amount: log.order_amount,
                             payment_method: log.payment_method
                         })

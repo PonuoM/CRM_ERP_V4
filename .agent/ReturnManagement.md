@@ -717,3 +717,68 @@ $processedBoxIds[] = $boxRow['id'];
 | ไฟล์ | การเปลี่ยนแปลง |
 |---|---|
 | `components/BulkReturnImport.tsx` | เพิ่ม `note` ใน RowData, คอลัมน์หมายเหตุหลัง Tracking, ปรับ paste/import logic |
+
+## 29. Export ตีกลับใน ReportsPage (หน้ารายงาน)
+
+### ภาพรวม
+นอกจาก Export ใน `ReturnManagementPage` แล้ว ยังมี **Export ตีกลับ** อีกจุดหนึ่งในหน้า **รายงาน** (`pages/ReportsPage.tsx`) — report card ชื่อ **"รายงานตีกลับเข้าคลัง"** (`return-summary`)
+
+### ไฟล์ที่เกี่ยวข้อง
+| ไฟล์ | บทบาท |
+|---|---|
+| `pages/ReportsPage.tsx` | UI Dashboard + Export CSV |
+| `api/Orders/get_return_summary.php` | สรุปจำนวนออเดอร์/กล่องตีกลับตามสถานะ |
+| `api/Orders/export_return_orders.php` | **API เดียวกัน** กับหน้า ReturnManagement |
+
+### Dashboard Summary (แสดงเมื่อเลือก report card)
+ดึงข้อมูลจาก `get_return_summary.php` พร้อม date filter
+
+| Card | ข้อมูล |
+|---|---|
+| ออเดอร์ทั้งหมด | `allOrders` |
+| ออเดอร์ตีกลับ | `totalOrders` |
+| % ตีกลับ | `totalOrders / allOrders × 100` |
+| จำนวนกล่องทั้งหมด | `totalBoxes` |
+| กำลังตีกลับ | `returning` |
+| เข้าคลัง (รวม) | `good + damaged` |
+| สภาพดี | `good` |
+| ชำรุด | `damaged` |
+| สูญหาย | `lost` |
+
+### Export CSV
+- กดปุ่ม **"ดาวน์โหลด CSV"** → เรียก `export_return_orders.php` (API เดียวกับ ReturnManagement)
+- Group rows ตาม `order_id + box_number` — แถวแรกของกลุ่มแสดงข้อมูล box, แถวถัดไปแสดงเฉพาะ items
+- **สถานะตีกลับ แสดงทุกแถว** (ไม่ใช่เฉพาะแถวแรก)
+
+| คอลัมน์ CSV | แหล่งข้อมูล | แสดง |
+|---|---|---|
+| Order ID | `r.order_id` | แถวแรก |
+| Sub Order ID | `r.sub_order_id` | แถวแรก |
+| วันที่สั่งซื้อ | `r.order_date` | แถวแรก |
+| ชื่อลูกค้า | `r.customer_first_name + last_name` | แถวแรก |
+| เบอร์โทร | `r.customer_phone` | แถวแรก |
+| ที่อยู่ | `r.shipping_street` | แถวแรก |
+| แขวง/ตำบล | `r.shipping_subdistrict` | แถวแรก |
+| เขต/อำเภอ | `r.shipping_district` | แถวแรก |
+| จังหวัด | `r.shipping_province` | แถวแรก |
+| รหัสไปรษณีย์ | `r.shipping_postal_code` | แถวแรก |
+| Tracking No. | `r.tracking_number` | แถวแรก |
+| สถานะตีกลับ | `r.return_status` (ไทย) | **ทุกแถว** |
+| หมายเหตุ | `r.return_note` | แถวแรก |
+| ราคากล่อง | `r.cod_amount` | แถวแรก |
+| ยอดเก็บได้ | `r.collection_amount` | แถวแรก |
+| ชื่อสินค้า | `r.item_product_name` | ทุกแถว |
+| จำนวน | `r.item_quantity` | ทุกแถว |
+| ผู้ขาย | `r.item_creator_first_name` (item-level) | ทุกแถว |
+| วันที่บันทึก | `r.return_created_at` | แถวแรก |
+| ช่องทางชำระ | `r.payment_method` | แถวแรก |
+
+### ข้อแตกต่างจาก Export ใน ReturnManagementPage
+
+| | ReturnManagementPage | ReportsPage |
+|---|---|---|
+| API | `export_return_orders.php` | **เดียวกัน** |
+| CSV format | สร้างจาก Backend (PHP) | สร้างจาก **Frontend** (JS) |
+| คอลัมน์ | 22 คอลัมน์ | 20 คอลัมน์ (รวมที่อยู่+สินค้า+ผู้ขาย) |
+| Grouping | ไม่ group | Group ตาม order_id+box_number |
+| Date filter | DateRangePicker component | Preset dropdown (วันนี้/สัปดาห์/เดือน/custom) |

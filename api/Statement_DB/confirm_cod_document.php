@@ -71,11 +71,12 @@ try {
     $updateStmt = $pdo->prepare("
         UPDATE statement_reconcile_logs 
         SET confirmed_at = NOW(),
-            confirmed_action = 'Confirmed'
+            confirmed_action = 'Confirmed',
+            confirmed_by = :confirmedBy
         WHERE statement_log_id = :statementLogId
           AND confirmed_at IS NULL
     ");
-    $updateStmt->execute([':statementLogId' => $statementLogId]);
+    $updateStmt->execute([':statementLogId' => $statementLogId, ':confirmedBy' => $userId > 0 ? $userId : null]);
     $updatedCount = $updateStmt->rowCount();
 
     // 4. Update order payment_status to 'Approved' and order_status to 'Delivered'

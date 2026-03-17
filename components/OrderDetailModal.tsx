@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getOrder, apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
-import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2 } from 'lucide-react';
+import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2, ChevronDown, ChevronRight, CornerDownRight } from 'lucide-react';
 
 export interface StatementContext {
     statementAmount: number;
@@ -26,6 +26,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
     const [editingSlipId, setEditingSlipId] = useState<number | null>(null);
     const [slipEdits, setSlipEdits] = useState<{ amount: string; transfer_date: string }>({ amount: '', transfer_date: '' });
     const [savingSlip, setSavingSlip] = useState(false);
+    const [expandedPromotions, setExpandedPromotions] = useState<Set<number | string>>(new Set());
 
     const statusThai: Record<string, string> = {
         'Pending': 'รอดำเนินการ', 'Confirmed': 'ยืนยันแล้ว', 'Preparing': 'กำลังจัดเตรียม',
@@ -54,6 +55,13 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
         setLoading(true);
         try {
             const data = await getOrder(orderId!);
+            // Normalize: PHP may return items/slips as object with non-sequential keys for sub-orders
+            if (data && data.items && !Array.isArray(data.items)) {
+                data.items = Object.values(data.items);
+            }
+            if (data && data.slips && !Array.isArray(data.slips)) {
+                data.slips = Object.values(data.slips);
+            }
             setOrder(data);
         } catch (err) {
             console.error("Failed to load order", err);
@@ -357,28 +365,64 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y">
-                                            {order.items?.map((item: any, idx: number) => (
-                                                <tr key={idx}>
-                                                    <td className="px-3 py-2">
-                                                        <div className="font-medium text-gray-900">{item.product_name}</div>
-                                                        {item.sku && <div className="text-xs text-gray-500">SKU: {item.sku}</div>}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-center">{item.quantity}</td>
-                                                    <td className="px-3 py-2 text-right">{new Intl.NumberFormat('th-TH').format(item.price_per_unit || item.price || 0)}</td>
-                                                    <td className="px-3 py-2 text-right text-red-500">{item.discount > 0 ? `-${new Intl.NumberFormat('th-TH').format(item.discount)}` : '-'}</td>
-                                                    <td className="px-3 py-2 text-right font-medium">{new Intl.NumberFormat('th-TH').format(item.net_total || 0)}</td>
-                                                    <td className="px-3 py-2 text-sm text-gray-500">
-                                                        {(item.is_freebie === 1 || item.is_freebie === true) ? (
-                                                            <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded border border-green-200">ของแถม</span>
-                                                        ) : (
-                                                            item.notes || '-'
-                                                        )}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-sm text-purple-600 font-medium">
-                                                        {`${item.creator_first_name || ''} ${item.creator_last_name || ''}`.trim() || '-'}
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            {order.items?.map((item: any, idx: number) => {
+                                                const isParent = item.is_promotion_parent === 1 || item.is_promotion_parent === true;
+                                                const isChild = !!item.parent_item_id;
+                                                const parentId = item.parent_item_id;
+                                                const isExpanded = parentId ? expandedPromotions.has(parentId) : true;
+
+                                                // Skip collapsed children
+                                                if (isChild && !isExpanded) return null;
+
+                                                return (
+                                                    <tr key={idx} className={isChild ? 'bg-gray-50/60' : ''}>
+                                                        <td className={`px-3 py-2 ${isChild ? 'pl-8' : ''}`}>
+                                                            <div className="flex items-center gap-1.5">
+                                                                {isParent && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setExpandedPromotions(prev => {
+                                                                                const next = new Set(prev);
+                                                                                if (next.has(item.id)) { next.delete(item.id); } else { next.add(item.id); }
+                                                                                return next;
+                                                                            });
+                                                                        }}
+                                                                        className="text-gray-400 hover:text-gray-600 flex-shrink-0 p-0.5 -ml-1"
+                                                                    >
+                                                                        {expandedPromotions.has(item.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                                                    </button>
+                                                                )}
+                                                                {isChild && (
+                                                                    <CornerDownRight className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                                                )}
+                                                                <div>
+                                                                    <div className={isParent ? 'font-semibold text-blue-700 text-sm' : isChild ? 'text-gray-700 text-xs' : 'font-medium text-gray-900 text-sm'}>
+                                                                        {item.product_name}
+                                                                        {isParent && (
+                                                                            <span className="ml-1.5 text-[10px] font-normal bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">เซ็ต</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {item.sku && <div className={`text-gray-500 ${isChild ? 'text-[10px]' : 'text-xs'}`}>SKU: {item.sku}</div>}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className={`px-3 py-2 text-center ${isChild ? 'text-xs text-gray-500' : 'text-sm'}`}>{item.quantity}</td>
+                                                        <td className={`px-3 py-2 text-right ${isChild ? 'text-xs text-gray-500' : 'text-sm'}`}>{new Intl.NumberFormat('th-TH').format(item.price_per_unit || item.price || 0)}</td>
+                                                        <td className={`px-3 py-2 text-right ${isChild ? 'text-xs' : 'text-sm'} text-red-500`}>{item.discount > 0 ? `-${new Intl.NumberFormat('th-TH').format(item.discount)}` : '-'}</td>
+                                                        <td className={`px-3 py-2 text-right font-medium ${isChild ? 'text-xs text-gray-500' : 'text-sm'}`}>{new Intl.NumberFormat('th-TH').format(item.net_total || 0)}</td>
+                                                        <td className={`px-3 py-2 text-gray-500 ${isChild ? 'text-[11px]' : 'text-sm'}`}>
+                                                            {(item.is_freebie === 1 || item.is_freebie === true) ? (
+                                                                <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded border border-green-200">ของแถม</span>
+                                                            ) : (
+                                                                item.notes || '-'
+                                                            )}
+                                                        </td>
+                                                        <td className={`px-3 py-2 text-purple-600 font-medium ${isChild ? 'text-[11px]' : 'text-sm'}`}>
+                                                            {`${item.creator_first_name || ''} ${item.creator_last_name || ''}`.trim() || '-'}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                         <tfoot className="bg-gray-50 font-semibold border-t">
                                             <tr>

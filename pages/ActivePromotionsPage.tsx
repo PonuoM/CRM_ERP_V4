@@ -7,12 +7,14 @@ interface ActivePromotionsPageProps {
   promotions: Promotion[];
   products: Product[];
   onRefresh: () => void;
+  companyId?: number;
 }
 
 const ActivePromotionsPage: React.FC<ActivePromotionsPageProps> = ({
   promotions,
   products,
-  onRefresh
+  onRefresh,
+  companyId
 }) => {
   const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -281,6 +283,7 @@ const ActivePromotionsPage: React.FC<ActivePromotionsPageProps> = ({
         <PromotionModal
           promotion={selectedPromotion}
           products={products}
+          companyId={companyId}
           isOpen={isModalOpen}
           onClose={handleCloseModal}
         />
