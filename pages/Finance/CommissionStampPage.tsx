@@ -209,8 +209,17 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
         `Commission/get_user_commission.php?company_id=${companyId}&group_by=${userCommGroupBy}&start_date=${sd}&end_date=${ed}`
       );
       if (res.ok) {
-        setUserCommRows(res.data.rows || []);
-        setUserCommTotals(res.data.user_totals || []);
+        // API returns numbers as strings from MySQL — parse to ensure proper arithmetic
+        setUserCommRows((res.data.rows || []).map((r: any) => ({
+          ...r,
+          order_count: Number(r.order_count) || 0,
+          total_commission: Number(r.total_commission) || 0,
+        })));
+        setUserCommTotals((res.data.user_totals || []).map((u: any) => ({
+          ...u,
+          order_count: Number(u.order_count) || 0,
+          total_commission: Number(u.total_commission) || 0,
+        })));
       }
     } catch (e) { console.error(e); }
     setLoadingUserComm(false);
@@ -793,21 +802,29 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
           </div>
         </div>
 
-        {/* User Commission Table */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+        {/* User Commission Table — Pivot Cross-Tab */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* Header with gradient */}
+          <div className="px-5 py-4 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-purple-50 flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <Users className="w-5 h-5 text-violet-600" />
-              <h2 className="font-semibold text-gray-800">ค่าคอมรายบุคคล</h2>
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-sm">
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="font-bold text-gray-900 text-base">ค่าคอมรายบุคคล</h2>
+                {userCommTotals.length > 0 && (
+                  <p className="text-xs text-gray-500">{userCommTotals.length} คน • แยกตาม order_date</p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <DateRangePicker value={userCommRange} onApply={setUserCommRange} />
-              <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+              <div className="flex border border-violet-200 rounded-lg overflow-hidden shadow-sm">
                 {(['month', 'week', 'day'] as const).map(g => (
                   <button
                     key={g}
                     onClick={() => setUserCommGroupBy(g)}
-                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${userCommGroupBy === g ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                    className={`px-3 py-1.5 text-xs font-medium transition-all ${userCommGroupBy === g ? 'bg-violet-600 text-white shadow-inner' : 'bg-white text-gray-600 hover:bg-violet-50'}`}
                   >
                     {g === 'month' ? 'เดือน' : g === 'week' ? 'สัปดาห์' : 'วัน'}
                   </button>
@@ -817,71 +834,201 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-gray-600">
-                  <th className="px-5 py-3 text-left font-medium">ผู้ใช้</th>
-                  <th className="px-5 py-3 text-left font-medium">ช่วงเวลา</th>
-                  <th className="px-5 py-3 text-right font-medium">จำนวนออเดอร์</th>
-                  <th className="px-5 py-3 text-right font-medium">ค่าคอมรวม</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingUserComm ? (
-                  <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-violet-500 border-t-transparent" />
-                      กำลังโหลด...
-                    </div>
-                  </td></tr>
-                ) : userCommTotals.length === 0 ? (
-                  <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">ไม่มีข้อมูลค่าคอมในช่วงเวลาที่เลือก</td></tr>
-                ) : (
-                  <>
-                    {userCommTotals.map((ut, idx) => {
-                      const userRows = userCommRows.filter(r => r.user_id === ut.user_id);
-                      const userName = ut.first_name
-                        ? `${ut.first_name} ${ut.last_name || ''}`.trim()
-                        : ut.username || `ID: ${ut.user_id ?? '-'}`;
+            {loadingUserComm ? (
+              <div className="px-5 py-16 text-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-10 h-10 rounded-full border-3 border-violet-200 border-t-violet-600 animate-spin" />
+                  <p className="text-sm text-gray-400">กำลังโหลดข้อมูลค่าคอม...</p>
+                </div>
+              </div>
+            ) : userCommTotals.length === 0 ? (
+              <div className="px-5 py-16 text-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 rounded-full bg-violet-50 flex items-center justify-center">
+                    <Users className="w-7 h-7 text-violet-300" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">ไม่มีข้อมูลค่าคอมในช่วงเวลาที่เลือก</p>
+                    <p className="text-xs text-gray-400 mt-1">ลองเปลี่ยนช่วงวันที่หรือตรวจสอบว่ามีการ Stamp แล้ว</p>
+                  </div>
+                </div>
+              </div>
+            ) : (() => {
+              // Build pivot data
+              const periods = [...new Set(userCommRows.map(r => r.period))].sort();
+              const userMap = new Map<string, { name: string; userId: number | null; cells: Record<string, { orders: number; commission: number }> }>();
+
+              userCommTotals.forEach(ut => {
+                const key = String(ut.user_id ?? 'null');
+                const name = ut.first_name
+                  ? `${ut.first_name} ${ut.last_name || ''}`.trim()
+                  : ut.username || `ID: ${ut.user_id ?? '-'}`;
+                userMap.set(key, { name, userId: ut.user_id, cells: {} });
+              });
+
+              userCommRows.forEach(r => {
+                const key = String(r.user_id ?? 'null');
+                const entry = userMap.get(key);
+                if (entry) {
+                  entry.cells[r.period] = {
+                    orders: r.order_count,
+                    commission: r.total_commission,
+                  };
+                }
+              });
+
+              const users = Array.from(userMap.values());
+              const maxCommission = Math.max(...userCommTotals.map(u => u.total_commission), 1);
+
+              // Column totals
+              const colTotals: Record<string, { orders: number; commission: number }> = {};
+              periods.forEach(p => {
+                colTotals[p] = { orders: 0, commission: 0 };
+                users.forEach(u => {
+                  const cell = u.cells[p];
+                  if (cell) {
+                    colTotals[p].orders += cell.orders;
+                    colTotals[p].commission += cell.commission;
+                  }
+                });
+              });
+
+              const grandTotal = {
+                orders: userCommTotals.reduce((s, u) => s + u.order_count, 0),
+                commission: userCommTotals.reduce((s, u) => s + u.total_commission, 0),
+              };
+
+              const getPivotPeriodLabel = (period: string) => {
+                if (userCommGroupBy === 'month') {
+                  const [y, m] = period.split('-');
+                  const months = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+                  return `${months[parseInt(m)]} ${y}`;
+                }
+                if (userCommGroupBy === 'week') return getWeekDateRange(period);
+                return fmtDate(period);
+              };
+
+              // User avatar color based on index
+              const avatarColors = [
+                'from-violet-500 to-purple-600',
+                'from-blue-500 to-indigo-600',
+                'from-emerald-500 to-teal-600',
+                'from-amber-500 to-orange-600',
+                'from-rose-500 to-pink-600',
+                'from-cyan-500 to-sky-600',
+                'from-fuchsia-500 to-purple-600',
+                'from-lime-500 to-green-600',
+              ];
+
+              return (
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gradient-to-r from-violet-600 to-purple-700 text-white">
+                      <th className="px-5 py-3.5 text-left font-semibold sticky left-0 z-10 bg-gradient-to-r from-violet-600 to-violet-600 min-w-[200px]">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 opacity-80" />
+                          ผู้ใช้
+                        </div>
+                      </th>
+                      {periods.map(p => (
+                        <th key={p} className="px-4 py-3.5 text-center font-medium whitespace-nowrap min-w-[130px]">
+                          <div className="text-white/90 text-xs">{getPivotPeriodLabel(p)}</div>
+                        </th>
+                      ))}
+                      <th className="px-5 py-3.5 text-center font-bold min-w-[140px] bg-violet-800/40">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <BarChart2 className="w-4 h-4 opacity-80" />
+                          รวม
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user, idx) => {
+                      const userTotal = userCommTotals.find(ut => ut.user_id === user.userId);
+                      const totalComm = userTotal?.total_commission ?? 0;
+                      const barWidth = Math.round((totalComm / maxCommission) * 100);
+                      const colorGrad = avatarColors[idx % avatarColors.length];
+                      const isEven = idx % 2 === 0;
+
                       return (
-                        <React.Fragment key={ut.user_id ?? `null-${idx}`}>
-                          {userRows.map((r, ri) => (
-                            <tr key={`${r.user_id}-${r.period}`} className={`border-t border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
-                              {ri === 0 && (
-                                <td className="px-5 py-2.5 font-medium text-gray-800 align-top" rowSpan={userRows.length + 1}>
-                                  <div>{userName}</div>
-                                  {ut.user_id && <div className="text-xs text-gray-400">ID: {ut.user_id}</div>}
-                                </td>
-                              )}
-                              <td className="px-5 py-2.5 text-gray-700">{getPeriodLabel(r.period)}</td>
-                              <td className="px-5 py-2.5 text-right text-gray-700">{fmtNum(r.order_count)}</td>
-                              <td className="px-5 py-2.5 text-right text-violet-700 font-medium">{fmtMoney(r.total_commission)}</td>
-                            </tr>
-                          ))}
-                          {/* User subtotal */}
-                          <tr className={`border-t border-gray-200 ${idx % 2 === 0 ? 'bg-violet-50/50' : 'bg-violet-50/70'}`}>
-                            <td className="px-5 py-2 text-right font-semibold text-gray-600 text-xs">รวม</td>
-                            <td className="px-5 py-2 text-right font-bold text-gray-800">{fmtNum(ut.order_count)}</td>
-                            <td className="px-5 py-2 text-right font-bold text-violet-800">{fmtMoney(ut.total_commission)}</td>
-                          </tr>
-                        </React.Fragment>
+                        <tr key={user.userId ?? `null-${idx}`} className={`border-b border-gray-100 hover:bg-violet-50/40 transition-colors ${isEven ? 'bg-white' : 'bg-gray-50/60'}`}>
+                          {/* User name — sticky */}
+                          <td className={`px-5 py-3.5 sticky left-0 z-10 ${isEven ? 'bg-white' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${colorGrad} flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0`}>
+                                {user.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-semibold text-gray-800 truncate">{user.name}</div>
+                                {user.userId && <div className="text-[10px] text-gray-400 leading-tight">ID: {user.userId}</div>}
+                              </div>
+                            </div>
+                          </td>
+                          {/* Period cells */}
+                          {periods.map(p => {
+                            const cell = user.cells[p];
+                            return (
+                              <td key={p} className="px-3 py-3.5 text-center">
+                                {cell ? (
+                                  <div className="inline-flex flex-col items-center gap-0.5 bg-violet-50 rounded-lg px-3 py-1.5 border border-violet-100">
+                                    <span className="font-bold text-violet-700 text-sm">{fmtMoney(cell.commission)}</span>
+                                    <span className="text-[10px] text-gray-400 leading-tight">{fmtNum(cell.orders)} ออเดอร์</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-200 text-lg">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                          {/* Row total */}
+                          <td className={`px-4 py-3.5 ${isEven ? 'bg-violet-50/70' : 'bg-violet-50/90'}`}>
+                            <div className="space-y-1.5">
+                              <div className="text-center">
+                                <div className="font-bold text-violet-800 text-sm">{fmtMoney(totalComm)}</div>
+                                <div className="text-[10px] text-gray-500">{fmtNum(userTotal?.order_count ?? 0)} ออเดอร์</div>
+                              </div>
+                              {/* Mini progress bar */}
+                              <div className="w-full h-1.5 bg-violet-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-violet-400 to-purple-500 transition-all duration-500"
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
                       );
                     })}
-                    {/* Grand total */}
-                    <tr className="border-t-2 border-gray-300 bg-gray-100 font-bold">
-                      <td className="px-5 py-3 text-gray-800">รวมทั้งหมด ({userCommTotals.length} คน)</td>
-                      <td className="px-5 py-3"></td>
-                      <td className="px-5 py-3 text-right text-gray-900">
-                        {fmtNum(userCommTotals.reduce((s, u) => s + u.order_count, 0))}
+                    {/* Grand total row */}
+                    <tr className="bg-gradient-to-r from-gray-800 to-gray-900 text-white">
+                      <td className="px-5 py-4 sticky left-0 z-10 bg-gray-800">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white">
+                            <BarChart2 className="w-4 h-4" />
+                          </div>
+                          <span className="font-bold">รวมทั้งหมด</span>
+                        </div>
                       </td>
-                      <td className="px-5 py-3 text-right text-violet-900">
-                        {fmtMoney(userCommTotals.reduce((s, u) => s + u.total_commission, 0))}
+                      {periods.map(p => (
+                        <td key={p} className="px-3 py-4 text-center">
+                          <div className="inline-flex flex-col items-center gap-0.5">
+                            <span className="font-bold text-white">{fmtMoney(colTotals[p].commission)}</span>
+                            <span className="text-[10px] text-gray-400">{fmtNum(colTotals[p].orders)} ออเดอร์</span>
+                          </div>
+                        </td>
+                      ))}
+                      <td className="px-4 py-4 bg-violet-900/40">
+                        <div className="text-center">
+                          <div className="font-black text-white text-base">{fmtMoney(grandTotal.commission)}</div>
+                          <div className="text-[10px] text-violet-200">{fmtNum(grandTotal.orders)} ออเดอร์</div>
+                        </div>
                       </td>
                     </tr>
-                  </>
-                )}
-              </tbody>
-            </table>
+                  </tbody>
+                </table>
+              );
+            })()}
           </div>
         </div>
 

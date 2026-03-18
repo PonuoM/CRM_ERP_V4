@@ -248,8 +248,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Distribution V2", icon: Users, key: "nav.distribution_v2" },
         { label: "Export Template Settings", icon: FileSpreadsheet, key: "nav.export_template_settings" },
         { label: "Search", icon: Search, key: "nav.search" },
-        { label: "จัดประเภทยกเลิก", icon: ClipboardList, key: "nav.cancelled_classification" },
-        { label: "ตั้งค่าการยกเลิก", icon: Settings, key: "nav.cancellation_settings" },
+        { label: "ตรวจสอบคำสั่งซื้อ", icon: ClipboardList, key: "nav.cancellation_management" },
       ]
     },
     {

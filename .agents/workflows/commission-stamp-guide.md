@@ -317,11 +317,14 @@ interface ImportRow {
 - แยก `DateRangePicker` สำหรับ Export (อิสระจากช่วงสรุป)
 - 4 ปุ่ม: ทั้งหมด / ยังไม่สำเร็จ / รอคิดค่าคอม / คิดแล้ว
 
-#### 4. ค่าคอมรายบุคคล
+#### 4. ค่าคอมรายบุคคล (Pivot Cross-Tab)
 
 - **DateRangePicker** แยกอิสระ + Group by toggle (เดือน/สัปดาห์/วัน)
-- **ตาราง:** ผู้ใช้ | ช่วงเวลา | จำนวนออเดอร์ | ค่าคอมรวม
-- **Subtotal** รวมต่อคน + **Grand total** รวมทั้งหมด
+- **ตาราง Pivot:** แถว = ผู้ใช้ (เรียงตาม total commission desc), คอลัมน์ = ช่วงเวลา (dynamic)
+- **แต่ละ cell:** ค่าคอมรวม + จำนวนออเดอร์ / แสดง '-' ถ้าไม่มีข้อมูล
+- **คอลัมน์ "รวม"** ด้านขวา — รวมทุก period ต่อคน (bg-violet)
+- **แถว "รวมทั้งหมด"** ด้านล่าง — รวมทุกคนต่อ period + Grand total มุมขวาล่าง
+- **Sticky ชื่อผู้ใช้** — คอลัมน์แรก sticky เมื่อ scroll แนวนอน
 - ไอคอนสีม่วง (violet), อยู่ระหว่าง "สรุปตามช่วงเวลา" กับ "ประวัติ Batch"
 
 #### 5. ประวัติ Batch
@@ -370,3 +373,4 @@ interface ImportRow {
 | Double JSON response | migration file มี `echo json_encode(...)` | ใช้ `ob_start()` / `ob_end_clean()` ครอบ |
 | Export memory error | company มี orders มาก > 50K | ใช้ pagination หรือ streaming CSV |
 | Batch name ว่าง | Frontend ไม่ส่ง `batch_name` | Backend fallback: `'Batch ' . date('Y-m-d H:i')` |
+| Grand total concatenate strings | API คืน `total_commission`, `order_count` เป็น string จาก MySQL → `+` ต่อ string | ใช้ `Number()` parse ตอน set state ใน `loadUserComm()` |
