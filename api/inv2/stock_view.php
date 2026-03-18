@@ -18,8 +18,7 @@ try {
     if (!empty($_GET['warehouse_id'])) { $where[] = "s.warehouse_id = ?"; $params[] = $_GET['warehouse_id']; }
     if (!empty($_GET['product_id'])) { $where[] = "s.product_id = ?"; $params[] = $_GET['product_id']; }
     if (!empty($_GET['search'])) {
-        $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR s.variant LIKE ? OR s.lot_number LIKE ?)";
-        $params[] = "%{$_GET['search']}%";
+        $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR s.lot_number LIKE ?)";
         $params[] = "%{$_GET['search']}%";
         $params[] = "%{$_GET['search']}%";
         $params[] = "%{$_GET['search']}%";
@@ -39,7 +38,7 @@ try {
             INNER JOIN warehouses w ON s.warehouse_id = w.id
             INNER JOIN products p ON s.product_id = p.id
             WHERE $whereSql
-            ORDER BY w.name, p.name, s.variant, COALESCE(s.exp_date, '9999-12-31') ASC";
+            ORDER BY w.name, p.name, s.lot_number, COALESCE(s.exp_date, '9999-12-31') ASC";
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);

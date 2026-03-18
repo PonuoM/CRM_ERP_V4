@@ -70,20 +70,18 @@ try {
                 ->execute([$qty, $soItemId]);
         }
 
-        // 3. Upsert inv2_stock
-        // Use COALESCE for NULL variant/lot to make unique key work
-        $variantKey = $variant ?? '';
+        // 3. Upsert inv2_stock (key: warehouse + product + lot)
         $lotKey = $lotNumber ?? '';
-        $stmt = $pdo->prepare("SELECT id FROM inv2_stock WHERE warehouse_id = ? AND product_id = ? AND COALESCE(variant,'') = ? AND COALESCE(lot_number,'') = ?");
-        $stmt->execute([$warehouseId, $productId, $variantKey, $lotKey]);
+        $stmt = $pdo->prepare("SELECT id FROM inv2_stock WHERE warehouse_id = ? AND product_id = ? AND COALESCE(lot_number,'') = ?");
+        $stmt->execute([$warehouseId, $productId, $lotKey]);
         $stockId = $stmt->fetchColumn();
 
         if ($stockId) {
             $pdo->prepare("UPDATE inv2_stock SET quantity = quantity + ?, mfg_date = COALESCE(?, mfg_date), exp_date = COALESCE(?, exp_date), unit_cost = COALESCE(?, unit_cost) WHERE id = ?")
                 ->execute([$qty, $mfgDate, $expDate, $unitCost, $stockId]);
         } else {
-            $pdo->prepare("INSERT INTO inv2_stock (warehouse_id, product_id, variant, lot_number, quantity, mfg_date, exp_date, unit_cost) VALUES (?,?,?,?,?,?,?,?)")
-                ->execute([$warehouseId, $productId, $variant ?: null, $lotNumber ?: null, $qty, $mfgDate, $expDate, $unitCost]);
+            $pdo->prepare("INSERT INTO inv2_stock (warehouse_id, product_id, lot_number, quantity, mfg_date, exp_date, unit_cost) VALUES (?,?,?,?,?,?,?)")
+                ->execute([$warehouseId, $productId, $lotNumber ?: null, $qty, $mfgDate, $expDate, $unitCost]);
         }
 
         // 4. Insert movement log

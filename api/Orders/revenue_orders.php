@@ -68,6 +68,7 @@ try {
             $dateFilter
             AND ob.status = 'RETURNED'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             $userFilter
             GROUP BY o.id, o.order_date, o.order_status, customer_name, customer_phone
             ORDER BY o.order_date DESC
@@ -89,6 +90,7 @@ try {
             $dateFilter
             AND o.order_status = 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             $userFilter
             GROUP BY o.id, o.order_date, o.order_status, customer_name, customer_phone
             ORDER BY o.order_date DESC
@@ -113,6 +115,7 @@ try {
             AND oi.basket_key_at_sale = 51
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             $userFilter
             GROUP BY o.id, o.order_date, o.order_status, customer_name, customer_phone, seller_name
             ORDER BY o.order_date DESC

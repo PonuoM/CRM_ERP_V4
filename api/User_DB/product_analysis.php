@@ -133,6 +133,7 @@ try {
         $statusFilter
         $employeeFilter
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND oi.parent_item_id IS NULL
         GROUP BY p.id, p.name, p.sku, p.category
         ORDER BY total_value DESC
         LIMIT 5
@@ -162,6 +163,7 @@ try {
         $statusFilter
         $employeeFilter
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND oi.parent_item_id IS NULL
         GROUP BY p.id, p.name, p.sku, p.category
         ORDER BY total_quantity DESC
         LIMIT 5
@@ -192,6 +194,7 @@ try {
         $statusFilter
         $employeeFilter
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND oi.parent_item_id IS NULL
         GROUP BY category_group, customer_type
         ORDER BY category_group, customer_type
     ";
@@ -220,6 +223,7 @@ try {
         $statusFilter
         $employeeFilter
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND oi.parent_item_id IS NULL
         GROUP BY p.id, p.name, p.sku, p.category, MONTH(o.order_date)
         ORDER BY p.name, month
     ";
@@ -325,6 +329,7 @@ try {
         $statusFilter
         $employeeFilter
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND oi.parent_item_id IS NULL
         AND p.category NOT IN ('กระสอบใหญ่', 'กระสอบเล็ก', 'ชีวภัณฑ์')
         GROUP BY p.id, p.name, p.sku, p.category, o.customer_type
         ORDER BY revenue DESC
@@ -396,6 +401,7 @@ try {
         $statusFilter
         $employeeFilter
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND oi.parent_item_id IS NULL
     ";
     
     $stmt = $pdo->prepare($sqlSummary);
@@ -420,6 +426,7 @@ try {
         $employeeFilter
         AND o.order_status IN ('Cancelled', 'Returned', 'BadDebt')
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND oi.parent_item_id IS NULL
         GROUP BY o.order_status
         ORDER BY 
             CASE o.order_status 
@@ -462,6 +469,7 @@ try {
             AND oi.creator_id = ?
             AND o.creator_id != ?
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
         ";
         
         $upsellParams = array_merge([$companyId], $dateParams, [$targetUserId, $targetUserId]);

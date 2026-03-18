@@ -32,12 +32,11 @@ try {
 
     $reversedQty = 0;
     foreach ($movements as $mov) {
-        $variantKey = $mov['variant'] ?? '';
         $lotKey = $mov['lot_number'] ?? '';
 
-        // Find the stock row and deduct (reverse the addition)
-        $findStock = $pdo->prepare("SELECT id, quantity FROM inv2_stock WHERE warehouse_id = ? AND product_id = ? AND COALESCE(variant,'') = ? AND COALESCE(lot_number,'') = ?");
-        $findStock->execute([$mov['warehouse_id'], $mov['product_id'], $variantKey, $lotKey]);
+        // Find the stock row and deduct (reverse the addition, key: warehouse+product+lot)
+        $findStock = $pdo->prepare("SELECT id, quantity FROM inv2_stock WHERE warehouse_id = ? AND product_id = ? AND COALESCE(lot_number,'') = ?");
+        $findStock->execute([$mov['warehouse_id'], $mov['product_id'], $lotKey]);
         $stockRow = $findStock->fetch(PDO::FETCH_ASSOC);
 
         if ($stockRow) {

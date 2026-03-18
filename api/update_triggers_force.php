@@ -108,10 +108,6 @@ BEGIN
 
     IF NEW.payment_method <> 'COD' THEN
         SET NEW.collection_amount = v_expected_total;
-        SELECT COUNT(*) INTO v_box_count FROM order_boxes WHERE order_id = NEW.order_id AND id <> OLD.id;
-        IF v_box_count > 0 THEN
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'order_boxes: non-COD orders allow only one box';
-        END IF;
     END IF;
 
     SELECT COALESCE(SUM(collection_amount), 0) INTO v_sum FROM order_boxes WHERE order_id = NEW.order_id AND id <> OLD.id;

@@ -110,6 +110,7 @@ try {
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             $userFilter
     ";
     $visibleParams = array_merge([$companyId], $userParams, [$companyId, $visibleYear, $visibleMonth], $userParams);
@@ -179,6 +180,7 @@ try {
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale != 51)  -- NOT upsell
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
@@ -212,6 +214,7 @@ try {
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             AND oi.basket_key_at_sale = 51  -- IS upsell (basket 51)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
@@ -269,6 +272,7 @@ try {
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND $visibleFilter
@@ -358,6 +362,7 @@ try {
             AND $dateFilterOrders
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($allSegmentKeysIn)
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
@@ -451,6 +456,7 @@ try {
             AND $dateFilterOrders
             AND (o.order_status = 'Returned' OR ob.status = 'RETURNED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND $visibleFilter
@@ -694,6 +700,7 @@ try {
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             AND u.company_id = ?
             AND u.role LIKE '%telesale%'
             AND $visibleFilter

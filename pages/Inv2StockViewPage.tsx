@@ -66,7 +66,7 @@ const Inv2StockViewPage: React.FC<Inv2StockViewPageProps> = ({ companyId }) => {
             <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative', flex: '1 1 300px' }}>
                     <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-                    <input placeholder="ค้นหาสินค้า, SKU, รุ่น, Lot..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px' }} />
+                    <input placeholder="ค้นหาสินค้า, SKU, Lot..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px' }} />
                 </div>
                 <select value={warehouseFilter} onChange={e => setWarehouseFilter(e.target.value ? Number(e.target.value) : '')} style={{ padding: '10px 16px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', minWidth: '160px' }}>
                     <option value="">ทุกคลัง</option>
@@ -85,8 +85,8 @@ const Inv2StockViewPage: React.FC<Inv2StockViewPageProps> = ({ companyId }) => {
                     <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>ไม่พบข้อมูลสต็อก</div>
                 ) : (() => {
                     // Group data by warehouse for separator rows
-                    const colCount = 11;
-                    const headers = ['#', 'รหัสสินค้า', 'ชื่อสินค้า', 'รุ่น/Variant', 'Lot', 'จำนวน', 'หน่วย', 'ต้นทุน/หน่วย', 'มูลค่า', 'วันผลิต', 'วันหมดอายุ'];
+                    const colCount = 10;
+                    const headers = ['#', 'รหัสสินค้า', 'ชื่อสินค้า', 'Lot', 'จำนวน', 'หน่วย', 'ต้นทุน/หน่วย', 'มูลค่า', 'วันผลิต', 'วันหมดอายุ'];
                     let lastWarehouse = '';
                     let rowNum = 0;
 
@@ -123,7 +123,7 @@ const Inv2StockViewPage: React.FC<Inv2StockViewPageProps> = ({ companyId }) => {
                                                     <td style={{ padding: '8px 14px', color: '#9ca3af', fontWeight: 600, fontSize: '12px' }}>{rowNum}</td>
                                                     <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontWeight: 600, fontSize: '12px', color: '#1e293b' }}>{s.product_sku || '—'}</td>
                                                     <td style={{ padding: '8px 14px', color: '#374151', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.product_name || '—'}</td>
-                                                    <td style={{ padding: '8px 14px', color: '#6b7280', fontSize: '12px' }}>{s.variant || '—'}</td>
+
                                                     <td style={{ padding: '8px 14px', color: '#6b7280', fontSize: '12px' }}>{s.lot_number || '—'}</td>
                                                     <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, fontSize: '14px', color: qty < 0 ? '#dc2626' : qty === 0 ? '#9ca3af' : '#10b981' }}>{qty.toLocaleString()}</td>
                                                     <td style={{ padding: '8px 14px', color: '#9ca3af', fontSize: '12px' }}>{s.product_unit || '—'}</td>

@@ -67,6 +67,7 @@ try {
             WHERE o.company_id = ?
             AND oi.creator_id = ?
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             $dateFilter
         ");
         $filterParams = array_merge([$companyId, $userId], $dateParams);
@@ -127,6 +128,7 @@ try {
             JOIN order_items oi ON oi.parent_order_id = o.id
             $upsellWhere
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
         ");
         $stmtUpsell->execute($upsellParams);
         $upsellRow = $stmtUpsell->fetch(PDO::FETCH_ASSOC);
@@ -159,6 +161,7 @@ try {
             JOIN order_items oi ON oi.parent_order_id = o.id
             $upsellWhere
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
         ");
         $stmtUpsell->execute($upsellParams);
         $upsellRow = $stmtUpsell->fetch(PDO::FETCH_ASSOC);
@@ -271,6 +274,7 @@ try {
               AND YEAR(o.order_date) = ?
               AND o.order_status NOT IN ('Cancelled', 'BadDebt')
               AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+              AND oi.parent_item_id IS NULL
               $salesUserFilter
             GROUP BY month_key 
             ORDER BY month_key ASC
@@ -289,6 +293,7 @@ try {
               AND o.order_date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
               AND o.order_status NOT IN ('Cancelled', 'BadDebt')
               AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+              AND oi.parent_item_id IS NULL
               $salesUserFilter
             GROUP BY month_key 
             ORDER BY month_key ASC
@@ -325,6 +330,7 @@ try {
             WHERE o.company_id = ?
             AND oi.creator_id = ?
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             $dateFilter
         ");
         $stmtReturned->execute(array_merge([$companyId, $userId], $dateParams));
@@ -344,6 +350,7 @@ try {
             LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             WHERE o.company_id = ?
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
             $dateFilter
         ");
         $stmtReturned->execute(array_merge([$companyId], $dateParams));

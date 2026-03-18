@@ -31,12 +31,11 @@ try {
     $movements = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($movements as $mov) {
-        $variantKey = $mov['variant'] ?? '';
         $lotKey = $mov['lot_number'] ?? '';
 
-        // Find the stock row and add back
-        $findStock = $pdo->prepare("SELECT id FROM inv2_stock WHERE warehouse_id = ? AND product_id = ? AND COALESCE(variant,'') = ? AND COALESCE(lot_number,'') = ?");
-        $findStock->execute([$mov['warehouse_id'], $mov['product_id'], $variantKey, $lotKey]);
+        // Find the stock row and add back (key: warehouse+product+lot)
+        $findStock = $pdo->prepare("SELECT id FROM inv2_stock WHERE warehouse_id = ? AND product_id = ? AND COALESCE(lot_number,'') = ?");
+        $findStock->execute([$mov['warehouse_id'], $mov['product_id'], $lotKey]);
         $stockId = $findStock->fetchColumn();
 
         if ($stockId) {
@@ -44,8 +43,8 @@ try {
                 ->execute([(float)$mov['quantity'], $stockId]);
         } else {
             // Stock row was deleted or doesn't exist, recreate it
-            $pdo->prepare("INSERT INTO inv2_stock (warehouse_id, product_id, variant, lot_number, quantity) VALUES (?,?,?,?,?)")
-                ->execute([$mov['warehouse_id'], $mov['product_id'], $mov['variant'] ?: null, $mov['lot_number'] ?: null, (float)$mov['quantity']]);
+            $pdo->prepare("INSERT INTO inv2_stock (warehouse_id, product_id, lot_number, quantity) VALUES (?,?,?,?)")
+                ->execute([$mov['warehouse_id'], $mov['product_id'], $mov['lot_number'] ?: null, (float)$mov['quantity']]);
         }
     }
 

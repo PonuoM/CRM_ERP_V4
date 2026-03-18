@@ -109,6 +109,7 @@ try {
         $joinClause
         $whereClause
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND oi.parent_item_id IS NULL
         GROUP BY $groupByField, DAY(o.order_date)
         ORDER BY $groupByField, DAY(o.order_date)
     ";

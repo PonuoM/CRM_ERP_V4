@@ -100,10 +100,11 @@ try {
         $extraParams = array_merge($extraParams, [$searchWild, $searchWild, $searchWild, $searchWild]);
     }
 
-    // Common WHERE
+    // Common WHERE — exclude promotion child items (they are sub-items of a promo bundle)
     $whereClause = "
         WHERE o.company_id = ?
         AND o.order_date >= ? AND o.order_date < ?
+        AND oi.parent_item_id IS NULL
         $accessFilter
         $extraFilter
     ";
@@ -127,7 +128,7 @@ try {
             COUNT(DISTINCT o.id) AS total_orders,
             COUNT(oi.id) AS total_items,
             COALESCE(SUM(
-                CASE WHEN (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+                CASE WHEN (oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL
                      THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)
                      ELSE 0 END
             ), 0) AS total_revenue
