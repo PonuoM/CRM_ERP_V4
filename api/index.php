@@ -4233,6 +4233,38 @@ function handle_orders(PDO $pdo, ?string $id): void
                     foreach ($data['items'] as $item) {
                         $netTotal = calculate_order_item_net_total($item);
                         $itemId = isset($item['id']) ? $item['id'] : null;
+                        $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
+
+                        // --- Override net_total for child promotion items ---
+                        $clientParentIdForUpdate = $item['parentItemId'] ?? $item['parent_item_id'] ?? null;
+                        if ($clientParentIdForUpdate && !$isFreebie) {
+                            $overridePrice = isset($item['priceOverride']) ? (float) $item['priceOverride'] : (isset($item['price_override']) ? (float) $item['price_override'] : null);
+                            $parentQty = 1;
+                            $parentPromotionId = null;
+                            foreach ($data['items'] as $parentCandidate) {
+                                $pid = $parentCandidate['id'] ?? null;
+                                if ($pid !== null && (string)$pid === (string)$clientParentIdForUpdate
+                                    && (!empty($parentCandidate['isPromotionParent']) || !empty($parentCandidate['is_promotion_parent']))) {
+                                    $parentQty = max(1, (int)($parentCandidate['quantity'] ?? 1));
+                                    $parentPromotionId = $parentCandidate['promotionId'] ?? $parentCandidate['promotion_id'] ?? null;
+                                    break;
+                                }
+                            }
+                            if ($overridePrice === null && $parentPromotionId !== null) {
+                                $productIdForLookup = $item['productId'] ?? $item['product_id'] ?? null;
+                                if ($productIdForLookup) {
+                                    $poStmt = $pdo->prepare('SELECT price_override FROM promotion_items WHERE promotion_id = ? AND product_id = ? LIMIT 1');
+                                    $poStmt->execute([(int)$parentPromotionId, (int)$productIdForLookup]);
+                                    $poRow = $poStmt->fetch();
+                                    if ($poRow && $poRow['price_override'] !== null) {
+                                        $overridePrice = (float) $poRow['price_override'];
+                                    }
+                                }
+                            }
+                            if ($overridePrice !== null) {
+                                $netTotal = $overridePrice * $parentQty;
+                            }
+                        }
 
                         if ($itemId && in_array($itemId, $existingIds)) {
                             $incomingIds[] = (int) $itemId;
@@ -4242,7 +4274,6 @@ function handle_orders(PDO $pdo, ?string $id): void
                             }
 
                             $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=?, promotion_id=?, creator_id=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
-                            $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
                             $pdo->prepare($updateSql)->execute([
                                 $item['quantity'] ?? 0,
                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
@@ -4368,6 +4399,36 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $netTotal = calculate_order_item_net_total($item);
                             $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
                             $itemCreatorId = $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
+
+                            // --- Override net_total for child promotion items ---
+                            if (!$isFreebie) {
+                                $overridePrice = isset($item['priceOverride']) ? (float) $item['priceOverride'] : (isset($item['price_override']) ? (float) $item['price_override'] : null);
+                                $parentQty = 1;
+                                $parentPromotionId = null;
+                                foreach ($data['items'] as $parentCandidate) {
+                                    $pid = $parentCandidate['id'] ?? null;
+                                    if ($pid !== null && (string)$pid === (string)$clientParentId
+                                        && (!empty($parentCandidate['isPromotionParent']) || !empty($parentCandidate['is_promotion_parent']))) {
+                                        $parentQty = max(1, (int)($parentCandidate['quantity'] ?? 1));
+                                        $parentPromotionId = $parentCandidate['promotionId'] ?? $parentCandidate['promotion_id'] ?? null;
+                                        break;
+                                    }
+                                }
+                                if ($overridePrice === null && $parentPromotionId !== null) {
+                                    $productIdForLookup = $item['productId'] ?? $item['product_id'] ?? null;
+                                    if ($productIdForLookup) {
+                                        $poStmt = $pdo->prepare('SELECT price_override FROM promotion_items WHERE promotion_id = ? AND product_id = ? LIMIT 1');
+                                        $poStmt->execute([(int)$parentPromotionId, (int)$productIdForLookup]);
+                                        $poRow = $poStmt->fetch();
+                                        if ($poRow && $poRow['price_override'] !== null) {
+                                            $overridePrice = (float) $poRow['price_override'];
+                                        }
+                                    }
+                                }
+                                if ($overridePrice !== null) {
+                                    $netTotal = $overridePrice * $parentQty;
+                                }
+                            }
 
                             // Resolve parent DB ID
                             $resolvedParentId = isset($clientToDbParent[(string) $clientParentId]) ? $clientToDbParent[(string) $clientParentId] : null;
