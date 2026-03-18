@@ -11514,14 +11514,15 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                     // Track additional net total per box for order_boxes
                     $boxNetAdditions = [];
 
-                    // Helper to validate that a parent_item_id actually exists to satisfy FK
-                    $parentCheckStmt = $pdo->prepare('SELECT id FROM order_items WHERE id = ? LIMIT 1');
-
                     // Get max box_number for this order
                     $boxStmt = $pdo->prepare("SELECT COALESCE(MAX(box_number), 0) as max_box FROM order_items WHERE parent_order_id = ?");
                     $boxStmt->execute([$orderId]);
                     $boxResult = $boxStmt->fetch(PDO::FETCH_ASSOC);
                     $currentBoxNumber = (int) ($boxResult['max_box'] ?? 0);
+
+                    // === Two-pass insert: parents first, then link children ===
+                    // Map frontend temp IDs (Date.now()) → real DB IDs
+                    $tempIdToRealId = [];
 
                     foreach ($items as $item) {
                         $productId = $item['productId'] ?? null;
@@ -11533,28 +11534,23 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                         $isFreebie = isset($item['isFreebie']) && $item['isFreebie'] ? 1 : 0;
                         $promotionId = $item['promotionId'] ?? null;
 
-                        // Resolve parentItemId only if it points to an existing order_items.id
-                        $parentItemId = null;
-                        if (array_key_exists('parentItemId', $item) && $item['parentItemId'] !== null && $item['parentItemId'] !== '') {
-                            $candidateParent = $item['parentItemId'];
-                            if (is_numeric($candidateParent)) {
-                                $candidateParent = (int) $candidateParent;
-                                if ($candidateParent > 0) {
-                                    $parentCheckStmt->execute([$candidateParent]);
-                                    if ($parentCheckStmt->fetchColumn()) {
-                                        $parentItemId = $candidateParent;
-                                    }
-                                }
-                            }
-                        }
-
                         $isPromotionParent = isset($item['isPromotionParent']) && $item['isPromotionParent'] ? 1 : 0;
-                        $netTotal = calculate_order_item_net_total([
-                            'quantity' => $quantity,
-                            'pricePerUnit' => $pricePerUnit,
-                            'discount' => $discount,
-                            'isFreebie' => $isFreebie,
-                        ]);
+
+                        // Use priceOverride for promotion child items (non-freebie)
+                        $priceOverride = isset($item['priceOverride']) && $item['priceOverride'] !== null && $item['priceOverride'] !== ''
+                            ? (float) $item['priceOverride']
+                            : null;
+
+                        if ($priceOverride !== null && !$isFreebie) {
+                            $netTotal = $priceOverride;
+                        } else {
+                            $netTotal = calculate_order_item_net_total([
+                                'quantity' => $quantity,
+                                'pricePerUnit' => $pricePerUnit,
+                                'discount' => $discount,
+                                'isFreebie' => $isFreebie,
+                            ]);
+                        }
 
                         // Determine box_number (increment if needed)
                         $boxNumber = $item['boxNumber'] ?? ($currentBoxNumber + 1);
@@ -11565,7 +11561,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                         // Generate order_id (sub order ID)
                         $subOrderId = "{$orderId}-{$boxNumber}";
 
-                        // Insert order item with creator_id and basket_key_at_sale
+                        // Pass 1: Insert with parent_item_id = null (will link in pass 2)
                         $itemStmt = $pdo->prepare("
                             INSERT INTO order_items (
                                 order_id, parent_order_id, product_id, product_name, quantity,
@@ -11586,13 +11582,23 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                             $isFreebie,
                             $boxNumber,
                             $promotionId,
-                            $parentItemId,
+                            null, // parent_item_id = null initially, linked in pass 2
                             $isPromotionParent,
                             $creatorId,
                             $upsellBasketKey
                         ]);
 
-                        $itemId = $pdo->lastInsertId();
+                        $itemId = (int) $pdo->lastInsertId();
+
+                        // Record temp → real ID mapping (frontend id → db id)
+                        $frontendId = $item['id'] ?? null;
+                        if ($frontendId !== null) {
+                            $tempIdToRealId[$frontendId] = $itemId;
+                        }
+                        // Also map for isPromotionParent items by their temp id
+                        if ($isPromotionParent && $frontendId !== null) {
+                            $tempIdToRealId[$frontendId] = $itemId;
+                        }
 
                         $newTotalAmount += $netTotal;
 
@@ -11601,6 +11607,9 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                             $boxNetAdditions[$boxNumber] = 0.0;
                         }
                         $boxNetAdditions[$boxNumber] += $netTotal;
+
+                        // Store raw parentItemId from frontend for pass 2
+                        $rawParentItemId = $item['parentItemId'] ?? null;
 
                         $insertedItems[] = [
                             'id' => $itemId,
@@ -11615,11 +11624,25 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                             'is_freebie' => $isFreebie,
                             'box_number' => $boxNumber,
                             'promotion_id' => $promotionId,
-                            'parent_item_id' => $parentItemId,
+                            'parent_item_id' => null, // updated in pass 2
                             'is_promotion_parent' => $isPromotionParent,
-                            'creator_id' => $creatorId
+                            'creator_id' => $creatorId,
+                            '_raw_parent_item_id' => $rawParentItemId, // temp, for pass 2
                         ];
                     }
+
+                    // === Pass 2: Link children's parent_item_id using tempId → realId map ===
+                    $updateParentStmt = $pdo->prepare('UPDATE order_items SET parent_item_id = ? WHERE id = ?');
+                    foreach ($insertedItems as &$inserted) {
+                        $rawParent = $inserted['_raw_parent_item_id'] ?? null;
+                        if ($rawParent !== null && isset($tempIdToRealId[$rawParent])) {
+                            $realParentId = $tempIdToRealId[$rawParent];
+                            $updateParentStmt->execute([$realParentId, $inserted['id']]);
+                            $inserted['parent_item_id'] = $realParentId;
+                        }
+                        unset($inserted['_raw_parent_item_id']);
+                    }
+                    unset($inserted);
 
                     // Update order total_amount
                     $updateFields = ["total_amount = ?"];

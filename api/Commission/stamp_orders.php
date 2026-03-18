@@ -18,6 +18,7 @@ try {
     $batch_note = trim($input['note'] ?? '');
     $batch_id = (int)($input['batch_id'] ?? 0);
     $orders = $input['orders'] ?? [];
+    $dry_run = !empty($input['dry_run']);
 
     if (!$company_id) {
         echo json_encode(['ok' => false, 'error' => 'Missing company_id']);
@@ -25,6 +26,62 @@ try {
     }
     if (empty($orders)) {
         echo json_encode(['ok' => false, 'error' => 'No orders provided']);
+        exit;
+    }
+
+    // === DRY RUN MODE: validate only, no writes ===
+    if ($dry_run) {
+        $errors = [];
+        $valid = 0;
+        $orderCheckStmt = $pdo->prepare("SELECT id FROM orders WHERE id = ? LIMIT 1");
+        $userCheckStmt = $pdo->prepare("SELECT id FROM users WHERE id = ? AND company_id = ? LIMIT 1");
+
+        foreach ($orders as $idx => $item) {
+            $order_id = trim($item['order_id'] ?? '');
+            $rowNum = $idx + 1;
+            if (!$order_id) {
+                $errors[] = "แถวที่ {$rowNum}: ไม่ระบุ Order ID";
+                continue;
+            }
+
+            // Validate order exists
+            $orderCheckStmt->execute([$order_id]);
+            if (!$orderCheckStmt->fetch()) {
+                $errors[] = "แถวที่ {$rowNum}: ไม่พบ Order '{$order_id}'";
+                continue;
+            }
+
+            // Validate user_id exists
+            $user_id = isset($item['user_id']) && $item['user_id'] !== '' && $item['user_id'] !== null
+                ? (int)$item['user_id'] : null;
+            if ($user_id !== null) {
+                $userCheckStmt->execute([$user_id, $company_id]);
+                if (!$userCheckStmt->fetch()) {
+                    // Check if user exists globally (different company)
+                    $globalCheckStmt = $pdo->prepare("SELECT id, company_id FROM users WHERE id = ? LIMIT 1");
+                    $globalCheckStmt->execute([$user_id]);
+                    $globalUser = $globalCheckStmt->fetch();
+                    if ($globalUser) {
+                        $errors[] = "แถวที่ {$rowNum}: User ID '{$user_id}' ไม่ได้อยู่บริษัทนี้ (order: {$order_id})";
+                    } else {
+                        $errors[] = "แถวที่ {$rowNum}: ไม่พบ User ID '{$user_id}' ในระบบ (order: {$order_id})";
+                    }
+                    continue;
+                }
+            }
+
+            $valid++;
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'dry_run' => true,
+            'data' => [
+                'total' => count($orders),
+                'valid' => $valid,
+                'errors' => $errors,
+            ]
+        ]);
         exit;
     }
 
@@ -112,6 +169,23 @@ try {
         $user_id = isset($item['user_id']) && $item['user_id'] !== '' && $item['user_id'] !== null
             ? (int)$item['user_id']
             : null;
+
+        // Validate user_id exists in users table
+        if ($user_id !== null) {
+            $userCheckStmt = $pdo->prepare("SELECT id FROM users WHERE id = ? AND company_id = ? LIMIT 1");
+            $userCheckStmt->execute([$user_id, $company_id]);
+            if (!$userCheckStmt->fetch()) {
+                $globalCheckStmt = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+                $globalCheckStmt->execute([$user_id]);
+                if ($globalCheckStmt->fetch()) {
+                    $errors[] = "User ID '$user_id' ไม่ได้อยู่บริษัทนี้ (order: $order_id)";
+                } else {
+                    $errors[] = "ไม่พบ User ID '$user_id' ในระบบ (order: $order_id)";
+                }
+                continue;
+            }
+        }
+
         $commission_amount = isset($item['commission_amount']) && $item['commission_amount'] !== '' && $item['commission_amount'] !== null
             ? (float)$item['commission_amount']
             : null;

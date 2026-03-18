@@ -3,7 +3,7 @@ import { User } from '../../types';
 import {
   Upload, Download, Trash2, ChevronDown, ChevronRight,
   CheckCircle, Clock, AlertCircle, FileText, RefreshCw,
-  BarChart2, Calendar, Plus
+  BarChart2, Calendar, Plus, Search, Users
 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import resolveApiBasePath from '../../utils/apiBasePath';
@@ -69,6 +69,25 @@ interface ImportRow {
   note: string;
 }
 
+interface UserCommRow {
+  user_id: number | null;
+  first_name: string | null;
+  last_name: string | null;
+  username: string | null;
+  period: string;
+  order_count: number;
+  total_commission: number;
+}
+
+interface UserCommTotal {
+  user_id: number | null;
+  first_name: string | null;
+  last_name: string | null;
+  username: string | null;
+  order_count: number;
+  total_commission: number;
+}
+
 const createEmptyRow = (id: number): ImportRow => ({
   id, orderId: '', userId: '', amount: '', note: '',
 });
@@ -80,6 +99,9 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
   const [importRows, setImportRows] = useState<ImportRow[]>(Array.from({ length: 10 }, (_, i) => createEmptyRow(i + 1)));
   const [isStamping, setIsStamping] = useState(false);
   const [stampResult, setStampResult] = useState<any>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<any>(null);
+  const [verified, setVerified] = useState(false);
 
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
@@ -113,6 +135,19 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
   const [expandedBatch, setExpandedBatch] = useState<number | null>(null);
   const [batchOrders, setBatchOrders] = useState<BatchOrder[]>([]);
   const [loadingBatchOrders, setLoadingBatchOrders] = useState(false);
+
+  // User commission state
+  const [userCommRows, setUserCommRows] = useState<UserCommRow[]>([]);
+  const [userCommTotals, setUserCommTotals] = useState<UserCommTotal[]>([]);
+  const [loadingUserComm, setLoadingUserComm] = useState(false);
+  const [userCommGroupBy, setUserCommGroupBy] = useState<'month' | 'week' | 'day'>('month');
+  const [userCommRange, setUserCommRange] = useState<DateRange>(() => {
+    const today = new Date();
+    const m3 = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+    const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00`;
+    const toISOEnd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T23:59:59`;
+    return { start: toISO(m3), end: toISOEnd(today) };
+  });
 
   const companyId = currentUser.companyId;
 
@@ -165,8 +200,25 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
     setLoadingBatchOrders(false);
   }, []);
 
+  const loadUserComm = useCallback(async () => {
+    setLoadingUserComm(true);
+    try {
+      const sd = userCommRange.start.split('T')[0];
+      const ed = userCommRange.end.split('T')[0];
+      const res = await apiFetch(
+        `Commission/get_user_commission.php?company_id=${companyId}&group_by=${userCommGroupBy}&start_date=${sd}&end_date=${ed}`
+      );
+      if (res.ok) {
+        setUserCommRows(res.data.rows || []);
+        setUserCommTotals(res.data.user_totals || []);
+      }
+    } catch (e) { console.error(e); }
+    setLoadingUserComm(false);
+  }, [companyId, userCommGroupBy, userCommRange]);
+
   useEffect(() => { loadBatches(); }, [loadBatches]);
   useEffect(() => { loadSummary(); }, [loadSummary]);
+  useEffect(() => { loadUserComm(); }, [loadUserComm]);
 
   // === Import Row Handlers ===
   const handleRowChange = (index: number, field: keyof ImportRow, value: string) => {
@@ -213,9 +265,47 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
     ...(r.note.trim() && { note: r.note.trim() }),
   })), [filledRows]);
 
+  // === Verify (Dry Run) ===
+  const handleVerify = async () => {
+    if (parsedOrders.length === 0) return;
+    setIsVerifying(true);
+    setVerifyResult(null);
+    setVerified(false);
+    setStampResult(null);
+    try {
+      const res = await apiFetch('Commission/stamp_orders.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId,
+          user_id: currentUser.id,
+          orders: parsedOrders,
+          dry_run: true,
+        }),
+      });
+      setVerifyResult(res);
+      if (res.ok && res.data?.errors?.length === 0) {
+        setVerified(true);
+      }
+    } catch (e: any) {
+      setVerifyResult({ ok: false, error: e.message });
+    }
+    setIsVerifying(false);
+  };
+
+  // Reset verified state when rows change
+  useEffect(() => {
+    setVerified(false);
+    setVerifyResult(null);
+  }, [importRows]);
+
   // === Stamp ===
   const handleStamp = async () => {
     if (parsedOrders.length === 0) return;
+    if (!verified) {
+      alert('กรุณากดตรวจสอบข้อมูลก่อน Stamp');
+      return;
+    }
     setIsStamping(true);
     setStampResult(null);
     try {
@@ -235,6 +325,8 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
         setImportRows(Array.from({ length: 10 }, (_, i) => createEmptyRow(i + 1)));
         setBatchName('');
         setBatchNote('');
+        setVerified(false);
+        setVerifyResult(null);
         loadBatches();
         loadSummary();
       }
@@ -384,8 +476,34 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
             </div>
             <div className="flex items-center gap-2">
               <button
+                onClick={handleVerify}
+                disabled={isVerifying || parsedOrders.length === 0 || verified}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm ${
+                  verified
+                    ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {isVerifying ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    กำลังตรวจสอบ...
+                  </>
+                ) : verified ? (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    ตรวจสอบแล้ว ✓
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-4 h-4" />
+                    ตรวจสอบ ({parsedOrders.length})
+                  </>
+                )}
+              </button>
+              <button
                 onClick={handleStamp}
-                disabled={isStamping || parsedOrders.length === 0}
+                disabled={isStamping || parsedOrders.length === 0 || !verified}
                 className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
               >
                 {isStamping ? (
@@ -513,6 +631,41 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
             </div>
           </div>
 
+          {/* Verify Result */}
+          {verifyResult && (
+            <div className={`mx-5 mb-4 p-3 rounded-lg text-sm ${
+              verifyResult.ok && verifyResult.data?.errors?.length === 0
+                ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                : verifyResult.ok && verifyResult.data?.errors?.length > 0
+                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                  : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
+              {verifyResult.ok ? (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    {verifyResult.data?.errors?.length === 0 ? (
+                      <><CheckCircle className="w-4 h-4 text-blue-600" /><span className="font-medium">ตรวจสอบผ่าน ✓ ข้อมูลถูกต้องทั้ง {verifyResult.data?.valid} รายการ — พร้อม Stamp</span></>
+                    ) : (
+                      <><AlertCircle className="w-4 h-4 text-amber-600" /><span className="font-medium">พบปัญหา {verifyResult.data?.errors?.length} รายการ (ผ่าน {verifyResult.data?.valid}/{verifyResult.data?.total}) — กรุณาแก้ไขก่อน Stamp</span></>
+                    )}
+                  </div>
+                  {verifyResult.data?.errors?.length > 0 && (
+                    <ul className="ml-6 mt-1 space-y-0.5 list-disc">
+                      {verifyResult.data.errors.map((err: string, i: number) => (
+                        <li key={i} className="text-amber-700">{err}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Error: {verifyResult.error}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Stamp Result */}
           {stampResult && (
             <div className={`mx-5 mb-4 p-3 rounded-lg text-sm ${stampResult.ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
@@ -637,6 +790,98 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+
+        {/* User Commission Table */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <Users className="w-5 h-5 text-violet-600" />
+              <h2 className="font-semibold text-gray-800">ค่าคอมรายบุคคล</h2>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <DateRangePicker value={userCommRange} onApply={setUserCommRange} />
+              <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+                {(['month', 'week', 'day'] as const).map(g => (
+                  <button
+                    key={g}
+                    onClick={() => setUserCommGroupBy(g)}
+                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${userCommGroupBy === g ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {g === 'month' ? 'เดือน' : g === 'week' ? 'สัปดาห์' : 'วัน'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-gray-600">
+                  <th className="px-5 py-3 text-left font-medium">ผู้ใช้</th>
+                  <th className="px-5 py-3 text-left font-medium">ช่วงเวลา</th>
+                  <th className="px-5 py-3 text-right font-medium">จำนวนออเดอร์</th>
+                  <th className="px-5 py-3 text-right font-medium">ค่าคอมรวม</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingUserComm ? (
+                  <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-violet-500 border-t-transparent" />
+                      กำลังโหลด...
+                    </div>
+                  </td></tr>
+                ) : userCommTotals.length === 0 ? (
+                  <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">ไม่มีข้อมูลค่าคอมในช่วงเวลาที่เลือก</td></tr>
+                ) : (
+                  <>
+                    {userCommTotals.map((ut, idx) => {
+                      const userRows = userCommRows.filter(r => r.user_id === ut.user_id);
+                      const userName = ut.first_name
+                        ? `${ut.first_name} ${ut.last_name || ''}`.trim()
+                        : ut.username || `ID: ${ut.user_id ?? '-'}`;
+                      return (
+                        <React.Fragment key={ut.user_id ?? `null-${idx}`}>
+                          {userRows.map((r, ri) => (
+                            <tr key={`${r.user_id}-${r.period}`} className={`border-t border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
+                              {ri === 0 && (
+                                <td className="px-5 py-2.5 font-medium text-gray-800 align-top" rowSpan={userRows.length + 1}>
+                                  <div>{userName}</div>
+                                  {ut.user_id && <div className="text-xs text-gray-400">ID: {ut.user_id}</div>}
+                                </td>
+                              )}
+                              <td className="px-5 py-2.5 text-gray-700">{getPeriodLabel(r.period)}</td>
+                              <td className="px-5 py-2.5 text-right text-gray-700">{fmtNum(r.order_count)}</td>
+                              <td className="px-5 py-2.5 text-right text-violet-700 font-medium">{fmtMoney(r.total_commission)}</td>
+                            </tr>
+                          ))}
+                          {/* User subtotal */}
+                          <tr className={`border-t border-gray-200 ${idx % 2 === 0 ? 'bg-violet-50/50' : 'bg-violet-50/70'}`}>
+                            <td className="px-5 py-2 text-right font-semibold text-gray-600 text-xs">รวม</td>
+                            <td className="px-5 py-2 text-right font-bold text-gray-800">{fmtNum(ut.order_count)}</td>
+                            <td className="px-5 py-2 text-right font-bold text-violet-800">{fmtMoney(ut.total_commission)}</td>
+                          </tr>
+                        </React.Fragment>
+                      );
+                    })}
+                    {/* Grand total */}
+                    <tr className="border-t-2 border-gray-300 bg-gray-100 font-bold">
+                      <td className="px-5 py-3 text-gray-800">รวมทั้งหมด ({userCommTotals.length} คน)</td>
+                      <td className="px-5 py-3"></td>
+                      <td className="px-5 py-3 text-right text-gray-900">
+                        {fmtNum(userCommTotals.reduce((s, u) => s + u.order_count, 0))}
+                      </td>
+                      <td className="px-5 py-3 text-right text-violet-900">
+                        {fmtMoney(userCommTotals.reduce((s, u) => s + u.total_commission, 0))}
+                      </td>
+                    </tr>
+                  </>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 

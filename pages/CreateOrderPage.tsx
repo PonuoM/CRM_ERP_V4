@@ -1584,6 +1584,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       }
 
       const itemsToAdd = upsellItems.map((item) => ({
+        id: item.id, // temp ID for parent-child linking in backend
+
         productId: item.productId,
 
         productName: item.productName,
@@ -1603,6 +1605,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         parentItemId: item.parentItemId || null,
 
         isPromotionParent: item.isPromotionParent || false,
+
+        priceOverride: item.priceOverride ?? undefined,
       }));
 
       await addUpsellItems(selectedUpsellOrder.id, currentUser.id, itemsToAdd);
