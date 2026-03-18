@@ -137,8 +137,7 @@ import ImportExportPage from "./pages/ImportExportPage";
 import CompanyManagementPage from "./pages/CompanyManagementPage";
 import WarehouseManagementPage from "./pages/WarehouseManagementPage";
 import ReturnManagementPage from "./pages/ReturnManagementPage";
-import CancelledClassificationPage from "./pages/CancelledClassificationPage";
-import CancellationSettingsPage from "./pages/CancellationSettingsPage";
+import CancellationPage from "./pages/CancellationPage";
 import CancelConfirmModal from "./components/CancelConfirmModal";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
 import UpsellOrderPage from "./pages/UpsellOrderPage";
@@ -7647,11 +7646,9 @@ const App: React.FC = () => {
       case "จัดการตีกลับ":
         return <ReturnManagementPage user={currentUser} />;
 
-      case "จัดประเภทยกเลิก":
-        return <CancelledClassificationPage currentUser={currentUser} />;
-
-      case "ตั้งค่าการยกเลิก":
-        return <CancellationSettingsPage currentUser={currentUser} />;
+      case "ตรวจสอบคำสั่งซื้อ":
+      case "nav.cancellation_management":
+        return <CancellationPage currentUser={currentUser} />;
 
       // PROCESSED: System / Roles
       case "Role Management":
