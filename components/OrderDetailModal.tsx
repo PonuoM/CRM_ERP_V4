@@ -351,9 +351,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                 <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                                     <Box size={16} /> รายการสินค้า
                                 </h4>
-                                <div className="border rounded-lg overflow-hidden max-h-[300px] overflow-y-auto relative">
+                                <div className="border rounded-lg overflow-hidden max-h-[300px] overflow-y-auto">
                                     <table className="w-full text-sm">
-                                        <thead className="bg-gray-50 text-gray-600 border-b sticky top-0 z-10 shadow-sm">
+                                        <thead className="bg-gray-50 text-gray-600 border-b sticky top-0 z-10" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
                                             <tr>
                                                 <th className="px-3 py-2 text-left">สินค้า</th>
                                                 <th className="px-3 py-2 text-center w-20">จำนวน</th>

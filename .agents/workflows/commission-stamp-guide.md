@@ -319,13 +319,20 @@ interface ImportRow {
 
 #### 4. ค่าคอมรายบุคคล (Pivot Cross-Tab)
 
-- **DateRangePicker** แยกอิสระ + Group by toggle (เดือน/สัปดาห์/วัน)
+- **Header:** gradient สีม่วง (`from-violet-50 to-purple-50`) + icon badge (`from-violet-500 to-purple-600`)
+- **DateRangePicker** แยกอิสระ + Group by toggle (เดือน/สัปดาห์/วัน) ขอบสีม่วง
 - **ตาราง Pivot:** แถว = ผู้ใช้ (เรียงตาม total commission desc), คอลัมน์ = ช่วงเวลา (dynamic)
-- **แต่ละ cell:** ค่าคอมรวม + จำนวนออเดอร์ / แสดง '-' ถ้าไม่มีข้อมูล
-- **คอลัมน์ "รวม"** ด้านขวา — รวมทุก period ต่อคน (bg-violet)
-- **แถว "รวมทั้งหมด"** ด้านล่าง — รวมทุกคนต่อ period + Grand total มุมขวาล่าง
-- **Sticky ชื่อผู้ใช้** — คอลัมน์แรก sticky เมื่อ scroll แนวนอน
-- ไอคอนสีม่วง (violet), อยู่ระหว่าง "สรุปตามช่วงเวลา" กับ "ประวัติ Batch"
+  - **Header row:** gradient `from-violet-600 to-purple-700` + ตัวอักษรสีขาว
+  - **Avatar:** วงกลมตัวอักษรแรก + gradient สี 8 แบบวนตาม index
+  - **แต่ละ cell:** rounded card (`bg-violet-50` + `border-violet-100`) แสดงค่าคอม + จำนวนออเดอร์ / แสดง '—' ถ้าไม่มีข้อมูล
+  - **คอลัมน์ "รวม":** progress bar เทียบกับ top earner + bg-violet
+  - **แถว "รวมทั้งหมด":** dark gradient `from-gray-800 to-gray-900` + ตัวอักษรสีขาว
+- **Sticky ชื่อผู้ใช้** — คอลัมน์แรก sticky เมื่อ scroll แนวนอน (bg ตาม odd/even row)
+- **Empty state:** ไอคอน Users + ข้อความ hint
+- อยู่ระหว่าง "สรุปตามช่วงเวลา" กับ "ประวัติ Batch"
+
+> [!IMPORTANT]
+> `loadUserComm()` ต้อง parse `Number()` ให้ `total_commission` และ `order_count` จาก API เพราะ MySQL คืนเป็น string → ถ้าไม่ parse จะต่อ string แทนบวกเลข
 
 #### 5. ประวัติ Batch
 

@@ -22,6 +22,8 @@ import {
   AlertTriangle,
   GripVertical,
   Shield,
+  Tag,
+  Wand2,
 } from 'lucide-react';
 import { User } from '../types';
 import {
@@ -30,8 +32,12 @@ import {
   confirmCancellation,
   manageCancellationTypes,
   setDefaultCancellationType,
+  validatePromotionOrders,
+  fixPromotionOrders,
 } from '../services/api';
 import OrderDetailModal from '../components/OrderDetailModal';
+import OrderManagementModal from '../components/OrderManagementModal';
+import { patchOrder, getOrder } from '../services/api';
 
 interface CancellationPageProps {
   currentUser: User;
@@ -911,9 +917,348 @@ const SettingsTab: React.FC = () => {
   );
 };
 
+
+
+// ======== Promo Check Tab ========
+const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
+  const [data, setData] = useState<any[]>([]);
+  const [summary, setSummary] = useState<{ total: number; mismatch: number }>({ total: 0, mismatch: 0 });
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortKey, setSortKey] = useState<string>('order_id');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+  const [manageOrder, setManageOrder] = useState<any | null>(null);
+  const [manageLoading, setManageLoading] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [fixResult, setFixResult] = useState<{ show: boolean; count: number; error?: string }>({ show: false, count: 0 });
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await validatePromotionOrders(currentUser.companyId);
+      if (res?.status === 'success') {
+        setData((res.data || []).map((r: any) => ({
+          ...r,
+          total_amount: Number(r.total_amount) || 0,
+          parent_net: Number(r.parent_net) || 0,
+          parent_discount: Number(r.parent_discount) || 0,
+          children_sum: Number(r.children_sum) || 0,
+          expected: Number(r.expected) || 0,
+          diff: Number(r.diff) || 0,
+        })));
+        setSummary({ total: Number(res.summary?.total_promo_orders || 0), mismatch: Number(res.summary?.mismatch_count || 0) });
+      }
+    } catch (err) {
+      console.error('Failed to load promo validation', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser.companyId]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); }
+    else { setSortKey(key); setSortDir('desc'); }
+  };
+
+  const filtered = useMemo(() => {
+    let list = data;
+    if (searchTerm) {
+      const s = searchTerm.toLowerCase();
+      list = list.filter(r => String(r.order_id).toLowerCase().includes(s) || String(r.customer_name || '').toLowerCase().includes(s) || String(r.promo_name || '').toLowerCase().includes(s));
+    }
+    list.sort((a, b) => {
+      const av = a[sortKey], bv = b[sortKey];
+      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av ?? '').localeCompare(String(bv ?? ''));
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [data, searchTerm, sortKey, sortDir]);
+
+  const handleManage = async (orderId: string) => {
+    setManageLoading(true);
+    try {
+      const { getOrder } = await import('../services/api');
+      const orderData = await getOrder(orderId);
+      if (orderData) {
+        // Normalize items from API
+        if (orderData.items && !Array.isArray(orderData.items)) {
+          orderData.items = Object.values(orderData.items);
+        }
+        const normalizedOrder = {
+          id: orderData.id ?? orderData.order_id,
+          customerId: orderData.customer_id ?? orderData.customerId,
+          companyId: currentUser.companyId,
+          orderDate: orderData.order_date ?? orderData.orderDate,
+          deliveryDate: orderData.delivery_date ?? orderData.deliveryDate,
+          orderStatus: orderData.order_status ?? orderData.orderStatus ?? 'Pending',
+          paymentMethod: orderData.payment_method ?? orderData.paymentMethod,
+          paymentStatus: orderData.payment_status ?? orderData.paymentStatus,
+          totalAmount: Number(orderData.total_amount ?? orderData.totalAmount ?? 0),
+          shippingCost: Number(orderData.shipping_cost ?? orderData.shippingCost ?? 0),
+          billDiscount: Number(orderData.bill_discount ?? orderData.billDiscount ?? 0),
+          codAmount: Number(orderData.cod_amount ?? orderData.codAmount ?? 0),
+          amountPaid: Number(orderData.amount_paid ?? orderData.amountPaid ?? 0),
+          notes: orderData.notes,
+          shippingAddress: orderData.shippingAddress ?? orderData.shipping_address ?? {
+            recipientFirstName: orderData.recipient_first_name,
+            recipientLastName: orderData.recipient_last_name,
+            street: orderData.street,
+            subdistrict: orderData.subdistrict,
+            district: orderData.district,
+            province: orderData.province,
+            postalCode: orderData.postal_code,
+          },
+          items: (orderData.items || []).map((it: any, i: number) => ({
+            id: Number(it.id ?? i + 1),
+            productId: Number(it.product_id ?? it.productId),
+            productName: String(it.product_name ?? it.productName ?? ''),
+            quantity: Number(it.quantity ?? 0),
+            pricePerUnit: Number(it.price_per_unit ?? it.pricePerUnit ?? 0),
+            discount: Number(it.discount ?? 0),
+            isFreebie: !!(it.is_freebie ?? it.isFreebie ?? 0),
+            boxNumber: Number(it.box_number ?? it.boxNumber ?? 1),
+            parentItemId: it.parent_item_id ? Number(it.parent_item_id) : (it.parentItemId ? Number(it.parentItemId) : undefined),
+            isPromotionParent: !!(it.is_promotion_parent ?? it.isPromotionParent),
+            promotionId: it.promotion_id ?? it.promotionId,
+          })),
+          boxes: Array.isArray(orderData.boxes) ? orderData.boxes.map((b: any) => ({
+            boxNumber: Number(b.box_number ?? b.boxNumber ?? 1),
+            codAmount: Number(b.cod_amount ?? b.codAmount ?? 0),
+            collectionAmount: Number(b.collection_amount ?? b.collectionAmount ?? 0),
+          })) : [],
+          trackingNumbers: orderData.tracking_numbers ?? orderData.trackingNumbers ?? [],
+          slips: orderData.slips ?? [],
+        };
+        setManageOrder(normalizedOrder);
+      }
+    } catch (err) {
+      console.error('Failed to load order for management', err);
+    } finally {
+      setManageLoading(false);
+    }
+  };
+
+  const handleSaveOrder = async (updatedOrder: any) => {
+    try {
+      const { patchOrder } = await import('../services/api');
+      await patchOrder(updatedOrder.id, updatedOrder);
+      setManageOrder(null);
+      fetchData(); // Refresh list
+    } catch (err) {
+      console.error('Failed to save order', err);
+    }
+  };
+
+  const correct = summary.total - summary.mismatch;
+
+  return (
+    <div className="space-y-6">
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-blue-100 p-5 shadow-sm">
+          <div className="text-sm text-blue-600 font-medium mb-1">โปรโมชั่นทั้งหมด</div>
+          <div className="text-3xl font-bold text-blue-700">{summary.total.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-red-100 p-5 shadow-sm">
+          <div className="text-sm text-red-600 font-medium mb-1">ราคาไม่ตรง</div>
+          <div className="text-3xl font-bold text-red-600">{summary.mismatch.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-emerald-100 p-5 shadow-sm">
+          <div className="text-sm text-emerald-600 font-medium mb-1">ราคาถูกต้อง</div>
+          <div className="text-3xl font-bold text-emerald-600">{correct.toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* Search + Refresh */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            placeholder="ค้นหา Order ID, ลูกค้า, โปรโมชั่น..."
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-400"
+          />
+        </div>
+        <button
+          onClick={fetchData}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2.5 bg-rose-50 text-rose-700 rounded-xl hover:bg-rose-100 transition-colors text-sm font-medium border border-rose-200"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          รีเฟรช
+        </button>
+        {summary.mismatch > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              console.log('>>> Auto-fix button clicked!');
+              (async () => {
+                setFixing(true);
+                setFixResult({ show: false, count: 0 });
+                try {
+                  const freshRes = await validatePromotionOrders(currentUser.companyId);
+                  const freshData = freshRes?.status === 'success' ? (freshRes.data || []) : data;
+                  const parentIds = freshData.map((r: any) => Number(r.parent_item_id)).filter((id: number) => id > 0);
+                  console.log('Auto-fix: sending parent_item_ids =', parentIds);
+                  if (parentIds.length === 0) {
+                    setFixResult({ show: true, count: 0, error: 'ไม่พบ parent_item_id ที่ต้องแก้ไข' });
+                    return;
+                  }
+                  const res = await fixPromotionOrders(currentUser.companyId, parentIds);
+                  console.log('Auto-fix response:', res);
+                  if (res?.status === 'success') {
+                    setFixResult({ show: true, count: res.fixed_count || 0 });
+                    fetchData();
+                  } else {
+                    setFixResult({ show: true, count: 0, error: res?.message || 'Unknown error' });
+                  }
+                } catch (err: any) {
+                  console.error('Auto-fix error:', err);
+                  setFixResult({ show: true, count: 0, error: err?.message || 'Failed' });
+                } finally {
+                  setFixing(false);
+                }
+              })();
+            }}
+            disabled={fixing}
+            className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-colors text-sm font-medium shadow-sm disabled:opacity-50"
+          >
+            <Wand2 className={`w-4 h-4 ${fixing ? 'animate-pulse' : ''}`} />
+            {fixing ? 'กำลังแก้ไข...' : 'แก้ไขออโต้'}
+          </button>
+        )}
+      </div>
+
+      {/* Fix result alert */}
+      {fixResult.show && (
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium ${fixResult.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+          {fixResult.error ? (
+            <><AlertTriangle className="w-4 h-4" /> เกิดข้อผิดพลาด: {fixResult.error}</>
+          ) : (
+            <><CheckCircle className="w-4 h-4" /> แก้ไขสำเร็จ {fixResult.count} รายการ</>
+          )}
+          <button onClick={() => setFixResult({ show: false, count: 0 })} className="ml-auto text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-rose-400 border-t-transparent" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-xl border">
+          <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
+          <p className="text-gray-600 font-medium">ไม่พบรายการราคาไม่ตรง</p>
+          <p className="text-sm text-gray-400 mt-1">ทุกออเดอร์โปรโมชั่นมีราคาถูกต้อง</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-600 border-b">
+                <tr>
+                  {[
+                    { key: 'order_id', label: 'Order ID' },
+                    { key: 'order_date', label: 'วันที่' },
+                    { key: 'customer_name', label: 'ลูกค้า' },
+                    { key: 'order_status', label: 'สถานะ' },
+                    { key: 'promo_name', label: 'โปรโมชั่น' },
+                    { key: 'parent_net', label: 'Parent Net' },
+                    { key: 'children_sum', label: 'Children Sum' },
+                    { key: 'diff', label: 'ส่วนต่าง' },
+                  ].map(col => (
+                    <th
+                      key={col.key}
+                      className="px-3 py-2.5 text-left cursor-pointer hover:bg-gray-100 transition-colors select-none whitespace-nowrap"
+                      onClick={() => handleSort(col.key)}
+                    >
+                      <span className="flex items-center gap-1">
+                        {col.label}
+                        <ArrowUpDown className="w-3 h-3 text-gray-400" />
+                      </span>
+                    </th>
+                  ))}
+                  <th className="px-3 py-2.5 text-center whitespace-nowrap">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((row, idx) => {
+                  const diff = Number(row.diff || 0);
+                  const parentNet = Number(row.parent_net || 0);
+                  const childrenSum = Number(row.children_sum || 0);
+                  return (
+                    <tr key={idx} className="hover:bg-rose-50/30 transition-colors">
+                      <td className="px-3 py-2.5">
+                        <button
+                          onClick={() => setViewOrderId(String(row.order_id))}
+                          className="text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                        >
+                          {row.order_id}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{row.order_date ? new Date(row.order_date).toLocaleDateString('th-TH') : '-'}</td>
+                      <td className="px-3 py-2.5 text-gray-800 font-medium max-w-[180px] truncate">{row.customer_name || '-'}</td>
+                      <td className="px-3 py-2.5">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">{row.order_status || '-'}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-700 max-w-[200px] truncate">{row.promo_name || '-'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-gray-700">฿{parentNet.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-gray-700">฿{childrenSum.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${diff > 0 ? 'bg-red-100 text-red-700' : diff < 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {diff > 0 ? '+' : ''}{diff.toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <button
+                          onClick={() => handleManage(String(row.order_id))}
+                          disabled={manageLoading}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 border border-violet-200 transition-colors"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          จัดการ
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <OrderDetailModal
+        isOpen={!!viewOrderId}
+        onClose={() => setViewOrderId(null)}
+        orderId={viewOrderId}
+        companyId={currentUser.companyId}
+      />
+
+      {manageOrder && (
+        <OrderManagementModal
+          order={manageOrder}
+          customers={[]}
+          activities={[]}
+          onSave={handleSaveOrder}
+          onClose={() => setManageOrder(null)}
+          currentUser={currentUser}
+          permission="manager"
+        />
+      )}
+    </div>
+  );
+};
+
 // ======== Main Page ========
 const CancellationPage: React.FC<CancellationPageProps> = ({ currentUser }) => {
-  const [activeMainTab, setActiveMainTab] = useState<'classification' | 'settings'>('classification');
+  const [activeMainTab, setActiveMainTab] = useState<'classification' | 'promo-check' | 'settings'>('classification');
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
@@ -939,7 +1284,18 @@ const CancellationPage: React.FC<CancellationPageProps> = ({ currentUser }) => {
           }`}
         >
           <ClipboardList className="w-4 h-4" />
-          จัดประเภท
+          จัดประเภทยกเลิก
+        </button>
+        <button
+          onClick={() => setActiveMainTab('promo-check')}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
+            activeMainTab === 'promo-check'
+              ? 'border-rose-500 text-rose-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <Tag className="w-4 h-4" />
+          ตรวจสอบโปรโมชั่น
         </button>
         <button
           onClick={() => setActiveMainTab('settings')}
@@ -950,13 +1306,15 @@ const CancellationPage: React.FC<CancellationPageProps> = ({ currentUser }) => {
           }`}
         >
           <Settings className="w-4 h-4" />
-          ตั้งค่า
+          ตั้งค่ายกเลิก
         </button>
       </div>
 
       {/* Tab Content */}
       {activeMainTab === 'classification' ? (
         <ClassificationTab currentUser={currentUser} />
+      ) : activeMainTab === 'promo-check' ? (
+        <PromoCheckTab currentUser={currentUser} />
       ) : (
         <SettingsTab />
       )}
