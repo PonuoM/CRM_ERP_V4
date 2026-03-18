@@ -943,9 +943,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
           total_amount: Number(r.total_amount) || 0,
           parent_net: Number(r.parent_net) || 0,
           parent_discount: Number(r.parent_discount) || 0,
-          children_sum: Number(r.children_sum) || 0,
-          expected: Number(r.expected) || 0,
-          diff: Number(r.diff) || 0,
+          affected_children: Number(r.affected_children) || 0,
         })));
         setSummary({ total: Number(res.summary?.total_promo_orders || 0), mismatch: Number(res.summary?.mismatch_count || 0) });
       }
@@ -1169,9 +1167,9 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                     { key: 'customer_name', label: 'ลูกค้า' },
                     { key: 'order_status', label: 'สถานะ' },
                     { key: 'promo_name', label: 'โปรโมชั่น' },
+                    { key: 'parent_qty', label: 'จำนวนเซ็ต' },
                     { key: 'parent_net', label: 'Parent Net' },
-                    { key: 'children_sum', label: 'Children Sum' },
-                    { key: 'diff', label: 'ส่วนต่าง' },
+                    { key: 'affected_children', label: 'Child ผิด' },
                   ].map(col => (
                     <th
                       key={col.key}
@@ -1189,9 +1187,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((row, idx) => {
-                  const diff = Number(row.diff || 0);
                   const parentNet = Number(row.parent_net || 0);
-                  const childrenSum = Number(row.children_sum || 0);
                   return (
                     <tr key={idx} className="hover:bg-rose-50/30 transition-colors">
                       <td className="px-3 py-2.5">
@@ -1208,11 +1204,11 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                         <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">{row.order_status || '-'}</span>
                       </td>
                       <td className="px-3 py-2.5 text-gray-700 max-w-[200px] truncate">{row.promo_name || '-'}</td>
+                      <td className="px-3 py-2.5 text-center font-medium text-gray-700">{row.parent_qty}</td>
                       <td className="px-3 py-2.5 text-right font-mono text-gray-700">฿{parentNet.toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-gray-700">฿{childrenSum.toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-right">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${diff > 0 ? 'bg-red-100 text-red-700' : diff < 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          {diff > 0 ? '+' : ''}{diff.toLocaleString()}
+                      <td className="px-3 py-2.5 text-center">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                          {row.affected_children}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-center">
