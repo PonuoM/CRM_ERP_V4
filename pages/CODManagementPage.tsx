@@ -74,6 +74,8 @@ interface RowData {
   multiTracking?: boolean; // Flag: this tracking shares a box with other trackings
   hasFreebie?: boolean; // ออเดอร์มีของแถม
   freebieValue?: number; // มูลค่าของแถม
+  totalSlipAmount?: number; // ยอดชำระผ่านสลิปที่มีอยู่แล้ว
+  boxCollectedAmount?: number; // ยอดเก็บแล้วจาก order_boxes
 }
 
 interface ExistingDocument {
@@ -577,19 +579,29 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               multiTracking: true,
               difference: undefined,
               amountPaid: apiResult.amountPaid,
+              totalSlipAmount: apiResult.totalSlipAmount || 0,
+              boxCollectedAmount: apiResult.boxCollectedAmount || 0,
             };
           } else {
-            // Single tracking: exact match
-            const difference = isAmountValid ? codAmountValue - expected : 0;
+            // Single tracking: compare against remaining balance (deduct slips + existing COD)
+            const slipAmount = apiResult.totalSlipAmount || 0;
+            const boxCollected = apiResult.boxCollectedAmount || 0;
+            const alreadyPaid = slipAmount + boxCollected;
+            const remainingExpected = Math.max(0, expected - alreadyPaid);
+            const difference = isAmountValid ? codAmountValue - remainingExpected : 0;
             const amountMatch = isAmountValid && Math.abs(difference) < 0.01;
 
             const isPaid = (apiResult.amountPaid || 0) > 0;
-            const slipAmount = apiResult.totalSlipAmount || 0;
             let status: ValidationStatus = amountMatch ? 'matched' : 'unmatched';
-            let message = amountMatch ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+            let message = amountMatch
+              ? 'ตรงกัน'
+              : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
 
-            if (slipAmount > 0) {
-              message += ` ⚠️ ชำระผ่านช่องทางอื่นแล้ว ฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+            if (slipAmount > 0 || boxCollected > 0) {
+              const parts: string[] = [];
+              if (slipAmount > 0) parts.push(`สลิป ฿${slipAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`);
+              if (boxCollected > 0) parts.push(`เก็บแล้ว ฿${boxCollected.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`);
+              message += ` (ยอดคงเหลือ ฿${remainingExpected.toLocaleString('th-TH', { minimumFractionDigits: 2 })} จาก ฿${expected.toLocaleString('th-TH', { minimumFractionDigits: 2 })} หลังหัก ${parts.join(' + ')})`;
             } else if (isPaid) {
               message += ` (จ่ายแล้ว: ฿${apiResult.amountPaid})`;
             }
@@ -631,12 +643,27 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       });
 
       multiTrackingGroups.forEach((indices, orderId) => {
-        const boxTotal = validatedRows[indices[0]].boxExpectedAmount || 0;
+        const firstRow = validatedRows[indices[0]];
+        const boxTotal = firstRow.boxExpectedAmount || 0;
+        // Deduct existing payments: slips + previously collected COD
+        const totalSlip = firstRow.totalSlipAmount || 0;
+        const boxCollected = firstRow.boxCollectedAmount || 0;
+        const alreadyPaid = totalSlip + boxCollected;
+        const remainingExpected = Math.max(0, boxTotal - alreadyPaid);
+
         const sumCod = indices.reduce((sum, idx) => {
           return sum + parseAmount(validatedRows[idx].codAmount);
         }, 0);
-        const groupDiff = sumCod - boxTotal;
+        const groupDiff = sumCod - remainingExpected;
         const groupMatch = Math.abs(groupDiff) < 0.01;
+
+        // Build payment breakdown for message
+        const deductParts: string[] = [];
+        if (totalSlip > 0) deductParts.push(`สลิป ฿${totalSlip.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`);
+        if (boxCollected > 0) deductParts.push(`เก็บแล้ว ฿${boxCollected.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`);
+        const deductNote = deductParts.length > 0
+          ? ` (ยอดคงเหลือ ฿${remainingExpected.toLocaleString('th-TH', { minimumFractionDigits: 2 })} จาก ฿${boxTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })} หลังหัก ${deductParts.join(' + ')})`
+          : '';
 
         indices.forEach((idx) => {
           const r = validatedRows[idx];
@@ -645,8 +672,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
           let status: ValidationStatus = groupMatch ? 'matched' : 'unmatched';
           let message = groupMatch
-            ? `ตรงกัน (รวม ${indices.length} tracking = ฿${sumCod.toLocaleString('th-TH', { minimumFractionDigits: 2 })} / กล่อง ฿${boxTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })})`
-            : `ไม่ตรง: รวม ${indices.length} tracking = ฿${sumCod.toLocaleString('th-TH', { minimumFractionDigits: 2 })} vs กล่อง ฿${boxTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })} (ต่าง ${groupDiff > 0 ? '+' : ''}฿${Math.abs(groupDiff).toLocaleString('th-TH', { minimumFractionDigits: 2 })})`;
+            ? `ตรงกัน (รวม ${indices.length} tracking = ฿${sumCod.toLocaleString('th-TH', { minimumFractionDigits: 2 })} / คงเหลือ ฿${remainingExpected.toLocaleString('th-TH', { minimumFractionDigits: 2 })})${deductNote}`
+            : `ไม่ตรง: รวม ${indices.length} tracking = ฿${sumCod.toLocaleString('th-TH', { minimumFractionDigits: 2 })} vs คงเหลือ ฿${remainingExpected.toLocaleString('th-TH', { minimumFractionDigits: 2 })} (ต่าง ${groupDiff > 0 ? '+' : ''}฿${Math.abs(groupDiff).toLocaleString('th-TH', { minimumFractionDigits: 2 })})${deductNote}`;
 
           if (!isValid) {
             status = 'pending';
