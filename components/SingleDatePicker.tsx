@@ -131,19 +131,8 @@ const SingleDatePicker: React.FC<SingleDatePickerProps> = ({ value, onChange, pl
         <span className={`${value ? 'text-gray-700' : 'text-gray-400'} truncate`}>{display}</span>
       </button>
 
-      {open && (() => {
-        const rect = btnRef.current?.getBoundingClientRect();
-        const popoverHeight = 420; // estimated height of single date picker
-        const popoverWidth = 340;
-        const spaceBelow = window.innerHeight - (rect?.bottom ?? 0);
-        const spaceAbove = rect?.top ?? 0;
-        const top = (spaceBelow < popoverHeight && spaceAbove > spaceBelow)
-          ? Math.max(4, (rect?.top ?? popoverHeight) - popoverHeight - 4)
-          : (rect?.bottom ?? 0) + 4;
-        const left = rect?.left ?? 0;
-        const adjustedLeft = (left + popoverWidth > window.innerWidth) ? Math.max(0, (rect?.right ?? popoverWidth) - popoverWidth) : left;
-        return (
-        <div className="fixed z-[9999] bg-white rounded-xl shadow-xl border border-gray-200 p-4 w-auto" style={{ minWidth: '320px', top: `${top}px`, left: `${adjustedLeft}px`, maxHeight: `${Math.max(spaceBelow, spaceAbove) - 8}px`, overflowY: 'auto' }}>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-[9999] bg-white rounded-xl shadow-xl border border-gray-200 p-4 w-auto" style={{ minWidth: '320px' }}>
           {/* Presets */}
           <div className="flex flex-wrap gap-1.5 mb-3">
             {presets.map(p => (
@@ -192,8 +181,7 @@ const SingleDatePicker: React.FC<SingleDatePickerProps> = ({ value, onChange, pl
             )}
           </div>
         </div>
-        );
-      })()}
+      )}
     </div>
   );
 };

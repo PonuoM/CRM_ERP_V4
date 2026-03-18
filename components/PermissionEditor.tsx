@@ -121,6 +121,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'nav.finance_approval', label: 'Finance Approval (ตรวจสอบยอดเงิน)' },
             { key: 'nav.statement_management', label: 'Statement Management (จัดการ Statement)' },
             { key: 'finance-commission', label: 'Commission Menu (เมนูคำนวณค่าคอม)' },
+            { key: 'finance-commission-stamp', label: 'Commission Stamp (Stamp ค่าคอม)' },
         ]
     },
     'Accounting Audit': {

@@ -822,6 +822,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           ordersRawReport.push({
             'วันที่สั่งซื้อ': new Date(order.orderDate).toLocaleDateString('th-TH-u-ca-gregory'),
             'เลขคำสั่งซื้อ': order.id,
+            'user_id': item.creatorId ?? order.creatorId ?? '',
             'ผู้ขาย': getSeller(item.creatorId),
             'แผนก': getSellerRole(item.creatorId),
             'ชื่อลูกค้า': getCustomerName(),
@@ -863,6 +864,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         ordersRawReport.push({
           'วันที่สั่งซื้อ': new Date(order.orderDate).toLocaleDateString('th-TH-u-ca-gregory'),
           'เลขคำสั่งซื้อ': order.id,
+          'user_id': order.creatorId ?? '',
           'ผู้ขาย': getSeller(),
           'แผนก': getSellerRole(),
           'ชื่อลูกค้า': getCustomerName(),
@@ -1331,6 +1333,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               exportRows.push({
                 'วันที่สั่งซื้อ': order.order_date ? new Date(order.order_date).toLocaleDateString('th-TH-u-ca-gregory') : '-',
                 'เลขคำสั่งซื้อ': order.id || '-',
+                'user_id': item.creator_id ?? order.creator_id ?? '',
                 'ผู้ขาย': (() => { const c = users.find(u => u.id === (item.creator_id ?? order.creator_id)); return c ? `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.username : '-'; })(),
                 'แผนก': (() => { const c = users.find(u => u.id === (item.creator_id ?? order.creator_id)); return c?.role || '-'; })(),
                 'ชื่อลูกค้า': customerName,

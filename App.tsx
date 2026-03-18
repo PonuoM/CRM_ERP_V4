@@ -153,6 +153,7 @@ import RoleManagementPage from "./pages/RoleManagementPage";
 import BankAccountAuditPage from "./pages/Accounting/BankAccountAuditPage";
 import RevenueRecognitionPage from "./pages/Accounting/RevenueRecognitionPage";
 import CommissionPage from "./pages/Finance/CommissionPage";
+import CommissionStampPage from "./pages/Finance/CommissionStampPage";
 import AttendanceReportPage from "./pages/AttendanceReportPage";
 import OrdersReportPage from "./pages/OrdersReportPage";
 import OrderTabSettingsPage from "./pages/OrderTabSettingsPage";
@@ -574,6 +575,7 @@ const App: React.FC = () => {
       'Accounting Report': 'accounting.report',
       'จัดการตีกลับ': 'nav.return_management',
       'Sales Sheet': 'home.sales_sheet',
+      'Commission Stamp': 'finance-commission-stamp',
     };
 
     // Check if current page needs permission check
@@ -7520,6 +7522,11 @@ const App: React.FC = () => {
       case "Calculate Commission":
       case "คำนวณค่าคอมมิชชัน":
         return <CommissionPage currentUser={currentUser} />;
+
+      case "finance-commission-stamp":
+      case "Commission Stamp":
+      case "Stamp ค่าคอม":
+        return <CommissionStampPage currentUser={currentUser} />;
         return (
           <StatementManagementPage
             user={currentUser}

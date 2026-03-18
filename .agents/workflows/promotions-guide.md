@@ -220,6 +220,30 @@ child order_items.net_total = promotion_items.price_override × parent order_ite
 - เมื่อเปลี่ยน parent qty → `child.qty = originalQuantity × parentQty`
 - DB-loaded items ไม่มี `originalQuantity` → derive จาก `qty / oldParentQty`
 
+### Validation Rule (ตรวจสอบความถูกต้องราคา)
+
+```
+SUM(child_item.net_total) = parent_promotion.net_total + parent_promotion.discount
+```
+
+- `child_item` = order_items ที่มี `parent_item_id` ชี้ไปยัง parent promotion item (เฉพาะ `is_freebie = 0`)
+- `parent_promotion` = order_items ที่ `is_promotion_parent = 1`
+- ถ้า **ไม่เท่ากัน** แสดงว่าราคา child items ถูกคำนวณผิด
+
+**SQL ตรวจสอบ:**
+```sql
+SELECT parent.order_id, parent.product_name,
+       parent.net_total AS promo_net, parent.discount AS promo_discount,
+       SUM(child.net_total) AS children_sum,
+       SUM(child.net_total) - (parent.net_total + parent.discount) AS diff
+FROM order_items parent
+JOIN order_items child ON child.parent_item_id = parent.id AND child.is_freebie = 0
+WHERE parent.is_promotion_parent = 1
+GROUP BY parent.id
+HAVING diff != 0
+ORDER BY ABS(diff) DESC;
+```
+
 ---
 
 ## การแสดงผลสินค้าโปรโมชั่นในออเดอร์
