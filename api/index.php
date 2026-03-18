@@ -8398,6 +8398,25 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     }
                 }
 
+                // === BATCH PRE-FETCH: order payment_method to skip order_boxes update for non-COD orders ===
+                $orderPaymentMethodMap = []; // order_id -> payment_method
+                $allBoxOrderIds = [];
+                foreach ($trackingBoxMap as $tr) {
+                    $boid = $tr['parent_order_id'] ?? $tr['order_id'];
+                    if ($boid && !isset($orderPaymentMethodMap[$boid])) {
+                        $allBoxOrderIds[] = $boid;
+                        $orderPaymentMethodMap[$boid] = null; // placeholder
+                    }
+                }
+                if (count($allBoxOrderIds) > 0) {
+                    $ph = implode(',', array_fill(0, count($allBoxOrderIds), '?'));
+                    $pmStmt = $pdo->prepare("SELECT id, payment_method FROM orders WHERE id IN ($ph)");
+                    $pmStmt->execute($allBoxOrderIds);
+                    foreach ($pmStmt->fetchAll(PDO::FETCH_ASSOC) as $pmRow) {
+                        $orderPaymentMethodMap[$pmRow['id']] = $pmRow['payment_method'];
+                    }
+                }
+
                 $skippedItems = [];
                 foreach ($items as $it) {
                     $trackingNumber = trim((string) ($it['tracking_number'] ?? ''));
@@ -8439,11 +8458,15 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     ]);
 
                     // Update order_boxes.collected_amount (from pre-fetched map)
+                    // GUARD: Skip for non-COD orders to avoid trigger rejection
                     $trackingRow = $trackingBoxMap[$trackingNumber] ?? null;
                     if ($trackingRow && $trackingRow['box_number'] !== null) {
                         $boxOrderId = $trackingRow['parent_order_id'] ?? $trackingRow['order_id'];
-                        $boxNumber = (int) $trackingRow['box_number'];
-                        $updateBoxCollectedStmt->execute([$boxOrderId, $boxNumber, $boxOrderId, $boxNumber]);
+                        $boxPaymentMethod = $orderPaymentMethodMap[$boxOrderId] ?? null;
+                        if ($boxPaymentMethod === 'COD') {
+                            $boxNumber = (int) $trackingRow['box_number'];
+                            $updateBoxCollectedStmt->execute([$boxOrderId, $boxNumber, $boxOrderId, $boxNumber]);
+                        }
                     }
                 }
 
@@ -8540,6 +8563,25 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     }
                 }
 
+                // === BATCH PRE-FETCH: order payment_method to skip order_boxes update for non-COD orders ===
+                $orderPaymentMethodMap = []; // order_id -> payment_method
+                $allBoxOrderIds = [];
+                foreach ($trackingBoxMap as $tr) {
+                    $boid = $tr['parent_order_id'] ?? $tr['order_id'];
+                    if ($boid && !isset($orderPaymentMethodMap[$boid])) {
+                        $allBoxOrderIds[] = $boid;
+                        $orderPaymentMethodMap[$boid] = null; // placeholder
+                    }
+                }
+                if (count($allBoxOrderIds) > 0) {
+                    $ph = implode(',', array_fill(0, count($allBoxOrderIds), '?'));
+                    $pmStmt = $pdo->prepare("SELECT id, payment_method FROM orders WHERE id IN ($ph)");
+                    $pmStmt->execute($allBoxOrderIds);
+                    foreach ($pmStmt->fetchAll(PDO::FETCH_ASSOC) as $pmRow) {
+                        $orderPaymentMethodMap[$pmRow['id']] = $pmRow['payment_method'];
+                    }
+                }
+
                 $skippedItems = [];
                 foreach ($items as $it) {
                     $trackingNumber = trim((string) ($it['tracking_number'] ?? ''));
@@ -8583,12 +8625,16 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     ]);
 
                     // Update order_boxes.collected_amount (from pre-fetched map)
+                    // GUARD: Skip for non-COD orders to avoid trigger rejection
                     if (!$forceImport) {
                         $trackingRow = $trackingBoxMap[$trackingNumber] ?? null;
                         if ($trackingRow && $trackingRow['box_number'] !== null) {
                             $boxOrderId = $trackingRow['parent_order_id'] ?? $trackingRow['order_id'];
-                            $boxNumber = (int) $trackingRow['box_number'];
-                            $updateBoxCollectedStmt->execute([$boxOrderId, $boxNumber, $boxOrderId, $boxNumber]);
+                            $boxPaymentMethod = $orderPaymentMethodMap[$boxOrderId] ?? null;
+                            if ($boxPaymentMethod === 'COD') {
+                                $boxNumber = (int) $trackingRow['box_number'];
+                                $updateBoxCollectedStmt->execute([$boxOrderId, $boxNumber, $boxOrderId, $boxNumber]);
+                            }
                         }
                     }
 
