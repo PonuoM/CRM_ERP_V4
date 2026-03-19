@@ -47,19 +47,35 @@ try {
 
         echo json_encode(['ok' => true, 'data' => ['batch' => $batch, 'orders' => $orders]]);
     } else {
-        // List all batches
+        // List all batches (optionally filtered by order_id search)
+        $order_id_search = trim($_GET['order_id'] ?? '');
+
         $sql = "
             SELECT b.*, u.first_name, u.last_name
             FROM commission_stamp_batches b
             LEFT JOIN users u ON u.id = b.created_by
         ";
-        $params = [];
-        if ($company_id > 0) {
-            $sql .= " WHERE b.company_id = ?";
-            $params[] = $company_id;
-        }
-        $sql .= " ORDER BY b.created_at DESC";
+        $joinParams = [];
+        $whereParams = [];
+        $wheres = [];
 
+        if ($order_id_search !== '') {
+            $sql .= " INNER JOIN commission_stamp_orders cso_search ON cso_search.batch_id = b.id AND cso_search.order_id LIKE ?";
+            $joinParams[] = "%{$order_id_search}%";
+        }
+
+        if ($company_id > 0) {
+            $wheres[] = "b.company_id = ?";
+            $whereParams[] = $company_id;
+        }
+
+        if (count($wheres) > 0) {
+            $sql .= " WHERE " . implode(' AND ', $wheres);
+        }
+
+        $sql .= " GROUP BY b.id ORDER BY b.created_at DESC";
+
+        $params = array_merge($joinParams, $whereParams);
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $batches = $stmt->fetchAll(PDO::FETCH_ASSOC);

@@ -6,6 +6,97 @@
  */
 require_once __DIR__ . "/../config.php";
 
+// Helper: convert PHP memory_limit string to bytes
+function convertMemoryToBytes(string $val): int {
+    $val = strtolower(trim($val));
+    $num = (int)$val;
+    $last = substr($val, -1);
+    switch ($last) {
+        case 'g': $num *= 1024;
+        case 'm': $num *= 1024;
+        case 'k': $num *= 1024;
+    }
+    return $num;
+}
+
+// Helper: format a row array into CSV output array
+function formatCsvRow(array $row, array $regionMap, array $statusThai, array $customerTypeThai): array {
+    $creatorId = $row['item_creator_id'] ?? $row['creator_id'];
+    $creatorName = ($row['item_creator_first_name'] ?? $row['creator_first_name'] ?? '') . ' ' . ($row['item_creator_last_name'] ?? $row['creator_last_name'] ?? '');
+    $creatorRole = $row['item_creator_role'] ?? $row['creator_role'] ?? '-';
+
+    $customerName = trim(($row['customer_first_name'] ?? '') . ' ' . ($row['customer_last_name'] ?? ''));
+    if (!$customerName) $customerName = trim(($row['recipient_first_name'] ?? '') . ' ' . ($row['recipient_last_name'] ?? ''));
+
+    $province = $row['province'] ?? '';
+    $region = $regionMap[$province] ?? 'ไม่ทราบภาค';
+
+    $productCode = '-';
+    if ($row['is_promotion_parent']) {
+        $productCode = $row['promotion_id'] ? 'PROMO-' . str_pad($row['promotion_id'], 3, '0', STR_PAD_LEFT) : '-';
+    } elseif ($row['promotion_id']) {
+        $productCode = 'PROMO-' . str_pad($row['promotion_id'], 3, '0', STR_PAD_LEFT);
+    } elseif ($row['product_sku']) {
+        $productCode = $row['product_sku'];
+    }
+
+    $productName = $row['product_name'] ?? '-';
+    if ($row['is_promotion_parent']) $productName = '📦 ' . $productName;
+    elseif ($row['is_freebie']) $productName .= ' (ของแถม)';
+
+    $qty = (int)($row['quantity'] ?? 0);
+    $price = (float)($row['price_per_unit'] ?? 0);
+    $discount = (float)($row['discount'] ?? 0);
+    $netTotal = (float)($row['net_total'] ?? 0);
+    $itemTotal = $row['is_freebie'] ? 0 : (($qty * $price - $discount) > 0 ? ($qty * $price - $discount) : $netTotal);
+
+    $paid = (float)($row['amount_paid'] ?? 0);
+    $total = (float)($row['total_amount'] ?? 0);
+    $paymentComparison = $total == 0 ? 'ไม่มียอด' : ($paid == 0 ? 'ค้าง' : ($paid == $total ? 'ตรง' : ($paid < $total ? 'ขาด' : 'เกิน')));
+
+    $commissionStatus = $row['stamp_commission'] !== null || $row['stamp_user_id'] !== null || $row['stamp_date'] !== null
+        ? 'คิดค่าคอมแล้ว'
+        : ($row['payment_status'] === 'Approved' ? 'รอคิดค่าคอม' : 'ยังไม่สำเร็จ');
+
+    return [
+        $row['order_date'] ? date('d/m/Y', strtotime($row['order_date'])) : '-',
+        $row['order_id'],
+        $creatorId ?? '',
+        trim($creatorName) ?: '-',
+        $creatorRole,
+        $customerName ?: '-',
+        $row['customer_phone'] ?? '-',
+        $customerTypeThai[$row['customer_type'] ?? ''] ?? ($row['customer_type'] ?? '-'),
+        $row['delivery_date'] ? date('d/m/Y', strtotime($row['delivery_date'])) : '-',
+        $row['sales_channel'] ?? '-',
+        $row['payment_method'] ?? '-',
+        $row['street'] ?? '-',
+        $row['subdistrict'] ?? '-',
+        $row['district'] ?? '-',
+        $province ?: '-',
+        $row['postal_code'] ?? '-',
+        $region,
+        $productCode,
+        $productName,
+        $row['product_category'] ?? '-',
+        $row['product_report_category'] ?? '-',
+        $row['is_freebie'] ? 'ใช่' : 'ไม่',
+        $qty,
+        $price,
+        $discount,
+        $itemTotal,
+        $row['box_number'] ?? 1,
+        $statusThai[$row['order_status'] ?? ''] ?? ($row['order_status'] ?? '-'),
+        $paymentComparison,
+        $commissionStatus,
+        $row['stamp_batch_name'] ?? '-',
+        $row['stamp_commission'] ?? '-',
+        $row['stamp_user_id'] ?? '-',
+        $row['stamp_date'] ? date('d/m/Y H:i', strtotime($row['stamp_date'])) : '-',
+        $row['stamp_note'] ?? '-'
+    ];
+}
+
 try {
     $pdo = db_connect();
 
@@ -121,9 +212,38 @@ try {
         ORDER BY o.order_date DESC, o.id, oi.id
     ";
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // ============================================================
+    // Phase 1: Pre-check — COUNT rows + estimate memory
+    // ============================================================
+    $countSql = "
+        SELECT COUNT(*) as total_rows
+        FROM orders o
+        LEFT JOIN order_items oi ON oi.parent_order_id = o.id
+        LEFT JOIN (
+            SELECT DISTINCT order_id FROM commission_stamp_orders
+        ) cso ON cso.order_id = o.id
+        $where
+    ";
+    $countStmt = $pdo->prepare($countSql);
+    $countStmt->execute($params);
+    $totalRows = (int)($countStmt->fetch(PDO::FETCH_ASSOC)['total_rows'] ?? 0);
+
+    // Memory calculation
+    $memLimitStr = ini_get('memory_limit');
+    $memLimit = convertMemoryToBytes($memLimitStr);
+    $memUsed  = memory_get_usage(true);
+    $memAvail = $memLimit - $memUsed;
+
+    $estimatedRowSize = 2048;  // ~2KB per row (conservative estimate with JOINs)
+    $estimatedMemory  = $totalRows * $estimatedRowSize;
+    $safeThreshold    = (int)($memAvail * 0.7);  // use only 70% of available
+
+    $useStreaming = ($estimatedMemory > $safeThreshold);
+    $batchSize = 5000; // rows per batch for streaming mode
+
+    // ============================================================
+    // Phase 2: Export — normal fetchAll or streaming batch
+    // ============================================================
 
     // Region mapping
     $regionMap = [
@@ -175,82 +295,37 @@ try {
     fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
     fputcsv($output, $headers);
 
-    foreach ($rows as $row) {
-        $creatorId = $row['item_creator_id'] ?? $row['creator_id'];
-        $creatorName = ($row['item_creator_first_name'] ?? $row['creator_first_name'] ?? '') . ' ' . ($row['item_creator_last_name'] ?? $row['creator_last_name'] ?? '');
-        $creatorRole = $row['item_creator_role'] ?? $row['creator_role'] ?? '-';
+    if (!$useStreaming) {
+        // ── Normal mode: fetchAll (small dataset) ──
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $customerName = trim(($row['customer_first_name'] ?? '') . ' ' . ($row['customer_last_name'] ?? ''));
-        if (!$customerName) $customerName = trim(($row['recipient_first_name'] ?? '') . ' ' . ($row['recipient_last_name'] ?? ''));
-
-        $province = $row['province'] ?? '';
-        $region = $regionMap[$province] ?? 'ไม่ทราบภาค';
-
-        $productCode = '-';
-        if ($row['is_promotion_parent']) {
-            $productCode = $row['promotion_id'] ? 'PROMO-' . str_pad($row['promotion_id'], 3, '0', STR_PAD_LEFT) : '-';
-        } elseif ($row['promotion_id']) {
-            $productCode = 'PROMO-' . str_pad($row['promotion_id'], 3, '0', STR_PAD_LEFT);
-        } elseif ($row['product_sku']) {
-            $productCode = $row['product_sku'];
+        foreach ($rows as $row) {
+            fputcsv($output, formatCsvRow($row, $regionMap, $statusThai, $customerTypeThai));
         }
+        unset($rows); // free memory
+    } else {
+        // ── Streaming mode: fetch row-by-row (large dataset) ──
+        set_time_limit(300); // allow up to 5 mins for large exports
 
-        $productName = $row['product_name'] ?? '-';
-        if ($row['is_promotion_parent']) $productName = '📦 ' . $productName;
-        elseif ($row['is_freebie']) $productName .= ' (ของแถม)';
+        // Use unbuffered query for memory efficiency
+        $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
 
-        $qty = (int)($row['quantity'] ?? 0);
-        $price = (float)($row['price_per_unit'] ?? 0);
-        $discount = (float)($row['discount'] ?? 0);
-        $netTotal = (float)($row['net_total'] ?? 0);
-        $itemTotal = $row['is_freebie'] ? 0 : (($qty * $price - $discount) > 0 ? ($qty * $price - $discount) : $netTotal);
-
-        $paid = (float)($row['amount_paid'] ?? 0);
-        $total = (float)($row['total_amount'] ?? 0);
-        $paymentComparison = $total == 0 ? 'ไม่มียอด' : ($paid == 0 ? 'ค้าง' : ($paid == $total ? 'ตรง' : ($paid < $total ? 'ขาด' : 'เกิน')));
-
-        $commissionStatus = $row['stamp_commission'] !== null || $row['stamp_user_id'] !== null || $row['stamp_date'] !== null
-            ? 'คิดค่าคอมแล้ว'
-            : ($row['payment_status'] === 'Approved' ? 'รอคิดค่าคอม' : 'ยังไม่สำเร็จ');
-
-        fputcsv($output, [
-            $row['order_date'] ? date('d/m/Y', strtotime($row['order_date'])) : '-',
-            $row['order_id'],
-            $creatorId ?? '',
-            trim($creatorName) ?: '-',
-            $creatorRole,
-            $customerName ?: '-',
-            $row['customer_phone'] ?? '-',
-            $customerTypeThai[$row['customer_type'] ?? ''] ?? ($row['customer_type'] ?? '-'),
-            $row['delivery_date'] ? date('d/m/Y', strtotime($row['delivery_date'])) : '-',
-            $row['sales_channel'] ?? '-',
-            $row['payment_method'] ?? '-',
-            $row['street'] ?? '-',
-            $row['subdistrict'] ?? '-',
-            $row['district'] ?? '-',
-            $province ?: '-',
-            $row['postal_code'] ?? '-',
-            $region,
-            $productCode,
-            $productName,
-            $row['product_category'] ?? '-',
-            $row['product_report_category'] ?? '-',
-            $row['is_freebie'] ? 'ใช่' : 'ไม่',
-            $qty,
-            $price,
-            $discount,
-            $itemTotal,
-            $row['box_number'] ?? 1,
-            $statusThai[$row['order_status'] ?? ''] ?? ($row['order_status'] ?? '-'),
-            $paymentComparison,
-            // Commission columns
-            $commissionStatus,
-            $row['stamp_batch_name'] ?? '-',
-            $row['stamp_commission'] ?? '-',
-            $row['stamp_user_id'] ?? '-',
-            $row['stamp_date'] ? date('d/m/Y H:i', strtotime($row['stamp_date'])) : '-',
-            $row['stamp_note'] ?? '-'
-        ]);
+        $count = 0;
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            fputcsv($output, formatCsvRow($row, $regionMap, $statusThai, $customerTypeThai));
+            $count++;
+            // Flush output buffer every batch to keep download alive
+            if ($count % $batchSize === 0) {
+                ob_flush();
+                flush();
+            }
+        }
+        $stmt->closeCursor();
+        $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
     }
 
     fclose($output);

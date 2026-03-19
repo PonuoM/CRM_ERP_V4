@@ -2576,3 +2576,17 @@ export async function getOrderCancellationsBatch(orderIds: string[]) {
   return apiFetch(`Orders/get_order_cancellations_batch.php?order_ids=${encodeURIComponent(orderIds.join(','))}`);
 }
 
+export async function validatePromotionOrders(companyId: number) {
+  return apiFetch(`Orders/validate_promotion_orders.php?company_id=${companyId}`);
+}
+
+export async function fixPromotionOrders(companyId: number, parentItemIds: number[]) {
+  return apiFetch('Orders/fix_promotion_orders.php', {
+    method: 'POST',
+    body: JSON.stringify({ company_id: companyId, parent_item_ids: parentItemIds }),
+  });
+}
+
+export async function validateCreatorOrders(companyId: number) {
+  return apiFetch(`Orders/validate_creator_orders.php?company_id=${companyId}`);
+}

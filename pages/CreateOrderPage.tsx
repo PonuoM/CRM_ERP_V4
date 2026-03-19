@@ -1169,6 +1169,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         quantity: qty,
 
+        originalQuantity: qty,
+
         pricePerUnit: itemPrice,
 
         priceOverride: isFreeFlag ? undefined : (rawOverride ?? undefined),

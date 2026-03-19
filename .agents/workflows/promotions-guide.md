@@ -270,3 +270,70 @@ ORDER BY ABS(diff) DESC;
 | **PromotionModal** | component แยก สำหรับ edit — ไม่ได้ใช้ตอน create |
 | **priceOverride** | `LineItem.priceOverride` (types.ts) ใช้เฉพาะ child promotion items → backend override `net_total`. หากไม่มีใน payload, backend auto-lookup จาก `promotion_items` table |
 | **productId FK** | Parent promotion item ต้องส่ง `productId: undefined/null` (ห้ามส่ง `0` → FK violation). Backend มี safety: `!empty() ? (int) : null` |
+
+---
+
+## หน้าตรวจสอบโปรโมชั่น (Promotion Validation Tab)
+
+Tab "ตรวจสอบโปรโมชั่น" อยู่ในหน้า **ตรวจสอบคำสั่งซื้อ** (`CheckOrderPage.tsx`) — ตรวจหา orders ที่ children net ไม่ตรงกับ parent net ตาม validation rule
+
+### Validation Rule
+
+```
+SUM(child.(price_per_unit * quantity - discount) WHERE is_freebie=0) = parent_net + parent_discount
+```
+- ถ้า **ไม่เท่ากัน** (|diff| > 0.01) → แสดงเป็น "ราคาไม่ตรง"
+
+### ไฟล์ที่เกี่ยวข้อง
+
+| ไฟล์ | บทบาท |
+|------|--------|
+| `api/Orders/validate_promotion_orders.php` | API ตรวจสอบ — query + HAVING ABS(diff) > 0.01 |
+| `api/Orders/fix_promotion_orders.php` | API แก้ไขออโต้ — fix child qty/net_total จาก promotion template |
+| `pages/CheckOrderPage.tsx` (`PromoCheckTab`) | UI แสดงผล — summary cards + ตาราง + ปุ่ม "แก้ไขออโต้" |
+| `services/api.ts` (`validatePromotionOrders`, `fixPromotionOrders`) | Frontend API wrapper |
+
+### UI Components
+
+1. **Summary Cards** (3 ใบ):
+   - 🔵 โปรโมชั่นทั้งหมด (total parent items)
+   - 🔴 ราคาไม่ตรง (mismatch count)
+   - 🟢 ราคาถูกต้อง (total - mismatch)
+
+2. **ตาราง** (sortable): Order ID | วันที่ | ลูกค้า | สถานะ | โปรโมชั่น | Parent Net | Children Sum | ส่วนต่าง
+   - คลิก Order ID → เปิด `OrderDetailModal`
+   - Badge สีแดง/amber แสดงส่วนต่าง (diff)
+   - ค้นหาได้ตาม order_id, ชื่อลูกค้า, ชื่อโปรโมชั่น
+
+### API Endpoint
+
+| Method | Endpoint | คำอธิบาย |
+|--------|----------|----------|
+| GET | `Orders/validate_promotion_orders.php?company_id=X` | ตรวจสอบ promotion orders ที่ราคาไม่ตรง |
+| POST | `Orders/fix_promotion_orders.php` | แก้ไข child qty + net_total อัตโนมัติจาก promotion template |
+
+### Auto-Fix Feature (ปุ่ม "แก้ไขออโต้")
+
+ปุ่ม "แก้ไขออโต้" (สีม่วง, Wand2 icon) จะแสดงเมื่อมี mismatch ≥ 1
+
+**Flow:**
+1. กด "แก้ไขออโต้" → เรียก `validatePromotionOrders()` เพื่อดึง `parent_item_ids` ล่าสุด
+2. POST `fix_promotion_orders.php` ด้วย `{ company_id, parent_item_ids }`
+3. Backend แก้ไขแต่ละ parent item:
+   - **Parent:** `net_total = price_per_unit × quantity - discount`
+   - **Children:** match ด้วย product_id ก่อน → fallback position-based matching (non-freebie children จับคู่กับ non-freebie template items ตามลำดับ)
+   - `child.quantity = template_qty × parent_qty`
+   - `child.net_total = (price_per_unit × child.quantity) - discount` (freebie = 0)
+4. Recalculate `orders.total_amount`
+5. Frontend แสดง alert สำเร็จ/ล้มเหลว + refresh ตาราง
+
+**Template Matching:**
+| ลำดับ | วิธี | เงื่อนไข |
+|-------|------|----------|
+| 1 | product_id match | `promotion_items.product_id = order_items.product_id` |
+| 2 | position-based | จับคู่ non-freebie child ตัวที่ N กับ non-freebie template ตัวที่ N |
+| 3 | skip | ไม่สามารถจับคู่ได้ → ข้ามไม่แก้ |
+
+> [!IMPORTANT]
+> API ใช้ `Number()` parsing ฝั่ง frontend เพราะ MySQL อาจคืนค่า numeric เป็น string
+
