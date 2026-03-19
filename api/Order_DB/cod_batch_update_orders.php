@@ -94,14 +94,19 @@ try {
         $slipTotals[$row['order_id']] = (float) $row['total_slip'];
     }
 
-    // 3. Fetch total_amount for each order (for capping)
+    // 3. Fetch total_amount + current statuses for each order (for capping + guard)
     $orderTotals = [];
-    $totalAmountSql = "SELECT id, total_amount FROM orders WHERE id IN ($placeholders) AND company_id = ?";
+    $orderCurrentStatus = [];
+    $totalAmountSql = "SELECT id, total_amount, payment_status, order_status FROM orders WHERE id IN ($placeholders) AND company_id = ?";
     $totalAmountParams = array_merge($orderIds, [$companyId]);
     $totalAmountStmt = $pdo->prepare($totalAmountSql);
     $totalAmountStmt->execute($totalAmountParams);
     foreach ($totalAmountStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $orderTotals[$row['id']] = (float) $row['total_amount'];
+        $orderCurrentStatus[$row['id']] = [
+            'payment_status' => $row['payment_status'],
+            'order_status' => $row['order_status'],
+        ];
     }
 
     // 4. Update each order
@@ -109,10 +114,21 @@ try {
     set_audit_context($pdo, 'orders/cod_batch_update');
     $updates = [];
 
-    $updateStmt = $pdo->prepare("
+    // Statement for orders that are NOT yet confirmed — update amount_paid + payment_status + order_status
+    $updateFullStmt = $pdo->prepare("
     UPDATE orders SET amount_paid = ?, payment_status = ?, order_status = CASE WHEN ? = 'PreApproved' THEN 'PreApproved' ELSE order_status END
     WHERE id = ? AND company_id = ?
   ");
+
+    // Statement for orders already confirmed — only update amount_paid, do NOT touch statuses
+    $updateAmountOnlyStmt = $pdo->prepare("
+    UPDATE orders SET amount_paid = ?
+    WHERE id = ? AND company_id = ?
+  ");
+
+    // Statuses that must NOT be downgraded (already confirmed by Bank Audit)
+    $protectedPaymentStatuses = ['Approved', 'Paid'];
+    $protectedOrderStatuses = ['Delivered', 'Returned', 'Cancelled'];
 
     foreach ($orderIds as $orderId) {
         $codTotal = $codTotals[$orderId] ?? 0;
@@ -125,14 +141,27 @@ try {
             $totalPaid = $orderTotal;
         }
 
-        $paymentStatus = $totalPaid > 0 ? 'PreApproved' : 'PendingVerification';
+        // GUARD: Do NOT downgrade orders already confirmed by Bank Audit
+        $currentPayment = $orderCurrentStatus[$orderId]['payment_status'] ?? '';
+        $currentOrder = $orderCurrentStatus[$orderId]['order_status'] ?? '';
+        $isProtected = in_array($currentPayment, $protectedPaymentStatuses) || in_array($currentOrder, $protectedOrderStatuses);
 
-        $updateStmt->execute([$totalPaid, $paymentStatus, $paymentStatus, $orderId, $companyId]);
-
-        $updates[$orderId] = [
-            'amountPaid' => $totalPaid,
-            'paymentStatus' => $paymentStatus === 'preapproved' ? 'PreApproved' : 'PendingVerification',
-        ];
+        if ($isProtected) {
+            // Only update amount_paid, preserve existing statuses
+            $updateAmountOnlyStmt->execute([$totalPaid, $orderId, $companyId]);
+            $updates[$orderId] = [
+                'amountPaid' => $totalPaid,
+                'paymentStatus' => $currentPayment,
+                'skipped' => 'already_confirmed',
+            ];
+        } else {
+            $paymentStatus = $totalPaid > 0 ? 'PreApproved' : 'PendingVerification';
+            $updateFullStmt->execute([$totalPaid, $paymentStatus, $paymentStatus, $orderId, $companyId]);
+            $updates[$orderId] = [
+                'amountPaid' => $totalPaid,
+                'paymentStatus' => $paymentStatus,
+            ];
+        }
     }
 
     $pdo->commit();
