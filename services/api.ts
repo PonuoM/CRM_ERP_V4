@@ -2586,3 +2586,7 @@ export async function fixPromotionOrders(companyId: number, parentItemIds: numbe
     body: JSON.stringify({ company_id: companyId, parent_item_ids: parentItemIds }),
   });
 }
+
+export async function validateCreatorOrders(companyId: number) {
+  return apiFetch(`Orders/validate_creator_orders.php?company_id=${companyId}`);
+}

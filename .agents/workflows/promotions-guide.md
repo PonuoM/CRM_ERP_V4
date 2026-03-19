@@ -275,7 +275,7 @@ ORDER BY ABS(diff) DESC;
 
 ## หน้าตรวจสอบโปรโมชั่น (Promotion Validation Tab)
 
-Tab "ตรวจสอบโปรโมชั่น" อยู่ในหน้า **ตรวจสอบคำสั่งซื้อ** (`CancellationPage.tsx`) — ตรวจหา orders ที่ children net ไม่ตรงกับ parent net ตาม validation rule
+Tab "ตรวจสอบโปรโมชั่น" อยู่ในหน้า **ตรวจสอบคำสั่งซื้อ** (`CheckOrderPage.tsx`) — ตรวจหา orders ที่ children net ไม่ตรงกับ parent net ตาม validation rule
 
 ### Validation Rule
 
@@ -290,7 +290,7 @@ SUM(child.(price_per_unit * quantity - discount) WHERE is_freebie=0) = parent_ne
 |------|--------|
 | `api/Orders/validate_promotion_orders.php` | API ตรวจสอบ — query + HAVING ABS(diff) > 0.01 |
 | `api/Orders/fix_promotion_orders.php` | API แก้ไขออโต้ — fix child qty/net_total จาก promotion template |
-| `pages/CancellationPage.tsx` (`PromoCheckTab`) | UI แสดงผล — summary cards + ตาราง + ปุ่ม "แก้ไขออโต้" |
+| `pages/CheckOrderPage.tsx` (`PromoCheckTab`) | UI แสดงผล — summary cards + ตาราง + ปุ่ม "แก้ไขออโต้" |
 | `services/api.ts` (`validatePromotionOrders`, `fixPromotionOrders`) | Frontend API wrapper |
 
 ### UI Components

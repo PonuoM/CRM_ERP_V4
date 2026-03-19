@@ -24,6 +24,7 @@ import {
   Shield,
   Tag,
   Wand2,
+  UserCheck,
 } from 'lucide-react';
 import { User } from '../types';
 import {
@@ -34,12 +35,13 @@ import {
   setDefaultCancellationType,
   validatePromotionOrders,
   fixPromotionOrders,
+  validateCreatorOrders,
 } from '../services/api';
 import OrderDetailModal from '../components/OrderDetailModal';
 import OrderManagementModal from '../components/OrderManagementModal';
 import { patchOrder, getOrder } from '../services/api';
 
-interface CancellationPageProps {
+interface CheckOrderPageProps {
   currentUser: User;
 }
 
@@ -1252,9 +1254,259 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   );
 };
 
+// ======== Creator Check Tab ========
+const CreatorCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState({ total: 0, flagged: 0 });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortKey, setSortKey] = useState('order_date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [manageOrder, setManageOrder] = useState<any>(null);
+  const [manageLoading, setManageLoading] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await validateCreatorOrders(currentUser.companyId);
+      if (res?.status === 'success') {
+        setData(res.data || []);
+        setSummary({
+          total: Number(res.summary?.total_orders || 0),
+          flagged: Number(res.summary?.flagged_count || 0),
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load creator validation', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser.companyId]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); }
+    else { setSortKey(key); setSortDir('desc'); }
+  };
+
+  const filtered = useMemo(() => {
+    let list = data;
+    if (searchTerm) {
+      const s = searchTerm.toLowerCase();
+      list = list.filter(r =>
+        String(r.order_id).toLowerCase().includes(s) ||
+        String(r.customer_name || '').toLowerCase().includes(s) ||
+        String(r.creator_name || '').toLowerCase().includes(s) ||
+        String(r.creator_role || '').toLowerCase().includes(s)
+      );
+    }
+    list.sort((a, b) => {
+      const av = a[sortKey], bv = b[sortKey];
+      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av ?? '').localeCompare(String(bv ?? ''));
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [data, searchTerm, sortKey, sortDir]);
+
+  const handleManage = async (orderId: string) => {
+    setManageLoading(true);
+    try {
+      const orderData = await getOrder(orderId);
+      if (orderData) {
+        if (orderData.items && !Array.isArray(orderData.items)) {
+          orderData.items = Object.values(orderData.items);
+        }
+        const normalizedOrder = {
+          id: orderData.id ?? orderData.order_id,
+          customerId: orderData.customer_id ?? orderData.customerId,
+          companyId: currentUser.companyId,
+          orderDate: orderData.order_date ?? orderData.orderDate,
+          deliveryDate: orderData.delivery_date ?? orderData.deliveryDate,
+          orderStatus: orderData.order_status ?? orderData.orderStatus ?? 'Pending',
+          paymentMethod: orderData.payment_method ?? orderData.paymentMethod,
+          paymentStatus: orderData.payment_status ?? orderData.paymentStatus,
+          totalAmount: Number(orderData.total_amount ?? orderData.totalAmount ?? 0),
+          shippingCost: Number(orderData.shipping_cost ?? orderData.shippingCost ?? 0),
+          billDiscount: Number(orderData.bill_discount ?? orderData.billDiscount ?? 0),
+          codAmount: Number(orderData.cod_amount ?? orderData.codAmount ?? 0),
+          amountPaid: Number(orderData.amount_paid ?? orderData.amountPaid ?? 0),
+          notes: orderData.notes,
+          shippingAddress: orderData.shippingAddress ?? orderData.shipping_address ?? {
+            recipientFirstName: orderData.recipient_first_name,
+            recipientLastName: orderData.recipient_last_name,
+            street: orderData.street,
+            subdistrict: orderData.subdistrict,
+            district: orderData.district,
+            province: orderData.province,
+            postalCode: orderData.postal_code,
+          },
+          items: (orderData.items || []).map((it: any, i: number) => ({
+            id: Number(it.id ?? i + 1),
+            productId: Number(it.product_id ?? it.productId),
+            productName: String(it.product_name ?? it.productName ?? ''),
+            quantity: Number(it.quantity ?? 0),
+            pricePerUnit: Number(it.price_per_unit ?? it.pricePerUnit ?? 0),
+            discount: Number(it.discount ?? 0),
+            isFreebie: !!(it.is_freebie ?? it.isFreebie ?? 0),
+            boxNumber: Number(it.box_number ?? it.boxNumber ?? 1),
+            parentItemId: it.parent_item_id ? Number(it.parent_item_id) : (it.parentItemId ? Number(it.parentItemId) : undefined),
+            isPromotionParent: !!(it.is_promotion_parent ?? it.isPromotionParent),
+            promotionId: it.promotion_id ?? it.promotionId,
+          })),
+          boxes: Array.isArray(orderData.boxes) ? orderData.boxes.map((b: any) => ({
+            boxNumber: Number(b.box_number ?? b.boxNumber ?? 1),
+            codAmount: Number(b.cod_amount ?? b.codAmount ?? 0),
+            collectionAmount: Number(b.collection_amount ?? b.collectionAmount ?? 0),
+          })) : [],
+          trackingNumbers: orderData.tracking_numbers ?? orderData.trackingNumbers ?? [],
+          slips: orderData.slips ?? [],
+        };
+        setManageOrder(normalizedOrder);
+      }
+    } catch (err) {
+      console.error('Failed to load order for management', err);
+    } finally {
+      setManageLoading(false);
+    }
+  };
+
+  const handleSaveOrder = async (updatedOrder: any) => {
+    try {
+      await patchOrder(updatedOrder.id, updatedOrder);
+      setManageOrder(null);
+      fetchData();
+    } catch (err) {
+      console.error('Failed to save order', err);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border p-5">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">ออเดอร์ทั้งหมด</p>
+          <p className="text-3xl font-bold text-gray-900 mt-1">{summary.total.toLocaleString()}</p>
+        </div>
+        <div className="bg-white rounded-xl border p-5">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Creator ไม่ใช่ Telesale/Admin</p>
+          <p className={`text-3xl font-bold mt-1 ${summary.flagged > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{summary.flagged}</p>
+        </div>
+      </div>
+
+      {/* Search + Refresh */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="ค้นหา Order ID, ลูกค้า, Creator..."
+            className="w-full pl-9 pr-4 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-teal-300 focus:border-teal-400 outline-none"
+          />
+        </div>
+        <button onClick={fetchData} className="flex items-center gap-2 px-4 py-2.5 bg-white border rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          รีเฟรช
+        </button>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-teal-400 border-t-transparent" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-xl border">
+          <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
+          <p className="text-gray-600 font-medium">ไม่พบรายการที่มีปัญหา</p>
+          <p className="text-sm text-gray-400 mt-1">ทุก order_items มี creator เป็น Telesale/Admin</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-600 border-b">
+                <tr>
+                  {[
+                    { key: 'order_id', label: 'Order ID' },
+                    { key: 'order_date', label: 'วันที่' },
+                    { key: 'customer_name', label: 'ลูกค้า' },
+                    { key: 'order_status', label: 'สถานะ' },
+                    { key: 'creator_name', label: 'Creator' },
+                    { key: 'creator_role', label: 'Role' },
+                    { key: 'affected_items', label: 'Items' },
+                  ].map(col => (
+                    <th
+                      key={col.key}
+                      className="px-3 py-2.5 text-left cursor-pointer hover:bg-gray-100 transition-colors select-none whitespace-nowrap"
+                      onClick={() => handleSort(col.key)}
+                    >
+                      <span className="flex items-center gap-1">
+                        {col.label}
+                        <ArrowUpDown className="w-3 h-3 text-gray-400" />
+                      </span>
+                    </th>
+                  ))}
+                  <th className="px-3 py-2.5 text-center whitespace-nowrap">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-teal-50/30 transition-colors">
+                    <td className="px-3 py-2.5">
+                      <span className="text-gray-800 font-medium">{row.order_id}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{row.order_date ? new Date(row.order_date).toLocaleDateString('th-TH') : '-'}</td>
+                    <td className="px-3 py-2.5 text-gray-800 font-medium max-w-[180px] truncate">{row.customer_name || '-'}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">{row.order_status || '-'}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-800 font-medium">{row.creator_name || '-'}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+                        {row.creator_role || '-'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-center font-medium text-gray-700">{row.affected_items}</td>
+                    <td className="px-3 py-2.5 text-center">
+                      <button
+                        onClick={() => handleManage(String(row.order_id))}
+                        disabled={manageLoading}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 border border-violet-200 transition-colors"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        จัดการ
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {manageOrder && (
+        <OrderManagementModal
+          order={manageOrder}
+          customers={[]}
+          activities={[]}
+          onSave={handleSaveOrder}
+          onClose={() => setManageOrder(null)}
+          currentUser={currentUser}
+          permission="manager"
+        />
+      )}
+    </div>
+  );
+};
+
 // ======== Main Page ========
-const CancellationPage: React.FC<CancellationPageProps> = ({ currentUser }) => {
-  const [activeMainTab, setActiveMainTab] = useState<'classification' | 'promo-check' | 'settings'>('classification');
+const CheckOrderPage: React.FC<CheckOrderPageProps> = ({ currentUser }) => {
+  const [activeMainTab, setActiveMainTab] = useState<'classification' | 'promo-check' | 'creator-check' | 'settings'>('classification');
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
@@ -1294,6 +1546,17 @@ const CancellationPage: React.FC<CancellationPageProps> = ({ currentUser }) => {
           ตรวจสอบโปรโมชั่น
         </button>
         <button
+          onClick={() => setActiveMainTab('creator-check')}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
+            activeMainTab === 'creator-check'
+              ? 'border-teal-500 text-teal-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <UserCheck className="w-4 h-4" />
+          ตรวจสอบ Creator
+        </button>
+        <button
           onClick={() => setActiveMainTab('settings')}
           className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
             activeMainTab === 'settings'
@@ -1311,6 +1574,8 @@ const CancellationPage: React.FC<CancellationPageProps> = ({ currentUser }) => {
         <ClassificationTab currentUser={currentUser} />
       ) : activeMainTab === 'promo-check' ? (
         <PromoCheckTab currentUser={currentUser} />
+      ) : activeMainTab === 'creator-check' ? (
+        <CreatorCheckTab currentUser={currentUser} />
       ) : (
         <SettingsTab />
       )}
@@ -1318,4 +1583,4 @@ const CancellationPage: React.FC<CancellationPageProps> = ({ currentUser }) => {
   );
 };
 
-export default CancellationPage;
+export default CheckOrderPage;
