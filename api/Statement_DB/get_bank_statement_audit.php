@@ -163,6 +163,7 @@ try {
           AND (o.payment_method IN ('Transfer', 'COD', 'PayAfter') OR os.total_slip > 0)
           AND os.order_id IS NOT NULL
           AND o.order_status NOT IN ('Cancelled', 'Returned')
+          AND o.id NOT LIKE '%external' AND o.id NOT LIKE '%EXTERNAL'
           AND (
             o.transfer_date BETWEEN :rangeStart AND :rangeEnd
             OR o.transfer_date IS NULL
@@ -353,14 +354,12 @@ try {
         }
       }
 
-      // Fallback: If no strict match found, try amount-only match (wider criteria)
+      // Fallback: amount + bank match, but time within 7 hours (UTC)
       if (!$suggestedOrderId) {
         foreach ($candidateOrders as $ord) {
           $totalAmount = (float) $ord['total_amount'];
           $slipTotal = (float) $ord['slip_total'];
-          $payAmount = (float) $ord['amount_paid'];
 
-          // Match against total_amount or slip_total  
           $amountMatch = false;
           if (abs($totalAmount - $stmtAmount) <= 0.01) {
             $amountMatch = true;
@@ -369,14 +368,20 @@ try {
           }
 
           if ($amountMatch) {
-            // Check bank account (or no bank restriction)
             $ordBankId = $ord['bank_account_id'] ?? $ord['slip_bank_account_id'] ?? null;
             if (!$ordBankId || (int) $ordBankId === $bankAccountId) {
-              $suggestedOrderId = $ord['id'];
-              $suggestedOrderInfo = "Amount match: " . number_format($stmtAmount, 2);
-              $suggestedOrderAmount = $totalAmount;
-              $suggestedPaymentMethod = $ord['payment_method'];
-              break;
+              $ordDate = $ord['slip_transfer_date'] ?? $ord['transfer_date'] ?? null;
+              if ($ordDate) {
+                $timeDiffSec = abs(strtotime($stmtDate) - strtotime($ordDate));
+                if ($timeDiffSec <= 7 * 3600) { // 7 hours in seconds
+                  $timeDiffMin = round($timeDiffSec / 60);
+                  $suggestedOrderId = $ord['id'];
+                  $suggestedOrderInfo = "ยอดตรงกัน " . number_format($stmtAmount, 2) . " (เวลาต่าง " . $timeDiffMin . " นาที)";
+                  $suggestedOrderAmount = $totalAmount;
+                  $suggestedPaymentMethod = $ord['payment_method'];
+                  break;
+                }
+              }
             }
           }
         }
