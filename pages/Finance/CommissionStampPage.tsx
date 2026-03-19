@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { User } from '../../types';
 import {
-  Upload, Download, Trash2, ChevronDown, ChevronRight,
+  Upload, Download, Trash2, ChevronDown, ChevronRight, ChevronUp,
   CheckCircle, Clock, AlertCircle, FileText, RefreshCw,
   BarChart2, Calendar, Plus, Search, Users
 } from 'lucide-react';
@@ -105,6 +105,7 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
 
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
+  const [batchSearch, setBatchSearch] = useState('');
 
   const [summaryRows, setSummaryRows] = useState<SummaryRow[]>([]);
   const [summaryTotals, setSummaryTotals] = useState<SummaryTotals>({ calculated: 0, pending: 0, incomplete: 0, total: 0, total_commission: 0 });
@@ -135,6 +136,9 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
   const [expandedBatch, setExpandedBatch] = useState<number | null>(null);
   const [batchOrders, setBatchOrders] = useState<BatchOrder[]>([]);
   const [loadingBatchOrders, setLoadingBatchOrders] = useState(false);
+
+  const batchHistoryRef = useRef<HTMLDivElement>(null);
+  const [searchMatchIdx, setSearchMatchIdx] = useState(0);
 
   // User commission state
   const [userCommRows, setUserCommRows] = useState<UserCommRow[]>([]);
@@ -170,11 +174,13 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
   const loadBatches = useCallback(async () => {
     setLoadingBatches(true);
     try {
-      const res = await apiFetch(`Commission/get_stamp_batches.php?company_id=${companyId}`);
+      const qs = new URLSearchParams({ company_id: String(companyId) });
+      if (batchSearch.trim()) qs.set('order_id', batchSearch.trim());
+      const res = await apiFetch(`Commission/get_stamp_batches.php?${qs.toString()}`);
       if (res.ok) setBatches(res.data || []);
     } catch (e) { console.error(e); }
     setLoadingBatches(false);
-  }, [companyId]);
+  }, [companyId, batchSearch]);
 
   const loadSummary = useCallback(async () => {
     setLoadingSummary(true);
@@ -225,7 +231,56 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
     setLoadingUserComm(false);
   }, [companyId, userCommGroupBy, userCommRange]);
 
-  useEffect(() => { loadBatches(); }, [loadBatches]);
+  useEffect(() => {
+    loadBatches().then(() => {
+      // After search loads, auto-expand first batch and scroll
+      // (we set it in a microtask so batches state is updated)
+    });
+  }, [loadBatches]);
+
+  // Auto-expand first batch when searching
+  useEffect(() => {
+    if (batchSearch.trim() && batches.length > 0) {
+      const firstBatch = batches[0];
+      if (expandedBatch !== firstBatch.id) {
+        setExpandedBatch(firstBatch.id);
+        loadBatchOrders(firstBatch.id);
+      }
+      setSearchMatchIdx(0);
+      // Scroll to batch history section
+      setTimeout(() => {
+        batchHistoryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 200);
+    }
+  }, [batches, batchSearch]);
+
+  // Compute match indices in batchOrders
+  const searchTerm = batchSearch.trim().toLowerCase();
+  const matchIndices = useMemo(() => {
+    if (!searchTerm || batchOrders.length === 0) return [] as number[];
+    return batchOrders
+      .map((o, idx) => o.order_id.toLowerCase().includes(searchTerm) ? idx : -1)
+      .filter(i => i >= 0);
+  }, [batchOrders, searchTerm]);
+
+  // Auto-scroll to current match when batchOrders load or match index changes
+  useEffect(() => {
+    if (matchIndices.length > 0 && searchTerm) {
+      const targetIdx = matchIndices[searchMatchIdx] ?? matchIndices[0];
+      setTimeout(() => {
+        const el = document.querySelector(`[data-search-match="${targetIdx}"]`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }
+  }, [matchIndices, searchMatchIdx, searchTerm]);
+
+  const goToMatch = (direction: 'prev' | 'next') => {
+    if (matchIndices.length === 0) return;
+    setSearchMatchIdx(prev => {
+      if (direction === 'next') return (prev + 1) % matchIndices.length;
+      return (prev - 1 + matchIndices.length) % matchIndices.length;
+    });
+  };
   useEffect(() => { loadSummary(); }, [loadSummary]);
   useEffect(() => { loadUserComm(); }, [loadUserComm]);
 
@@ -447,7 +502,7 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
               <span className="text-sm font-medium text-gray-600">ยังไม่สำเร็จ</span>
             </div>
             <div className="text-3xl font-bold text-red-600">{fmtNum(summaryTotals.incomplete)}</div>
-            <p className="text-xs text-gray-400 mt-1">payment_status ≠ Approved</p>
+            <p className="text-xs text-gray-400 mt-1">ยังไม่ได้ตรวจสอบจากบัญชี</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <div className="flex items-center gap-3 mb-2">
@@ -457,7 +512,7 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
               <span className="text-sm font-medium text-gray-600">รอคิดค่าคอม</span>
             </div>
             <div className="text-3xl font-bold text-amber-600">{fmtNum(summaryTotals.pending)}</div>
-            <p className="text-xs text-gray-400 mt-1">Approved แต่ยังไม่ stamp</p>
+            <p className="text-xs text-gray-400 mt-1">ตรวจสอบจากบัญชีแล้ว แต่ยังไม่คิดค่าคอม</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <div className="flex items-center gap-3 mb-2">
@@ -803,12 +858,12 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
         </div>
 
         {/* User Commission Table — Pivot Cross-Tab */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
           {/* Header with gradient */}
-          <div className="px-5 py-4 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-purple-50 flex items-center justify-between flex-wrap gap-3">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-sm">
-                <Users className="w-5 h-5 text-white" />
+              <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center">
+                <Users className="w-5 h-5 text-gray-500" />
               </div>
               <div>
                 <h2 className="font-bold text-gray-900 text-base">ค่าคอมรายบุคคล</h2>
@@ -819,12 +874,12 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <DateRangePicker value={userCommRange} onApply={setUserCommRange} />
-              <div className="flex border border-violet-200 rounded-lg overflow-hidden shadow-sm">
+              <div className="flex border border-gray-300 rounded-lg overflow-hidden">
                 {(['month', 'week', 'day'] as const).map(g => (
                   <button
                     key={g}
                     onClick={() => setUserCommGroupBy(g)}
-                    className={`px-3 py-1.5 text-xs font-medium transition-all ${userCommGroupBy === g ? 'bg-violet-600 text-white shadow-inner' : 'bg-white text-gray-600 hover:bg-violet-50'}`}
+                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${userCommGroupBy === g ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                   >
                     {g === 'month' ? 'เดือน' : g === 'week' ? 'สัปดาห์' : 'วัน'}
                   </button>
@@ -837,15 +892,15 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
             {loadingUserComm ? (
               <div className="px-5 py-16 text-center">
                 <div className="flex flex-col items-center gap-3">
-                  <div className="w-10 h-10 rounded-full border-3 border-violet-200 border-t-violet-600 animate-spin" />
+                  <div className="w-10 h-10 rounded-full border-3 border-gray-200 border-t-emerald-500 animate-spin" />
                   <p className="text-sm text-gray-400">กำลังโหลดข้อมูลค่าคอม...</p>
                 </div>
               </div>
             ) : userCommTotals.length === 0 ? (
               <div className="px-5 py-16 text-center">
                 <div className="flex flex-col items-center gap-3">
-                  <div className="w-14 h-14 rounded-full bg-violet-50 flex items-center justify-center">
-                    <Users className="w-7 h-7 text-violet-300" />
+                  <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center">
+                    <Users className="w-7 h-7 text-gray-300" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">ไม่มีข้อมูลค่าคอมในช่วงเวลาที่เลือก</p>
@@ -923,21 +978,21 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
               return (
                 <table className="w-full text-sm border-collapse">
                   <thead>
-                    <tr className="bg-gradient-to-r from-violet-600 to-purple-700 text-white">
-                      <th className="px-5 py-3.5 text-left font-semibold sticky left-0 z-10 bg-gradient-to-r from-violet-600 to-violet-600 min-w-[200px]">
+                    <tr className="bg-gray-50 text-gray-700 border-b border-gray-200">
+                      <th className="px-5 py-3.5 text-left font-semibold sticky left-0 z-10 bg-gray-50 min-w-[200px]">
                         <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4 opacity-80" />
+                          <Users className="w-4 h-4 text-gray-500" />
                           ผู้ใช้
                         </div>
                       </th>
                       {periods.map(p => (
                         <th key={p} className="px-4 py-3.5 text-center font-medium whitespace-nowrap min-w-[130px]">
-                          <div className="text-white/90 text-xs">{getPivotPeriodLabel(p)}</div>
+                          <div className="text-gray-600 text-xs font-medium">{getPivotPeriodLabel(p)}</div>
                         </th>
                       ))}
-                      <th className="px-5 py-3.5 text-center font-bold min-w-[140px] bg-violet-800/40">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <BarChart2 className="w-4 h-4 opacity-80" />
+                      <th className="px-5 py-3.5 text-center font-bold min-w-[140px] bg-gray-100">
+                        <div className="flex items-center justify-center gap-1.5 text-gray-700">
+                          <BarChart2 className="w-4 h-4" />
                           รวม
                         </div>
                       </th>
@@ -952,7 +1007,7 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
                       const isEven = idx % 2 === 0;
 
                       return (
-                        <tr key={user.userId ?? `null-${idx}`} className={`border-b border-gray-100 hover:bg-violet-50/40 transition-colors ${isEven ? 'bg-white' : 'bg-gray-50/60'}`}>
+                        <tr key={user.userId ?? `null-${idx}`} className={`border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${isEven ? 'bg-white' : 'bg-gray-50/40'}`}>
                           {/* User name — sticky */}
                           <td className={`px-5 py-3.5 sticky left-0 z-10 ${isEven ? 'bg-white' : 'bg-gray-50'}`}>
                             <div className="flex items-center gap-3">
@@ -971,8 +1026,8 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
                             return (
                               <td key={p} className="px-3 py-3.5 text-center">
                                 {cell ? (
-                                  <div className="inline-flex flex-col items-center gap-0.5 bg-violet-50 rounded-lg px-3 py-1.5 border border-violet-100">
-                                    <span className="font-bold text-violet-700 text-sm">{fmtMoney(cell.commission)}</span>
+                                  <div className="inline-flex flex-col items-center gap-0.5 bg-gray-50 rounded-lg px-3 py-1.5 border border-gray-100">
+                                    <span className="font-bold text-gray-800 text-sm">{fmtMoney(cell.commission)}</span>
                                     <span className="text-[10px] text-gray-400 leading-tight">{fmtNum(cell.orders)} ออเดอร์</span>
                                   </div>
                                 ) : (
@@ -982,16 +1037,16 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
                             );
                           })}
                           {/* Row total */}
-                          <td className={`px-4 py-3.5 ${isEven ? 'bg-violet-50/70' : 'bg-violet-50/90'}`}>
+                          <td className={`px-4 py-3.5 ${isEven ? 'bg-gray-50/70' : 'bg-gray-50/90'}`}>
                             <div className="space-y-1.5">
                               <div className="text-center">
-                                <div className="font-bold text-violet-800 text-sm">{fmtMoney(totalComm)}</div>
+                                <div className="font-bold text-gray-800 text-sm">{fmtMoney(totalComm)}</div>
                                 <div className="text-[10px] text-gray-500">{fmtNum(userTotal?.order_count ?? 0)} ออเดอร์</div>
                               </div>
                               {/* Mini progress bar */}
-                              <div className="w-full h-1.5 bg-violet-100 rounded-full overflow-hidden">
+                              <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full rounded-full bg-gradient-to-r from-violet-400 to-purple-500 transition-all duration-500"
+                                  className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-500"
                                   style={{ width: `${barWidth}%` }}
                                 />
                               </div>
@@ -1001,27 +1056,27 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
                       );
                     })}
                     {/* Grand total row */}
-                    <tr className="bg-gradient-to-r from-gray-800 to-gray-900 text-white">
-                      <td className="px-5 py-4 sticky left-0 z-10 bg-gray-800">
+                    <tr className="bg-gray-100 border-t-2 border-gray-300">
+                      <td className="px-5 py-4 sticky left-0 z-10 bg-gray-100">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white">
+                          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-600">
                             <BarChart2 className="w-4 h-4" />
                           </div>
-                          <span className="font-bold">รวมทั้งหมด</span>
+                          <span className="font-bold text-gray-800">รวมทั้งหมด</span>
                         </div>
                       </td>
                       {periods.map(p => (
                         <td key={p} className="px-3 py-4 text-center">
                           <div className="inline-flex flex-col items-center gap-0.5">
-                            <span className="font-bold text-white">{fmtMoney(colTotals[p].commission)}</span>
-                            <span className="text-[10px] text-gray-400">{fmtNum(colTotals[p].orders)} ออเดอร์</span>
+                            <span className="font-bold text-gray-800">{fmtMoney(colTotals[p].commission)}</span>
+                            <span className="text-[10px] text-gray-500">{fmtNum(colTotals[p].orders)} ออเดอร์</span>
                           </div>
                         </td>
                       ))}
-                      <td className="px-4 py-4 bg-violet-900/40">
+                      <td className="px-4 py-4 bg-gray-200">
                         <div className="text-center">
-                          <div className="font-black text-white text-base">{fmtMoney(grandTotal.commission)}</div>
-                          <div className="text-[10px] text-violet-200">{fmtNum(grandTotal.orders)} ออเดอร์</div>
+                          <div className="font-black text-gray-900 text-base">{fmtMoney(grandTotal.commission)}</div>
+                          <div className="text-[10px] text-gray-500">{fmtNum(grandTotal.orders)} ออเดอร์</div>
                         </div>
                       </td>
                     </tr>
@@ -1033,10 +1088,22 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
         </div>
 
         {/* Batch History */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-            <FileText className="w-5 h-5 text-gray-500" />
-            <h2 className="font-semibold text-gray-800">ประวัติ Batch ({batches.length})</h2>
+        <div ref={batchHistoryRef} className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <FileText className="w-5 h-5 text-gray-500" />
+              <h2 className="font-semibold text-gray-800">ประวัตินำเข้า ({batches.length})</h2>
+            </div>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={batchSearch}
+                onChange={e => setBatchSearch(e.target.value)}
+                placeholder="ค้นหาตาม Order ID..."
+                className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 outline-none w-56"
+              />
+            </div>
           </div>
           <div className="divide-y divide-gray-100">
             {loadingBatches ? (
@@ -1116,8 +1183,21 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
                               </tr>
                             </thead>
                             <tbody>
-                              {batchOrders.map(o => (
-                                <tr key={o.id} className="border-t border-gray-100 hover:bg-white">
+                              {batchOrders.map((o, rowIdx) => {
+                                const isMatch = searchTerm && o.order_id.toLowerCase().includes(searchTerm);
+                                const isCurrentMatch = isMatch && matchIndices[searchMatchIdx] === rowIdx;
+                                return (
+                                <tr
+                                  key={o.id}
+                                  data-search-match={rowIdx}
+                                  className={`border-t border-gray-100 transition-colors ${
+                                    isCurrentMatch
+                                      ? 'bg-amber-200 border-l-4 border-l-amber-500'
+                                      : isMatch
+                                        ? 'bg-amber-50 border-l-4 border-l-amber-300'
+                                        : 'hover:bg-white'
+                                  }`}
+                                >
                                   <td className="px-4 py-2 font-mono">{o.order_id}</td>
                                   <td className="px-4 py-2">{fmtDate(o.order_date || '')}</td>
                                   <td className="px-4 py-2 text-right">{o.total_amount != null ? fmtMoney(o.total_amount) : '-'}</td>
@@ -1135,7 +1215,8 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
                                   <td className="px-4 py-2 text-gray-500">{o.note || '-'}</td>
                                   <td className="px-4 py-2 text-gray-500">{fmtDateTime(o.stamped_at)}</td>
                                 </tr>
-                              ))}
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -1149,6 +1230,59 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
         </div>
 
       </div>
+
+      {/* Floating Search Navigator — Ctrl+F style */}
+      {(batchSearch || expandedBatch) && (
+        <div className="fixed bottom-6 right-6 z-50 bg-white rounded-xl shadow-2xl border border-gray-200 px-4 py-3 flex items-center gap-3">
+          <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <input
+            type="text"
+            value={batchSearch}
+            onChange={e => setBatchSearch(e.target.value)}
+            placeholder="ค้นหา Order ID..."
+            className="w-48 text-sm border-none outline-none bg-transparent text-gray-800 placeholder-gray-400"
+            autoFocus={!!batchSearch}
+          />
+          {searchTerm && matchIndices.length > 0 && (
+            <>
+              <div className="h-5 w-px bg-gray-200" />
+              <span className="text-sm font-medium text-gray-600 whitespace-nowrap">
+                <span className="text-amber-600 font-bold">{searchMatchIdx + 1}</span>
+                <span className="text-gray-400"> / </span>
+                <span className="font-bold">{matchIndices.length}</span>
+              </span>
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => goToMatch('prev')}
+                  className="p-1 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-800"
+                  title="ก่อนหน้า"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => goToMatch('next')}
+                  className="p-1 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-800"
+                  title="ถัดไป"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+            </>
+          )}
+          {searchTerm && matchIndices.length === 0 && !loadingBatches && (
+            <span className="text-xs text-gray-400 whitespace-nowrap">ไม่พบ</span>
+          )}
+          {batchSearch && (
+            <button
+              onClick={() => setBatchSearch('')}
+              className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+              title="ล้าง"
+            >
+              <span className="text-sm">✕</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

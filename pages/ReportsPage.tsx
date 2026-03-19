@@ -18,6 +18,8 @@ import {
 import { Order, Customer, Product, WarehouseStock, StockMovement, PaymentMethod, PaymentStatus, OrderStatus, User, Page } from '../types';
 import { calculateCustomerGrade } from '@/utils/customerGrade';
 import { apiFetch } from '../services/api';
+import resolveApiBasePath from '../utils/apiBasePath';
+import DateRangePicker, { DateRange } from '../components/DateRangePicker';
 
 const getCustomerDisplayName = (customer: Customer): string => {
   const first = (customer.firstName || '').trim();
@@ -42,7 +44,7 @@ interface ReportsPageProps {
   pages?: Page[];
 }
 
-type ReportType = 'stock' | 'lot-stock' | 'customers' | 'orders-raw' | 'return-summary';
+type ReportType = 'stock' | 'lot-stock' | 'customers' | 'orders-raw' | 'return-summary' | 'commission';
 
 interface ReportCard {
   id: ReportType;
@@ -97,6 +99,14 @@ const reportCards: ReportCard[] = [
     icon: RotateCcw,
     color: 'bg-orange-500',
     disabled: false
+  },
+  {
+    id: 'commission',
+    title: 'รายงานคอมมิชชั่น',
+    description: 'สรุปสถานะค่าคอมมิชชั่นแยกตามช่วงเวลา พร้อม Export CSV ตามสถานะ',
+    icon: DollarSign,
+    color: 'bg-emerald-500',
+    disabled: false
   }
 ];
 
@@ -131,6 +141,18 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   } | null>(null);
   const [isReturnLoading, setIsReturnLoading] = useState(false);
   const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
+
+  // Commission report state
+  interface CommSummaryRow { period: string; incomplete: number; pending: number; calculated: number; total: number; total_commission: number; }
+  const [commSummaryRows, setCommSummaryRows] = useState<CommSummaryRow[]>([]);
+  const [commGroupBy, setCommGroupBy] = useState<'month' | 'week' | 'day'>('month');
+  const [isCommLoading, setIsCommLoading] = useState(false);
+  const [isCommExporting, setIsCommExporting] = useState(false);
+  const now = new Date();
+  const defaultCommStart = `${now.getFullYear()}-01-01T00:00`;
+  const defaultCommEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T23:59`;
+  const [commSummaryRange, setCommSummaryRange] = useState<DateRange>({ start: defaultCommStart, end: defaultCommEnd });
+  const [commExportRange, setCommExportRange] = useState<DateRange>({ start: defaultCommStart, end: defaultCommEnd });
 
   // Calculate date range for filtering
   const getDateRange = () => {
@@ -352,6 +374,80 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     fetchReturnSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedReport, dateRange, startDate, endDate, currentUser]);
+
+  // Fetch commission summary when commission report is selected
+  useEffect(() => {
+    if (selectedReport !== 'commission') return;
+    const fetchCommSummary = async () => {
+      setIsCommLoading(true);
+      try {
+        const companyId = currentUser?.companyId || 1;
+        const sd = commSummaryRange.start.split('T')[0];
+        const ed = commSummaryRange.end.split('T')[0];
+        const res = await apiFetch(`Commission/get_commission_summary.php?company_id=${companyId}&group_by=${commGroupBy}&start_date=${sd}&end_date=${ed}`);
+        if (res.ok && Array.isArray(res.data)) {
+          setCommSummaryRows(res.data.map((r: any) => ({
+            period: r.period,
+            incomplete: Number(r.incomplete) || 0,
+            pending: Number(r.pending) || 0,
+            calculated: Number(r.calculated) || 0,
+            total: Number(r.total) || 0,
+            total_commission: Number(r.total_commission) || 0,
+          })));
+        } else {
+          setCommSummaryRows([]);
+        }
+      } catch (e) {
+        console.error('Failed to fetch commission summary:', e);
+        setCommSummaryRows([]);
+      } finally {
+        setIsCommLoading(false);
+      }
+    };
+    fetchCommSummary();
+  }, [selectedReport, commGroupBy, commSummaryRange, currentUser]);
+
+  // Commission export handler
+  const handleCommExport = (status: string) => {
+    setIsCommExporting(true);
+    try {
+      const companyId = currentUser?.companyId || 1;
+      const sd = commExportRange.start.split('T')[0];
+      const ed = commExportRange.end.split('T')[0];
+      const path = `Commission/export_commission_orders.php?company_id=${companyId}&status=${status}&start_date=${sd}&end_date=${ed}`;
+      const baseUrl = resolveApiBasePath().replace(/\/$/, '');
+      const token = localStorage.getItem('authToken') || '';
+      window.open(`${baseUrl}/${path}&token=${encodeURIComponent(token)}`, '_blank');
+    } catch (e) { console.error(e); }
+    setIsCommExporting(false);
+  };
+
+  // Commission period label helper
+  const getCommPeriodLabel = (period: string) => {
+    if (commGroupBy === 'month') {
+      const [y, m] = period.split('-');
+      const months = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+      return `${months[parseInt(m)]} ${y}`;
+    }
+    if (commGroupBy === 'week') {
+      const match = period.match(/(\d{4})-W(\d{2})/);
+      if (!match) return period;
+      const year = parseInt(match[1]);
+      const week = parseInt(match[2]);
+      const jan4 = new Date(year, 0, 4);
+      const dow = jan4.getDay() || 7;
+      const mondayW1 = new Date(jan4);
+      mondayW1.setDate(jan4.getDate() - dow + 1);
+      const monday = new Date(mondayW1);
+      monday.setDate(mondayW1.getDate() + (week - 1) * 7);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const fs = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(-2)}`;
+      return `${fs(monday)} - ${fs(sunday)}`;
+    }
+    return period ? new Date(period).toLocaleDateString('th-TH-u-ca-gregory', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-';
+  };
 
   // State for department filter
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
@@ -1424,6 +1520,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         return customers.length > 0;
       case 'return-summary':
         return true; // Always available — data fetched on demand
+      case 'commission':
+        return true; // Always available — data fetched on demand
       default:
         return false;
     }
@@ -1879,6 +1977,124 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 <p className="text-gray-500">เลือกช่วงวันที่แล้วรอสักครู่...</p>
               </div>
             )}
+          </div>
+        );
+
+      case 'commission':
+        const commFmtNum = (n: number) => n.toLocaleString('th-TH');
+        const commFmtMoney = (n: number) => `฿${n.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+        const commTotals = commSummaryRows.reduce((acc, r) => ({
+          incomplete: acc.incomplete + r.incomplete,
+          pending: acc.pending + r.pending,
+          calculated: acc.calculated + r.calculated,
+          total: acc.total + r.total,
+          total_commission: acc.total_commission + r.total_commission,
+        }), { incomplete: 0, pending: 0, calculated: 0, total: 0, total_commission: 0 });
+
+        return (
+          <div>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-gray-500" />
+                  <h2 className="font-semibold text-gray-800">สรุปตามช่วงเวลา</h2>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <DateRangePicker value={commSummaryRange} onApply={setCommSummaryRange} />
+                  <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+                    {(['month', 'week', 'day'] as const).map(g => (
+                      <button
+                        key={g}
+                        onClick={() => setCommGroupBy(g)}
+                        className={`px-3 py-1.5 text-xs font-medium transition-colors ${commGroupBy === g ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                      >
+                        {g === 'month' ? 'เดือน' : g === 'week' ? 'สัปดาห์' : 'วัน'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Summary Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-600">
+                      <th className="px-5 py-3 text-left font-medium">ช่วงเวลา</th>
+                      <th className="px-5 py-3 text-right font-medium">🔴 ยังไม่สำเร็จ</th>
+                      <th className="px-5 py-3 text-right font-medium">🟡 รอคิดค่าคอม</th>
+                      <th className="px-5 py-3 text-right font-medium">🟢 คิดแล้ว</th>
+                      <th className="px-5 py-3 text-right font-medium">รวม</th>
+                      <th className="px-5 py-3 text-right font-medium">ค่าคอมรวม</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isCommLoading ? (
+                      <tr><td colSpan={6} className="px-5 py-8 text-center text-gray-400">
+                        <div className="flex items-center justify-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          กำลังโหลด...
+                        </div>
+                      </td></tr>
+                    ) : commSummaryRows.length === 0 ? (
+                      <tr><td colSpan={6} className="px-5 py-8 text-center text-gray-400">ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>
+                    ) : (
+                      <>
+                        {commSummaryRows.map(row => (
+                          <tr key={row.period} className="border-t border-gray-100 hover:bg-gray-50">
+                            <td className="px-5 py-3 font-medium text-gray-800">{getCommPeriodLabel(row.period)}</td>
+                            <td className="px-5 py-3 text-right text-red-600 font-medium">{commFmtNum(row.incomplete)}</td>
+                            <td className="px-5 py-3 text-right text-amber-600 font-medium">{commFmtNum(row.pending)}</td>
+                            <td className="px-5 py-3 text-right text-emerald-600 font-medium">{commFmtNum(row.calculated)}</td>
+                            <td className="px-5 py-3 text-right text-gray-700 font-semibold">{commFmtNum(row.total)}</td>
+                            <td className="px-5 py-3 text-right text-gray-600">{commFmtMoney(row.total_commission)}</td>
+                          </tr>
+                        ))}
+                        <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                          <td className="px-5 py-3 text-gray-800">รวมทั้งหมด</td>
+                          <td className="px-5 py-3 text-right text-red-700">{commFmtNum(commTotals.incomplete)}</td>
+                          <td className="px-5 py-3 text-right text-amber-700">{commFmtNum(commTotals.pending)}</td>
+                          <td className="px-5 py-3 text-right text-emerald-700">{commFmtNum(commTotals.calculated)}</td>
+                          <td className="px-5 py-3 text-right text-gray-800">{commFmtNum(commTotals.total)}</td>
+                          <td className="px-5 py-3 text-right text-gray-800">{commFmtMoney(commTotals.total_commission)}</td>
+                        </tr>
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Export Section */}
+              <div className="px-5 py-4 border-t border-gray-100 space-y-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-sm text-gray-600 font-medium">Export CSV:</span>
+                  <DateRangePicker value={commExportRange} onApply={setCommExportRange} />
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {[
+                    { status: 'all', label: 'ทั้งหมด', color: 'gray' },
+                    { status: 'incomplete', label: 'ยังไม่สำเร็จ', color: 'red' },
+                    { status: 'pending', label: 'รอคิดค่าคอม', color: 'amber' },
+                    { status: 'calculated', label: 'คิดแล้ว', color: 'emerald' },
+                  ].map(({ status, label, color }) => (
+                    <button
+                      key={status}
+                      onClick={() => handleCommExport(status)}
+                      disabled={isCommExporting}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                        ${color === 'gray' ? 'border-gray-300 text-gray-700 hover:bg-gray-50' :
+                          color === 'red' ? 'border-red-200 text-red-700 hover:bg-red-50' :
+                          color === 'amber' ? 'border-amber-200 text-amber-700 hover:bg-amber-50' :
+                          'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}
+                        disabled:opacity-50`}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         );
 
