@@ -26,6 +26,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
     const d = new Date(value.end || new Date());
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
+  const [alignRight, setAlignRight] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -46,6 +47,11 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
       setRangeTempStart(new Date(s.getFullYear(), s.getMonth(), s.getDate()));
       setRangeTempEnd(new Date(e.getFullYear(), e.getMonth(), e.getDate()));
       setVisibleMonth(new Date(e.getFullYear(), e.getMonth(), 1));
+      // Check if popup would overflow right edge
+      if (btnRef.current) {
+        const rect = btnRef.current.getBoundingClientRect();
+        setAlignRight(rect.left + 660 > window.innerWidth);
+      }
     }
   }, [open]);
 
@@ -172,7 +178,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-[9999] bg-white rounded-xl shadow-xl border border-gray-200 p-5 w-auto" style={{ minWidth: '640px' }}>
+        <div className={`absolute top-full mt-1 z-[9999] bg-white rounded-xl shadow-xl border border-gray-200 p-5 w-auto ${alignRight ? 'right-0' : 'left-0'}`} style={{ minWidth: '640px' }}>
           {/* Preset Buttons */}
           <div className="flex flex-wrap gap-1.5 mb-4">
             {[

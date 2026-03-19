@@ -13,12 +13,14 @@ import {
   BarChart3,
   FileSpreadsheet,
   Loader2,
-  RotateCcw
+  RotateCcw,
+  ExternalLink
 } from 'lucide-react';
 import { Order, Customer, Product, WarehouseStock, StockMovement, PaymentMethod, PaymentStatus, OrderStatus, User, Page } from '../types';
 import { calculateCustomerGrade } from '@/utils/customerGrade';
 import { apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
+import APP_BASE_PATH from '../appBasePath';
 import DateRangePicker, { DateRange } from '../components/DateRangePicker';
 
 const getCustomerDisplayName = (customer: Customer): string => {
@@ -385,8 +387,14 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const sd = commSummaryRange.start.split('T')[0];
         const ed = commSummaryRange.end.split('T')[0];
         const res = await apiFetch(`Commission/get_commission_summary.php?company_id=${companyId}&group_by=${commGroupBy}&start_date=${sd}&end_date=${ed}`);
-        if (res.ok && Array.isArray(res.data)) {
-          setCommSummaryRows(res.data.map((r: any) => ({
+        // Handle multiple response formats: {ok, data: [...]} or {ok, data: {rows: [...]}} or direct array
+        const rawData = res?.data;
+        const rows = Array.isArray(rawData) ? rawData
+          : Array.isArray(rawData?.rows) ? rawData.rows
+          : Array.isArray(res) ? res
+          : null;
+        if (rows && rows.length > 0) {
+          setCommSummaryRows(rows.map((r: any) => ({
             period: r.period,
             incomplete: Number(r.incomplete) || 0,
             pending: Number(r.pending) || 0,
@@ -395,6 +403,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             total_commission: Number(r.total_commission) || 0,
           })));
         } else {
+          console.warn('[CommReport] No rows found in response:', res);
           setCommSummaryRows([]);
         }
       } catch (e) {
@@ -1528,8 +1537,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   };
 
   const renderReportContent = () => {
-    // Show loading spinner while fetching data
-    if (isLoading) {
+    // Show loading spinner while fetching data (skip for reports with own loading states)
+    if (isLoading && selectedReport !== 'commission' && selectedReport !== 'return-summary') {
       return (
         <div className="text-center py-20">
           <Loader2 className="w-12 h-12 text-indigo-500 mx-auto mb-4 animate-spin" />
@@ -1993,6 +2002,17 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
         return (
           <div>
+            {/* Link to Commission Stamp page */}
+            <div className="mb-4 flex justify-end">
+              <button
+                onClick={() => { window.location.href = `${APP_BASE_PATH || '/'}?page=Commission+Stamp`; }}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium"
+              >
+                <DollarSign className="w-4 h-4" />
+                ไปหน้าจัดการค่าคอมมิชชัน
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
@@ -2154,8 +2174,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         })}
       </div>
 
-      {/* Filters */}
-      {selectedReport && (
+      {/* Filters (hide for commission — has its own date range picker) */}
+      {selectedReport && selectedReport !== 'commission' && (
         <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
