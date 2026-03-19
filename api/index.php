@@ -5395,6 +5395,31 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $previousPayment = (string) ($existingOrder['payment_status'] ?? '');
                 $customerId = $existingOrder['customer_id'] ?? null;
 
+                // [PREVENTION] Cap amount_paid at 1.5x total_amount to prevent doubling bugs
+                // Allows normal overpayments (ลูกค้าโอนเกิน) but blocks 2x doubling
+                if ($amountPaid !== null && $amountPaid !== '' && (float) $amountPaid > 0) {
+                    $effectiveTotal = $totalAmount !== null ? (float) $totalAmount : (float) ($existingOrder['total_amount'] ?? 0);
+                    $capLimit = $effectiveTotal * 1.5;
+                    if ($effectiveTotal > 0 && (float) $amountPaid > $capLimit) {
+                        $amountPaid = $effectiveTotal; // Reset to exact total if exceeds 1.5x
+                    }
+                }
+
+                // [PREVENTION] Floor: don't let amount_paid drop below debt_collection total
+                // This prevents slip upload resets (amountPaid: 0) from erasing debt amounts
+                if ($amountPaid !== null && $amountPaid !== '') {
+                    try {
+                        $debtFloorStmt = $pdo->prepare("SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection WHERE order_id = ?");
+                        $debtFloorStmt->execute([$id]);
+                        $debtFloor = (float) $debtFloorStmt->fetchColumn();
+                        if ($debtFloor > 0 && (float) $amountPaid < $debtFloor) {
+                            $amountPaid = $debtFloor;
+                        }
+                    } catch (Throwable $e) {
+                        // debt_collection table might not exist — ignore
+                    }
+                }
+
                 // [LOGGING] Capture Previous Tracking
                 $ptStmt = $pdo->prepare("SELECT tracking_number FROM order_tracking_numbers WHERE parent_order_id = ? ORDER BY id");
                 $ptStmt->execute([$id]);
@@ -7328,22 +7353,38 @@ function handle_order_slips(PDO $pdo, ?string $id): void
              */
             if ($orderId) {
                 try {
-                    $checkOrdStmt = $pdo->prepare("SELECT payment_method FROM orders WHERE id = ?");
+                    set_audit_context($pdo, 'index/slip_delete');
+                    $checkOrdStmt = $pdo->prepare("SELECT payment_method, total_amount FROM orders WHERE id = ?");
                     $checkOrdStmt->execute([$orderId]);
-                    $pm = $checkOrdStmt->fetchColumn();
+                    $orderRow = $checkOrdStmt->fetch(PDO::FETCH_ASSOC);
+                    $pm = $orderRow['payment_method'] ?? '';
+                    $orderTotal = (float) ($orderRow['total_amount'] ?? 0);
+
+                    // Recalculate amount_paid from remaining sources
+                    $slipSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_slips WHERE order_id = ?");
+                    $slipSumStmt->execute([$orderId]);
+                    $remainingSlipTotal = (float) $slipSumStmt->fetchColumn();
+
+                    $debtSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection WHERE order_id = ?");
+                    $debtSumStmt->execute([$orderId]);
+                    $debtTotal = (float) $debtSumStmt->fetchColumn();
+
+                    // Use max of remaining sources, capped at total_amount
+                    $recalcPaid = min($orderTotal, max($remainingSlipTotal, $debtTotal));
+                    $pdo->prepare("UPDATE orders SET amount_paid = ? WHERE id = ?")->execute([$recalcPaid, $orderId]);
 
                     if ($pm === 'COD') {
                         $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
                         $countSlipStmt->execute([$orderId]);
                         $remainingSlips = (int) $countSlipStmt->fetchColumn();
 
-                        if ($remainingSlips === 0) {
+                        if ($remainingSlips === 0 && $debtTotal <= 0) {
                             $updOrdStmt = $pdo->prepare("UPDATE orders SET payment_status = 'Unpaid' WHERE id = ?");
                             $updOrdStmt->execute([$orderId]);
                         }
                     }
                 } catch (Throwable $e) {
-                    error_log("Error reverting COD status: " . $e->getMessage());
+                    error_log("Error recalculating after slip delete: " . $e->getMessage());
                 }
             }
             json_response(['ok' => true]);
@@ -8295,12 +8336,40 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
             // Delete cod_records first, then cod_document
             try {
                 $pdo->beginTransaction();
+                set_audit_context($pdo, 'index/cod_document_delete');
+
+                // Get affected order IDs before deleting records
+                $affectedOrdersStmt = $pdo->prepare('SELECT DISTINCT order_id FROM cod_records WHERE document_id = ?');
+                $affectedOrdersStmt->execute([$id]);
+                $affectedOrderIds = $affectedOrdersStmt->fetchAll(PDO::FETCH_COLUMN);
+
                 $delRecords = $pdo->prepare('DELETE FROM cod_records WHERE document_id = ?');
                 $delRecords->execute([$id]);
                 $deletedRecords = $delRecords->rowCount();
 
                 $delDoc = $pdo->prepare('DELETE FROM cod_documents WHERE id = ?');
                 $delDoc->execute([$id]);
+
+                // Recalculate amount_paid for all affected orders
+                foreach ($affectedOrderIds as $affOid) {
+                    // Sum remaining COD records
+                    $codSumStmt = $pdo->prepare("SELECT COALESCE(SUM(cod_amount), 0) FROM cod_records WHERE order_id = ?");
+                    $codSumStmt->execute([$affOid]);
+                    $remainingCod = (float) $codSumStmt->fetchColumn();
+
+                    // Sum slips
+                    $slipSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_slips WHERE order_id = ?");
+                    $slipSumStmt->execute([$affOid]);
+                    $remainingSlip = (float) $slipSumStmt->fetchColumn();
+
+                    // Get total_amount
+                    $totalStmt = $pdo->prepare("SELECT total_amount FROM orders WHERE id = ?");
+                    $totalStmt->execute([$affOid]);
+                    $orderTotal = (float) $totalStmt->fetchColumn();
+
+                    $recalcPaid = min($orderTotal, round($remainingCod + $remainingSlip, 2));
+                    $pdo->prepare("UPDATE orders SET amount_paid = ? WHERE id = ?")->execute([$recalcPaid, $affOid]);
+                }
 
                 $pdo->commit();
                 json_response(['ok' => true, 'deleted_records' => $deletedRecords]);

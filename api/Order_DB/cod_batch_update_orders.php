@@ -94,7 +94,17 @@ try {
         $slipTotals[$row['order_id']] = (float) $row['total_slip'];
     }
 
-    // 3. Update each order
+    // 3. Fetch total_amount for each order (for capping)
+    $orderTotals = [];
+    $totalAmountSql = "SELECT id, total_amount FROM orders WHERE id IN ($placeholders) AND company_id = ?";
+    $totalAmountParams = array_merge($orderIds, [$companyId]);
+    $totalAmountStmt = $pdo->prepare($totalAmountSql);
+    $totalAmountStmt->execute($totalAmountParams);
+    foreach ($totalAmountStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $orderTotals[$row['id']] = (float) $row['total_amount'];
+    }
+
+    // 4. Update each order
     $pdo->beginTransaction();
     set_audit_context($pdo, 'orders/cod_batch_update');
     $updates = [];
@@ -108,6 +118,12 @@ try {
         $codTotal = $codTotals[$orderId] ?? 0;
         $slipTotal = $slipTotals[$orderId] ?? 0;
         $totalPaid = round($codTotal + $slipTotal, 2);
+        
+        // Cap at 1.5x total_amount to prevent doubling bugs (allows normal overpayments)
+        $orderTotal = $orderTotals[$orderId] ?? 0;
+        if ($orderTotal > 0 && $totalPaid > $orderTotal * 1.5) {
+            $totalPaid = $orderTotal;
+        }
 
         $paymentStatus = $totalPaid > 0 ? 'PreApproved' : 'PendingVerification';
 

@@ -71,6 +71,14 @@ try {
             $sumStmt->execute([':orderId' => $log['order_id'], ':companyId' => $companyId]);
             $remainingPaid = (float) $sumStmt->fetchColumn();
 
+            // Cap at 1.5x total_amount to prevent doubling bugs (allows normal overpayments)
+            $orderTotalStmt = $pdo->prepare("SELECT total_amount FROM orders WHERE id = :id AND company_id = :cid");
+            $orderTotalStmt->execute([':id' => $log['order_id'], ':cid' => $companyId]);
+            $orderTotal = (float) $orderTotalStmt->fetchColumn();
+            if ($orderTotal > 0 && $remainingPaid > $orderTotal * 1.5) {
+                $remainingPaid = $orderTotal;
+            }
+
             $pdo->prepare("UPDATE orders SET amount_paid = :paid WHERE id = :id AND company_id = :cid")
                 ->execute([':paid' => $remainingPaid, ':id' => $log['order_id'], ':cid' => $companyId]);
         } else {
