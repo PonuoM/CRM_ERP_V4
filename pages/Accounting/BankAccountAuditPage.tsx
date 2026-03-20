@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
 import { User, Customer, Activity, LineItem, Order } from '../../types';
-import { Search, Loader2, ExternalLink, Filter, CheckSquare, Download } from 'lucide-react';
+import { Search, Loader2, ExternalLink, Filter, CheckSquare, Download, X } from 'lucide-react';
 import OrderDetailModal from '../../components/OrderDetailModal';
 import type { StatementContext } from '../../components/OrderDetailModal';
 import SlipOrderSearchModal from '../../components/SlipOrderSearchModal';
@@ -62,6 +62,12 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(false);
     const [recalculating, setRecalculating] = useState(false);
+    // Order ID search via backend
+    const [orderIdSearch, setOrderIdSearch] = useState('');
+    const [orderSearchResults, setOrderSearchResults] = useState<any[]>([]);
+    const [orderSearchLoading, setOrderSearchLoading] = useState(false);
+    const [isOrderSearchModalOpen, setIsOrderSearchModalOpen] = useState(false);
+    const [orderSearchQuery, setOrderSearchQuery] = useState('');
     // For viewing order detail
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
@@ -671,6 +677,32 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         document.body.removeChild(link);
     };
 
+    const handleOrderIdSearch = async () => {
+        const q = orderIdSearch.trim();
+        if (!q) return;
+        setOrderSearchLoading(true);
+        setOrderSearchQuery(q);
+        try {
+            const companyId = currentUser.companyId || (currentUser as any).company_id;
+            const res = await apiFetch(`Statement_DB/search_order_reconcile.php?company_id=${companyId}&order_id=${encodeURIComponent(q)}`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (res.status === 'success' && Array.isArray(res.data)) {
+                setOrderSearchResults(res.data);
+            } else {
+                setOrderSearchResults([]);
+            }
+            setIsOrderSearchModalOpen(true);
+        } catch (error) {
+            console.error('Search failed', error);
+            setOrderSearchResults([]);
+            setIsOrderSearchModalOpen(true);
+        } finally {
+            setOrderSearchLoading(false);
+        }
+    };
+
     return (
         <>
             <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
@@ -737,6 +769,37 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                 >
                                     <Download className="w-4 h-4 mr-2" />
                                     Export CSV
+                                </button>
+                            </div>
+
+                            {/* Order ID Search — ค้นหาจาก DB */}
+                            <div className="flex items-end gap-1.5">
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700 block mb-1">ค้นหา Order / COD</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            placeholder="Order ID หรือ เลข COD..."
+                                            className="w-52 px-3 py-2 pl-8 border rounded-md text-sm border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={orderIdSearch}
+                                            onChange={(e) => setOrderIdSearch(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') handleOrderIdSearch(); }}
+                                        />
+                                        <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        {orderIdSearch && (
+                                            <button
+                                                onClick={() => setOrderIdSearch('')}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                                            >✕</button>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleOrderIdSearch}
+                                    disabled={!orderIdSearch.trim() || orderSearchLoading}
+                                    className="mb-[1px] px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center text-sm"
+                                >
+                                    {orderSearchLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                                 </button>
                             </div>
 
@@ -1153,6 +1216,150 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                             <button
                                 onClick={() => setIsCodDetailModalOpen(false)}
                                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+                            >
+                                ปิด
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Order ID Search Results Modal */}
+            {isOrderSearchModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col">
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b flex justify-between items-center bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-xl">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">ผลการค้นหา Order / COD</h3>
+                                <p className="text-sm text-gray-500 mt-0.5">
+                                    ค้นหา "<span className="font-medium text-indigo-600">{orderSearchQuery}</span>" — พบ {orderSearchResults.length} รายการ
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setIsOrderSearchModalOpen(false)}
+                                className="p-2 hover:bg-white/80 rounded-lg transition-colors"
+                            >
+                                <X className="w-5 h-5 text-gray-500" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {orderSearchResults.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <Search className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                                    <p className="text-gray-500 font-medium">ไม่พบรายการที่จับคู่กับ Statement</p>
+                                    <p className="text-gray-400 text-sm mt-1">Order / COD นี้อาจยังไม่ได้ถูก reconcile</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {orderSearchResults.map((r: any, idx: number) => (
+                                        <div key={r.reconcile_id || idx} className="border rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+                                            {/* Card header */}
+                                            <div className="bg-gray-50 px-4 py-3 flex flex-wrap gap-3 items-center justify-between border-b">
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                                        r.match_type === 'cod' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
+                                                    }`}>{r.match_type === 'cod' ? 'COD' : 'ORDER'}</span>
+                                                    <span
+                                                        className="text-indigo-600 font-bold cursor-pointer hover:underline"
+                                                        onClick={() => {
+                                                            setIsOrderSearchModalOpen(false);
+                                                            if (r.order_id) openOrderModal(r.order_id);
+                                                        }}
+                                                    >
+                                                        {r.order_id}
+                                                    </span>
+                                                    {r.cod_document_number && (
+                                                        <span className="text-xs text-amber-600 font-medium">เอกสาร COD: {r.cod_document_number}</span>
+                                                    )}
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                                        r.reconcile_type === 'Order' ? 'bg-blue-100 text-blue-700' :
+                                                        r.reconcile_type === 'Suspense' ? 'bg-orange-100 text-orange-700' :
+                                                        r.reconcile_type === 'Deposit' ? 'bg-purple-100 text-purple-700' :
+                                                        'bg-gray-100 text-gray-600'
+                                                    }`}>
+                                                        {r.reconcile_type}
+                                                    </span>
+                                                    {r.auto_matched && (
+                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Auto</span>
+                                                    )}
+                                                </div>
+                                                <span className="text-xs text-gray-400">
+                                                    Reconcile #{r.reconcile_id}
+                                                </span>
+                                            </div>
+
+                                            {/* Card body */}
+                                            <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">ยอด Statement</span>
+                                                    <p className="font-medium">{formatCurrency(r.sl_amount)}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">ยอดที่จับคู่</span>
+                                                    <p className="font-medium text-green-600">{formatCurrency(r.confirmed_amount)}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">วิธีชำระ</span>
+                                                    <p className="font-medium">{r.payment_method || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">วัน/เวลาโอน</span>
+                                                    <p className="font-medium">{r.transfer_at ? formatDate(r.transfer_at) : '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">Channel</span>
+                                                    <p className="font-medium">{r.channel || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">รายละเอียด Statement</span>
+                                                    <p className="font-medium truncate" title={r.sl_description}>{r.sl_description || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">ธนาคาร</span>
+                                                    <p className="font-medium">{r.bank_name ? `${r.bank_name} ${r.bank_number}` : '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">เลขที่เอกสาร Batch</span>
+                                                    <p className="font-medium text-xs">{r.batch_document_no || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">จับคู่เมื่อ</span>
+                                                    <p className="font-medium">{r.reconcile_created_at ? formatDate(r.reconcile_created_at) : '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">จับคู่โดย</span>
+                                                    <p className="font-medium">{r.created_by_name?.trim() || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-400 text-xs">ยืนยันโดย</span>
+                                                    <p className="font-medium">{r.confirmed_by_name?.trim() || <span className="text-gray-300">ยังไม่ยืนยัน</span>}</p>
+                                                </div>
+                                                {r.other_orders_on_statement && (
+                                                    <div>
+                                                        <span className="text-gray-400 text-xs">Order อื่นใน Statement เดียวกัน</span>
+                                                        <p className="font-medium text-amber-600">{r.other_orders_on_statement}</p>
+                                                    </div>
+                                                )}
+                                                {r.note && (
+                                                    <div className="col-span-2 md:col-span-3">
+                                                        <span className="text-gray-400 text-xs">หมายเหตุ</span>
+                                                        <p className="font-medium text-gray-600">{r.note}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-4 bg-gray-50 border-t flex justify-end rounded-b-xl">
+                            <button
+                                onClick={() => setIsOrderSearchModalOpen(false)}
+                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                             >
                                 ปิด
                             </button>
