@@ -136,24 +136,37 @@ PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื
 
 ## Frontend — QuotaSettingsPage (3 Tabs)
 
+**UI Theme:** White card header + emerald/teal accent line (top gradient) · Pill tabs (bg-gray-100) · Green gradient buttons · Table gradient headers · fadeIn animation ทุก tab · Tailwind `fadeIn` keyframe กำหนดใน `index.html` tailwind config
+
 ### Tab 1: สินค้าโควตา
 - Dual-mode สร้าง: อ้างอิงสินค้าที่มี (duplicate) หรือ สร้างใหม่พร้อมโควตา
 - Toggle Active/Inactive
+- Table: gradient header (`from-gray-50 to-emerald-50/30`) · uppercase column titles · hover `bg-emerald-50/40` · border-l-4 status color
+- Button: gradient `from-emerald-600 to-teal-600` + hover scale
 
 ### Tab 2: อัตราโควตา
-- **Filter Bar:** Multi-select สินค้า + ประเภท Rate + ช่วงวัน + ล้างตัวกรอง
+- **Filter Bar:** rounded-2xl shadow · Multi-select สินค้า + ช่วงวัน + ล้างตัวกรอง
 - โหลด rates ทุก product + global ทีเดียว → filter frontend
-- Badge: reset/cumulative → "ใช้งานอยู่" (1 ตัว) | confirm → หลายตัวตามช่วง (🟣🟡🔴)
-- **Modal สร้าง/แก้ rate:** โหมด → ยอดขาย/ฟิลด์ → เลือกสินค้า (multi-select) → วันที่
+- **Rate Card Layout (3 แถว):**
+  - **Row 1:** Status badge + ชื่อ rate + ฿/โควตา (pill bg-gray-100) + วันที่มีผล + Edit/Delete
+  - **Row 2:** Product pill badges แยก pill ต่อชิ้น (bg-emerald-100 / bg-teal-100) + แสดง per-product rate ถ้าต่างจาก main
+  - **Row 3:** วันที่คำนวณออเดอร์ + calc period + ช่วงอายุโควตา + ชื่อผู้สร้าง
+- Card border-l-4 ตามสถานะ: emerald (active) / amber (future) / red (expired)
 - ⚠️ สร้าง reset → confirm dialog แจ้งเตือนสะสมหาย | แก้ไข → ล็อคโหมด
 
 ### Tab 3: สรุปโควตาพนักงาน
 - **แยก 2 ตาราง ตาม role group:**
-  - 🔵 **Telesale** (Telesale + Supervisor Telesale) — badge สีฟ้า + จำนวนคน
-  - 🟣 **Admin Page** — badge สีม่วง + จำนวนคน
+  - 🟢 **Telesale** (Telesale + Supervisor Telesale) — badge rounded-xl สีเขียว + จำนวนคน (bg-gray-100 pill)
+  - 🟣 **Admin Page** — badge rounded-xl สีม่วง + จำนวนคน
   - ตารางไหนไม่มีข้อมูลจะไม่แสดง
-- **เลือกตาม rate** (ไม่ใช่ product): dropdown ทุก rate + "ทั้งหมด (รวมทุก rate)"
-- **Pending counts:** pre-loaded `⏳ N รอยืนยัน` ใน dropdown + badge ข้างๆ
+  - Table: gradient header · even row stripe · hover `bg-emerald-50/40` · rounded-2xl container
+- **Custom dropdown เลือกอัตราโควตา** (ไม่ใช่ native `<select>`):
+  - Trigger button: แสดง badge pill สีส้ม `⏳ N รอยืนยัน` ด้านหน้าชื่อ rate
+  - Dropdown panel: z-50 rounded-xl shadow-lg · แต่ละ option มี amber badge pill + truncated label
+  - Selected state: bg-emerald-50 + text-emerald-700
+  - Click outside → auto close (ref + mousedown listener)
+  - State: `rateSelectorOpen` + `rateSelectorRef`
+- **Pending counts:** pre-loaded `⏳ N รอยืนยัน` badge ใน dropdown options
 - **Checkbox + Bulk confirm:** แสดงเฉพาะ confirm mode + require_confirm=1 (checkbox ทำงานแยกต่อตาราง)
 - **Allocation modal:** เลือกสินค้าเอง (checkbox "สินค้าทั้งหมด" default ติ๊ก / เอาติ๊กออก → toggle ทีละตัว) + จำนวนต่อสินค้า + วันเริ่ม/หมดอายุ + หมายเหตุ + สรุปจำนวนแถว (ไม่ส่ง periodStart/periodEnd)
 - **Breakdown modal (👁️):** รายละเอียดแยกตาม rate + product badges (djb2 hash สี)
@@ -198,7 +211,7 @@ Helper: DELETE existing → SELECT quota_products → SELECT order_items → mat
 ### quotaMaxMap (Real-time Quantity Limit)
 `Map<productId, maxQty>` — โหลดตอน mount CreateOrderPage (dynamic import) → `Math.floor(remaining / quotaCost)` → enforce ทั้ง create mode + upsell mode
 
-**Visual:** `max` attr + border indigo + label "โควตา: N" + tooltip (เหมือนกันทั้ง 2 โหมด)
+**Visual:** `max` attr + border emerald + label "โควตา: N" + tooltip (เหมือนกันทั้ง 2 โหมด)
 
 ### Phase 3 (ยังไม่ทำ)
 - [ ] Backend validation (block order API)
