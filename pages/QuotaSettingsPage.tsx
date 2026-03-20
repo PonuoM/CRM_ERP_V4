@@ -71,6 +71,8 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [pendingCountsMap, setPendingCountsMap] = useState<Record<number, number>>({});
   const [pendingCountsLoading, setPendingCountsLoading] = useState(false);
+  const [rateSelectorOpen, setRateSelectorOpen] = useState(false);
+  const rateSelectorRef = React.useRef<HTMLDivElement>(null);
 
   // Allocation modal
   const [showAllocateModal, setShowAllocateModal] = useState(false);
@@ -136,6 +138,17 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     const handler = (e: MouseEvent) => {
       if (rateFilterRef.current && !rateFilterRef.current.contains(e.target as Node)) {
         setRateFilterDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Close rate selector dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (rateSelectorRef.current && !rateSelectorRef.current.contains(e.target as Node)) {
+        setRateSelectorOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -502,27 +515,47 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   return (
     <>
     <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
-          <div className="bg-indigo-100 p-2 rounded-lg">
-            <Package size={24} className="text-indigo-600" />
+      {/* ===== Clean White Header ===== */}
+      <div className="mb-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-400" />
+        <div className="relative">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="bg-emerald-100 p-2.5 rounded-xl">
+              <Package size={24} className="text-emerald-600" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">ระบบสินค้าโควตา</h1>
+              <p className="text-gray-400 text-sm">จัดการโควตาสินค้าตามยอดขายของพนักงาน</p>
+            </div>
           </div>
-          ระบบสินค้าโควตา
-        </h1>
-        <p className="text-gray-500 mt-1 ml-12">จัดการโควตาสินค้าตามยอดขายของพนักงาน</p>
+          {/* Stats bar */}
+          <div className="flex gap-4 mt-4">
+            <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-2 flex items-center gap-2">
+              <Package size={14} className="text-emerald-500" />
+              <span className="text-sm font-medium text-gray-700">{quotaProducts.length} สินค้า</span>
+            </div>
+            <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-2 flex items-center gap-2">
+              <Settings size={14} className="text-teal-500" />
+              <span className="text-sm font-medium text-gray-700">{allRateSchedules.length} อัตรา</span>
+            </div>
+            <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-2 flex items-center gap-2">
+              <Users size={14} className="text-emerald-500" />
+              <span className="text-sm font-medium text-gray-700">{summaryData.length} พนักงาน</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 mb-6">
+      {/* ===== Pill Tabs ===== */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6 w-fit">
         {tabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
               activeTab === tab.key
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'bg-white text-emerald-700 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'
             }`}
           >
             <tab.icon size={16} />
@@ -533,7 +566,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
       {/* ============ Tab: Products ============ */}
       {activeTab === 'products' && (
-        <div>
+        <div className="animate-[fadeIn_0.2s_ease-out]">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold text-gray-700">รายการสินค้าโควตา</h2>
             <button
@@ -544,7 +577,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                 setProductCreateMode('existing');
                 setShowProductForm(true);
               }}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-700 text-sm font-medium shadow-sm"
+              className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 hover:shadow-lg hover:scale-[1.02] transition-all text-sm font-medium shadow-md"
             >
               <Plus size={16} />
               เพิ่มสินค้าโควตา
@@ -572,7 +605,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                         onClick={() => setProductCreateMode('existing')}
                         className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
                           productCreateMode === 'existing'
-                            ? 'bg-indigo-600 text-white'
+                            ? 'bg-emerald-600 text-white'
                             : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
                         }`}
                       >
@@ -583,7 +616,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                         onClick={() => setProductCreateMode('new')}
                         className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
                           productCreateMode === 'new'
-                            ? 'bg-indigo-600 text-white'
+                            ? 'bg-emerald-600 text-white'
                             : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
                         }`}
                       >
@@ -720,7 +753,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   <button onClick={() => setShowProductForm(false)} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
                     ยกเลิก
                   </button>
-                  <button onClick={handleSaveProduct} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+                  <button onClick={handleSaveProduct} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">
                     {editingProduct ? 'บันทึก' : 'เพิ่ม'}
                   </button>
                 </div>
@@ -729,16 +762,16 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
           )}
 
           {/* Product Table */}
-          <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-white border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gradient-to-r from-gray-50 to-emerald-50/30 border-b">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">สินค้า</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">ชื่อในระบบ</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">SKU ใน CSV</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-500">ต้นทุนโควตา</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-500">สถานะ</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-500">การดำเนินการ</th>
+                  <th className="px-5 py-3.5 text-left font-semibold text-gray-600 text-xs uppercase tracking-wider">สินค้า</th>
+                  <th className="px-5 py-3.5 text-left font-semibold text-gray-600 text-xs uppercase tracking-wider">ชื่อในระบบ</th>
+                  <th className="px-5 py-3.5 text-left font-semibold text-gray-600 text-xs uppercase tracking-wider">SKU ใน CSV</th>
+                  <th className="px-5 py-3.5 text-center font-semibold text-gray-600 text-xs uppercase tracking-wider">ต้นทุนโควตา</th>
+                  <th className="px-5 py-3.5 text-center font-semibold text-gray-600 text-xs uppercase tracking-wider">สถานะ</th>
+                  <th className="px-5 py-3.5 text-center font-semibold text-gray-600 text-xs uppercase tracking-wider">การดำเนินการ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -751,7 +784,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   </tr>
                 ) : (
                   quotaProducts.map(qp => (
-                    <tr key={qp.id} className={!qp.isActive ? 'opacity-50 bg-gray-50' : 'hover:bg-gray-50'}>
+                    <tr key={qp.id} className={`transition-colors ${!qp.isActive ? 'opacity-50 bg-gray-50' : 'hover:bg-emerald-50/40'}`}>
                       <td className="px-4 py-3">
                         <div className="font-medium text-gray-800">{qp.productSku || `#${qp.productId}`}</div>
                         <div className="text-xs text-gray-400">{qp.productName || '—'}</div>
@@ -759,7 +792,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       <td className="px-4 py-3 font-medium text-gray-700">{qp.displayName}</td>
                       <td className="px-4 py-3 text-gray-500">{qp.csvLabel || <span className="text-gray-300">—</span>}</td>
                       <td className="px-4 py-3 text-center">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700">
                           🎫 {qp.quotaCost}
                         </span>
                       </td>
@@ -779,7 +812,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       <td className="px-4 py-3 text-center">
                         <button
                           onClick={() => handleEditProduct(qp)}
-                          className="text-gray-400 hover:text-indigo-600 p-1"
+                          className="text-gray-400 hover:text-emerald-600 p-1"
                           title="แก้ไข"
                         >
                           <Edit size={16} />
@@ -796,11 +829,11 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
       {/* ============ Tab: Rates ============ */}
       {activeTab === 'rates' && (
-        <div>
+        <div className="animate-[fadeIn_0.2s_ease-out]">
           {/* Filter Bar */}
-          <div className="bg-white border rounded-xl p-4 mb-4 shadow-sm">
+          <div className="bg-white border rounded-2xl p-4 mb-4 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center gap-2 mb-3">
-              <Filter size={16} className="text-indigo-500" />
+              <Filter size={16} className="text-emerald-500" />
               <span className="text-sm font-semibold text-gray-700">ตัวกรอง</span>
               {(rateFilterProducts.length > 0 || rateFilterDateFrom || rateFilterDateTo) && (
                 <button
@@ -817,7 +850,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                 <label className="block text-xs font-medium text-gray-500 mb-1">สินค้า</label>
                 <button
                   onClick={() => setRateFilterDropdownOpen(o => !o)}
-                  className="border rounded-lg px-3 py-2 text-sm flex items-center gap-2 bg-white hover:border-indigo-300 transition-colors min-w-[200px] justify-between"
+                  className="border rounded-lg px-3 py-2 text-sm flex items-center gap-2 bg-white hover:border-emerald-300 transition-colors min-w-[200px] justify-between"
                 >
                   <span className="text-gray-600 truncate">
                     {rateFilterProducts.length === 0
@@ -825,7 +858,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       : `เลือก ${rateFilterProducts.length} รายการ`}
                   </span>
                   {rateFilterProducts.length > 0 && (
-                    <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-1.5 py-0.5 rounded-full">
+                    <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-1.5 py-0.5 rounded-full">
                       {rateFilterProducts.length}
                     </span>
                   )}
@@ -836,7 +869,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                     <div className="p-2 border-b flex gap-2">
                       <button
                         onClick={() => setRateFilterProducts(activeQuotaProducts.map(qp => qp.id))}
-                        className="text-xs text-indigo-600 hover:text-indigo-800"
+                        className="text-xs text-emerald-600 hover:text-emerald-800"
                       >
                         เลือกทั้งหมด
                       </button>
@@ -849,14 +882,14 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       </button>
                     </div>
                     {activeQuotaProducts.map(qp => (
-                      <label key={qp.id} className="flex items-center gap-2 px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm">
+                      <label key={qp.id} className="flex items-center gap-2 px-3 py-2 hover:bg-emerald-50 cursor-pointer text-sm">
                         <input
                           type="checkbox"
                           checked={rateFilterProducts.includes(qp.id)}
                           onChange={e => {
                             setRateFilterProducts(prev => e.target.checked ? [...prev, qp.id] : prev.filter(id => id !== qp.id));
                           }}
-                          className="rounded text-indigo-600"
+                          className="rounded text-emerald-600"
                         />
                         <span className="truncate">{qp.displayName}</span>
                         {qp.productSku && <span className="text-gray-400 text-xs">({qp.productSku})</span>}
@@ -905,7 +938,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   setScopeDropdownOpen(false);
                   setShowRateForm(true);
                 }}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-700 text-sm font-medium shadow-sm"
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 hover:shadow-lg hover:scale-[1.02] transition-all text-sm font-medium shadow-md"
               >
                 <Plus size={16} />
                 อัตราใหม่
@@ -958,9 +991,9 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                               setAllProductsSalesPerQuota('');
                             }
                           }}
-                          className="accent-indigo-600 w-4 h-4"
+                          className="accent-emerald-600 w-4 h-4"
                         />
-                        <span className="text-sm text-indigo-700 font-medium">สินค้าทั้งหมด ({activeQuotaProducts.length} รายการ)</span>
+                        <span className="text-sm text-emerald-700 font-medium">สินค้าทั้งหมด ({activeQuotaProducts.length} รายการ)</span>
                       </label>
                     )}
 
@@ -982,7 +1015,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                           </div>
                           <div className="mt-2 flex flex-wrap gap-1">
                             {activeQuotaProducts.map(qp => (
-                              <span key={qp.id} className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                              <span key={qp.id} className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                                 {qp.displayName}
                               </span>
                             ))}
@@ -1002,7 +1035,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                 key={qp.id}
                                 type="button"
                                 onClick={() => setRateForm(prev => ({ ...prev, scopeRates: [...prev.scopeRates, { quotaProductId: qp.id, salesPerQuota: '' }] }))}
-                                className="text-xs px-2.5 py-1.5 rounded-full border border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                className="text-xs px-2.5 py-1.5 rounded-full border border-dashed border-emerald-300 text-emerald-600 hover:bg-emerald-50 transition-colors"
                               >
                                 + {qp.displayName}
                               </button>
@@ -1016,7 +1049,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                   .map(qp => ({ quotaProductId: qp.id, salesPerQuota: '' }));
                                 setRateForm(prev => ({ ...prev, scopeRates: [...prev.scopeRates, ...allRates] }));
                               }}
-                              className="text-xs px-2.5 py-1.5 rounded-full bg-indigo-100 text-indigo-700 hover:bg-indigo-200 font-medium"
+                              className="text-xs px-2.5 py-1.5 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-medium"
                             >
                               + เพิ่มทั้งหมด
                             </button>
@@ -1134,7 +1167,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                           type="checkbox"
                           checked={!rateForm.usageEndDate}
                           onChange={e => setRateForm(prev => ({ ...prev, usageEndDate: e.target.checked ? '' : new Date().toISOString().split('T')[0] }))}
-                          className="accent-indigo-600 w-4 h-4"
+                          className="accent-emerald-600 w-4 h-4"
                         />
                         <span className="text-xs text-gray-500">ติ๊กเพื่อให้โควตาไม่มีวันหมดอายุ</span>
                       </label>
@@ -1147,7 +1180,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                         type="checkbox"
                         checked={rateForm.requireConfirm}
                         onChange={e => setRateForm(prev => ({ ...prev, requireConfirm: e.target.checked }))}
-                        className="accent-indigo-600 w-4 h-4"
+                        className="accent-emerald-600 w-4 h-4"
                       />
                       <span className="text-sm font-medium text-gray-700">รอ Admin ยืนยันก่อนใช้งาน</span>
                     </label>
@@ -1161,7 +1194,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   <button onClick={() => setShowRateForm(false)} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
                     ยกเลิก
                   </button>
-                  <button onClick={handleSaveRate} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+                  <button onClick={handleSaveRate} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">
                     บันทึก
                   </button>
                 </div>
@@ -1170,7 +1203,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
           )}
 
           {/* Rates List */}
-          <div className="bg-white border rounded-xl p-5 shadow-sm">
+          <div className="bg-white border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
             <h3 className="text-sm font-semibold text-gray-600 mb-4">รายการอัตราโควตา</h3>
             {filteredRates.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
@@ -1210,7 +1243,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                     } else if (startOk && endOk) {
                       isActive = true;
                       statusLabel = 'ใช้งานอยู่';
-                      statusColor = 'bg-indigo-600 text-white';
+                      statusColor = 'bg-emerald-600 text-white';
                     } else {
                       statusLabel = 'กำหนดล่วงหน้า';
                       statusColor = 'bg-amber-500 text-white';
@@ -1227,43 +1260,25 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   return (
                     <div
                       key={rate.id}
-                      className={`border rounded-lg p-4 ${
-                        isActive ? 'border-indigo-300 bg-indigo-50' : (isFuture || isBeforeUsage) ? 'border-amber-200 bg-amber-50' : isExpired ? 'border-red-200 bg-red-50' : 'border-gray-200'
+                      className={`border rounded-xl p-4 transition-all duration-200 hover:shadow-md ${
+                        isActive ? 'border-emerald-300 bg-emerald-50/70 shadow-sm border-l-4 border-l-emerald-500' : (isFuture || isBeforeUsage) ? 'border-amber-200 bg-amber-50/70 border-l-4 border-l-amber-400' : isExpired ? 'border-red-200 bg-red-50/70 border-l-4 border-l-red-400' : 'border-gray-200 hover:border-gray-300'
                       }`}
                     >
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor}`}>{statusLabel}</span>
-                          {/* Product badge */}
-                          {productLabel ? (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
-                              📦 {productLabel}
-                            </span>
-                          ) : (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium">
-                              {rate.scopeRates && rate.scopeRates.length > 0
-                                ? `📌 ${rate.scopeRates.map(sr => sr.displayName || activeQuotaProducts.find(p => p.id === sr.quotaProductId)?.displayName || `#${sr.quotaProductId}`).join(', ')}`
-                                : 'ไม่มีสินค้า'}
-                            </span>
-                          )}
-                          {rate.rateName ? (
-                            <span className="font-semibold text-gray-800">
-                              {rate.rateName}
-                              <span className="font-normal text-gray-400 ml-1.5 text-xs">
-                                ฿{Number(rate.salesPerQuota).toLocaleString()} / 1 โควตา
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="font-semibold text-gray-800">
-                              ฿{Number(rate.salesPerQuota).toLocaleString()} / 1 โควตา
-                            </span>
-                          )}
+                      {/* Row 1: Status + Rate Name + Price + Actions */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap ${statusColor}`}>{statusLabel}</span>
+                          <span className="font-semibold text-gray-800">
+                            {rate.rateName || 'อัตราโควตา'}
+                          </span>
+                          <span className="text-sm text-gray-500 bg-gray-100 px-2.5 py-0.5 rounded-lg font-medium">
+                            ฿{Number(rate.salesPerQuota).toLocaleString()} / 1 โควตา
+                          </span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400">มีผล: {rate.effectiveDate}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-gray-400 mr-1">มีผล: {rate.effectiveDate}</span>
                           <button
                             onClick={() => {
-                              // Set context product for editing
                               if (!rpid || rpid === 0) {
                                 setSelectedQuotaProduct({ id: 0, productId: 0, companyId: currentUser.companyId, displayName: '🌐 ทั้งหมด (Global)', isActive: true, quotaCost: 1 } as any);
                               } else {
@@ -1288,7 +1303,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                               });
                               setShowRateForm(true);
                             }}
-                            className="p-1 text-gray-400 hover:text-indigo-600 rounded hover:bg-indigo-50"
+                            className="p-1 text-gray-400 hover:text-emerald-600 rounded hover:bg-emerald-50"
                             title="แก้ไข"
                           >
                             <Edit size={14} />
@@ -1302,13 +1317,39 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                           </button>
                         </div>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-500">
-                        <span>🔄 {modeLabel}</span>
-                        <span>📅 {rate.orderDateField === 'delivery_date' ? 'วันจัดส่ง' : 'วันสร้างออเดอร์'}</span>
-                        {rate.usageStartDate && (
-                          <span>📅 ใช้ได้: {rate.usageStartDate}{rate.usageEndDate ? ` — ${rate.usageEndDate}` : ' เป็นต้นไป'}</span>
+
+                      {/* Row 2: Product pill badges */}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {productLabel ? (
+                          <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-medium">
+                            📦 {productLabel}
+                          </span>
+                        ) : (
+                          rate.scopeRates && rate.scopeRates.length > 0
+                            ? rate.scopeRates.map((sr, idx) => (
+                              <span key={idx} className="text-xs px-2.5 py-1 rounded-full bg-teal-100 text-teal-700 font-medium">
+                                📦 {sr.displayName || activeQuotaProducts.find(p => p.id === sr.quotaProductId)?.displayName || `#${sr.quotaProductId}`}
+                                {sr.salesPerQuota && Number(sr.salesPerQuota) !== Number(rate.salesPerQuota)
+                                  ? ` (฿${Number(sr.salesPerQuota).toLocaleString()})`
+                                  : ''}
+                              </span>
+                            ))
+                            : <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 font-medium">ไม่มีสินค้า</span>
                         )}
-                        {rate.createdByName && <span>👤 {rate.createdByName}</span>}
+                      </div>
+
+                      {/* Row 3: Dates + Creator */}
+                      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
+                        <span className="flex items-center gap-1">
+                          📅 {rate.orderDateField === 'delivery_date' ? 'วันจัดส่ง' : 'วันสร้างออเดอร์'}
+                          {rate.calcPeriodStart && <span className="text-gray-500 ml-0.5">({rate.calcPeriodStart} — {rate.calcPeriodEnd || '?'})</span>}
+                        </span>
+                        {rate.usageStartDate && (
+                          <span className="flex items-center gap-1">
+                            🎫 ใช้ได้: {rate.usageStartDate}{rate.usageEndDate ? ` — ${rate.usageEndDate}` : ' เป็นต้นไป'}
+                          </span>
+                        )}
+                        {rate.createdByName && <span className="flex items-center gap-1">👤 {rate.createdByName}</span>}
                       </div>
                     </div>
                   );
@@ -1321,48 +1362,91 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
       {/* ============ Tab: Summary ============ */}
       {activeTab === 'summary' && (
-        <div>
+        <div className="animate-[fadeIn_0.2s_ease-out]">
           {/* Rate Selector */}
           <div className="flex items-center gap-4 mb-4">
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-500 mb-1">เลือกอัตราโควตา</label>
-              <select
-                value={summaryRateId}
-                onChange={e => {
-                  const v = e.target.value;
-                  setSummaryRateId(v === 'all' ? 'all' : parseInt(v));
-                }}
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="all">🔄 ทั้งหมด (รวมทุก rate)</option>
-                {allRateSchedules.map(rate => {
-                  const modeLabel = '📋 กำหนดเอง';
-                  const periodLabel = `${rate.calcPeriodStart || '?'} — ${rate.calcPeriodEnd || '?'}`;
-                  const product = rate.quotaProductId
-                    ? quotaProducts.find(qp => qp.id === rate.quotaProductId)
-                    : null;
-                  let productLabel = 'ทุกสินค้า';
-                  if (product) {
-                    productLabel = product.displayName;
-                  } else if (rate.scopeRates && rate.scopeRates.length > 0) {
-                    const scopeNames = rate.scopeRates
-                      .map(sr => sr.displayName || quotaProducts.find(qp => qp.id === sr.quotaProductId)?.displayName || `#${sr.quotaProductId}`)
-                      .join(', ');
-                    productLabel = scopeNames;
-                  }
-                  // Use pre-loaded pending counts
-                  const pendingCount = pendingCountsMap[rate.id] ?? 0;
-                  // Build display label: use rateName if set, fallback to auto-generated
-                  const autoLabel = `${modeLabel} ฿${Number(rate.salesPerQuota).toLocaleString()}/โควตา — ${productLabel} — ${periodLabel}`;
-                  const displayLabel = rate.rateName ? `${rate.rateName} (${modeLabel} ฿${Number(rate.salesPerQuota).toLocaleString()}/โควตา)` : autoLabel;
-                  return (
-                    <option key={rate.id} value={rate.id}>
-                      {displayLabel}
-                      {pendingCount > 0 ? ` ⏳ ${pendingCount} รอยืนยัน` : ''}
-                    </option>
-                  );
-                })}
-              </select>
+              <div ref={rateSelectorRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setRateSelectorOpen(!rateSelectorOpen)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white shadow-sm focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all flex items-center justify-between text-left"
+                >
+                  <span className="flex items-center gap-2 flex-wrap">
+                    {summaryRateId === 'all' ? (
+                      <span>🔄 ทั้งหมด (รวมทุก rate)</span>
+                    ) : (() => {
+                      const selRate = allRateSchedules.find(r => r.id === Number(summaryRateId));
+                      if (!selRate) return <span>เลือกอัตราโควตา</span>;
+                      const pc = pendingCountsMap[selRate.id] ?? 0;
+                      const label = selRate.rateName || `📋 กำหนดเอง ฿${Number(selRate.salesPerQuota).toLocaleString()}/โควตา`;
+                      return (
+                        <>
+                          {pc > 0 && (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
+                              ⏳ {pc} รอยืนยัน
+                            </span>
+                          )}
+                          <span>{label}</span>
+                        </>
+                      );
+                    })()}
+                  </span>
+                  <ChevronDown size={16} className={`text-gray-400 transition-transform ${rateSelectorOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {rateSelectorOpen && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+                    {/* All option */}
+                    <button
+                      type="button"
+                      onClick={() => { setSummaryRateId('all'); setRateSelectorOpen(false); }}
+                      className={`w-full px-4 py-3 text-sm text-left flex items-center gap-2 hover:bg-emerald-50 transition-colors ${
+                        summaryRateId === 'all' ? 'bg-emerald-50 font-medium text-emerald-700' : 'text-gray-700'
+                      }`}
+                    >
+                      🔄 ทั้งหมด (รวมทุก rate)
+                    </button>
+                    {allRateSchedules.map(rate => {
+                      const modeLabel = '📋 กำหนดเอง';
+                      const periodLabel = `${rate.calcPeriodStart || '?'} — ${rate.calcPeriodEnd || '?'}`;
+                      const product = rate.quotaProductId
+                        ? quotaProducts.find(qp => qp.id === rate.quotaProductId)
+                        : null;
+                      let productLabel = 'ทุกสินค้า';
+                      if (product) {
+                        productLabel = product.displayName;
+                      } else if (rate.scopeRates && rate.scopeRates.length > 0) {
+                        productLabel = rate.scopeRates
+                          .map(sr => sr.displayName || quotaProducts.find(qp => qp.id === sr.quotaProductId)?.displayName || `#${sr.quotaProductId}`)
+                          .join(', ');
+                      }
+                      const pendingCount = pendingCountsMap[rate.id] ?? 0;
+                      const displayLabel = rate.rateName
+                        ? `${rate.rateName} (${modeLabel} ฿${Number(rate.salesPerQuota).toLocaleString()}/โควตา)`
+                        : `${modeLabel} ฿${Number(rate.salesPerQuota).toLocaleString()}/โควตา — ${productLabel} — ${periodLabel}`;
+                      const isSelected = summaryRateId === rate.id;
+                      return (
+                        <button
+                          key={rate.id}
+                          type="button"
+                          onClick={() => { setSummaryRateId(rate.id); setRateSelectorOpen(false); }}
+                          className={`w-full px-4 py-3 text-sm text-left flex items-center gap-2 hover:bg-emerald-50 transition-colors border-t border-gray-100 ${
+                            isSelected ? 'bg-emerald-50 font-medium text-emerald-700' : 'text-gray-700'
+                          }`}
+                        >
+                          {pendingCount > 0 && (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 shrink-0">
+                              ⏳ {pendingCount} รอยืนยัน
+                            </span>
+                          )}
+                          <span className="truncate">{displayLabel}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               {pendingCountsLoading && (
                 <span className="ml-2 mt-5 inline-flex items-center gap-1 text-xs text-gray-400 px-3 py-1.5">
                   <RefreshCcw size={14} className="animate-spin" /> กำลังโหลด...
@@ -1466,21 +1550,21 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
               return (
                 <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${groupColor}`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm ${groupColor}`}>
                       <Users size={13} /> {groupLabel}
                     </span>
-                    <span className="text-xs text-gray-400">{rows.length} คน</span>
+                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{rows.length} คน</span>
                   </div>
-                  <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
+                  <div className="bg-white border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b">
+                      <thead className="bg-gradient-to-r from-gray-50 to-emerald-50/30 border-b">
                         <tr>
                           {isConfirmMode && (() => {
                             const unconfirmedUsers = rows.filter(s => !s.isConfirmed && !s.isBeforeUsageStart && (s.pendingAutoQuota ?? 0) > 0);
                             const allSelected = unconfirmedUsers.length > 0 && unconfirmedUsers.every(u => selectedUserIds.includes(u.userId));
                             return (
-                              <th className="px-3 py-3 text-center w-10">
+                              <th className="px-3 py-3.5 text-center w-10">
                                 <input
                                   type="checkbox"
                                   checked={allSelected}
@@ -1492,19 +1576,19 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                       setSelectedUserIds(prev => prev.filter(id => !idsToRemove.has(id)));
                                     }
                                   }}
-                                  className="w-4 h-4 rounded border-gray-300"
+                                  className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                 />
                               </th>
                             );
                           })()}
-                          <th className="px-4 py-3 text-left font-medium text-gray-500">พนักงาน</th>
-                          <th className="px-4 py-3 text-right font-medium text-gray-500">ยอดขาย</th>
-                          <th className="px-4 py-3 text-right font-medium text-gray-500">โควตา (Auto)</th>
-                          <th className="px-4 py-3 text-right font-medium text-gray-500">โควตา (Admin)</th>
-                          <th className="px-4 py-3 text-right font-medium text-gray-500">รวมโควตา</th>
-                          <th className="px-4 py-3 text-right font-medium text-gray-500">ใช้ไปแล้ว</th>
-                          <th className="px-4 py-3 text-right font-medium text-gray-500">คงเหลือ</th>
-                          <th className="px-4 py-3 text-center font-medium text-gray-500">การดำเนินการ</th>
+                          <th className="px-5 py-3.5 text-left font-semibold text-gray-600 text-xs uppercase tracking-wider">พนักงาน</th>
+                          <th className="px-4 py-3.5 text-right font-semibold text-gray-600 text-xs uppercase tracking-wider">ยอดขาย</th>
+                          <th className="px-4 py-3.5 text-right font-semibold text-gray-600 text-xs uppercase tracking-wider">โควตา (Auto)</th>
+                          <th className="px-4 py-3.5 text-right font-semibold text-gray-600 text-xs uppercase tracking-wider">โควตา (Admin)</th>
+                          <th className="px-4 py-3.5 text-right font-semibold text-gray-600 text-xs uppercase tracking-wider">รวมโควตา</th>
+                          <th className="px-4 py-3.5 text-right font-semibold text-gray-600 text-xs uppercase tracking-wider">ใช้ไปแล้ว</th>
+                          <th className="px-4 py-3.5 text-right font-semibold text-gray-600 text-xs uppercase tracking-wider">คงเหลือ</th>
+                          <th className="px-4 py-3.5 text-center font-semibold text-gray-600 text-xs uppercase tracking-wider">การดำเนินการ</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -1519,7 +1603,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                             const canCheck = isConfirmMode && !row.isConfirmed && !row.isBeforeUsageStart && (row.pendingAutoQuota ?? 0) > 0;
 
                             return (
-                              <tr key={row.userId} className="hover:bg-gray-50">
+                              <tr key={row.userId} className="hover:bg-emerald-50/40 transition-colors even:bg-gray-50/50">
                                 {isConfirmMode && (
                                   <td className="px-3 py-3 text-center">
                                     {canCheck ? (
@@ -1553,11 +1637,11 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                     <div className="text-xs text-amber-500">({row.pendingAutoQuota} รอ)</div>
                                   )}
                                 </td>
-                                <td className="px-4 py-3 text-right font-mono text-purple-600 font-medium">
+                                <td className="px-4 py-3 text-right font-mono text-teal-600 font-medium">
                                   {Number(row.totalAdminQuota)}
                                 </td>
                                 <td
-                                  className="px-4 py-3 text-right font-mono text-gray-800 font-bold cursor-pointer hover:bg-indigo-50 transition-colors"
+                                  className="px-4 py-3 text-right font-mono text-gray-800 font-bold cursor-pointer hover:bg-emerald-50 transition-colors"
                                   onClick={async () => {
                                     setBreakdownUser(row);
                                     setBreakdownLoading(true);
@@ -1574,7 +1658,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                   }}
                                   title="คลิกเพื่อดูรายละเอียดโควตาแยกตามสินค้า"
                                 >
-                                  <span className="border-b border-dashed border-indigo-400">{Number(row.totalQuota)}</span>
+                                  <span className="border-b border-dashed border-emerald-400">{Number(row.totalQuota)}</span>
                                 </td>
                                 <td className="px-4 py-3 text-right font-mono text-orange-600">
                                   {Number(row.totalUsed)}
@@ -1604,7 +1688,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                         setAllocateProductIds([]);
                                         setShowAllocateModal(true);
                                       }}
-                                      className="text-indigo-500 hover:text-indigo-700 p-1 rounded hover:bg-indigo-50"
+                                      className="text-emerald-500 hover:text-emerald-700 p-1 rounded hover:bg-emerald-50"
                                       title="เพิ่มโควตา"
                                     >
                                       <Gift size={16} />
@@ -1658,7 +1742,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
             return loading ? (
               <div className="bg-white border rounded-xl p-12 text-center text-gray-400">
-                <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600" />
+                <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600" />
                 <p className="mt-2">กำลังโหลด...</p>
               </div>
             ) : summaryData.length === 0 ? (
@@ -1669,7 +1753,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
             ) : (
               <>
                 {telesaleRows.length > 0 && renderSummaryTable(telesaleRows, 'Telesale', 'bg-blue-100 text-blue-700')}
-                {adminPageRows.length > 0 && renderSummaryTable(adminPageRows, 'Admin Page', 'bg-purple-100 text-purple-700')}
+                {adminPageRows.length > 0 && renderSummaryTable(adminPageRows, 'Admin Page', 'bg-teal-100 text-teal-700')}
               </>
             );
           })()}
@@ -1698,14 +1782,14 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       setAllocateAllProducts(e.target.checked);
                       if (e.target.checked) setAllocateProductIds([]);
                     }}
-                    className="accent-indigo-600 w-4 h-4"
+                    className="accent-emerald-600 w-4 h-4"
                   />
-                  <span className="text-sm text-indigo-700 font-medium">สินค้าทั้งหมด ({activeQuotaProducts.length} รายการ)</span>
+                  <span className="text-sm text-emerald-700 font-medium">สินค้าทั้งหมด ({activeQuotaProducts.length} รายการ)</span>
                 </label>
                 {allocateAllProducts ? (
                   <div className="flex flex-wrap gap-1">
                     {activeQuotaProducts.map(qp => (
-                      <span key={qp.id} className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                      <span key={qp.id} className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                         {qp.displayName}
                       </span>
                     ))}
@@ -1725,8 +1809,8 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                           }}
                           className={`text-xs px-2.5 py-1.5 rounded-full border transition-colors ${
                             selected
-                              ? 'bg-indigo-600 text-white border-indigo-600'
-                              : 'border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50'
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'border-dashed border-emerald-300 text-emerald-600 hover:bg-emerald-50'
                           }`}
                         >
                           {selected ? '✓ ' : '+ '}{qp.displayName}
@@ -1802,7 +1886,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
               <button
                 onClick={handleAllocate}
                 disabled={!allocateQuantity || parseFloat(allocateQuantity) <= 0 || (!allocateAllProducts && allocateProductIds.length === 0)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
               >
                 เพิ่มโควตา
               </button>
@@ -1834,7 +1918,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                         <div className="flex items-center gap-2">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                             alloc.source === 'admin'
-                              ? 'bg-purple-100 text-purple-700'
+                              ? 'bg-teal-100 text-teal-700'
                               : 'bg-blue-100 text-blue-700'
                           }`}>
                             {alloc.source === 'admin' ? 'Admin' : 'Auto'}
@@ -1852,7 +1936,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                         <div>ให้เมื่อวันที่ {alloc.createdAt?.split(' ')[0]}</div>
                         {(alloc.valid_from || alloc.valid_until) && (
                           <div className="mt-0.5">
-                            <span className="text-indigo-500">ใช้ได้: </span>
+                            <span className="text-emerald-500">ใช้ได้: </span>
                             {alloc.valid_from || '—'} — {alloc.valid_until || 'ตลอด'}
                             {alloc.valid_until && new Date(alloc.valid_until) < new Date() && (
                               <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">หมดอายุ</span>
@@ -1888,7 +1972,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
           <div className="flex-1 overflow-y-auto">
             {breakdownLoading ? (
               <div className="flex items-center justify-center py-16">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
                 <span className="ml-3 text-gray-500">กำลังโหลด...</span>
               </div>
             ) : breakdownData.length === 0 ? (
@@ -1958,7 +2042,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                           <div className="text-xs text-amber-500">({item.pendingAutoQuota} รอ)</div>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-right font-mono text-purple-600">
+                      <td className="px-3 py-3 text-right font-mono text-teal-600">
                         {Number(item.adminQuota)}
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-gray-800 font-bold">
@@ -1980,7 +2064,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   ))}
                 </tbody>
                 {breakdownData.length > 1 && (
-                  <tfoot className="bg-indigo-50 border-t-2 border-indigo-200">
+                  <tfoot className="bg-emerald-50 border-t-2 border-emerald-200">
                     <tr className="font-semibold">
                       <td className="px-4 py-3 text-gray-700" colSpan={2}>รวมทั้งหมด</td>
                       <td className="px-3 py-3 text-right font-mono text-gray-700">
@@ -1989,7 +2073,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                       <td className="px-3 py-3 text-right font-mono text-blue-700">
                         {breakdownData.reduce((s, i) => s + Number(i.autoQuota), 0)}
                       </td>
-                      <td className="px-3 py-3 text-right font-mono text-purple-700">
+                      <td className="px-3 py-3 text-right font-mono text-teal-700">
                         {breakdownData.reduce((s, i) => s + Number(i.adminQuota), 0)}
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-gray-800 font-bold">
