@@ -41,7 +41,7 @@ try {
             u.role AS creator_role,
             COUNT(oi.id) AS affected_items
         FROM order_items oi
-        JOIN orders o ON o.id = oi.order_id
+        JOIN orders o ON o.id = oi.parent_order_id
         LEFT JOIN customers c ON c.customer_id = o.customer_id
         LEFT JOIN users u ON u.id = oi.creator_id
         WHERE o.company_id = ?

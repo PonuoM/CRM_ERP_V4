@@ -668,23 +668,24 @@ export interface QuotaProduct {
 
 export interface QuotaRateSchedule {
   id: number;
+  rateName?: string;
   quotaProductId: number;
-  salesPerQuota: number;
-  effectiveDate: string;          // YYYY-MM-DD
+  salesPerQuota: number;                // fallback rate
+  effectiveDate: string;                // YYYY-MM-DD
   orderDateField: 'order_date' | 'delivery_date';
-  quotaMode: 'reset' | 'cumulative' | 'confirm';
-  resetIntervalDays: number;
-  resetDayOfMonth?: number;           // 1-28: รีเซ็ตทุกวันที่ X ของเดือน
-  resetAnchorDate?: string;       // YYYY-MM-DD
-  calcPeriodStart?: string;       // YYYY-MM-DD (confirm mode)
-  calcPeriodEnd?: string;         // YYYY-MM-DD (confirm mode)
-  usageStartDate?: string;        // YYYY-MM-DD (confirm mode)
-  usageEndDate?: string;          // YYYY-MM-DD (confirm mode: วันหมดอายุ)
-  requireConfirm?: boolean;       // confirm mode: true=รอ admin ยืนยัน, false=ไม่ต้อง
+  quotaMode: 'confirm';                 // always confirm mode
+  calcPeriodStart?: string;             // YYYY-MM-DD
+  calcPeriodEnd?: string;               // YYYY-MM-DD
+  usageStartDate?: string;              // YYYY-MM-DD
+  usageEndDate?: string;                // YYYY-MM-DD (วันหมดอายุ)
+  requireConfirm?: boolean;             // true=รอ admin ยืนยัน, false=ไม่ต้อง
   createdBy?: number;
-  createdByName?: string;         // joined
+  createdByName?: string;               // joined
   createdAt?: string;
-  scopeProductIds?: number[];     // multi-product scope (empty = global when quotaProductId = null)
+  // Per-product scoped rates
+  scopeRates?: Array<{ quotaProductId: number; salesPerQuota: number; displayName?: string }>;
+  // Legacy/derived — kept for compatibility
+  scopeProductIds?: number[];
 }
 
 export interface QuotaAllocation {
@@ -698,6 +699,8 @@ export interface QuotaAllocation {
   allocatedBy?: number;
   periodStart?: string;
   periodEnd?: string;
+  valid_from?: string;
+  valid_until?: string;
   createdAt: string;
   // joined
   userFirstName?: string;
