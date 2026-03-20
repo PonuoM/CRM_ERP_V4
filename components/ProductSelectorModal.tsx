@@ -303,13 +303,14 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                                                     <td className="p-2 align-top">
                                                         <button
                                                             onClick={() => onSelectProduct(p.id)}
+                                                            disabled={isQuotaExhausted}
                                                             className={`${isQuotaExhausted
-                                                                ? 'text-red-400 hover:text-red-600'
+                                                                ? 'text-red-400 cursor-not-allowed opacity-50'
                                                                 : 'text-blue-600 hover:text-blue-800'
                                                             }`}
-                                                            title={isQuotaExhausted ? 'โควตาหมดแล้ว' : undefined}
+                                                            title={isQuotaExhausted ? 'โควตาหมดแล้ว — ไม่สามารถเลือกได้' : undefined}
                                                         >
-                                                            {isQuotaExhausted ? 'โควตาหมด' : 'เลือก'}
+                                                            {isQuotaExhausted ? '❌ โควตาหมด' : 'เลือก'}
                                                         </button>
                                                     </td>
                                                 </tr>
@@ -428,7 +429,10 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                                                 )
                                                 .map(qp => {
                                                     const qInfo = quotaMap?.get(qp.productId);
-                                                    const isExhausted = qInfo && qInfo.remaining <= 0;
+                                                    // Check both external quotaMap AND internal quotaTabMap
+                                                    const tabInfo = quotaTabMap.get(qp.productId);
+                                                    const remaining = tabInfo?.remaining ?? qInfo?.remaining;
+                                                    const isExhausted = remaining !== undefined && remaining <= 0;
 
                                                     return (
                                                         <tr
@@ -456,14 +460,15 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                                                             <td className="p-2 align-top">
                                                                 <button
                                                                     onClick={() => onSelectProduct(qp.productId)}
+                                                                    disabled={isExhausted}
                                                                     className={`px-3 py-1 rounded text-white text-xs font-medium ${
                                                                         isExhausted
-                                                                            ? 'bg-red-400 hover:bg-red-500'
+                                                                            ? 'bg-red-400 cursor-not-allowed opacity-50'
                                                                             : 'bg-indigo-600 hover:bg-indigo-700'
                                                                     }`}
-                                                                    title={isExhausted ? 'โควตาหมดแล้ว' : undefined}
+                                                                    title={isExhausted ? 'โควตาหมดแล้ว — ไม่สามารถเลือกได้' : undefined}
                                                                 >
-                                                                    {isExhausted ? 'โควตาหมด' : 'เลือก'}
+                                                                    {isExhausted ? '❌ โควตาหมด' : 'เลือก'}
                                                                 </button>
                                                             </td>
                                                         </tr>

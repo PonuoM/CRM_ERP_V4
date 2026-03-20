@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/Services/ShippingSyncService.php';
 require_once __DIR__ . '/Services/BasketRoutingService.php';
+require_once __DIR__ . '/Quota/quota_record_helper.php';
 
 // API Version for debugging deployment issues
 define('API_VERSION', '2026-01-24-0947-BASKET-FIX');
@@ -4624,6 +4625,89 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
 
+                // 🎫 QUOTA ENFORCEMENT: Check if order items would exceed quota limits
+                try {
+                    $companyId = intval($in['companyId'] ?? 0);
+                    $qUserId = intval($creatorId);
+                    if ($companyId && $qUserId && !empty($in['items']) && is_array($in['items'])) {
+                        // 1. Get all active quota products for this company
+                        $qpStmt = $pdo->prepare("
+                            SELECT qp.id AS quota_product_id, qp.product_id, qp.quota_cost
+                            FROM quota_products qp
+                            WHERE qp.company_id = :cid AND qp.is_active = 1 AND qp.deleted_at IS NULL
+                        ");
+                        $qpStmt->execute([':cid' => $companyId]);
+                        $quotaProducts = $qpStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                        if (!empty($quotaProducts)) {
+                            // 2. Build lookup: product_id → { quota_product_id, quota_cost }
+                            $qpByProductId = [];
+                            foreach ($quotaProducts as $qp) {
+                                $qpByProductId[intval($qp['product_id'])] = [
+                                    'quota_product_id' => intval($qp['quota_product_id']),
+                                    'quota_cost' => intval($qp['quota_cost'] ?? 1),
+                                ];
+                            }
+
+                            // 3. Calculate total quota needed per quota_product
+                            $neededPerQP = []; // quota_product_id → total quantity needed
+                            foreach ($in['items'] as $it) {
+                                $productId = intval($it['productId'] ?? 0);
+                                if (!$productId || !isset($qpByProductId[$productId])) continue;
+                                $qpInfo = $qpByProductId[$productId];
+                                $qty = max(0, intval($it['quantity'] ?? 0));
+                                $usageQty = $qty * $qpInfo['quota_cost'];
+                                $qpId = $qpInfo['quota_product_id'];
+                                $neededPerQP[$qpId] = ($neededPerQP[$qpId] ?? 0) + $usageQty;
+                            }
+
+                            // 4. For each quota product needed, check remaining via internal API call
+                            if (!empty($neededPerQP)) {
+                                foreach ($neededPerQP as $qpId => $neededQty) {
+                                    if ($neededQty <= 0) continue;
+
+                                    // Call the quota API internally to get remaining
+                                    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                                    $basePath = dirname($_SERVER['SCRIPT_NAME']);
+                                    $calcUrl = "{$scheme}://{$host}{$basePath}/Quota/quota.php?action=calculate&quotaProductId={$qpId}&userId={$qUserId}";
+                                    $ctx = stream_context_create(['http' => ['timeout' => 5, 'ignore_errors' => true]]);
+                                    $calcResponse = @file_get_contents($calcUrl, false, $ctx);
+
+                                    if ($calcResponse) {
+                                        $calcData = json_decode($calcResponse, true);
+                                        if (isset($calcData['data']['remaining'])) {
+                                            $remaining = intval($calcData['data']['remaining']);
+                                            if ($neededQty > $remaining) {
+                                                // Find the product name for error message
+                                                $nameStmt = $pdo->prepare("SELECT display_name FROM quota_products WHERE id = ?");
+                                                $nameStmt->execute([$qpId]);
+                                                $productName = $nameStmt->fetchColumn() ?: "Product #$qpId";
+
+                                                $pdo->rollBack();
+                                                json_response([
+                                                    'error' => 'QUOTA_EXCEEDED',
+                                                    'message' => "โควตาไม่เพียงพอสำหรับ \"$productName\" — ต้องการ $neededQty แต่คงเหลือ $remaining",
+                                                    'details' => [
+                                                        'quotaProductId' => $qpId,
+                                                        'productName' => $productName,
+                                                        'needed' => $neededQty,
+                                                        'remaining' => $remaining,
+                                                    ],
+                                                ], 400);
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable $e) {
+                    // Log but don't block order creation if quota check fails
+                    error_log('[Quota Enforcement] Error checking quota: ' . $e->getMessage());
+                }
+
                 // Check if bank_account_id and transfer_date columns exist
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
@@ -5212,6 +5296,16 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 $pdo->commit();
                 error_log('Order created successfully: ' . $in['id']);
+
+                // 🎫 HOOK: Auto-record quota usage for quota products in this order
+                try {
+                    $quotaRecorded = recordQuotaUsageForOrder($pdo, $mainOrderId, (int)($in['companyId'] ?? 0), (int)($in['creatorId'] ?? 0));
+                    if ($quotaRecorded > 0) {
+                        error_log("[Quota] Recorded $quotaRecorded quota usage(s) for new order #$mainOrderId");
+                    }
+                } catch (Throwable $e) {
+                    error_log('[Quota] Failed to record usage for order ' . $mainOrderId . ': ' . $e->getMessage());
+                }
 
                 // Auto-assign to Telesale for Upsell (Round-Robin)
                 try {
@@ -6047,6 +6141,18 @@ function handle_orders(PDO $pdo, ?string $id): void
                 create_audit_log_entry($pdo, $id, $previousStatus, $newStatus, $previousTrackingStr, $newTrackingStr, $triggerType);
 
                 $pdo->commit();
+
+                // 🎫 HOOK: Re-record quota usage after order items edit
+                try {
+                    $orderCompanyId = (int)($existingOrder['company_id'] ?? 0);
+                    $orderCreatorId = (int)($existingOrder['creator_id'] ?? 0);
+                    $quotaRecorded = recordQuotaUsageForOrder($pdo, $id, $orderCompanyId, $orderCreatorId);
+                    if ($quotaRecorded > 0) {
+                        error_log("[Quota] Re-recorded $quotaRecorded quota usage(s) for edited order #$id");
+                    }
+                } catch (Throwable $e) {
+                    error_log('[Quota] Failed to re-record usage for order ' . $id . ': ' . $e->getMessage());
+                }
 
                 // 🔥 HOOK: Event-Driven Basket Routing V2 on order_status change (PATCH)
                 $basketRoutingDebug = ['status_received' => $orderStatus, 'new_status' => $newStatus, 'triggered' => false];
@@ -11825,6 +11931,17 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                     ]);
 
                     $pdo->commit();
+
+                    // 🎫 HOOK: Record quota usage for upsell items
+                    try {
+                        $upsellCompanyId = (int)($order['company_id'] ?? 0);
+                        $quotaRecorded = recordQuotaUsageForOrder($pdo, $orderId, $upsellCompanyId, (int)$creatorId);
+                        if ($quotaRecorded > 0) {
+                            error_log("[Quota] Recorded $quotaRecorded quota usage(s) for upsell on order #$orderId");
+                        }
+                    } catch (Throwable $e) {
+                        error_log('[Quota] Failed to record usage for upsell order ' . $orderId . ': ' . $e->getMessage());
+                    }
 
                     json_response([
                         'success' => true,

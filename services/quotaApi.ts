@@ -74,49 +74,42 @@ export async function getActiveRate(quotaProductId: number): Promise<QuotaRateSc
   return res.data ? mapRateSchedule(res.data) : null;
 }
 
-export async function listRateSchedules(quotaProductId: number | 'global'): Promise<QuotaRateSchedule[]> {
-  const qpParam = quotaProductId === 'global' || quotaProductId === 0 ? 'global' : String(quotaProductId);
-  const res = await apiFetch(`${QUOTA_API}?action=list_rates&quotaProductId=${qpParam}`);
+export async function listRateSchedules(companyId: number): Promise<QuotaRateSchedule[]> {
+  const res = await apiFetch(`${QUOTA_API}?action=list_rates&companyId=${companyId}`);
   return (res.data || []).map(mapRateSchedule);
 }
 
 export async function createRateSchedule(payload: {
-  quotaProductId: number;  // 0 = global
+  rateName?: string;
   salesPerQuota: number;
   effectiveDate: string;
   orderDateField: 'order_date' | 'delivery_date';
-  quotaMode: 'reset' | 'cumulative' | 'confirm';
-  resetIntervalDays: number;
-  resetDayOfMonth?: number;
-  resetAnchorDate?: string;
   calcPeriodStart?: string;
   calcPeriodEnd?: string;
   usageStartDate?: string;
   usageEndDate?: string;
   requireConfirm?: boolean;
   createdBy?: number;
-  scopeProductIds?: number[];  // multi-product scope
+  scopeRates: Array<{ quotaProductId: number; salesPerQuota: number }>;
 }): Promise<{ success: boolean; id?: number }> {
   return apiFetch(QUOTA_API, {
     method: 'POST',
-    body: JSON.stringify({ action: 'create_rate', ...payload }),
+    body: JSON.stringify({ action: 'create_rate', quotaMode: 'confirm', ...payload }),
   });
 }
 
 export async function updateRateSchedule(payload: {
   id: number;
+  rateName?: string;
   salesPerQuota?: number;
   effectiveDate?: string;
   orderDateField?: 'order_date' | 'delivery_date';
-  quotaMode?: 'reset' | 'cumulative' | 'confirm';
-  resetIntervalDays?: number;
-  resetDayOfMonth?: number | null;
-  resetAnchorDate?: string | null;
   calcPeriodStart?: string | null;
   calcPeriodEnd?: string | null;
   usageStartDate?: string | null;
   usageEndDate?: string | null;
   requireConfirm?: boolean | null;
+  scopeRates?: Array<{ quotaProductId: number; salesPerQuota: number }>;
 }): Promise<{ success: boolean }> {
   return apiFetch(QUOTA_API, {
     method: 'POST',
@@ -170,6 +163,8 @@ export async function allocateQuota(payload: {
   allocatedBy?: number;
   periodStart?: string;
   periodEnd?: string;
+  validFrom?: string;
+  validUntil?: string;
 }): Promise<{ success: boolean; id?: number }> {
   return apiFetch(QUOTA_API, {
     method: 'POST',
@@ -193,6 +188,22 @@ export async function useQuota(payload: {
   return apiFetch(QUOTA_API, {
     method: 'POST',
     body: JSON.stringify({ action: 'use_quota', ...payload }),
+  });
+}
+
+/**
+ * Auto-record quota usage for an order.
+ * Scans order_items, matches to quota_products, inserts quota_usage rows.
+ * Safe to call multiple times (INSERT IGNORE skips duplicates).
+ */
+export async function recordOrderUsage(payload: {
+  orderId: string;
+  companyId: number;
+  userId: number;
+}): Promise<{ success: boolean; recorded: number }> {
+  return apiFetch(QUOTA_API, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'record_order_usage', ...payload }),
   });
 }
 
@@ -253,6 +264,61 @@ export async function bulkConfirmQuota(payload: {
   });
 }
 
+/** Get pending confirmation counts per confirm-mode rate (lightweight) */
+export async function getPendingCounts(
+  companyId: number,
+): Promise<Record<number, number>> {
+  const res = await apiFetch(
+    `${QUOTA_API}?action=pending_counts&companyId=${companyId}`,
+  );
+  // data is { rateId: count } — convert keys to numbers
+  const raw = res.data || {};
+  const result: Record<number, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    result[Number(k)] = Number(v);
+  }
+  return result;
+}
+
+// ============================================================
+// User Quota Detail (per-rate breakdown)
+// ============================================================
+
+export interface UserQuotaDetailItem {
+  rateScheduleId: number;
+  rateName?: string;
+  productLabel: string;
+  quotaMode: string;
+  modeLabel: string;
+  salesPerQuota: number;
+  totalSales: number;
+  autoQuota: number;
+  adminQuota: number;
+  totalQuota: number;
+  totalUsed: number;
+  remaining: number;
+  periodStart?: string;
+  periodEnd?: string;
+  pendingAutoQuota?: number;
+  isConfirmed?: boolean;
+  isExpired?: boolean;
+}
+
+export async function getUserQuotaDetail(params: {
+  companyId: number;
+  userId: number;
+  rateScheduleId?: number | 'all';
+}): Promise<UserQuotaDetailItem[]> {
+  const qs = new URLSearchParams({
+    action: 'user_quota_detail',
+    companyId: String(params.companyId),
+    userId: String(params.userId),
+  });
+  if (params.rateScheduleId !== undefined) qs.set('rateScheduleId', String(params.rateScheduleId));
+  const res = await apiFetch(`${QUOTA_API}?${qs.toString()}`);
+  return res.data || [];
+}
+
 // ============================================================
 // Mappers — snake_case → camelCase
 // ============================================================
@@ -273,16 +339,21 @@ function mapQuotaProduct(r: any): QuotaProduct {
 }
 
 function mapRateSchedule(r: any): QuotaRateSchedule {
+  // Parse scope_rates from backend
+  const rawScopeRates = r.scope_rates || [];
+  const scopeRates = rawScopeRates.map((sr: any) => ({
+    quotaProductId: Number(sr.quota_product_id),
+    salesPerQuota: Number(sr.sales_per_quota),
+    displayName: sr.display_name || undefined,
+  }));
   return {
     id: Number(r.id),
+    rateName: r.rate_name || undefined,
     quotaProductId: Number(r.quota_product_id),
     salesPerQuota: Number(r.sales_per_quota),
     effectiveDate: r.effective_date,
     orderDateField: r.order_date_field || 'order_date',
-    quotaMode: r.quota_mode || 'reset',
-    resetIntervalDays: Number(r.reset_interval_days || 30),
-    resetDayOfMonth: r.reset_day_of_month != null ? Number(r.reset_day_of_month) : undefined,
-    resetAnchorDate: r.reset_anchor_date || undefined,
+    quotaMode: 'confirm',
     calcPeriodStart: r.calc_period_start || undefined,
     calcPeriodEnd: r.calc_period_end || undefined,
     usageStartDate: r.usage_start_date || undefined,
@@ -291,7 +362,8 @@ function mapRateSchedule(r: any): QuotaRateSchedule {
     createdBy: r.created_by ? Number(r.created_by) : undefined,
     createdByName: r.created_by_name || undefined,
     createdAt: r.created_at || undefined,
-    scopeProductIds: (r.scope_product_ids || []).map(Number),
+    scopeRates,
+    scopeProductIds: scopeRates.map((sr: any) => sr.quotaProductId),
   };
 }
 
@@ -307,6 +379,8 @@ function mapAllocation(r: any): QuotaAllocation {
     allocatedBy: r.allocated_by ? Number(r.allocated_by) : undefined,
     periodStart: r.period_start || undefined,
     periodEnd: r.period_end || undefined,
+    valid_from: r.valid_from || undefined,
+    valid_until: r.valid_until || undefined,
     createdAt: r.created_at,
     userFirstName: r.user_first_name || undefined,
     userLastName: r.user_last_name || undefined,

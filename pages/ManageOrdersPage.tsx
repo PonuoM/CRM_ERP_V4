@@ -823,7 +823,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       'address.province': ctx.address?.province || '',
       'address.postalCode': ctx.address?.postalCode || '',
       'product.shop': ctx.product?.shop ?? 'N/A',
-      'product.sku': ctx.product?.sku ?? '',
+      'product.sku': (() => {
+        const pid = ctx.item?.productId ?? ctx.product?.id;
+        if (pid) {
+          const qp = (window as any).__quotaProductsCache?.find((q: any) => q.productId === pid);
+          if (qp?.csvLabel) return qp.csvLabel;
+        }
+        return ctx.product?.sku ?? '';
+      })(),
       'item.productName': ctx.item?.productName || '',
       'item.quantity': ctx.item?.quantity ?? 0,
       'item.pricePerUnit': ctx.item?.pricePerUnit ?? 0,
@@ -1016,6 +1023,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           const product = item.productId ? products.find(p => p.id === item.productId) : null;
           // Fallback to item-level sku/shop from batch API (enriched by JOIN)
           const effectiveProduct = product || { sku: (item as any).sku, shop: (item as any).shop };
+          // If this product is a quota product, use csv_label (SKU set during quota creation)
+          const quotaProduct = (window as any).__quotaProductsCache?.find((q: any) => q.productId === item.productId);
+          const effectiveSku = (quotaProduct?.csvLabel) || effectiveProduct?.sku || '';
           const shopName = effectiveProduct?.shop ?? 'N/A';
           const rawPhone = customer?.phone || address?.phone || '';
           const displayPhone = rawPhone ? ((rawPhone.startsWith('0') || rawPhone.startsWith('+')) ? rawPhone : `0${rawPhone}`) : '';
@@ -1045,7 +1055,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'ประเทศ': index === 0 ? 'ไทย' : '',
             'รับสินค้าที่ร้านหรือไม่': '',
             'รหัสสินค้าบนแพลตฟอร์ม': '',
-            'รหัสสินค้าในระบบ': item.quantity > 1 ? `${effectiveProduct?.sku ?? ''}-${item.quantity}` : (effectiveProduct?.sku ?? ''),
+            'รหัสสินค้าในระบบ': item.quantity > 1 ? `${effectiveSku}-${item.quantity}` : effectiveSku,
             'ชื่อสินค้า': `${item.productName} ${item.quantity}`,
             'สีและรูปแบบ': '',
             'จำนวน': 1,

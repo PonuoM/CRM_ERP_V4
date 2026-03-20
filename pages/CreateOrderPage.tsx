@@ -602,6 +602,33 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     });
   };
 
+  // 🎫 QUOTA MAX: Map<productId, maxQty> for real-time quantity enforcement
+  const [quotaMaxMap, setQuotaMaxMap] = useState<Map<number, number>>(new Map());
+  useEffect(() => {
+    if (!currentUser?.companyId || !currentUser?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { listQuotaProducts, calculateUserQuota } = await import('../services/quotaApi');
+        const qps = await listQuotaProducts(currentUser.companyId);
+        const activeQps = qps.filter(q => q.isActive);
+        if (activeQps.length === 0 || cancelled) return;
+        const newMap = new Map<number, number>();
+        for (const qp of activeQps) {
+          try {
+            const calc = await calculateUserQuota(qp.id, currentUser.id);
+            if (calc && typeof calc.remaining === 'number') {
+              const cost = qp.quotaCost ?? 1;
+              newMap.set(qp.productId, Math.max(0, Math.floor(calc.remaining / cost)));
+            }
+          } catch { /* skip */ }
+        }
+        if (!cancelled) setQuotaMaxMap(newMap);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.companyId, currentUser?.id]);
+
   const [transferSlipUploads, setTransferSlipUploads] = useState<
     TransferSlipUpload[]
   >([]);
@@ -947,7 +974,17 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       prev.map((item) => {
         if (item.id !== id) return item;
 
-        const updatedItem = { ...item, [field]: value };
+        // 🎫 QUOTA: cap quantity to remaining quota for upsell items
+        let cappedValue = value;
+        if (field === 'quantity' && item.productId) {
+          const qMax = quotaMaxMap.get(item.productId);
+          if (qMax !== undefined && Number(value) > qMax) {
+            cappedValue = qMax;
+            alert(`โควตาคงเหลือสูงสุด ${qMax} ชิ้น สำหรับสินค้านี้`);
+          }
+        }
+
+        const updatedItem = { ...item, [field]: cappedValue };
 
         // ถ้าแก้ไขส่วนลด → คำนวณยอดรวมใหม่
 
@@ -4137,6 +4174,55 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         return;
       }
 
+      // 🎫 QUOTA ENFORCEMENT: Check if order items exceed remaining quota
+      try {
+        const { listQuotaProducts, calculateUserQuota } = await import('../services/quotaApi');
+        const qProducts = await listQuotaProducts(currentUser.companyId);
+        if (qProducts.length > 0) {
+          // Build lookup: productId → { quotaProductId, quotaCost }
+          const qpByProductId = new Map<number, { quotaProductId: number; quotaCost: number }>();
+          for (const qp of qProducts) {
+            if (qp.isActive) {
+              qpByProductId.set(qp.productId, { quotaProductId: qp.id, quotaCost: qp.quotaCost ?? 1 });
+            }
+          }
+
+          // Calculate needed per quota product
+          const neededMap = new Map<number, number>(); // quotaProductId → total needed
+          const nameMap = new Map<number, string>(); // quotaProductId → display name
+          for (const item of orderData.items || []) {
+            const pid = item.productId;
+            if (!pid || !qpByProductId.has(pid)) continue;
+            const info = qpByProductId.get(pid)!;
+            const qty = Math.max(0, item.quantity ?? 0);
+            const needed = qty * info.quotaCost;
+            neededMap.set(info.quotaProductId, (neededMap.get(info.quotaProductId) ?? 0) + needed);
+            if (!nameMap.has(info.quotaProductId)) {
+              const qp = qProducts.find(q => q.id === info.quotaProductId);
+              nameMap.set(info.quotaProductId, qp?.displayName ?? `Product #${info.quotaProductId}`);
+            }
+          }
+
+          // Check remaining for each quota product
+          for (const [qpId, needed] of neededMap.entries()) {
+            if (needed <= 0) continue;
+            try {
+              const calc = await calculateUserQuota(qpId, currentUser.id);
+              if (calc && typeof calc.remaining === 'number' && needed > calc.remaining) {
+                const name = nameMap.get(qpId) ?? `Product #${qpId}`;
+                alert(`โควตาไม่เพียงพอสำหรับ "${name}" — ต้องการ ${needed} แต่คงเหลือ ${calc.remaining}`);
+                return;
+              }
+            } catch (calcErr) {
+              console.warn('[Quota] Failed to check quota for product', qpId, calcErr);
+            }
+          }
+        }
+      } catch (quotaErr) {
+        // Don't block order creation if quota check fails
+        console.warn('[Quota] Could not validate quota:', quotaErr);
+      }
+
       if (!orderData.paymentMethod) {
         highlightField("paymentMethod");
         alert("กรุณาเลือกวิธีการชำระเงิน");
@@ -4566,6 +4652,25 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       if (!savedOrderId) {
         return;
+      }
+
+      // === Phase 2: Auto-record quota usage (fire-and-forget) ===
+      try {
+        const { recordOrderUsage } = await import('../services/quotaApi');
+        recordOrderUsage({
+          orderId: savedOrderId,
+          companyId: currentUser.companyId,
+          userId: currentUser.id,
+        }).then((res) => {
+          if (res.recorded > 0) {
+            console.log(`[Quota] Recorded ${res.recorded} quota usage(s) for order ${savedOrderId}`);
+          }
+        }).catch((err) => {
+          console.warn('[Quota] Failed to record usage (non-blocking):', err);
+        });
+      } catch (e) {
+        // Dynamic import failed — non-critical
+        console.warn('[Quota] Could not load quotaApi:', e);
       }
 
       // Handle customer address update if checkbox is checked
@@ -6138,6 +6243,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               <input
                                 type="number"
                                 min={1}
+                                max={quotaMaxMap.has(item.productId ?? 0) ? quotaMaxMap.get(item.productId ?? 0) : undefined}
                                 value={item.quantity}
                                 onChange={(e) =>
                                   handleUpsellUpdateItem(
@@ -6148,8 +6254,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     Number(e.target.value),
                                   )
                                 }
-                                className="w-full p-2 border border-gray-300 rounded-md bg-white text-sm"
+                                title={quotaMaxMap.has(item.productId ?? 0) ? `โควตาคงเหลือ: ${quotaMaxMap.get(item.productId ?? 0)} ชิ้น` : undefined}
+                                className={`w-full p-2 border rounded-md bg-white text-sm ${quotaMaxMap.has(item.productId ?? 0) ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300'}`}
                               />
+                              {quotaMaxMap.has(item.productId ?? 0) && (
+                                <span className="text-[10px] text-indigo-500 block mt-0.5">
+                                  โควตา: {quotaMaxMap.get(item.productId ?? 0)}
+                                </span>
+                              )}
                             </div>
 
                             <div className="col-span-2">
@@ -8951,13 +9063,20 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 <input
                                   type="number"
                                   min="1"
+                                  max={quotaMaxMap.has(item.productId ?? 0) ? quotaMaxMap.get(item.productId ?? 0) : undefined}
                                   value={item.quantity ?? 1}
                                   readOnly={isChild}
                                   onChange={(e) => {
                                     if (isChild) return;
                                     const rawVal = e.target.value;
-                                    // Allow empty string for clearing input during typing
-                                    const nextQty = rawVal === "" ? 0 : Number(rawVal);
+                                    let nextQty = rawVal === "" ? 0 : Number(rawVal);
+
+                                    // 🎫 QUOTA: cap quantity to remaining quota
+                                    const qMax = quotaMaxMap.get(item.productId ?? 0);
+                                    if (qMax !== undefined && nextQty > qMax) {
+                                      nextQty = qMax;
+                                      alert(`โควตาคงเหลือสูงสุด ${qMax} ชิ้น สำหรับสินค้านี้`);
+                                    }
 
                                     const baseTotal = item.isFreebie ? 0 : (nextQty || 1) * (Number(item.pricePerUnit) || 0);
                                     const currentDiscount = Number(item.discount) || 0;
@@ -8968,8 +9087,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     }
                                     updateOrderData("items", newItems);
                                   }}
-                                  className={`w-full border rounded px-2 py-1 ${isChild ? 'bg-gray-100' : ''}`}
+                                  title={quotaMaxMap.has(item.productId ?? 0) ? `โควตาคงเหลือ: ${quotaMaxMap.get(item.productId ?? 0)} ชิ้น` : undefined}
+                                  className={`w-full border rounded px-2 py-1 ${isChild ? 'bg-gray-100' : quotaMaxMap.has(item.productId ?? 0) ? 'border-indigo-400 bg-indigo-50' : ''}`}
                                 />
+                                {quotaMaxMap.has(item.productId ?? 0) && (
+                                  <span className="text-[10px] text-indigo-500 mt-0.5">
+                                    โควตา: {quotaMaxMap.get(item.productId ?? 0)}
+                                  </span>
+                                )}
                               </div>
                               {!isChild && (
                                 <div>
@@ -9196,12 +9321,20 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 <input
                                   type="number"
                                   min="1"
+                                  max={quotaMaxMap.has(item.productId ?? 0) ? quotaMaxMap.get(item.productId ?? 0) : undefined}
                                   value={item.quantity ?? 1}
                                   readOnly={isChild}
                                   onChange={(e) => {
                                     if (isChild) return;
                                     const rawVal = e.target.value;
-                                    const nextQty = rawVal === "" ? 0 : Number(rawVal);
+                                    let nextQty = rawVal === "" ? 0 : Number(rawVal);
+
+                                    // 🎫 QUOTA: cap quantity to remaining quota
+                                    const qMax = quotaMaxMap.get(item.productId ?? 0);
+                                    if (qMax !== undefined && nextQty > qMax) {
+                                      nextQty = qMax;
+                                      alert(`โควตาคงเหลือสูงสุด ${qMax} ชิ้น สำหรับสินค้านี้`);
+                                    }
 
                                     const baseTotal = item.isFreebie
                                       ? 0
@@ -9240,8 +9373,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                     updateOrderData("items", newItems);
                                   }}
-                                  className={`w-16 border rounded px-1 text-center ${isChild ? "bg-gray-100 text-gray-500" : ""}`}
+                                  title={quotaMaxMap.has(item.productId ?? 0) ? `โควตาคงเหลือ: ${quotaMaxMap.get(item.productId ?? 0)} ชิ้น` : undefined}
+                                  className={`w-16 border rounded px-1 text-center ${isChild ? "bg-gray-100 text-gray-500" : quotaMaxMap.has(item.productId ?? 0) ? "border-indigo-400 bg-indigo-50" : ""}`}
                                 />
+                                {quotaMaxMap.has(item.productId ?? 0) && (
+                                  <span className="text-[10px] text-indigo-500 block mt-0.5">
+                                    โควตา: {quotaMaxMap.get(item.productId ?? 0)}
+                                  </span>
+                                )}
                               </td>
 
                               <td className="px-3 py-2 text-right text-xs text-gray-700">
