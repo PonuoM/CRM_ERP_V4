@@ -78,6 +78,13 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     const [selectedLogForSearch, setSelectedLogForSearch] = useState<AuditLog | null>(null);
     const [addModeForLog, setAddModeForLog] = useState<AuditLog | null>(null); // For adding extra orders
 
+    // Confirm match modal state (replaces window.confirm)
+    const [confirmMatchPending, setConfirmMatchPending] = useState<{
+        log: AuditLog;
+        orderId: string;
+        orderAmount: number;
+    } | null>(null);
+
     // State for COD document detail modal
     const [isCodDetailModalOpen, setIsCodDetailModalOpen] = useState(false);
     const [selectedCodLog, setSelectedCodLog] = useState<AuditLog | null>(null);
@@ -311,12 +318,14 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     };
 
     const handleConfirmMatch = async (log: AuditLog, suggestedOrderId: string, knownOrderAmount?: number) => {
-        if (!window.confirm(`ยืนยันการจับคู่กับออเดอร์ ${suggestedOrderId}?`)) {
-            return;
-        }
-
-        // Use known order amount if provided, otherwise fall back to suggestion/statement
         const orderAmt = knownOrderAmount || (log as any).suggested_order_amount || log.order_amount || log.statement_amount;
+        setConfirmMatchPending({ log, orderId: suggestedOrderId, orderAmount: orderAmt });
+    };
+
+    const executeConfirmMatch = async () => {
+        if (!confirmMatchPending) return;
+        const { log, orderId: suggestedOrderId, orderAmount: orderAmt } = confirmMatchPending;
+        setConfirmMatchPending(null);
 
         try {
             const res = await apiFetch('Statement_DB/reconcile_save.php', {
@@ -944,6 +953,11 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                         title={(log as any).suggested_order_info}
                                                                     >
                                                                         แนะนำ: {(log as any).suggested_order_id}
+                                                                        {(log as any).suggested_slip_count > 1 && (
+                                                                            <span className="ml-1 text-[10px] px-1 py-0.5 bg-green-100 text-green-700 rounded">
+                                                                                สลิป {(log as any).suggested_slip_index}/{(log as any).suggested_slip_count}
+                                                                            </span>
+                                                                        )}
                                                                     </span>
                                                                 </>
                                                             ) : recalculating ? (
@@ -1362,6 +1376,51 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                             >
                                 ปิด
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Match Modal (replaces window.confirm) */}
+            {confirmMatchPending && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setConfirmMatchPending(null)}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all" onClick={e => e.stopPropagation()}>
+                        <div className="px-6 py-4 border-b bg-green-50 rounded-t-xl">
+                            <h3 className="text-lg font-semibold text-green-800 flex items-center gap-2">
+                                <i className="fa-solid fa-link text-green-600"></i>
+                                ยืนยันจับคู่ออเดอร์
+                            </h3>
+                        </div>
+                        <div className="px-6 py-5">
+                            <p className="text-gray-700 mb-4">ต้องการจับคู่ statement นี้กับออเดอร์หรือไม่?</p>
+                            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500 text-sm">ออเดอร์:</span>
+                                    <span className="font-semibold text-indigo-600">{confirmMatchPending.orderId}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500 text-sm">ยอด Statement:</span>
+                                    <span className="font-medium">฿{confirmMatchPending.log.statement_amount.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500 text-sm">ยอดที่จะจับคู่:</span>
+                                    <span className="font-medium text-green-700">฿{confirmMatchPending.orderAmount.toLocaleString()}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3 rounded-b-xl">
+                            <button
+                                onClick={() => setConfirmMatchPending(null)}
+                                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium"
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={executeConfirmMatch}
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm"
+                            >
+                                ยืนยันจับคู่
                             </button>
                         </div>
                     </div>
