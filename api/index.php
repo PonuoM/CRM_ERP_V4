@@ -8338,10 +8338,19 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 $pdo->beginTransaction();
                 set_audit_context($pdo, 'index/cod_document_delete');
 
-                // Get affected order IDs before deleting records
+                // Get affected order IDs and tracking numbers before deleting records
                 $affectedOrdersStmt = $pdo->prepare('SELECT DISTINCT order_id FROM cod_records WHERE document_id = ?');
                 $affectedOrdersStmt->execute([$id]);
-                $affectedOrderIds = $affectedOrdersStmt->fetchAll(PDO::FETCH_COLUMN);
+                $rawOrderIds = $affectedOrdersStmt->fetchAll(PDO::FETCH_COLUMN);
+                // Normalize to parent order IDs (remove -1, -2 suffix)
+                $affectedOrderIds = array_unique(array_map(function($oid) {
+                    return preg_replace('/-\d+$/', '', $oid);
+                }, array_filter($rawOrderIds)));
+
+                // Get tracking numbers before deleting (for order_boxes recalculation)
+                $affectedTrackingsStmt = $pdo->prepare('SELECT tracking_number FROM cod_records WHERE document_id = ?');
+                $affectedTrackingsStmt->execute([$id]);
+                $affectedTrackings = $affectedTrackingsStmt->fetchAll(PDO::FETCH_COLUMN);
 
                 $delRecords = $pdo->prepare('DELETE FROM cod_records WHERE document_id = ?');
                 $delRecords->execute([$id]);
@@ -8350,25 +8359,88 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                 $delDoc = $pdo->prepare('DELETE FROM cod_documents WHERE id = ?');
                 $delDoc->execute([$id]);
 
-                // Recalculate amount_paid for all affected orders
+                // Recalculate order_boxes.collected_amount for affected tracking numbers
+                if (!empty($affectedTrackings)) {
+                    $trkPh = implode(',', array_fill(0, count($affectedTrackings), '?'));
+                    $boxLookupStmt = $pdo->prepare("
+                        SELECT otn.parent_order_id, otn.box_number, otn.order_id as sub_order_id
+                        FROM order_tracking_numbers otn
+                        WHERE otn.tracking_number IN ($trkPh)
+                    ");
+                    $boxLookupStmt->execute($affectedTrackings);
+                    $boxRows = $boxLookupStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    $updateBoxStmt = $pdo->prepare("
+                        UPDATE order_boxes SET collected_amount = (
+                            SELECT COALESCE(SUM(cr.cod_amount), 0)
+                            FROM cod_records cr
+                            INNER JOIN order_tracking_numbers otn 
+                                ON LOWER(REPLACE(otn.tracking_number, ' ', '')) = LOWER(REPLACE(cr.tracking_number, ' ', ''))
+                            WHERE otn.parent_order_id = ? AND otn.box_number = ?
+                        ) WHERE order_id = ? AND box_number = ?
+                    ");
+                    foreach ($boxRows as $boxRow) {
+                        $updateBoxStmt->execute([
+                            $boxRow['parent_order_id'], $boxRow['box_number'],
+                            $boxRow['parent_order_id'], $boxRow['box_number']
+                        ]);
+                    }
+                }
+
+                // Recalculate amount_paid for all affected orders from ALL payment sources
                 foreach ($affectedOrderIds as $affOid) {
-                    // Sum remaining COD records
-                    $codSumStmt = $pdo->prepare("SELECT COALESCE(SUM(cod_amount), 0) FROM cod_records WHERE order_id = ?");
-                    $codSumStmt->execute([$affOid]);
+                    // Source 1: Sum remaining COD records (match by parent order pattern)
+                    $codSumStmt = $pdo->prepare("
+                        SELECT COALESCE(SUM(cr.cod_amount), 0) 
+                        FROM cod_records cr
+                        WHERE cr.order_id = ? OR cr.order_id LIKE ?
+                    ");
+                    $codSumStmt->execute([$affOid, $affOid . '-%']);
                     $remainingCod = (float) $codSumStmt->fetchColumn();
 
-                    // Sum slips
+                    // Source 2: Sum remaining reconcile logs (confirmed amounts from Bank Audit)
+                    $reconSumStmt = $pdo->prepare("
+                        SELECT COALESCE(SUM(srl.confirmed_amount), 0) 
+                        FROM statement_reconcile_logs srl
+                        INNER JOIN statement_reconcile_batches srb ON srb.id = srl.batch_id
+                        WHERE srl.order_id = ? AND srb.company_id = ?
+                    ");
+                    $reconSumStmt->execute([$affOid, $doc['company_id']]);
+                    $remainingRecon = (float) $reconSumStmt->fetchColumn();
+
+                    // Source 3: Sum remaining order slips
                     $slipSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_slips WHERE order_id = ?");
                     $slipSumStmt->execute([$affOid]);
                     $remainingSlip = (float) $slipSumStmt->fetchColumn();
 
-                    // Get total_amount
-                    $totalStmt = $pdo->prepare("SELECT total_amount FROM orders WHERE id = ?");
-                    $totalStmt->execute([$affOid]);
-                    $orderTotal = (float) $totalStmt->fetchColumn();
+                    // Get order info
+                    $orderInfoStmt = $pdo->prepare("SELECT total_amount, payment_status, order_status FROM orders WHERE id = ?");
+                    $orderInfoStmt->execute([$affOid]);
+                    $orderInfo = $orderInfoStmt->fetch(PDO::FETCH_ASSOC);
+                    if (!$orderInfo) continue;
+                    $orderTotal = (float) $orderInfo['total_amount'];
 
-                    $recalcPaid = min($orderTotal, round($remainingCod + $remainingSlip, 2));
-                    $pdo->prepare("UPDATE orders SET amount_paid = ? WHERE id = ?")->execute([$recalcPaid, $affOid]);
+                    // Use the greater of COD records vs reconcile logs, plus slips
+                    $bestCodAmount = max($remainingCod, $remainingRecon);
+                    $recalcPaid = min($orderTotal, round($bestCodAmount + $remainingSlip, 2));
+
+                    // Determine correct statuses based on remaining amount vs 95% threshold
+                    $threshold = $orderTotal * 0.95;
+                    if ($recalcPaid <= 0) {
+                        $newPaymentStatus = 'Unpaid';
+                        $newOrderStatus = ($orderInfo['order_status'] === 'PreApproved') ? 'Shipping' : $orderInfo['order_status'];
+                    } elseif ($recalcPaid >= $threshold) {
+                        // Still above 95% — keep current statuses
+                        $newPaymentStatus = $orderInfo['payment_status'];
+                        $newOrderStatus = $orderInfo['order_status'];
+                    } else {
+                        // Below 95% — revert to Unpaid + Shipping
+                        $newPaymentStatus = 'Unpaid';
+                        $newOrderStatus = ($orderInfo['order_status'] === 'PreApproved') ? 'Shipping' : $orderInfo['order_status'];
+                    }
+
+                    $pdo->prepare("UPDATE orders SET amount_paid = ?, payment_status = ?, order_status = ? WHERE id = ?")
+                        ->execute([$recalcPaid, $newPaymentStatus, $newOrderStatus, $affOid]);
                 }
 
                 $pdo->commit();

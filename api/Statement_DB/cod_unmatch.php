@@ -81,6 +81,15 @@ try {
 
             $pdo->prepare("UPDATE orders SET amount_paid = :paid WHERE id = :id AND company_id = :cid")
                 ->execute([':paid' => $remainingPaid, ':id' => $log['order_id'], ':cid' => $companyId]);
+
+            // Also reset payment_status based on remaining amount
+            if ($remainingPaid <= 0) {
+                $pdo->prepare("UPDATE orders SET payment_status = 'Unpaid' WHERE id = :id AND company_id = :cid")
+                    ->execute([':id' => $log['order_id'], ':cid' => $companyId]);
+            } elseif ($remainingPaid < $orderTotal) {
+                $pdo->prepare("UPDATE orders SET payment_status = 'PreApproved' WHERE id = :id AND company_id = :cid AND payment_status NOT IN ('Approved', 'Paid')")
+                    ->execute([':id' => $log['order_id'], ':cid' => $companyId]);
+            }
         } else {
             // Non-order type (Suspense, Deposit) — just delete
             $delLog = $pdo->prepare("DELETE FROM statement_reconcile_logs WHERE id = :id");

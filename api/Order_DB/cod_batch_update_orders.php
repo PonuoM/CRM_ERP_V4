@@ -155,7 +155,13 @@ try {
                 'skipped' => 'already_confirmed',
             ];
         } else {
-            $paymentStatus = $totalPaid > 0 ? 'PreApproved' : 'PendingVerification';
+            // Only set PreApproved when amount covers >= 95% of order total (allows small discrepancies)
+            if ($orderTotal > 0 && $totalPaid >= $orderTotal * 0.95) {
+                $paymentStatus = 'PreApproved';
+            } else {
+                // Partial payment — keep current payment_status, don't promote to PreApproved
+                $paymentStatus = $currentPayment ?: 'PendingVerification';
+            }
             $updateFullStmt->execute([$totalPaid, $paymentStatus, $paymentStatus, $orderId, $companyId]);
             $updates[$orderId] = [
                 'amountPaid' => $totalPaid,
