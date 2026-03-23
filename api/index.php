@@ -11817,6 +11817,18 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                     // Map frontend temp IDs (Date.now()) → real DB IDs
                     $tempIdToRealId = [];
 
+                    // Build a map of parent item quantities (frontend temp id → qty)
+                    // so child items can use: net_total = price_override × parent_qty
+                    $parentQtyMap = [];
+                    foreach ($items as $it) {
+                        if (!empty($it['isPromotionParent'])) {
+                            $fid = $it['id'] ?? null;
+                            if ($fid !== null) {
+                                $parentQtyMap[$fid] = max(1, (int)($it['quantity'] ?? 1));
+                            }
+                        }
+                    }
+
                     foreach ($items as $item) {
                         $productId = $item['productId'] ?? null;
                         $productName = $item['productName'] ?? '';
@@ -11835,7 +11847,12 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                             : null;
 
                         if ($priceOverride !== null && !$isFreebie) {
-                            $netTotal = $priceOverride;
+                            // child net_total = price_override × parent_qty
+                            $rawParentId = $item['parentItemId'] ?? null;
+                            $parentQty = ($rawParentId !== null && isset($parentQtyMap[$rawParentId]))
+                                ? $parentQtyMap[$rawParentId]
+                                : 1;
+                            $netTotal = $priceOverride * $parentQty;
                         } else {
                             $netTotal = calculate_order_item_net_total([
                                 'quantity' => $quantity,
@@ -11893,13 +11910,18 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                             $tempIdToRealId[$frontendId] = $itemId;
                         }
 
-                        $newTotalAmount += $netTotal;
+                        // Only add to total for non-child items
+                        // Children's net_total is already included in parent's net_total
+                        $rawParentItemId = $item['parentItemId'] ?? null;
+                        if ($rawParentItemId === null) {
+                            $newTotalAmount += $netTotal;
 
-                        // Accumulate net total per box for order_boxes
-                        if (!isset($boxNetAdditions[$boxNumber])) {
-                            $boxNetAdditions[$boxNumber] = 0.0;
+                            // Accumulate net total per box for order_boxes
+                            if (!isset($boxNetAdditions[$boxNumber])) {
+                                $boxNetAdditions[$boxNumber] = 0.0;
+                            }
+                            $boxNetAdditions[$boxNumber] += $netTotal;
                         }
-                        $boxNetAdditions[$boxNumber] += $netTotal;
 
                         // Store raw parentItemId from frontend for pass 2
                         $rawParentItemId = $item['parentItemId'] ?? null;

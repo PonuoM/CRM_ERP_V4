@@ -244,7 +244,11 @@ const OrderSummary: React.FC<{
     return visibleItems.reduce(
       (acc, item) =>
         acc +
-        (item.isFreebie ? 0 : (item.quantity || 0) * (item.pricePerUnit || 0)),
+        (item.isFreebie ? 0 : (
+          (item as any).priceOverride != null
+            ? Number((item as any).priceOverride)
+            : (item.quantity || 0) * (item.pricePerUnit || 0)
+        )),
 
       0,
     );
@@ -421,6 +425,17 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [upsellSaving, setUpsellSaving] = useState(false);
 
   const [upsellError, setUpsellError] = useState<string | null>(null);
+
+  // Track which promotion parent items are expanded in the upsell existing items table
+  const [expandedPromoIds, setExpandedPromoIds] = useState<Set<number>>(new Set());
+  const togglePromoExpand = (itemId: number) => {
+    setExpandedPromoIds(prev => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
 
   const [upsellItems, setUpsellItems] = useState<LineItem[]>([]);
 
@@ -1025,19 +1040,51 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         // ถ้าแก้ไขจำนวนหรือราคาต่อหน่วย → คำนวณยอดรวมใหม่
         else if (field === "quantity" || field === "pricePerUnit") {
-          const baseTotal =
-            (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0);
+          // Skip for promotion parents — second pass recalculates with correct pricePerUnit
+          if (!updatedItem.isPromotionParent) {
+            const baseTotal =
+              (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0);
 
-          const currentDiscount = updatedItem.discount || 0;
+            const currentDiscount = updatedItem.discount || 0;
 
-          const newTotal = Math.max(0, baseTotal - currentDiscount);
+            const newTotal = Math.max(0, baseTotal - currentDiscount);
 
-          (updatedItem as any).line_total = newTotal;
+            (updatedItem as any).line_total = newTotal;
+          }
         }
 
         return updatedItem;
       }),
     );
+
+    // ===== Quantity Scaling: ถ้าเปลี่ยน qty ของ promotion parent → scale children =====
+    if (field === "quantity") {
+      setUpsellItems((prev) => {
+        const parentItem = prev.find((it) => it.id === id);
+        if (!parentItem?.isPromotionParent) return prev;
+
+        const newParentQty = Number(value) || 1;
+        const updated = prev.map((it) => {
+          if (it.parentItemId !== id) return it;
+          // Scale child quantity: originalQuantity × parentQty
+          const origQty = it.originalQuantity || it.quantity || 1;
+          const scaledQty = origQty * newParentQty;
+
+          return {
+            ...it,
+            quantity: scaledQty,
+            // priceOverride unchanged — backend handles net_total = priceOverride × parentQty
+          };
+        });
+        // Parent pricePerUnit stays as per-set price (e.g. 1700)
+        // line_total = pricePerUnit × qty for display (e.g. 1700 × 4 = 6800)
+        return updated.map((it) =>
+          it.id === id
+            ? { ...it, line_total: (it.pricePerUnit || 0) * newParentQty }
+            : it
+        );
+      });
+    }
   };
 
   const handleUpsellProductSelect = (itemId: number, productId: number) => {
@@ -1190,8 +1237,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const isFreeFlag = !!part.isFreebie || !!part.is_freebie;
 
-      const rawOverride = part.price_override !== null && part.price_override !== undefined
-        ? Number(part.price_override)
+      const overrideVal = part.price_override ?? (part as any).priceOverride;
+      const rawOverride = overrideVal !== null && overrideVal !== undefined
+        ? Number(overrideVal)
         : null;
       const itemPrice = isFreeFlag
         ? 0
@@ -1352,13 +1400,15 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     const discount = Number(item.discount ?? 0);
 
-    const computed = qty * price - discount;
+    const computed = (item as any).priceOverride != null
+      ? Number((item as any).priceOverride) - discount
+      : qty * price - discount;
 
+    // Prefer backend-stored net_total when available (for existing order items)
     if (
       explicitTotal != null &&
       !Number.isNaN(Number(explicitTotal)) &&
-      Number(explicitTotal) > 0 &&
-      computed === 0
+      Number(explicitTotal) >= 0
     ) {
       return Number(explicitTotal);
     }
@@ -1378,7 +1428,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     const items = Array.isArray(order.items) ? order.items : [];
 
-    const calculatedTotal = items.reduce(
+    const calculatedTotal = items
+      .filter((item: any) => !item.parent_item_id && !item.parentItemId)
+      .reduce(
       (sum, item) => sum + calculateUpsellItemTotal(item as LineItem),
 
       0,
@@ -5203,8 +5255,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       // IMPORTANT: pricePerUnit uses product price (for display/reference)
       // priceOverride passes promotion_items.price_override for backend to set net_total directly
-      const rawOverride = part.price_override !== null && part.price_override !== undefined
-        ? Number(part.price_override)
+      const overrideVal2 = part.price_override ?? (part as any).priceOverride;
+      const rawOverride = overrideVal2 !== null && overrideVal2 !== undefined
+        ? Number(overrideVal2)
         : null;
       const itemPrice = isFreeFlag
         ? 0
@@ -5499,7 +5552,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       // IMPORTANT: Always use price_override for promotion items if available
       // If price_override is null or 0 and item is not a freebie, use the regular product price
 
-      const priceOverride = part.price_override;
+      const priceOverride = part.price_override ?? (part as any).priceOverride;
       const productPrice = prod.price;
 
       // Calculate item price for summation
@@ -5549,11 +5602,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       newLockedIds.push(newId);
 
-      // Add to total price (only non-freebie items)
 
-      if (!isFreeFlag) {
-        totalPromotionPrice += itemPrice * qty;
-      }
     }
 
     // Update parent item with total price
@@ -5916,21 +5965,59 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         const lineTotal = calculateUpsellItemTotal(
                           item as LineItem,
                         );
+                        const isChild = !!(item as any).parent_item_id || !!(item as any).parentItemId;
+                        const isPromoParent = !!(item as any).is_promotion_parent || !!(item as any).isPromotionParent;
+                        const promoId = (item as any).promotion_id ?? (item as any).promotionId;
+                        // Find promotion SKU for parent items
+                        const promoSku = isPromoParent && promoId
+                          ? promotionsSafe.find((p: any) => String(p.id) === String(promoId))?.sku || ''
+                          : '';
+
+                        // If this is a child item and its parent is collapsed, skip rendering
+                        if (isChild) {
+                          const parentId = Number((item as any).parent_item_id ?? (item as any).parentItemId);
+                          if (!expandedPromoIds.has(parentId)) return null;
+                        }
+
+                        // Count children for this parent
+                        const childCount = isPromoParent
+                          ? (selectedUpsellOrder.items || []).filter((c: any) =>
+                              Number(c.parent_item_id ?? c.parentItemId) === Number(item.id)
+                            ).length
+                          : 0;
+                        const isExpanded = expandedPromoIds.has(Number(item.id));
 
                         return (
-                          <tr key={item.id} className="border-b last:border-0">
+                          <tr
+                            key={item.id}
+                            className={`border-b last:border-0 ${isChild ? 'bg-slate-50/70 text-gray-500 text-sm' : ''} ${isPromoParent ? 'cursor-pointer hover:bg-blue-50/50' : ''}`}
+                            onClick={isPromoParent && childCount > 0 ? () => togglePromoExpand(Number(item.id)) : undefined}
+                          >
                             <td className="px-4 py-2">
-                              {(item as any).sku ||
+                              {isChild && <span className="text-gray-400 mr-1 pl-3">↳</span>}
+                              {isPromoParent && promoSku ? (
+                                <span className="font-medium text-blue-700">{promoSku}</span>
+                              ) : isPromoParent ? '-' : (
+                                (item as any).sku ||
                                 (item as any).productSku ||
-                                "-"}
+                                (item as any).product_sku ||
+                                "-"
+                              )}
                             </td>
 
                             <td className="px-4 py-2">
+                              {isChild && <span className="text-gray-400 mr-1">↳ </span>}
+                              {isPromoParent && childCount > 0 && (
+                                <span className="inline-block mr-1 text-gray-400 text-xs select-none" style={{ width: '16px' }}>
+                                  {isExpanded ? '▼' : '▶'}
+                                </span>
+                              )}
+                              {isPromoParent && <span className="inline-block mr-1">🎁</span>}
                               {item.productName ||
                                 `Product ID: ${item.productId}`}
-
-                              {item.productName ||
-                                `Product ID: ${item.productId} `}
+                              {isPromoParent && childCount > 0 && (
+                                <span className="ml-2 text-xs text-gray-400">({childCount} รายการ)</span>
+                              )}
                             </td>
 
                             <td className="px-4 py-2 text-right">
@@ -5938,27 +6025,27 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             </td>
 
                             <td className="px-4 py-2 text-right">
-                              {formatCurrency(Number(item.pricePerUnit ?? 0))}
+                              {isChild ? '' : formatCurrency(Number(item.pricePerUnit ?? 0))}
                             </td>
 
                             <td className="px-4 py-2 text-right">
-                              {formatCurrency(Number(item.discount ?? 0))}
+                              {isChild ? '' : formatCurrency(Number(item.discount ?? 0))}
                             </td>
 
                             <td className="px-4 py-2 text-right font-semibold">
-                              {item.isFreebie
-                                ? TH.freebie
-                                : formatCurrency(lineTotal)}
+                              {isChild
+                                ? ''
+                                : item.isFreebie
+                                  ? TH.freebie
+                                  : formatCurrency(lineTotal)}
                             </td>
 
                             <td className="px-4 py-2 text-right">
-                              {item.boxNumber || 1}
+                              {isChild ? '' : (item.boxNumber || 1)}
                             </td>
 
                             <td className="px-4 py-2">
-                              {(() => {
-                                // Use item's creator_id if available, otherwise fallback to order's creatorId
-
+                              {isChild ? '' : (() => {
                                 const itemCreatorId =
                                   (item as any).creatorId ||
                                   (item as any).creator_id;
@@ -5971,10 +6058,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                 return creator
                                   ? `${creator.firstName} ${creator.lastName}`
-                                  : "-";
-
-                                return creator
-                                  ? `${creator.firstName} ${creator.lastName} `
                                   : "-";
                               })()}
                             </td>
@@ -6272,7 +6355,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               <input
                                 type="number"
                                 min={0}
-                                value={item.pricePerUnit}
+                                value={(item as any).priceOverride != null ? Number((item as any).priceOverride) : item.pricePerUnit}
                                 readOnly
                                 className="w-full p-2 border border-gray-300 rounded-md bg-slate-100 text-sm"
                               />
@@ -6287,8 +6370,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 type="number"
                                 min={0}
                                 max={
-                                  (item.pricePerUnit || 0) *
-                                  (item.quantity || 0)
+                                  (item as any).priceOverride != null
+                                    ? Number((item as any).priceOverride)
+                                    : (item.pricePerUnit || 0) * (item.quantity || 0)
                                 }
                                 value={item.discount}
                                 onChange={(e) =>
@@ -9241,8 +9325,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           const itemTotal = item.isFreebie
                             ? 0
-                            : (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0) -
-                            (Number(item.discount) || 0);
+                            : (item as any).priceOverride != null
+                              ? Number((item as any).priceOverride) - (Number(item.discount) || 0)
+                              : (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0) -
+                              (Number(item.discount) || 0);
 
                           return (
                             <tr
@@ -9338,7 +9424,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                     const baseTotal = item.isFreebie
                                       ? 0
-                                      : (nextQty || 1) * (Number(item.pricePerUnit) || 0);
+                                      : (item as any).priceOverride != null
+                                        ? Number((item as any).priceOverride)
+                                        : (nextQty || 1) * (Number(item.pricePerUnit) || 0);
                                     const currentDiscount = Number(item.discount) || 0;
                                     const clampedDiscount = Math.max(
                                       0,
@@ -9386,7 +9474,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               <td className="px-3 py-2 text-right text-xs text-gray-700">
                                 <input
                                   type="number"
-                                  value={item.pricePerUnit}
+                                  value={(item as any).priceOverride != null ? Number((item as any).priceOverride) : item.pricePerUnit}
                                   readOnly
                                   className="w-20 border rounded px-1 text-right bg-slate-100"
                                 />
