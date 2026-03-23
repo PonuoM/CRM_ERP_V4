@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
 import { User, Customer, Activity, LineItem, Order } from '../../types';
-import { Search, Loader2, ExternalLink, Filter, CheckSquare, Download, X } from 'lucide-react';
+import { Search, Loader2, ExternalLink, Filter, CheckSquare, Download, X, EyeOff, Eye } from 'lucide-react';
 import OrderDetailModal from '../../components/OrderDetailModal';
 import type { StatementContext } from '../../components/OrderDetailModal';
 import SlipOrderSearchModal from '../../components/SlipOrderSearchModal';
@@ -62,6 +62,9 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(false);
     const [recalculating, setRecalculating] = useState(false);
+    // Filter toggles
+    const [hideMatched, setHideMatched] = useState(false);
+    const [hideConfirmed, setHideConfirmed] = useState(false);
     // Order ID search via backend
     const [orderIdSearch, setOrderIdSearch] = useState('');
     const [orderSearchResults, setOrderSearchResults] = useState<any[]>([]);
@@ -532,6 +535,13 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
+    // Compute filtered logs based on toggle states
+    const filteredLogs = logs.filter(log => {
+        if (hideMatched && log.order_id && !log.confirmed_at) return false;
+        if (hideConfirmed && log.confirmed_at) return false;
+        return true;
+    });
+
     const handleToggleSelect = (id: number) => {
         setSelectedIds(prev =>
             prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -620,7 +630,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.checked) {
-            const selectable = logs.filter(l => l.order_id && !l.confirmed_at && l.reconcile_id).map(l => l.id);
+            const selectable = filteredLogs.filter(l => l.order_id && !l.confirmed_at && l.reconcile_id).map(l => l.id);
             setSelectedIds(selectable);
         } else {
             setSelectedIds([]);
@@ -779,6 +789,34 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                     <Download className="w-4 h-4 mr-2" />
                                     Export CSV
                                 </button>
+
+                                {/* Filter toggle buttons */}
+                                {logs.length > 0 && (
+                                    <>
+                                        <button
+                                            onClick={() => setHideMatched(prev => !prev)}
+                                            className={`mb-[1px] px-3 py-2 rounded-md flex items-center text-sm font-medium border transition-colors ${
+                                                hideMatched
+                                                    ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
+                                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {hideMatched ? <EyeOff className="w-4 h-4 mr-1.5" /> : <Eye className="w-4 h-4 mr-1.5" />}
+                                            ซ่อน Match แล้ว
+                                        </button>
+                                        <button
+                                            onClick={() => setHideConfirmed(prev => !prev)}
+                                            className={`mb-[1px] px-3 py-2 rounded-md flex items-center text-sm font-medium border transition-colors ${
+                                                hideConfirmed
+                                                    ? 'bg-teal-100 text-teal-800 border-teal-300 hover:bg-teal-200'
+                                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {hideConfirmed ? <EyeOff className="w-4 h-4 mr-1.5" /> : <Eye className="w-4 h-4 mr-1.5" />}
+                                            ซ่อนยืนยันแล้ว
+                                        </button>
+                                    </>
+                                )}
                             </div>
 
                             {/* Order ID Search — ค้นหาจาก DB */}
@@ -844,21 +882,23 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                     type="checkbox"
                                                     className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                                     onChange={handleSelectAll}
-                                                    checked={logs.length > 0 && logs.some(l => l.order_id && !l.confirmed_at) && selectedIds.length === logs.filter(l => l.order_id && !l.confirmed_at).length}
+                                                    checked={filteredLogs.length > 0 && filteredLogs.some(l => l.order_id && !l.confirmed_at && l.reconcile_id) && selectedIds.length === filteredLogs.filter(l => l.order_id && !l.confirmed_at && l.reconcile_id).length}
                                                 />
                                             </div>
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200 text-left">
-                                    {logs.length === 0 ? (
+                                    {filteredLogs.length === 0 ? (
                                         <tr>
                                             <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
-                                                {loading ? 'กำลังโหลดข้อมูล...' : 'ไม่พบข้อมูล หรือยังไม่ได้ค้นหา'}
+                                                {loading ? 'กำลังโหลดข้อมูล...' : logs.length > 0
+                                                    ? `รายการทั้งหมดถูกซ่อนด้วยตัวกรอง (${logs.length} รายการ)`
+                                                    : 'ไม่พบข้อมูล หรือยังไม่ได้ค้นหา'}
                                             </td>
                                         </tr>
                                     ) : (
-                                        logs.map((log, index) => (
+                                        filteredLogs.map((log, index) => (
                                             <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                                                 <td className="px-4 py-3 text-center text-gray-500">{index + 1}</td>
                                                 <td className="px-4 py-3 whitespace-nowrap">{formatDate(log.transfer_at)}</td>
