@@ -64,10 +64,10 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
   const fetchCustomerOrders = useCallback(async (customer: Customer) => {
     setLoadingOrders(true);
     try {
-      // Fetch specifically for this customer by phone (most reliable unique key exposed)
+      // Fetch orders by customer_id (indexed) instead of phone (requires full table scan)
       const res = await listOrders({
         companyId: currentUser?.companyId,
-        customerPhone: customer.phone,
+        customerId: customer.id,
         pageSize: 100 // Reasonable limit for history
       });
       if (res.ok && Array.isArray(res.orders)) {
@@ -196,8 +196,9 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
     const totalPurchase = customerOrders.reduce(
       (sum, order) => {
         const orderTotal = order.items.reduce((itemSum, item) => {
-          // ไม่รวมของแถม (isFreebie) ในยอดขาย
+          // ไม่รวมของแถม (isFreebie) และสินค้าลูกในชุดโปรโมชั่น (parentItemId) ในยอดขาย
           if (item.isFreebie) return itemSum;
+          if (item.parentItemId != null) return itemSum;
           return itemSum + (item.quantity * item.pricePerUnit - (item.discount || 0));
         }, 0);
         return sum + orderTotal;
@@ -457,7 +458,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                                 <tr
                                   key={`${order.id}-item-${itemIndex}`}
                                   id={itemIndex === 0 ? `order-${order.id}` : undefined}
-                                  className={`${itemIndex === 0 ? 'border-t-2 border-gray-300' : 'border-t border-gray-100'} ${orderBgColor} ${item.isFreebie ? 'text-green-700' : ''}`}
+                                  className={`${itemIndex === 0 ? 'border-t-2 border-gray-300' : 'border-t border-gray-100'} ${item.isPromotionParent ? 'bg-orange-50' : item.parentItemId != null ? 'bg-orange-50/50' : orderBgColor} ${item.isFreebie ? 'text-green-700' : ''}`}
                                 >
                                   {/* Order ID - แสดงเฉพาะแถวแรก, แถวอื่นเว้นว่าง */}
                                   <td className="px-6 py-2 text-gray-800 font-mono text-sm">
@@ -470,7 +471,9 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                                   {/* สินค้า */}
                                   <td className="px-6 py-2 text-gray-800">
                                     <span className={item.isFreebie ? 'text-green-600' : ''}>
+                                      {item.parentItemId != null ? '- ' : ''}
                                       {item.productName}
+                                      {item.isPromotionParent && <span className="ml-2 text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">ชุดโปรโมชั่น</span>}
                                       {item.isFreebie && <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">แถม</span>}
                                     </span>
                                   </td>
@@ -482,7 +485,9 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                                   <td className="px-6 py-2 text-right font-medium text-gray-800">
                                     {item.isFreebie
                                       ? <span className="text-green-600 text-sm">ฟรี</span>
-                                      : (item.quantity * item.pricePerUnit - (item.discount || 0)).toLocaleString()
+                                      : item.parentItemId != null
+                                        ? <span className="text-xs text-gray-400 italic">รวมในชุด</span>
+                                        : (item.quantity * item.pricePerUnit - (item.discount || 0)).toLocaleString()
                                     }
                                   </td>
                                   {/* พนักงาน - แสดงทุกแถว (รองรับ Upsell) */}

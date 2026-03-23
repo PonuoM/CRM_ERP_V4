@@ -8534,7 +8534,7 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     $threshold = $orderTotal * 0.95;
                     if ($recalcPaid <= 0) {
                         $newPaymentStatus = 'Unpaid';
-                        $newOrderStatus = ($orderInfo['order_status'] === 'PreApproved') ? 'Shipping' : $orderInfo['order_status'];
+                        $newOrderStatus = in_array($orderInfo['order_status'], ['PreApproved', 'Delivered']) ? 'Shipping' : $orderInfo['order_status'];
                     } elseif ($recalcPaid >= $threshold) {
                         // Still above 95% — keep current statuses
                         $newPaymentStatus = $orderInfo['payment_status'];
@@ -8542,7 +8542,7 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     } else {
                         // Below 95% — revert to Unpaid + Shipping
                         $newPaymentStatus = 'Unpaid';
-                        $newOrderStatus = ($orderInfo['order_status'] === 'PreApproved') ? 'Shipping' : $orderInfo['order_status'];
+                        $newOrderStatus = in_array($orderInfo['order_status'], ['PreApproved', 'Delivered']) ? 'Shipping' : $orderInfo['order_status'];
                     }
 
                     $pdo->prepare("UPDATE orders SET amount_paid = ?, payment_status = ?, order_status = ? WHERE id = ?")
