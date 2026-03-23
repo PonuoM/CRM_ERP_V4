@@ -118,11 +118,13 @@ try {
           o.total_amount,
           o.amount_paid,
           COALESCE(r.reconciled_amount, 0) AS reconciled_amount,
+          COALESCE(r.reconciled_count, 0) AS reconciled_count,
           o.payment_method,
           o.transfer_date,
           o.bank_account_id,
           o.order_status,
           IFNULL(os.total_slip, 0) AS slip_total,
+          IFNULL(os.slip_count, 0) AS slip_count,
           os.slip_transfer_date,
           os.slip_bank_account_id,
           oss.slip_items
@@ -131,6 +133,7 @@ try {
           SELECT
             order_id,
             SUM(COALESCE(amount, 0)) AS total_slip,
+            COUNT(*) AS slip_count,
             MAX(transfer_date) AS slip_transfer_date,
             MAX(bank_account_id) AS slip_bank_account_id
           FROM order_slips
@@ -152,7 +155,8 @@ try {
         LEFT JOIN (
           SELECT
              srl.order_id,
-             SUM(COALESCE(srl.confirmed_amount, 0)) AS reconciled_amount
+             SUM(COALESCE(srl.confirmed_amount, 0)) AS reconciled_amount,
+             COUNT(*) AS reconciled_count
           FROM statement_reconcile_logs srl
           INNER JOIN statement_reconcile_batches srb ON srb.id = srl.batch_id
           WHERE srb.company_id = :companyRecon
@@ -180,6 +184,10 @@ try {
       $candidateOrders[] = $orow;
     }
   }
+
+  // Track which slips have already been suggested (to allow per-slip matching)
+  // Key: "orderId:slipIndex" => true
+  $usedSlips = [];
 
   foreach ($rows as $row) {
     $status = 'Unmatched';
@@ -283,19 +291,25 @@ try {
     $suggestedOrderInfo = null;
     $suggestedOrderAmount = null;
     $suggestedPaymentMethod = null;
+    $suggestedSlipCount = 0;
+    $suggestedSlipIndex = 0;
 
     if ($matchStatement && $status === 'Unmatched') {
-      // ... existing match logic ...
       $stmtAmount = (float) $row['statement_amount'];
       $stmtDate = $row['transfer_at'];
 
       foreach ($candidateOrders as $ord) {
         $matchFound = false;
-        // 1. Check Slips
+        $matchedSlipIdx = null;
+        // 1. Check individual Slips (per-slip matching)
         if (!empty($ord['slip_items'])) {
           $slips = json_decode($ord['slip_items'], true);
           if (is_array($slips)) {
-            foreach ($slips as $slip) {
+            foreach ($slips as $slipIdx => $slip) {
+              // Skip slips already suggested for another statement
+              $slipKey = $ord['id'] . ':' . $slipIdx;
+              if (isset($usedSlips[$slipKey])) continue;
+
               $slipAmount = (float) $slip['amount'];
               $slipDate = $slip['transfer_date'];
               $slipBankId = isset($slip['bank_account_id']) ? (int) $slip['bank_account_id'] : null;
@@ -313,6 +327,7 @@ try {
                 $timeDiff = abs(strtotime($stmtDate) - strtotime($slipDate));
                 if ($timeDiff <= 900) {
                   $matchFound = true;
+                  $matchedSlipIdx = $slipIdx;
                   break;
                 }
               }
@@ -320,20 +335,26 @@ try {
           }
         }
 
-        // 2. Check Main Order (if no slip match found yet)
+        // 2. Check Main Order (if no slip match found and no slips were already used for this order)
         if (!$matchFound) {
+          // Only use main-order fallback if no individual slips have been used yet for this order
+          $orderUsedCount = 0;
+          foreach ($usedSlips as $key => $v) {
+            if (strpos($key, $ord['id'] . ':') === 0) $orderUsedCount++;
+          }
+          $slipCount = (int) ($ord['slip_count'] ?? 0);
+          // If all slips are used, skip this order entirely
+          if ($slipCount > 0 && $orderUsedCount >= $slipCount) continue;
+
           $payAmount = (float) $ord['amount_paid'];
           $slipTotal = (float) $ord['slip_total'];
           $totalAmount = (float) $ord['total_amount'];
 
-          // Determine which amount to match against
           $targetAmount = ($slipTotal > 0) ? $slipTotal : (($payAmount > 0) ? $payAmount : $totalAmount);
 
           if (abs($targetAmount - $stmtAmount) <= 0.01) {
-            // Check Bank
             $ordBankId = $ord['bank_account_id'] ?? $ord['slip_bank_account_id'];
             if (!$ordBankId || (int) $ordBankId === $bankAccountId) {
-              // Check Time
               $ordDate = $ord['slip_transfer_date'] ?? $ord['transfer_date'];
               if ($ordDate) {
                 $timeDiff = abs(strtotime($stmtDate) - strtotime($ordDate));
@@ -346,20 +367,92 @@ try {
         }
 
         if ($matchFound) {
+          $slipCount = (int) ($ord['slip_count'] ?? 0);
+          $reconCount = (int) ($ord['reconciled_count'] ?? 0);
+          // Count how many times this order has been suggested in this batch
+          $suggestedCount = 0;
+          foreach ($usedSlips as $key => $v) {
+            if (strpos($key, $ord['id'] . ':') === 0) $suggestedCount++;
+          }
+          $currentSlipNum = $reconCount + $suggestedCount + 1;
+
           $suggestedOrderId = $ord['id'];
-          $suggestedOrderInfo = "Found matching amount " . number_format($stmtAmount, 2) . " and time";
+          $suggestedOrderInfo = $slipCount > 1
+            ? "สลิป {$currentSlipNum}/{$slipCount} — ยอด " . number_format($stmtAmount, 2)
+            : "ยอดตรงกัน " . number_format($stmtAmount, 2);
           $suggestedOrderAmount = (float) $stmtAmount;
           $suggestedPaymentMethod = $ord['payment_method'];
+          $suggestedSlipCount = $slipCount;
+          $suggestedSlipIndex = $currentSlipNum;
+
+          // Mark this slip as used
+          if ($matchedSlipIdx !== null) {
+            $usedSlips[$ord['id'] . ':' . $matchedSlipIdx] = true;
+          } else {
+            // For main-order match, use a generic key
+            $usedSlips[$ord['id'] . ':main_' . $suggestedCount] = true;
+          }
           break;
         }
       }
 
-      // Fallback: amount + bank match, but time within 7 hours (UTC)
+      // Fallback: amount + bank match, but time within 7 hours
       if (!$suggestedOrderId) {
         foreach ($candidateOrders as $ord) {
           $totalAmount = (float) $ord['total_amount'];
           $slipTotal = (float) $ord['slip_total'];
+          $slipCount = (int) ($ord['slip_count'] ?? 0);
 
+          // Check if all slips for this order are already used
+          $orderUsedCount = 0;
+          foreach ($usedSlips as $key => $v) {
+            if (strpos($key, $ord['id'] . ':') === 0) $orderUsedCount++;
+          }
+          if ($slipCount > 0 && $orderUsedCount >= $slipCount) continue;
+
+          // Try matching individual slips first
+          if (!empty($ord['slip_items'])) {
+            $slips = json_decode($ord['slip_items'], true);
+            if (is_array($slips)) {
+              foreach ($slips as $slipIdx => $slip) {
+                $slipKey = $ord['id'] . ':' . $slipIdx;
+                if (isset($usedSlips[$slipKey])) continue;
+
+                $slipAmount = (float) $slip['amount'];
+                $slipDate = $slip['transfer_date'];
+                $slipBankId = isset($slip['bank_account_id']) ? (int) $slip['bank_account_id'] : null;
+
+                if (abs($slipAmount - $stmtAmount) > 0.01) continue;
+                if ($slipBankId && $slipBankId !== $bankAccountId) continue;
+
+                if ($slipDate) {
+                  $timeDiffSec = abs(strtotime($stmtDate) - strtotime($slipDate));
+                  if ($timeDiffSec <= 7 * 3600) {
+                    $timeDiffMin = round($timeDiffSec / 60);
+                    $reconCount = (int) ($ord['reconciled_count'] ?? 0);
+                    $sugCount = 0;
+                    foreach ($usedSlips as $key => $v) {
+                      if (strpos($key, $ord['id'] . ':') === 0) $sugCount++;
+                    }
+                    $currentNum = $reconCount + $sugCount + 1;
+
+                    $suggestedOrderId = $ord['id'];
+                    $suggestedOrderInfo = $slipCount > 1
+                      ? "สลิป {$currentNum}/{$slipCount} — ยอด " . number_format($stmtAmount, 2) . " (เวลาต่าง {$timeDiffMin} นาที)"
+                      : "ยอดตรงกัน " . number_format($stmtAmount, 2) . " (เวลาต่าง {$timeDiffMin} นาที)";
+                    $suggestedOrderAmount = $slipAmount;
+                    $suggestedPaymentMethod = $ord['payment_method'];
+                    $suggestedSlipCount = $slipCount;
+                    $suggestedSlipIndex = $currentNum;
+                    $usedSlips[$slipKey] = true;
+                    break 2; // break out of both foreach loops
+                  }
+                }
+              }
+            }
+          }
+
+          // Fallback: match by total_amount
           $amountMatch = false;
           if (abs($totalAmount - $stmtAmount) <= 0.01) {
             $amountMatch = true;
@@ -373,12 +466,15 @@ try {
               $ordDate = $ord['slip_transfer_date'] ?? $ord['transfer_date'] ?? null;
               if ($ordDate) {
                 $timeDiffSec = abs(strtotime($stmtDate) - strtotime($ordDate));
-                if ($timeDiffSec <= 7 * 3600) { // 7 hours in seconds
+                if ($timeDiffSec <= 7 * 3600) {
                   $timeDiffMin = round($timeDiffSec / 60);
                   $suggestedOrderId = $ord['id'];
                   $suggestedOrderInfo = "ยอดตรงกัน " . number_format($stmtAmount, 2) . " (เวลาต่าง " . $timeDiffMin . " นาที)";
                   $suggestedOrderAmount = $totalAmount;
                   $suggestedPaymentMethod = $ord['payment_method'];
+                  $suggestedSlipCount = $slipCount;
+                  $suggestedSlipIndex = 0;
+                  $usedSlips[$ord['id'] . ':main_fallback'] = true;
                   break;
                 }
               }
@@ -449,6 +545,8 @@ try {
       'suggested_order_info' => $suggestedOrderInfo,
       'suggested_order_amount' => $suggestedOrderAmount,
       'suggested_payment_method' => $suggestedPaymentMethod,
+      'suggested_slip_count' => $suggestedSlipCount,
+      'suggested_slip_index' => $suggestedSlipIndex,
       'reconcile_items' => $reconcileItems,
       'matched_orders' => $matchedOrders,
       // COD document info

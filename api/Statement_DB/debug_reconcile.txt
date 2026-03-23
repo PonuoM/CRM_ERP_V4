@@ -235,3 +235,69 @@ Payload: Array
 )
 
 Process Item: StmtId=1662, Type=Order, Amount=1195
+Start 2026-03-20 16:49:56
+Payload: Array
+(
+    [company_id] => 1
+    [user_id] => 1
+    [bank_account_id] => 1
+    [start_date] => 12026-03-01
+    [end_date] => 2026-03-20
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 490
+                    [order_id] => 260103-00163mindxv
+                    [confirmed_amount] => 330
+                )
+
+        )
+
+)
+
+Process Item: StmtId=490, Type=Order, Amount=330
+Start 2026-03-20 17:02:51
+Payload: Array
+(
+    [company_id] => 1
+    [user_id] => 48
+    [bank_account_id] => 1
+    [start_date] => 2026-02-01
+    [end_date] => 2026-03-20
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 2931
+                    [order_id] => 260221-04072mindvg
+                    [confirmed_amount] => 490
+                )
+
+        )
+
+)
+
+Process Item: StmtId=2931, Type=Order, Amount=490
+Start 2026-03-20 17:04:03
+Payload: Array
+(
+    [company_id] => 1
+    [user_id] => 48
+    [bank_account_id] => 1
+    [start_date] => 2026-02-01
+    [end_date] => 2026-03-20
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 2931
+                    [order_id] => 260221-04072mindvg
+                    [confirmed_amount] => 490
+                )
+
+        )
+
+)
+
+Process Item: StmtId=2931, Type=Order, Amount=490
