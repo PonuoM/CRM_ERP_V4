@@ -199,26 +199,44 @@ child order_items.net_total = promotion_items.price_override × parent order_ite
 ### Flow
 1. **Frontend** (3 จุด: `OrderManagementModal.tsx`, `CreateOrderPage.tsx` main + upsell)
    - Child item ส่ง `pricePerUnit` = ราคาสินค้าปกติ (แสดงผล)
-   - `priceOverride` อาจมีหรือไม่มีใน payload (ปัจจุบันหน้าบ้านไม่ส่ง)
-2. **Backend** (`api/index.php` Phase 3 child insert, ทั้ง POST และ PUT)
+   - `priceOverride` = ราคาพิเศษต่อ **1 เซ็ต** (raw per-set value) → ส่งค่าดิบไม่ scale
+   - Parent ส่ง `pricePerUnit` = ราคาต่อ 1 เซ็ต (เช่น 1700) → **ไม่เปลี่ยนตาม qty**
+2. **Backend — Main/Edit** (`api/index.php` Phase 3 child insert, POST/PUT)
    - ถ้า payload มี `priceOverride` → ใช้ค่านั้น
    - ถ้าไม่มี → **auto-lookup** จาก `promotion_items` table ด้วย `promotion_id` + `product_id`
    - สูตร: `$netTotal = $overridePrice * $parentQty`
    - ถ้าหาไม่เจอเลย (ทั้ง payload และ DB) → fallback เดิม `pricePerUnit × qty - discount`
-3. **สินค้าธรรมดา** (ไม่อยู่ใต้โปรโมชั่น) → ไม่มี `priceOverride` → ใช้ logic เดิมเสมอ
+3. **Backend — Upsell** (`api/index.php` → `handle_upsell()` POST)
+   - สร้าง `$parentQtyMap` ก่อน foreach loop: map frontend temp id → parent qty
+   - Child ที่มี `priceOverride`: `$netTotal = $priceOverride * $parentQtyMap[$parentId]`
+   - **ไม่นับ child items ใน `$newTotalAmount`** → เฉพาะ `$rawParentItemId === null` เท่านั้น (ป้องกัน double-counting)
+4. **สินค้าธรรมดา** (ไม่อยู่ใต้โปรโมชั่น) → ไม่มี `priceOverride` → ใช้ logic เดิมเสมอ
 
-### ตัวอย่าง (promotion_id=15, parent qty=1)
-| product_id | qty | price_override | net_total |
-|------------|-----|---------------|----------|
-| 141 | 10 | 100 | 100 |
-| 143 | 10 | 300 | 300 |
-| **Parent** | **1** | - | **400** |
+### ตัวอย่าง (promotion_id=16 "โปรหน้าลาบ", parent qty=2)
+| product_id | template_qty | price_override | scaled_qty | net_total |
+|------------|-------------|---------------|-----------|----------|
+| เสื้อ | 100 | 1200 | 200 | **2400** (1200×2) |
+| ปุ๋ย (freebie) | 1 | - | 2 | 0 |
+| ซุปเปอร์บีที | 5 | 500 | 10 | **1000** (500×2) |
+| **Parent** | **2** | ppu=1700 | - | **3400** (1700×2) |
 
 ### Quantity Scaling
 
 - `originalQuantity` = จำนวนต่อ 1 ชุดโปรโมชั่น (เก็บ frontend เท่านั้น, ไม่มีใน DB)
 - เมื่อเปลี่ยน parent qty → `child.qty = originalQuantity × parentQty`
+- `priceOverride` **ไม่ scale** ที่ frontend → คงเป็นค่า raw per-set → backend คูณเอง
+- Parent `pricePerUnit` **ไม่เปลี่ยน** → คงเป็นราคาต่อ 1 เซ็ต → backend คำนวณ `net_total = ppu × qty`
+- Frontend ใช้ `line_total = pricePerUnit × qty` สำหรับ **แสดงผลเท่านั้น**
 - DB-loaded items ไม่มี `originalQuantity` → derive จาก `qty / oldParentQty`
+
+### Upsell Frontend Scaling (`handleUpsellUpdateItem`)
+
+เมื่อเปลี่ยน qty ของ promotion parent:
+1. Skip `line_total` calc สำหรับ promo parent ใน pass แรก (`if (!updatedItem.isPromotionParent)`)
+2. Pass ที่ 2 (`setUpsellItems` ครั้งที่ 2):
+   - Scale children: `child.qty = originalQuantity × newParentQty`
+   - **ไม่แก้** `priceOverride` (backend จัดการ)
+   - Set parent `line_total = pricePerUnit × newParentQty` (display only)
 
 ### Validation Rule (ตรวจสอบความถูกต้องราคา)
 
@@ -252,10 +270,21 @@ ORDER BY ABS(diff) DESC;
 |-----------|----------|
 | `OrderManagementModal.tsx` | Collapse/expand, edit qty, CornerDownRight, ChevronDown/Right |
 | `OrderDetailModal.tsx` | Collapse/expand (read-only), CornerDownRight, smaller text, 'เซ็ต' badge |
-| `CreateOrderPage.tsx` | เลือกผ่าน `ProductSelectorModal` |
+| `CreateOrderPage.tsx` (default) | เลือกผ่าน `ProductSelectorModal` |
+| `CreateOrderPage.tsx` (upsell) | รายการเดิม: expand/collapse, ↳ child indicator, 🎁 parent badge, promotion SKU, ซ่อน net_total ของ child |
+| `CreateOrderPage.tsx` (upsell new) | เพิ่มสินค้าใหม่: tab โปรโมชั่น, parent qty scaling |
 | `ProductSelectorModal.tsx` | Tab โปรโมชั่น — filter: `active && !expired(end_date) && searchTerm` |
 
 > **Note:** tab 'โปรโมชั่น/เซ็ตสินค้า' ที่เคยอยู่ inline ใน `CreateOrderPage` ถูกลบออกแล้ว แต่ tab ใน `ProductSelectorModal` ยังใช้งานอยู่
+
+### Upsell Existing Items Display
+- **expand/collapse** — state `expandedPromoIds` + `togglePromoExpand()` คลิกที่ parent row
+- **↳ icon** — แสดงหน้า child items พร้อม indent + bg สีอ่อน
+- **🎁 icon** — แสดงหน้า parent promotion items
+- **Promotion SKU** — ดึงจาก `promotionsSafe` ตาม `promotion_id`
+- **ซ่อน net_total ของ child** — แสดงเฉพาะ parent เพื่อไม่ให้สับสน
+- **แสดง quantity ของ child** — แสดงจำนวนที่ scale แล้วเมื่อ expand
+- **`getUpsellOrderTotal()`** — filter out child items ก่อน sum (ไม่ double-count)
 
 ---
 
@@ -269,6 +298,10 @@ ORDER BY ABS(diff) DESC;
 | **Usage check = N+1 queries** | วนเรียก API ทุก promotion → ถ้ามี promotion เยอะจะช้า ควร optimize เป็น batch query |
 | **PromotionModal** | component แยก สำหรับ edit — ไม่ได้ใช้ตอน create |
 | **priceOverride** | `LineItem.priceOverride` (types.ts) ใช้เฉพาะ child promotion items → backend override `net_total`. หากไม่มีใน payload, backend auto-lookup จาก `promotion_items` table |
+| **priceOverride (upsell)** | Frontend ส่ง raw per-set value (ไม่ scale) → backend คูณ `$parentQty` เอง. **ห้าม scale ทั้ง frontend + backend** → double-multiplication |
+| **parent pricePerUnit** | ต้องคงเป็นราคาต่อ 1 เซ็ต เสมอ (เช่น 1700) ห้ามเขียนทับเป็น total. Backend คำนวณ `net_total = ppu × qty` |
+| **line_total vs pricePerUnit** | Promotion parent: `line_total` = display only (`ppu × qty`), `pricePerUnit` = ค่าจริงที่ส่ง backend |
+| **$newTotalAmount (upsell)** | Backend ต้อง **ไม่นับ** child items ใน total → `if ($rawParentItemId === null)` |
 | **productId FK** | Parent promotion item ต้องส่ง `productId: undefined/null` (ห้ามส่ง `0` → FK violation). Backend มี safety: `!empty() ? (int) : null` |
 
 ---
