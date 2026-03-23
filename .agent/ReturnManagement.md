@@ -375,6 +375,8 @@ if ($dbStatus === 'RETURNED') {
 | Tracking No. | `otn.tracking_number` |
 | สถานะตีกลับ | `ob.return_status` (แปลเป็นภาษาไทย) |
 | หมายเหตุ | `ob.return_note` |
+| ยืนยันจบเคส | `ob.return_complete` (แสดง "จบเคส" หรือ "-") |
+| ค่าเคลม | `ob.return_claim` (ตัวเลข หรือ "-") |
 | ราคากล่อง | `ob.cod_amount` |
 | ยอดเก็บได้ | `ob.collection_amount` |
 | วันที่บันทึกตีกลับ | `ob.return_created_at` |
@@ -765,6 +767,8 @@ $processedBoxIds[] = $boxRow['id'];
 | Tracking No. | `r.tracking_number` | แถวแรก |
 | สถานะตีกลับ | `r.return_status` (ไทย) | **ทุกแถว** |
 | หมายเหตุ | `r.return_note` | แถวแรก |
+| ยืนยันจบเคส | `r.return_complete` ("จบเคส" / "-") | แถวแรก |
+| ค่าเคลม | `r.return_claim` (ตัวเลข / "-") | แถวแรก |
 | ราคากล่อง | `r.cod_amount` | แถวแรก |
 | ยอดเก็บได้ | `r.collection_amount` | แถวแรก |
 | ชื่อสินค้า | `r.item_product_name` | ทุกแถว |
