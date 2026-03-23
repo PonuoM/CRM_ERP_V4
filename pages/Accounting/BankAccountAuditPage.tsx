@@ -30,7 +30,7 @@ interface AuditLog {
     cod_status?: string | null;
     is_cod_document?: boolean;
     reconcile_items?: any[];
-    matched_orders?: { reconcile_id: number; order_id: string; confirmed_amount: number; confirmed_at?: string | null; payment_method?: string | null }[];
+    matched_orders?: { reconcile_id: number; order_id: string; confirmed_amount: number; confirmed_at?: string | null; payment_method?: string | null; duplicate_reconcile_count?: number; is_over_reconciled?: boolean; total_reconciled_amount?: number; order_total_amount?: number }[];
 }
 
 interface BankAccount {
@@ -447,6 +447,33 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         } catch (e: any) {
             alert('Error: ' + e.message);
         }
+    };
+
+    // Unconfirm (undo confirm) a reconcile log
+    const handleUnconfirm = async (log: AuditLog, reconcileId: number) => {
+        if (!window.confirm('ยืนยันถอยการยืนยัน? ระบบจะลบการจับคู่นี้ออก และคำนวณยอดชำระใหม่')) return;
+        try {
+            const res = await apiFetch('Statement_DB/unconfirm_reconcile.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: reconcileId,
+                    company_id: currentUser.companyId || (currentUser as any).company_id,
+                    user_id: currentUser.id,
+                })
+            });
+            if (res.ok) {
+                fetchAuditLogs(true);
+            } else {
+                alert('ถอยยืนยันไม่สำเร็จ: ' + (res.error || 'Server error'));
+            }
+        } catch (e: any) {
+            alert('Error: ' + e.message);
+        }
+    };
+
+    // Helper: check if a log row has any REAL over-reconciled orders (sum > 1.5x total)
+    const hasDuplicateOrders = (log: AuditLog): boolean => {
+        return (log.matched_orders || []).some(mo => mo.is_over_reconciled === true);
     };
 
     // Unmatch COD document from statement
@@ -899,7 +926,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                         </tr>
                                     ) : (
                                         filteredLogs.map((log, index) => (
-                                            <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                                            <tr key={log.id} className={`transition-colors ${hasDuplicateOrders(log) ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}>
                                                 <td className="px-4 py-3 text-center text-gray-500">{index + 1}</td>
                                                 <td className="px-4 py-3 whitespace-nowrap">{formatDate(log.transfer_at)}</td>
                                                 <td className="px-4 py-3 text-right font-medium">{formatCurrency(log.statement_amount)}</td>
@@ -942,6 +969,9 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                             {mo.order_id}
                                                                         </span>
                                                                         <span className="text-xs text-gray-400">(฿{mo.confirmed_amount?.toLocaleString()})</span>
+                                                                        {mo.is_over_reconciled && (
+                                                                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold" title={`ยอดรวม reconcile ฿${mo.total_reconciled_amount?.toLocaleString()} เกินยอดออเดอร์ ฿${mo.order_total_amount?.toLocaleString()} (ซ้ำ!)`}>⚠ เบิ้ล {mo.duplicate_reconcile_count}x</span>
+                                                                        )}
                                                                         {!mo.confirmed_at && !log.is_cod_document && !log.cod_document_id && (
                                                                             <button
                                                                                 onClick={() => handleUnpause(log, mo.reconcile_id)}
@@ -949,6 +979,15 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                                 title="ยกเลิกการจับคู่ออเดอร์นี้"
                                                                             >
                                                                                 ✕
+                                                                            </button>
+                                                                        )}
+                                                                        {mo.confirmed_at && !log.is_cod_document && !log.cod_document_id && (
+                                                                            <button
+                                                                                onClick={() => handleUnconfirm(log, mo.reconcile_id)}
+                                                                                className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 bg-white border border-orange-200 px-1.5 py-0.5 rounded transition-all"
+                                                                                title="ถอยยืนยัน (undo confirm)"
+                                                                            >
+                                                                                ↩ ถอย
                                                                             </button>
                                                                         )}
                                                                     </div>
@@ -959,6 +998,9 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                     <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!, log)}>
                                                                         {log.order_display || log.order_id}
                                                                     </span>
+                                                                    {log.matched_orders?.[0]?.is_over_reconciled && (
+                                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold" title={`ยอดรวม reconcile ฿${log.matched_orders[0].total_reconciled_amount?.toLocaleString()} เกินยอดออเดอร์ ฿${log.matched_orders[0].order_total_amount?.toLocaleString()} (ซ้ำ!)`}>⚠ เบิ้ล {log.matched_orders[0].duplicate_reconcile_count}x</span>
+                                                                    )}
                                                                     {!log.confirmed_at && log.reconcile_id && !log.is_cod_document && !log.cod_document_id && (
                                                                         <button
                                                                             onClick={() => handleUnpause(log)}
@@ -966,6 +1008,15 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                             title="ยกเลิกการจับคู่"
                                                                         >
                                                                             ✕
+                                                                        </button>
+                                                                    )}
+                                                                    {log.confirmed_at && log.reconcile_id && !log.is_cod_document && !log.cod_document_id && (
+                                                                        <button
+                                                                            onClick={() => handleUnconfirm(log, log.reconcile_id!)}
+                                                                            className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 bg-white border border-orange-200 px-1.5 py-0.5 rounded transition-all"
+                                                                            title="ถอยยืนยัน (undo confirm)"
+                                                                        >
+                                                                            ↩ ถอย
                                                                         </button>
                                                                     )}
                                                                 </div>

@@ -558,6 +558,64 @@ try {
     ];
   }
 
+  // Detect REAL duplicate reconcile: compare SUM(confirmed_amount) vs order total_amount
+  // 1 order with 2 statements is NORMAL if sum ≈ total (split payment)
+  // 1 order with 2 statements is DUPLICATE if sum >> total (e.g. 2x)
+  $allOrderIds = [];
+  foreach ($results as $r) {
+    if (!empty($r['matched_orders'])) {
+      foreach ($r['matched_orders'] as $mo) {
+        if (!empty($mo['order_id'])) {
+          $allOrderIds[$mo['order_id']] = true;
+        }
+      }
+    }
+  }
+  $duplicateInfo = []; // order_id => ['count' => N, 'sum' => X, 'total' => Y, 'is_over' => bool]
+  if (!empty($allOrderIds)) {
+    $orderIdList = array_keys($allOrderIds);
+    $placeholders = implode(',', array_fill(0, count($orderIdList), '?'));
+    $dupStmt = $pdo->prepare("
+      SELECT srl.order_id,
+             COUNT(*) as log_count,
+             SUM(COALESCE(srl.confirmed_amount, 0)) as sum_confirmed,
+             COALESCE(o.total_amount, 0) as total_amount
+      FROM statement_reconcile_logs srl
+      LEFT JOIN orders o ON o.id = srl.order_id
+      WHERE srl.order_id IN ({$placeholders})
+      GROUP BY srl.order_id, o.total_amount
+    ");
+    $dupStmt->execute($orderIdList);
+    while ($dr = $dupStmt->fetch(PDO::FETCH_ASSOC)) {
+      $count = (int) $dr['log_count'];
+      $sumConfirmed = (float) $dr['sum_confirmed'];
+      $totalAmount = (float) $dr['total_amount'];
+      // Over-reconciled = sum exceeds 1.5x total (real duplicate / double match)
+      $isOver = ($totalAmount > 0 && $sumConfirmed > $totalAmount * 1.5);
+      $duplicateInfo[$dr['order_id']] = [
+        'count' => $count,
+        'sum_confirmed' => $sumConfirmed,
+        'total_amount' => $totalAmount,
+        'is_over' => $isOver,
+      ];
+    }
+  }
+  // Inject duplicate info into matched_orders
+  foreach ($results as &$r) {
+    if (!empty($r['matched_orders'])) {
+      foreach ($r['matched_orders'] as &$mo) {
+        $oid = $mo['order_id'] ?? '';
+        $info = $duplicateInfo[$oid] ?? null;
+        $mo['duplicate_reconcile_count'] = $info ? $info['count'] : 0;
+        $mo['is_over_reconciled'] = $info ? $info['is_over'] : false;
+        $mo['total_reconciled_amount'] = $info ? $info['sum_confirmed'] : 0;
+        $mo['order_total_amount'] = $info ? $info['total_amount'] : 0;
+      }
+      unset($mo);
+    }
+  }
+  unset($r);
+
   // Fetch cod_records for each COD document and attach to results
   $codDocIds = [];
   foreach ($results as $idx => $r) {
