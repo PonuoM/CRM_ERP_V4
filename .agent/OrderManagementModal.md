@@ -106,6 +106,13 @@ Both functions apply the same filters:
 - **`slips`**: Manages the list of slip images/records associated with the order.
 - **`calculatedTotals`**: `useMemo` hook effectively recalculates total price, discounts, and shipping cost on every item change.
 
+### 6. หมายเหตุออเดอร์ (Order Notes)
+- ฟิลด์ `orders.notes` — **edit mode**: แสดง textarea สีเหลืองให้แก้ไขได้ (อยู่ใต้ที่อยู่จัดส่ง ภายใน InfoCard เดียวกัน)
+- **view mode**: แสดง read-only เมื่อมีข้อมูล, ซ่อนเมื่อว่าง
+- ใช้ `handleFieldChange("notes", value)` → อัปเดต `currentOrder.notes`
+- บันทึกพร้อมกับ `onSave` (ผ่าน `...currentOrder` spread) → Backend UPDATE `orders SET notes=COALESCE(?,notes)`
+- Locked order: textarea ถูก disabled ยกเว้น `permission="manager"`
+
 ## Validation & Saving
 The `handleSave` function performs critical checks before committing:
 1. **COD Balance**: Checks if Box COD Sum == Order Total.
