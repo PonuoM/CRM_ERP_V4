@@ -31,7 +31,7 @@ try {
     $countStmt = $pdo->prepare("
         SELECT COUNT(DISTINCT parent.id) AS total
         FROM order_items parent
-        JOIN orders o ON o.id = parent.order_id
+        JOIN orders o ON o.id = parent.parent_order_id
         WHERE parent.is_promotion_parent = 1
           AND o.company_id = ?
     ");
@@ -42,7 +42,7 @@ try {
     $sql = "
         SELECT
             parent.id AS parent_item_id,
-            parent.order_id,
+            parent.parent_order_id AS order_id,
             parent.product_name AS promo_name,
             parent.quantity AS parent_qty,
             parent.creator_id AS parent_creator_id,
@@ -64,7 +64,7 @@ try {
             ) AS mismatch_detail
         FROM order_items child
         JOIN order_items parent ON parent.id = child.parent_item_id AND parent.is_promotion_parent = 1
-        JOIN orders o ON o.id = parent.order_id
+        JOIN orders o ON o.id = parent.parent_order_id
         LEFT JOIN customers c ON c.customer_id = o.customer_id
         LEFT JOIN users pu ON pu.id = parent.creator_id
         LEFT JOIN users cu ON cu.id = child.creator_id
