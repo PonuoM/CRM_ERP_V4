@@ -365,7 +365,33 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y">
-                                            {order.items?.map((item: any, idx: number) => {
+                                            {(() => {
+                                                // Sort items: parent promotions followed by their children
+                                                const items = order.items || [];
+                                                const sorted: any[] = [];
+                                                const childMap = new Map<number, any[]>();
+                                                const standalone: any[] = [];
+
+                                                // Group children by parent_item_id
+                                                for (const item of items) {
+                                                    if (item.parent_item_id) {
+                                                        const pid = Number(item.parent_item_id);
+                                                        if (!childMap.has(pid)) childMap.set(pid, []);
+                                                        childMap.get(pid)!.push(item);
+                                                    }
+                                                }
+
+                                                // Build sorted list: parent → children, then standalone items
+                                                for (const item of items) {
+                                                    if (item.parent_item_id) continue; // skip children in first pass
+                                                    const isParent = item.is_promotion_parent === 1 || item.is_promotion_parent === true;
+                                                    sorted.push(item);
+                                                    if (isParent && childMap.has(Number(item.id))) {
+                                                        sorted.push(...childMap.get(Number(item.id))!);
+                                                    }
+                                                }
+
+                                                return sorted.map((item: any, idx: number) => {
                                                 const isParent = item.is_promotion_parent === 1 || item.is_promotion_parent === true;
                                                 const isChild = !!item.parent_item_id;
                                                 const parentId = item.parent_item_id;
@@ -422,7 +448,8 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                         </td>
                                                     </tr>
                                                 );
-                                            })}
+                                            });
+                                            })()}
                                         </tbody>
                                         <tfoot className="bg-gray-50 font-semibold border-t">
                                             <tr>

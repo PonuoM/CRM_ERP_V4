@@ -4104,10 +4104,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                     }
                 }
 
-                if (!empty($data['updatedBy'])) {
-                    $updateFields[] = "updated_by = ?";
-                    $params[] = $data['updatedBy'];
-                }
+                // Note: updatedBy is NOT a column in orders table - only used as fallback creator_id for items
 
                 // Auto-set payment_status to Cancelled when order_status is Cancelled
                 $incomingOrderStatus = $data['orderStatus'] ?? $data['order_status'] ?? null;
