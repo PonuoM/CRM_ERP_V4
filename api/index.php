@@ -2382,10 +2382,12 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $chkStmt->execute([$oldBasketKey]);
                     $bCfg = $chkStmt->fetch();
 
-                    if ($bCfg && $bCfg['target_page'] === 'distribution' && !empty($bCfg['linked_basket_key'])) {
+                    if ($bCfg && $bCfg['target_page'] === 'distribution') {
+                        // Default to 'new_customer' if linked_basket_key is NULL
+                        $linkedKey = !empty($bCfg['linked_basket_key']) ? $bCfg['linked_basket_key'] : 'new_customer';
                         // Find the ID of the linked basket
                         $linkStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ?");
-                        $linkStmt->execute([$bCfg['linked_basket_key']]);
+                        $linkStmt->execute([$linkedKey]);
                         $linkedRow = $linkStmt->fetch();
                         if ($linkedRow) {
                             $newBasketKey = $linkedRow['id'];
