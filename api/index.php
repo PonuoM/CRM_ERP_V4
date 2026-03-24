@@ -4239,10 +4239,11 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $itemId = isset($item['id']) ? $item['id'] : null;
                         $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
 
-                        // --- Override net_total for child promotion items ---
+                        // --- Override net_total and inherit creator_id for child promotion items ---
                         $clientParentIdForUpdate = $item['parentItemId'] ?? $item['parent_item_id'] ?? null;
-                        if ($clientParentIdForUpdate && !$isFreebie) {
-                            $overridePrice = isset($item['priceOverride']) ? (float) $item['priceOverride'] : (isset($item['price_override']) ? (float) $item['price_override'] : null);
+                        $parentCreatorForUpdate = null;
+                        if ($clientParentIdForUpdate) {
+                            $overridePrice = (!$isFreebie && isset($item['priceOverride'])) ? (float) $item['priceOverride'] : ((!$isFreebie && isset($item['price_override'])) ? (float) $item['price_override'] : null);
                             $parentQty = 1;
                             $parentPromotionId = null;
                             foreach ($data['items'] as $parentCandidate) {
@@ -4251,22 +4252,26 @@ function handle_orders(PDO $pdo, ?string $id): void
                                     && (!empty($parentCandidate['isPromotionParent']) || !empty($parentCandidate['is_promotion_parent']))) {
                                     $parentQty = max(1, (int)($parentCandidate['quantity'] ?? 1));
                                     $parentPromotionId = $parentCandidate['promotionId'] ?? $parentCandidate['promotion_id'] ?? null;
+                                    // Inherit creator_id from parent
+                                    $parentCreatorForUpdate = $parentCandidate['creatorId'] ?? $parentCandidate['creator_id'] ?? null;
                                     break;
                                 }
                             }
-                            if ($overridePrice === null && $parentPromotionId !== null) {
-                                $productIdForLookup = $item['productId'] ?? $item['product_id'] ?? null;
-                                if ($productIdForLookup) {
-                                    $poStmt = $pdo->prepare('SELECT price_override FROM promotion_items WHERE promotion_id = ? AND product_id = ? LIMIT 1');
-                                    $poStmt->execute([(int)$parentPromotionId, (int)$productIdForLookup]);
-                                    $poRow = $poStmt->fetch();
-                                    if ($poRow && $poRow['price_override'] !== null) {
-                                        $overridePrice = (float) $poRow['price_override'];
+                            if (!$isFreebie) {
+                                if ($overridePrice === null && $parentPromotionId !== null) {
+                                    $productIdForLookup = $item['productId'] ?? $item['product_id'] ?? null;
+                                    if ($productIdForLookup) {
+                                        $poStmt = $pdo->prepare('SELECT price_override FROM promotion_items WHERE promotion_id = ? AND product_id = ? LIMIT 1');
+                                        $poStmt->execute([(int)$parentPromotionId, (int)$productIdForLookup]);
+                                        $poRow = $poStmt->fetch();
+                                        if ($poRow && $poRow['price_override'] !== null) {
+                                            $overridePrice = (float) $poRow['price_override'];
+                                        }
                                     }
                                 }
-                            }
-                            if ($overridePrice !== null) {
-                                $netTotal = $overridePrice * $parentQty;
+                                if ($overridePrice !== null) {
+                                    $netTotal = $overridePrice * $parentQty;
+                                }
                             }
                         }
 
@@ -4277,6 +4282,9 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $clientToDbParent[(string) $itemId] = (int) $itemId;
                             }
 
+                            // Child items inherit creator_id from parent; standalone items use their own
+                            $itemCreatorId = $parentCreatorForUpdate ?? $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
+
                             $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=?, promotion_id=?, creator_id=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
                             $pdo->prepare($updateSql)->execute([
                                 $item['quantity'] ?? 0,
@@ -4286,7 +4294,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
                                 $isFreebie ? 1 : 0,
                                 $item['promotionId'] ?? $item['promotion_id'] ?? null,
-                                $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId,
+                                $itemCreatorId,
                                 $itemId,
                                 $id,
                                 $id
@@ -4402,7 +4410,17 @@ function handle_orders(PDO $pdo, ?string $id): void
                         if ((!$itemId || !in_array($itemId, $existingIds)) && !$isParent && $clientParentId) {
                             $netTotal = calculate_order_item_net_total($item);
                             $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
-                            $itemCreatorId = $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
+                            // Child items inherit creator_id from their parent item
+                            $parentCreatorId = null;
+                            foreach ($data['items'] as $parentCandidate) {
+                                $pid = $parentCandidate['id'] ?? null;
+                                if ($pid !== null && (string)$pid === (string)$clientParentId
+                                    && (!empty($parentCandidate['isPromotionParent']) || !empty($parentCandidate['is_promotion_parent']))) {
+                                    $parentCreatorId = $parentCandidate['creatorId'] ?? $parentCandidate['creator_id'] ?? null;
+                                    break;
+                                }
+                            }
+                            $itemCreatorId = $parentCreatorId ?? $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
 
                             // --- Override net_total for child promotion items ---
                             if (!$isFreebie) {

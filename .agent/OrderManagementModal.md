@@ -91,13 +91,23 @@ Both functions apply the same filters:
 1. **Exclude freebies** (`isFreebie` / `is_freebie`)
 2. **Exclude child promotion items** (`parentItemId` / `parent_item_id` != null)
 
-## Backend Order Item Insert (3-Phase Process)
+## Backend Order Item Update/Insert (4-Pass Process)
 
-| Phase | เงื่อนไข | net_total Logic |
-|-------|---------|----------------|
-| 1) Parent promotion | `isPromotionParent = true` | `pricePerUnit × qty - discount` |
-| 2) สินค้าธรรมดา | `!isParent && !hasParent` | `pricePerUnit × qty - discount` |
-| 3) Child promotion | `!isParent && hasParent` | ถ้ามี `priceOverride` ใน payload → ใช้ค่านั้น, ไม่มี → auto-lookup จาก `promotion_items` table, `$netTotal = $overridePrice * $parentQty` |
+| Pass | เงื่อนไข | net_total Logic | creator_id Logic |
+|------|---------|----------------|------------------|
+| 1) Update existing | `id ∈ existingIds` | child: `priceOverride × parentQty`, else: `pricePerUnit × qty - discount` | **Child inherits from parent** |
+| 2) Insert parent | NEW + `isPromotionParent` | `pricePerUnit × qty - discount` | ใช้ค่าจาก payload (เลือกได้) |
+| 3) Insert regular | NEW + `!isParent && !hasParent` | `pricePerUnit × qty - discount` | ใช้ค่าจาก payload |
+| 4) Insert child | NEW + `!isParent && hasParent` | ถ้ามี `priceOverride` → ใช้, ไม่มี → auto-lookup จาก `promotion_items`, `$netTotal = $overridePrice * $parentQty` | **Child inherits from parent** |
+
+#### Creator ID Inheritance (Pass 1 & 4)
+
+เมื่อ admin แก้ไขออเดอร์และกำหนด `creator_id` ที่ parent → child items ทั้งหมดจะ **inherit `creator_id` จาก parent** โดยอัตโนมัติ:
+```php
+$itemCreatorId = $parentCreatorForUpdate ?? $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
+```
+- ป้องกันปัญหา: admin แก้ไขออเดอร์ → child ได้ creator_id ของ admin แทนที่จะเป็นพนักงานที่กำหนด
+- ใช้กับทั้ง **existing items** (Pass 1 UPDATE) และ **new items** (Pass 4 INSERT)
 
 > ⚠️ Backend safety: `productId = 0` ถูกแปลงเป็น `null` อัตโนมัติ (`!empty() ? (int)$it['productId'] : null`)
 

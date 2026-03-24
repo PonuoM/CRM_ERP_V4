@@ -2590,3 +2590,14 @@ export async function fixPromotionOrders(companyId: number, parentItemIds: numbe
 export async function validateCreatorOrders(companyId: number) {
   return apiFetch(`Orders/validate_creator_orders.php?company_id=${companyId}`);
 }
+
+export async function validateCreatorMismatch(companyId: number) {
+  return apiFetch(`Orders/validate_creator_mismatch.php?company_id=${companyId}`);
+}
+
+export async function fixCreatorMismatch(companyId: number, parentItemIds: number[]) {
+  return apiFetch('Orders/fix_creator_mismatch.php', {
+    method: 'POST',
+    body: JSON.stringify({ company_id: companyId, parent_item_ids: parentItemIds }),
+  });
+}
