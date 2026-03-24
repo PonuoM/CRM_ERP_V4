@@ -3256,6 +3256,10 @@ const App: React.FC = () => {
           facebookName: newCustomer.facebookName ?? null,
           lineId: newCustomer.lineId ?? null,
           address: newCustomer.address ?? {},
+          // ส่ง current_basket_key เฉพาะเมื่อ caller กำหนดมา (CreateOrderPage ส่ง 38 = ลูกค้าใหม่)
+          ...((newCustomerData as any).currentBasketKey != null
+            ? { current_basket_key: (newCustomerData as any).currentBasketKey }
+            : {}),
         });
         console.log("Create customer response", res);
         console.log("Customer created successfully:", res);

@@ -2233,7 +2233,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                 'phone' => $in['phone'] ?? null,
                 'backupPhone' => $in['backupPhone'] ?? null,
             ]));
-            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type, current_basket_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             $params = [
                 $customerRefId,
                 $in['firstName'] ?? '',
@@ -2260,6 +2260,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                 $in['address']['district'] ?? null,
                 $in['address']['postalCode'] ?? null,
                 $in['bucketType'] ?? null,
+                $in['current_basket_key'] ?? null,
             ];
             error_log("Attempting Customer Insert with Params: " . json_encode($params));
             $stmt->execute($params);
