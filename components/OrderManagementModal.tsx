@@ -61,6 +61,7 @@ import {
   getCancellationTypes,
   confirmCancellation,
   getOrderCancellation,
+  listUsers,
 } from "../services/api";
 import {
   toLocalDatetimeString,
@@ -388,6 +389,38 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     loadCancellationTypes();
   }, []);
 
+  // Auto-fetch users when not provided via props
+  useEffect(() => {
+    if (propUsers.length > 0) return;
+    const compId = currentOrder?.companyId || order?.companyId;
+    if (!compId) return;
+    const loadUsers = async () => {
+      try {
+        const result = await listUsers(compId);
+        if (Array.isArray(result)) {
+          // Normalize snake_case API response to camelCase User type
+          const mapped = result.map((r: any) => ({
+            id: r.id,
+            username: r.username,
+            firstName: r.first_name ?? r.firstName,
+            lastName: r.last_name ?? r.lastName,
+            email: r.email,
+            phone: r.phone,
+            role: r.role,
+            companyId: r.company_id ?? r.companyId,
+            teamId: r.team_id != null ? Number(r.team_id) : undefined,
+            supervisorId: r.supervisor_id != null ? Number(r.supervisor_id) : undefined,
+            status: r.status,
+          }));
+          setUsers(mapped as User[]);
+        }
+      } catch (error) {
+        console.error('Error auto-loading users:', error);
+      }
+    };
+    loadUsers();
+  }, [propUsers.length, order?.companyId]);
+
   // Load districts when province selected
   useEffect(() => {
     if (selectedProvince) {
@@ -631,8 +664,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
     );
 
+    // ใช้ order_date เป็นฐานคำนวณ max (วันที่ 7 ของเดือนถัดจากเดือนที่สั่งซื้อ)
+    const orderDateStr = currentOrder.orderDate || (order as any).order_date;
+    const baseDate = orderDateStr ? new Date(orderDateStr) : now;
+    const baseUtc = new Date(
+      Date.UTC(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate()),
+    );
+
     const maxUtc = new Date(
-      Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth() + 1, 7),
+      Date.UTC(baseUtc.getUTCFullYear(), baseUtc.getUTCMonth() + 1, 7),
     );
 
     return {
@@ -644,7 +684,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
       maxIso: formatISODate(maxUtc),
     };
-  }, []);
+  }, [currentOrder.orderDate]);
 
   const resolveSlipUrl = (url: string | undefined | null) => {
     if (!url) return "";

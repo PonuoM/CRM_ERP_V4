@@ -3,24 +3,17 @@
  * Export Commission Orders as CSV
  * GET ?company_id=&status=pending|calculated|incomplete|all&start_date=&end_date=
  * Template mirrors ReportsPage detailed order export + commission columns
+ * 
+ * Uses 2-phase approach for performance:
+ * Phase 1: Simple main query (orders + items + products + customers + users + commission)
+ * Phase 2: Batch-fetch supplementary data (tracking, slips, COD dates, airport) by order IDs
  */
 require_once __DIR__ . "/../config.php";
 
-// Helper: convert PHP memory_limit string to bytes
-function convertMemoryToBytes(string $val): int {
-    $val = strtolower(trim($val));
-    $num = (int)$val;
-    $last = substr($val, -1);
-    switch ($last) {
-        case 'g': $num *= 1024;
-        case 'm': $num *= 1024;
-        case 'k': $num *= 1024;
-    }
-    return $num;
-}
-
 // Helper: format a row array into CSV output array
-function formatCsvRow(array $row, array $regionMap, array $statusThai, array $customerTypeThai): array {
+function formatCsvRow(array $row, array $lookups, array $regionMap, array $statusThai, array $customerTypeThai, bool $includeStampCols): array {
+    $orderId = $row['order_id'];
+
     $creatorId = $row['item_creator_id'] ?? $row['creator_id'];
     $creatorName = ($row['item_creator_first_name'] ?? $row['creator_first_name'] ?? '') . ' ' . ($row['item_creator_last_name'] ?? $row['creator_last_name'] ?? '');
     $creatorRole = $row['item_creator_role'] ?? $row['creator_role'] ?? '-';
@@ -44,31 +37,67 @@ function formatCsvRow(array $row, array $regionMap, array $statusThai, array $cu
     if ($row['is_promotion_parent']) $productName = '📦 ' . $productName;
     elseif ($row['is_freebie']) $productName .= ' (ของแถม)';
 
+    // ชื่อโปร
+    $promoName = '-';
+    if ($row['is_promotion_parent']) {
+        $promoName = $row['product_name'] ?? '-';
+    } elseif ($row['promotion_id'] && $row['parent_item_id']) {
+        $promoName = $row['parent_product_name'] ?? '-';
+    }
+
     $qty = (int)($row['quantity'] ?? 0);
     $price = (float)($row['price_per_unit'] ?? 0);
-    $discount = (float)($row['discount'] ?? 0);
+    $originalDiscount = (float)($row['discount'] ?? 0);
     $netTotal = (float)($row['net_total'] ?? 0);
-    $itemTotal = $row['is_freebie'] ? 0 : (($qty * $price - $discount) > 0 ? ($qty * $price - $discount) : $netTotal);
+    // Claim/Gift orders: discount = full price — matches ReportsPage logic
+    $isClaimOrGift = in_array($row['payment_status'] ?? '', ['Claim', 'Gift']);
+    $discount = $isClaimOrGift ? ($qty * $price) : $originalDiscount;
+    $calculatedTotal = ($qty * $price) - $discount;
+    $itemTotal = $row['is_freebie'] ? 0 : ($calculatedTotal > 0 ? $calculatedTotal : $netTotal);
 
     $paid = (float)($row['amount_paid'] ?? 0);
     $total = (float)($row['total_amount'] ?? 0);
     $paymentComparison = $total == 0 ? 'ไม่มียอด' : ($paid == 0 ? 'ค้าง' : ($paid == $total ? 'ตรง' : ($paid < $total ? 'ขาด' : 'เกิน')));
 
+    // Lookup supplementary data from batch-fetched maps
+    $trackingNumbers = $lookups['tracking'][$orderId] ?? '-';
+
+    $slipData = $lookups['slips'][$orderId] ?? null;
+    $slipCount = $slipData ? (int)$slipData['slip_count'] : 0;
+    $slipTransferDate = $slipData['slip_transfer_date'] ?? null;
+    $slipUrl = $row['slip_url'] ?? '';
+    if ($slipCount > 0) {
+        $slipStatus = "อัปโหลดแล้ว ({$slipCount})";
+    } elseif ($slipUrl) {
+        $slipStatus = 'อัปโหลดแล้ว';
+    } else {
+        $slipStatus = 'ยังไม่อัปโหลด';
+    }
+
+    $codPaymentDate = $lookups['cod'][$orderId] ?? null;
+    $paymentReceivedDate = $slipTransferDate ?? $codPaymentDate ?? null;
+
+    $airportData = $lookups['airport'][$orderId] ?? null;
+    $airportDeliveryDate = $airportData['delivery_date'] ?? null;
+    $airportDeliveryStatus = $airportData['delivery_status'] ?? '-';
+
+    // สถานะค่าคอม
     $commissionStatus = $row['stamp_commission'] !== null || $row['stamp_user_id'] !== null || $row['stamp_date'] !== null
         ? 'คิดค่าคอมแล้ว'
         : ($row['payment_status'] === 'Approved' ? 'รอคิดค่าคอม' : 'ยังไม่สำเร็จ');
 
-    return [
+    $result = [
         $row['order_date'] ? date('d/m/Y', strtotime($row['order_date'])) : '-',
-        $row['order_id'],
+        $orderId,
         $creatorId ?? '',
         trim($creatorName) ?: '-',
         $creatorRole,
         $customerName ?: '-',
         $row['customer_phone'] ?? '-',
-        $customerTypeThai[$row['customer_type'] ?? ''] ?? ($row['customer_type'] ?? '-'),
+        $customerTypeThai[$row['customer_type'] ?? $row['lifecycle_status'] ?? ''] ?? ($row['customer_type'] ?? $row['lifecycle_status'] ?? '-'),
         $row['delivery_date'] ? date('d/m/Y', strtotime($row['delivery_date'])) : '-',
         $row['sales_channel'] ?? '-',
+        $row['page_name'] ?? '-',
         $row['payment_method'] ?? '-',
         $row['street'] ?? '-',
         $row['subdistrict'] ?? '-',
@@ -80,25 +109,38 @@ function formatCsvRow(array $row, array $regionMap, array $statusThai, array $cu
         $productName,
         $row['product_category'] ?? '-',
         $row['product_report_category'] ?? '-',
+        $promoName,
         $row['is_freebie'] ? 'ใช่' : 'ไม่',
         $qty,
         $price,
         $discount,
         $itemTotal,
         $row['box_number'] ?? 1,
+        $trackingNumbers,
+        $airportDeliveryDate ? date('d/m/Y', strtotime($airportDeliveryDate)) : '-',
+        $airportDeliveryStatus,
         $statusThai[$row['order_status'] ?? ''] ?? ($row['order_status'] ?? '-'),
         $paymentComparison,
+        $slipStatus,
+        $paymentReceivedDate ? date('d/m/Y', strtotime($paymentReceivedDate)) : '-',
+        $row['basket_key_at_sale'] ?? '-',
         $commissionStatus,
-        $row['stamp_batch_name'] ?? '-',
-        $row['stamp_commission'] ?? '-',
-        $row['stamp_user_id'] ?? '-',
-        $row['stamp_date'] ? date('d/m/Y H:i', strtotime($row['stamp_date'])) : '-',
-        $row['stamp_note'] ?? '-'
     ];
+
+    if ($includeStampCols) {
+        $result[] = $row['stamp_batch_name'] ?? '-';
+        $result[] = $row['stamp_commission'] ?? '-';
+        $result[] = $row['stamp_user_id'] ?? '-';
+        $result[] = $row['stamp_date'] ? date('d/m/Y H:i', strtotime($row['stamp_date'])) : '-';
+        $result[] = $row['stamp_note'] ?? '-';
+    }
+
+    return $result;
 }
 
 try {
     $pdo = db_connect();
+    set_time_limit(300);
 
     $company_id = (int)($_GET['company_id'] ?? 0);
     $status = $_GET['status'] ?? 'all';
@@ -136,9 +178,13 @@ try {
         case 'incomplete':
             $where .= " AND cso.order_id IS NULL AND (o.payment_status != 'Approved' OR o.payment_status IS NULL)";
             break;
-        // 'all' — no extra filter
     }
 
+    $includeStampCols = in_array($status, ['calculated', 'all']);
+
+    // ============================================================
+    // Phase 1: Main query — lightweight JOINs only
+    // ============================================================
     $sql = "
         SELECT
             o.id as order_id,
@@ -147,7 +193,6 @@ try {
             o.customer_id,
             o.delivery_date,
             o.sales_channel,
-            o.sales_channel_page_id,
             o.payment_method,
             o.payment_status,
             o.order_status,
@@ -170,6 +215,7 @@ try {
             oi.parent_item_id,
             oi.is_promotion_parent,
             oi.creator_id as item_creator_id,
+            oi.basket_key_at_sale,
             p.sku as product_sku,
             p.category as product_category,
             p.report_category as product_report_category,
@@ -188,7 +234,8 @@ try {
             cso.stamped_at as stamp_date,
             cso.note as stamp_note,
             csb.name as stamp_batch_name,
-            su.first_name as stamp_by_first, su.last_name as stamp_by_last
+            pg.name as page_name,
+            parent_oi.product_name as parent_product_name
         FROM orders o
         LEFT JOIN order_items oi ON oi.parent_order_id = o.id
         LEFT JOIN products p ON p.id = oi.product_id
@@ -201,51 +248,145 @@ try {
                    GROUP_CONCAT(DISTINCT user_id) as user_id,
                    MIN(stamped_at) as stamped_at,
                    GROUP_CONCAT(DISTINCT note SEPARATOR '; ') as note,
-                   MIN(batch_id) as batch_id,
-                   MIN(stamped_by) as stamped_by
+                   MIN(batch_id) as batch_id
             FROM commission_stamp_orders
             GROUP BY order_id
         ) cso ON cso.order_id = o.id
         LEFT JOIN commission_stamp_batches csb ON csb.id = cso.batch_id
-        LEFT JOIN users su ON su.id = cso.stamped_by
+        LEFT JOIN pages pg ON pg.id = o.sales_channel_page_id
+        LEFT JOIN order_items parent_oi ON parent_oi.id = oi.parent_item_id
         $where
         ORDER BY o.order_date DESC, o.id, oi.id
     ";
 
-    // ============================================================
-    // Phase 1: Pre-check — COUNT rows + estimate memory
-    // ============================================================
-    $countSql = "
-        SELECT COUNT(*) as total_rows
-        FROM orders o
-        LEFT JOIN order_items oi ON oi.parent_order_id = o.id
-        LEFT JOIN (
-            SELECT DISTINCT order_id FROM commission_stamp_orders
-        ) cso ON cso.order_id = o.id
-        $where
-    ";
-    $countStmt = $pdo->prepare($countSql);
-    $countStmt->execute($params);
-    $totalRows = (int)($countStmt->fetch(PDO::FETCH_ASSOC)['total_rows'] ?? 0);
-
-    // Memory calculation
-    $memLimitStr = ini_get('memory_limit');
-    $memLimit = convertMemoryToBytes($memLimitStr);
-    $memUsed  = memory_get_usage(true);
-    $memAvail = $memLimit - $memUsed;
-
-    $estimatedRowSize = 2048;  // ~2KB per row (conservative estimate with JOINs)
-    $estimatedMemory  = $totalRows * $estimatedRowSize;
-    $safeThreshold    = (int)($memAvail * 0.7);  // use only 70% of available
-
-    $useStreaming = ($estimatedMemory > $safeThreshold);
-    $batchSize = 5000; // rows per batch for streaming mode
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // ============================================================
-    // Phase 2: Export — normal fetchAll or streaming batch
+    // Phase 2: Batch-fetch supplementary data by order IDs
     // ============================================================
+    // CRITICAL: array_values() re-indexes keys — PDO requires 0-indexed for positional '?'
+    $orderIds = array_values(array_unique(array_column($rows, 'order_id')));
 
-    // Region mapping
+    $lookups = [
+        'tracking' => [],
+        'slips'    => [],
+        'cod'      => [],
+        'airport'  => [],
+    ];
+
+    if (!empty($orderIds)) {
+        $chunkSize = 500;
+        $chunks = array_chunk($orderIds, $chunkSize);
+
+        // 2a: Tracking numbers
+        try {
+            foreach ($chunks as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $tStmt = $pdo->prepare("SELECT parent_order_id,
+                        GROUP_CONCAT(DISTINCT tracking_number ORDER BY id SEPARATOR ', ') as tracking_numbers
+                     FROM order_tracking_numbers
+                     WHERE parent_order_id IN ($ph)
+                     GROUP BY parent_order_id");
+                $tStmt->execute($chunk);
+                foreach ($tStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $lookups['tracking'][$r['parent_order_id']] = $r['tracking_numbers'];
+                }
+            }
+        } catch (Throwable $e) { error_log('Commission export tracking: ' . $e->getMessage()); }
+
+        // 2b: Slip count + transfer date
+        try {
+            foreach ($chunks as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $sStmt = $pdo->prepare("SELECT order_id,
+                        COUNT(*) as slip_count,
+                        MIN(CASE WHEN transfer_date IS NOT NULL THEN transfer_date END) as slip_transfer_date
+                     FROM order_slips
+                     WHERE order_id IN ($ph)
+                     GROUP BY order_id");
+                $sStmt->execute($chunk);
+                foreach ($sStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $lookups['slips'][$r['order_id']] = $r;
+                }
+            }
+        } catch (Throwable $e) { error_log('Commission export slips: ' . $e->getMessage()); }
+
+        // 2c: COD payment dates
+        try {
+            foreach ($chunks as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $cStmt = $pdo->prepare("SELECT REGEXP_REPLACE(cr.order_id, '-[0-9]+\$', '') as clean_order_id,
+                        MIN(cd.document_datetime) as cod_payment_date
+                     FROM cod_records cr
+                     INNER JOIN cod_documents cd ON cr.document_id = cd.id
+                     WHERE REGEXP_REPLACE(cr.order_id, '-[0-9]+\$', '') IN ($ph)
+                     GROUP BY clean_order_id");
+                $cStmt->execute($chunk);
+                foreach ($cStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $lookups['cod'][$r['clean_order_id']] = $r['cod_payment_date'];
+                }
+            }
+        } catch (Throwable $e) { error_log('Commission export COD: ' . $e->getMessage()); }
+
+        // 2d: Airport delivery (via tracking numbers → google_sheet_shipping)
+        try {
+            // Build tracking → order map
+            $trackingOrderMap = [];
+            foreach ($chunks as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $tmStmt = $pdo->prepare("SELECT parent_order_id, tracking_number
+                          FROM order_tracking_numbers
+                          WHERE parent_order_id IN ($ph)");
+                $tmStmt->execute($chunk);
+                foreach ($tmStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    if ($r['tracking_number']) {
+                        $trackingOrderMap[$r['tracking_number']] = $r['parent_order_id'];
+                    }
+                }
+            }
+
+            if (!empty($trackingOrderMap)) {
+                $allTrackingNums = array_values(array_keys($trackingOrderMap));
+                $tnChunks = array_chunk($allTrackingNums, $chunkSize);
+                foreach ($tnChunks as $tnChunk) {
+                    $tnPh = implode(',', array_fill(0, count($tnChunk), '?'));
+                    $aStmt = $pdo->prepare("SELECT gss.order_number as tracking_number,
+                            GROUP_CONCAT(DISTINCT gss.delivery_status SEPARATOR ', ') as delivery_status,
+                            MAX(gss.delivery_date) as delivery_date
+                         FROM google_sheet_shipping gss
+                         WHERE gss.order_number IN ($tnPh)
+                         GROUP BY gss.order_number");
+                    $aStmt->execute($tnChunk);
+                    foreach ($aStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                        $parentId = $trackingOrderMap[$r['tracking_number']] ?? null;
+                        if ($parentId) {
+                            if (!isset($lookups['airport'][$parentId])) {
+                                $lookups['airport'][$parentId] = ['delivery_status' => '', 'delivery_date' => null];
+                            }
+                            $existing = $lookups['airport'][$parentId];
+                            $statuses = array_filter(array_unique(array_merge(
+                                $existing['delivery_status'] ? explode(', ', $existing['delivery_status']) : [],
+                                $r['delivery_status'] ? explode(', ', $r['delivery_status']) : []
+                            )));
+                            $lookups['airport'][$parentId]['delivery_status'] = implode(', ', $statuses);
+                            if ($r['delivery_date']) {
+                                $lookups['airport'][$parentId]['delivery_date'] = max(
+                                    $existing['delivery_date'] ?? '0000-00-00',
+                                    $r['delivery_date']
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable $e) { error_log('Commission export airport: ' . $e->getMessage()); }
+    }
+
+    // ============================================================
+    // Phase 3: Output CSV
+    // ============================================================
     $regionMap = [
         'กรุงเทพมหานคร' => 'ภาคกลาง', 'นนทบุรี' => 'ภาคกลาง', 'ปทุมธานี' => 'ภาคกลาง',
         'สมุทรปราการ' => 'ภาคกลาง', 'สมุทรสาคร' => 'ภาคกลาง', 'นครปฐม' => 'ภาคกลาง',
@@ -256,79 +397,53 @@ try {
         'ราชบุรี' => 'ภาคตะวันตก', 'กาญจนบุรี' => 'ภาคตะวันตก',
         'ภูเก็ต' => 'ภาคใต้', 'สุราษฎร์ธานี' => 'ภาคใต้', 'สงขลา' => 'ภาคใต้',
     ];
-
     $statusThai = [
         'Pending' => 'รอดำเนินการ', 'Confirmed' => 'ยืนยันแล้ว',
         'Picking' => 'กำลังจัดเตรียม', 'Shipping' => 'กำลังจัดส่ง',
         'Delivered' => 'จัดส่งสำเร็จ', 'Cancelled' => 'ยกเลิก',
         'Returned' => 'ตีกลับ', 'BadDebt' => 'หนี้สูญ', 'PreApproved' => 'รออนุมัติ'
     ];
-
     $customerTypeThai = [
         'New Customer' => 'ลูกค้าใหม่',
         'Reorder Customer' => 'ลูกค้ารีออเดอร์',
         'Reorder' => 'ลูกค้ารีออเดอร์'
     ];
 
-    // Build CSV
     $headers = [
         'วันที่สั่งซื้อ', 'เลขคำสั่งซื้อ', 'user_id', 'ผู้ขาย', 'แผนก',
         'ชื่อลูกค้า', 'เบอร์โทรลูกค้า', 'ประเภทลูกค้า',
-        'วันที่จัดส่ง', 'ช่องทางสั่งซื้อ', 'ช่องทางการชำระ',
+        'วันที่จัดส่ง', 'ช่องทางสั่งซื้อ', 'เพจ', 'ช่องทางการชำระ',
         'ที่อยู่', 'ตำบล', 'อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์', 'ภาค',
         'รหัสสินค้า/โปร', 'สินค้า', 'ประเภทสินค้า', 'ประเภทสินค้า (รีพอร์ต)',
+        'ชื่อโปร',
         'ของแถม', 'จำนวน (ชิ้น)', 'ราคาต่อหน่วย', 'ส่วนลด', 'ยอดรวมรายการ',
-        'หมายเลขกล่อง',
+        'หมายเลขกล่อง', 'หมายเลขติดตาม',
+        'วันที่จัดส่ง Airport', 'สถานะจาก Airport',
         'สถานะออเดอร์', 'สถานะการชำระเงิน',
-        // Commission columns
-        'สถานะค่าคอม', 'รอบ Stamp', 'ค่าคอม', 'ผู้ได้รับค่าคอม (user_id)', 'วันที่ Stamp', 'หมายเหตุ Stamp'
+        'สถานะสลิป', 'วันที่รับเงิน', 'ตะกร้าขาย',
+        'สถานะค่าคอม',
     ];
+    if ($includeStampCols) {
+        $headers = array_merge($headers, [
+            'รอบ Stamp', 'ค่าคอม', 'ผู้ได้รับค่าคอม (user_id)', 'วันที่ Stamp', 'หมายเหตุ Stamp'
+        ]);
+    }
 
-    // Output CSV
     header('Content-Type: text/csv; charset=utf-8');
     $statusLabel = $status === 'all' ? 'all' : $status;
     $filename = "commission_orders_{$statusLabel}_" . date('Y-m-d') . ".csv";
     header("Content-Disposition: attachment; filename=\"$filename\"");
 
     $output = fopen('php://output', 'w');
-    // BOM for Excel Thai
     fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
     fputcsv($output, $headers);
 
-    if (!$useStreaming) {
-        // ── Normal mode: fetchAll (small dataset) ──
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        foreach ($rows as $row) {
-            fputcsv($output, formatCsvRow($row, $regionMap, $statusThai, $customerTypeThai));
-        }
-        unset($rows); // free memory
-    } else {
-        // ── Streaming mode: fetch row-by-row (large dataset) ──
-        set_time_limit(300); // allow up to 5 mins for large exports
-
-        // Use unbuffered query for memory efficiency
-        $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-
-        $count = 0;
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            fputcsv($output, formatCsvRow($row, $regionMap, $statusThai, $customerTypeThai));
-            $count++;
-            // Flush output buffer every batch to keep download alive
-            if ($count % $batchSize === 0) {
-                ob_flush();
-                flush();
-            }
-        }
-        $stmt->closeCursor();
-        $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
+    foreach ($rows as $row) {
+        fputcsv($output, formatCsvRow($row, $lookups, $regionMap, $statusThai, $customerTypeThai, $includeStampCols));
     }
 
     fclose($output);
+    unset($rows, $lookups);
     exit;
 
 } catch (Exception $e) {

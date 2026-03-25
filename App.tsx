@@ -54,6 +54,7 @@ import {
   createAppointment,
   updateAppointment,
   updateCustomer,
+  listCustomerBlocks,
   addCustomerTag,
   removeCustomerTag,
   listCustomerTags,
@@ -3255,6 +3256,10 @@ const App: React.FC = () => {
           facebookName: newCustomer.facebookName ?? null,
           lineId: newCustomer.lineId ?? null,
           address: newCustomer.address ?? {},
+          // ส่ง current_basket_key เฉพาะเมื่อ caller กำหนดมา (CreateOrderPage ส่ง 38 = ลูกค้าใหม่)
+          ...((newCustomerData as any).currentBasketKey != null
+            ? { current_basket_key: (newCustomerData as any).currentBasketKey }
+            : {}),
         });
         console.log("Create customer response", res);
         console.log("Customer created successfully:", res);
@@ -4177,58 +4182,87 @@ const App: React.FC = () => {
   };
 
   const handleTakeCustomer = async (customerToTake: Customer) => {
-    if (
-      window.confirm(
-        `คุณต้องการรับผิดชอบลูกค้า "${customerToTake.firstName} ${customerToTake.lastName}" หรือไม่?`,
-      )
-    ) {
-      const dateAssigned = new Date().toISOString();
-
-      // 1. Update assignment in DB
+    // Check if customer is in block_customers basket (id=55)
+    const basketKey = (customerToTake as any).current_basket_key;
+    if (basketKey && String(basketKey) === '55') {
+      // Fetch block reason from customer_blocks
+      let blockReason = 'ไม่ทราบสาเหตุ';
       try {
-        await updateCustomer(customerToTake.id, {
-          assignedTo: currentUser.id,
-          dateAssigned,
-        });
-      } catch (e) {
-        console.error("Failed to take customer (update assignment)", e);
-        alert("เกิดข้อผิดพลาดในการรับลูกค้า");
-        return;
-      }
-
-      // 2. Trigger Retrieve logic (adds 30 days)
-      try {
-        await retrieveCustomer(customerToTake.id);
-      } catch (e) {
-        console.error("Failed to retrieve customer (ownership)", e);
-      }
-
-      // 3. Get updated status and update local state
-      let newOwnershipExpires = customerToTake.ownershipExpires;
-      try {
-        const updated = await getCustomerOwnershipStatus(customerToTake.id);
-        if (updated && updated.ownership_expires) {
-          newOwnershipExpires = updated.ownership_expires;
+        const customerId = String(customerToTake.pk || customerToTake.id);
+        const blocks = await listCustomerBlocks(customerId);
+        const activeBlock = (Array.isArray(blocks) ? blocks : []).find((b: any) => b.active == 1 || b.active === true);
+        if (activeBlock?.reason) {
+          blockReason = activeBlock.reason;
         }
       } catch (e) {
-        console.error("Failed to get updated ownership status", e);
+        console.error('Failed to fetch block reason', e);
       }
 
-      setCustomers((prev) =>
-        prev.map((c) =>
-          c.id === customerToTake.id
-            ? {
-              ...c,
-              assignedTo: currentUser.id,
-              previousLifecycleStatus: c.lifecycleStatus,
-              lifecycleStatus: CustomerLifecycleStatus.FollowUp,
-              dateAssigned,
-              ownershipExpires: newOwnershipExpires,
-            }
-            : c,
-        ),
+      const confirmed = window.confirm(
+        `⚠️ ลูกค้าคนนี้ถูกบล็อค\n\nเหตุผล: ${blockReason}\n\nยืนยันที่จะรับลูกค้า "${customerToTake.firstName} ${customerToTake.lastName}" อยู่ไหม?`
       );
+      if (!confirmed) return;
+    } else {
+      if (
+        !window.confirm(
+          `คุณต้องการรับผิดชอบลูกค้า "${customerToTake.firstName} ${customerToTake.lastName}" หรือไม่?`,
+        )
+      ) return;
     }
+
+    const dateAssigned = new Date().toISOString();
+
+    // 1. Update assignment in DB
+    try {
+      await updateCustomer(customerToTake.id, {
+        assignedTo: currentUser.id,
+        dateAssigned,
+        // Unblock if customer was in block basket
+        ...(String(basketKey) === '55' ? { is_blocked: 0 } : {}),
+      });
+    } catch (e) {
+      console.error("Failed to take customer (update assignment)", e);
+      alert("เกิดข้อผิดพลาดในการรับลูกค้า");
+      return;
+    }
+
+    // 2. Trigger Retrieve logic (adds 30 days)
+    try {
+      await retrieveCustomer(customerToTake.id);
+    } catch (e) {
+      console.error("Failed to retrieve customer (ownership)", e);
+    }
+
+    // 3. Get updated status and update local state
+    let newOwnershipExpires = customerToTake.ownershipExpires;
+    try {
+      const updated = await getCustomerOwnershipStatus(customerToTake.id);
+      if (updated && updated.ownership_expires) {
+        newOwnershipExpires = updated.ownership_expires;
+      }
+    } catch (e) {
+      console.error("Failed to get updated ownership status", e);
+    }
+
+    setCustomers((prev) =>
+      prev.map((c) =>
+        c.id === customerToTake.id
+          ? {
+            ...c,
+            assignedTo: currentUser.id,
+            previousLifecycleStatus: c.lifecycleStatus,
+            lifecycleStatus: CustomerLifecycleStatus.FollowUp,
+            dateAssigned,
+            ownershipExpires: newOwnershipExpires,
+            isBlocked: false,
+          }
+          : c,
+      ),
+    );
+
+    // 4. Redirect to Dashboard V2 with the customer
+    const customerId = customerToTake.pk || customerToTake.id;
+    window.location.href = `${window.location.origin}${window.location.pathname}?page=Dashboard+V2&customerId=${customerId}`;
   };
 
   const handleSaveCustomer = (

@@ -50,6 +50,8 @@ try {
             ob.return_created_at,
             ob.cod_amount,
             ob.collection_amount,
+            ob.return_complete,
+            ob.return_claim,
             otn.tracking_number,
             o.order_date,
             o.total_amount as order_total_amount,

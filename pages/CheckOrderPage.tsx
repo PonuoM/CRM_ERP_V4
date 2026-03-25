@@ -25,6 +25,7 @@ import {
   Tag,
   Wand2,
   UserCheck,
+  Users,
 } from 'lucide-react';
 import { User } from '../types';
 import {
@@ -36,6 +37,8 @@ import {
   validatePromotionOrders,
   fixPromotionOrders,
   validateCreatorOrders,
+  validateCreatorMismatch,
+  fixCreatorMismatch,
 } from '../services/api';
 import OrderDetailModal from '../components/OrderDetailModal';
 import OrderManagementModal from '../components/OrderManagementModal';
@@ -935,6 +938,14 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const [fixing, setFixing] = useState(false);
   const [fixResult, setFixResult] = useState<{ show: boolean; count: number; error?: string }>({ show: false, count: 0 });
 
+  // Creator mismatch state
+  const [creatorMismatchData, setCreatorMismatchData] = useState<any[]>([]);
+  const [creatorMismatchSummary, setCreatorMismatchSummary] = useState({ total: 0, mismatch: 0 });
+  const [creatorMismatchLoading, setCreatorMismatchLoading] = useState(false);
+  const [creatorFixing, setCreatorFixing] = useState<number | null>(null);
+  const [creatorFixAll, setCreatorFixAll] = useState(false);
+  const [creatorFixResult, setCreatorFixResult] = useState<{ show: boolean; count: number; error?: string }>({ show: false, count: 0 });
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -956,7 +967,26 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     }
   }, [currentUser.companyId]);
 
+  const fetchCreatorMismatch = useCallback(async () => {
+    setCreatorMismatchLoading(true);
+    try {
+      const res = await validateCreatorMismatch(currentUser.companyId);
+      if (res?.status === 'success') {
+        setCreatorMismatchData(res.data || []);
+        setCreatorMismatchSummary({
+          total: Number(res.summary?.total_promo_orders || 0),
+          mismatch: Number(res.summary?.mismatch_count || 0),
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load creator mismatch', err);
+    } finally {
+      setCreatorMismatchLoading(false);
+    }
+  }, [currentUser.companyId]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchCreatorMismatch(); }, [fetchCreatorMismatch]);
 
   const handleSort = (key: string) => {
     if (sortKey === key) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); }
@@ -1231,6 +1261,169 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
           </div>
         </div>
       )}
+
+      {/* ======== Creator Mismatch Section ======== */}
+      <div className="mt-8 border-t border-gray-200 pt-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
+              <Users className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">ตรวจสอบ Creator ไม่ตรง</h3>
+              <p className="text-xs text-gray-500">ออเดอร์ที่ parent.creator_id ≠ child.creator_id</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchCreatorMismatch}
+              disabled={creatorMismatchLoading}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition text-sm text-gray-700"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${creatorMismatchLoading ? 'animate-spin' : ''}`} />
+              รีเฟรช
+            </button>
+            {creatorMismatchSummary.mismatch > 0 && (
+              <button
+                onClick={async () => {
+                  setCreatorFixAll(true);
+                  setCreatorFixResult({ show: false, count: 0 });
+                  try {
+                    const ids = creatorMismatchData.map((r: any) => Number(r.parent_item_id)).filter((id: number) => id > 0);
+                    const res = await fixCreatorMismatch(currentUser.companyId, ids);
+                    if (res?.status === 'success') {
+                      setCreatorFixResult({ show: true, count: res.fixed_count || 0 });
+                      fetchCreatorMismatch();
+                    } else {
+                      setCreatorFixResult({ show: true, count: 0, error: res?.message || 'Unknown error' });
+                    }
+                  } catch (err: any) {
+                    setCreatorFixResult({ show: true, count: 0, error: err?.message || 'Failed' });
+                  } finally {
+                    setCreatorFixAll(false);
+                  }
+                }}
+                disabled={creatorFixAll}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition text-sm font-medium shadow-sm disabled:opacity-50"
+              >
+                <Wand2 className={`w-3.5 h-3.5 ${creatorFixAll ? 'animate-pulse' : ''}`} />
+                {creatorFixAll ? 'กำลังแก้ไข...' : `แก้ไขทั้งหมด (${creatorMismatchSummary.mismatch})`}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Summary badge */}
+        <div className="flex items-center gap-4 mb-4">
+          <div className="bg-white rounded-xl border border-amber-100 px-4 py-3 shadow-sm">
+            <div className="text-xs text-amber-600 font-medium">Creator ไม่ตรง</div>
+            <div className={`text-2xl font-bold ${creatorMismatchSummary.mismatch > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              {creatorMismatchSummary.mismatch}
+            </div>
+          </div>
+        </div>
+
+        {/* Fix result alert */}
+        {creatorFixResult.show && (
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium mb-4 ${creatorFixResult.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+            {creatorFixResult.error ? (
+              <><AlertTriangle className="w-4 h-4" /> เกิดข้อผิดพลาด: {creatorFixResult.error}</>
+            ) : (
+              <><CheckCircle className="w-4 h-4" /> แก้ไข creator_id สำเร็จ {creatorFixResult.count} รายการ</>
+            )}
+            <button onClick={() => setCreatorFixResult({ show: false, count: 0 })} className="ml-auto text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+          </div>
+        )}
+
+        {/* Table */}
+        {creatorMismatchLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-amber-400 border-t-transparent" />
+          </div>
+        ) : creatorMismatchData.length === 0 ? (
+          <div className="text-center py-10 bg-white rounded-xl border">
+            <CheckCircle className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
+            <p className="text-gray-600 font-medium text-sm">ไม่พบ Creator ไม่ตรง</p>
+            <p className="text-xs text-gray-400 mt-1">ทุกโปรโมชั่นมี creator_id ตรงกันระหว่าง parent & child</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-600 border-b">
+                  <tr>
+                    <th className="px-3 py-2.5 text-left whitespace-nowrap">Order ID</th>
+                    <th className="px-3 py-2.5 text-left whitespace-nowrap">วันที่</th>
+                    <th className="px-3 py-2.5 text-left whitespace-nowrap">ลูกค้า</th>
+                    <th className="px-3 py-2.5 text-left whitespace-nowrap">สถานะ</th>
+                    <th className="px-3 py-2.5 text-left whitespace-nowrap">โปรโมชั่น</th>
+                    <th className="px-3 py-2.5 text-left whitespace-nowrap">Parent Creator</th>
+                    <th className="px-3 py-2.5 text-center whitespace-nowrap">Child ผิด</th>
+                    <th className="px-3 py-2.5 text-center whitespace-nowrap">แก้ไข</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {creatorMismatchData.map((row: any, idx: number) => (
+                    <tr key={idx} className="hover:bg-amber-50/30 transition-colors">
+                      <td className="px-3 py-2.5">
+                        <button
+                          onClick={() => setViewOrderId(String(row.order_id))}
+                          className="text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                        >
+                          {row.order_id}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{row.order_date ? new Date(row.order_date).toLocaleDateString('th-TH') : '-'}</td>
+                      <td className="px-3 py-2.5 text-gray-800 font-medium max-w-[180px] truncate">{row.customer_name || '-'}</td>
+                      <td className="px-3 py-2.5">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">{row.order_status || '-'}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-700 max-w-[180px] truncate">{row.promo_name || '-'}</td>
+                      <td className="px-3 py-2.5">
+                        <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                          {row.parent_creator_name || '-'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+                          {row.affected_children}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <button
+                          onClick={async () => {
+                            setCreatorFixing(row.parent_item_id);
+                            try {
+                              const res = await fixCreatorMismatch(currentUser.companyId, [Number(row.parent_item_id)]);
+                              if (res?.status === 'success') {
+                                setCreatorFixResult({ show: true, count: res.fixed_count || 0 });
+                                fetchCreatorMismatch();
+                              }
+                            } catch (err: any) {
+                              setCreatorFixResult({ show: true, count: 0, error: err?.message || 'Failed' });
+                            } finally {
+                              setCreatorFixing(null);
+                            }
+                          }}
+                          disabled={creatorFixing === row.parent_item_id}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 border border-amber-200 transition-colors disabled:opacity-50"
+                        >
+                          {creatorFixing === row.parent_item_id ? (
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Wand2 className="w-3 h-3" />
+                          )}
+                          แก้ไขทันที
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
 
       <OrderDetailModal
         isOpen={!!viewOrderId}

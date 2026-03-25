@@ -1127,6 +1127,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'Tracking No.': isFirstRow ? (r.tracking_number || '-') : '',
             'สถานะตีกลับ': statusThai[r.return_status] || r.return_status || '-',
             'หมายเหตุ': isFirstRow ? (r.return_note || '-') : '',
+            'ยืนยันจบเคส': isFirstRow ? (Number(r.return_complete) === 1 ? 'จบเคส' : '-') : '',
+            'ค่าเคลม': isFirstRow ? (r.return_claim != null && Number(r.return_claim) > 0 ? Number(r.return_claim) : '-') : '',
             'ราคากล่อง': isFirstRow ? (r.cod_amount || 0) : '',
             'ยอดเก็บได้': isFirstRow ? (r.collection_amount || 0) : '',
             'ชื่อสินค้า': r.item_product_name || '-',

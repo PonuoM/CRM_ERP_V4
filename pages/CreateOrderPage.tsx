@@ -1,3 +1,35 @@
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  FILE: CreateOrderPage.tsx                                              ║
+// ║  SIZE: ~9,872 lines                                                     ║
+// ║  PURPOSE: สร้างออเดอร์ใหม่ (Normal) + อัปเซล (Upsell)                    ║
+// ║                                                                         ║
+// ║  SECTION INDEX:                                                         ║
+// ║  [A] IMPORTS .................................................. ~1      ║
+// ║  [B] TYPES & INTERFACES ...................................... ~39     ║
+// ║  [C] UTILITY FUNCTIONS (sanitize, normalize, clean) .......... ~82     ║
+// ║  [D] SUB-COMPONENT: OrderSummary ............................. ~233    ║
+// ║  [E] MAIN COMPONENT: CreateOrderPage ......................... ~374    ║
+// ║      [E1] UPSELL — State & Hooks ............................. ~415    ║
+// ║      [E2] UPSELL — Item Handlers ............................. ~953    ║
+// ║      [E3] UPSELL — Slip Upload & COD ......................... ~1300   ║
+// ║      [E4] UPSELL — Save Handler .............................. ~1591   ║
+// ║      [E5] NORMAL — Bank & Transfer Slip State ................ ~1715   ║
+// ║      [E6] NORMAL — Product Selector State .................... ~1841   ║
+// ║      [E7] NORMAL — Validation System ......................... ~1883   ║
+// ║      [E8] NORMAL — Order Amount Calculation .................. ~2003   ║
+// ║      [E9] NORMAL — Address System (cascading dropdowns) ...... ~2183   ║
+// ║      [E10] NORMAL — Customer Search/Select/Create ............ ~3206   ║
+// ║      [E11] NORMAL — Phone Validation ......................... ~4010   ║
+// ║      [E12] NORMAL — Save Handler (handleSave) ................ ~4104   ║
+// ║      [E13] NORMAL — COD Box Logic ............................ ~4964   ║
+// ║      [E14] NORMAL — Product Selection Helpers ................. ~5004   ║
+// ║      [E15] JSX: renderUpsellView() ........................... ~5646   ║
+// ║      [E16] JSX: Normal Order Form (return) ................... ~6839   ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// ════════════════════════════════════════════════════════════════════════════
+// [A] IMPORTS
+// ════════════════════════════════════════════════════════════════════════════
 import React, { useState, useMemo, useEffect } from "react";
 import {
   Customer,
@@ -35,6 +67,10 @@ import "react-datepicker/dist/react-datepicker.css";
 import ProductSelectorModal from "../components/ProductSelectorModal";
 
 import resolveApiBasePath from "../utils/apiBasePath";
+
+// ════════════════════════════════════════════════════════════════════════════
+// [B] TYPES & INTERFACES (TransferSlipUpload, UpsellSlip, CreateOrderPageProps, etc.)
+// ════════════════════════════════════════════════════════════════════════════
 
 const emptyAddress: Address = {
   recipientFirstName: "",
@@ -78,6 +114,10 @@ const SHIPPING_PROVIDERS = [
   "Aiport Logistic",
   "ไปรษณีย์ไทย",
 ];
+
+// ════════════════════════════════════════════════════════════════════════════
+// [C] UTILITY FUNCTIONS — sanitize, normalize, clean address names
+// ════════════════════════════════════════════════════════════════════════════
 
 const sanitizeAddressValue = (value?: string | null): string => {
   if (value == null) return "";
@@ -230,6 +270,10 @@ type ValidationField =
 
 // Order Summary Component
 
+// ════════════════════════════════════════════════════════════════════════════
+// [D] SUB-COMPONENT: OrderSummary — สรุปยอดคำสั่งซื้อ (สินค้า - ส่วนลด + shipping - billDiscount)
+// ════════════════════════════════════════════════════════════════════════════
+
 const OrderSummary: React.FC<{
   orderData: Partial<Order>;
   onUpdateOrder: (field: keyof Order, value: any) => void;
@@ -371,6 +415,10 @@ const OrderSummary: React.FC<{
   );
 };
 
+// ════════════════════════════════════════════════════════════════════════════
+// [E] MAIN COMPONENT: CreateOrderPage
+// ════════════════════════════════════════════════════════════════════════════
+
 export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   products,
 
@@ -412,6 +460,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const customerStatusRef = useRef<HTMLSelectElement>(null);
   const postalCodeInputRef = useRef<HTMLInputElement>(null);
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E1] UPSELL — State & Hooks (orders, items, boxes, slips, loading)
+  // ──────────────────────────────────────────────────────────────────────────
   const isUpsellMode = initialData?.upsell === true;
 
   const [upsellOrders, setUpsellOrders] = useState<Order[]>([]);
@@ -950,6 +1001,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     return pm === PaymentMethod.Transfer;
   }, [selectedUpsellOrder]);
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E2] UPSELL — Item Handlers (add/remove/update/productSelect/promotionSelect)
+  // ──────────────────────────────────────────────────────────────────────────
   const handleUpsellAddNewItem = () => {
     setUpsellItems((prev) => [
       ...prev,
@@ -1297,6 +1351,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setUpsellEditingItemId(null);
   };
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E3] UPSELL — Slip Upload & COD Box Management
+  // ──────────────────────────────────────────────────────────────────────────
   const handleUpsellSlipUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -1588,6 +1645,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setUpsellBoxes(newBoxes);
   };
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E4] UPSELL — Save Handler (validate + addUpsellItems API)
+  // ──────────────────────────────────────────────────────────────────────────
   const handleUpsellSave = async () => {
     if (!selectedUpsellOrder) {
       setUpsellError("กรุณาเลือกออเดอร์ที่ต้องการอัปเซล");
@@ -1712,7 +1772,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
   };
 
-  // Bank account state
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E5] NORMAL ORDER — Bank Account & Transfer Slip State
+  // ──────────────────────────────────────────────────────────────────────────
 
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
 
@@ -1838,7 +1900,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [numBoxes, setNumBoxes] = useState(1);
 
-  // Product selector modal state
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E6] NORMAL ORDER — Product Selector State
+  // ──────────────────────────────────────────────────────────────────────────
 
   const [productSelectorOpen, setProductSelectorOpen] = useState(false);
 
@@ -1880,6 +1944,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [profileAddressModified, setProfileAddressModified] = useState(false);
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E7] NORMAL ORDER — Validation System (field refs, highlight, clear)
+  // ──────────────────────────────────────────────────────────────────────────
   const [validationError, setValidationError] =
     useState<ValidationField | null>(null);
 
@@ -2000,7 +2067,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [loadingCustomerData, setLoadingCustomerData] = useState(false); // Loading state for fetching fresh customer data
 
-  // สรุปยอด: สินค้ารวม, ส่วนลดตามรายการ, ส่วนลดท้ายบิลเป็น %
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E8] NORMAL ORDER — Order Amount Calculation (goodsSum, itemsDiscount, totalAmount)
+  //     ⚠️ NOTE: ส่วนนี้คือการคำนวณยอดฝั่ง frontend สำหรับแสดงผลเท่านั้น
+  //     Backend คำนวณยอดจริงแยกต่างหากใน API — อย่าแก้ส่วนนี้เพื่อแก้ยอด backend
+  // ──────────────────────────────────────────────────────────────────────────
 
   const goodsSum = useMemo(
     () =>
@@ -2177,6 +2248,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     setWarehouseId(matched ? matched.id : null);
   }, [shippingAddress.province, warehouses]);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E9] NORMAL ORDER — Address System (geography → province → district → subdistrict)
+  //     - Cascading dropdowns + postal code auto-fill
+  //     - Address CRUD (save new, delete, set primary)
+  //     - Warehouse auto-selection by province
+  // ──────────────────────────────────────────────────────────────────────────
 
   // Load address data on component mount
 
@@ -3203,7 +3281,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     if (changed) updateOrderData("items", updatedItems);
   }, [numBoxes]);
 
-  // Helper function to map API response (snake_case) to frontend format (camelCase)
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E10] NORMAL ORDER — Customer Search / Select / Create
+  //     - mapCustomerData: snake_case → camelCase
+  //     - handleSelectCustomer: fetch fresh data → set state
+  //     - startCreatingNewCustomer: new customer form
+  // ──────────────────────────────────────────────────────────────────────────
 
   const mapCustomerData = (apiData: any): Customer => {
     const pk =
@@ -4007,6 +4090,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
   };
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E11] NORMAL ORDER — Phone Validation (new & edited customer)
+  // ──────────────────────────────────────────────────────────────────────────
   const handleNewCustomerPhoneChange = (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -4101,6 +4187,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E12] NORMAL ORDER — Save Handler (handleSave)
+  //     - Validates: address, customer status, delivery date, items, payment, COD, quota
+  //     - Builds payload → calls onSave(payload)
+  //     - Post-save: updates address, socials, quota recording
+  // ──────────────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     // Prevent double submission
     if (isSaving) return;
@@ -4556,7 +4648,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           province: sanitizeAddressValue(shippingAddress.province),
 
-          assignedTo: null,
+          assignedTo: currentUser?.id || null,
+
+          currentBasketKey: 38, // ตะกร้า "ลูกค้าใหม่"
 
           dateAssigned: new Date().toISOString(),
 
@@ -4961,6 +5055,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
   };
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E13] NORMAL ORDER — COD Box Logic (divide equally, amount change)
+  // ──────────────────────────────────────────────────────────────────────────
   const handleCodBoxAmountChange = (index: number, amount: number) => {
     clearValidationErrorFor("cod");
 
@@ -5001,7 +5098,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     updateOrderData("boxes", newBoxes);
   };
 
-  // --- Product selection helpers ---
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E14] NORMAL ORDER — Product Selection Helpers
+  //     - openProductSelector, addProductById, addPromotionById
+  //     - calcPromotionTotal, calcPromotionSetPrice
+  //     - replaceEmptyRowOrAppend
+  // ──────────────────────────────────────────────────────────────────────────
 
   const openProductSelector = (
     tab: "products" | "promotions" = "products",
@@ -5643,6 +5745,15 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const formatCurrency = (value: number) =>
     `฿${Number(value || 0).toLocaleString("th-TH")}`;
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E15] JSX: renderUpsellView() — Upsell mode UI
+  //     - Order selector dropdown
+  //     - Existing order items table (read-only)
+  //     - Transfer slip section (if Transfer payment)
+  //     - New items form + product selector
+  //     - COD box management (if COD payment)
+  //     - Save button + success modal
+  // ──────────────────────────────────────────────────────────────────────────
   const renderUpsellView = () => {
     const TH = {
       title:
@@ -6836,6 +6947,17 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     if (typeof el.select === "function") el.select();
   };
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // [E16] JSX: Normal Order Form — Main return()
+  //     - Header (title + cancel button)
+  //     - Section 1: Customer Information (search/create/edit)
+  //     - Section 2: Shipping Address (cascading dropdowns)
+  //     - Section 3: Product Items Table
+  //     - Section 4: Payment Method (Transfer/COD/PayAfter/DiscountCoupon)
+  //     - Section 5: COD Boxes (if COD)
+  //     - Right Column: OrderSummary + Save Button
+  //     - Modals: ProductSelectorModal, SuccessModal
+  // ──────────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}

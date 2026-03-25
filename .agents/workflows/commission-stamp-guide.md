@@ -270,15 +270,41 @@ JOIN `orders.order_date` เป็น base ของการ group by period
 | `start_date` / `end_date` | ช่วงวันที่ |
 | `token` | Auth token (ส่งผ่าน query string สำหรับ direct download) |
 
-**Smart Export (2-Phase):**
-1. **Phase 1 (Pre-check):** `COUNT(*)` นับจำนวนแถว + คำนวณ estimated memory (~2KB/row) เปรียบเทียบกับ 70% ของ memory ที่เหลือ
-2. **Phase 2 (Export):**
-   - ถ้า memory พอ → `fetchAll()` (เร็ว, ปกติ)
-   - ถ้า memory ไม่พอ → `fetch()` ทีละแถว (unbuffered query) + `ob_flush()` ทุก 5,000 แถว + `set_time_limit(300)`
+**Smart Export (3-Phase):**
+1. **Phase 1 (Main Query):** JOIN orders + items + products + customers + users + commission → `fetchAll()`
+2. **Phase 2 (Batch Supplementary Data):** ดึงข้อมูลเสริมด้วย order IDs — chunked 500 IDs/batch
+   - **2a:** Tracking numbers (`order_tracking_numbers`)
+   - **2b:** Slip count + transfer date (`order_slips`)
+   - **2c:** COD payment dates (`cod_records` + `cod_documents`)
+   - **2d:** Airport delivery (`order_tracking_numbers` → `google_sheet_shipping`)
+3. **Phase 3 (Output CSV):** `formatCsvRow()` + `fputcsv()`
+
+> [!CAUTION]
+> **`array_values()` จำเป็นหลัง `array_unique()`** — PDO ต้องการ 0-indexed array สำหรับ positional `?` placeholders
+> ถ้าไม่ re-index → supplementary data หาย (tracking, airport, payment = null)
+> ```php
+> // ✅ ถูกต้อง
+> $orderIds = array_values(array_unique(array_column($rows, 'order_id')));
+> // ❌ ผิด — keys ไม่ต่อเนื่อง เช่น [0,1,3,5,...]
+> $orderIds = array_unique(array_column($rows, 'order_id'));
+> ```
 
 **Helper functions:**
 - `convertMemoryToBytes()` — แปลง `128M` / `1G` → bytes
 - `formatCsvRow()` — แปลง DB row → CSV array (ใช้ร่วมทั้ง 2 mode)
+
+**วันที่รับเงิน** — Logic:
+- ดึงจาก `order_slips.transfer_date` (สลิปโอนเงิน) ก่อน
+- ถ้าไม่มีสลิป → fallback ใช้ `cod_records` →  `cod_documents.document_datetime` (COD เก็บเงินปลายทาง)
+
+**ความแตกต่าง format กับ ReportsPage:**
+| คอลัมน์ | Commission Export (PHP) | Orders-Raw (JS) |
+|---------|------------------------|------------------|
+| วันที่ | `31/01/2026` (zero-padded) | `31/1/2026` (ไม่ pad) |
+| ราคา/ส่วนลด | `290` (ตัวเลขเปล่า) | `฿290.00` (มี ฿ + ทศนิยม) |
+
+> [!NOTE]
+> Logic การนำข้อมูลเหมือน ReportsPage ทุกประการ ต่างกันแค่ format การแสดงผลเท่านั้น
 
 ---
 
@@ -435,6 +461,8 @@ const rows = Array.isArray(rawData) ? rawData
 | `"There is no active transaction"` | `require_once migrate` อยู่ภายใน `beginTransaction()` → DDL implicit commit | ย้าย migration ไปรันก่อน `beginTransaction()` |
 | Double JSON response | migration file มี `echo json_encode(...)` | ใช้ `ob_start()` / `ob_end_clean()` ครอบ |
 | Export memory error | company มี orders มาก > 50K | ✅ แก้แล้ว: Smart Export auto-detect memory → fallback streaming fetch |
+| Export tracking/airport/payment = null | `array_unique()` สร้าง keys ไม่ต่อเนื่อง → PDO bind positional `?` ผิดตำแหน่ง | ✅ แก้แล้ว: เพิ่ม `array_values()` หลัง `array_unique()` |
+| Export timeout (MySQL gone away) | query supplementary data ทีเดียว > 7,000 IDs → `IN(...)` ใหญ่เกินไป | ✅ แก้แล้ว: `array_chunk()` 500 IDs/batch |
 | Batch name ว่าง | Frontend ไม่ส่ง `batch_name` | Backend fallback: `'Batch ' . date('Y-m-d H:i')` |
 | Grand total concatenate strings | API คืน `total_commission`, `order_count` เป็น string จาก MySQL → `+` ต่อ string | ใช้ `Number()` parse ตอน set state ใน `loadUserComm()` |
 | ReportsPage commission ไม่แสดงข้อมูล | `res.data` เป็น Object `{rows:[...]}` ไม่ใช่ Array → `Array.isArray()` ได้ `false` | ✅ แก้แล้ว: parse `res.data.rows` fallback |

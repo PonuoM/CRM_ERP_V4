@@ -2233,7 +2233,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                 'phone' => $in['phone'] ?? null,
                 'backupPhone' => $in['backupPhone'] ?? null,
             ]));
-            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type, current_basket_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             $params = [
                 $customerRefId,
                 $in['firstName'] ?? '',
@@ -2260,6 +2260,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                 $in['address']['district'] ?? null,
                 $in['address']['postalCode'] ?? null,
                 $in['bucketType'] ?? null,
+                $in['current_basket_key'] ?? null,
             ];
             error_log("Attempting Customer Insert with Params: " . json_encode($params));
             $stmt->execute($params);
@@ -2382,10 +2383,12 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $chkStmt->execute([$oldBasketKey]);
                     $bCfg = $chkStmt->fetch();
 
-                    if ($bCfg && $bCfg['target_page'] === 'distribution' && !empty($bCfg['linked_basket_key'])) {
+                    if ($bCfg && $bCfg['target_page'] === 'distribution') {
+                        // Default to 'new_customer' if linked_basket_key is NULL
+                        $linkedKey = !empty($bCfg['linked_basket_key']) ? $bCfg['linked_basket_key'] : 'new_customer';
                         // Find the ID of the linked basket
                         $linkStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ?");
-                        $linkStmt->execute([$bCfg['linked_basket_key']]);
+                        $linkStmt->execute([$linkedKey]);
                         $linkedRow = $linkStmt->fetch();
                         if ($linkedRow) {
                             $newBasketKey = $linkedRow['id'];
@@ -4101,10 +4104,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                     }
                 }
 
-                if (!empty($data['updatedBy'])) {
-                    $updateFields[] = "updated_by = ?";
-                    $params[] = $data['updatedBy'];
-                }
+                // Note: updatedBy is NOT a column in orders table - only used as fallback creator_id for items
 
                 // Auto-set payment_status to Cancelled when order_status is Cancelled
                 $incomingOrderStatus = $data['orderStatus'] ?? $data['order_status'] ?? null;
@@ -4236,10 +4236,11 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $itemId = isset($item['id']) ? $item['id'] : null;
                         $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
 
-                        // --- Override net_total for child promotion items ---
+                        // --- Override net_total and inherit creator_id for child promotion items ---
                         $clientParentIdForUpdate = $item['parentItemId'] ?? $item['parent_item_id'] ?? null;
-                        if ($clientParentIdForUpdate && !$isFreebie) {
-                            $overridePrice = isset($item['priceOverride']) ? (float) $item['priceOverride'] : (isset($item['price_override']) ? (float) $item['price_override'] : null);
+                        $parentCreatorForUpdate = null;
+                        if ($clientParentIdForUpdate) {
+                            $overridePrice = (!$isFreebie && isset($item['priceOverride'])) ? (float) $item['priceOverride'] : ((!$isFreebie && isset($item['price_override'])) ? (float) $item['price_override'] : null);
                             $parentQty = 1;
                             $parentPromotionId = null;
                             foreach ($data['items'] as $parentCandidate) {
@@ -4248,22 +4249,26 @@ function handle_orders(PDO $pdo, ?string $id): void
                                     && (!empty($parentCandidate['isPromotionParent']) || !empty($parentCandidate['is_promotion_parent']))) {
                                     $parentQty = max(1, (int)($parentCandidate['quantity'] ?? 1));
                                     $parentPromotionId = $parentCandidate['promotionId'] ?? $parentCandidate['promotion_id'] ?? null;
+                                    // Inherit creator_id from parent
+                                    $parentCreatorForUpdate = $parentCandidate['creatorId'] ?? $parentCandidate['creator_id'] ?? null;
                                     break;
                                 }
                             }
-                            if ($overridePrice === null && $parentPromotionId !== null) {
-                                $productIdForLookup = $item['productId'] ?? $item['product_id'] ?? null;
-                                if ($productIdForLookup) {
-                                    $poStmt = $pdo->prepare('SELECT price_override FROM promotion_items WHERE promotion_id = ? AND product_id = ? LIMIT 1');
-                                    $poStmt->execute([(int)$parentPromotionId, (int)$productIdForLookup]);
-                                    $poRow = $poStmt->fetch();
-                                    if ($poRow && $poRow['price_override'] !== null) {
-                                        $overridePrice = (float) $poRow['price_override'];
+                            if (!$isFreebie) {
+                                if ($overridePrice === null && $parentPromotionId !== null) {
+                                    $productIdForLookup = $item['productId'] ?? $item['product_id'] ?? null;
+                                    if ($productIdForLookup) {
+                                        $poStmt = $pdo->prepare('SELECT price_override FROM promotion_items WHERE promotion_id = ? AND product_id = ? LIMIT 1');
+                                        $poStmt->execute([(int)$parentPromotionId, (int)$productIdForLookup]);
+                                        $poRow = $poStmt->fetch();
+                                        if ($poRow && $poRow['price_override'] !== null) {
+                                            $overridePrice = (float) $poRow['price_override'];
+                                        }
                                     }
                                 }
-                            }
-                            if ($overridePrice !== null) {
-                                $netTotal = $overridePrice * $parentQty;
+                                if ($overridePrice !== null) {
+                                    $netTotal = $overridePrice * $parentQty;
+                                }
                             }
                         }
 
@@ -4274,6 +4279,9 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $clientToDbParent[(string) $itemId] = (int) $itemId;
                             }
 
+                            // Child items inherit creator_id from parent; standalone items use their own
+                            $itemCreatorId = $parentCreatorForUpdate ?? $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
+
                             $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=?, promotion_id=?, creator_id=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
                             $pdo->prepare($updateSql)->execute([
                                 $item['quantity'] ?? 0,
@@ -4283,7 +4291,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
                                 $isFreebie ? 1 : 0,
                                 $item['promotionId'] ?? $item['promotion_id'] ?? null,
-                                $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId,
+                                $itemCreatorId,
                                 $itemId,
                                 $id,
                                 $id
@@ -4399,7 +4407,17 @@ function handle_orders(PDO $pdo, ?string $id): void
                         if ((!$itemId || !in_array($itemId, $existingIds)) && !$isParent && $clientParentId) {
                             $netTotal = calculate_order_item_net_total($item);
                             $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
-                            $itemCreatorId = $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
+                            // Child items inherit creator_id from their parent item
+                            $parentCreatorId = null;
+                            foreach ($data['items'] as $parentCandidate) {
+                                $pid = $parentCandidate['id'] ?? null;
+                                if ($pid !== null && (string)$pid === (string)$clientParentId
+                                    && (!empty($parentCandidate['isPromotionParent']) || !empty($parentCandidate['is_promotion_parent']))) {
+                                    $parentCreatorId = $parentCandidate['creatorId'] ?? $parentCandidate['creator_id'] ?? null;
+                                    break;
+                                }
+                            }
+                            $itemCreatorId = $parentCreatorId ?? $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
 
                             // --- Override net_total for child promotion items ---
                             if (!$isFreebie) {
