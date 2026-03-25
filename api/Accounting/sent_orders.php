@@ -42,13 +42,14 @@ function handle_sent_orders(PDO $pdo) {
                 WHERE o.company_id = ?
             ";
 
-            // Filter Condition: Sent/Billed (Has Tracking OR Delivered/Returned OR Picked Up)
-            // Note: 'Picked Up' is implicitly covered if they have status 'Delivered' or manually marked. 
-            // The requirement says: "Orders with Tracking number, Status 'Delivered' or 'Returned', and 'Customer Picked Up'"
-            // Since we don't have a specific 'Picked Up' status in enum, we rely on Delivered/Returned or presence of Tracking.
+            // Filter Condition: Sent/Billed
+            // Include orders that have been shipped/billed:
+            // 1. Any order with a tracking number (regardless of status)
+            // 2. Orders in statuses that indicate they were processed past packaging:
+            //    Picking, Shipping, PreApproved, Delivered, Returned, Claiming, BadDebt
             $sql .= " AND (
                 (otn.tracking_number IS NOT NULL AND otn.tracking_number <> '')
-                OR o.order_status IN ('Delivered', 'Returned')
+                OR o.order_status IN ('Picking', 'Shipping', 'PreApproved', 'Delivered', 'Returned', 'Claiming', 'BadDebt')
             )";
 
             // Filter by Date Range OR Month/Year

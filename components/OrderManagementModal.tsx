@@ -2771,6 +2771,28 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 })()}
               </div>
             </div>
+
+            {/* Notes Section */}
+            {showInputs ? (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <label className="text-xs text-gray-500 mb-1 block">หมายเหตุ <span className="text-gray-400">(ไม่บังคับ)</span></label>
+                <textarea
+                  value={currentOrder.notes || ""}
+                  onChange={(e) => handleFieldChange("notes", e.target.value)}
+                  placeholder="ระบุหมายเหตุสำหรับออเดอร์นี้..."
+                  rows={2}
+                  disabled={isLocked && permission !== 'manager'}
+                  className={`w-full p-2 text-sm border border-yellow-300 rounded-md shadow-sm bg-yellow-50 text-gray-700 placeholder-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none ${isLocked && permission !== 'manager' ? 'cursor-not-allowed opacity-60' : ''}`}
+                />
+              </div>
+            ) : currentOrder.notes ? (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <p className="text-xs text-gray-500 mb-1">หมายเหตุ</p>
+                <p className="text-sm text-gray-700 bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
+                  {currentOrder.notes}
+                </p>
+              </div>
+            ) : null}
           </InfoCard>
 
           <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
@@ -3043,27 +3065,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               </div>
             </div>
 
-            {/* Notes Section */}
-            {showInputs ? (
-              <div className="mt-3 pt-3 border-t border-gray-100">
-                <label className="text-xs text-gray-500 mb-1 block">หมายเหตุ <span className="text-gray-400">(ไม่บังคับ)</span></label>
-                <textarea
-                  value={currentOrder.notes || ""}
-                  onChange={(e) => handleFieldChange("notes", e.target.value)}
-                  placeholder="ระบุหมายเหตุสำหรับออเดอร์นี้..."
-                  rows={2}
-                  disabled={isLocked && permission !== 'manager'}
-                  className={`w-full p-2 text-sm border border-yellow-300 rounded-md shadow-sm bg-yellow-50 text-gray-700 placeholder-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none ${isLocked && permission !== 'manager' ? 'cursor-not-allowed opacity-60' : ''}`}
-                />
-              </div>
-            ) : currentOrder.notes ? (
-              <div className="mt-3 pt-3 border-t border-gray-100">
-                <p className="text-xs text-gray-500 mb-1">หมายเหตุ</p>
-                <p className="text-sm text-gray-700 bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
-                  {currentOrder.notes}
-                </p>
-              </div>
-            ) : null}
           </InfoCard>
 
           <InfoCard icon={Package} title="รายการสินค้า">

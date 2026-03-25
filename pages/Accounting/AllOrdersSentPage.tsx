@@ -42,6 +42,18 @@ const AllOrdersSentPage: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [banks, setBanks] = useState<BankAccount[]>([]);
 
+    // Get companyId from session
+    const companyId = useMemo(() => {
+        try {
+            const raw = localStorage.getItem('sessionUser');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                return parsed?.user?.company_id ?? parsed?.company_id ?? null;
+            }
+        } catch {}
+        return null;
+    }, []);
+
     // Filters
     // Set default range to current month
     const [startDate, setStartDate] = useState<string>(
@@ -80,7 +92,7 @@ const AllOrdersSentPage: React.FC = () => {
 
     const loadBanks = async () => {
         try {
-            const data = await listBankAccounts();
+            const data = await listBankAccounts(companyId ?? undefined);
             if (Array.isArray(data)) setBanks(data);
         } catch (err) {
             console.error("Failed to load banks", err);
