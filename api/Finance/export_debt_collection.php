@@ -99,7 +99,37 @@ try {
             'Approved' => 'อนุมัติแล้ว', 'Rejected' => 'ปฏิเสธ'
         ];
 
-        $formatted = array_map(function ($r) use ($statusMap, $orderStatusMap, $paymentStatusMap) {
+        // --- Fetch slip data per tracking record via debt_collection_images ---
+        // Build base URL for full slip links
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        // Determine app base path: /mini_erp for host, empty for localhost
+        $scriptDir = dirname(dirname($_SERVER['SCRIPT_NAME'])); // e.g. /mini_erp/api/Finance → /mini_erp
+        $appBasePath = rtrim($scriptDir, '/');
+        $baseUrl = $protocol . '://' . $host . $appBasePath;
+
+        $trackingIds = array_column($records, 'tracking_id');
+        $slipsByTracking = [];
+        if (!empty($trackingIds)) {
+            $placeholders = implode(',', array_fill(0, count($trackingIds), '?'));
+            $slipSql = "SELECT dci.debt_collection_id as tracking_id, 
+                               os.amount as slip_amount, os.transfer_date as slip_transfer_date, os.url as slip_url,
+                               CONCAT(COALESCE(ba.bank, ''), ' - ', COALESCE(ba.bank_number, '')) as slip_bank
+                        FROM debt_collection_images dci
+                        JOIN order_slips os ON dci.order_slip_id = os.id
+                        LEFT JOIN bank_account ba ON os.bank_account_id = ba.id
+                        WHERE dci.debt_collection_id IN ($placeholders)
+                        ORDER BY os.created_at ASC";
+            $slipStmt = $pdo->prepare($slipSql);
+            $slipStmt->execute(array_values($trackingIds));
+            $allSlips = $slipStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($allSlips as $slip) {
+                $slipsByTracking[$slip['tracking_id']][] = $slip;
+            }
+        }
+
+        $formatted = array_map(function ($r) use ($statusMap, $orderStatusMap, $paymentStatusMap, $slipsByTracking, $baseUrl) {
+            $slips = $slipsByTracking[$r['tracking_id']] ?? [];
             return [
                 'trackingId' => $r['tracking_id'],
                 'orderId' => $r['order_id'],
@@ -122,7 +152,17 @@ try {
                 'firstTrackingDate' => $r['first_tracking_date'],
                 'daysToFirstTracking' => ($r['customer_received_date'] && $r['first_tracking_date'])
                     ? (int) floor((strtotime($r['first_tracking_date']) - strtotime($r['customer_received_date'])) / 86400)
-                    : null
+                    : null,
+                'slipAmounts' => !empty($slips) ? implode(' | ', array_map(function($s) { return $s['slip_amount'] ?? ''; }, $slips)) : '',
+                'slipBanks' => !empty($slips) ? implode(' | ', array_map(function($s) { return trim($s['slip_bank'] ?? '', ' -'); }, $slips)) : '',
+                'slipTransferDates' => !empty($slips) ? implode(' | ', array_map(function($s) { return $s['slip_transfer_date'] ?? ''; }, $slips)) : '',
+                'slipUrls' => !empty($slips) ? implode(' | ', array_map(function($s) use ($baseUrl) {
+                    $url = $s['slip_url'] ?? '';
+                    if ($url && strpos($url, 'http') !== 0) {
+                        $url = $baseUrl . '/' . ltrim($url, '/');
+                    }
+                    return $url;
+                }, $slips)) : '',
             ];
         }, $records);
 

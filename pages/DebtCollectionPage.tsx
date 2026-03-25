@@ -280,7 +280,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
         });
         if (response.ok && response.records) {
           const records = response.records;
-          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่ส่ง', 'วันที่รับของ', 'ยอดออเดอร์', 'ผู้ติดตาม', 'วันที่ติดตาม', 'วันที่ติดตามแรก', 'ห่างกี่วัน', 'ยอดเก็บได้', 'ผลการติดตาม', 'จบเคส', 'หมายเหตุ', 'ยอดเก็บรวม', 'ยอดคงเหลือ', 'สถานะออเดอร์', 'สถานะชำระ'];
+          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่ส่ง', 'วันที่รับของ', 'ยอดออเดอร์', 'ผู้ติดตาม', 'วันที่ติดตาม', 'วันที่ติดตามแรก', 'ห่างกี่วัน', 'ยอดเก็บได้', 'ผลการติดตาม', 'จบเคส', 'หมายเหตุ', 'ยอดเก็บรวม', 'ยอดคงเหลือ', 'สถานะออเดอร์', 'สถานะชำระ', 'จำนวนเงินในสลิป', 'ธนาคาร', 'เวลาโอน'];
           const rows = records.map((r: any) => [
             r.orderId,
             r.customerName,
@@ -299,7 +299,10 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
             r.totalCollected,
             r.remainingDebt,
             r.orderStatus,
-            r.paymentStatus
+            r.paymentStatus,
+            r.slipAmounts || '',
+            r.slipBanks || '',
+            r.slipTransferDates || ''
           ]);
 
           downloadCSV(headers, rows, `debt_tracking_history_${exportStartDate}_${exportEndDate}.csv`);
