@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { apiFetch } from '../services/api';
 import {
   ClipboardList,
   Search,
@@ -26,6 +27,7 @@ import {
   Wand2,
   UserCheck,
   Users,
+  Building2,
 } from 'lucide-react';
 import { User } from '../types';
 import {
@@ -92,7 +94,7 @@ const CONFIDENCE_CONFIG = {
 };
 
 // ======== Classification Tab ========
-const ClassificationTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
+const ClassificationTab: React.FC<{ currentUser: User; companyId: number }> = ({ currentUser, companyId }) => {
   const [cancellationTypes, setCancellationTypes] = useState<CancellationType[]>([]);
   const [allOrders, setAllOrders] = useState<AnalyzedOrder[]>([]);
   const [summary, setSummary] = useState<Summary>({ total_cancelled: 0, classified: 0, unclassified: 0 });
@@ -124,10 +126,10 @@ const ClassificationTab: React.FC<{ currentUser: User }> = ({ currentUser }) => 
   }, []);
 
   const loadOrders = async () => {
-    if (!currentUser?.companyId) return;
+    if (!companyId) return;
     setLoading(true);
     try {
-      const res = await analyzeCancelledOrders(currentUser.companyId, 1, 5000);
+      const res = await analyzeCancelledOrders(companyId, 1, 5000);
       if (res?.status === 'success') {
         setAllOrders(res.data || []);
         setSummary(res.summary || { total_cancelled: 0, classified: 0, unclassified: 0 });
@@ -147,7 +149,7 @@ const ClassificationTab: React.FC<{ currentUser: User }> = ({ currentUser }) => 
 
   useEffect(() => {
     loadOrders();
-  }, [currentUser?.companyId]);
+  }, [companyId]);
 
   const filteredOrders = useMemo(() => {
     let result = allOrders;
@@ -587,7 +589,7 @@ const ClassificationTab: React.FC<{ currentUser: User }> = ({ currentUser }) => 
         isOpen={!!viewOrderId}
         onClose={() => setViewOrderId(null)}
         orderId={viewOrderId}
-        companyId={currentUser.companyId}
+        companyId={companyId}
       />
     </div>
   );
@@ -925,7 +927,7 @@ const SettingsTab: React.FC = () => {
 
 
 // ======== Promo Check Tab ========
-const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
+const PromoCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ currentUser, companyId }) => {
   const [data, setData] = useState<any[]>([]);
   const [summary, setSummary] = useState<{ total: number; mismatch: number }>({ total: 0, mismatch: 0 });
   const [loading, setLoading] = useState(true);
@@ -949,7 +951,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await validatePromotionOrders(currentUser.companyId);
+      const res = await validatePromotionOrders(companyId);
       if (res?.status === 'success') {
         setData((res.data || []).map((r: any) => ({
           ...r,
@@ -965,12 +967,12 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     } finally {
       setLoading(false);
     }
-  }, [currentUser.companyId]);
+  }, [companyId]);
 
   const fetchCreatorMismatch = useCallback(async () => {
     setCreatorMismatchLoading(true);
     try {
-      const res = await validateCreatorMismatch(currentUser.companyId);
+      const res = await validateCreatorMismatch(companyId);
       if (res?.status === 'success') {
         setCreatorMismatchData(res.data || []);
         setCreatorMismatchSummary({
@@ -983,7 +985,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     } finally {
       setCreatorMismatchLoading(false);
     }
-  }, [currentUser.companyId]);
+  }, [companyId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchCreatorMismatch(); }, [fetchCreatorMismatch]);
@@ -1020,7 +1022,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         const normalizedOrder = {
           id: orderData.id ?? orderData.order_id,
           customerId: orderData.customer_id ?? orderData.customerId,
-          companyId: currentUser.companyId,
+          companyId: companyId,
           orderDate: orderData.order_date ?? orderData.orderDate,
           deliveryDate: orderData.delivery_date ?? orderData.deliveryDate,
           orderStatus: orderData.order_status ?? orderData.orderStatus ?? 'Pending',
@@ -1131,7 +1133,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                 setFixing(true);
                 setFixResult({ show: false, count: 0 });
                 try {
-                  const freshRes = await validatePromotionOrders(currentUser.companyId);
+                  const freshRes = await validatePromotionOrders(companyId);
                   const freshData = freshRes?.status === 'success' ? (freshRes.data || []) : data;
                   const parentIds = freshData.map((r: any) => Number(r.parent_item_id)).filter((id: number) => id > 0);
                   console.log('Auto-fix: sending parent_item_ids =', parentIds);
@@ -1139,7 +1141,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                     setFixResult({ show: true, count: 0, error: 'ไม่พบ parent_item_id ที่ต้องแก้ไข' });
                     return;
                   }
-                  const res = await fixPromotionOrders(currentUser.companyId, parentIds);
+                  const res = await fixPromotionOrders(companyId, parentIds);
                   console.log('Auto-fix response:', res);
                   if (res?.status === 'success') {
                     setFixResult({ show: true, count: res.fixed_count || 0 });
@@ -1290,7 +1292,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                   setCreatorFixResult({ show: false, count: 0 });
                   try {
                     const ids = creatorMismatchData.map((r: any) => Number(r.parent_item_id)).filter((id: number) => id > 0);
-                    const res = await fixCreatorMismatch(currentUser.companyId, ids);
+                    const res = await fixCreatorMismatch(companyId, ids);
                     if (res?.status === 'success') {
                       setCreatorFixResult({ show: true, count: res.fixed_count || 0 });
                       fetchCreatorMismatch();
@@ -1394,7 +1396,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                           onClick={async () => {
                             setCreatorFixing(row.parent_item_id);
                             try {
-                              const res = await fixCreatorMismatch(currentUser.companyId, [Number(row.parent_item_id)]);
+                              const res = await fixCreatorMismatch(companyId, [Number(row.parent_item_id)]);
                               if (res?.status === 'success') {
                                 setCreatorFixResult({ show: true, count: res.fixed_count || 0 });
                                 fetchCreatorMismatch();
@@ -1429,7 +1431,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         isOpen={!!viewOrderId}
         onClose={() => setViewOrderId(null)}
         orderId={viewOrderId}
-        companyId={currentUser.companyId}
+        companyId={companyId}
       />
 
       {manageOrder && (
@@ -1448,7 +1450,7 @@ const PromoCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
 };
 
 // ======== Creator Check Tab ========
-const CreatorCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
+const CreatorCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ currentUser, companyId }) => {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState({ total: 0, flagged: 0 });
@@ -1461,7 +1463,7 @@ const CreatorCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await validateCreatorOrders(currentUser.companyId);
+      const res = await validateCreatorOrders(companyId);
       if (res?.status === 'success') {
         setData(res.data || []);
         setSummary({
@@ -1474,7 +1476,7 @@ const CreatorCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     } finally {
       setLoading(false);
     }
-  }, [currentUser.companyId]);
+  }, [companyId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -1513,7 +1515,7 @@ const CreatorCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         const normalizedOrder = {
           id: orderData.id ?? orderData.order_id,
           customerId: orderData.customer_id ?? orderData.customerId,
-          companyId: currentUser.companyId,
+          companyId: companyId,
           orderDate: orderData.order_date ?? orderData.orderDate,
           deliveryDate: orderData.delivery_date ?? orderData.deliveryDate,
           orderStatus: orderData.order_status ?? orderData.orderStatus ?? 'Pending',
@@ -1701,17 +1703,51 @@ const CreatorCheckTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
 const CheckOrderPage: React.FC<CheckOrderPageProps> = ({ currentUser }) => {
   const [activeMainTab, setActiveMainTab] = useState<'classification' | 'promo-check' | 'creator-check' | 'settings'>('classification');
 
+  // Company selector state (Super Admin only)
+  const isSuperAdmin = currentUser?.role === 'Super Admin';
+  const [companies, setCompanies] = useState<{ id: number; name: string }[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const effectiveCompanyId = isSuperAdmin && selectedCompanyId ? selectedCompanyId : currentUser?.companyId;
+
+  // Load companies list for Super Admin
+  useEffect(() => {
+    if (isSuperAdmin) {
+      apiFetch('Order_DB/companies.php').then((res: { id: number; name: string }[]) => {
+        setCompanies(res || []);
+        if (!selectedCompanyId && currentUser?.companyId) {
+          setSelectedCompanyId(currentUser.companyId);
+        }
+      }).catch(console.error);
+    }
+  }, [isSuperAdmin]);
+
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center shadow-lg">
-          <ClipboardList className="w-5 h-5 text-white" />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center shadow-lg">
+            <ClipboardList className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">ตรวจสอบคำสั่งซื้อ</h1>
+            <p className="text-sm text-gray-500">จัดประเภทออเดอร์ยกเลิกและตั้งค่าประเภทการยกเลิก</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">ตรวจสอบคำสั่งซื้อ</h1>
-          <p className="text-sm text-gray-500">จัดประเภทออเดอร์ยกเลิกและตั้งค่าประเภทการยกเลิก</p>
-        </div>
+        {isSuperAdmin && companies.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Building2 size={20} className="text-gray-400" />
+            <select
+              value={selectedCompanyId ?? ''}
+              onChange={(e) => setSelectedCompanyId(Number(e.target.value))}
+              className="px-4 py-2 border border-gray-300 rounded-xl bg-white text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            >
+              {companies.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Main Tab Navigation */}
@@ -1764,11 +1800,11 @@ const CheckOrderPage: React.FC<CheckOrderPageProps> = ({ currentUser }) => {
 
       {/* Tab Content */}
       {activeMainTab === 'classification' ? (
-        <ClassificationTab currentUser={currentUser} />
+        <ClassificationTab currentUser={currentUser} companyId={effectiveCompanyId!} />
       ) : activeMainTab === 'promo-check' ? (
-        <PromoCheckTab currentUser={currentUser} />
+        <PromoCheckTab currentUser={currentUser} companyId={effectiveCompanyId!} />
       ) : activeMainTab === 'creator-check' ? (
-        <CreatorCheckTab currentUser={currentUser} />
+        <CreatorCheckTab currentUser={currentUser} companyId={effectiveCompanyId!} />
       ) : (
         <SettingsTab />
       )}
