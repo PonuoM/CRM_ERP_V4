@@ -86,6 +86,26 @@ function formatCsvRow(array $row, array $lookups, array $regionMap, array $statu
         ? 'คิดค่าคอมแล้ว'
         : ($row['payment_status'] === 'Approved' ? 'รอคิดค่าคอม' : 'ยังไม่สำเร็จ');
 
+    // สถานะออเดอร์ — enrich with box return_status for Returned orders
+    $orderStatus = $row['order_status'] ?? '';
+    $boxNumber = $row['box_number'] ?? 1;
+    if ($orderStatus === 'Returned') {
+        $boxKey = $orderId . '-' . $boxNumber;
+        $returnStatus = $lookups['boxes'][$boxKey] ?? '__NONE__';
+        $returnStatusThai = [
+            'returning' => 'กำลังตีกลับ', 'returned' => 'สภาพดี',
+            'good' => 'สภาพดี', 'damaged' => 'ชำรุด', 'lost' => 'ตีกลับสูญหาย'
+        ];
+        if ($returnStatus === '__NONE__') {
+            $statusText = 'ไม่ถูกตีกลับ';
+        } else {
+            $statusText = $returnStatusThai[$returnStatus] ?? $returnStatus;
+        }
+        $orderStatusDisplay = "ตีกลับ (กล่อง {$boxNumber} : {$statusText})";
+    } else {
+        $orderStatusDisplay = $statusThai[$orderStatus] ?? $orderStatus ?: '-';
+    }
+
     $result = [
         $row['order_date'] ? date('d/m/Y', strtotime($row['order_date'])) : '-',
         $orderId,
@@ -119,7 +139,7 @@ function formatCsvRow(array $row, array $lookups, array $regionMap, array $statu
         $trackingNumbers,
         $airportDeliveryDate ? date('d/m/Y', strtotime($airportDeliveryDate)) : '-',
         $airportDeliveryStatus,
-        $statusThai[$row['order_status'] ?? ''] ?? ($row['order_status'] ?? '-'),
+        $orderStatusDisplay,
         $paymentComparison,
         $slipStatus,
         $paymentReceivedDate ? date('d/m/Y', strtotime($paymentReceivedDate)) : '-',
@@ -274,6 +294,7 @@ try {
         'slips'    => [],
         'cod'      => [],
         'airport'  => [],
+        'boxes'    => [],
     ];
 
     if (!empty($orderIds)) {
@@ -382,6 +403,24 @@ try {
                 }
             }
         } catch (Throwable $e) { error_log('Commission export airport: ' . $e->getMessage()); }
+
+        // 2e: Order boxes return_status (for Returned orders)
+        try {
+            $returnedIds = array_values(array_unique(array_filter(array_map(function($r) {
+                return ($r['order_status'] ?? '') === 'Returned' ? $r['order_id'] : null;
+            }, $rows))));
+            if (!empty($returnedIds)) {
+                $retChunks = array_chunk($returnedIds, $chunkSize);
+                foreach ($retChunks as $retChunk) {
+                    $ph = implode(',', array_fill(0, count($retChunk), '?'));
+                    $bStmt = $pdo->prepare("SELECT order_id, box_number, return_status FROM order_boxes WHERE order_id IN ($ph)");
+                    $bStmt->execute($retChunk);
+                    foreach ($bStmt->fetchAll(PDO::FETCH_ASSOC) as $b) {
+                        $lookups['boxes'][$b['order_id'] . '-' . $b['box_number']] = $b['return_status'];
+                    }
+                }
+            }
+        } catch (Throwable $e) { error_log('Commission export boxes: ' . $e->getMessage()); }
     }
 
     // ============================================================
@@ -399,9 +438,11 @@ try {
     ];
     $statusThai = [
         'Pending' => 'รอดำเนินการ', 'Confirmed' => 'ยืนยันแล้ว',
-        'Picking' => 'กำลังจัดเตรียม', 'Shipping' => 'กำลังจัดส่ง',
+        'Picking' => 'กำลังจัดเตรียม', 'Preparing' => 'กำลังจัดเตรียมสินค้า',
+        'Shipping' => 'กำลังจัดส่ง',
         'Delivered' => 'จัดส่งสำเร็จ', 'Cancelled' => 'ยกเลิก',
-        'Returned' => 'ตีกลับ', 'BadDebt' => 'หนี้สูญ', 'PreApproved' => 'รออนุมัติ'
+        'Returned' => 'ตีกลับ', 'Claiming' => 'รอเคลม',
+        'BadDebt' => 'หนี้สูญ', 'PreApproved' => 'รออนุมัติ'
     ];
     $customerTypeThai = [
         'New Customer' => 'ลูกค้าใหม่',

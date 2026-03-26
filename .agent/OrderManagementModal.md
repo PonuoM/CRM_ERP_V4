@@ -123,6 +123,31 @@ $itemCreatorId = $parentCreatorForUpdate ?? $item['creatorId'] ?? $item['creator
 - บันทึกพร้อมกับ `onSave` (ผ่าน `...currentOrder` spread) → Backend UPDATE `orders SET notes=COALESCE(?,notes)`
 - Locked order: textarea ถูก disabled ยกเว้น `permission="manager"`
 
+## Order Status Dropdown
+The dropdown (line ~4600) iterates `Object.values(OrderStatus)` and applies two layers of filtering:
+
+### Hidden Statuses
+The following statuses are **excluded** from the dropdown (unless the order already has that status):
+- `AwaitingVerification` (รอตรวจสอบสลิป)
+- `Confirmed` (ยืนยันแล้ว)
+- `PreApproved` (รอตรวจสอบจากบัญชี)
+- `Preparing` (กำลังจัดเตรียม)
+
+### Status Labels (`ORDER_STATUS_LABELS` in `OrderTable.tsx`)
+| Enum Value | Thai Label |
+|---|---|
+| `Pending` | รอดึงข้อมูล |
+| `Picking` | กำลังจัดสินค้า |
+| `Shipping` | กำลังจัดส่ง |
+| `Delivered` | เสร็จสิ้น |
+| `Returned` | ตีกลับ |
+| `Cancelled` | ยกเลิก |
+
+### Permission Rules
+- **Manager**: can change to any visible status.
+- **Seller**: can only keep the current status or change to `Cancelled`.
+- **Locked orders** (`Preparing` and beyond): dropdown is disabled unless `permission="manager"`.
+
 ## Validation & Saving
 The `handleSave` function performs critical checks before committing:
 1. **COD Balance**: Checks if Box COD Sum == Order Total.

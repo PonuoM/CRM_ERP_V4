@@ -4611,8 +4611,21 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                   {Object.values(OrderStatus)
 
                     .filter((status) => {
+                      // Hide statuses that are not used in the workflow
+                      const hiddenStatuses: OrderStatus[] = [
+                        OrderStatus.AwaitingVerification,
+                        OrderStatus.Confirmed,
+                        OrderStatus.PreApproved,
+                        OrderStatus.Preparing,
+                        OrderStatus.Claiming,
+                      ];
+                      // Always show if it's the current order's status (so dropdown value isn't lost)
+                      if (status !== currentOrder.orderStatus && hiddenStatuses.includes(status)) {
+                        return false;
+                      }
+
                       if (showInputs) {
-                        // Managers can change to any status
+                        // Managers can change to any visible status
                         if (permission === 'manager') return true;
                         // Non-managers: only allow keeping current status or cancelling
                         return (

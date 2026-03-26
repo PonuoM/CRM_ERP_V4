@@ -142,6 +142,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     lost: number;
   } | null>(null);
   const [isReturnLoading, setIsReturnLoading] = useState(false);
+  // Map: "orderId-boxNumber" => return_status (e.g. 'good', 'damaged', 'lost', null)
+  const [orderBoxesMap, setOrderBoxesMap] = useState<Record<string, string | null>>({});
   const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
 
   // Commission report state
@@ -296,6 +298,33 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         console.log('📊 Reports fetch:', startDateStr, '→', endDateStr, '=', mappedOrders.length, 'orders');
 
         setFetchedOrders(mappedOrders);
+
+        // Fetch order_boxes for returned orders (to get return_status per box)
+        try {
+          const returnedOrderIds = mappedOrders
+            .filter(o => o.orderStatus === 'Returned')
+            .map(o => o.id);
+          if (returnedOrderIds.length > 0) {
+            // Batch fetch in chunks of 100
+            const boxMap: Record<string, string | null> = {};
+            for (let i = 0; i < returnedOrderIds.length; i += 100) {
+              const chunk = returnedOrderIds.slice(i, i + 100);
+              const idsParam = chunk.join(',');
+              const boxRes = await apiFetch(`Orders/get_order_boxes.php?order_ids=${encodeURIComponent(idsParam)}`);
+              const boxes = boxRes?.boxes || boxRes?.data || [];
+              boxes.forEach((b: any) => {
+                const key = `${b.order_id}-${b.box_number}`;
+                boxMap[key] = b.return_status || null;
+              });
+            }
+            setOrderBoxesMap(boxMap);
+          } else {
+            setOrderBoxesMap({});
+          }
+        } catch (err) {
+          console.warn('Could not fetch order boxes for return status:', err);
+          setOrderBoxesMap({});
+        }
 
         // Fetch customers for display (phone, customer type)
         try {
@@ -779,11 +808,12 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         return regionMap[province] || 'ไม่ทราบภาค';
       };
 
-      const getOrderStatusThai = (status: string): string => {
+      const getOrderStatusThai = (status: string, orderId?: string, boxNumber?: number): string => {
         const statusMap: { [key: string]: string } = {
           'Pending': 'รอดำเนินการ',
           'Confirmed': 'ยืนยันแล้ว',
           'Picking': 'กำลังจัดเตรียม',
+          'Preparing': 'กำลังจัดเตรียมสินค้า',
           'Shipping': 'กำลังจัดส่ง',
           'Delivered': 'จัดส่งสำเร็จ',
           'Cancelled': 'ยกเลิก',
@@ -792,7 +822,26 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'BadDebt': 'หนี้สูญ',
           'PreApproved': 'รออนุมัติ'
         };
-        return statusMap[status] || status;
+        const base = statusMap[status] || status;
+
+        // Enrich with box return_status for returned orders
+        if (status === 'Returned' && orderId && boxNumber !== undefined) {
+          const key = `${orderId}-${boxNumber}`;
+          const returnStatus = orderBoxesMap[key];
+          const returnStatusThai: { [key: string]: string } = {
+            returning: 'กำลังตีกลับ',
+            returned: 'สภาพดี',
+            good: 'สภาพดี',
+            damaged: 'ชำรุด',
+            lost: 'ตีกลับสูญหาย'
+          };
+          const statusText = returnStatus
+            ? (returnStatusThai[returnStatus] || returnStatus)
+            : 'ไม่ถูกตีกลับ';
+          return `ตีกลับ (กล่อง ${boxNumber} : ${statusText})`;
+        }
+
+        return base;
       };
 
       // Helper functions for new columns
@@ -957,7 +1006,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'หมายเลขติดตาม': getTrackingNumber(),
             'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
             'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
-            'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
+            'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || '', order.id, item.boxNumber || 1),
             'สถานะการชำระเงิน': getPaymentComparisonStatus(),
             'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
             'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
@@ -1037,7 +1086,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       lotStock: lotStockReport,
       customers: customersWithOrders
     };
-  }, [orders, allCustomers, products, warehouseStock, stockMovements, productLots, dateRange, startDate, endDate]);
+  }, [orders, allCustomers, products, warehouseStock, stockMovements, productLots, dateRange, startDate, endDate, orderBoxesMap]);
 
   // ฟังก์ชันดาวน์โหลด CSV
   const downloadCSV = (data: any[], filename: string) => {
@@ -1220,6 +1269,27 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             : (customersResponse?.customers || customersResponse?.data || []);
         } catch {
           console.warn('Could not fetch customers for export');
+        }
+
+        // Fetch order_boxes for returned orders (to get return_status per box)
+        const exportBoxMap: Record<string, string | null> = {};
+        try {
+          const returnedIds = ordersData
+            .filter((r: any) => !/-\d+$/.test(String(r.id || "")) && r.order_status === 'Returned')
+            .map((r: any) => r.id);
+          if (returnedIds.length > 0) {
+            for (let i = 0; i < returnedIds.length; i += 100) {
+              const chunk = returnedIds.slice(i, i + 100);
+              const idsParam = chunk.join(',');
+              const boxRes = await apiFetch(`Orders/get_order_boxes.php?order_ids=${encodeURIComponent(idsParam)}`);
+              const boxes = boxRes?.boxes || boxRes?.data || [];
+              boxes.forEach((b: any) => {
+                exportBoxMap[`${b.order_id}-${b.box_number}`] = b.return_status || null;
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('Could not fetch order boxes for export:', err);
         }
 
         // Helper function to get region from province
@@ -1413,11 +1483,12 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               };
 
               // Helper function to translate order status
-              const getOrderStatusThai = (status: string) => {
+              const getOrderStatusThai = (status: string, orderId?: string, boxNum?: number) => {
                 const statusMap: { [key: string]: string } = {
                   'Pending': 'รอดำเนินการ',
                   'Confirmed': 'ยืนยันแล้ว',
                   'Picking': 'กำลังจัดเตรียม',
+                  'Preparing': 'กำลังจัดเตรียมสินค้า',
                   'Shipping': 'กำลังจัดส่ง',
                   'Delivered': 'จัดส่งสำเร็จ',
                   'Cancelled': 'ยกเลิก',
@@ -1426,7 +1497,18 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                   'BadDebt': 'หนี้สูญ',
                   'PreApproved': 'รออนุมัติ'
                 };
-                return statusMap[status] || status;
+                const base = statusMap[status] || status;
+                if (status === 'Returned' && orderId && boxNum !== undefined) {
+                  const key = `${orderId}-${boxNum}`;
+                  const rs = exportBoxMap[key];
+                  const rsThai: { [k: string]: string } = {
+                    returning: 'กำลังตีกลับ', returned: 'สภาพดี',
+                    good: 'สภาพดี', damaged: 'ชำรุด', lost: 'ตีกลับสูญหาย'
+                  };
+                  const text = rs ? (rsThai[rs] || rs) : 'ไม่ถูกตีกลับ';
+                  return `ตีกลับ (กล่อง ${boxNum} : ${text})`;
+                }
+                return base;
               };
 
               // Get product name with freebie indicator
@@ -1470,7 +1552,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 'หมายเลขติดตาม': getTrackingForBox(order, item.box_number),
                 'วันที่จัดส่ง Airport': order.airport_delivery_date ? new Date(order.airport_delivery_date).toLocaleDateString('th-TH-u-ca-gregory') : '-',
                 'สถานะจาก Airport': order.airport_delivery_status || '-',
-                'สถานะออเดอร์': getOrderStatusThai(order.order_status || ''),
+                'สถานะออเดอร์': getOrderStatusThai(order.order_status || '', order.id, item.box_number || 1),
                 'สถานะการชำระเงิน': (() => {
                   const paid = Number(order.amount_paid) || 0;
                   const total = Number(order.total_amount) || 0;

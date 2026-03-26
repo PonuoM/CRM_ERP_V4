@@ -19,7 +19,7 @@ const UpsellTag: React.FC = () => {
 };
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  [OrderStatus.Pending]: 'รอ Export',
+  [OrderStatus.Pending]: 'รอดึงข้อมูล',
   [OrderStatus.AwaitingVerification]: 'รอตรวจสอบสลิป',
   [OrderStatus.Confirmed]: 'ยืนยันแล้ว',
   [OrderStatus.Preparing]: 'กำลังจัดเตรียม',
@@ -29,6 +29,8 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   [OrderStatus.Delivered]: 'เสร็จสิ้น',
   [OrderStatus.Returned]: 'ตีกลับ',
   [OrderStatus.Cancelled]: 'ยกเลิก',
+  [OrderStatus.Claiming]: 'รอเคลม',
+  [OrderStatus.BadDebt]: 'หนี้สูญ',
 };
 
 const ORDER_STATUS_FLOW: OrderStatus[] = [
