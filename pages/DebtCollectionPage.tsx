@@ -320,7 +320,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
         });
         if (response.ok && response.orders) {
           const orders = response.orders;
-          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่สั่ง', 'วันที่ส่ง', 'ยอดรวม', 'ยอดเก็บแล้ว', 'ยอดคงเหลือ', 'วันค้าง', 'สถานะออเดอร์', 'สถานะชำระ', 'สถานะเคส', 'จำนวนติดตาม', 'ผู้ติดตามล่าสุด', 'สินค้าที่ขาย', 'จำนวนสินค้า'];
+          const headers = ['Order ID', 'ชื่อลูกค้า', 'เบอร์โทร', 'วันที่สั่ง', 'วันที่ส่ง', 'ยอดรวม', 'ยอดเก็บแล้ว', 'ยอดคงเหลือ', 'วันค้าง', 'สถานะออเดอร์', 'สถานะชำระ', 'สถานะเคส', 'จำนวนติดตาม', 'ผู้ติดตามล่าสุด', 'วันรับเงิน', 'สินค้าที่ขาย', 'จำนวนสินค้า'];
           const rows: any[][] = [];
           orders.forEach((o: any) => {
             const items: { productName: string; quantity: number }[] = o.orderItems || [];
@@ -339,6 +339,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
               o.debtStatus || '',
               o.trackingCount,
               o.lastTrackerName || '',
+              o.slipPaymentDate || '',
             ];
             if (items.length === 0) {
               rows.push([...baseRow, '', '']);

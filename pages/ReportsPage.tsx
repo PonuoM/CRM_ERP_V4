@@ -1098,7 +1098,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
         const statusThai: { [key: string]: string } = {
           returning: 'กำลังตีกลับ', returned: 'สภาพดี',
-          good: 'สภาพดี', damaged: 'ชำรุด', lost: 'สูญหาย'
+          good: 'สภาพดี', damaged: 'ชำรุด', lost: 'ตีกลับสูญหาย'
         };
 
         // Group rows by order_id + box_number to determine first-row-of-group

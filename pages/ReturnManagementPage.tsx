@@ -1570,7 +1570,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                             returned: 'สภาพดี',
                             good: 'สภาพดี',
                             damaged: 'ชำรุด',
-                            lost: 'สูญหาย',
+                            lost: 'ตีกลับสูญหาย',
                             pending: 'รอการดำเนินการ',
                             delivered: 'ส่งสำเร็จ',
                           };

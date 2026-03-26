@@ -165,7 +165,6 @@ try {
 
     // ═══════════════════════════════════════════════════════════
     // 3. Update Customers (Lifecycle & Ownership)
-    //    - ไม่แตะ assigned_to (ปล่อยให้ cron/basket routing จัดการ)
     //    - ใช้ delivery_date + 90 days สำหรับ ownership_expires (max 90 days จากวันนี้)
     //    - เหมือน logic ของ recordSale ใน ownership_handler.php
     //    NOTE: current_basket_key is handled by BasketRoutingServiceV2 in Section 4.5
@@ -200,6 +199,49 @@ try {
                 $deliveryDate->format('Y-m-d H:i:s'),
                 $custId
             ]);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 3.5 Update customers.assigned_to = creator_id
+    //     เฉพาะเมื่อ creator มี role_id IN (6, 7) เท่านั้น
+    //     ถ้า customer มีหลาย orders ใน batch → ใช้ creator_id จาก order ล่าสุด
+    // ═══════════════════════════════════════════════════════════
+    if ($targetStatus === 'Picking') {
+        // Collect customer_id => creator_id mapping (latest order wins)
+        $customerCreatorMap = [];
+        foreach ($ordersById as $order) {
+            $custId = $order['customer_id'] ?? null;
+            $creatorId = $order['creator_id'] ?? null;
+            if ($custId && $creatorId) {
+                // ถ้ามีหลาย order สำหรับ customer เดียว ใช้ order_date ล่าสุด
+                $orderDate = $order['order_date'] ?? '';
+                if (!isset($customerCreatorMap[$custId]) || $orderDate > $customerCreatorMap[$custId]['date']) {
+                    $customerCreatorMap[$custId] = ['creator_id' => $creatorId, 'date' => $orderDate];
+                }
+            }
+        }
+
+        if (!empty($customerCreatorMap)) {
+            // Fetch role_id for all unique creator_ids
+            $creatorIds = array_unique(array_column($customerCreatorMap, 'creator_id'));
+            $creatorPlaceholders = implode(',', array_fill(0, count($creatorIds), '?'));
+            $roleStmt = $pdo->prepare("SELECT id, role_id FROM users WHERE id IN ($creatorPlaceholders)");
+            $roleStmt->execute(array_values($creatorIds));
+            $creatorRoles = [];
+            foreach ($roleStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $creatorRoles[(int)$row['id']] = (int)$row['role_id'];
+            }
+
+            // Update assigned_to only if creator has role_id 6 or 7
+            $assignStmt = $pdo->prepare("UPDATE customers SET assigned_to = ? WHERE customer_id = ?");
+            foreach ($customerCreatorMap as $custId => $info) {
+                $creatorId = (int)$info['creator_id'];
+                $roleId = $creatorRoles[$creatorId] ?? null;
+                if ($roleId === 6 || $roleId === 7) {
+                    $assignStmt->execute([$creatorId, $custId]);
+                }
+            }
         }
     }
 

@@ -45,7 +45,7 @@ description: คู่มืออธิบายการทำงาน Batch 
 
 ---
 
-## ขั้นตอนการทำงาน (5 Steps)
+## ขั้นตอนการทำงาน (6 Steps)
 
 ### Step 1 — ดึงข้อมูลออเดอร์แบบ Bulk
 
@@ -75,8 +75,6 @@ UPDATE orders SET order_status = {targetStatus} WHERE id = {orderId}
 
 ### Step 3 — อัปเดตข้อมูลลูกค้า (เฉพาะ targetStatus = 'Picking')
 
-> [!IMPORTANT]
-> **ไม่แตะ `assigned_to`** — ปล่อยให้ cron/basket routing จัดการ  
 > Logic ตรงกับ `recordSale()` ใน `ownership_handler.php`
 
 ```sql
@@ -98,11 +96,28 @@ WHERE customer_id = ?
 | `last_sale_date` | `delivery_date` | fallback: `order_date` |
 | `follow_up_count` | `0` | reset |
 | `followup_bonus_remaining` | `1` | reset |
-| `assigned_to` | ❌ ไม่แตะ | |
 
 ---
 
-### Step 3.5 — Basket Routing V2 (หลัง commit)
+### Step 3.5 — อัปเดต `customers.assigned_to` (เฉพาะ targetStatus = 'Picking')
+
+> [!IMPORTANT]
+> อัปเดต `assigned_to` เฉพาะเมื่อ creator ของ order มี **`role_id = 6` หรือ `7`** เท่านั้น  
+> ถ้า creator มี role อื่น → ข้ามไป ไม่อัปเดต
+
+**ขั้นตอน:**
+1. เก็บ mapping `customer_id → creator_id` จาก orders ที่ export (ถ้า customer มีหลาย orders ใช้ order_date ล่าสุด)
+2. ดึง `role_id` ของ creator ทั้งหมดจากตาราง `users`
+3. อัปเดต `customers.assigned_to = creator_id` เฉพาะเมื่อ `role_id IN (6, 7)`
+
+```sql
+UPDATE customers SET assigned_to = {creator_id} WHERE customer_id = ?
+-- เฉพาะ creator ที่มี role_id IN (6, 7)
+```
+
+---
+
+### Step 4 — Basket Routing V2 (หลัง commit)
 
 > [!IMPORTANT]
 > เรียก **หลัง commit** เพราะ `BasketRoutingServiceV2->transitionTo()` มี transaction ของตัวเอง  
@@ -126,7 +141,7 @@ BasketRoutingServiceV2 จะจัดการย้ายตะกร้าล
 
 ---
 
-### Step 4 — บันทึก Activity Log
+### Step 5 — บันทึก Activity Log
 
 ```sql
 INSERT INTO activities (customer_id, type, description, actor_name, timestamp)
@@ -138,7 +153,7 @@ VALUES ({customer_id}, 'OrderStatusChanged', 'อัปเดตสถานะ.
 
 ---
 
-### Step 5 — Commit & Return
+### Step 6 — Commit & Return
 
 - `commit()` transaction
 - ส่งคืน full order data (รวม items, boxes, tracking) สำหรับ Frontend สร้าง CSV

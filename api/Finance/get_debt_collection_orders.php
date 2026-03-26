@@ -304,7 +304,13 @@ try {
                      AND os_p.id NOT IN (
                        SELECT dci.order_slip_id FROM debt_collection_images dci WHERE dci.order_slip_id IS NOT NULL
                      )
-                    ) as pending_slip_amount
+                    ) as pending_slip_amount,
+                    (SELECT MAX(os_td.transfer_date)
+                     FROM order_slips os_td
+                     JOIN debt_collection_images dci_td ON os_td.id = dci_td.order_slip_id
+                     JOIN debt_collection dc_td ON dci_td.debt_collection_id = dc_td.id
+                     WHERE dc_td.order_id = o.id
+                    ) as slip_payment_date
                 FROM orders o
                 LEFT JOIN customers c ON o.customer_id = c.customer_id
                 $whereClause
@@ -394,7 +400,8 @@ try {
                 'firstTrackingDate' => $order['first_tracking_date'],
                 'lastTrackerName' => $order['last_tracker_name'] ? trim($order['last_tracker_name']) : null,
                 'debtStatus' => $debtStatus,
-                'orderItems' => $orderItemsMap[$order['id']] ?? []
+                'orderItems' => $orderItemsMap[$order['id']] ?? [],
+                'slipPaymentDate' => $order['slip_payment_date']
             ];
         }, $orders);
 
