@@ -4280,11 +4280,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         return;
       }
 
-      // ตรวจสอบวันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป
+      // ตรวจสอบวันที่จัดส่งต้องไม่เกินวันที่ 5 ของเดือนถัดไป
 
       const getMaxDeliveryDate = (): string => {
         const now = new Date(); // Use local system time as base
-        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 7);
+        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 5);
 
         // Use toThaiIsoString to get the date in Thai timezone context
         return toThaiIsoString(nextMonth).split("T")[0];
@@ -4300,7 +4300,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         const maxDateStr = `${maxDate.getDate()}/${maxDate.getMonth() + 1}/${maxDate.getFullYear()}`;
 
         alert(
-          `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
+          `วันที่จัดส่งต้องไม่เกินวันที่ 5 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
         );
 
         return;
@@ -8610,7 +8610,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               const nextMonth = new Date(
                                 now.getFullYear(),
                                 now.getMonth() + 1,
-                                7,
+                                5,
                               );
                               const maxDate = nextMonth.toISOString().split("T")[0];
                               const year = date.getFullYear();
@@ -8622,7 +8622,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 const maxDateObj = new Date(maxDate);
                                 const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
                                 alert(
-                                  `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
+                                  `วันที่จัดส่งต้องไม่เกินวันที่ 5 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
                                 );
                                 updateOrderData("deliveryDate", maxDate);
                                 return;
@@ -8635,7 +8635,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           minDate={new Date()}
                           maxDate={(() => {
                             const now = new Date();
-                            return new Date(now.getFullYear(), now.getMonth() + 1, 7);
+                            return new Date(now.getFullYear(), now.getMonth() + 1, 5);
                           })()}
                           dateFormat="dd/MM/yyyy"
                           placeholderText="กรุณาเลือกวันที่จัดส่ง"
@@ -8646,7 +8646,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </div>
 
                       {(() => {
-                        // แสดงข้อความเตือนถ้าวันที่เลือกเกินวันที่ 7 ของเดือนถัดไป
+                        // แสดงข้อความเตือนถ้าวันที่เลือกเกินวันที่ 5 ของเดือนถัดไป
 
                         if (!orderData.deliveryDate) return null;
 
@@ -8657,7 +8657,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           now.getMonth() + 1,
 
-                          7,
+                          5,
                         );
 
                         const maxDate = nextMonth.toISOString().split("T")[0];
@@ -8669,7 +8669,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           return (
                             <p className="text-red-600 text-xs mt-1">
-                              วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป
+                              วันที่จัดส่งต้องไม่เกินวันที่ 5 ของเดือนถัดไป
                               (สูงสุด {maxDateStr})
                             </p>
                           );
