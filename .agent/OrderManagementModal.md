@@ -132,6 +132,7 @@ The following statuses are **excluded** from the dropdown (unless the order alre
 - `Confirmed` (ยืนยันแล้ว)
 - `PreApproved` (รอตรวจสอบจากบัญชี)
 - `Preparing` (กำลังจัดเตรียม)
+- `Claiming` (รอเคลม)
 
 ### Status Labels (`ORDER_STATUS_LABELS` in `OrderTable.tsx`)
 | Enum Value | Thai Label |
@@ -142,6 +143,8 @@ The following statuses are **excluded** from the dropdown (unless the order alre
 | `Delivered` | เสร็จสิ้น |
 | `Returned` | ตีกลับ |
 | `Cancelled` | ยกเลิก |
+| `Claiming` | รอเคลม |
+| `BadDebt` | หนี้สูญ |
 
 ### Permission Rules
 - **Manager**: can change to any visible status.

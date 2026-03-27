@@ -156,6 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Finance": "การเงิน",
     "Accounting Audit": "ตรวจสอบจากบัญชี",
     "Bank Account Audit": "ตรวจสอบบัญชีธนาคาร",
+    "Bank Audit Dashboard": "แดชบอร์ดตรวจสอบบัญชี",
     "Revenue Recognition": "ปิดบัญชีลูกหนี้",
     "Calculate Commission": "คำนวณค่าคอมมิชชัน",
     "Commission Stamp": "จัดการค่าคอม",
@@ -320,6 +321,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: FileText,
       children: [
         { label: "Bank Account Audit", icon: FileText, key: "accounting.audit.bank" },
+        { label: "Bank Audit Dashboard", icon: BarChart2, key: "accounting.audit.bank_dashboard" },
         { label: "Revenue Recognition", icon: CheckCircle, key: "revenue_recognition" },
         { label: "All Orders (Sent/Billed)", icon: FileText, key: "accounting.audit.all_orders_sent" },
       ]

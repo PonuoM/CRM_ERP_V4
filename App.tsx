@@ -151,6 +151,7 @@ import TalkTimeDashboard from "./pages/TalkTimeDashboard";
 import PermissionsPage from "./pages/PermissionsPage";
 import RoleManagementPage from "./pages/RoleManagementPage";
 import BankAccountAuditPage from "./pages/Accounting/BankAccountAuditPage";
+import BankAuditDashboardPage from "./pages/Accounting/BankAuditDashboardPage";
 import RevenueRecognitionPage from "./pages/Accounting/RevenueRecognitionPage";
 import CommissionPage from "./pages/Finance/CommissionPage";
 import CommissionStampPage from "./pages/Finance/CommissionStampPage";
@@ -7574,6 +7575,11 @@ const App: React.FC = () => {
       case "ตรวจสอบบัญชีธนาคาร":
       case "accounting.audit.bank":
         return <BankAccountAuditPage currentUser={currentUser} />;
+
+      case "Bank Audit Dashboard":
+      case "แดชบอร์ดตรวจสอบบัญชี":
+      case "accounting.audit.bank_dashboard":
+        return <BankAuditDashboardPage currentUser={currentUser} />;
 
       case "Revenue Recognition":
       case "รับรู้รายได้":

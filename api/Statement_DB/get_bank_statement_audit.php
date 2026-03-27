@@ -21,7 +21,7 @@ try {
   $startDateRaw = $input["start_date"] ?? null;
   $endDateRaw = $input["end_date"] ?? null;
 
-  if ($companyId <= 0 || $bankAccountId <= 0 || !$startDateRaw || !$endDateRaw) {
+  if ($companyId <= 0 || !$startDateRaw || !$endDateRaw) {
     echo json_encode(['ok' => false, 'error' => 'Missing required fields'], JSON_UNESCAPED_UNICODE);
     exit();
   }
@@ -31,6 +31,12 @@ try {
   // Format dates
   $startDate = date("Y-m-d 00:00:00", strtotime($startDateRaw));
   $endDate = date("Y-m-d 23:59:59", strtotime($endDateRaw));
+
+  // Bank account filter (optional — 0 means all banks)
+  $bankFilter = "";
+  if ($bankAccountId > 0) {
+    $bankFilter = "AND sl.bank_account_id = :bankAccountId";
+  }
 
   // Query: Statement Logs LEFT JOIN Reconcile Logs LEFT JOIN Orders LEFT JOIN COD Documents
   $sql = "
@@ -45,7 +51,7 @@ try {
       cd.document_number as cod_document_number,
       cd.total_input_amount as cod_total_amount,
       cd.status as cod_status,
-      -- Aggregate reconcile logs
+      -- Aggregate reconcile logs (with creator/confirmer names)
       JSON_ARRAYAGG(
          IF(srl.id IS NOT NULL, 
             JSON_OBJECT(
@@ -56,7 +62,11 @@ try {
               'confirmed_action', srl.confirmed_action,
               'reconcile_type', srl.reconcile_type,
               'note', srl.note,
-              'confirmed_payment_method', srl.confirmed_payment_method
+              'confirmed_payment_method', srl.confirmed_payment_method,
+              'created_by', srl.created_by,
+              'created_by_name', IFNULL(CONCAT(u_creator.first_name, ' ', u_creator.last_name), NULL),
+              'confirmed_by', srl.confirmed_by,
+              'confirmed_by_name', IFNULL(CONCAT(u_confirmer.first_name, ' ', u_confirmer.last_name), NULL)
             ),
             NULL
          )
@@ -64,9 +74,11 @@ try {
     FROM statement_logs sl
     INNER JOIN statement_batchs sb ON sl.batch_id = sb.id
     LEFT JOIN statement_reconcile_logs srl ON sl.id = srl.statement_log_id
+    LEFT JOIN users u_creator ON u_creator.id = srl.created_by
+    LEFT JOIN users u_confirmer ON u_confirmer.id = srl.confirmed_by
     LEFT JOIN cod_documents cd ON cd.matched_statement_log_id = sl.id
     WHERE sb.company_id = :companyId
-      AND sl.bank_account_id = :bankAccountId
+      {$bankFilter}
       AND sl.transfer_at BETWEEN :startDate AND :endDate
     GROUP BY sl.id, cd.id, cd.document_number, cd.total_input_amount, cd.status
     ORDER BY sl.transfer_at ASC
@@ -74,12 +86,15 @@ try {
   ";
 
   $stmt = $pdo->prepare($sql);
-  $stmt->execute([
+  $params = [
     ':companyId' => $companyId,
-    ':bankAccountId' => $bankAccountId,
     ':startDate' => $startDate,
     ':endDate' => $endDate
-  ]);
+  ];
+  if ($bankAccountId > 0) {
+    $params[':bankAccountId'] = $bankAccountId;
+  }
+  $stmt->execute($params);
 
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -549,6 +564,9 @@ try {
       'suggested_slip_index' => $suggestedSlipIndex,
       'reconcile_items' => $reconcileItems,
       'matched_orders' => $matchedOrders,
+      // User audit info (from first reconcile item)
+      'created_by_name' => !empty($reconcileItems) ? ($reconcileItems[0]['created_by_name'] ?? null) : null,
+      'confirmed_by_name' => !empty($reconcileItems) ? ($reconcileItems[0]['confirmed_by_name'] ?? null) : null,
       // COD document info
       'cod_document_id' => $row['cod_document_id'] ?? null,
       'cod_document_number' => $row['cod_document_number'] ?? null,
