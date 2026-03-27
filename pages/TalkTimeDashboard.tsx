@@ -286,6 +286,8 @@ interface SummaryData {
 interface DailyMonthData {
     date: string;
     total_calls: number;
+    morning_calls: number;
+    afternoon_calls: number;
     connected_calls: number;
     talked_calls: number;
     missed_calls: number;
@@ -932,20 +934,26 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                 <div className="p-4 sm:p-6 border-b border-gray-100 bg-white">
                     <h2 className="text-lg font-semibold text-gray-900">สรุปข้อมูลการโทรรายวัน (ตลอดเดือน {new Date(selectedDate).toLocaleString('th-TH', { month: 'long', year: 'numeric' })})</h2>
                     <p className="text-sm text-gray-500 mt-1">ภาพรวมการทำงานในแต่ละวันภายในเดือนที่เลือก</p>
+                    <p className="text-xs text-gray-400 mt-1.5">💡 แบ่งสายเป็น 2 ช่วง: <strong className="text-amber-600">เช้า 09:00-14:00</strong> (5 ชม.) และ <strong className="text-indigo-600">บ่าย 14:00-18:00</strong> (4 ชม.) — ช่วงเช้ารวมพักเที่ยงไว้ด้วย เพราะบางคนโทรช่วงพัก จึงอาจมีสัดส่วนเช้ามากกว่าเล็กน้อย</p>
                 </div>
 
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left align-middle whitespace-nowrap">
                         <thead className="text-xs text-gray-700 bg-gray-50 uppercase border-b">
                             <tr>
-                                <th scope="col" className="px-5 py-4 font-semibold text-gray-900 border-r w-32">วันที่</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-gray-900 border-r w-32">วัน</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-gray-900">สาย<span className="text-xs text-gray-500 font-normal ml-1">(ทั้งหมด)</span></th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-orange-600" title="เวลาทั้งหมดของทุกสายที่โทร">นาที</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-emerald-600">รับสาย</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-blue-600" title="รับสายและคุยตั้งแต่ 40 วินาทีขึ้นไป">ได้คุย <span className="text-xs text-gray-500 font-normal ml-1">(≥40วิ)</span></th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-red-500">ไม่ได้รับ</th>
-                                <th scope="col" className="px-5 py-4 font-semibold text-center text-gray-900">% รับสาย</th>
+                                <th rowSpan={2} className="px-5 py-3 font-semibold text-gray-900 border-r w-32 align-middle">วันที่</th>
+                                <th rowSpan={2} className="px-5 py-3 font-semibold text-gray-900 border-r w-32 align-middle">วัน</th>
+                                <th colSpan={3} className="px-5 py-2 font-semibold text-center text-gray-900 border-b border-r bg-gray-100/60">สาย</th>
+                                <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-orange-600 align-middle" title="เวลาทั้งหมดของทุกสายที่โทร">นาที</th>
+                                <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-emerald-600 align-middle">รับสาย</th>
+                                <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-blue-600 align-middle" title="รับสายและคุยตั้งแต่ 40 วินาทีขึ้นไป">ได้คุย <span className="text-xs text-gray-500 font-normal ml-1">(≥40วิ)</span></th>
+                                <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-red-500 align-middle">ไม่ได้รับ</th>
+                                <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-gray-900 align-middle">% รับสาย</th>
+                            </tr>
+                            <tr>
+                                <th className="px-3 py-2 font-medium text-center text-gray-700 border-r text-[11px]">ทั้งหมด</th>
+                                <th className="px-3 py-2 font-medium text-center text-amber-600 border-r text-[11px]" title="ช่วงเช้า (09:00-14:00)">🌅 เช้า<div className="text-[9px] text-gray-400 font-normal normal-case">09-14</div></th>
+                                <th className="px-3 py-2 font-medium text-center text-indigo-600 border-r text-[11px]" title="ช่วงบ่าย (14:00-18:00)">🌇 บ่าย<div className="text-[9px] text-gray-400 font-normal normal-case">14-18</div></th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -973,7 +981,19 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                                             <td className="px-5 py-3 border-r text-gray-600">
                                                 {dateObj.toLocaleDateString("th-TH", { weekday: 'long' })}
                                             </td>
-                                            <td className="px-5 py-3 text-center text-gray-700">{row.total_calls > 0 ? row.total_calls.toLocaleString() : '-'}</td>
+                                            <td className="px-3 py-3 text-center text-gray-700 font-medium">{row.total_calls > 0 ? row.total_calls.toLocaleString() : '-'}</td>
+                                            <td className="px-3 py-3 text-center text-amber-600 text-sm">
+                                                {row.morning_calls > 0 ? (() => {
+                                                    const workTotal = row.morning_calls + row.afternoon_calls;
+                                                    return <div>{row.morning_calls.toLocaleString()} <span className="text-xs text-gray-400">({(row.morning_calls / workTotal * 100).toFixed(0)}%)</span></div>;
+                                                })() : '-'}
+                                            </td>
+                                            <td className="px-3 py-3 text-center text-indigo-600 text-sm border-r">
+                                                {row.afternoon_calls > 0 ? (() => {
+                                                    const workTotal = row.morning_calls + row.afternoon_calls;
+                                                    return <div>{row.afternoon_calls.toLocaleString()} <span className="text-xs text-gray-400">({(row.afternoon_calls / workTotal * 100).toFixed(0)}%)</span></div>;
+                                                })() : '-'}
+                                            </td>
                                             <td className="px-5 py-3 text-center text-gray-700">{row.total_minutes > 0 ? row.total_minutes.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '-'}</td>
                                             <td className="px-5 py-3 text-center text-emerald-600 font-medium">{row.connected_calls > 0 ? row.connected_calls.toLocaleString() : '-'}</td>
                                             <td className="px-5 py-3 text-center font-medium text-blue-600">{row.talked_calls > 0 ? row.talked_calls.toLocaleString() : '-'}</td>
@@ -990,7 +1010,7 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                                 })
                             ) : (
                                 <tr>
-                                    <td colSpan={8} className="px-5 py-12 text-center text-gray-500">
+                                    <td colSpan={10} className="px-5 py-12 text-center text-gray-500">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <PhoneOff className="w-8 h-8 text-gray-300" />
                                             <span>ไม่มีข้อมูลการโทรในเดือนนี้</span>
@@ -1005,7 +1025,9 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                             <tfoot className="bg-gray-100/80 font-bold border-t border-gray-200">
                                 <tr>
                                     <td colSpan={2} className="px-5 py-4 border-r text-gray-900 text-right">รวมทั้งเดือน</td>
-                                    <td className="px-5 py-4 text-center text-gray-900">{monthlyData.reduce((sum, r) => sum + r.total_calls, 0).toLocaleString()}</td>
+                                    <td className="px-3 py-4 text-center text-gray-900">{monthlyData.reduce((sum, r) => sum + r.total_calls, 0).toLocaleString()}</td>
+                                    <td className="px-3 py-4 text-center text-amber-600">{monthlyData.reduce((sum, r) => sum + (r.morning_calls || 0), 0).toLocaleString()}</td>
+                                    <td className="px-3 py-4 text-center text-indigo-600 border-r">{monthlyData.reduce((sum, r) => sum + (r.afternoon_calls || 0), 0).toLocaleString()}</td>
                                     <td className="px-5 py-4 text-center text-gray-900">{monthlyData.reduce((sum, r) => sum + r.total_minutes, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                                     <td className="px-5 py-4 text-center text-emerald-600 font-black">{monthlyData.reduce((sum, r) => sum + r.connected_calls, 0).toLocaleString()}</td>
                                     <td className="px-5 py-4 text-center text-blue-600 font-black">{monthlyData.reduce((sum, r) => sum + r.talked_calls, 0).toLocaleString()}</td>
