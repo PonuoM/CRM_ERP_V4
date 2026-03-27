@@ -664,7 +664,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
     );
 
-    // ใช้ order_date เป็นฐานคำนวณ max (วันที่ 7 ของเดือนถัดจากเดือนที่สั่งซื้อ)
+    // ใช้ order_date เป็นฐานคำนวณ max (วันที่ 5 ของเดือนถัดจากเดือนที่สั่งซื้อ)
     const orderDateStr = currentOrder.orderDate || (order as any).order_date;
     const baseDate = orderDateStr ? new Date(orderDateStr) : now;
     const baseUtc = new Date(
@@ -672,7 +672,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     );
 
     const maxUtc = new Date(
-      Date.UTC(baseUtc.getUTCFullYear(), baseUtc.getUTCMonth() + 1, 7),
+      Date.UTC(baseUtc.getUTCFullYear(), baseUtc.getUTCMonth() + 1, 5),
     );
 
     return {
