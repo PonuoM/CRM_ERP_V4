@@ -669,8 +669,13 @@ function handleReclaimCustomers($pdo, $companyId)
 }
 
 /**
- * Handle transferring customers from one agent to another
- * POST: { from_agent_id: 123, to_agent_id: 456, basket_key: 'new_lead', count: 10 }
+ * Handle transferring customers from one agent to another (supports batch)
+ * 
+ * Single (backward compatible):
+ *   POST: { from_agent_id: 123, to_agent_id: 456, basket_key: 'new_lead', count: 10 }
+ * 
+ * Batch (1→Many or Many→1):
+ *   POST: { transfers: [ { from_agent_id, to_agent_id, basket_key, count }, ... ] }
  */
 function handleTransferCustomers($pdo, $companyId)
 {
@@ -681,32 +686,35 @@ function handleTransferCustomers($pdo, $companyId)
     }
 
     $input = json_decode(file_get_contents('php://input'), true);
-    $fromAgentId = $input['from_agent_id'] ?? null;
-    $toAgentId = $input['to_agent_id'] ?? null;
-    $basketKey = $input['basket_key'] ?? null;
-    $count = intval($input['count'] ?? 0);
 
-    if (!$fromAgentId || !$toAgentId || !$basketKey || $count <= 0) {
+    // Normalize: support both single and batch format
+    $transfers = [];
+    if (isset($input['transfers']) && is_array($input['transfers'])) {
+        $transfers = $input['transfers'];
+    } else {
+        // Backward compatible: single transfer
+        $transfers = [[
+            'from_agent_id' => $input['from_agent_id'] ?? null,
+            'to_agent_id' => $input['to_agent_id'] ?? null,
+            'basket_key' => $input['basket_key'] ?? null,
+            'count' => intval($input['count'] ?? 0)
+        ]];
+    }
+
+    if (empty($transfers)) {
         http_response_code(400);
-        echo json_encode(['error' => 'from_agent_id, to_agent_id, basket_key, and count are required']);
+        echo json_encode(['error' => 'No transfers provided']);
         return;
     }
 
-    // Get basket ID from key (Basket config is GLOBAL - always company_id = 1)
+    // Cache basket key → id lookups
+    $basketIdCache = [];
     $basketStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
-    $basketStmt->execute([$basketKey]);
-    $basketId = $basketStmt->fetchColumn();
-
-    if (!$basketId) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Invalid basket_key']);
-        return;
-    }
 
     $pdo->beginTransaction();
     try {
         set_audit_context($pdo, 'basket_config/transfer');
-        // Select customers to transfer (from the specified agent and basket)
+
         $selectStmt = $pdo->prepare("
             SELECT customer_id, previous_assigned_to 
             FROM customers 
@@ -715,17 +723,6 @@ function handleTransferCustomers($pdo, $companyId)
             AND current_basket_key = ?
             LIMIT ?
         ");
-        $selectStmt->execute([$companyId, $fromAgentId, $basketId, $count]);
-        $customers = $selectStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        if (empty($customers)) {
-            $pdo->rollBack();
-            echo json_encode(['ok' => true, 'transferred' => 0, 'message' => 'No customers found to transfer']);
-            return;
-        }
-
-        $transferredCount = 0;
-        $skippedCount = 0;
 
         $updateStmt = $pdo->prepare("
             UPDATE customers 
@@ -741,46 +738,96 @@ function handleTransferCustomers($pdo, $companyId)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
         ");
 
-        foreach ($customers as $customer) {
-            $customerId = $customer['customer_id'];
-            $previousAgentsJson = $customer['previous_assigned_to'] ?? null;
+        $results = [];
+        $totalTransferred = 0;
 
-            // Build updated previous_assigned_to array
-            $previousAgents = $previousAgentsJson ? json_decode($previousAgentsJson, true) : [];
-            if (!is_array($previousAgents)) {
-                $previousAgents = [];
+        foreach ($transfers as $t) {
+            $fromAgentId = $t['from_agent_id'] ?? null;
+            $toAgentId = $t['to_agent_id'] ?? null;
+            $basketKey = $t['basket_key'] ?? null;
+            $count = intval($t['count'] ?? 0);
+
+            if (!$fromAgentId || !$toAgentId || !$basketKey || $count <= 0) {
+                $results[] = [
+                    'from_agent_id' => $fromAgentId,
+                    'to_agent_id' => $toAgentId,
+                    'basket_key' => $basketKey,
+                    'transferred' => 0,
+                    'error' => 'Missing required fields'
+                ];
+                continue;
             }
 
-            // Add target agent to history (allow forced transfer - no duplicate check)
-            $previousAgents[] = (int) $toAgentId;
-            $newPreviousAgentsJson = json_encode($previousAgents);
-
-            $updateStmt->execute([$toAgentId, $newPreviousAgentsJson, $customerId, $companyId]);
-
-            if ($updateStmt->rowCount() > 0) {
-                $transferredCount++;
-
-                // Log transfer with assigned_to_old and assigned_to_new
-                $logStmt->execute([
-                    $customerId,
-                    $basketId,
-                    $basketId,
-                    $fromAgentId,
-                    $toAgentId,
-                    'transfer',
-                    $fromAgentId,
-                    "Transferred from agent $fromAgentId to agent $toAgentId"
-                ]);
+            // Resolve basket key → id (cached)
+            if (!isset($basketIdCache[$basketKey])) {
+                $basketStmt->execute([$basketKey]);
+                $basketIdCache[$basketKey] = $basketStmt->fetchColumn() ?: null;
             }
+            $basketId = $basketIdCache[$basketKey];
+
+            if (!$basketId) {
+                $results[] = [
+                    'from_agent_id' => $fromAgentId,
+                    'to_agent_id' => $toAgentId,
+                    'basket_key' => $basketKey,
+                    'transferred' => 0,
+                    'error' => 'Invalid basket_key'
+                ];
+                continue;
+            }
+
+            // Select customers to transfer
+            $selectStmt->execute([$companyId, $fromAgentId, $basketId, $count]);
+            $customers = $selectStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $transferredCount = 0;
+
+            foreach ($customers as $customer) {
+                $customerId = $customer['customer_id'];
+                $previousAgentsJson = $customer['previous_assigned_to'] ?? null;
+
+                $previousAgents = $previousAgentsJson ? json_decode($previousAgentsJson, true) : [];
+                if (!is_array($previousAgents)) {
+                    $previousAgents = [];
+                }
+
+                // Add target agent to history (forced transfer - no duplicate check)
+                $previousAgents[] = (int) $toAgentId;
+                $newPreviousAgentsJson = json_encode($previousAgents);
+
+                $updateStmt->execute([$toAgentId, $newPreviousAgentsJson, $customerId, $companyId]);
+
+                if ($updateStmt->rowCount() > 0) {
+                    $transferredCount++;
+
+                    $logStmt->execute([
+                        $customerId,
+                        $basketId,
+                        $basketId,
+                        $fromAgentId,
+                        $toAgentId,
+                        'transfer',
+                        $fromAgentId,
+                        "Transferred from agent $fromAgentId to agent $toAgentId"
+                    ]);
+                }
+            }
+
+            $totalTransferred += $transferredCount;
+            $results[] = [
+                'from_agent_id' => $fromAgentId,
+                'to_agent_id' => $toAgentId,
+                'basket_key' => $basketKey,
+                'transferred' => $transferredCount
+            ];
         }
 
         $pdo->commit();
 
         echo json_encode([
             'ok' => true,
-            'transferred' => $transferredCount,
-            'skipped' => $skippedCount,
-            'message' => $skippedCount > 0 ? "$skippedCount รายชื่อถูกข้ามเนื่องจากเคยแจกให้ปลายทางแล้ว" : null
+            'transferred' => $totalTransferred,
+            'results' => $results
         ]);
 
     } catch (Exception $e) {
