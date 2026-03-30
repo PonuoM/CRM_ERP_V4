@@ -8612,15 +8612,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 now.getMonth() + 1,
                                 5,
                               );
-                              const maxDate = nextMonth.toISOString().split("T")[0];
+                              const maxDate = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-${String(nextMonth.getDate()).padStart(2, '0')}`;
                               const year = date.getFullYear();
                               const month = String(date.getMonth() + 1).padStart(2, '0');
                               const day = String(date.getDate()).padStart(2, '0');
                               const selectedDate = `${year}-${month}-${day}`;
 
                               if (selectedDate > maxDate) {
-                                const maxDateObj = new Date(maxDate);
-                                const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
+                                const maxDateStr = `${nextMonth.getDate()}/${nextMonth.getMonth() + 1}/${nextMonth.getFullYear()}`;
                                 alert(
                                   `วันที่จัดส่งต้องไม่เกินวันที่ 5 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
                                 );
@@ -8660,12 +8659,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           5,
                         );
 
-                        const maxDate = nextMonth.toISOString().split("T")[0];
+                        const maxDate = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-${String(nextMonth.getDate()).padStart(2, '0')}`;
 
                         if (orderData.deliveryDate > maxDate) {
-                          const maxDateObj = new Date(maxDate);
-
-                          const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
+                          const maxDateStr = `${nextMonth.getDate()}/${nextMonth.getMonth() + 1}/${nextMonth.getFullYear()}`;
 
                           return (
                             <p className="text-red-600 text-xs mt-1">
