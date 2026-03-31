@@ -241,7 +241,7 @@ try {
                 if (!empty($parentIds)) {
                     $parentIds = array_values($parentIds); // Re-index for PDO
                     $pPlaceholders = str_repeat('?,', count($parentIds) - 1) . '?';
-                    $boxSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount, collected_amount 
+                    $boxSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount, collected_amount, status, return_status 
                            FROM order_boxes 
                            WHERE order_id IN ($pPlaceholders)";
                     $bStmt = $pdo->prepare($boxSql);
@@ -388,6 +388,7 @@ try {
                     }
 
                     $freebieInfo = $freebiesByParent[$parentId] ?? null;
+                    $isBoxReturned = $foundBox ? ($foundBox['status'] === 'RETURNED' || !empty($foundBox['return_status'])) : false;
                     $results[] = [
                         'trackingNumber' => $original,
                         'status' => 'found',
@@ -402,6 +403,7 @@ try {
                         'hasFreebie' => $freebieInfo ? true : false,
                         'freebieValue' => $freebieInfo ? $freebieInfo['value'] : 0,
                         'freebieCount' => $freebieInfo ? $freebieInfo['count'] : 0,
+                        'isBoxReturned' => $isBoxReturned,
                     ];
                 }
 
@@ -8552,15 +8554,15 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     $threshold = $orderTotal * 0.95;
                     if ($recalcPaid <= 0) {
                         $newPaymentStatus = 'Unpaid';
-                        $newOrderStatus = in_array($orderInfo['order_status'], ['PreApproved', 'Delivered']) ? 'Shipping' : $orderInfo['order_status'];
+                        $newOrderStatus = in_array($orderInfo['order_status'], ['PreApproved', 'Delivered']) ? 'Pending' : $orderInfo['order_status'];
                     } elseif ($recalcPaid >= $threshold) {
                         // Still above 95% — keep current statuses
                         $newPaymentStatus = $orderInfo['payment_status'];
                         $newOrderStatus = $orderInfo['order_status'];
                     } else {
-                        // Below 95% — revert to Unpaid + Shipping
+                        // Below 95% — revert to Unpaid + Pending
                         $newPaymentStatus = 'Unpaid';
-                        $newOrderStatus = in_array($orderInfo['order_status'], ['PreApproved', 'Delivered']) ? 'Shipping' : $orderInfo['order_status'];
+                        $newOrderStatus = in_array($orderInfo['order_status'], ['PreApproved', 'Delivered']) ? 'Pending' : $orderInfo['order_status'];
                     }
 
                     $pdo->prepare("UPDATE orders SET amount_paid = ?, payment_status = ?, order_status = ? WHERE id = ?")

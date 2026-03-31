@@ -40,7 +40,7 @@ interface CODManagementPageProps {
 | `matched` | 🟢 เขียว | ยอดตรงกับ Order (หลังหัก slip + COD ที่เก็บแล้ว) |
 | `unmatched` | 🟡 เหลือง | พบ Order แต่ยอดไม่ตรง พร้อมแสดงส่วนต่าง |
 | `pending` | 🟠 ส้ม | ไม่พบ Tracking ในระบบ หรือยอดไม่ valid |
-| `returned` | 🔴 แดง | ถูก mark เป็น "ตีกลับ" หรือซ้ำในเอกสารอื่น (เก็บครบแล้ว) |
+| `returned` | 🔴 แดง | กล่องถูก mark เป็น "ตีกลับ" (สามารถติ๊ก "ข้าม" เพื่อยกเลิกตีกลับและนำเข้าได้) หรือซ้ำในเอกสารอื่น |
 | `unchecked` | ⬜ เทา | ยังไม่ได้ตรวจสอบ |
 
 #### สูตรเปรียบเทียบยอด (Single Tracking)
@@ -60,8 +60,9 @@ matched = |difference| < 0.01
   - **เอกสารอื่น + เก็บครบ** → status `returned` (block)
   - **เอกสารอื่น + ยังค้าง** → status `matched` (import ได้ เติมยอดที่เหลือ)
 
-### 4. Force Import (ข้าม)
-- สำหรับ row ที่ `pending` หรือ `unmatched` สามารถติ๊ก checkbox "ข้าม" เพื่อบังคับนำเข้า
+### 4. Force Import (ข้าม) & Returned Override
+- สำหรับ row ที่ `pending`, `unmatched` หรือ `returned` สามารถติ๊ก checkbox "ข้าม" เพื่อบังคับนำเข้า
+- ถ้าสถานะเดิมเป็น `returned` ระบบจะทำการเรียก API `revert_returned_order.php` เพื่อดึงสถานะกลับมาเป็น `Pending` ก่อนทำการนำเข้า (เพื่อป้องกันบั๊กยอด collected_amount ถูกรีเซ็ตเป็น 0)
 - บันทึกใน `cod_records` ด้วย `status = 'forced'` แต่ **ไม่อัพเดท Order**
 - มี check-all toggle สำหรับเลือก/ยกเลิกทั้งหมดที่แสดงอยู่
 
@@ -145,7 +146,7 @@ matched = |difference| < 0.01
 2. หรือแก้ `collection_amount` ของ order_boxes ที่มีปัญหาให้รองรับยอดจริง
 
 ## Data Flow Summary
-```
+```text
 Excel/CSV → Paste/Upload → ตารางแถว
                               ↓
                     กด "ตรวจสอบข้อมูล"
@@ -153,9 +154,11 @@ Excel/CSV → Paste/Upload → ตารางแถว
               API validate_cod_tracking
               + cod_batch_check.php
                               ↓
-                     แสดงผล matched/unmatched/pending
+                     แสดงผล matched/unmatched/pending/returned
                               ↓
                     กด "สร้างเอกสารใหม่" / "เพิ่มในเอกสาร"
+                              ↓
+            [ถ้ามีออเดอร์ตีกัลบที่กด "ข้าม"] → POST revert_returned_order.php (new_status=Pending)
                               ↓
               POST/PATCH cod_documents (สร้าง cod_records)
                               ↓
