@@ -173,19 +173,13 @@ foreach ($companies as $companyId) {
             SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
                    c.current_basket_key, c.distribution_count,
                    DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
-                   DATEDIFF(NOW(), COALESCE(
-                       c.last_order_date,
-                       (SELECT MAX(o.order_date) FROM orders o WHERE o.customer_id = c.customer_id OR o.customer_id = c.customer_ref_id)
-                   )) as days_since_order
+                   DATEDIFF(NOW(), c.last_order_date) as days_since_order
             FROM customers c
             WHERE c.company_id = ?
               AND c.current_basket_key = ?
               AND c.basket_entered_date IS NOT NULL
               AND DATEDIFF(NOW(), c.basket_entered_date) >= ?
-              AND DATEDIFF(NOW(), COALESCE(
-                  c.last_order_date,
-                  (SELECT MAX(o.order_date) FROM orders o WHERE o.customer_id = c.customer_id OR o.customer_id = c.customer_ref_id)
-              )) >= ?
+              AND DATEDIFF(NOW(), c.last_order_date) >= ?
             $limitClause
         ");
         $customersStmt->execute([$companyId, $basketId, $failDays, $failDays]);
@@ -221,7 +215,8 @@ foreach ($companies as $companyId) {
                     }
                     if ($daysSinceOrder >= $db['min_days'] && $daysSinceOrder <= $db['max_days']) {
                         $targetBasketKey = $db['basket_key'];
-                        $matchedBy = "re-eval({$db['min_days']}-{$db['max_days']}d)";
+                        $maxDisplay = $db['max_days'] === PHP_INT_MAX ? '∞' : $db['max_days'];
+                        $matchedBy = "re-eval({$db['min_days']}-{$maxDisplay}d)";
                         break;
                     }
                 }
@@ -251,7 +246,8 @@ foreach ($companies as $companyId) {
                     
                     if ($closestBasket) {
                         $targetBasketKey = $closestBasket['basket_key'];
-                        $matchedBy = "re-eval(closest:{$closestBasket['min_days']}-{$closestBasket['max_days']}d,gap:{$closestDistance}d)";
+                        $maxDisplay2 = $closestBasket['max_days'] === PHP_INT_MAX ? '∞' : $closestBasket['max_days'];
+                        $matchedBy = "re-eval(closest:{$closestBasket['min_days']}-{$maxDisplay2}d,gap:{$closestDistance}d)";
                     } else {
                         // No valid basket at all (all blocked) — skip and log error
                         echo "  ⚠️ $name: No matching basket (days=$daysSinceOrder, all blocked!) - SKIPPED\n";
