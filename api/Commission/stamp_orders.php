@@ -17,6 +17,8 @@ try {
     $batch_name = trim($input['batch_name'] ?? '');
     $batch_note = trim($input['note'] ?? '');
     $batch_id = (int)($input['batch_id'] ?? 0);
+    $for_month = isset($input['for_month']) ? (int)$input['for_month'] : null;
+    $for_year = isset($input['for_year']) ? (int)$input['for_year'] : null;
     $orders = $input['orders'] ?? [];
     $dry_run = !empty($input['dry_run']);
 
@@ -109,10 +111,10 @@ try {
             $batch_name = 'Batch ' . date('Y-m-d H:i');
         }
         $batchStmt = $pdo->prepare("
-            INSERT INTO commission_stamp_batches (company_id, name, created_by, note)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO commission_stamp_batches (company_id, name, created_by, note, for_month, for_year)
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
-        $batchStmt->execute([$company_id, $batch_name, $stamper_id ?: null, $batch_note ?: null]);
+        $batchStmt->execute([$company_id, $batch_name, $stamper_id ?: null, $batch_note ?: null, $for_month, $for_year]);
         $batch_id = $pdo->lastInsertId();
     }
 

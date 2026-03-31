@@ -21,10 +21,18 @@ try {
             created_by INT DEFAULT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             note TEXT DEFAULT NULL,
+            for_month INT DEFAULT NULL,
+            for_year INT DEFAULT NULL,
             INDEX idx_csb_company (company_id),
             INDEX idx_csb_created (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+
+    // Alter table to add columns if they don't exist for existing dbs
+    $checkColsResult = $pdo->query("SHOW COLUMNS FROM commission_stamp_batches LIKE 'for_month'");
+    if ($checkColsResult->rowCount() === 0) {
+        $pdo->exec("ALTER TABLE commission_stamp_batches ADD COLUMN for_month INT DEFAULT NULL, ADD COLUMN for_year INT DEFAULT NULL");
+    }
 
     // commission_stamp_orders
     $pdo->exec("

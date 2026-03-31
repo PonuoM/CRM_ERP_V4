@@ -3,7 +3,7 @@ import { User } from '../../types';
 import {
   Upload, Download, Trash2, ChevronDown, ChevronRight, ChevronUp,
   CheckCircle, Clock, AlertCircle, FileText, RefreshCw,
-  BarChart2, Calendar, Plus, Search, Users
+  BarChart2, Calendar, Plus, Search, Users, Edit2
 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import resolveApiBasePath from '../../utils/apiBasePath';
@@ -24,6 +24,8 @@ interface Batch {
   note: string;
   first_name?: string;
   last_name?: string;
+  for_month?: number | null;
+  for_year?: number | null;
 }
 
 interface SummaryRow {
@@ -69,6 +71,13 @@ interface ImportRow {
   note: string;
 }
 
+// === Lump Sum Row Type ===
+interface LumpSumRow {
+  id: number;
+  userId: string;
+  amount: string;
+}
+
 interface UserCommRow {
   user_id: number | null;
   first_name: string | null;
@@ -92,10 +101,16 @@ const createEmptyRow = (id: number): ImportRow => ({
   id, orderId: '', userId: '', amount: '', note: '',
 });
 
+const createEmptyLumpSumRow = (id: number): LumpSumRow => ({
+  id, userId: '', amount: '',
+});
+
 export default function CommissionStampPage({ currentUser }: CommissionStampPageProps) {
   // === State ===
   const [batchName, setBatchName] = useState('');
   const [batchNote, setBatchNote] = useState('');
+  const [batchForMonth, setBatchForMonth] = useState<string>(String(new Date().getMonth() + 1));
+  const [batchForYear, setBatchForYear] = useState<string>(String(new Date().getFullYear()));
   const [importRows, setImportRows] = useState<ImportRow[]>(Array.from({ length: 10 }, (_, i) => createEmptyRow(i + 1)));
   const [isStamping, setIsStamping] = useState(false);
   const [stampResult, setStampResult] = useState<any>(null);
@@ -103,9 +118,24 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
   const [verifyResult, setVerifyResult] = useState<any>(null);
   const [verified, setVerified] = useState(false);
 
+  // === Lump Sum State ===
+  const [lumpSumModalBatch, setLumpSumModalBatch] = useState<Batch | null>(null);
+  const [lumpSumRows, setLumpSumRows] = useState<LumpSumRow[]>(Array.from({ length: 15 }, (_, i) => createEmptyLumpSumRow(i + 1)));
+  const [isLumpSumVerifying, setIsLumpSumVerifying] = useState(false);
+  const [lumpSumVerifyResult, setLumpSumVerifyResult] = useState<any>(null);
+  const [lumpSumVerified, setLumpSumVerified] = useState(false);
+  const [isLumpSumStamping, setIsLumpSumStamping] = useState(false);
+
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [batchSearch, setBatchSearch] = useState('');
+  const [batchToDelete, setBatchToDelete] = useState<Batch | null>(null);
+
+  // === Edit Period ===
+  const [editPeriodBatch, setEditPeriodBatch] = useState<Batch | null>(null);
+  const [editPeriodMonth, setEditPeriodMonth] = useState<string>('');
+  const [editPeriodYear, setEditPeriodYear] = useState<string>('');
+  const [isEditingPeriod, setIsEditingPeriod] = useState(false);
 
   const [summaryRows, setSummaryRows] = useState<SummaryRow[]>([]);
   const [summaryTotals, setSummaryTotals] = useState<SummaryTotals>({ calculated: 0, pending: 0, incomplete: 0, total: 0, total_commission: 0 });
@@ -381,6 +411,8 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
           user_id: currentUser.id,
           batch_name: batchName || `Stamp ${new Date().toLocaleDateString('th-TH')}`,
           note: batchNote || undefined,
+          for_month: parseInt(batchForMonth),
+          for_year: parseInt(batchForYear),
           orders: parsedOrders,
         }),
       });
@@ -402,7 +434,6 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
 
   // === Delete Batch ===
   const handleDeleteBatch = async (batchId: number) => {
-    if (!confirm('ต้องการลบรอบ Stamp นี้ทั้งหมด?')) return;
     try {
       await apiFetch('Commission/unstamp_orders.php', {
         method: 'POST',
@@ -415,8 +446,142 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
         setExpandedBatch(null);
         setBatchOrders([]);
       }
+      setBatchToDelete(null);
     } catch (e) { console.error(e); }
   };
+
+  // === Edit Batch Period ===
+  const handleEditPeriodSave = async () => {
+    if (!editPeriodBatch) return;
+    setIsEditingPeriod(true);
+    try {
+      const res = await apiFetch('Commission/update_batch_period.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batch_id: editPeriodBatch.id,
+          for_month: editPeriodMonth ? parseInt(editPeriodMonth) : null,
+          for_year: editPeriodYear ? parseInt(editPeriodYear) : null,
+        }),
+      });
+      if (res.ok) {
+        setEditPeriodBatch(null);
+        loadBatches();
+        loadSummary();
+      } else {
+        alert(res.error || 'Failed to update period');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    }
+    setIsEditingPeriod(false);
+  };
+
+  // === Lump Sum Row Handlers ===
+  const handleLumpSumRowChange = (index: number, field: keyof LumpSumRow, value: string) => {
+    const newRows = [...lumpSumRows];
+    (newRows[index] as any)[field] = value;
+    setLumpSumRows(newRows);
+  };
+
+  const handleLumpSumPaste = (e: React.ClipboardEvent<HTMLInputElement>, rowIndex: number) => {
+    const pasteData = e.clipboardData.getData('text');
+    const pastedLines = pasteData.split('\n').filter(r => r.trim() !== '');
+    if (pastedLines.length <= 1 && !pasteData.includes('\t') && !pasteData.includes(',')) return;
+    e.preventDefault();
+
+    const newRows = [...lumpSumRows];
+    pastedLines.forEach((line, i) => {
+      const parts = line.split(/[\t,]/).map(p => p.trim());
+      const currentIdx = rowIndex + i;
+      const row: LumpSumRow = {
+        id: currentIdx < newRows.length ? newRows[currentIdx].id : newRows.length + i + 1,
+        userId: parts[0] || '',
+        amount: parts[1] || '',
+      };
+      if (currentIdx < newRows.length) {
+        newRows[currentIdx] = row;
+      } else {
+        newRows.push(row);
+      }
+    });
+    setLumpSumRows(newRows);
+  };
+
+  const addLumpSumRow = () => setLumpSumRows([...lumpSumRows, createEmptyLumpSumRow(lumpSumRows.length + 1)]);
+  const removeLumpSumRow = (index: number) => setLumpSumRows(lumpSumRows.filter((_, i) => i !== index));
+
+  const filledLumpSumRows = useMemo(() => lumpSumRows.filter(r => r.userId.trim() && r.amount.trim()), [lumpSumRows]);
+  const parsedLumpSumOrders = useMemo(() => filledLumpSumRows.map(r => ({
+    user_id: parseInt(r.userId.trim()),
+    amount: parseFloat(r.amount.trim()),
+  })), [filledLumpSumRows]);
+
+  const handleLumpSumVerify = async () => {
+    if (parsedLumpSumOrders.length === 0 || !lumpSumModalBatch) return;
+    setIsLumpSumVerifying(true);
+    setLumpSumVerifyResult(null);
+    setLumpSumVerified(false);
+    try {
+      const res = await apiFetch('Commission/stamp_batch_lumpsum.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId,
+          user_id: currentUser.id,
+          batch_id: lumpSumModalBatch.id,
+          orders: parsedLumpSumOrders,
+          dry_run: true,
+        }),
+      });
+      setLumpSumVerifyResult(res);
+      if (res.ok && res.data?.errors?.length === 0) {
+        setLumpSumVerified(true);
+      }
+    } catch (e: any) {
+      setLumpSumVerifyResult({ ok: false, error: e.message });
+    }
+    setIsLumpSumVerifying(false);
+  };
+
+  useEffect(() => {
+    setLumpSumVerified(false);
+    setLumpSumVerifyResult(null);
+  }, [lumpSumRows]);
+
+  const handleLumpSumStamp = async () => {
+    if (parsedLumpSumOrders.length === 0 || !lumpSumVerified || !lumpSumModalBatch) return;
+    setIsLumpSumStamping(true);
+    try {
+      const res = await apiFetch('Commission/stamp_batch_lumpsum.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId,
+          user_id: currentUser.id,
+          batch_id: lumpSumModalBatch.id,
+          orders: parsedLumpSumOrders,
+        }),
+      });
+      if (res.ok) {
+        setLumpSumRows(Array.from({ length: 15 }, (_, i) => createEmptyLumpSumRow(i + 1)));
+        setLumpSumVerified(false);
+        setLumpSumVerifyResult(null);
+        setLumpSumModalBatch(null);
+        loadBatches();
+        loadSummary();
+        if (expandedBatch === lumpSumModalBatch.id) {
+          loadBatchOrders(lumpSumModalBatch.id);
+        }
+      } else {
+        alert(res.error || 'Stamp error');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    }
+    setIsLumpSumStamping(false);
+  };
+
 
   // === Export ===
   const handleExport = async (status: string) => {
@@ -587,7 +752,30 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
 
           {/* Batch Name & Note */}
           <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600 whitespace-nowrap">ระบุรอบบิล:</label>
+                <div className="flex flex-1 gap-1">
+                  <select
+                    value={batchForMonth}
+                    onChange={e => setBatchForMonth(e.target.value)}
+                    className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                  >
+                    {[...Array(12)].map((_, i) => (
+                      <option key={i+1} value={i+1}>{['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][i]}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={batchForYear}
+                    onChange={e => setBatchForYear(e.target.value)}
+                    className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                  >
+                    {[...Array(5)].map((_, i) => (
+                      <option key={i} value={new Date().getFullYear() - i}>{new Date().getFullYear() - i}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <label className="text-sm font-medium text-gray-600 whitespace-nowrap">ชื่อรอบ:</label>
                 <input
@@ -1133,8 +1321,15 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
                         {expandedBatch === batch.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </button>
                       <div className="min-w-0">
-                        <div className="font-medium text-gray-800 truncate">{batch.name}</div>
-                        <div className="text-xs text-gray-500">
+                        <div className="font-medium text-gray-800 flex items-center gap-2 flex-wrap">
+                          <span className="truncate">{batch.name}</span>
+                          {batch.for_month && batch.for_year && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                              รอบ: {['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][batch.for_month]} {batch.for_year}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
                           {fmtDateTime(batch.created_at)}
                           {batch.first_name && ` • โดย ${batch.first_name} ${batch.last_name || ''}`}
                           {batch.note && ` • ${batch.note}`}
@@ -1148,13 +1343,33 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
                           <div className="text-xs text-emerald-600">{fmtMoney(batch.total_commission)}</div>
                         )}
                       </div>
-                      <button
-                        onClick={() => handleDeleteBatch(batch.id)}
-                        className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="ลบ Batch"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditPeriodMonth(batch.for_month ? String(batch.for_month) : '');
+                            setEditPeriodYear(batch.for_year ? String(batch.for_year) : '');
+                            setEditPeriodBatch(batch);
+                          }}
+                          className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="ตั้งค่ารอบเดือน/ปี"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setLumpSumModalBatch(batch)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-medium transition-colors border border-emerald-100"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          เพิ่มยอดเหมา
+                        </button>
+                        <button
+                          onClick={() => setBatchToDelete(batch)}
+                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="ลบ Batch"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1283,6 +1498,238 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
           )}
         </div>
       )}
+
+      {/* === Lump Sum Modal === */}
+      {lumpSumModalBatch && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">เพิ่มยอดเหมา (Lump Sum)</h3>
+                <p className="text-sm text-gray-500">รอบบิล: {lumpSumModalBatch.name}</p>
+              </div>
+              <button 
+                onClick={() => setLumpSumModalBatch(null)}
+                className="text-gray-400 hover:text-gray-600 p-2"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
+              <div className="mb-4 text-sm text-gray-600 bg-blue-50 p-4 rounded-xl border border-blue-100">
+                <p>วางข้อมูลจาก Excel (User ID, จำนวนเงินค่าคอม) ลงในช่องแรกได้เลย <br />
+                <span className="text-xs text-blue-500">* ข้อมูลจะถูกบันทึกด้วย Order ID: `sum_commission` แจกแจงตาม User ID</span></p>
+              </div>
+
+              {lumpSumVerifyResult && (
+                <div className={`mb-4 p-4 rounded-xl border ${lumpSumVerifyResult.ok && lumpSumVerifyResult.data?.errors?.length === 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                  {lumpSumVerifyResult.ok ? (
+                    lumpSumVerifyResult.data.errors.length === 0 ? (
+                      <div className="flex items-center gap-2 text-emerald-700 font-medium">
+                        <CheckCircle className="w-5 h-5" /> ตรวจสอบผ่าน {lumpSumVerifyResult.data.valid} รายการ พร้อม Stamp!
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2 text-red-700 font-medium mb-2">
+                          <AlertCircle className="w-5 h-5" /> พบข้อผิดพลาด
+                        </div>
+                        <ul className="list-disc list-inside text-sm text-red-600 space-y-1">
+                          {lumpSumVerifyResult.data.errors.map((err: string, i: number) => (
+                            <li key={i}>{err}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex items-center gap-2 text-red-700 font-medium">
+                      <AlertCircle className="w-5 h-5" /> {lumpSumVerifyResult.error}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-600 border-b border-gray-200">
+                      <th className="px-4 py-2 text-center w-12">#</th>
+                      <th className="px-4 py-2 text-left w-32">User ID</th>
+                      <th className="px-4 py-2 text-left">จำนวนเงิน (บาท)</th>
+                      <th className="px-4 py-2 w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {lumpSumRows.map((row, idx) => (
+                      <tr key={row.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 text-center text-gray-400 text-xs">{idx + 1}</td>
+                        <td className="px-4 py-1">
+                          <input
+                            required
+                            type="text"
+                            placeholder="เช่น 48"
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded outline-none focus:border-emerald-400"
+                            value={row.userId}
+                            onChange={(e) => handleLumpSumRowChange(idx, 'userId', e.target.value)}
+                            onPaste={(e) => handleLumpSumPaste(e, idx)}
+                          />
+                        </td>
+                        <td className="px-4 py-1">
+                          <input
+                            required
+                            type="number"
+                            placeholder="0.00"
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded outline-none focus:border-emerald-400"
+                            value={row.amount}
+                            onChange={(e) => handleLumpSumRowChange(idx, 'amount', e.target.value)}
+                          />
+                        </td>
+                        <td className="px-4 py-1">
+                          {lumpSumRows.length > 1 && (
+                            <button
+                              onClick={() => removeLumpSumRow(idx)}
+                              className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
+                              title="ลบแถว"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button
+                onClick={addLumpSumRow}
+                className="mt-3 flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700 font-medium px-2 py-1"
+              >
+                <Plus className="w-4 h-4" /> เพิ่มแถว
+              </button>
+            </div>
+            
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-white rounded-b-2xl">
+              <span className="text-sm text-gray-500">
+                พร้อมทำรายการ: <span className="font-bold text-gray-700">{parsedLumpSumOrders.length}</span> รายการ
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleLumpSumVerify}
+                  disabled={isLumpSumVerifying || parsedLumpSumOrders.length === 0}
+                  className="px-6 py-2 bg-white border-2 border-emerald-500 text-emerald-600 font-bold rounded-xl hover:bg-emerald-50 disabled:opacity-50 transition-all flex items-center gap-2"
+                >
+                  {isLumpSumVerifying ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-emerald-500 border-t-transparent" /> : <CheckCircle className="w-4 h-4" />}
+                  ตรวจสอบข้อมูล
+                </button>
+                <button
+                  onClick={handleLumpSumStamp}
+                  disabled={!lumpSumVerified || isLumpSumStamping || parsedLumpSumOrders.length === 0}
+                  className="px-6 py-2 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-500/30 flex items-center gap-2"
+                >
+                  {isLumpSumStamping ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <CheckCircle className="w-4 h-4" />}
+                  Stamp ยอดเหมา
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === Delete Batch Confirmation Modal === */}
+      {batchToDelete && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col p-6">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mx-auto mb-4">
+              <AlertCircle className="w-6 h-6 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold text-center text-gray-900 mb-2">ยืนยันการลบรอบ Stamp</h3>
+            <p className="text-sm text-center text-gray-500 mb-6">
+              คุณแน่ใจหรือไม่ว่าต้องการลบรอบ "{batchToDelete.name}"?<br />การกระทำนี้ไม่สามารถย้อนกลับได้
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setBatchToDelete(null)}
+                className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => handleDeleteBatch(batchToDelete.id)}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 font-medium transition-colors shadow-sm"
+              >
+                ลบข้อมูล
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === Edit Period Modal === */}
+      {editPeriodBatch && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col p-6">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 mx-auto mb-4">
+              <Calendar className="w-6 h-6 text-blue-600" />
+            </div>
+            <h3 className="text-lg font-bold text-center text-gray-900 mb-2">แก้ไขรอบบิล (ย้อนหลัง)</h3>
+            <p className="text-sm text-center text-gray-500 mb-6">
+              ระบุรอบเดือนและปี สำหรับ Batch "<span className="font-semibold">{editPeriodBatch.name}</span>"
+            </p>
+            
+            <div className="space-y-4 mb-6">
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">เดือน</label>
+                  <select
+                    value={editPeriodMonth}
+                    onChange={e => setEditPeriodMonth(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="">-- ไม่ระบุ --</option>
+                    {[...Array(12)].map((_, i) => (
+                      <option key={i+1} value={i+1}>{['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][i]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">ปี</label>
+                  <select
+                    value={editPeriodYear}
+                    onChange={e => setEditPeriodYear(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="">-- ไม่ระบุ --</option>
+                    {[...Array(5)].map((_, i) => (
+                      <option key={i} value={new Date().getFullYear() - i + 1}>{new Date().getFullYear() - i + 1}</option>
+                    ))}
+                    {[...Array(5)].map((_, i) => (
+                      <option key={i+10} value={new Date().getFullYear() - i}>{new Date().getFullYear() - i}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setEditPeriodBatch(null)}
+                disabled={isEditingPeriod}
+                className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleEditPeriodSave}
+                disabled={isEditingPeriod}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium transition-colors shadow-sm flex items-center justify-center"
+              >
+                {isEditingPeriod ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : 'บันทึกข้อมูล'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
