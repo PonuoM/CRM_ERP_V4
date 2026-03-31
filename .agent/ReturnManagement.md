@@ -783,6 +783,148 @@ $processedBoxIds[] = $boxRow['id'];
 |---|---|---|
 | API | `export_return_orders.php` | **เดียวกัน** |
 | CSV format | สร้างจาก Backend (PHP) | สร้างจาก **Frontend** (JS) |
-| คอลัมน์ | 22 คอลัมน์ | 20 คอลัมน์ (รวมที่อยู่+สินค้า+ผู้ขาย) |
+| คอลัมน์ | 23 คอลัมน์ (รวม ผู้อัปเดต) | 21 คอลัมน์ (รวมที่อยู่+สินค้า+ผู้ขาย+ผู้อัปเดต) |
 | Grouping | ไม่ group | Group ตาม order_id+box_number |
 | Date filter | DateRangePicker component | Preset dropdown (วันนี้/สัปดาห์/เดือน/custom) |
+
+## 30. อัปเดตล่าสุด (Change Log - 31/03/2026)
+
+### Return Auditability — ติดตามผู้อัปเดตตีกลับ (`returned_by`)
+
+เพิ่มระบบติดตามว่า **ใครเป็นผู้ดำเนินการ** อัปเดตสถานะตีกลับ เพื่อเพิ่มความโปร่งใสและตรวจสอบได้
+
+#### Database
+- เพิ่มคอลัมน์ `returned_by` INT ใน `order_boxes` — เก็บ `users.id` ของผู้ดำเนินการ
+- **Migration**: `api/Database/20260331_add_returned_by.sql`
+
+#### Business Rules
+
+| สถานการณ์ | `returned_by` |
+|---|---|
+| บันทึกสถานะตีกลับ (returning/returned/good/damaged/lost) | SET = user ID จาก payload |
+| Undo (pending/delivered) | CLEAR = NULL |
+| Revert ทั้ง Order | CLEAR = NULL |
+
+#### Backend API Changes
+
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `api/Orders/save_return_orders.php` | รับ `returned_by` จาก payload, SET ใน return flow, CLEAR ใน undo flow |
+| `api/Orders/revert_returned_order.php` | เพิ่ม `returned_by = NULL` เมื่อ revert |
+| `api/Orders/get_return_orders.php` | JOIN `users rb ON ob.returned_by = rb.id`, เพิ่ม `returned_by_name` ใน SELECT |
+| `api/Orders/export_return_orders.php` | JOIN `users rb ON ob.returned_by = rb.id`, เพิ่ม `returned_by_name` ใน export |
+
+#### Frontend Changes
+
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `services/api.ts` | `saveReturnOrders(returns, userId?)` — inject `returned_by` ใน payload |
+| `pages/ReturnManagementPage.tsx` | ส่ง `user.id` ทุกจุดที่เรียก `saveReturnOrders` (4 จุด) |
+| | เพิ่มคอลัมน์ **"ผู้อัปเดต"** ในตาราง Verified Orders |
+| | เพิ่ม **"ผู้อัปเดต"** ใน CSV export (คอลัมน์สุดท้าย) |
+
+#### VerifiedListTable — คอลัมน์ใหม่
+
+| คอลัมน์ | แหล่งข้อมูล | หมายเหตุ |
+|---|---|---|
+| ผู้อัปเดต | `returned_by_name` (JOIN users) | แสดงชื่อผู้ดำเนินการ, "-" ถ้าไม่มี |
+
+### COD Record Validation — ตรวจสอบยอด COD ก่อนตีกลับ
+
+เพิ่มการตรวจสอบตาราง `cod_records` ขณะ Bulk Import เพื่อเตือนเมื่อ tracking number มียอด COD อยู่แล้ว
+
+#### Validation Flow (4 ขั้นตอน)
+
+| ขั้นตอน | ตรวจสอบ | ผลเมื่อไม่ผ่าน |
+|---|---|---|
+| 1 | `order_tracking_numbers` — tracking มีอยู่ในระบบ? | ❌ Error (แดง): "ไม่พบเลข Tracking ในระบบ" |
+| 2 | `order_boxes` — กล่องสินค้ามี? | ❌ Error (แดง): "ไม่พบกล่องสินค้า" |
+| 3 | `order_boxes.return_status` — มีสถานะตีกลับอยู่แล้ว? | ⚠️ Warning (เหลือง): แจ้งสถานะปัจจุบัน |
+| 4 | `cod_records` — มียอด COD? | ❌ COD Warning (แดง): "ออเดอร์นี้มียอด COD แล้ว (฿X)" + checkbox override |
+
+#### Backend — `validate_return_candidates.php`
+
+```php
+// Step 4: Check cod_records
+SELECT id, cod_amount, received_amount, status
+FROM cod_records WHERE tracking_number = ? LIMIT 1
+```
+
+ถ้าพบ → ส่ง `hasCodRecord: true`, `isCodWarning: true`, `codMessage: "ออเดอร์นี้มียอด COD แล้ว (฿X,XXX.XX)"`
+
+#### Frontend — `BulkReturnImport.tsx`
+
+| Feature | รายละเอียด |
+|---|---|
+| Status ใหม่ | `cod_warning` — แสดงแถวสีแดง, ❌ icon |
+| Error message | "ออเดอร์นี้มียอด COD แล้ว (฿4,500.00)" |
+| Checkbox override | "ดำเนินการอัปเดตเป็นตีกลับต่อ" |
+| เมื่อ ✅ checkbox | เปลี่ยน status → `valid`/`warning`, อนุญาตนำเข้า |
+| เมื่อ ❎ uncheck | กลับเป็น `cod_warning`, block นำเข้า |
+
+#### UX Behavior
+
+- ปุ่ม **"นำเข้าข้อมูล"** จะ disabled จนกว่า cod_warning ทุกแถวจะถูก override
+- Counter สีแดง (❌) จะรวม `error` + `cod_warning` ที่ยังไม่ override
+- เมื่อ override แล้ว → จะนับรวมใน `validCount` หรือ `warningCount` แทน
+
+### Confirmation Modal — แทน `window.confirm()`
+
+แทนที่ `window.confirm()` ด้วย custom modal เนื่องจาก `window.confirm()` ไม่แสดงผลใน embedded browser
+
+#### การเปลี่ยนแปลง
+
+| ก่อน | หลัง |
+|---|---|
+| `window.confirm('ยืนยันนำเข้า N รายการ?')` | Custom modal พร้อมสรุปข้อมูล |
+| `alert('ตรวจสอบไม่สำเร็จ')` | Auto-dismiss error toast (4 วินาที) |
+
+#### Modal Content
+
+- **โหมด**: แสดงชื่อโหมดปัจจุบัน (กำลังตีกลับ / เข้าคลังแล้ว / สภาพดี / เสียหาย / สูญหาย)
+- **จำนวนที่จะนำเข้า**: แสดง `importableCount` (valid + warning)
+- **สถานะซ้ำ**: แสดงจำนวน `warningCount` ที่จะ overwrite (ถ้ามี)
+- **ปุ่ม**: "ยกเลิก" / "ยืนยันนำเข้า"
+- **Backdrop click**: ปิด modal
+
+#### State ใหม่
+
+```tsx
+const [showConfirmModal, setShowConfirmModal] = useState(false);
+const [validateError, setValidateError] = useState<string | null>(null);
+```
+
+### Status Filter — กรอง Validation Status
+
+เพิ่มฟีเจอร์ให้คลิกที่ icon status counter เพื่อกรองแสดงเฉพาะแถวที่มีสถานะตรงกัน
+
+#### การทำงาน
+
+| Action | ผลลัพธ์ |
+|---|---|
+| คลิก ✅ (valid) | แสดงเฉพาะแถว "พร้อมนำเข้า" |
+| คลิก ⚠️ (warning) | แสดงเฉพาะแถว "มีสถานะซ้ำ" |
+| คลิก ⚠️ (duplicate) | แสดงเฉพาะแถว "ซ้ำในชุดนี้" |
+| คลิก ❌ (error) | แสดงเฉพาะแถว error + cod_warning |
+| คลิกอีกครั้ง | ล้างตัวกรอง (แสดงทั้งหมด) |
+| คลิก "✕ ล้าง" | ล้างตัวกรอง |
+
+#### UI
+
+- ปุ่มที่ active จะมี **ring highlight** + สีพื้นหลัง
+- ปุ่ม **"✕ ล้าง"** แสดงเมื่อมี filter active
+- ใช้ `rows.map()` + early return `null` สำหรับแถวที่ไม่ตรงกับ filter
+
+#### State
+
+```tsx
+const [statusFilter, setStatusFilter] = useState<ValidationStatus | 'all'>('all');
+```
+
+### Bug Fix — CODManagementPage tbody whitespace
+
+แก้ไข React hydration warning "whitespace text nodes cannot be a child of `<tbody>`" ใน `CODManagementPage.tsx` line 1349
+
+- **สาเหตุ**: `))}`  กับ `</tbody>` อยู่บรรทัดเดียวกันพร้อม whitespace คั่น → React ตรวจจับเป็น text node
+- **แก้ไข**: แยก `</tbody>` ไปบรรทัดใหม่
+

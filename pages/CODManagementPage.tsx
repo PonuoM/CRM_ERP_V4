@@ -1346,7 +1346,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                                 </tr>
                               )}
                             </React.Fragment>
-                          ))}                      </tbody>
+                          ))}
+                        </tbody>
                     </table>
                   </div>
                   {/* Pagination */}

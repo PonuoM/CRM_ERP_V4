@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { apiFetch } from '../services/api';
 import {
   ClipboardList,
@@ -28,6 +28,8 @@ import {
   UserCheck,
   Users,
   Building2,
+  FileSpreadsheet,
+  Upload,
 } from 'lucide-react';
 import { User } from '../types';
 import {
@@ -1699,9 +1701,252 @@ const CreatorCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ c
   );
 };
 
+// ======== COD File Check Tab ========
+interface CODProblem {
+  tracking_number: string;
+  order_id: string;
+  box_number: number;
+  collection_amount: number;
+  current_collected: number;
+  waived_amount: number;
+  csv_cod_amount: number;
+  projected_total: number;
+  exceed_by: number;
+  order_status: string;
+  order_total: number;
+  customer_name: string;
+}
+
+interface CODCheckSummary {
+  total: number;
+  ok: number;
+  no_box: number;
+  non_cod: number;
+  exceed: number;
+}
+
+const CODFileCheckTab: React.FC<{ companyId: number }> = ({ companyId }) => {
+  const [file, setFile] = useState<File | null>(null);
+  const [parsedItems, setParsedItems] = useState<{ tracking_number: string; cod_amount: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [problems, setProblems] = useState<CODProblem[]>([]);
+  const [summary, setSummary] = useState<CODCheckSummary | null>(null);
+  const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    setProblems([]);
+    setSummary(null);
+    setError('');
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+      const items: { tracking_number: string; cod_amount: number }[] = [];
+      for (const line of lines) {
+        const parts = line.split(',');
+        if (parts.length >= 2) {
+          const tn = parts[0].trim();
+          const amt = parseFloat(parts[1].trim());
+          if (tn && !isNaN(amt)) {
+            items.push({ tracking_number: tn, cod_amount: amt });
+          }
+        }
+      }
+      setParsedItems(items);
+    };
+    reader.readAsText(f);
+  };
+
+  const handleCheck = async () => {
+    if (parsedItems.length === 0) {
+      setError('ไม่พบข้อมูลในไฟล์ กรุณาเลือกไฟล์ CSV ที่มีรูปแบบ: tracking_number,cod_amount');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiFetch('Orders/check_cod_file.php', {
+        method: 'POST',
+        body: JSON.stringify({ items: parsedItems, company_id: companyId }),
+      });
+      setProblems(res.problems || []);
+      setSummary(res.summary || null);
+    } catch (err: any) {
+      console.error('Check COD file failed:', err);
+      setError(err.message || 'เกิดข้อผิดพลาดในการตรวจสอบ');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setFile(null);
+    setParsedItems([]);
+    setProblems([]);
+    setSummary(null);
+    setError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const formatAmount = (n: number) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2 }).format(n);
+
+  return (
+    <div className="space-y-5">
+      {/* Upload Area */}
+      <div className="bg-white rounded-xl border border-emerald-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 bg-emerald-50/50 border-b border-emerald-100">
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+            <h2 className="font-semibold text-emerald-900">ตรวจสอบไฟล์ยอด COD</h2>
+          </div>
+          <p className="text-xs text-emerald-600 mt-1">อัปโหลดไฟล์ CSV ที่มีรูปแบบ: tracking_number,cod_amount เพื่อตรวจว่า tracking ไหนจะทำให้ยอด collected เกิน collection_amount</p>
+        </div>
+        <div className="p-5">
+          <div className="flex items-center gap-4">
+            <label
+              className="flex items-center gap-2 px-5 py-3 bg-emerald-50 border-2 border-dashed border-emerald-300 rounded-xl cursor-pointer hover:bg-emerald-100 transition text-sm font-medium text-emerald-700"
+            >
+              <Upload className="w-5 h-5" />
+              {file ? file.name : 'เลือกไฟล์ CSV...'}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.txt"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+            </label>
+            {parsedItems.length > 0 && (
+              <span className="text-sm text-gray-500">อ่านได้ <strong className="text-emerald-700">{parsedItems.length}</strong> รายการ</span>
+            )}
+            <div className="flex-1" />
+            {file && (
+              <button
+                onClick={handleReset}
+                className="px-4 py-2 text-sm text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+              >
+                ล้าง
+              </button>
+            )}
+            <button
+              onClick={handleCheck}
+              disabled={loading || parsedItems.length === 0}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl shadow hover:shadow-md transition font-medium text-sm disabled:opacity-50"
+            >
+              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              {loading ? 'กำลังตรวจสอบ...' : 'ตรวจสอบ'}
+            </button>
+          </div>
+          {error && (
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <p className="text-xs text-gray-500">Tracking ทั้งหมด</p>
+            <p className="text-2xl font-bold text-gray-800 mt-1">{summary.total}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-green-200 p-4 shadow-sm">
+            <p className="text-xs text-green-600">✅ ผ่าน (ไม่เกิน)</p>
+            <p className="text-2xl font-bold text-green-700 mt-1">{summary.ok}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-blue-200 p-4 shadow-sm">
+            <p className="text-xs text-blue-600">⏭️ ไม่มี order_boxes</p>
+            <p className="text-2xl font-bold text-blue-700 mt-1">{summary.no_box}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-purple-200 p-4 shadow-sm">
+            <p className="text-xs text-purple-600">⏭️ Non-COD (skip)</p>
+            <p className="text-2xl font-bold text-purple-700 mt-1">{summary.non_cod}</p>
+          </div>
+          <div className={`bg-white rounded-xl border p-4 shadow-sm ${summary.exceed > 0 ? 'border-red-300 bg-red-50/30' : 'border-gray-200'}`}>
+            <p className={`text-xs ${summary.exceed > 0 ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>❌ จะเกิน (trigger ระเบิด)</p>
+            <p className={`text-2xl font-bold mt-1 ${summary.exceed > 0 ? 'text-red-700' : 'text-gray-700'}`}>{summary.exceed}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Problems Table */}
+      {summary && summary.exceed === 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+          <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
+          <p className="text-green-800 font-semibold">ไม่พบปัญหา</p>
+          <p className="text-green-600 text-sm mt-1">ไฟล์ COD นี้สามารถนำเข้าได้โดยไม่เกิด trigger error</p>
+        </div>
+      )}
+
+      {problems.length > 0 && (
+        <div className="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 bg-red-50/50 border-b border-red-100">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600" />
+              <h3 className="font-semibold text-red-800 text-sm">Tracking ที่จะทำให้ error ({problems.length} รายการ)</h3>
+            </div>
+            <p className="text-xs text-red-600 mt-1">เหตุผล: collected_amount + waived_amount จะเกิน collection_amount — มักเกิดจากออเดอร์ถูก mark ตีกลับทำให้ collection_amount เหลือ 0</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50/80 text-left">
+                  <th className="px-3 py-2.5 font-semibold text-gray-600">Tracking</th>
+                  <th className="px-3 py-2.5 font-semibold text-gray-600">Order ID</th>
+                  <th className="px-3 py-2.5 font-semibold text-gray-600">ลูกค้า</th>
+                  <th className="px-3 py-2.5 font-semibold text-gray-600">สถานะ</th>
+                  <th className="px-3 py-2.5 font-semibold text-gray-600 text-right">Collection</th>
+                  <th className="px-3 py-2.5 font-semibold text-gray-600 text-right">Collected ปัจจุบัน</th>
+                  <th className="px-3 py-2.5 font-semibold text-gray-600 text-right">Waived</th>
+                  <th className="px-3 py-2.5 font-semibold text-gray-600 text-right">ยอด COD ไฟล์</th>
+                  <th className="px-3 py-2.5 font-semibold text-gray-600 text-right">ยอดรวมจะเป็น</th>
+                  <th className="px-3 py-2.5 font-semibold text-red-600 text-right">เกินเท่าไร</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {problems.map((p, idx) => (
+                  <tr key={idx} className="hover:bg-red-50/30 transition-colors">
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-700">{p.tracking_number}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="font-mono text-xs text-blue-600 font-medium">{p.order_id}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-700 text-xs max-w-[140px] truncate">{p.customer_name || '-'}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        p.order_status === 'Returned' ? 'bg-orange-100 text-orange-700' :
+                        p.order_status === 'Cancelled' ? 'bg-red-100 text-red-700' :
+                        p.order_status === 'Delivered' ? 'bg-green-100 text-green-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>{p.order_status}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-xs">{formatAmount(p.collection_amount)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-xs">{formatAmount(p.current_collected)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-xs">{formatAmount(p.waived_amount)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-xs font-semibold text-emerald-700">{formatAmount(p.csv_cod_amount)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-xs font-semibold">{formatAmount(p.projected_total)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-xs font-bold text-red-600">+{formatAmount(p.exceed_by)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ======== Main Page ========
 const CheckOrderPage: React.FC<CheckOrderPageProps> = ({ currentUser }) => {
-  const [activeMainTab, setActiveMainTab] = useState<'classification' | 'promo-check' | 'creator-check' | 'settings'>('classification');
+  const [activeMainTab, setActiveMainTab] = useState<'classification' | 'promo-check' | 'creator-check' | 'settings' | 'cod-check'>('classification');
 
   // Company selector state (Super Admin only)
   const isSuperAdmin = currentUser?.role === 'Super Admin';
@@ -1796,6 +2041,17 @@ const CheckOrderPage: React.FC<CheckOrderPageProps> = ({ currentUser }) => {
           <Settings className="w-4 h-4" />
           ตั้งค่ายกเลิก
         </button>
+        <button
+          onClick={() => setActiveMainTab('cod-check')}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
+            activeMainTab === 'cod-check'
+              ? 'border-emerald-500 text-emerald-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          ตรวจสอบไฟล์ COD
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -1805,6 +2061,8 @@ const CheckOrderPage: React.FC<CheckOrderPageProps> = ({ currentUser }) => {
         <PromoCheckTab currentUser={currentUser} companyId={effectiveCompanyId!} />
       ) : activeMainTab === 'creator-check' ? (
         <CreatorCheckTab currentUser={currentUser} companyId={effectiveCompanyId!} />
+      ) : activeMainTab === 'cod-check' ? (
+        <CODFileCheckTab companyId={effectiveCompanyId!} />
       ) : (
         <SettingsTab />
       )}

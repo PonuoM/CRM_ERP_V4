@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { UploadCloud, CheckCircle, XCircle, AlertTriangle, Plus, Trash2, Loader2, Clipboard } from 'lucide-react';
 import { validateReturnCandidates } from '../services/api';
 
-type ValidationStatus = 'valid' | 'duplicate' | 'error' | 'unchecked' | 'warning';
+type ValidationStatus = 'valid' | 'duplicate' | 'error' | 'unchecked' | 'warning' | 'cod_warning';
 
 interface RowData {
     id: number;
@@ -14,6 +14,9 @@ interface RowData {
     message: string;
     subOrderId?: string;
     foundStatus?: string;
+    hasCodRecord?: boolean;
+    codMessage?: string;
+    codOverride?: boolean; // User acknowledged COD warning via checkbox
 }
 
 interface BulkReturnImportProps {
@@ -51,6 +54,13 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
     const [isVerified, setIsVerified] = useState(false);
     const [validating, setValidating] = useState(false);
     const [importing, setImporting] = useState(false);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [validateError, setValidateError] = useState<string | null>(null);
+    const [statusFilter, setStatusFilter] = useState<ValidationStatus | 'all'>('all');
+
+    const toggleFilter = (status: ValidationStatus | 'all') => {
+        setStatusFilter(prev => prev === status ? 'all' : status);
+    };
 
     const handleInputChange = (index: number, field: 'trackingNumber' | 'note' | 'extraValue', value: string) => {
         const newRows = [...rows];
@@ -59,6 +69,9 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
             newRows[index].status = 'unchecked';
             newRows[index].message = '';
             newRows[index].subOrderId = undefined;
+            newRows[index].hasCodRecord = undefined;
+            newRows[index].codMessage = undefined;
+            newRows[index].codOverride = undefined;
         } else if (field === 'note') {
             newRows[index].note = value;
         } else {
@@ -121,6 +134,29 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
         setRows(rows.filter((_, i) => i !== index));
     }
 
+    const handleCodOverride = (index: number, checked: boolean) => {
+        const newRows = [...rows];
+        newRows[index].codOverride = checked;
+        // If override is checked, treat as importable (change status from cod_warning to valid/warning)
+        if (checked && newRows[index].status === 'cod_warning') {
+            // Keep the COD info but allow import
+            // Check if it also had a return_status warning
+            if (newRows[index].foundStatus) {
+                newRows[index].status = 'warning';
+            } else {
+                newRows[index].status = 'valid';
+            }
+        } else if (!checked && newRows[index].hasCodRecord) {
+            // Re-apply cod_warning
+            newRows[index].status = 'cod_warning';
+        }
+        setRows(newRows);
+        // Re-evaluate isVerified
+        const filledRows = newRows.filter(r => r.trackingNumber);
+        const allImportable = filledRows.every(r => r.status === 'valid' || r.status === 'warning');
+        setIsVerified(allImportable);
+    };
+
     const handleValidate = async () => {
         setValidating(true);
         try {
@@ -166,6 +202,21 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                         row.message = res.message;
                         row.foundStatus = res.foundStatus;
                     }
+
+                    // COD record check — override status to cod_warning if applicable
+                    if (res.hasCodRecord && res.isCodWarning) {
+                        row.hasCodRecord = true;
+                        row.codMessage = res.codMessage || 'ออเดอร์นี้มียอด COD แล้ว';
+                        // Only block if row was valid/warning (don't override existing errors)
+                        if (row.status === 'valid' || row.status === 'warning') {
+                            row.status = 'cod_warning';
+                            row.codOverride = false;
+                            allValid = false;
+                        }
+                    } else {
+                        row.hasCodRecord = false;
+                        row.codOverride = undefined;
+                    }
                 });
             } else {
                 allValid = false;
@@ -199,27 +250,38 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
 
         } catch (error) {
             console.error(error);
-            alert('ตรวจสอบไม่สำเร็จ');
+            setValidateError('ตรวจสอบไม่สำเร็จ');
+            setTimeout(() => setValidateError(null), 4000);
         } finally {
             setValidating(false);
         }
     };
 
-    const { validCount, warningCount, duplicateCount, errorCount } = useMemo(() => {
+    const { validCount, warningCount, duplicateCount, errorCount, codWarningCount } = useMemo(() => {
         return rows.reduce((acc, row) => {
             if (row.trackingNumber) {
                 if (row.status === 'valid') acc.validCount++;
                 if (row.status === 'warning') acc.warningCount++;
                 if (row.status === 'duplicate') acc.duplicateCount++;
                 if (row.status === 'error') acc.errorCount++;
+                if (row.status === 'cod_warning') acc.codWarningCount++;
             }
             return acc;
-        }, { validCount: 0, warningCount: 0, duplicateCount: 0, errorCount: 0 });
+        }, { validCount: 0, warningCount: 0, duplicateCount: 0, errorCount: 0, codWarningCount: 0 });
     }, [rows]);
 
+    // Can import if verified OR all cod_warnings have been overridden
+    const importableCount = validCount + warningCount;
+    const canImport = (isVerified || (codWarningCount === 0 && errorCount === 0 && duplicateCount === 0)) && importableCount > 0;
+
+    const handleRequestImport = () => {
+        if (!canImport) return;
+        setShowConfirmModal(true);
+    };
+
     const handleExecuteImport = async () => {
-        if (!isVerified || (validCount === 0 && warningCount === 0)) return;
-        if (!window.confirm(`ยืนยันนำเข้า ${validCount + warningCount} รายการ?`)) return;
+        setShowConfirmModal(false);
+        if (!canImport) return;
 
         setImporting(true);
         try {
@@ -273,13 +335,46 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <div className="flex gap-4 text-sm mr-2">
-                        <span className="flex items-center gap-1 text-green-600"><CheckCircle size={16} /> {validCount}</span>
+                    <div className="flex gap-1 text-sm mr-2">
+                        <button
+                            onClick={() => toggleFilter('valid')}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all cursor-pointer hover:bg-green-50 ${statusFilter === 'valid' ? 'bg-green-100 ring-2 ring-green-400' : ''} text-green-600`}
+                            title="แสดงเฉพาะพร้อมนำเข้า"
+                        >
+                            <CheckCircle size={16} /> {validCount}
+                        </button>
                         {warningCount > 0 && (
-                            <span className="flex items-center gap-1 text-yellow-600"><AlertTriangle size={16} /> {warningCount}</span>
+                            <button
+                                onClick={() => toggleFilter('warning')}
+                                className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all cursor-pointer hover:bg-yellow-50 ${statusFilter === 'warning' ? 'bg-yellow-100 ring-2 ring-yellow-400' : ''} text-yellow-600`}
+                                title="แสดงเฉพาะมีสถานะซ้ำ"
+                            >
+                                <AlertTriangle size={16} /> {warningCount}
+                            </button>
                         )}
-                        <span className="flex items-center gap-1 text-yellow-600"><AlertTriangle size={16} /> {duplicateCount}</span>
-                        <span className="flex items-center gap-1 text-red-600"><XCircle size={16} /> {errorCount}</span>
+                        <button
+                            onClick={() => toggleFilter('duplicate')}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all cursor-pointer hover:bg-orange-50 ${statusFilter === 'duplicate' ? 'bg-orange-100 ring-2 ring-orange-400' : ''} text-orange-500`}
+                            title="แสดงเฉพาะซ้ำ"
+                        >
+                            <AlertTriangle size={16} /> {duplicateCount}
+                        </button>
+                        <button
+                            onClick={() => toggleFilter('error')}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all cursor-pointer hover:bg-red-50 ${statusFilter === 'error' || statusFilter === 'cod_warning' ? 'bg-red-100 ring-2 ring-red-400' : ''} text-red-600`}
+                            title="แสดงเฉพาะ Error / COD"
+                        >
+                            <XCircle size={16} /> {errorCount + codWarningCount}
+                        </button>
+                        {statusFilter !== 'all' && (
+                            <button
+                                onClick={() => setStatusFilter('all')}
+                                className="flex items-center gap-1 px-2 py-1 rounded-md text-gray-500 hover:bg-gray-100 transition-all text-xs"
+                                title="ล้างตัวกรอง"
+                            >
+                                ✕ ล้าง
+                            </button>
+                        )}
                     </div>
 
                     <button
@@ -293,9 +388,9 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                     </button>
 
                     <button
-                        onClick={handleExecuteImport}
-                        disabled={!isVerified || (validCount === 0 && warningCount === 0) || importing || validating}
-                        className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${!isVerified || (validCount === 0 && warningCount === 0) ? 'bg-gray-300 text-gray-500' : 'bg-green-600 text-white hover:bg-green-700'
+                        onClick={handleRequestImport}
+                        disabled={!canImport || importing || validating}
+                        className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${!canImport ? 'bg-gray-300 text-gray-500' : 'bg-green-600 text-white hover:bg-green-700'
                             }`}
                     >
                         {importing ? <Loader2 className="animate-spin" size={18} /> : <UploadCloud size={18} />}
@@ -321,8 +416,18 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
-                        {rows.map((row, index) => (
-                            <tr key={row.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
+                        {rows.map((row, index) => {
+                            // Apply status filter
+                            if (statusFilter !== 'all') {
+                                if (statusFilter === 'error') {
+                                    // Error filter includes both 'error' and 'cod_warning'
+                                    if (row.status !== 'error' && row.status !== 'cod_warning') return null;
+                                } else if (row.status !== statusFilter) {
+                                    return null;
+                                }
+                            }
+                            return (
+                            <tr key={row.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'} ${row.status === 'cod_warning' ? '!bg-red-50/60' : ''}`}>
                                 <td className="px-4 py-2 text-sm text-gray-500">{index + 1}</td>
                                 <td className="px-4 py-2">
                                     <input
@@ -331,7 +436,7 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                                         onChange={(e) => handleInputChange(index, 'trackingNumber', e.target.value)}
                                         onPaste={handlePaste}
                                         data-index={index}
-                                        className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${row.status === 'error' ? 'bg-red-50 border-red-300' :
+                                        className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${row.status === 'error' || row.status === 'cod_warning' ? 'bg-red-50 border-red-300' :
                                             row.status === 'duplicate' ? 'bg-yellow-50 border-yellow-300' : ''
                                             }`}
                                         placeholder="เลข Tracking"
@@ -377,29 +482,50 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                                     {row.subOrderId || '-'}
                                 </td>
                                 <td className="px-4 py-2">
-                                    <div className="flex items-center text-sm">
-                                        {row.status === 'valid' && (
-                                            <span className="text-green-600 flex items-center gap-1">
-                                                <CheckCircle size={14} /> พร้อมนำเข้า
-                                            </span>
-                                        )}
-                                        {row.status === 'warning' && (
-                                            <span className="text-yellow-600 flex items-center gap-1">
-                                                <AlertTriangle size={14} /> {row.message}
-                                            </span>
-                                        )}
-                                        {row.status === 'error' && (
-                                            <span className="text-red-600 flex items-center gap-1">
-                                                <XCircle size={14} /> {row.message}
-                                            </span>
-                                        )}
-                                        {row.status === 'duplicate' && (
-                                            <span className="text-orange-600 flex items-center gap-1">
-                                                <AlertTriangle size={14} /> {row.message}
-                                            </span>
-                                        )}
-                                        {row.status === 'unchecked' && row.trackingNumber && (
-                                            <span className="text-gray-400 italic">รอตรวจสอบ</span>
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex items-center text-sm">
+                                            {row.status === 'valid' && (
+                                                <span className="text-green-600 flex items-center gap-1">
+                                                    <CheckCircle size={14} /> พร้อมนำเข้า
+                                                </span>
+                                            )}
+                                            {row.status === 'warning' && (
+                                                <span className="text-yellow-600 flex items-center gap-1">
+                                                    <AlertTriangle size={14} /> {row.message}
+                                                </span>
+                                            )}
+                                            {row.status === 'error' && (
+                                                <span className="text-red-600 flex items-center gap-1">
+                                                    <XCircle size={14} /> {row.message}
+                                                </span>
+                                            )}
+                                            {row.status === 'cod_warning' && (
+                                                <span className="text-red-600 flex items-center gap-1">
+                                                    <XCircle size={14} /> {row.codMessage || 'ออเดอร์นี้มียอด COD แล้ว'}
+                                                </span>
+                                            )}
+                                            {row.status === 'duplicate' && (
+                                                <span className="text-orange-600 flex items-center gap-1">
+                                                    <AlertTriangle size={14} /> {row.message}
+                                                </span>
+                                            )}
+                                            {row.status === 'unchecked' && row.trackingNumber && (
+                                                <span className="text-gray-400 italic">รอตรวจสอบ</span>
+                                            )}
+                                        </div>
+                                        {/* COD override checkbox — shown for cod_warning OR valid/warning rows that had COD */}
+                                        {row.hasCodRecord && (row.status === 'cod_warning' || row.codOverride) && (
+                                            <label className="flex items-center gap-1.5 cursor-pointer group mt-0.5">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={row.codOverride || false}
+                                                    onChange={(e) => handleCodOverride(index, e.target.checked)}
+                                                    className="w-3.5 h-3.5 rounded border-red-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                                                />
+                                                <span className="text-[11px] text-red-500 group-hover:text-red-700 select-none">
+                                                    ดำเนินการอัปเดตเป็นตีกลับต่อ
+                                                </span>
+                                            </label>
                                         )}
                                     </div>
                                 </td>
@@ -412,7 +538,8 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                                     </button>
                                 </td>
                             </tr>
-                        ))}
+                            );
+                        })}
                     </tbody>
                 </table>
                 <div className="mt-4 flex justify-center">
@@ -424,6 +551,65 @@ const BulkReturnImport: React.FC<BulkReturnImportProps> = ({ mode, onImport }) =
                     </button>
                 </div>
             </div>
+
+            {/* Validate error toast */}
+            {validateError && (
+                <div className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm flex items-center gap-2 animate-pulse z-50">
+                    <XCircle size={16} /> {validateError}
+                </div>
+            )}
+
+            {/* Confirmation Modal */}
+            {showConfirmModal && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999]" onClick={() => setShowConfirmModal(false)}>
+                    <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                                <UploadCloud className="text-green-600" size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-800">ยืนยันนำเข้าข้อมูล</h3>
+                                <p className="text-sm text-gray-500">กรุณาตรวจสอบข้อมูลก่อนดำเนินการ</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-lg p-4 mb-5 space-y-2">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-gray-600">โหมด</span>
+                                <span className="font-medium text-gray-800">
+                                    {mode === 'returning' ? 'กำลังตีกลับ' : mode === 'returned' ? 'เข้าคลังแล้ว' : mode === 'good' ? 'สภาพดี' : mode === 'damaged' ? 'เสียหาย' : 'สูญหาย'}
+                                </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-gray-600">จำนวนที่จะนำเข้า</span>
+                                <span className="font-semibold text-green-600">{importableCount} รายการ</span>
+                            </div>
+                            {warningCount > 0 && (
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">มีสถานะซ้ำ (จะ overwrite)</span>
+                                    <span className="font-medium text-yellow-600">{warningCount} รายการ</span>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowConfirmModal(false)}
+                                className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={handleExecuteImport}
+                                className="flex-1 px-4 py-2.5 rounded-lg bg-green-600 text-white hover:bg-green-700 font-medium transition-colors flex items-center justify-center gap-2"
+                            >
+                                <UploadCloud size={18} />
+                                ยืนยันนำเข้า
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

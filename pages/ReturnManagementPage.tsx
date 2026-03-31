@@ -79,6 +79,8 @@ interface VerifiedOrder {
   total_boxes?: number;
   return_complete?: number;
   return_claim?: number;
+  returned_by?: number;
+  returned_by_name?: string;
 }
 
 const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
@@ -586,7 +588,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         return_claim: r.returnClaim ?? null,
       }));
 
-      const res = await saveReturnOrders(payload);
+      const res = await saveReturnOrders(payload, user.id);
       if (res && res.status === "success") {
         // Check if there are errors despite "success" status
         if (res.errors && res.errors.length > 0 && res.updatedCount === 0) {
@@ -963,7 +965,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
     try {
       setLoading(true);
-      const res = await saveReturnOrders(payload);
+      const res = await saveReturnOrders(payload, user.id);
       if (res && res.status === "success") {
         alert(`บันทึกข้อมูลเรียบร้อยแล้ว(${res.message})`);
         setMode("list");
@@ -1133,7 +1135,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         return_complete: 1,
         return_claim: v.return_claim ?? null,
       }));
-      const res = await saveReturnOrders(payload);
+      const res = await saveReturnOrders(payload, user.id);
       if (res && res.status === "success") {
         alert(`จบเคสสำเร็จ ${res.updatedCount || selected.length} รายการ`);
         setSelectedIds(new Set());
@@ -1370,6 +1372,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">สถานะ</th>
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">รายละเอียด</th>
                   <th className="px-4 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider">วันที่อัปเดต</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">ผู้อัปเดต</th>
                   <th className="px-4 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider">จัดการ</th>
                 </tr>
               </thead>
@@ -1446,6 +1449,9 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-center text-xs text-gray-500">
                         {new Date(item.updated_at || item.created_at).toLocaleString('th-TH')}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs text-gray-600">
+                        {(item as any).returned_by_name && (item as any).returned_by_name.trim() ? (item as any).returned_by_name.trim() : <span className="text-gray-300">-</span>}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-center">
                         <button
@@ -1582,7 +1588,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                             'ยืนยันจบเคส', 'ค่าเคลม',
                             'ราคากล่อง', 'ยอดเก็บได้',
                             'ชื่อสินค้า', 'จำนวน', 'ผู้ขาย',
-                            'วันที่บันทึก', 'ช่องทางชำระ',
+                            'วันที่บันทึก', 'ช่องทางชำระ', 'ผู้อัปเดต',
                           ];
                           // Group rows by order_id + box_number
                           let lastGroupKey = '';
@@ -1619,6 +1625,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               itemSeller,
                               isFirstRow ? (r.return_created_at ? new Date(r.return_created_at).toLocaleString('th-TH') : '-') : '',
                               isFirstRow ? (r.payment_method || '-') : '',
+                              isFirstRow ? (r.returned_by_name && r.returned_by_name.trim() ? r.returned_by_name.trim() : '-') : '',
                             ];
                           });
                           const csvContent = '\uFEFF' + headers.join(',') + '\n'
@@ -1982,7 +1989,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 mode={bulkImportMode}
                 onImport={async (items) => {
                   try {
-                    await saveReturnOrders(items);
+                    await saveReturnOrders(items, user.id);
                     alert("Import Successful!");
                     setIsBulkImportOpen(false);
 

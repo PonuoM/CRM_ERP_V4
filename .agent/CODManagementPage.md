@@ -120,6 +120,30 @@ matched = |difference| < 0.01
 | `order_slips` | สลิปชำระเงินของ order |
 | `orders` | ออเดอร์ (amount_paid, payment_status) |
 
+## Known Issues & Troubleshooting
+
+### Trigger Error: `collected + waived exceeds collection_amount`
+
+**อาการ:** `POST cod_documents` return 500 − `SQLSTATE[45000]: 1644 order_boxes: collected + waived exceeds collection_amount`
+
+**สาเหตุ:** Database trigger `trg_order_boxes_bi_enforce` (BEFORE INSERT/UPDATE บน `order_boxes`) enforce ว่า `collected_amount + waived_amount ≤ collection_amount` เมื่อโค้ด backend UPDATE `order_boxes.collected_amount` ด้วย subquery SUM จาก `cod_records` ยอดรวมจะเกินได้ในกรณี:
+
+| สถานการณ์ | ทำไมเกิน |
+|-----------|----------|
+| ออเดอร์ถูก mark ตีกลับ (Returned) | `collection_amount` ถูกปรับเป็น 0 แต่ขนส่งยังโอน COD มาให้ |
+| ออเดอร์ถูกยกเลิก (Cancelled) | `collection_amount` เป็น 0 แต่ COD ถูกเก็บไปแล้ว |
+| COD ซ้ำจากเอกสารเก่า | ยอด collected สะสมเกินกว่ายอดที่ต้องเก็บ |
+
+**เครื่องมือตรวจสอบ:** ใช้ tab **ตรวจสอบไฟล์ COD** ในหน้า **ตรวจสอบคำสั่งซื้อ** (`CheckOrderPage.tsx`, tab: `CODFileCheckTab`) อัปโหลด CSV ก่อนนำเข้าจริง ระบบจะบอกว่า tracking ไหนจะทำให้ trigger ระเบิด พร้อมแสดง Order ID + สถานะออเดอร์
+
+- Frontend: `CODFileCheckTab` ใน `pages/CheckOrderPage.tsx`
+- Backend: `api/Orders/check_cod_file.php`
+- Workflow: ดู `/check-order-guide` สำหรับ Flow รายละเอียด
+
+**แนวทางแก้ไข:**
+1. อัปเดต trigger บน production ให้อนุญาต excess COD (ตาม comment ในโค้ด `api/index.php` บรรทัด ~8753)
+2. หรือแก้ `collection_amount` ของ order_boxes ที่มีปัญหาให้รองรับยอดจริง
+
 ## Data Flow Summary
 ```
 Excel/CSV → Paste/Upload → ตารางแถว

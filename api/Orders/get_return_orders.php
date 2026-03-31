@@ -151,6 +151,8 @@ try {
             ob.collection_amount,
             ob.return_complete,
             ob.return_claim,
+            ob.returned_by,
+            CONCAT(COALESCE(rb.first_name, ''), ' ', COALESCE(rb.last_name, '')) as returned_by_name,
             otn.tracking_number,
             o.total_amount,
             o.order_date,
@@ -161,6 +163,7 @@ try {
             ON ob.order_id = otn.parent_order_id AND ob.box_number = otn.box_number
         LEFT JOIN orders o ON ob.order_id = o.id
         LEFT JOIN customers c ON o.customer_id = c.customer_id
+        LEFT JOIN users rb ON ob.returned_by = rb.id
         $whereClause
         ORDER BY ob.return_created_at DESC, ob.id DESC
         LIMIT ? OFFSET ?
