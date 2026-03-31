@@ -81,6 +81,7 @@ try {
         SET return_status = NULL,
             return_note = NULL,
             return_created_at = NULL,
+            returned_by = NULL,
             status = ?,
             collected_amount = 0,
             collection_amount = cod_amount,

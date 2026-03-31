@@ -20,6 +20,9 @@ try {
     $start_date = $_GET['start_date'] ?? null;
     $end_date = $_GET['end_date'] ?? null;
 
+    // Using o.order_date as primary grouping for summary, fallback to batch period for lumpsums.
+    $calcBaseDateExpr = "COALESCE(o.order_date, DATE(CONCAT(csb.for_year, '-', LPAD(csb.for_month, 2, '0'), '-01')), csb.created_at)";
+
     // Determine GROUP BY expression
     switch ($group_by) {
         case 'day':
@@ -37,47 +40,86 @@ try {
             break;
     }
 
-    $where = "WHERE 1=1";
-    $params = [];
+    $whereOrd = "o.id NOT REGEXP '-[0-9]+$'";
+    $whereCalc = "1=1";
+    $paramsOrd = [];
+    $paramsCalc = [];
 
     if ($company_id > 0) {
-        $where .= " AND o.company_id = ?";
-        $params[] = $company_id;
+        $whereOrd .= " AND o.company_id = ?";
+        $paramsOrd[] = $company_id;
+        $whereCalc .= " AND csb.company_id = ?";
+        $paramsCalc[] = $company_id;
     }
 
-    // Filter out sub-orders (e.g. 260101-00001abc-2)
-    $where .= " AND o.id NOT REGEXP '-[0-9]+$'";
+    $calcGroupExpr = str_replace('o.order_date', $calcBaseDateExpr, $groupExpr);
+    $calcGroupLabel = str_replace('o.order_date', $calcBaseDateExpr, $groupLabel);
 
     if ($start_date) {
-        $where .= " AND o.order_date >= ?";
-        $params[] = $start_date;
+        $whereOrd .= " AND o.order_date >= ?";
+        $paramsOrd[] = $start_date;
+        $whereCalc .= " AND $calcBaseDateExpr >= ?";
+        $paramsCalc[] = $start_date;
     }
     if ($end_date) {
-        $where .= " AND o.order_date <= ?";
-        $params[] = $end_date . ' 23:59:59';
+        $whereOrd .= " AND o.order_date <= ?";
+        $paramsOrd[] = $end_date . ' 23:59:59';
+        $whereCalc .= " AND $calcBaseDateExpr <= ?";
+        $paramsCalc[] = $end_date . ' 23:59:59';
     }
 
     $sql = "
+        WITH OrderData AS (
+            SELECT
+                $groupExpr as sort_period,
+                $groupLabel as period,
+                0 as calculated,
+                SUM(CASE WHEN o.payment_status = 'Approved' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN (o.payment_status != 'Approved' OR o.payment_status IS NULL) THEN 1 ELSE 0 END) as incomplete,
+                COUNT(*) as total,
+                0 as total_commission
+            FROM orders o
+            LEFT JOIN commission_stamp_orders cso ON cso.order_id = o.id
+            WHERE cso.id IS NULL AND $whereOrd
+            GROUP BY sort_period, period
+        ),
+        CalculatedData AS (
+            SELECT
+                $calcGroupExpr as sort_period,
+                $calcGroupLabel as period,
+                SUM(CASE WHEN cso.order_id != 'sum_commission' THEN 1 ELSE 0 END) as calculated,
+                0 as pending,
+                0 as incomplete,
+                SUM(CASE WHEN cso.order_id != 'sum_commission' THEN 1 ELSE 0 END) as total,
+                SUM(cso.total_commission) as total_commission
+            FROM (
+                SELECT batch_id, order_id, SUM(commission_amount) as total_commission
+                FROM commission_stamp_orders
+                GROUP BY batch_id, order_id
+            ) cso
+            JOIN commission_stamp_batches csb ON csb.id = cso.batch_id
+            LEFT JOIN orders o ON o.id = cso.order_id
+            WHERE $whereCalc
+            GROUP BY sort_period, period
+        )
         SELECT
-            $groupLabel as period,
-            SUM(CASE WHEN cso.id IS NOT NULL THEN 1 ELSE 0 END) as calculated,
-            SUM(CASE WHEN cso.id IS NULL AND o.payment_status = 'Approved' THEN 1 ELSE 0 END) as pending,
-            SUM(CASE WHEN cso.id IS NULL AND (o.payment_status != 'Approved' OR o.payment_status IS NULL) THEN 1 ELSE 0 END) as incomplete,
-            COUNT(*) as total,
-            SUM(CASE WHEN cso.id IS NOT NULL THEN COALESCE(cso.total_commission, 0) ELSE 0 END) as total_commission
-        FROM orders o
-        LEFT JOIN (
-            SELECT order_id, SUM(commission_amount) as total_commission, MIN(id) as id
-            FROM commission_stamp_orders
-            GROUP BY order_id
-        ) cso ON cso.order_id = o.id
-        $where
-        GROUP BY $groupExpr
-        ORDER BY period DESC
+            period,
+            SUM(calculated) as calculated,
+            SUM(pending) as pending,
+            SUM(incomplete) as incomplete,
+            SUM(total) as total,
+            SUM(total_commission) as total_commission
+        FROM (
+            SELECT * FROM OrderData
+            UNION ALL
+            SELECT * FROM CalculatedData
+        ) CombinedData
+        GROUP BY sort_period, period
+        ORDER BY sort_period DESC
     ";
 
     $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
+    $stmt->execute(array_merge($paramsOrd, $paramsCalc));
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Totals

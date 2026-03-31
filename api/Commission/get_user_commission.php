@@ -40,42 +40,69 @@ try {
 
     // Query: commission per user per period
     $sql = "
-        SELECT
+        WITH BaseData AS (
+            SELECT
             cso.user_id,
             u.first_name,
             u.last_name,
             u.username,
-            {$periodExpr} AS period,
-            COUNT(DISTINCT cso.order_id) AS order_count,
+            COALESCE(DATE(CONCAT(csb.for_year, '-', LPAD(csb.for_month, 2, '0'), '-01')), csb.created_at) AS effective_date,
+            COUNT(DISTINCT CASE WHEN cso.order_id != 'sum_commission' THEN cso.order_id END) AS order_count,
             COALESCE(SUM(cso.commission_amount), 0) AS total_commission
         FROM commission_stamp_orders cso
         JOIN commission_stamp_batches csb ON csb.id = cso.batch_id AND csb.company_id = ?
-        JOIN orders o ON o.id = cso.order_id
+        LEFT JOIN orders o ON o.id = cso.order_id
         LEFT JOIN users u ON u.id = cso.user_id
-        WHERE o.order_date >= ? AND o.order_date < DATE_ADD(?, INTERVAL 1 DAY)
-        GROUP BY cso.user_id, u.first_name, u.last_name, u.username, period
-        ORDER BY period DESC, total_commission DESC
+    )
+    SELECT
+        user_id,
+        first_name,
+        last_name,
+        username,
+        CASE 
+            WHEN ? = 'week' THEN DATE_FORMAT(effective_date, '%x-W%v')
+            WHEN ? = 'day' THEN DATE(effective_date)
+            ELSE DATE_FORMAT(effective_date, '%Y-%m')
+        END AS period,
+        SUM(order_count) AS order_count,
+        SUM(total_commission) AS total_commission
+    FROM BaseData
+    WHERE effective_date >= ? AND effective_date < DATE_ADD(?, INTERVAL 1 DAY)
+    GROUP BY user_id, first_name, last_name, username, period
+    ORDER BY period DESC, total_commission DESC
     ";
 
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([$company_id, $start_date, $end_date]);
+    $stmt->execute([$company_id, $group_by, $group_by, $start_date, $end_date]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Also get totals per user (across all periods in range)
     $sqlTotals = "
+        WITH BaseData AS (
+            SELECT
+                cso.user_id,
+                u.first_name,
+                u.last_name,
+                u.username,
+                COALESCE(DATE(CONCAT(csb.for_year, '-', LPAD(csb.for_month, 2, '0'), '-01')), csb.created_at) AS effective_date,
+                COUNT(DISTINCT CASE WHEN cso.order_id != 'sum_commission' THEN cso.order_id END) AS order_count,
+                COALESCE(SUM(cso.commission_amount), 0) AS total_commission
+            FROM commission_stamp_orders cso
+            JOIN commission_stamp_batches csb ON csb.id = cso.batch_id AND csb.company_id = ?
+            LEFT JOIN orders o ON o.id = cso.order_id
+            LEFT JOIN users u ON u.id = cso.user_id
+            GROUP BY cso.user_id, u.first_name, u.last_name, u.username, effective_date
+        )
         SELECT
-            cso.user_id,
-            u.first_name,
-            u.last_name,
-            u.username,
-            COUNT(DISTINCT cso.order_id) AS order_count,
-            COALESCE(SUM(cso.commission_amount), 0) AS total_commission
-        FROM commission_stamp_orders cso
-        JOIN commission_stamp_batches csb ON csb.id = cso.batch_id AND csb.company_id = ?
-        JOIN orders o ON o.id = cso.order_id
-        LEFT JOIN users u ON u.id = cso.user_id
-        WHERE o.order_date >= ? AND o.order_date < DATE_ADD(?, INTERVAL 1 DAY)
-        GROUP BY cso.user_id, u.first_name, u.last_name, u.username
+            user_id,
+            first_name,
+            last_name,
+            username,
+            SUM(order_count) AS order_count,
+            SUM(total_commission) AS total_commission
+        FROM BaseData
+        WHERE effective_date >= ? AND effective_date < DATE_ADD(?, INTERVAL 1 DAY)
+        GROUP BY user_id, first_name, last_name, username
         ORDER BY total_commission DESC
     ";
 

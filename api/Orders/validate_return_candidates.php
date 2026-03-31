@@ -110,6 +110,26 @@ try {
             $result['message'] = "เลข Tracking มีสถานะเป็น \"$thaiStatus\"";
         }
 
+        // 4. Check cod_records — if this tracking has COD data, flag it
+        $stmtCod = $pdo->prepare("
+            SELECT id, cod_amount, received_amount, status
+            FROM cod_records
+            WHERE tracking_number = ?
+            LIMIT 1
+        ");
+        $stmtCod->execute([$trackingNumber]);
+        $codRow = $stmtCod->fetch(PDO::FETCH_ASSOC);
+
+        if ($codRow) {
+            $result['hasCodRecord'] = true;
+            $result['codAmount'] = (float) $codRow['cod_amount'];
+            $result['isCodWarning'] = true;
+            $result['codMessage'] = 'ออเดอร์นี้มียอด COD แล้ว (฿' . number_format((float)$codRow['cod_amount'], 2) . ')';
+        } else {
+            $result['hasCodRecord'] = false;
+            $result['isCodWarning'] = false;
+        }
+
         $results[] = $result;
     }
 

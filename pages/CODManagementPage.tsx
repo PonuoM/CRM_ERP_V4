@@ -76,6 +76,7 @@ interface RowData {
   freebieValue?: number; // มูลค่าของแถม
   totalSlipAmount?: number; // ยอดชำระผ่านสลิปที่มีอยู่แล้ว
   boxCollectedAmount?: number; // ยอดเก็บแล้วจาก order_boxes
+  isReturnedBox?: boolean; // กล่องถูกตีกลับไปแล้ว
 }
 
 interface ExistingDocument {
@@ -616,6 +617,11 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               message += ` 🎁 มีของแถม ฿${apiResult.freebieValue.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
             }
 
+            if (apiResult.isBoxReturned) {
+              status = 'returned';
+              message = 'ตีกลับแล้ว (ติ๊ก "ข้าม" เพื่อยกเลิกตีกลับและนำเข้า)';
+            }
+
             validatedRows[index] = {
               ...row,
               status,
@@ -626,6 +632,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               amountPaid: apiResult.amountPaid,
               hasFreebie: apiResult.hasFreebie || false,
               freebieValue: apiResult.freebieValue || 0,
+              isReturnedBox: apiResult.isBoxReturned || false,
             };
           }
         }
@@ -678,6 +685,11 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
           if (!isValid) {
             status = 'pending';
             message = 'ระบุยอดเงินไม่ถูกต้อง';
+          }
+
+          if (firstRow.isReturnedBox) {
+            status = 'returned';
+            message = 'ตีกลับแล้ว (ติ๊ก "ข้าม" เพื่อยกเลิกตีกลับและนำเข้า)';
           }
 
           validatedRows[idx] = {
@@ -809,7 +821,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     // NEW: Include forceImport rows (pending status with forceImport checked)
     const readyRows = rows.filter(
       (row) => row.status === "matched" || row.status === "unmatched" ||
-        (row.status === "pending" && row.forceImport)
+        ((row.status === "pending" || row.isReturnedBox) && row.forceImport)
     );
     if (readyRows.length === 0) {
       toast.warning('ไม่มีรายการที่พร้อมนำเข้า', 'ต้องมีสถานะ matched, unmatched หรือติ๊กข้าม');
@@ -920,6 +932,27 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     const documentDateTime = `${documentDate} ${documentTime || "00:00"}:00`;
 
     try {
+      // --- NEW LOGIC: Revert returned orders first to prevent collected_amount overwrite ---
+      const revertedIds = new Set<string>();
+      for (const { row } of payloadRows) {
+        if (row.isReturnedBox && row.forceImport && row.orderId) {
+          const baseId = getBaseOrderId(row.orderId);
+          if (baseId && !revertedIds.has(baseId)) {
+            revertedIds.add(baseId);
+            try {
+              await apiFetch('Orders/revert_returned_order.php', {
+                method: 'POST',
+                body: JSON.stringify({ order_id: baseId, new_status: 'Pending' })
+              });
+              console.log(`Reverted returned order: ${baseId}`);
+            } catch (e) {
+              console.error(`Failed to revert returned order ${baseId}`, e);
+            }
+          }
+        }
+      }
+      // ----------------------------------------------
+
       let importResponse: any = null;
       if (importMode === 'new') {
         // POST - Create new document
@@ -1346,7 +1379,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                                 </tr>
                               )}
                             </React.Fragment>
-                          ))}                      </tbody>
+                          ))}
+                        </tbody>
                     </table>
                   </div>
                   {/* Pagination */}
@@ -1594,7 +1628,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                 // For 'existing' mode: require selected document
                 (importMode === 'existing' && !selectedDocumentId) ||
                 // Require at least one importable row (matched, unmatched, or pending+forceImport)
-                (validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length === 0)
+                (validCount + unmatchedCount + rows.filter(r => (r.status === 'pending' || r.isReturnedBox) && r.forceImport).length === 0)
               }
               className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
             >
@@ -1604,8 +1638,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                 : isSubmitting
                   ? "กำลังนำเข้า..."
                   : importMode === 'new'
-                    ? `สร้างเอกสารใหม่ (${validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length})`
-                    : `เพิ่มในเอกสาร (${validCount + unmatchedCount + rows.filter(r => r.status === 'pending' && r.forceImport).length})`
+                    ? `สร้างเอกสารใหม่ (${validCount + unmatchedCount + rows.filter(r => (r.status === 'pending' || r.isReturnedBox) && r.forceImport).length})`
+                    : `เพิ่มในเอกสาร (${validCount + unmatchedCount + rows.filter(r => (r.status === 'pending' || r.isReturnedBox) && r.forceImport).length})`
               }
             </button>
           </div>
@@ -1628,7 +1662,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                   <span>ข้าม</span>
                   {isVerified && (() => {
                     const visibleRows = filterStatus !== 'all' ? filteredRows : rows;
-                    const eligible = visibleRows.filter(r => (r.status === 'pending' || r.status === 'unmatched') && r.trackingNumber.trim());
+                    const eligible = visibleRows.filter(r => (r.status === 'pending' || r.status === 'unmatched' || r.isReturnedBox) && r.trackingNumber.trim());
                     if (eligible.length === 0) return null;
                     return (
                       <input
@@ -1701,8 +1735,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                   </td>
                   {/* NEW: Force import checkbox for pending/unmatched rows */}
                   <td className="px-2 py-1 text-center">
-                    {(row.status === 'pending' || row.status === 'unmatched') && row.trackingNumber.trim() ? (
-                      <label className="cursor-pointer" title="นำเข้าโดยไม่อัพเดท Order (เพื่อให้ยอดรวมตรงกับ Statement)">
+                    {(row.status === 'pending' || row.status === 'unmatched' || row.isReturnedBox) && row.trackingNumber.trim() ? (
+                      <label className="cursor-pointer" title={row.isReturnedBox ? "นำเข้าและกู้คืนสถานะตีกลับ" : "นำเข้าโดยไม่อัพเดท Order (เพื่อให้ยอดรวมตรงกับ Statement)"}>
                         <input
                           type="checkbox"
                           checked={row.forceImport || false}

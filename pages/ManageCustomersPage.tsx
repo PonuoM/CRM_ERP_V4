@@ -5,7 +5,7 @@ import { getCustomerStats, getOrderStats, listCustomers } from '@/services/api';
 import { mapCustomerFromApi } from '@/utils/customerMapper';
 import Spinner from '@/components/Spinner';
 import { onDataSync, DATA_SYNC_EVENTS } from '@/utils/dataSync';
-
+import MergeCustomersModal from '@/components/MergeCustomersModal';
 
 type OrdersFilterValue = 'all' | 'yes' | 'no';
 type DateRangeFilter = { start: string; end: string };
@@ -40,6 +40,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState<boolean>(false);
 
   // API Stats State
   const [apiCustomerStats, setApiCustomerStats] = useState<any>(null);
@@ -388,6 +389,17 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                 ล้างตัวกรอง
               </button>
             )}
+            <div className="flex-1" />
+            <button
+              onClick={() => setIsMergeModalOpen(true)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-purple-50 text-purple-700 hover:bg-purple-100 ml-auto"
+              title="รวมประวัติการสั่งซื้อสำหรับลูกค้าที่ซ้ำซ้อน"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              รวมข้อมูลลูกค้า
+            </button>
         </div>
         {showAdvanced && (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1005,6 +1017,17 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Merge Customers Modal */}
+      <MergeCustomersModal
+        isOpen={isMergeModalOpen}
+        onClose={() => setIsMergeModalOpen(false)}
+        companyId={currentUser.companyId}
+        onSuccess={() => {
+          // Trigger a silent table refresh so the newly merged orders count reflects immediately
+          setRefreshTrigger((prev) => prev + 1);
+        }}
+      />
     </div>
   );
 };

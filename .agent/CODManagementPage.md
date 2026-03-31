@@ -40,7 +40,7 @@ interface CODManagementPageProps {
 | `matched` | 🟢 เขียว | ยอดตรงกับ Order (หลังหัก slip + COD ที่เก็บแล้ว) |
 | `unmatched` | 🟡 เหลือง | พบ Order แต่ยอดไม่ตรง พร้อมแสดงส่วนต่าง |
 | `pending` | 🟠 ส้ม | ไม่พบ Tracking ในระบบ หรือยอดไม่ valid |
-| `returned` | 🔴 แดง | ถูก mark เป็น "ตีกลับ" หรือซ้ำในเอกสารอื่น (เก็บครบแล้ว) |
+| `returned` | 🔴 แดง | กล่องถูก mark เป็น "ตีกลับ" (สามารถติ๊ก "ข้าม" เพื่อยกเลิกตีกลับและนำเข้าได้) หรือซ้ำในเอกสารอื่น |
 | `unchecked` | ⬜ เทา | ยังไม่ได้ตรวจสอบ |
 
 #### สูตรเปรียบเทียบยอด (Single Tracking)
@@ -60,8 +60,9 @@ matched = |difference| < 0.01
   - **เอกสารอื่น + เก็บครบ** → status `returned` (block)
   - **เอกสารอื่น + ยังค้าง** → status `matched` (import ได้ เติมยอดที่เหลือ)
 
-### 4. Force Import (ข้าม)
-- สำหรับ row ที่ `pending` หรือ `unmatched` สามารถติ๊ก checkbox "ข้าม" เพื่อบังคับนำเข้า
+### 4. Force Import (ข้าม) & Returned Override
+- สำหรับ row ที่ `pending`, `unmatched` หรือ `returned` สามารถติ๊ก checkbox "ข้าม" เพื่อบังคับนำเข้า
+- ถ้าสถานะเดิมเป็น `returned` ระบบจะทำการเรียก API `revert_returned_order.php` เพื่อดึงสถานะกลับมาเป็น `Pending` ก่อนทำการนำเข้า (เพื่อป้องกันบั๊กยอด collected_amount ถูกรีเซ็ตเป็น 0)
 - บันทึกใน `cod_records` ด้วย `status = 'forced'` แต่ **ไม่อัพเดท Order**
 - มี check-all toggle สำหรับเลือก/ยกเลิกทั้งหมดที่แสดงอยู่
 
@@ -120,8 +121,32 @@ matched = |difference| < 0.01
 | `order_slips` | สลิปชำระเงินของ order |
 | `orders` | ออเดอร์ (amount_paid, payment_status) |
 
+## Known Issues & Troubleshooting
+
+### Trigger Error: `collected + waived exceeds collection_amount`
+
+**อาการ:** `POST cod_documents` return 500 − `SQLSTATE[45000]: 1644 order_boxes: collected + waived exceeds collection_amount`
+
+**สาเหตุ:** Database trigger `trg_order_boxes_bi_enforce` (BEFORE INSERT/UPDATE บน `order_boxes`) enforce ว่า `collected_amount + waived_amount ≤ collection_amount` เมื่อโค้ด backend UPDATE `order_boxes.collected_amount` ด้วย subquery SUM จาก `cod_records` ยอดรวมจะเกินได้ในกรณี:
+
+| สถานการณ์ | ทำไมเกิน |
+|-----------|----------|
+| ออเดอร์ถูก mark ตีกลับ (Returned) | `collection_amount` ถูกปรับเป็น 0 แต่ขนส่งยังโอน COD มาให้ |
+| ออเดอร์ถูกยกเลิก (Cancelled) | `collection_amount` เป็น 0 แต่ COD ถูกเก็บไปแล้ว |
+| COD ซ้ำจากเอกสารเก่า | ยอด collected สะสมเกินกว่ายอดที่ต้องเก็บ |
+
+**เครื่องมือตรวจสอบ:** ใช้ tab **ตรวจสอบไฟล์ COD** ในหน้า **ตรวจสอบคำสั่งซื้อ** (`CheckOrderPage.tsx`, tab: `CODFileCheckTab`) อัปโหลด CSV ก่อนนำเข้าจริง ระบบจะบอกว่า tracking ไหนจะทำให้ trigger ระเบิด พร้อมแสดง Order ID + สถานะออเดอร์
+
+- Frontend: `CODFileCheckTab` ใน `pages/CheckOrderPage.tsx`
+- Backend: `api/Orders/check_cod_file.php`
+- Workflow: ดู `/check-order-guide` สำหรับ Flow รายละเอียด
+
+**แนวทางแก้ไข:**
+1. อัปเดต trigger บน production ให้อนุญาต excess COD (ตาม comment ในโค้ด `api/index.php` บรรทัด ~8753)
+2. หรือแก้ `collection_amount` ของ order_boxes ที่มีปัญหาให้รองรับยอดจริง
+
 ## Data Flow Summary
-```
+```text
 Excel/CSV → Paste/Upload → ตารางแถว
                               ↓
                     กด "ตรวจสอบข้อมูล"
@@ -129,9 +154,11 @@ Excel/CSV → Paste/Upload → ตารางแถว
               API validate_cod_tracking
               + cod_batch_check.php
                               ↓
-                     แสดงผล matched/unmatched/pending
+                     แสดงผล matched/unmatched/pending/returned
                               ↓
                     กด "สร้างเอกสารใหม่" / "เพิ่มในเอกสาร"
+                              ↓
+            [ถ้ามีออเดอร์ตีกัลบที่กด "ข้าม"] → POST revert_returned_order.php (new_status=Pending)
                               ↓
               POST/PATCH cod_documents (สร้าง cod_records)
                               ↓

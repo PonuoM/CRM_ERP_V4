@@ -74,7 +74,9 @@ try {
             oi.quantity as item_quantity,
             oi.creator_id as item_creator_id,
             ui.first_name as item_creator_first_name,
-            ui.last_name as item_creator_last_name
+            ui.last_name as item_creator_last_name,
+            ob.returned_by,
+            CONCAT(COALESCE(rb.first_name, ''), ' ', COALESCE(rb.last_name, '')) as returned_by_name
         FROM order_boxes ob
         LEFT JOIN order_tracking_numbers otn
             ON ob.order_id = otn.parent_order_id AND ob.box_number = otn.box_number
@@ -83,6 +85,7 @@ try {
         LEFT JOIN users u ON o.creator_id = u.id
         LEFT JOIN order_items oi ON oi.order_id = ob.sub_order_id
         LEFT JOIN users ui ON oi.creator_id = ui.id
+        LEFT JOIN users rb ON ob.returned_by = rb.id
         $whereClause
         ORDER BY o.order_date DESC, ob.order_id, ob.box_number, oi.id
     ";

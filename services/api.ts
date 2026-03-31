@@ -351,6 +351,32 @@ export async function bulkDistributeCustomers(payload: {
   return await res.json();
 }
 
+export async function mergeCustomers(payload: {
+  mainCustomerId: string | number;
+  secondaryCustomerId: string | number;
+  companyId: number;
+}) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = `${apiBasePath.replace(/\/$/, "")}/customer/merge.php`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Merge failed: ${res.statusText}`);
+  }
+
+  return await res.json();
+}
+
 // Admin Page users (Active only)
 export interface AdminPageUser {
   id: number;
@@ -860,10 +886,14 @@ function enrichOrderWithBoxes(payload: any) {
   }
 }
 
-export async function saveReturnOrders(returns: any[]) {
+export async function saveReturnOrders(returns: any[], userId?: number) {
+  // Inject returned_by into each item if userId is provided
+  const enriched = userId
+    ? returns.map(r => ({ ...r, returned_by: r.returned_by ?? userId }))
+    : returns;
   return apiFetch("Orders/save_return_orders.php", {
     method: "POST",
-    body: JSON.stringify({ returns }),
+    body: JSON.stringify({ returns: enriched }),
   });
 }
 
