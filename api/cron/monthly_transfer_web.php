@@ -30,6 +30,7 @@ if ($inputKey !== $SECRET_KEY) {
 define('SKIP_AUTH', true);
 
 require_once __DIR__ . '/../config.php';
+ini_set('max_execution_time', '3600'); // 1 hour — override config's 120s for large batch
 
 // ========================
 // Parameters
@@ -48,6 +49,7 @@ echo "===========================================\n\n";
 
 try {
     $pdo = db_connect();
+    set_audit_context($pdo, 'monthly_cron', null);
     
     // Get companies to process
     if ($companyParam === 'all') {
@@ -331,7 +333,7 @@ foreach ($companies as $companyId) {
                         INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at)
                         VALUES (?, ?, ?, ?, ?, 'monthly_cron', ?, ?, NOW())
                     ");
-                    $transNote = "Auto-move from '$name' (In: {$daysInBasket}d, Order: {$daysSinceOrder}d) -> $targetBasketName";
+                    $transNote = "Auto-move from '$basketName' (In: {$daysInBasket}d, Order: {$daysSinceOrder}d) -> $targetBasketName";
                     $logTrans->execute([$customerId, $basketId, $targetBasketId, $assignedTo, $assignedToNew, $assignedTo, $transNote]);
 
                     // 2. Log return/fail
@@ -339,7 +341,7 @@ foreach ($companies as $companyId) {
                         INSERT INTO basket_return_log (customer_id, previous_assigned_to, reason, days_since_last_order, batch_date, created_at)
                         VALUES (?, ?, ?, ?, CURDATE(), NOW())
                     ");
-                    $reason = "Monthly Fail: Exceeded {$failDays} days in $name";
+                    $reason = "Monthly Fail: Exceeded {$failDays} days in $basketName";
                     $logReturn->execute([$customerId, $assignedTo, $reason, $daysSinceOrder]);
                     
                     echo " [OK]\n";
