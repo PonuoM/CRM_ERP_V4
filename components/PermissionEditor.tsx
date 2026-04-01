@@ -71,6 +71,17 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'inventory.promotions', label: 'Active Promotions (ดูโปรโมชั่นในคลัง)' },
         ]
     },
+    'Warehouse V2': {
+        label: 'คลังสินค้า V2 (Warehouse V2)',
+        items: [
+            { key: 'inv2.so', label: 'SO คำสั่งซื้อ (Sales Order)' },
+            { key: 'inv2.receive', label: 'รับเข้า V2 (Receive)' },
+            { key: 'inv2.dispatch', label: 'จ่ายออก V2 (Dispatch)' },
+            { key: 'inv2.adjustment', label: 'ปรับปรุง V2 (Adjustment)' },
+            { key: 'inv2.stock', label: 'สต็อก V2 (Stock View)' },
+            { key: 'inv2.history', label: 'ประวัติ V2 (History)' },
+        ]
+    },
     'Promotions': {
         label: 'โปรโมชั่น (Promotions)',
         items: [
