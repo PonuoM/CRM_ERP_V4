@@ -25,7 +25,7 @@ const apiDir = path.join(projectRoot, "api");
 const htaccessFile = path.join(projectRoot, ".htaccess");
 const rootConfigFile = path.join(projectRoot, "config.php");
 
-const excludedApiSubdirs = ["uploads", "vendor"];
+const excludedApiSubdirs = ["uploads", "vendor", "config.php"];
 
 function shouldExcludeApiPath(filePath: string): boolean {
   const relative = path.relative(apiDir, filePath);
@@ -159,11 +159,17 @@ function main(): void {
 
     // Replace api/config.php with root config.php
     console.log("Replacing host/api/config.php with project-root config.php...");
-    copyFileIfExists(
-      rootConfigFile,
-      path.join(hostDir, "api", "config.php"),
-      "api/config.php",
-    );
+    if (fs.existsSync(rootConfigFile)) {
+      copyFileIfExists(
+        rootConfigFile,
+        path.join(hostDir, "api", "config.php"),
+        "api/config.php",
+      );
+    } else {
+      console.warn("\x1b[31m%s\x1b[0m", "⚠️ WARNING: config.php NOT FOUND in project root!");
+      console.warn("\x1b[31m%s\x1b[0m", "⚠️ The host/api/ folder will NOT have a config.php database connection file.");
+      console.warn("\x1b[31m%s\x1b[0m", "⚠️ Make sure to manually configure config.php on your server.");
+    }
     // ----------------------------------------------
 
     // Handle api/vendor special case (Compress to zip)
