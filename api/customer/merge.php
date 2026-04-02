@@ -64,6 +64,15 @@ try {
         $stmtCalls->execute([$mainCustomerId, $secondaryCustomerId]);
         $callsMoved = $stmtCalls->rowCount();
 
+        // Update appointments: move from secondary to main
+        $stmtAppointments = $pdo->prepare("
+            UPDATE appointments 
+            SET customer_id = ? 
+            WHERE customer_id = ?
+        ");
+        $stmtAppointments->execute([$mainCustomerId, $secondaryCustomerId]);
+        $appointmentsMoved = $stmtAppointments->rowCount();
+
         // Note: We are specifically NOT deleting the secondary customer or modifying its status per user request.
 
         $pdo->commit();
@@ -74,6 +83,7 @@ try {
             'secondaryCustomerId' => $secondaryCustomerId,
             'ordersMoved' => $ordersMoved,
             'callsMoved' => $callsMoved,
+            'appointmentsMoved' => $appointmentsMoved,
             'message' => 'Customers merged successfully'
         ]);
 

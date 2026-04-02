@@ -62,7 +62,7 @@ const MergeCustomersModal: React.FC<MergeCustomersModalProps> = ({
     }
     setLoading(true);
     try {
-      const res = await listCustomers({ q, companyId, pageSize: 10 });
+      const res = await listCustomers({ q, companyId, pageSize: 10, excludeBlocked: true });
       // Depending on API response shape
       const rawData = Array.isArray(res) ? res : res.data || [];
       // Map raw snake_case API data to camelCase Customer objects
@@ -129,7 +129,7 @@ const MergeCustomersModal: React.FC<MergeCustomersModalProps> = ({
     const c2Id = selected2.customer_id ?? selected2.id;
     const secondaryId = c1Id === mainId ? c2Id : c1Id;
 
-    if (!confirm("ยืนยันการรวมประวัติสั่งซื้อและการโทร? ข้อมูลที่ถูกรวมไปแล้วจะไม่สามารถแยกออกจากกันได้ง่ายๆ")) {
+    if (!confirm("ยืนยันการรวมประวัติสั่งซื้อ, การโทร และการนัดหมาย? ข้อมูลที่ถูกรวมไปแล้วจะไม่สามารถแยกออกจากกันได้ง่ายๆ")) {
       return;
     }
 
@@ -244,7 +244,7 @@ const MergeCustomersModal: React.FC<MergeCustomersModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-800">รวมรายชื่อลูกค้า (Merge Customers)</h2>
-              <p className="text-sm text-gray-500">ย้ายประวัติการสั่งซื้อและการโทรจากโปรไฟล์หนึ่งมารวมกับโปรไฟล์หลัก</p>
+              <p className="text-sm text-gray-500">ย้ายประวัติการสั่งซื้อ, การโทร และการนัดหมาย จากโปรไฟล์หนึ่งมารวมกับโปรไฟล์หลัก</p>
             </div>
           </div>
           <button
@@ -380,7 +380,7 @@ const MergeCustomersModal: React.FC<MergeCustomersModalProps> = ({
           <div className="mt-8 bg-blue-50/50 p-4 rounded-xl border border-blue-100 text-sm text-blue-800 flex items-start gap-3">
             <svg className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
             <p>
-              <strong>คำแนะนำ:</strong> เลือกประวัติที่ถูกต้องที่สุดเป็น <span className="text-blue-600 font-bold">ข้อมูลหลัก (Main)</span> ประวัติการสั่งซื้อและการโทรทั้งหมดของคนที่เป็นโปรไฟล์สำรองจะถูกโอนไปให้คนกระบวนการหลักเพื่อไม่ให้การวิเคราะห์พฤติกรรมลูกค้าถูกตัดขาดจากกัน (ตัวประวัติสำรองจะไม่ถูกโดนลบทิ้ง แต่จะไม่มีออเดอร์เกาะอยู่แล้ว)
+              <strong>คำแนะนำ:</strong> เลือกประวัติที่ถูกต้องที่สุดเป็น <span className="text-blue-600 font-bold">ข้อมูลหลัก (Main)</span> ประวัติการสั่งซื้อ, การโทร และการนัดหมาย ทั้งหมดของคนที่เป็นโปรไฟล์สำรองจะถูกโอนไปให้โปรไฟล์หลักเพื่อไม่ให้การวิเคราะห์พฤติกรรมลูกค้าถูกตัดขาดจากกัน (ตัวประวัติสำรองจะไม่ถูกโดนลบทิ้ง แต่จะไม่มีข้อมูลเกาะอยู่แล้ว)
             </p>
           </div>
         </div>

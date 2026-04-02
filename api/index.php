@@ -1771,6 +1771,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $dateAssignedEnd = $_GET['dateAssignedEnd'] ?? null;
                         $ownershipStart = $_GET['ownershipStart'] ?? null;
                         $ownershipEnd = $_GET['ownershipEnd'] ?? null;
+                        $excludeBlocked = isset($_GET['excludeBlocked']) && $_GET['excludeBlocked'] === 'true';
+
+                        if ($excludeBlocked) {
+                            $where[] = '(is_blocked = 0 OR is_blocked IS NULL)';
+                        }
 
                         if ($name && $name !== '') {
                             $where[] = '(first_name LIKE ? OR last_name LIKE ?)';

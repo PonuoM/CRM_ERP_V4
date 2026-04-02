@@ -169,6 +169,7 @@ export async function listCustomers(params?: {
   ownershipStart?: string;
   ownershipEnd?: string;
   since?: number; // timestamp in ms
+  excludeBlocked?: boolean;
 }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
@@ -196,6 +197,7 @@ export async function listCustomers(params?: {
   if (params?.ownershipEnd) qs.set("ownershipEnd", params.ownershipEnd);
   if (params?.filterType) qs.set("filterType", params.filterType);
   if (params?.since) qs.set("since", String(params.since));
+  if (params?.excludeBlocked) qs.set("excludeBlocked", "true");
 
   const query = qs.toString();
   const response = await apiFetch(`customers${query ? `?${query}` : ""}`);
@@ -806,7 +808,7 @@ export async function listCallHistory(params?: { customerId?: string; page?: num
   if (Array.isArray(response)) {
     return { data: response, total: response.length };
   }
-  return response as { data: CallHistory[]; total: number; page: number; pageSize: number };
+  return response as { data: any[]; total: number; page: number; pageSize: number };
 }
 
 // Marketing: Ad spend

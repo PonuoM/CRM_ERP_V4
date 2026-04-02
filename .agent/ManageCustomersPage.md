@@ -28,15 +28,15 @@
 อยู่บริเวณเดียวกับแถบ Advanced Filters (ปุ่มสีม่วง) ใช้สำหรับรวมประวัติของลูกค้าที่มีมากกว่า 1 โปรไฟล์ให้กลายเป็นคนเดียวกัน
 
 #### ขั้นตอนการทำงาน
-1. พนักงานพิมพ์ค้นหาลูกค้า 2 คนจากช่องค้นหาซ้าย-ขวาใน Modal (`MergeCustomersModal.tsx`)
+1. พนักงานพิมพ์ค้นหาลูกค้า 2 คนจากช่องค้นหาซ้าย-ขวาใน Modal (`MergeCustomersModal.tsx`) *(หมายเหตุ: ระบบจะละเว้นรายชื่อลูกค้าที่ถูก Block อัตโนมัติผ่านพารามิเตอร์ `excludeBlocked: true`)*
 2. ผลลัพธ์จาก API จะถูก map ผ่าน `mapCustomerFromApi()` เพื่อแปลง snake_case → camelCase ให้แสดงชื่อ-นามสกุลได้ถูกต้อง
 3. **คลิกที่ชื่อลูกค้า** จะเปิดแท็บใหม่ไปที่ `?page=Customers&customerId={customer_id}` เพื่อดูรายละเอียดเชิงลึกก่อนตัดสินใจ
 4. เลือกว่าโปรไฟล์ใดเป็น **ข้อมูลหลัก (Main Record)** โดยคลิกที่การ์ด
-5. กด **ยืนยันรวมประวัติ** → ระบบจะโอนบิล (`orders`) และประวัติโทร (`call_history`) จากโปรไฟล์สำรองไปให้ข้อมูลหลัก
+5. กด **ยืนยันรวมประวัติ** → ระบบจะโอนบิล (`orders`), ประวัติโทร (`call_history`) และการนัดหมาย (`appointments`) จากโปรไฟล์สำรองไปให้ข้อมูลหลัก
 
 #### รายละเอียดทางเทคนิค
 - **Customer ID:** ใช้ `customer.customer_id` (PK จริงในฐานข้อมูล, ตรงกับ `customers.customer_id` INT) ไม่ใช่ `customer.id` (ซึ่งเป็น string ที่ mapper สร้างขึ้น)
-- **Backend:** `api/customer/merge.php` — อัปเดต `orders.customer_id` (มี `company_id` filter) และ `call_history.customer_id` (ไม่มี `company_id` เพราะตารางนี้ไม่มีคอลัมน์ดังกล่าว)
+- **Backend:** `api/customer/merge.php` — อัปเดตตารางให้ผูกกับ Main Customer ID ได้แก่ `orders.customer_id` (มี `company_id` filter), `call_history.customer_id`, และ `appointments.customer_id` (สองตารางหลังไม่มี company filter เพราะอิงจากข้อมูลเดิม)
 - ระบบจงใจไม่ลบโปรไฟล์สำรองทิ้ง (แต่บิลและประวัติโทรจะหายไปอยู่กับเบอร์หลักแทน) เพื่อให้ยังใช้สืบย้อนหลังได้
 
 ### 2.4 ตารางลูกค้ารวม (Customer Table)
