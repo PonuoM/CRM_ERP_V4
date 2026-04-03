@@ -356,6 +356,20 @@ export interface Address {
   phone?: string;
 }
 
+export interface CustomerAddress {
+  id: number | 'primary';
+  customerId: string | number;
+  recipientFirstName?: string;
+  recipientLastName?: string;
+  address?: string;
+  subdistrict?: string;
+  district?: string;
+  province?: string;
+  zipCode?: string;
+  isPrimary?: boolean;
+  phone?: string;
+}
+
 export interface Customer {
   id: string;
   customerId?: string; // Public ID (e.g. CUS-xxx). Historically used as primary key in UI.
@@ -368,6 +382,7 @@ export interface Customer {
   backupPhone?: string;
   email?: string;
   address?: Address;
+  addresses?: CustomerAddress[];
   province: string;
   companyId: number;
   assignedTo: number | null;
@@ -780,6 +795,7 @@ export interface Promotion {
   endDate?: string;
   start_date?: string; // API field
   end_date?: string; // API field
+  is_used?: boolean | number; // API field (1/0) indicating if it has orders
   items: PromotionItem[];
 }
 

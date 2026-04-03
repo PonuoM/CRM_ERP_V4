@@ -19,42 +19,8 @@ const ActivePromotionsPage: React.FC<ActivePromotionsPageProps> = ({
   const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
-  const [promotionUsage, setPromotionUsage] = useState<Set<number>>(new Set());
-
-  // Check if promotion is used in any orders
-  const checkPromotionUsage = async (promotionId: number): Promise<boolean> => {
-    try {
-      const response = await apiFetch(`orders?promotion_id=${promotionId}`);
-      return Array.isArray(response) && response.length > 0;
-    } catch (error) {
-      console.error('Error checking promotion usage:', error);
-      return false;
-    }
-  };
-
-  // Load promotion usage status
-  useEffect(() => {
-    const loadPromotionUsage = async () => {
-      const usageSet = new Set<number>();
-      for (const promotion of promotions) {
-        const isUsed = await checkPromotionUsage(promotion.id);
-        if (isUsed) {
-          usageSet.add(promotion.id);
-        }
-      }
-      setPromotionUsage(usageSet);
-    };
-
-    if (promotions.length > 0) {
-      loadPromotionUsage();
-    }
-  }, [promotions]);
 
   const handleEditPromotion = (promotion: Promotion) => {
-    if (promotionUsage.has(promotion.id)) {
-      alert('ไม่สามารถแก้ไขโปรโมชั่นที่มีการสั่งซื้อแล้ว กรุณาปิดใช้งานแทน');
-      return;
-    }
     setSelectedPromotion(promotion);
     setIsModalOpen(true);
   };
@@ -168,7 +134,7 @@ const ActivePromotionsPage: React.FC<ActivePromotionsPageProps> = ({
               <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center">
                   <h3 className="text-lg font-semibold text-gray-800">{promotion.name}</h3>
-                  {promotionUsage.has(promotion.id) && (
+                  {promotion.is_used && (
                     <span className="ml-2 px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full flex items-center">
                       🔒 ใช้งานแล้ว
                     </span>
@@ -199,24 +165,13 @@ const ActivePromotionsPage: React.FC<ActivePromotionsPageProps> = ({
                               e.stopPropagation();
                               handleEditClick(promotion);
                             }}
-                            disabled={promotionUsage.has(promotion.id)}
-                            className={`flex w-full px-4 py-2 text-sm ${
-                              promotionUsage.has(promotion.id)
-                                ? 'text-gray-400 cursor-not-allowed'
-                                : 'text-gray-700 hover:bg-gray-100'
-                            }`}
-                            title={promotionUsage.has(promotion.id) ? 'ไม่สามารถแก้ไขโปรโมชั่นที่มีการสั่งซื้อแล้ว' : 'แก้ไขโปรโมชั่น'}
+                            className="flex w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            title="แก้ไขโปรโมชั่น"
                           >
-                            {promotionUsage.has(promotion.id) ? (
-                              <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                              </svg>
-                            ) : (
-                              <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            )}
-                            {promotionUsage.has(promotion.id) ? '🔒 ใช้งานแล้ว' : 'แก้ไข'}
+                            <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            แก้ไข
                           </button>
                           <button
                             onClick={(e) => {

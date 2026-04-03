@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Promotion, Product } from '../types';
+import PromotionModal from '../components/PromotionModal';
 import { apiFetch } from '../services/api';
 
 interface PromotionHistoryPageProps {
@@ -12,8 +13,22 @@ interface PromotionHistoryPageProps {
 const PromotionHistoryPage: React.FC<PromotionHistoryPageProps> = ({
   promotions,
   products,
-  onRefresh
+  onRefresh,
+  companyId
 }) => {
+  const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleEditPromotion = (promotion: Promotion) => {
+    setSelectedPromotion(promotion);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedPromotion(null);
+    onRefresh();
+  };
   const formatDate = (dateString?: string) => {
     if (!dateString || dateString === '0000-00-00 00:00:00' || dateString === '0000-00-00') return '-';
     return new Date(dateString).toLocaleDateString('th-TH');
@@ -150,39 +165,61 @@ const PromotionHistoryPage: React.FC<PromotionHistoryPageProps> = ({
                   })()}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {(() => {
-                    const expired = isPromotionExpired(promotion);
-                    const active = promotion.active;
-                    
-                    if (expired) {
-                      return (
-                        <span className="px-3 py-1 bg-gray-300 text-gray-600 text-sm rounded cursor-not-allowed">
-                          หมดอายุแล้ว
-                        </span>
-                      );
-                    } else if (!active) {
-                      return (
-                        <button
-                          onClick={() => activatePromotion(promotion)}
-                          className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
-                        >
-                          เปิดใช้งาน
-                        </button>
-                      );
-                    } else {
-                      return (
-                        <span className="px-3 py-1 bg-green-100 text-green-600 text-sm rounded">
-                          ใช้งานอยู่
-                        </span>
-                      );
-                    }
-                  })()}
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleEditPromotion(promotion)}
+                      className="px-3 py-1 text-sm rounded transition-colors bg-blue-100 text-blue-600 hover:bg-blue-200"
+                      title="แก้ไขโปรโมชั่น"
+                    >
+                      แก้ไข
+                    </button>
+                    {(() => {
+                      const expired = isPromotionExpired(promotion);
+                      const active = promotion.active;
+                      
+                      if (expired) {
+                        return (
+                          <button
+                            onClick={() => handleEditPromotion(promotion)}
+                            className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+                          >
+                            ต่ออายุ / เปิดใช้งาน
+                          </button>
+                        );
+                      } else if (!active) {
+                        return (
+                          <button
+                            onClick={() => activatePromotion(promotion)}
+                            className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+                          >
+                            เปิดใช้งาน
+                          </button>
+                        );
+                      } else {
+                        return (
+                          <span className="px-3 py-1 bg-green-100 text-green-600 text-sm rounded">
+                            ใช้งานอยู่
+                          </span>
+                        );
+                      }
+                    })()}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {isModalOpen && (
+        <PromotionModal
+          promotion={selectedPromotion}
+          products={products}
+          companyId={companyId}
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+        />
+      )}
     </div>
   );
 };

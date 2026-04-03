@@ -59,6 +59,7 @@ import {
   summarizeCustomerLogChanges,
 } from "../utils/customerLogs";
 import { formatThaiDateTime, formatThaiDate } from "../utils/time";
+import AddressManagementModal from "../components/AddressManagementModal";
 
 interface CustomerDetailPageProps {
   customer: Customer;
@@ -170,6 +171,8 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
   // Track order IDs that have upsell items (for immediate badge display)
   const [upsellDoneOrderIds, setUpsellDoneOrderIds] = useState<Set<string>>(new Set());
+
+  const [showAddressManagement, setShowAddressManagement] = useState(false);
 
   const mapCall = (r: any): CallHistory => ({
     id: r.id,
@@ -1127,11 +1130,20 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                   </p>
                 </div>
               </InfoItem>
-              <InfoItem
-                label="ที่อยู่"
-                value={formatAddress(customer.address)}
-              />
-              <InfoItem label="จังหวัด" value={customer.province} />
+              <InfoItem label="ที่อยู่">
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-gray-800">
+                    {formatAddress(customer.address)} {customer.province}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs text-blue-600 hover:underline text-left mt-1"
+                    onClick={() => setShowAddressManagement(true)}
+                  >
+                    จัดการสมุดที่อยู่
+                  </button>
+                </div>
+              </InfoItem>
               <div className="md:col-span-3 border-t my-2"></div>
               <InfoItem label="เกรดลูกค้า" value={customer.grade} />
               <InfoItem
@@ -2005,6 +2017,19 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
           </div>
         </div >
       </div >
+
+      {showAddressManagement && (
+        <AddressManagementModal
+          customer={customer}
+          onClose={() => setShowAddressManagement(false)}
+          onPrimaryAddressChange={() => {
+            // Can optionally trigger a data refresh if needed, but it should auto-sync on next fetch
+            // Or use openModal to trigger parent update logic
+            // Assuming customer page re-fetches when remounted, could just reload page for now or rely on window reload
+             window.location.reload();
+          }}
+        />
+      )}
     </div >
   );
 };

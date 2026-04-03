@@ -50,11 +50,9 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
       
       // Validate the date format (YYYY-MM-DD)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-        console.warn('Invalid date format:', dateString);
         return '';
       }
       
-      console.log('Formatting date:', dateString, '->', datePart);
       return datePart;
     } catch (error) {
       console.error('Error formatting date:', dateString, error);
@@ -64,15 +62,8 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
 
   useEffect(() => {
     if (promotion) {
-      console.log('Promotion data in modal:', promotion);
-      console.log('Start date:', promotion.start_date || promotion.startDate);
-      console.log('End date:', promotion.end_date || promotion.endDate);
-      
       const startDateFormatted = formatDateForInput(promotion.start_date || promotion.startDate);
       const endDateFormatted = formatDateForInput(promotion.end_date || promotion.endDate);
-      
-      console.log('Start date formatted:', startDateFormatted);
-      console.log('End date formatted:', endDateFormatted);
       
       const formDataToSet = {
         name: promotion.name || '',
@@ -83,14 +74,8 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
         active: typeof promotion.active === 'boolean' ? promotion.active : promotion.active === 1
       };
       
-      console.log('Form data to set:', formDataToSet);
       setFormData(formDataToSet);
       setPromotionItems([...promotion.items]);
-      
-      // Debug: Check formData after setting
-      setTimeout(() => {
-        console.log('FormData after setting:', formData);
-      }, 100);
     } else {
       // Reset form for new promotion
       setFormData({
@@ -105,10 +90,7 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
     }
   }, [promotion]);
 
-  // Debug: Log formData changes
-  useEffect(() => {
-    console.log('FormData state changed:', formData);
-  }, [formData]);
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -175,6 +157,18 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
     setLoading(true);
     setError('');
 
+    // Validations for end date logic
+    if (formData.active && formData.endDate) {
+      const selectedEndDate = new Date(formData.endDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Start of today
+      if (selectedEndDate < today) {
+        setError('หากต้องการเปิดใช้งานโปรโมชั่นนี้ใหม่ วันสิ้นสุดต้องมากกว่าหรือเท่ากับวันปัจจุบัน (หรือเว้นว่างไว้หากไม่อยากให้หมดอายุ)');
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       // Ensure dates are properly formatted
       const formatDateForAPI = (dateString: string) => {
@@ -197,12 +191,7 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
           // Get product_id from either productId or product_id field
           const productId = item.productId || item.product_id;
           
-          // Validate product_id exists in products array
-          const productExists = products.find(p => p.id === productId);
-          if (!productExists) {
-            console.error('Product not found:', productId, 'Available products:', products.map(p => ({ id: p.id, name: p.name })));
-            throw new Error(`สินค้า ID ${productId} ไม่พบในระบบ`);
-          }
+
           
           return {
             id: item.id > 10000 ? undefined : item.id, // Only include real IDs
@@ -214,32 +203,8 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
         })
       };
 
-      console.log('Sending promotion data:', promotionData);
-      console.log('Form data:', formData);
-      console.log('Original promotion active:', promotion?.active);
-      console.log('Form data active:', formData.active);
-      console.log('Promotion items:', promotionItems);
-      console.log('Available products:', products);
-      
-      // Debug: Check each promotion item structure
-      promotionItems.forEach((item, index) => {
-        console.log(`Promotion item ${index}:`, {
-          id: item.id,
-          productId: item.productId,
-          product_id: item.product_id,
-          quantity: item.quantity,
-          isFreebie: item.isFreebie,
-          is_freebie: item.is_freebie,
-          priceOverride: item.priceOverride,
-          price_override: item.price_override,
-          fullItem: item
-        });
-      });
-
       const url = promotion ? `promotions/${promotion.id}` : 'promotions';
       const method = promotion ? 'PUT' : 'POST';
-
-      console.log('API URL:', url, 'Method:', method);
 
       const response = await apiFetch(url, {
         method,
@@ -248,8 +213,6 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
         },
         body: JSON.stringify(promotionData)
       });
-
-      console.log('API Response:', response);
 
       onClose();
     } catch (err: any) {
@@ -283,12 +246,20 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
 
   return (
     <Modal 
-      isOpen={isOpen} 
       onClose={onClose} 
       title={promotion ? 'แก้ไขโปรโมชั่น' : 'สร้างโปรโมชั่นใหม่'}
       requireConfirmation={true}
       confirmationMessage="คุณต้องการปิดหน้าต่างนี้หรือไม่? ข้อมูลที่ยังไม่ได้บันทึกจะหายไป"
     >
+      {!!promotion && (
+        <div className="bg-yellow-50 border border-yellow-400 text-yellow-800 px-4 py-3 rounded mb-4 flex items-start">
+          <svg className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-sm">การแก้ไขโปรโมชั่นเดิม สามารถแก้ได้เฉพาะ <strong>ระยะเวลา</strong> และ <strong>สถานะ</strong> เท่านั้น (หากต้องการเปลี่ยนสินค้าให้ปิดใช้งานแล้วสร้างใหม่)</span>
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           {error}
@@ -307,7 +278,8 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
               name="name"
               value={formData.name}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+              disabled={!!promotion}
+              className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${!!promotion ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
               required
             />
           </div>
@@ -322,7 +294,8 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
               name="sku"
               value={formData.sku}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+              disabled={!!promotion}
+              className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${!!promotion ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
             />
           </div>
         </div>
@@ -336,8 +309,9 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
             name="description"
             value={formData.description}
             onChange={handleInputChange}
+            disabled={!!promotion}
             rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${!!promotion ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
           />
         </div>
         
@@ -387,69 +361,73 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
         <div>
           <h4 className="text-md font-medium text-gray-900 mb-2">รายการสินค้าในโปรโมชั่น</h4>
           
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
-            <div>
-              <select
-                value={selectedProductId || ''}
-                onChange={(e) => setSelectedProductId(e.target.value ? parseInt(e.target.value) : null)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-              >
-                <option value="">-- เลือกสินค้า --</option>
-                {products.map(product => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <input
-                type="number"
-                name="quantity"
-                value={itemForm.quantity}
-                onChange={handleItemFormChange}
-                min="1"
-                placeholder="จำนวน"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-              />
-            </div>
-            
-            <div>
-              <input
-                type="number"
-                name="priceOverride"
-                value={itemForm.priceOverride}
-                onChange={handleItemFormChange}
-                step="0.01"
-                min="0"
-                placeholder="ราคาพิเศษ"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-              />
-            </div>
-            
-            <button
-              type="button"
-              onClick={addPromotionItem}
-              className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-            >
-              เพิ่ม
-            </button>
-          </div>
-          
-          <div className="flex items-center mb-2">
-            <input
-              type="checkbox"
-              id="isFreebie"
-              name="isFreebie"
-              checked={itemForm.isFreebie}
-              onChange={handleItemFormChange}
-              className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-            />
-            <label htmlFor="isFreebie" className="text-sm text-gray-700">
-              สินค้านี้เป็นของแถม (ฟรี)
-            </label>
-          </div>
+          {!promotion && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
+                <div>
+                  <select
+                    value={selectedProductId || ''}
+                    onChange={(e) => setSelectedProductId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  >
+                    <option value="">-- เลือกสินค้า --</option>
+                    {products.map(product => (
+                      <option key={product.id} value={product.id}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={itemForm.quantity}
+                    onChange={handleItemFormChange}
+                    min="1"
+                    placeholder="จำนวน"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+                
+                <div>
+                  <input
+                    type="number"
+                    name="priceOverride"
+                    value={itemForm.priceOverride}
+                    onChange={handleItemFormChange}
+                    step="0.01"
+                    min="0"
+                    placeholder="ราคาพิเศษ"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={addPromotionItem}
+                  className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                >
+                  เพิ่ม
+                </button>
+              </div>
+              
+              <div className="flex items-center mb-2">
+                <input
+                  type="checkbox"
+                  id="isFreebie"
+                  name="isFreebie"
+                  checked={itemForm.isFreebie}
+                  onChange={handleItemFormChange}
+                  className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                />
+                <label htmlFor="isFreebie" className="text-sm text-gray-700">
+                  สินค้านี้เป็นของแถม (ฟรี)
+                </label>
+              </div>
+            </>
+          )}
           
           {promotionItems.length > 0 && (
             <div className="mt-2 max-h-40 overflow-y-auto">
@@ -468,9 +446,11 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
                     <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       ประเภท
                     </th>
-                    <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      การจัดการ
-                    </th>
+                    {!promotion && (
+                      <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        การจัดการ
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -496,15 +476,17 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
                           </span>
                         )}
                       </td>
-                      <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-500">
-                        <button
-                          type="button"
-                          onClick={() => removePromotionItem(item.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          ลบ
-                        </button>
-                      </td>
+                      {!promotion && (
+                        <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-500">
+                          <button
+                            type="button"
+                            onClick={() => removePromotionItem(item.id)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            ลบ
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

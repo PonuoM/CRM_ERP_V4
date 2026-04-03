@@ -2659,7 +2659,7 @@ function handle_promotions(PDO $pdo, ?string $id): void
         case 'GET':
             if ($id) {
                 // Get single promotion with items
-                $stmt = $pdo->prepare('SELECT * FROM promotions WHERE id = ?');
+                $stmt = $pdo->prepare('SELECT p.*, EXISTS(SELECT 1 FROM order_items oi WHERE oi.promotion_id = p.id) as is_used FROM promotions p WHERE p.id = ?');
                 $stmt->execute([$id]);
                 $promo = $stmt->fetch();
                 if (!$promo) {
@@ -2678,7 +2678,7 @@ function handle_promotions(PDO $pdo, ?string $id): void
                 json_response($promo);
             } else {
                 // Get all promotions with items (both active and inactive)
-                $sql = 'SELECT * FROM promotions WHERE company_id = ? ORDER BY id DESC';
+                $sql = 'SELECT p.*, EXISTS(SELECT 1 FROM order_items oi WHERE oi.promotion_id = p.id) as is_used FROM promotions p WHERE p.company_id = ? ORDER BY p.id DESC';
                 $params = [$companyId];
 
                 $stmt = $pdo->prepare($sql);
@@ -2781,20 +2781,12 @@ function handle_promotions(PDO $pdo, ?string $id): void
                 $in = [];
             }
 
-            // Check if this is only an active-status toggle (no items, no other fields)
-            $isActiveOnlyToggle = (count($in) === 1 && array_key_exists('active', $in));
-
-            // Check if promotion is used in any orders — but allow toggling active status
-            if (!$isActiveOnlyToggle) {
-                $check = $pdo->prepare('SELECT COUNT(*) FROM order_items WHERE promotion_id = ?');
-                $check->execute([$id]);
-                if ($check->fetchColumn() > 0) {
-                    json_response([
-                        'error' => 'PROMOTION_IN_USE',
-                        'message' => 'ไม่สามารถแก้ไขโปรโมชั่นที่มีการสั่งซื้อแล้ว กรุณาปิดใช้งานแทน'
-                    ], 400);
-                    return;
-                }
+            // Check if promotion is used in any orders
+            $isPromotionInUse = false;
+            $check = $pdo->prepare('SELECT COUNT(*) FROM order_items WHERE promotion_id = ?');
+            $check->execute([$id]);
+            if ($check->fetchColumn() > 0) {
+                $isPromotionInUse = true;
             }
 
             $pdo->beginTransaction();
@@ -2833,8 +2825,8 @@ function handle_promotions(PDO $pdo, ?string $id): void
                     $stmt->execute($params);
                 }
 
-                // Update promotion items if provided
-                if (isset($in['items']) && is_array($in['items'])) {
+                // Update promotion items if provided AND not in use
+                if (!$isPromotionInUse && isset($in['items']) && is_array($in['items'])) {
                     // Delete existing items
                     $pdo->prepare('DELETE FROM promotion_items WHERE promotion_id = ?')->execute([$id]);
 
