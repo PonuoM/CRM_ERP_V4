@@ -153,8 +153,9 @@ customer.email              # อีเมล
 
 # Address
 address.recipientFullName   # ชื่อเต็มผู้รับ (+ กล่องที่ N)
-address.recipientFirstName  # ชื่อ
-address.recipientLastName   # นามสกุล
+address.recipientFirstName  # ชื่อผู้รับ
+address.recipientLastName   # นามสกุลผู้รับ
+address.recipientPhone      # เบอร์โทรผู้รับ (ดึงจาก recipient_phone)
 address.street              # ที่อยู่
 address.subdistrict         # แขวง/ตำบล
 address.district            # เขต/อำเภอ
