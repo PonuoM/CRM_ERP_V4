@@ -556,14 +556,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
 
-  const [newCustomerBackupPhone, setNewCustomerBackupPhone] = useState("");
+  const [newCustomerBackupPhones, setNewCustomerBackupPhones] = useState<string[]>([""]);
 
   const [newCustomerType, setNewCustomerType] = useState("New Customer");
 
   const [newCustomerPhoneError, setNewCustomerPhoneError] = useState("");
 
-  const [newCustomerBackupPhoneError, setNewCustomerBackupPhoneError] =
-    useState("");
+  const [newCustomerBackupPhoneErrors, setNewCustomerBackupPhoneErrors] = useState<string[]>([""]);
 
   const [editedCustomerFirstName, setEditedCustomerFirstName] = useState(
     initialData?.customer?.firstName || "",
@@ -577,8 +576,16 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     initialData?.customer?.phone || "",
   );
 
-  const [editedCustomerBackupPhone, setEditedCustomerBackupPhone] = useState(
-    initialData?.customer?.backupPhone || "",
+  const parseBackupPhones = (phoneStr?: string | null): string[] => {
+    if (!phoneStr) return [""];
+    const parsed = phoneStr.split(",").map((p) => p.trim()).filter(Boolean);
+    return parsed.length > 0 ? parsed : [""];
+  };
+
+  const initialBackupPhones = parseBackupPhones(initialData?.customer?.backupPhone);
+
+  const [editedCustomerBackupPhones, setEditedCustomerBackupPhones] = useState<string[]>(
+    initialBackupPhones
   );
 
   const [editedCustomerType, setEditedCustomerType] = useState(
@@ -587,8 +594,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [editedCustomerPhoneError, setEditedCustomerPhoneError] = useState("");
 
-  const [editedCustomerBackupPhoneError, setEditedCustomerBackupPhoneError] =
-    useState("");
+  const [editedCustomerBackupPhoneErrors, setEditedCustomerBackupPhoneErrors] = useState<string[]>(
+    Array(initialBackupPhones.length).fill("")
+  );
 
   const [orderData, setOrderData] = useState<Partial<Order>>({
     items: [
@@ -2315,15 +2323,16 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     setEditedCustomerPhone(selectedCustomer.phone || "");
 
-    setEditedCustomerBackupPhone(selectedCustomer.backupPhone || "");
+    const parsedBackupPhones = parseBackupPhones(selectedCustomer.backupPhone);
+    setEditedCustomerBackupPhones(parsedBackupPhones);
 
     setEditedCustomerPhoneError("");
 
-    setEditedCustomerBackupPhoneError("");
+    setEditedCustomerBackupPhoneErrors(Array(parsedBackupPhones.length).fill(""));
 
     setNewCustomerPhoneError("");
 
-    setNewCustomerBackupPhoneError("");
+    setNewCustomerBackupPhoneErrors([""]);
 
     setFacebookName(selectedCustomer.facebookName || "");
 
@@ -3508,11 +3517,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           setEditedCustomerPhone(mappedCustomerData.phone || "");
 
-          setEditedCustomerBackupPhone(mappedCustomerData.backupPhone || "");
+          const parsedBackup = parseBackupPhones(mappedCustomerData.backupPhone);
+          setEditedCustomerBackupPhones(parsedBackup);
 
           setEditedCustomerPhoneError("");
 
-          setEditedCustomerBackupPhoneError("");
+          setEditedCustomerBackupPhoneErrors(Array(parsedBackup.length).fill(""));
         } else {
           // Fallback to original customer data if fetch fails
 
@@ -3524,11 +3534,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           setEditedCustomerPhone(customer.phone || "");
 
-          setEditedCustomerBackupPhone(customer.backupPhone || "");
+          const parsed = parseBackupPhones(customer.backupPhone);
+          setEditedCustomerBackupPhones(parsed);
 
           setEditedCustomerPhoneError("");
 
-          setEditedCustomerBackupPhoneError("");
+          setEditedCustomerBackupPhoneErrors(Array(parsed.length).fill(""));
         }
       } else {
         // Fallback to original customer data if API call fails
@@ -3541,11 +3552,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         setEditedCustomerPhone(customer.phone || "");
 
-        setEditedCustomerBackupPhone(customer.backupPhone || "");
+        const parsed = parseBackupPhones(customer.backupPhone);
+        setEditedCustomerBackupPhones(parsed);
 
         setEditedCustomerPhoneError("");
 
-        setEditedCustomerBackupPhoneError("");
+        setEditedCustomerBackupPhoneErrors(Array(parsed.length).fill(""));
       }
     } catch (error) {
       console.error("Error fetching fresh customer data:", error);
@@ -3560,11 +3572,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       setEditedCustomerPhone(customer.phone || "");
 
-      setEditedCustomerBackupPhone(customer.backupPhone || "");
+      const parsed = parseBackupPhones(customer.backupPhone);
+      setEditedCustomerBackupPhones(parsed);
 
       setEditedCustomerPhoneError("");
 
-      setEditedCustomerBackupPhoneError("");
+      setEditedCustomerBackupPhoneErrors(Array(parsed.length).fill(""));
     } finally {
       setLoadingCustomerData(false);
     }
@@ -3655,9 +3668,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     setEditedCustomerPhoneError("");
 
-    setEditedCustomerBackupPhone("");
+    setEditedCustomerBackupPhones([""]);
 
-    setEditedCustomerBackupPhoneError("");
+    setEditedCustomerBackupPhoneErrors([""]);
 
     // Reset address selections
 
@@ -3694,9 +3707,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       setNewCustomerPhoneError("");
 
-      setNewCustomerBackupPhone("");
+      setNewCustomerBackupPhones([""]);
 
-      setNewCustomerBackupPhoneError("");
+      setNewCustomerBackupPhoneErrors([""]);
     } else {
       const nameParts = searchTerm.split(" ").filter((p) => p);
 
@@ -3712,9 +3725,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       setNewCustomerPhoneError("");
 
-      setNewCustomerBackupPhone("");
+      setNewCustomerBackupPhones([""]);
 
-      setNewCustomerBackupPhoneError("");
+      setNewCustomerBackupPhoneErrors([""]);
     }
 
     setFacebookName("");
@@ -4187,15 +4200,39 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   const handleNewCustomerBackupPhoneChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
+    index: number,
+    value: string,
   ) => {
-    const value = e.target.value.replace(/[^0-9]/g, "");
+    const cleanValue = value.replace(/[^0-9]/g, "");
 
-    if (value.length > 10) return;
+    if (cleanValue.length > 10) return;
 
-    setNewCustomerBackupPhone(value);
+    const newPhones = [...newCustomerBackupPhones];
+    newPhones[index] = cleanValue;
+    setNewCustomerBackupPhones(newPhones);
 
-    validateOptionalPhone(value, setNewCustomerBackupPhoneError);
+    const newErrors = [...newCustomerBackupPhoneErrors];
+    validateOptionalPhone(cleanValue, (err) => {
+      newErrors[index] = err;
+      setNewCustomerBackupPhoneErrors(newErrors);
+    });
+  };
+
+  const addNewCustomerBackupPhone = () => {
+    if (newCustomerBackupPhones.length < 3) {
+      setNewCustomerBackupPhones([...newCustomerBackupPhones, ""]);
+      setNewCustomerBackupPhoneErrors([...newCustomerBackupPhoneErrors, ""]);
+    }
+  };
+
+  const removeNewCustomerBackupPhone = (index: number) => {
+    const newPhones = [...newCustomerBackupPhones];
+    newPhones.splice(index, 1);
+    setNewCustomerBackupPhones(newPhones);
+
+    const newErrors = [...newCustomerBackupPhoneErrors];
+    newErrors.splice(index, 1);
+    setNewCustomerBackupPhoneErrors(newErrors);
   };
 
   // Handler for editing existing customer phone
@@ -4221,15 +4258,39 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   const handleEditedCustomerBackupPhoneChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
+    index: number,
+    value: string,
   ) => {
-    const value = e.target.value.replace(/[^0-9]/g, "");
+    const cleanValue = value.replace(/[^0-9]/g, "");
 
-    if (value.length > 10) return;
+    if (cleanValue.length > 10) return;
 
-    setEditedCustomerBackupPhone(value);
+    const newPhones = [...editedCustomerBackupPhones];
+    newPhones[index] = cleanValue;
+    setEditedCustomerBackupPhones(newPhones);
 
-    validateOptionalPhone(value, setEditedCustomerBackupPhoneError);
+    const newErrors = [...editedCustomerBackupPhoneErrors];
+    validateOptionalPhone(cleanValue, (err) => {
+      newErrors[index] = err;
+      setEditedCustomerBackupPhoneErrors(newErrors);
+    });
+  };
+
+  const addEditedCustomerBackupPhone = () => {
+    if (editedCustomerBackupPhones.length < 3) {
+      setEditedCustomerBackupPhones([...editedCustomerBackupPhones, ""]);
+      setEditedCustomerBackupPhoneErrors([...editedCustomerBackupPhoneErrors, ""]);
+    }
+  };
+
+  const removeEditedCustomerBackupPhone = (index: number) => {
+    const newPhones = [...editedCustomerBackupPhones];
+    newPhones.splice(index, 1);
+    setEditedCustomerBackupPhones(newPhones);
+
+    const newErrors = [...editedCustomerBackupPhoneErrors];
+    newErrors.splice(index, 1);
+    setEditedCustomerBackupPhoneErrors(newErrors);
   };
 
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -4693,8 +4754,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           return;
         }
 
-        if (newCustomerBackupPhoneError) {
-          alert(`เบอร์สำรองไม่ถูกต้อง: ${newCustomerBackupPhoneError}`);
+        if (newCustomerBackupPhoneErrors.some((err) => err)) {
+          alert(`เบอร์สำรองไม่ถูกต้อง: ${newCustomerBackupPhoneErrors.find((err) => err)}`);
 
           return;
         }
@@ -4706,7 +4767,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           phone: newCustomerPhone,
 
-          backupPhone: newCustomerBackupPhone || undefined,
+          backupPhone: newCustomerBackupPhones.filter(Boolean).join(",") || undefined,
 
           facebookName: facebookName,
 
@@ -4753,8 +4814,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           return;
         }
 
-        if (editedCustomerBackupPhoneError) {
-          alert(`เบอร์สำรองไม่ถูกต้อง: ${editedCustomerBackupPhoneError}`);
+        if (editedCustomerBackupPhoneErrors.some((err) => err)) {
+          alert(`เบอร์สำรองไม่ถูกต้อง: ${editedCustomerBackupPhoneErrors.find((err) => err)}`);
 
           return;
         }
@@ -4782,7 +4843,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           editedCustomerPhone.trim() !== (selectedCustomer?.phone || "").trim();
 
         const hasBackupPhoneChanged =
-          editedCustomerBackupPhone.trim() !==
+          editedCustomerBackupPhones.filter(Boolean).join(",").trim() !==
           (selectedCustomer?.backupPhone || "").trim();
 
         const hasCustomerTypeChanged =
@@ -4802,7 +4863,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
             phone: editedCustomerPhone.trim(),
 
-            backupPhone: editedCustomerBackupPhone.trim() || null,
+            backupPhone: editedCustomerBackupPhones.filter(Boolean).join(",").trim() || null,
           };
         }
 
@@ -7327,15 +7388,43 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   <label className={commonLabelClass}>
                                     เบอร์สำรอง
                                   </label>
-                                  <input
-                                    type="text"
-                                    value={newCustomerBackupPhone}
-                                    onChange={
-                                      handleNewCustomerBackupPhoneChange
-                                    }
-                                    className={commonInputClass}
-                                    placeholder="เช่น 0XXXXXXXXX"
-                                  />
+                                  {newCustomerBackupPhones.map((phone, idx) => (
+                                    <div key={`new-backup-phone-${idx}`} className="flex items-center gap-2 mb-2">
+                                      <div className="flex-1">
+                                        <input
+                                          type="text"
+                                          value={phone}
+                                          onChange={(e) => handleNewCustomerBackupPhoneChange(idx, e.target.value)}
+                                          className={commonInputClass}
+                                          placeholder="เช่น 0XXXXXXXXX"
+                                        />
+                                        {newCustomerBackupPhoneErrors[idx] && (
+                                          <p className="text-xs text-red-500 mt-1">
+                                            {newCustomerBackupPhoneErrors[idx]}
+                                          </p>
+                                        )}
+                                      </div>
+                                      {idx > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeNewCustomerBackupPhone(idx)}
+                                          className="text-red-500 hover:bg-red-50 p-2 rounded-full flex-shrink-0"
+                                          title="ลบเบอร์สำรอง"
+                                        >
+                                          ✕
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {newCustomerBackupPhones.length < 3 && (
+                                    <button
+                                      type="button"
+                                      onClick={addNewCustomerBackupPhone}
+                                      className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-1"
+                                    >
+                                      + เพิ่มเบอร์สำรอง
+                                    </button>
+                                  )}
                                 </div>
                                 <div>
                                   <label className={commonLabelClass}>
@@ -7366,12 +7455,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   </select>
                                 </div>
                               </div>
-
-                              {newCustomerBackupPhoneError && (
-                                <p className="text-xs text-red-500 mt-1">
-                                  {newCustomerBackupPhoneError}
-                                </p>
-                              )}
                             </div>
                           </div>
                         ) : (
@@ -7435,15 +7518,43 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   <label className={commonLabelClass}>
                                     เบอร์สำรอง
                                   </label>
-                                  <input
-                                    type="text"
-                                    value={editedCustomerBackupPhone}
-                                    onChange={
-                                      handleEditedCustomerBackupPhoneChange
-                                    }
-                                    className={commonInputClass}
-                                    placeholder="เช่น 0XXXXXXXXX"
-                                  />
+                                  {editedCustomerBackupPhones.map((phone, idx) => (
+                                    <div key={`edit-backup-phone-${idx}`} className="flex items-center gap-2 mb-2">
+                                      <div className="flex-1">
+                                        <input
+                                          type="text"
+                                          value={phone}
+                                          onChange={(e) => handleEditedCustomerBackupPhoneChange(idx, e.target.value)}
+                                          className={commonInputClass}
+                                          placeholder="เช่น 0XXXXXXXXX"
+                                        />
+                                        {editedCustomerBackupPhoneErrors[idx] && (
+                                          <p className="text-xs text-red-500 mt-1">
+                                            {editedCustomerBackupPhoneErrors[idx]}
+                                          </p>
+                                        )}
+                                      </div>
+                                      {idx > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeEditedCustomerBackupPhone(idx)}
+                                          className="text-red-500 hover:bg-red-50 p-2 rounded-full flex-shrink-0"
+                                          title="ลบเบอร์สำรอง"
+                                        >
+                                          ✕
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {editedCustomerBackupPhones.length < 3 && (
+                                    <button
+                                      type="button"
+                                      onClick={addEditedCustomerBackupPhone}
+                                      className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-1"
+                                    >
+                                      + เพิ่มเบอร์สำรอง
+                                    </button>
+                                  )}
                                 </div>
                                 <div>
                                   <label className={commonLabelClass}>
@@ -7474,12 +7585,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   </select>
                                 </div>
                               </div>
-
-                              {editedCustomerBackupPhoneError && (
-                                <p className="text-xs text-red-500 mt-1">
-                                  {editedCustomerBackupPhoneError}
-                                </p>
-                              )}
                             </div>
                           </div>
                         )}
