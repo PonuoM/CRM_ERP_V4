@@ -25,6 +25,7 @@ import {
 } from "../services/api";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { processImage } from "@/utils/imageProcessing";
+import ImageLightbox from "../components/common/ImageLightbox";
 import Modal from "../components/Modal";
 import OrderDetailModal from "../components/OrderDetailModal";
 
@@ -217,6 +218,7 @@ const SlipUpload: React.FC = () => {
     newPreview: string | null;
   } | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
@@ -1417,8 +1419,9 @@ const SlipUpload: React.FC = () => {
                             <div className="relative w-20 h-20 flex-shrink-0">
                               <img
                                 src={item.preview}
+                                onClick={() => setPreviewImage(item.preview)}
                                 alt={`Slip preview ${index + 1}`}
-                                className="w-full h-full object-cover rounded-md border border-gray-200"
+                                className="w-full h-full object-cover rounded-md border border-gray-200 cursor-zoom-in"
                               />
                             </div>
                             <div className="flex-1 flex flex-col justify-between">
@@ -1547,7 +1550,7 @@ const SlipUpload: React.FC = () => {
                                 return "/" + slip.url;
                               })()}
                               alt="สลิปการโอนเงิน"
-                              className="w-12 h-12 object-cover rounded border border-gray-200 cursor-pointer hover:border-blue-400 transition-colors"
+                              className="w-12 h-12 object-cover rounded border border-gray-200 cursor-zoom-in hover:border-blue-400 transition-colors"
                               onClick={() => {
                                 const url = slip.url;
                                 const normalizedUrl = url.startsWith("api/")
@@ -1557,7 +1560,7 @@ const SlipUpload: React.FC = () => {
                                     url.startsWith("https://")
                                     ? url
                                     : "/" + url;
-                                window.open(normalizedUrl, "_blank");
+                                setPreviewImage(normalizedUrl);
                               }}
                               onError={(e) => {
                                 console.error(
@@ -1744,8 +1747,19 @@ const SlipUpload: React.FC = () => {
                           return "/" + url;
                         })()
                       }
+                      onClick={() => setPreviewImage(
+                        editFormData.newPreview ||
+                        (() => {
+                          const url = editingSlip.url;
+                          if (!url) return "";
+                          if (url.startsWith("api/")) return "/" + url;
+                          if (url.startsWith("/") || url.startsWith("http"))
+                            return url;
+                          return "/" + url;
+                        })()
+                      )}
                       alt="Slip preview"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover cursor-zoom-in"
                     />
                   </div>
                   <div>
@@ -1791,6 +1805,7 @@ const SlipUpload: React.FC = () => {
           </div>
         </div>
       )}
+      <ImageLightbox src={previewImage} onClose={() => setPreviewImage(null)} />
     </div>
   );
 };

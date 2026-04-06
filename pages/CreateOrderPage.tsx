@@ -61,6 +61,7 @@ import {
   listOrderSlips,
   listCustomers,
 } from "../services/api";
+import ImageLightbox from "../components/common/ImageLightbox";
 import { formatThaiDateTime, toThaiIsoString } from "../utils/datetime";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -457,6 +458,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     initialData?.customer ?? null,
   );
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const [isCreatingNewCustomer, setIsCreatingNewCustomer] = useState(false);
 
@@ -9066,8 +9068,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             >
                               <img
                                 src={slip.dataUrl}
+                                onClick={() => setPreviewImage(slip.dataUrl)}
                                 alt={slip.name || "payment slip"}
-                                className="object-cover w-full h-24 rounded"
+                                className="object-cover w-full h-24 rounded cursor-zoom-in"
                               />
                               <button
                                 type="button"
@@ -10252,6 +10255,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           </div>
         )
       }
+      <ImageLightbox src={previewImage} onClose={() => setPreviewImage(null)} />
     </div >
   );
 };

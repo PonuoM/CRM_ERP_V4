@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Settings, Plus, Search, X, Camera, Loader2, Save, ChevronDown, Eye, Trash2 } from 'lucide-react';
 import { Warehouse, Product } from '../types';
 import { inv2SaveAdjustment, inv2ListMovements, listWarehouses, listProducts, apiFetch } from '../services/api';
+import ImageLightbox from '../components/common/ImageLightbox';
 
 interface Inv2AdjustmentPageProps {
     companyId: number;
@@ -130,6 +131,8 @@ const Inv2AdjustmentPage: React.FC<Inv2AdjustmentPageProps> = ({ companyId, user
 
     // View detail modal
     const [viewDoc, setViewDoc] = useState<AdjustDoc | null>(null);
+
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
 
     // Deleting state
     const [deleting, setDeleting] = useState('');
@@ -516,12 +519,14 @@ const Inv2AdjustmentPage: React.FC<Inv2AdjustmentPageProps> = ({ companyId, user
                             <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', marginTop: '8px' }}>
                                 <p style={{ fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '12px' }}>📎 รูปภาพแนบ</p>
                                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                                    {formImages.map((img, idx) => (
+                                    {formImages.map((img, idx) => {
+                                        const srcUrl = img.startsWith('data:') ? img : `/CRM_ERP_V4/api/${img}`;
+                                        return (
                                         <div key={idx} style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                                            <img src={img.startsWith('data:') ? img : `/CRM_ERP_V4/api/${img}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            <img src={srcUrl} alt="" onClick={() => setPreviewImage(srcUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
                                             <button onClick={() => setFormImages(formImages.filter((_, i) => i !== idx))} style={{ position: 'absolute', top: '4px', right: '4px', width: '20px', height: '20px', background: 'rgba(239,68,68,0.9)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
                                         </div>
-                                    ))}
+                                    )})}
                                     <label style={{ width: '90px', height: '90px', border: '2px dashed #cbd5e1', borderRadius: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94a3b8', gap: '4px', background: '#fafbfc' }}>
                                         <Camera size={22} /><span style={{ fontSize: '10px', fontWeight: 600 }}>เพิ่มรูป</span>
                                         <input type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: 'none' }} />
@@ -549,6 +554,7 @@ const Inv2AdjustmentPage: React.FC<Inv2AdjustmentPageProps> = ({ companyId, user
                     </div>
                 </div>
             )}
+            <ImageLightbox src={previewImage} onClose={() => setPreviewImage(null)} />
         </div>
     );
 };
