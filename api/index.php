@@ -1238,6 +1238,7 @@ function build_customer_search_conditions(string $q, string $tableAlias = ''): a
         "{$prefix}first_name",
         "{$prefix}last_name",
         "{$prefix}phone",
+        "{$prefix}backup_phone",
         "{$prefix}customer_id",
         "{$prefix}facebook_name",
         "{$prefix}line_id"
@@ -1260,6 +1261,8 @@ function build_customer_search_conditions(string $q, string $tableAlias = ''): a
         $termPhoneNormalized = preg_replace('/^0+/', '', preg_replace('/\D/', '', $term));
         if ($termPhoneNormalized !== '' && $termPhoneNormalized !== $term) {
             $termConditions[] = "{$prefix}phone LIKE ?";
+            $params[] = "%$termPhoneNormalized%";
+            $termConditions[] = "{$prefix}backup_phone LIKE ?";
             $params[] = "%$termPhoneNormalized%";
         }
 
