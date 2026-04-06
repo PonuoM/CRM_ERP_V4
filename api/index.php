@@ -899,8 +899,18 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
                 json_response(['error' => 'VALIDATION_FAILED', 'message' => 'username, firstName, lastName, role, companyId are required'], 400);
             }
             try {
-                $stmt = $pdo->prepare('INSERT INTO users(username, password, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, NOW(), NOW())');
-                $stmt->execute([$username, $password, $first, $last, $email, $phone, $role, $companyId, $teamId, $supervisorId, $status]);
+                // Find matching role_id
+                $rStmt = $pdo->prepare('SELECT id FROM roles WHERE name = ?');
+                $rStmt->execute([$role]);
+                $rId = $rStmt->fetchColumn();
+
+                if ($rId !== false) {
+                    $stmt = $pdo->prepare('INSERT INTO users(username, password, first_name, last_name, email, phone, role, role_id, company_id, team_id, supervisor_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, NOW(), NOW())');
+                    $stmt->execute([$username, $password, $first, $last, $email, $phone, $role, $rId, $companyId, $teamId, $supervisorId, $status]);
+                } else {
+                    $stmt = $pdo->prepare('INSERT INTO users(username, password, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, NOW(), NOW())');
+                    $stmt->execute([$username, $password, $first, $last, $email, $phone, $role, $companyId, $teamId, $supervisorId, $status]);
+                }
                 $newId = (int) $pdo->lastInsertId();
                 $get = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
                 $get->execute([$newId]);
@@ -941,6 +951,17 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
                 if (array_key_exists($inKey, $in)) {
                     $fields[] = "$col = ?";
                     $params[] = $in[$inKey];
+                    // Also update role_id if role is updating
+                    if ($col === 'role') {
+                        $roleName = $in[$inKey];
+                        $rStmt = $pdo->prepare('SELECT id FROM roles WHERE name = ?');
+                        $rStmt->execute([$roleName]);
+                        $rId = $rStmt->fetchColumn();
+                        if ($rId !== false) {
+                            $fields[] = 'role_id = ?';
+                            $params[] = $rId;
+                        }
+                    }
                 }
             }
             if (empty($fields)) {
