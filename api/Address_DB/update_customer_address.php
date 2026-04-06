@@ -53,12 +53,13 @@ try {
     // recipient_first_name and recipient_last_name are used for primary address (profile address) in customers table
     // Additional addresses use recipient_first_name and recipient_last_name in customer_address table
     $existingColumns = [];
-    $columnsToCheck = ['recipient_first_name', 'recipient_last_name', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'facebook_name', 'line_id', 'birth_date'];
+    $columnsToCheck = ['recipient_first_name', 'recipient_last_name', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'facebook_name', 'line_id', 'birth_date', 'recipient_phone'];
 
     // Use INFORMATION_SCHEMA to check for existing columns
     $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+    $columnPlaceholders = implode(',', array_fill(0, count($columnsToCheck), '?'));
     $checkColumnsSql = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'customers' AND COLUMN_NAME IN (?,?,?,?,?,?,?,?,?,?)";
+                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'customers' AND COLUMN_NAME IN ($columnPlaceholders)";
     $checkColumns = $pdo->prepare($checkColumnsSql);
     $params = array_merge([$dbName], $columnsToCheck);
     $checkColumns->execute($params);
@@ -83,6 +84,7 @@ try {
         'facebook_name' => 'facebook_name',
         'line_id' => 'line_id',
         'birth_date' => 'birth_date',
+        'phone' => 'recipient_phone',
     ];
 
     foreach ($fieldMap as $inputKey => $column) {

@@ -54,10 +54,8 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({ onSave, onClose, co
 
     if (value.length === 0) {
       setPhoneError('');
-    } else if (value.length !== 10) {
-      setPhoneError('เบอร์โทรต้องมี 10 หลัก');
-    } else if (value[0] !== '0') {
-      setPhoneError('เบอร์โทรต้องขึ้นต้นด้วย 0');
+    } else if (value.length < 9 || value.length > 10) {
+      setPhoneError('เบอร์โทรต้องมี 9 หรือ 10 หลัก');
     } else {
       setPhoneError('');
     }

@@ -225,7 +225,8 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
       subdistrict: '',
       district: '',
       province: '',
-      zipCode: ''
+      zipCode: '',
+      phone: ''
     });
     setIsFormVisible(true);
   };
@@ -295,15 +296,20 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
         return;
       }
 
+      const finalAddressData = {
+        ...editingAddress,
+        phone: editingAddress.phone?.trim() ? editingAddress.phone : (customer.phone || '')
+      };
+
       if (editingAddress.id && editingAddress.id !== 0) {
         // Update
-        await updateCustomerAddress(String(customerId), editingAddress.id, editingAddress);
+        await updateCustomerAddress(String(customerId), editingAddress.id, finalAddressData);
         if (editingAddress.id === 'primary' && onPrimaryAddressChange) {
            onPrimaryAddressChange();
         }
       } else {
         // Create
-        await createCustomerAddress(String(customerId), editingAddress);
+        await createCustomerAddress(String(customerId), finalAddressData);
       }
       setIsFormVisible(false);
       setEditingAddress(null);
@@ -438,6 +444,28 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
                   onChange={(e) => handleAddressChange('recipientLastName', e.target.value)}
                   className={commonInputClass}
                   disabled={isSaving}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className={commonLabelClass}>
+                  เบอร์ผู้รับ
+                  {!editingAddress?.phone && customer.phone && (
+                    <span className="ml-2 text-sm text-blue-500 font-normal">
+                      (ใช้เบอร์หลัก: {customer.phone})
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="tel"
+                  value={editingAddress?.phone || ''}
+                  onChange={(e) => handleAddressChange('phone', e.target.value)}
+                  className={commonInputClass}
+                  disabled={isSaving}
+                  placeholder={customer.phone || "กรอกเบอร์โทรศัพท์ผู้รับ"}
+                  title="กรอกเบอร์โทรศัพท์ผู้รับ"
                 />
               </div>
             </div>

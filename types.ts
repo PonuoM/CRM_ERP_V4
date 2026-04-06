@@ -354,6 +354,8 @@ export interface Address {
   province: string;
   postalCode: string;
   phone?: string;
+  recipientPhone?: string;
+  recipient_phone?: string;
 }
 
 export interface CustomerAddress {

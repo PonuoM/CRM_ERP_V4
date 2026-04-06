@@ -157,7 +157,13 @@ try {
             if ($id !== null && $id !== '') {
                 $stmt = $pdo->prepare("SELECT * FROM customer_address WHERE customer_id = ? ORDER BY created_at DESC");
                 $stmt->execute([$id]);
-                $response['data'] = $stmt->fetchAll();
+                $addresses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($addresses as &$addr) {
+                    if (array_key_exists('recipient_phone', $addr)) {
+                        $addr['phone'] = $addr['recipient_phone'];
+                    }
+                }
+                $response['data'] = $addresses;
             } else {
                 $response['success'] = false;
                 $response['message'] = 'Customer ID is required';
@@ -184,7 +190,7 @@ try {
                     $recipientLastName = trim((string) ($data['recipient_last_name'] ?? $data['recipientLastName']));
                 }
 
-                $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, recipient_first_name, recipient_last_name, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
+                $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, recipient_first_name, recipient_last_name, province, district, sub_district, zip_code, recipient_phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
                 $stmt->execute([
                     $data['customer_id'],
                     $data['address'],
@@ -193,7 +199,8 @@ try {
                     $data['province'] ?? '',
                     $data['district'] ?? '',
                     $data['sub_district'] ?? '',
-                    $data['zip_code'] ?? ''
+                    $data['zip_code'] ?? '',
+                    $data['phone'] ?? null
                 ]);
 
                 $response['success'] = true;
@@ -239,20 +246,21 @@ try {
                     json_response(['error' => 'Customer not found'], 404);
                     return;
                 }
-                $stmt = $pdo->prepare("SELECT street, province, district, subdistrict, postal_code FROM customers WHERE customer_id = ?");
+                $stmt = $pdo->prepare("SELECT street, province, district, subdistrict, postal_code, recipient_first_name, recipient_last_name, recipient_phone FROM customers WHERE customer_id = ?");
                 $stmt->execute([$customer['customer_id']]);
                 $currentCustomerAddress = $stmt->fetch();
 
                 $oldAddressId = null;
 
-                // If customer has a current address, add it to customer_address table
+                // If customer has a current address, save it to customer_address table (with recipient info)
                 if ($currentCustomerAddress && $currentCustomerAddress['street']) {
-                    $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, recipient_first_name, recipient_last_name, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
+                    $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, recipient_first_name, recipient_last_name, recipient_phone, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
                     $stmt->execute([
                         $customer['customer_id'],
                         $currentCustomerAddress['street'],
-                        null,
-                        null,
+                        $currentCustomerAddress['recipient_first_name'],
+                        $currentCustomerAddress['recipient_last_name'],
+                        $currentCustomerAddress['recipient_phone'],
                         $currentCustomerAddress['province'],
                         $currentCustomerAddress['district'],
                         $currentCustomerAddress['subdistrict'],
@@ -261,14 +269,17 @@ try {
                     $oldAddressId = $pdo->lastInsertId();
                 }
 
-                // Update customer's primary address with the new one
-                $stmt = $pdo->prepare("UPDATE customers SET street = ?, province = ?, district = ?, subdistrict = ?, postal_code = ? WHERE customer_id = ?");
+                // Update customer's primary address AND recipient info with the new one
+                $stmt = $pdo->prepare("UPDATE customers SET street = ?, province = ?, district = ?, subdistrict = ?, postal_code = ?, recipient_first_name = ?, recipient_last_name = ?, recipient_phone = ? WHERE customer_id = ?");
                 $stmt->execute([
                     $newPrimaryAddress['address'],
                     $newPrimaryAddress['province'],
                     $newPrimaryAddress['district'],
                     $newPrimaryAddress['sub_district'],
                     $newPrimaryAddress['zip_code'],
+                    $newPrimaryAddress['recipient_first_name'],
+                    $newPrimaryAddress['recipient_last_name'],
+                    $newPrimaryAddress['recipient_phone'],
                     $customer['customer_id']
                 ]);
 

@@ -149,6 +149,8 @@ const normalizeAddress = (address?: Partial<Address> | null): Address => ({
   province: sanitizeAddressValue(address?.province ?? null),
 
   postalCode: sanitizeAddressValue(address?.postalCode ?? null),
+
+  phone: sanitizeAddressValue(address?.phone ?? address?.recipientPhone ?? address?.recipient_phone ?? null),
 });
 
 const sanitizeSavedAddress = (addr: any) => ({
@@ -173,6 +175,8 @@ const sanitizeSavedAddress = (addr: any) => ({
   province: sanitizeAddressValue(addr?.province ?? null),
 
   zip_code: sanitizeAddressValue(addr?.zip_code ?? null),
+
+  phone: sanitizeAddressValue(addr?.phone ?? addr?.recipient_phone ?? null),
 });
 
 // Helper to clean address names for fuzzy matching
@@ -880,6 +884,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         province: raw.province,
 
         postalCode: raw.postalCode ?? raw.postal_code,
+
+        phone: raw.recipientPhone ?? raw.recipient_phone ?? raw.phone,
       },
 
       creatorId: raw.creatorId ?? raw.creator_id ?? raw.seller_id ?? null,
@@ -2724,7 +2730,15 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       setUseProfileAddress(true);
 
-      setShippingAddress(normalizeAddress(selectedCustomer.address));
+      const profileAddr = normalizeAddress(selectedCustomer.address);
+      // If profile address has no phone, fall back to customer's recipient_phone or main phone
+      if (!profileAddr.phone) {
+        profileAddr.phone = (selectedCustomer as any)?.recipient_phone
+          || (selectedCustomer as any)?.recipientPhone
+          || selectedCustomer?.phone
+          || "";
+      }
+      setShippingAddress(profileAddr);
 
       setProfileAddressModified(false); // Reset modification flag when switching to profile
 
@@ -2879,7 +2893,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       setUseProfileAddress(false);
 
-      setShippingAddress(emptyAddress);
+      // Pre-populate phone with customer's main phone for new address
+      setShippingAddress({
+        ...emptyAddress,
+        phone: selectedCustomer?.phone || "",
+      });
 
       setUpdateProfileAddress(false); // Reset checkbox state
 
@@ -2934,6 +2952,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           province: sanitizeAddressValue(address.province),
 
           postalCode: sanitizeAddressValue(address.zip_code),
+
+          phone: sanitizeAddressValue(address.recipient_phone ?? address.phone ?? null) || selectedCustomer?.phone || "",
         });
 
         // Reset address selections
@@ -3079,8 +3099,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         // Update the customer's address in the local state
 
         if (selectedCustomer) {
+          const newRecipientPhone = newPrimaryAddress.recipient_phone ?? newPrimaryAddress.recipientPhone ?? "";
           setSelectedCustomer({
             ...selectedCustomer,
+
+            // Update top-level recipient_phone on the customer object
+            recipient_phone: newRecipientPhone,
 
             address: {
               recipientFirstName: sanitizeAddressValue(
@@ -3102,6 +3126,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
               province: sanitizeAddressValue(newPrimaryAddress.province),
 
               postalCode: sanitizeAddressValue(newPrimaryAddress.zip_code),
+
+              phone: newRecipientPhone,
             },
           });
         }
@@ -3125,6 +3151,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             province: newPrimaryAddress.province,
 
             postalCode: newPrimaryAddress.zip_code,
+
+            phone: newPrimaryAddress.recipient_phone ?? newPrimaryAddress.recipientPhone,
           }),
         );
 
@@ -3155,6 +3183,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 currentCustomerAddress.recipientLastName,
               ),
 
+              recipient_phone: currentCustomerAddress.phone || "",
+
               sub_district: sanitizeAddressValue(
                 currentCustomerAddress.subdistrict,
               ),
@@ -3175,10 +3205,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         );
 
         // Switch to profile address option since it's now the primary
+        // NOTE: Do NOT call handleAddressOptionChange("profile") here because
+        // selectedCustomer hasn't been updated yet (React setState is async),
+        // so it would read stale data and overwrite shippingAddress with old values.
+        // setShippingAddress was already set correctly above.
 
         setSelectedAddressOption("profile");
-
-        handleAddressOptionChange("profile");
 
         // Show success message
 
@@ -3422,6 +3454,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         postalCode: sanitizeAddressValue(
           apiData.postal_code ?? apiData.postalCode,
         ),
+
+        phone: apiData.recipient_phone ?? apiData.recipientPhone ?? "",
       },
     };
   };
@@ -3568,6 +3602,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const fallbackLast = sanitizeAddressValue(customer.lastName || "");
 
+      // If address has no phone, fall back to customer's recipient_phone or main phone
+      if (!normalized.phone) {
+        normalized.phone = (customer as any)?.recipient_phone
+          || (customer as any)?.recipientPhone
+          || customer?.phone
+          || "";
+      }
+
       setShippingAddress({
         ...normalized,
 
@@ -3585,6 +3627,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         recipientFirstName: sanitizeAddressValue(customer.firstName || ""),
 
         recipientLastName: sanitizeAddressValue(customer.lastName || ""),
+
+        phone: (customer as any)?.recipient_phone
+          || (customer as any)?.recipientPhone
+          || customer?.phone
+          || "",
       });
     }
   };
@@ -3706,11 +3753,19 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     const { name, value } = e.target;
 
-    setShippingAddress((prev) => ({
-      ...prev,
-
-      [name]: value,
-    }));
+    // Recipient phone: digits only, max 10 characters
+    if (name === "phone") {
+      const numericValue = value.replace(/[^0-9]/g, "").slice(0, 10);
+      setShippingAddress((prev) => ({
+        ...prev,
+        phone: numericValue,
+      }));
+    } else {
+      setShippingAddress((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
+    }
 
     // Set modification flag if profile address is selected
 
@@ -4106,10 +4161,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     if (value.length === 0) {
       setNewCustomerPhoneError("กรุณากรอกเบอร์โทรศัพท์");
-    } else if (value.length !== 10) {
-      setNewCustomerPhoneError("เบอร์โทรต้องมี 10 หลัก");
-    } else if (value[0] !== "0") {
-      setNewCustomerPhoneError("เบอร์โทรต้องขึ้นต้นด้วย 0");
+    } else if (value.length < 9 || value.length > 10) {
+      setNewCustomerPhoneError("เบอร์โทรต้องมี 9 หรือ 10 หลัก");
     } else {
       setNewCustomerPhoneError("");
     }
@@ -4126,10 +4179,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       return;
     }
 
-    if (value.length !== 10) {
-      setError("เบอร์โทรต้องมี 10 หลัก");
-    } else if (value[0] !== "0") {
-      setError("เบอร์โทรต้องขึ้นต้นด้วย 0");
+    if (value.length < 9 || value.length > 10) {
+      setError("เบอร์โทรต้องมี 9 หรือ 10 หลัก");
     } else {
       setError("");
     }
@@ -4212,7 +4263,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const missingFields = Object.entries(shippingAddress)
         .filter(
           ([key, val]) =>
-            key !== "recipientLastName" && (val as string).trim() === "",
+            key !== "recipientLastName" &&
+            key !== "phone" &&
+            (val as string).trim() === "",
         )
         .map(([key]) => fieldLabels[key] || key);
 
@@ -4222,8 +4275,20 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         alert(
           `กรุณากรอกที่อยู่จัดส่งให้ครบถ้วน\nช่องที่ยังไม่ได้กรอก: ${missingFields.join(", ")}`,
         );
+        setIsSaving(false);
 
         return;
+      }
+
+      // If shippingAddress.phone is empty, it will be automatically filled with selectedCustomer.phone or newCustomerPhone during payload creation
+      if (shippingAddress.phone && shippingAddress.phone.trim() !== "") {
+        const cleanedPhone = shippingAddress.phone.replace(/\D/g, "");
+        if (cleanedPhone.length < 9 || cleanedPhone.length > 10) {
+          highlightField("shippingAddress");
+          alert("รูปแบบเบอร์โทร (ผู้รับ) ไม่ถูกต้อง กรุณากรอกเบอร์โทร 9-10 หลัก\n(หรือปล่อยว่าง หากต้องการให้ระบบใช้เบอร์หลักอัตโนมัติ)");
+          setIsSaving(false);
+          return;
+        }
       }
 
       // Validate address relationships
@@ -4537,7 +4602,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             })()
             : orderData.boxes,
 
-        shippingAddress,
+        shippingAddress: {
+          ...shippingAddress,
+          phone: shippingAddress.phone?.trim()
+            ? shippingAddress.phone
+            : (selectedAddressOption === "profile" ? ((selectedCustomer as any)?.recipient_phone || (selectedCustomer as any)?.recipientPhone || selectedCustomer?.phone) : selectedCustomer?.phone) || newCustomerPhone || "",
+        },
 
         totalAmount,
 
@@ -4768,6 +4838,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
               sub_district: sanitizeAddressValue(shippingAddress.subdistrict),
 
               zip_code: sanitizeAddressValue(shippingAddress.postalCode),
+
+              phone: sanitizeAddressValue(shippingAddress.phone) || sanitizeAddressValue(selectedCustomer.phone) || "",
             };
           }
         } else if (selectedAddressOption === "profile") {
@@ -4819,13 +4891,15 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         console.warn('[Quota] Could not load quotaApi:', e);
       }
 
-      // Handle customer address update if checkbox is checked
+      // Handle customer address update — ONLY update `customers` table when profile address is selected
+      // Primary address (profile) → updates `customers.recipient_phone`
+      // Secondary address → updates `customer_address.recipient_phone` (handled separately below)
 
-      // Primary address (profile address) uses recipient_first_name and recipient_last_name from customers table
-
-      // Additional addresses use recipient_first_name and recipient_last_name from customer_address table
-
-      if ((payload as any).updateCustomerAddress && selectedCustomer) {
+      if (
+        (payload as any).updateCustomerAddress &&
+        selectedCustomer &&
+        (selectedAddressOption === "profile" || (selectedAddressOption === "new" && updateProfileAddress))
+      ) {
         try {
           const updateData = {
             customer_id: selectedCustomer.id,
@@ -4849,6 +4923,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             province: sanitizeAddressValue(shippingAddress.province),
 
             postal_code: sanitizeAddressValue(shippingAddress.postalCode),
+
+            phone: sanitizeAddressValue(shippingAddress.phone) || (selectedAddressOption === "profile" ? (sanitizeAddressValue((selectedCustomer as any)?.recipient_phone) || sanitizeAddressValue((selectedCustomer as any)?.recipientPhone)) : "") || sanitizeAddressValue(selectedCustomer?.phone) || "",
           };
 
           const response = await fetch(
@@ -4909,6 +4985,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   postalCode:
                     sanitizeAddressValue(result.data.postal_code) ||
                     sanitizeAddressValue(selectedCustomer.address?.postalCode),
+
+                  phone:
+                    sanitizeAddressValue(result.data.recipient_phone) ||
+                    sanitizeAddressValue(shippingAddress.phone) ||
+                    sanitizeAddressValue(selectedCustomer.address?.phone) ||
+                    sanitizeAddressValue(selectedCustomer.phone),
                 },
               };
 
@@ -5044,6 +5126,45 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             console.error("Error saving customer address:", error);
 
             alert("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + error.message);
+          });
+      } else if (
+        selectedAddressOption !== "new" &&
+        selectedAddressOption !== "profile" &&
+        selectedAddressOption &&
+        selectedCustomer?.id
+      ) {
+        // Update ONLY the selected secondary address row in `customer_address` table
+        // This does NOT touch the `customers` table at all
+        fetch(
+          `${resolveApiBasePath()}/customer_addresses.php?id=${selectedAddressOption}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              customerId: selectedCustomer.id,
+              recipientFirstName: sanitizeAddressValue(shippingAddress.recipientFirstName),
+              recipientLastName: sanitizeAddressValue(shippingAddress.recipientLastName),
+              address: sanitizeAddressValue(shippingAddress.street),
+              subdistrict: sanitizeAddressValue(shippingAddress.subdistrict),
+              district: sanitizeAddressValue(shippingAddress.district),
+              province: sanitizeAddressValue(shippingAddress.province),
+              zipCode: sanitizeAddressValue(shippingAddress.postalCode),
+              phone: sanitizeAddressValue(shippingAddress.phone) || sanitizeAddressValue(selectedCustomer?.phone) || ""
+            }),
+          },
+        )
+          .then((response) => response.json())
+          .then((data) => {
+            if (!data.success) {
+              console.error("Error updating secondary address:", data.message || data.error);
+            } else {
+              console.log("Secondary address updated successfully");
+            }
+          })
+          .catch((error) => {
+            console.error("Error updating secondary address:", error);
           });
       }
 
@@ -7726,6 +7847,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               </div>
                             )}
 
+                          {selectedCustomer?.address?.phone && (
+                            <div className="text-xs text-gray-500">
+                              เบอร์ผู้รับ: {selectedCustomer.address.phone}
+                            </div>
+                          )}
+
                           {selectedCustomer?.address && (
                             <div className="text-sm text-gray-600 mt-1">
                               {selectedCustomer.address.street || ""}{" "}
@@ -7775,6 +7902,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     {`${address.recipient_first_name || ""} ${address.recipient_last_name || ""}`.trim()}
                                   </div>
                                 )}
+                                
+                              {address.phone && (
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  เบอร์ผู้รับ: {address.phone}
+                                </div>
+                              )}
                             </div>
 
                             <div className="flex items-center space-x-1">
@@ -7861,34 +7994,65 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                   <div className="space-y-3">
                     <div className="flex flex-col gap-3">
-                      <div>
-                        <label className={commonLabelClass}>
-                          ชื่อ (ผู้รับ) <span className="text-red-500">*</span>
-                        </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className={commonLabelClass}>
+                            ชื่อ (ผู้รับ) <span className="text-red-500">*</span>
+                          </label>
 
-                        <input
-                          type="text"
-                          name="recipientFirstName"
-                          value={shippingAddress.recipientFirstName || ""}
-                          onChange={handleShippingAddressChange}
-                          className={commonInputClass}
-                          placeholder="กรุณากรอกชื่อผู้รับ"
-                        />
+                          <input
+                            type="text"
+                            name="recipientFirstName"
+                            value={shippingAddress.recipientFirstName || ""}
+                            onChange={handleShippingAddressChange}
+                            className={commonInputClass}
+                            placeholder="กรุณากรอกชื่อผู้รับ"
+                          />
+                        </div>
+
+                        <div>
+                          <label className={commonLabelClass}>
+                            นามสกุล (ผู้รับ)
+                          </label>
+
+                          <input
+                            type="text"
+                            name="recipientLastName"
+                            value={shippingAddress.recipientLastName || ""}
+                            onChange={handleShippingAddressChange}
+                            className={commonInputClass}
+                            placeholder="กรุณากรอกนามสกุลผู้รับ"
+                          />
+                        </div>
                       </div>
 
                       <div>
                         <label className={commonLabelClass}>
-                          นามสกุล (ผู้รับ)
+                          เบอร์โทร (ผู้รับ)
                         </label>
 
-                        <input
-                          type="text"
-                          name="recipientLastName"
-                          value={shippingAddress.recipientLastName || ""}
-                          onChange={handleShippingAddressChange}
-                          className={commonInputClass}
-                          placeholder="กรุณากรอกนามสกุลผู้รับ"
-                        />
+                        <div className="relative flex items-center">
+                          <input
+                            type="text"
+                            name="phone"
+                            value={shippingAddress.phone || ""}
+                            onChange={(e) => {
+                              const numericValue = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
+                              setShippingAddress((prev) => ({
+                                ...prev,
+                                phone: numericValue,
+                              }));
+                              clearValidationErrorFor("shippingAddress");
+                              if (selectedAddressOption === "profile") {
+                                setProfileAddressModified(true);
+                              }
+                            }}
+                            className={commonInputClass}
+                            maxLength={10}
+                            inputMode="numeric"
+                            placeholder="08X-XXX-XXXX"
+                          />
+                        </div>
                       </div>
                     </div>
 

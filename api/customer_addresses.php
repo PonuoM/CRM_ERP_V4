@@ -41,7 +41,7 @@ try {
         $addresses = [];
         
         // 1. Fetch Primary Address from 'customers'
-        $stmtPrimary = $pdo->prepare("SELECT customer_id, first_name, last_name, phone, street, subdistrict, district, province, postal_code, recipient_first_name, recipient_last_name FROM customers WHERE customer_id = ?");
+        $stmtPrimary = $pdo->prepare("SELECT customer_id, first_name, last_name, phone, recipient_phone, street, subdistrict, district, province, postal_code, recipient_first_name, recipient_last_name FROM customers WHERE customer_id = ?");
         $stmtPrimary->execute([$customerId]);
         $primary = $stmtPrimary->fetch();
         
@@ -57,12 +57,12 @@ try {
                 'province' => $primary['province'],
                 'zipCode' => $primary['postal_code'],
                 'isPrimary' => true,
-                'phone' => $primary['phone']
+                'phone' => sanitizeValue($primary['recipient_phone'] ?: $primary['phone'])
             ];
         }
         
         // 2. Fetch Secondary Addresses from 'customer_address'
-        $stmtSecondary = $pdo->prepare("SELECT id, customer_id, address, sub_district, district, province, zip_code, recipient_first_name, recipient_last_name FROM customer_address WHERE customer_id = ?");
+        $stmtSecondary = $pdo->prepare("SELECT id, customer_id, address, sub_district, district, province, zip_code, recipient_first_name, recipient_last_name, recipient_phone FROM customer_address WHERE customer_id = ?");
         $stmtSecondary->execute([$customerId]);
         $secondaryList = $stmtSecondary->fetchAll();
         
@@ -78,7 +78,7 @@ try {
                 'province' => $sec['province'],
                 'zipCode' => $sec['zip_code'],
                 'isPrimary' => false,
-                'phone' => '' // phone not typically tracked in customer_address yet
+                'phone' => sanitizeValue($sec['recipient_phone'] ?? '')
             ];
         }
         
@@ -93,7 +93,7 @@ try {
             json_response(['error' => 'Missing customerId'], 400);
         }
         
-        $sql = "INSERT INTO customer_address (customer_id, recipient_first_name, recipient_last_name, address, sub_district, district, province, zip_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO customer_address (customer_id, recipient_first_name, recipient_last_name, address, sub_district, district, province, zip_code, recipient_phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
             $customerId,
@@ -103,7 +103,8 @@ try {
             sanitizeValue($data['subdistrict'] ?? ''),
             sanitizeValue($data['district'] ?? ''),
             sanitizeValue($data['province'] ?? ''),
-            sanitizeValue($data['zipCode'] ?? '')
+            sanitizeValue($data['zipCode'] ?? ''),
+            sanitizeValue($data['phone'] ?? '')
         ]);
         
         $insertId = $pdo->lastInsertId();
@@ -124,7 +125,7 @@ try {
                 json_response(['error' => 'Missing customerId for primary update'], 400);
             }
             // Update customers table
-            $sql = "UPDATE customers SET recipient_first_name = ?, recipient_last_name = ?, street = ?, subdistrict = ?, district = ?, province = ?, postal_code = ? WHERE customer_id = ?";
+            $sql = "UPDATE customers SET recipient_first_name = ?, recipient_last_name = ?, street = ?, subdistrict = ?, district = ?, province = ?, postal_code = ?, recipient_phone = ? WHERE customer_id = ?";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
                 sanitizeValue($data['recipientFirstName'] ?? ''),
@@ -134,12 +135,13 @@ try {
                 sanitizeValue($data['district'] ?? ''),
                 sanitizeValue($data['province'] ?? ''),
                 sanitizeValue($data['zipCode'] ?? ''),
+                sanitizeValue($data['phone'] ?? ''),
                 $customerId
             ]);
             json_response(['success' => true]);
         } else {
             // Update customer_address table
-            $sql = "UPDATE customer_address SET recipient_first_name = ?, recipient_last_name = ?, address = ?, sub_district = ?, district = ?, province = ?, zip_code = ? WHERE id = ?";
+            $sql = "UPDATE customer_address SET recipient_first_name = ?, recipient_last_name = ?, address = ?, sub_district = ?, district = ?, province = ?, zip_code = ?, recipient_phone = ? WHERE id = ?";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
                 sanitizeValue($data['recipientFirstName'] ?? ''),
@@ -149,6 +151,7 @@ try {
                 sanitizeValue($data['district'] ?? ''),
                 sanitizeValue($data['province'] ?? ''),
                 sanitizeValue($data['zipCode'] ?? ''),
+                sanitizeValue($data['phone'] ?? ''),
                 $addressId
             ]);
             json_response(['success' => true]);

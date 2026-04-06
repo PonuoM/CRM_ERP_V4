@@ -75,9 +75,9 @@
 ## 3. ระบบที่อยู่จัดส่ง `[E9]`
 
 ### 3.1 ตัวเลือกที่อยู่
-- **ที่อยู่ profile** — ดึงจาก `customer.address` (default)
-- **ที่อยู่ที่บันทึกไว้** — ดึงจาก `Address_DB/get_address_data.php?endpoint=customer_addresses`
-- **ที่อยู่ใหม่** — กรอกใหม่ทั้งหมด
+- **ที่อยู่ profile** — ดึงจาก `customer.address` (default) โดยมีการรองรับ `recipient_phone` (เบอร์ผู้รับเฉพาะที่อยู่หลัก) หากไม่มีจะใช้ `phone` (เบอร์หลัก) เพื่อการแสดงผล
+- **ที่อยู่ที่บันทึกไว้** — ดึงจาก `Address_DB/get_address_data.php?endpoint=customer_addresses` ดึงทั้งชื่อผู้รับและเบอร์ผู้รับมาร่วมแสดงผล
+- **ที่อยู่ใหม่** — กรอกใหม่ทั้งหมด โดยกรอกชื่อ-นามสกุล เบอร์โทรผู้รับแยกระดับออเดอร์
 
 ### 3.2 Cascading Dropdown
 

@@ -23,7 +23,11 @@ interface AddressData {
 
 const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave, onClose }) => {
   const [formData, setFormData] = useState<Customer>(customer);
-  const [backupPhoneError, setBackupPhoneError] = useState('');
+  const [backupPhoneErrors, setBackupPhoneErrors] = useState<string[]>([]);
+  const [backupPhones, setBackupPhones] = useState<string[]>(() => {
+    const phones = (customer.backupPhone || '').split(',').map(p => p.trim()).filter(Boolean);
+    return phones.length > 0 ? phones : [''];
+  });
 
   // Address selector states
   const [provinces, setProvinces] = useState<AddressData[]>([]);
@@ -199,26 +203,49 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleBackupPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // รับเฉพาะตัวเลข
-    const value = e.target.value.replace(/[^0-9]/g, '');
+  const handleBackupPhoneChange = (index: number, value: string) => {
+    const cleanValue = value.replace(/[^0-9]/g, '');
+    if (cleanValue.length > 10) return;
 
-    // จำกัดความยาวไม่เกิน 10 หลัก
-    if (value.length > 10) return;
+    const newPhones = [...backupPhones];
+    newPhones[index] = cleanValue;
+    setBackupPhones(newPhones);
+    
+    // Sync to formData
+    setFormData(prev => ({ ...prev, backupPhone: newPhones.filter(Boolean).join(' , ') }));
 
-    // อัปเดตค่า
-    setFormData(prev => ({ ...prev, backupPhone: value }));
-
-    // Validation
-    if (value.length === 0) {
-      setBackupPhoneError('');
-    } else if (value.length !== 10) {
-      setBackupPhoneError('เบอร์สำรองต้องมี 10 หลัก');
-    } else if (value[0] !== '0') {
-      setBackupPhoneError('เบอร์สำรองต้องขึ้นต้นด้วย 0');
+    const newErrors = [...backupPhoneErrors];
+    if (cleanValue.length > 0) {
+      if (cleanValue.length < 9 || cleanValue.length > 10) {
+        newErrors[index] = 'เบอร์สำรองต้องมี 9 หรือ 10 หลัก';
+      } else {
+        newErrors[index] = '';
+      }
     } else {
-      setBackupPhoneError('');
+      newErrors[index] = '';
     }
+    setBackupPhoneErrors(newErrors);
+  };
+
+  const addBackupPhone = () => {
+    if (backupPhones.length < 3) {
+      setBackupPhones([...backupPhones, '']);
+      setBackupPhoneErrors([...backupPhoneErrors, '']);
+    }
+  };
+
+  const removeBackupPhone = (index: number) => {
+    const newPhones = backupPhones.filter((_, i) => i !== index);
+    const newErrors = backupPhoneErrors.filter((_, i) => i !== index);
+    
+    if (newPhones.length === 0) {
+      newPhones.push('');
+      newErrors.push('');
+    }
+    
+    setBackupPhones(newPhones);
+    setBackupPhoneErrors(newErrors);
+    setFormData(prev => ({ ...prev, backupPhone: newPhones.filter(Boolean).join(' , ') }));
   };
 
   const handleAddressChange = (field: 'street' | 'subdistrict' | 'district' | 'province' | 'postalCode', value: string) => {
@@ -319,21 +346,48 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
         <div>
           <label className={`${commonLabelClass} flex items-center`}>
             <Phone size={16} className="text-gray-600 mr-2" />
-            <span>เบอร์สำรอง</span>
+            <span>เบอร์สำรอง (ระบุได้สูงสุด 3 เบอร์)</span>
           </label>
-          <input
-            type="text"
-            name="backupPhone"
-            value={formData.backupPhone || ''}
-            onChange={handleBackupPhoneChange}
-            className={commonInputClass + (backupPhoneError ? ' border-red-500' : '')}
-            placeholder="0XXXXXXXXX (10 หลัก)"
-            maxLength={10}
-            disabled={isSaving}
-          />
-          {backupPhoneError && (
-            <p className="text-xs text-red-500 mt-1">{backupPhoneError}</p>
-          )}
+          <div className="space-y-2">
+            {backupPhones.map((phone, idx) => (
+              <div key={idx} className="flex flex-col">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={phone}
+                    onChange={(e) => handleBackupPhoneChange(idx, e.target.value)}
+                    className={commonInputClass + (backupPhoneErrors[idx] ? ' border-red-500' : '')}
+                    placeholder="0XXXXXXXXX (10 หลัก)"
+                    maxLength={10}
+                    disabled={isSaving}
+                  />
+                  {backupPhones.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeBackupPhone(idx)}
+                      className="text-red-500 hover:bg-red-50 p-2 rounded flex-shrink-0"
+                      disabled={isSaving}
+                    >
+                      ยกเลิก
+                    </button>
+                  )}
+                </div>
+                {backupPhoneErrors[idx] && (
+                  <p className="text-xs text-red-500 mt-1">{backupPhoneErrors[idx]}</p>
+                )}
+              </div>
+            ))}
+            {backupPhones.length < 3 && (
+              <button
+                type="button"
+                onClick={addBackupPhone}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center mt-2"
+                disabled={isSaving}
+              >
+                + เพิ่มเบอร์สำรองใหม่
+              </button>
+            )}
+          </div>
         </div>
 
         <div>

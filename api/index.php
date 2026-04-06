@@ -1989,7 +1989,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                             date_assigned, birth_date, assigned_to, company_id, lifecycle_status, behavioral_status,
                             total_purchases, order_count, first_order_date, last_order_date, current_basket_key,
                             ownership_expires, date_registered, grade, facebook_name, line_id, updated_at,
-                            street, subdistrict, district, postal_code, recipient_first_name, recipient_last_name,
+                            street, subdistrict, district, postal_code, recipient_first_name, recipient_last_name, recipient_phone,
                             backup_phone, email, follow_up_date, total_calls,
                             is_in_waiting_basket, waiting_basket_start_date, is_blocked";
                         $sql = "SELECT $neededCols FROM customers WHERE $whereSql ORDER BY $orderBy";
@@ -2240,7 +2240,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                 'phone' => $in['phone'] ?? null,
                 'backupPhone' => $in['backupPhone'] ?? null,
             ]));
-            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type, current_basket_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type, current_basket_key, recipient_first_name, recipient_last_name, recipient_phone) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             $params = [
                 $customerRefId,
                 $in['firstName'] ?? '',
@@ -2268,6 +2268,10 @@ function handle_customers(PDO $pdo, ?string $id): void
                 $in['address']['postalCode'] ?? null,
                 $in['bucketType'] ?? null,
                 $in['current_basket_key'] ?? null,
+                // Recipient name/phone from address object (for shipping label)
+                $in['address']['recipientFirstName'] ?? $in['firstName'] ?? '',
+                $in['address']['recipientLastName'] ?? $in['lastName'] ?? '',
+                $in['address']['phone'] ?? $in['phone'] ?? '',
             ];
             error_log("Attempting Customer Insert with Params: " . json_encode($params));
             $stmt->execute($params);
@@ -4022,6 +4026,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                     // Shipping Address
                     'recipient_first_name' => ['shippingAddress', 'recipientFirstName'],
                     'recipient_last_name' => ['shippingAddress', 'recipientLastName'],
+                    'recipient_phone' => ['shippingAddress', 'phone'],
                     'street' => ['shippingAddress', 'street'],
                     'subdistrict' => ['shippingAddress', 'subdistrict'],
                     'district' => ['shippingAddress', 'district'],
@@ -4779,7 +4784,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
                 // Build INSERT query dynamically based on available columns
-                $columns = ['id', 'customer_id', 'company_id', 'creator_id', 'order_date', 'delivery_date', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'recipient_first_name', 'recipient_last_name'];
+                $columns = ['id', 'customer_id', 'company_id', 'creator_id', 'order_date', 'delivery_date', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'recipient_first_name', 'recipient_last_name', 'recipient_phone'];
                 if ($hasShippingProvider) {
                     $columns[] = 'shipping_provider';
                 }
@@ -4957,6 +4962,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $addr['postalCode'] ?? null,
                     $recipientFirstName,
                     $recipientLastName,
+                    $addr['phone'] ?? null,
                 ];
                 if ($hasShippingProvider) {
                     $values[] = $shippingProvider;
@@ -5001,6 +5007,11 @@ function handle_orders(PDO $pdo, ?string $id): void
                     // If validation error (e.g. data truncated), rethrow
                     throw $e;
                 }
+
+                // NOTE: customers.recipient_phone is updated ONLY via update_customer_address.php
+                // when the user explicitly selects the profile address. It should NOT be auto-synced
+                // here because the order may use a secondary address whose phone differs from the
+                // customer's primary profile recipient phone.
 
                 // DEBUG: Check what was inserted
                 /*
