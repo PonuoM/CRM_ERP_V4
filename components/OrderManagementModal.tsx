@@ -296,15 +296,29 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const boxOverrides = useRef<Record<number, { collectionAmount?: number; codAmount?: number }>>({});
 
   const updateShippingAddress = (patch: Partial<Address>) => {
-    setCurrentOrder((prev) => ({
-      ...prev,
-
-      shippingAddress: {
+    setCurrentOrder((prev) => {
+      // Ensure we explicitly map recipientPhone to phone for backend compatibility
+      const updatedAddress = {
         ...prev.shippingAddress,
-
         ...patch,
-      },
-    }));
+      };
+      if (patch.recipientPhone !== undefined) {
+        (updatedAddress as any).phone = patch.recipientPhone;
+      }
+      return {
+        ...prev,
+        shippingAddress: updatedAddress,
+        // Also explicitly update the root level fields because the backend might fallback to them
+        ...(patch.recipientFirstName !== undefined && { recipient_first_name: patch.recipientFirstName }),
+        ...(patch.recipientLastName !== undefined && { recipient_last_name: patch.recipientLastName }),
+        ...(patch.recipientPhone !== undefined && { recipient_phone: patch.recipientPhone }),
+        ...(patch.street !== undefined && { street: patch.street }),
+        ...(patch.subdistrict !== undefined && { subdistrict: patch.subdistrict }),
+        ...(patch.district !== undefined && { district: patch.district }),
+        ...(patch.province !== undefined && { province: patch.province }),
+        ...(patch.postalCode !== undefined && { postal_code: patch.postalCode }),
+      };
+    });
   };
 
   const filteredProvinces = useMemo(() => {
@@ -1357,6 +1371,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           shippingAddress: {
             recipientFirstName: r.recipient_first_name ?? r.recipientFirstName ?? prev.shippingAddress?.recipientFirstName,
             recipientLastName: r.recipient_last_name ?? r.recipientLastName ?? prev.shippingAddress?.recipientLastName,
+            recipientPhone: r.recipient_phone ?? r.recipientPhone ?? prev.shippingAddress?.recipientPhone,
             street: r.street ?? prev.shippingAddress?.street,
             subdistrict: r.subdistrict ?? prev.shippingAddress?.subdistrict,
             district: r.district ?? prev.shippingAddress?.district,
@@ -2489,7 +2504,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     if (recipientFirst || recipientLast)
       parts.push(
-        `Recipient: ${[recipientFirst, recipientLast].filter(Boolean).join(" ").trim()} `,
+        `ที่อยู่จัดส่ง: ${[recipientFirst, recipientLast].filter(Boolean).join(" ").trim()} `,
       );
 
     if (street) parts.push(street);
@@ -2835,36 +2850,44 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
             ) : null}
           </InfoCard>
 
-          <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
+          <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า (Profile) และ สถานที่จัดส่ง">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-gray-800 text-base">
-                    {customer
-                      ? `${customer.firstName} ${customer.lastName} `
-                      : "ไม่พบข้อมูล"}
-                  </p>
-
-                  {showInputs && customer && onEditCustomer && (
-                    <button
-                      onClick={() => onEditCustomer(customer)}
-                      className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100"
-                    >
-                      แก้ไขลูกค้า
-                    </button>
-                  )}
+              {/* Customer Info (customers table) */}
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 relative">
+                <div className="flex items-start gap-3">
+                  <UserIcon className="text-blue-600 flex-shrink-0" size={18} />
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center mb-1">
+                      <div className="text-xs font-semibold text-blue-500 uppercase tracking-wide">ข้อมูลลูกค้า (Profile)</div>
+                      {showInputs && customer && onEditCustomer && (
+                        <button
+                          onClick={() => onEditCustomer(customer)}
+                          className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                        >
+                          แก้ไขข้อมูล
+                        </button>
+                      )}
+                    </div>
+                    <div className="font-semibold text-blue-900 text-base mb-1">
+                      {customer
+                        ? `${customer.firstName} ${customer.lastName}`
+                        : "ไม่พบข้อมูล"}
+                    </div>
+                    <p className="text-blue-700 flex items-center text-sm">
+                      <Phone size={14} className="mr-2" />
+                      {customer?.phone || "-"}
+                    </p>
+                  </div>
                 </div>
-
-                <p className="text-gray-600 flex items-center mt-2">
-                  <Phone size={14} className="mr-2" />
-                  {customer?.phone || "-"}
-                </p>
               </div>
+              {/* Shipping Address Info (orders table) */}
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <div className="flex items-start gap-3">
+                  <MapPin className="text-gray-400 flex-shrink-0" size={18} />
+                  <div className="flex-1 w-full overflow-hidden">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">สถานที่จัดส่ง (Shipping)</div>
 
-              <div>
-                <p className="text-xs text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
-
-                {showInputs ? (
+                    {showInputs ? (
                   <div className="space-y-2">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       <input
@@ -2895,6 +2918,16 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
                       />
                     </div>
+
+                    <input
+                      placeholder="เบอร์โทรผู้รับ"
+                      value={currentOrder.shippingAddress?.recipientPhone || ""}
+                      disabled={isLocked}
+                      onChange={(e) =>
+                        updateShippingAddress({ recipientPhone: e.target.value })
+                      }
+                      className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                    />
 
                     <input
                       placeholder="ที่อยู่ (บ้านเลขที่ ซอย ถนน)"
@@ -3095,13 +3128,23 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <p className="text-gray-700 flex items-start">
-                    <MapPin size={14} className="mr-2 mt-0.5 flex-shrink-0" />
-                    <span className="text-sm">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-gray-800 text-sm">
+                      {currentOrder.shippingAddress?.recipientFirstName} {currentOrder.shippingAddress?.recipientLastName}
+                    </div>
+                    {/* Displaying fallbacks for phone in case we have to call the reciepient */}
+                    {(currentOrder.shippingAddress?.recipientPhone || customer?.phone) ? (
+                      <div className="text-sm text-gray-700 mb-2">
+                        <span className="font-medium text-gray-500">เบอร์โทร:</span> {currentOrder.shippingAddress?.recipientPhone || customer?.phone || '-'}
+                      </div>
+                    ) : null}
+                    <p className="text-gray-600 text-sm bg-white p-2 rounded border border-gray-100 mt-2">
                       {formatAddress(currentOrder.shippingAddress)}
-                    </span>
-                  </p>
+                    </p>
+                  </div>
                 )}
+                  </div>
+                </div>
               </div>
             </div>
 

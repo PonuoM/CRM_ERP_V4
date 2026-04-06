@@ -1039,6 +1039,7 @@ const PromoCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ cur
           shippingAddress: orderData.shippingAddress ?? orderData.shipping_address ?? {
             recipientFirstName: orderData.recipient_first_name,
             recipientLastName: orderData.recipient_last_name,
+            recipientPhone: orderData.recipient_phone,
             street: orderData.street,
             subdistrict: orderData.subdistrict,
             district: orderData.district,
@@ -1532,6 +1533,7 @@ const CreatorCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ c
           shippingAddress: orderData.shippingAddress ?? orderData.shipping_address ?? {
             recipientFirstName: orderData.recipient_first_name,
             recipientLastName: orderData.recipient_last_name,
+            recipientPhone: orderData.recipient_phone,
             street: orderData.street,
             subdistrict: orderData.subdistrict,
             district: orderData.district,

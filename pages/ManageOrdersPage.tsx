@@ -717,6 +717,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         district: r.district || '',
         province: r.province || '',
         postalCode: r.postal_code || '',
+        recipientPhone: r.recipient_phone || '',
       },
       customerInfo: {
         firstName: r.customer?.first_name || r.customer_first_name || '',
@@ -817,6 +818,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       'address.recipientFullName': ctx.recipientName,
       'address.recipientFirstName': ctx.address?.recipientFirstName || ctx.customer?.firstName || '',
       'address.recipientLastName': ctx.address?.recipientLastName || ctx.customer?.lastName || '',
+      'address.recipientPhone': ctx.address?.recipientPhone || ctx.displayPhone || '',
       'address.street': ctx.address?.street || '',
       'address.subdistrict': ctx.address?.subdistrict || '',
       'address.district': ctx.address?.district || '',
@@ -851,7 +853,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     // Check for conditional expression: {if:field=value|THEN|ELSE}
     // Supports: =, !=, >, <, >=, <=
-    const ifMatch = expr.match(/^\{if:(.+?)(=|!=|>=|<=|>|<)(.+?)\|(.+)\}$/);
+    const ifMatch = expr.match(/^\{if:(.+?)(=|!=|>=|<=|>|<)(.*?)\|(.+)\}$/);
     if (ifMatch) {
       const [, condField, operator, condValue, branches] = ifMatch;
       const actualVal = fieldMap[condField.trim()];
@@ -1197,6 +1199,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               recipientLastName:
                 (r.recipient_last_name ??
                   (fallback as any).shippingAddress?.recipientLastName) || '',
+              recipientPhone:
+                (r.recipient_phone ??
+                  (fallback as any).shippingAddress?.recipientPhone) || '',
               street: (r.street ?? (fallback as any).shippingAddress?.street) || '',
               subdistrict:
                 (r.subdistrict ?? (fallback as any).shippingAddress?.subdistrict) || '',

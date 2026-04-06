@@ -319,30 +319,44 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                         </div>
                     ) : order ? (
                         <div className="space-y-6">
-                            {/* Customer Info */}
-                            <div className="bg-blue-50 p-4 rounded-lg flex items-start gap-3">
-                                <User className="text-blue-600 mt-1" size={18} />
-                                <div>
-                                    <div className="font-semibold text-blue-900">ลูกค้า: {order.customer_first_name} {order.customer_last_name}</div>
-                                    <div className="text-sm text-blue-700 mt-1">
-                                        <span className="font-medium">ผู้รับ:</span> {order.recipient_first_name} {order.recipient_last_name}<br />
-                                        <span className="font-medium">เบอร์โทร:</span> {order.recipient_phone || order.phone || order.customer_phone || '-'}
+                            {/* Two-Column: Customer Info & Shipping Address */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Customer Info (customers table) */}
+                                <div className="bg-blue-50 p-4 rounded-lg flex items-start gap-3 border border-blue-100">
+                                    <User className="text-blue-600 mt-1 flex-shrink-0" size={18} />
+                                    <div className="flex-1">
+                                        <div className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">ข้อมูลลูกค้า (Profile)</div>
+                                        <div className="font-semibold text-blue-900 text-sm">
+                                            {order.customer_first_name} {order.customer_last_name}
+                                        </div>
+                                        <div className="text-sm text-blue-700 mt-1">
+                                            <span className="font-medium">เบอร์โทร:</span> {order.phone || order.customer_phone || '-'}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Address */}
-                            <div className="flex items-start gap-3 px-2">
-                                <MapPin className="text-gray-400 mt-1" size={18} />
-                                <div className="text-sm text-gray-600">
-                                    {[
-                                        order.recipient_address, // Fallback if exists
-                                        order.street,
-                                        order.subdistrict,
-                                        order.district,
-                                        order.province,
-                                        order.postal_code
-                                    ].filter(Boolean).join(' ')}
+                                {/* Shipping Address (orders table) */}
+                                <div className="bg-gray-50 p-4 rounded-lg flex items-start gap-3 border border-gray-200">
+                                    <MapPin className="text-gray-500 mt-1 flex-shrink-0" size={18} />
+                                    <div className="flex-1">
+                                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">สถานที่จัดส่ง (Shipping)</div>
+                                        <div className="font-semibold text-gray-800 text-sm">
+                                            {order.recipient_first_name} {order.recipient_last_name}
+                                        </div>
+                                        <div className="text-sm text-gray-700 mt-1">
+                                            <span className="font-medium">เบอร์โทรรับสาย:</span> {order.recipient_phone || order.phone || order.customer_phone || '-'}
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                                            {[
+                                                order.recipient_address,
+                                                order.street,
+                                                order.subdistrict,
+                                                order.district,
+                                                order.province,
+                                                order.postal_code
+                                            ].filter(Boolean).join(' ') || "ไม่ได้ระบุที่อยู่"}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
