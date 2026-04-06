@@ -60,6 +60,7 @@ import {
 } from "../utils/customerLogs";
 import { formatThaiDateTime, formatThaiDate } from "../utils/time";
 import AddressManagementModal from "../components/AddressManagementModal";
+import OrderDetailModal from "../components/OrderDetailModal";
 
 interface CustomerDetailPageProps {
   customer: Customer;
@@ -173,6 +174,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   const [upsellDoneOrderIds, setUpsellDoneOrderIds] = useState<Set<string>>(new Set());
 
   const [showAddressManagement, setShowAddressManagement] = useState(false);
+  const [selectedOrderIdForDetails, setSelectedOrderIdForDetails] = useState<string | null>(null);
 
   const mapCall = (r: any): CallHistory => ({
     id: r.id,
@@ -1517,7 +1519,15 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                               return (
                                 <React.Fragment key={o.id}>
                                   <tr className="border-b last:border-0">
-                                    <td className="py-2 px-2 font-mono">{o.id}</td>
+                                    <td className="py-2 px-2 font-mono">
+                                      <button
+                                        onClick={() => setSelectedOrderIdForDetails(o.id)}
+                                        className="text-blue-600 hover:text-blue-800 hover:underline px-1 py-0.5 rounded hover:bg-blue-50 transition-colors"
+                                        title="คลิกเพื่อดูรายละเอียดออเดอร์"
+                                      >
+                                        {o.id}
+                                      </button>
+                                    </td>
                                     <td className="py-2 px-2">
                                       {formatThaiDate(o.orderDate)}
                                     </td>
@@ -2028,6 +2038,14 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
             // Assuming customer page re-fetches when remounted, could just reload page for now or rely on window reload
              window.location.reload();
           }}
+        />
+      )}
+
+      {selectedOrderIdForDetails && (
+        <OrderDetailModal
+          isOpen={true}
+          onClose={() => setSelectedOrderIdForDetails(null)}
+          orderId={selectedOrderIdForDetails}
         />
       )}
     </div >
