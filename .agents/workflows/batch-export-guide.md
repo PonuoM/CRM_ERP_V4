@@ -11,6 +11,8 @@ description: คู่มืออธิบายการทำงาน Batch 
 > [!NOTE]
 > **ไฟล์เก่า:** `pages/ManageOrdersPage.tsx` เป็นไฟล์ frontend ที่มี export flow ต้นฉบับ ก่อนจะเปลี่ยนมาใช้ batch API  
 > Flow เดิม: `ManageOrdersPage` → `onProcessOrders` → `api/index.php PATCH /orders/{id}` (ทีละ order) → trigger BasketRoutingServiceV2
+> 
+> **สำคัญ (Frontend CSV Logic):** ใน `ManageOrdersPage.tsx` ฝั่ง Frontend จะทำการ `filter((it: any) => !it.isPromotionParent)` เพื่อซ่อนรายการหลักของโปรโมชั่น (parent promotion wrapper) ไม่ให้ออกไปในไฟล์ Export CSV โดยอาศัยฟิลด์ `is_promotion_parent` จาก Object ที่ Backend ส่งกลับมา
 
 ---
 

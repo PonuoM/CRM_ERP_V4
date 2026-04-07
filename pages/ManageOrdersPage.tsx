@@ -1230,6 +1230,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
                   ? String(it.parent_order_id)
                   : undefined,
+              isPromotionParent: !!(it.is_promotion_parent ?? 0),
+              sku: it.sku ?? undefined,
+              shop: it.shop ?? undefined,
             })) : (fallback.items || []),
             shippingCost: Number(r.shipping_cost ?? fallback.shippingCost ?? 0),
             billDiscount: Number(r.bill_discount ?? fallback.billDiscount ?? 0),
@@ -2161,6 +2164,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                                             productId: it.product_id ? Number(it.product_id) : undefined,
                                             orderId: it.order_id != null ? String(it.order_id) : undefined,
                                             parentOrderId: it.parent_order_id != null ? String(it.parent_order_id) : undefined,
+                                            isPromotionParent: !!(it.is_promotion_parent ?? 0),
+                                            sku: it.sku ?? undefined,
+                                            shop: it.shop ?? undefined,
                                           })) : [],
                                           shippingCost: Number(o.shipping_cost ?? 0),
                                           billDiscount: Number(o.bill_discount ?? 0),
