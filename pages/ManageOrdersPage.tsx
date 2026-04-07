@@ -1182,80 +1182,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         const merged: Order[] = [];
         results.forEach((res, idx) => {
           const fallback = selectedOrders[idx];
-          if (res.status !== 'fulfilled') { merged.push(fallback); return; }
-          const r: any = res.value || {};
-          const mapped: Order = {
-            id: String(r.id ?? fallback.id),
-            customerId: String(r.customer_id ?? fallback.customerId ?? ''),
-            companyId: Number(r.company_id ?? fallback.companyId ?? 0),
-            creatorId: Number(r.creator_id ?? fallback.creatorId ?? 0),
-            orderDate: r.order_date ?? fallback.orderDate,
-            deliveryDate: r.delivery_date ?? fallback.deliveryDate,
-            shippingProvider: r.shipping_provider ?? (fallback as any).shippingProvider ?? undefined,
-            shippingAddress: {
-              recipientFirstName:
-                (r.recipient_first_name ??
-                  (fallback as any).shippingAddress?.recipientFirstName) || '',
-              recipientLastName:
-                (r.recipient_last_name ??
-                  (fallback as any).shippingAddress?.recipientLastName) || '',
-              recipientPhone:
-                (r.recipient_phone ??
-                  (fallback as any).shippingAddress?.recipientPhone) || '',
-              street: (r.street ?? (fallback as any).shippingAddress?.street) || '',
-              subdistrict:
-                (r.subdistrict ?? (fallback as any).shippingAddress?.subdistrict) || '',
-              district:
-                (r.district ?? (fallback as any).shippingAddress?.district) || '',
-              province:
-                (r.province ?? (fallback as any).shippingAddress?.province) || '',
-              postalCode:
-                (r.postal_code ?? (fallback as any).shippingAddress?.postalCode) || '',
-            },
-            items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
-              id: Number(it.id ?? i + 1),
-              productName: String(it.product_name ?? ''),
-              quantity: Number(it.quantity ?? 0),
-              pricePerUnit: Number(it.price_per_unit ?? 0),
-              discount: Number(it.discount ?? 0),
-              isFreebie: !!(it.is_freebie ?? 0),
-              boxNumber: Number(it.box_number ?? 0),
-              productId: it.product_id ? Number(it.product_id) : undefined,
-              // Preserve raw order_items IDs so CSV export can use them
-              orderId:
-                typeof it.order_id !== 'undefined' && it.order_id !== null
-                  ? String(it.order_id)
-                  : undefined,
-              parentOrderId:
-                typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
-                  ? String(it.parent_order_id)
-                  : undefined,
-              isPromotionParent: !!(it.is_promotion_parent ?? 0),
-              sku: it.sku ?? undefined,
-              shop: it.shop ?? undefined,
-            })) : (fallback.items || []),
-            shippingCost: Number(r.shipping_cost ?? fallback.shippingCost ?? 0),
-            billDiscount: Number(r.bill_discount ?? fallback.billDiscount ?? 0),
-            totalAmount: Number(r.total_amount ?? fallback.totalAmount ?? 0),
-            paymentMethod: fromApiPaymentMethod(r.payment_method ?? (fallback as any).paymentMethod),
-            paymentStatus: fromApiPaymentStatus(r.payment_status ?? (fallback as any).paymentStatus ?? 'Unpaid'),
-            orderStatus: fromApiOrderStatus(r.order_status ?? (fallback as any).orderStatus ?? 'Pending'),
-            trackingNumbers: Array.isArray(r.trackingNumbers)
-              ? r.trackingNumbers
-              : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : (fallback.trackingNumbers || [])),
-            boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({
-              boxNumber: Number(b.box_number ?? 0),
-              codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
-              collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
-              collectedAmount: Number(b.collected_amount ?? 0),
-              waivedAmount: Number(b.waived_amount ?? 0),
-              paymentMethod: b.payment_method ?? undefined,
-              status: b.status ?? undefined,
-              subOrderId: b.sub_order_id ?? undefined,
-            })) : (fallback.boxes || []),
-            notes: r.notes ?? fallback.notes,
-          };
-          merged.push(mapped);
+          if (res.status !== 'fulfilled' || !res.value) { merged.push(fallback); return; }
+          merged.push(mapApiOrderToModel(res.value));
         });
         selectedOrders = merged;
       } catch (e) {
@@ -2134,72 +2062,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                                     const results = await Promise.allSettled(orderIds.map(id => apiFetch(`orders/${encodeURIComponent(id)}`)));
                                     const orders: Order[] = results
                                       .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value)
-                                      .map(r => {
-                                        const o = r.value;
-                                        return {
-                                          id: String(o.id),
-                                          customerId: String(o.customer_id ?? ''),
-                                          companyId: Number(o.company_id ?? 0),
-                                          creatorId: Number(o.creator_id ?? 0),
-                                          orderDate: o.order_date,
-                                          deliveryDate: o.delivery_date,
-                                          shippingProvider: o.shipping_provider,
-                                          shippingAddress: {
-                                            recipientFirstName: o.recipient_first_name || '',
-                                            recipientLastName: o.recipient_last_name || '',
-                                            street: o.street || '',
-                                            subdistrict: o.subdistrict || '',
-                                            district: o.district || '',
-                                            province: o.province || '',
-                                            postalCode: o.postal_code || '',
-                                          },
-                                          items: Array.isArray(o.items) ? o.items.map((it: any, i: number) => ({
-                                            id: Number(it.id ?? i + 1),
-                                            productName: String(it.product_name ?? ''),
-                                            quantity: Number(it.quantity ?? 0),
-                                            pricePerUnit: Number(it.price_per_unit ?? 0),
-                                            discount: Number(it.discount ?? 0),
-                                            isFreebie: !!(it.is_freebie ?? 0),
-                                            boxNumber: Number(it.box_number ?? 0),
-                                            productId: it.product_id ? Number(it.product_id) : undefined,
-                                            orderId: it.order_id != null ? String(it.order_id) : undefined,
-                                            parentOrderId: it.parent_order_id != null ? String(it.parent_order_id) : undefined,
-                                            isPromotionParent: !!(it.is_promotion_parent ?? 0),
-                                            sku: it.sku ?? undefined,
-                                            shop: it.shop ?? undefined,
-                                          })) : [],
-                                          shippingCost: Number(o.shipping_cost ?? 0),
-                                          billDiscount: Number(o.bill_discount ?? 0),
-                                          totalAmount: Number(o.total_amount ?? 0),
-                                          paymentMethod: fromApiPaymentMethod(o.payment_method),
-                                          paymentStatus: fromApiPaymentStatus(o.payment_status ?? 'Unpaid'),
-                                          orderStatus: fromApiOrderStatus(o.order_status ?? 'Pending'),
-                                          trackingNumbers: Array.isArray(o.trackingNumbers)
-                                            ? o.trackingNumbers
-                                            : (typeof o.tracking_numbers === 'string' ? o.tracking_numbers.split(',').filter(Boolean) : []),
-                                          boxes: Array.isArray(o.boxes) ? o.boxes.map((b: any) => ({
-                                            boxNumber: Number(b.box_number ?? 0),
-                                            codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
-                                            collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
-                                            collectedAmount: Number(b.collected_amount ?? 0),
-                                            waivedAmount: Number(b.waived_amount ?? 0),
-                                            paymentMethod: b.payment_method ?? undefined,
-                                            status: b.status ?? undefined,
-                                            subOrderId: b.sub_order_id ?? undefined,
-                                          })) : [],
-                                          notes: o.notes ?? undefined,
-                                          customerInfo: (o.customer_id || o.customer_phone || o.phone) ? {
-                                            firstName: o.customer_first_name || '',
-                                            lastName: o.customer_last_name || '',
-                                            phone: o.phone || o.customer_phone || '',
-                                            street: o.customer_street || '',
-                                            subdistrict: o.customer_subdistrict || '',
-                                            district: o.customer_district || '',
-                                            province: o.customer_province || '',
-                                            postalCode: o.customer_postal_code || '',
-                                          } : undefined,
-                                        } as Order;
-                                      });
+                                      .map(r => mapApiOrderToModel(r.value));
 
                                     if (orders.length === 0) { alert('ไม่สามารถโหลดข้อมูลออเดอร์ได้'); return; }
 
