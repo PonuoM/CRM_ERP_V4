@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowDownToLine, Plus, Search, X, Camera, Loader2, Save, ChevronDown, Eye, Trash2 } from 'lucide-react';
-import { Warehouse, Product, Inv2StockOrder, Inv2ReceiveDocument } from '../types';
-import { inv2ListReceive, inv2SaveReceive, inv2GetReceiveDoc, inv2DeleteReceive, inv2ListSO, inv2GetSO, listWarehouses, listProducts } from '../services/api';
+import { ArrowDownToLine, Plus, Search, X, Camera, Loader2, Save, ChevronDown, Eye, Trash2, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
+import { Warehouse, Product, Inv2ReceiveDocument } from '../types';
+import { inv2ListReceive, inv2SaveReceive, inv2GetReceiveDoc, inv2DeleteReceive, inv2EditReceive, listWarehouses, listProducts } from '../services/api';
 import ImageLightbox from '../components/common/ImageLightbox';
 
 interface Inv2ReceivePageProps { companyId: number; userId: number; }
@@ -88,128 +88,23 @@ const ProductSearch: React.FC<{
     );
 };
 
-/* ═══════ Searchable SO Reference Selector ═══════ */
-const STATUS_LABELS_SO: Record<string, string> = { Draft: 'ร่าง', Ordered: 'สั่งแล้ว', Partial: 'รับบางส่วน', Completed: 'รับครบ', Cancelled: 'ยกเลิก' };
-const STATUS_COLORS_SO: Record<string, string> = { Draft: '#94a3b8', Ordered: '#3b82f6', Partial: '#f59e0b', Completed: '#22c55e', Cancelled: '#ef4444' };
-
-const SOSearchSelector: React.FC<{
-    soList: Inv2StockOrder[];
-    selectedSOId: number | null;
-    onSelect: (soId: number | null) => void;
-}> = ({ soList, selectedSOId, onSelect }) => {
-    const [open, setOpen] = useState(false);
-    const [q, setQ] = useState('');
-    const ref = useRef<HTMLDivElement>(null);
-    const selected = soList.find(s => s.id === selectedSOId);
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, []);
-
-    const filtered = soList.filter(so => {
-        if (!q) return true;
-        const s = q.toLowerCase();
-        return so.so_number.toLowerCase().includes(s)
-            || (so.warehouse_name || '').toLowerCase().includes(s)
-            || (so.source_location || '').toLowerCase().includes(s)
-            || (so.customer_vendor || '').toLowerCase().includes(s);
-    });
-
-    return (
-        <div style={{ padding: '16px 20px', background: '#f0fdf4', borderBottom: '1px solid #d1fae5' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: '#166534', whiteSpace: 'nowrap' }}>อ้างอิง SO:</span>
-                <div ref={ref} style={{ position: 'relative', flex: 1, maxWidth: '600px' }}>
-                    <button type="button" onClick={() => { setOpen(!open); setQ(''); }}
-                        style={{ width: '100%', padding: '7px 12px', border: '1.5px solid #86efac', borderRadius: '8px', fontSize: '13px', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', textAlign: 'left', color: selected ? '#1e293b' : '#6b7280', minHeight: '36px' }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                            {selected ? (
-                                <>{selected.so_number} — {selected.source_location || selected.warehouse_name || ''} {selected.customer_vendor ? `(${selected.customer_vendor})` : ''}</>
-                            ) : '— ไม่อ้างอิง SO (รับตรง) —'}
-                        </span>
-                        <ChevronDown size={14} style={{ flexShrink: 0, color: '#94a3b8', transform: open ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
-                    </button>
-                    {open && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#fff', borderRadius: '10px', border: '1.5px solid #e2e8f0', boxShadow: '0 12px 32px rgba(0,0,0,0.15)', zIndex: 60, overflow: 'hidden', maxHeight: '320px', display: 'flex', flexDirection: 'column' }}>
-                            {/* Search input */}
-                            <div style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', flexShrink: 0 }}>
-                                <div style={{ position: 'relative' }}>
-                                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                                    <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="พิมพ์เลข SO, สถานที่, ลูกค้า..." style={{ width: '100%', padding: '8px 10px 8px 32px', border: '1.5px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
-                                </div>
-                            </div>
-                            {/* Clear option */}
-                            <button type="button"
-                                onMouseDown={e => { e.preventDefault(); onSelect(null); setOpen(false); }}
-                                style={{ width: '100%', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f1f5f9', background: !selectedSOId ? '#f0fdf4' : '#fff', cursor: 'pointer', textAlign: 'left', fontSize: '13px', color: '#6b7280', fontWeight: 600, transition: 'background 0.1s' }}
-                                onMouseEnter={e => { if (selectedSOId) e.currentTarget.style.background = '#f8fafc'; }}
-                                onMouseLeave={e => { if (selectedSOId) e.currentTarget.style.background = '#fff'; }}>
-                                — ไม่อ้างอิง SO (รับตรง) —
-                            </button>
-                            {/* SO list */}
-                            <div style={{ overflow: 'auto', flex: 1 }}>
-                                {filtered.length === 0 ? (
-                                    <div style={{ padding: '16px', textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>ไม่พบ SO ที่ค้นหา</div>
-                                ) : filtered.map(so => {
-                                    const isCompleted = so.status === 'Completed';
-                                    const isSelected = so.id === selectedSOId;
-                                    return (
-                                        <button key={so.id} type="button"
-                                            disabled={isCompleted}
-                                            onMouseDown={e => { if (!isCompleted) { e.preventDefault(); onSelect(so.id); setOpen(false); } }}
-                                            style={{
-                                                width: '100%', padding: '10px 14px', border: 'none',
-                                                background: isSelected ? '#ecfdf5' : isCompleted ? '#f8f9fa' : '#fff',
-                                                cursor: isCompleted ? 'not-allowed' : 'pointer',
-                                                textAlign: 'left', fontSize: '12px',
-                                                opacity: isCompleted ? 0.5 : 1,
-                                                display: 'flex', alignItems: 'center', gap: '10px',
-                                                transition: 'background 0.1s',
-                                                borderBottom: '1px solid #f8f9fa',
-                                            }}
-                                            onMouseEnter={e => { if (!isCompleted && !isSelected) e.currentTarget.style.background = '#f0fdf4'; }}
-                                            onMouseLeave={e => { if (!isCompleted && !isSelected) e.currentTarget.style.background = '#fff'; }}>
-                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: STATUS_COLORS_SO[so.status] || '#94a3b8', flexShrink: 0 }} />
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ fontWeight: 700, color: isCompleted ? '#94a3b8' : '#1e293b' }}>{so.so_number}</span>
-                                                    <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: isCompleted ? '#f1f5f9' : '#ecfdf5', color: STATUS_COLORS_SO[so.status] || '#94a3b8', fontWeight: 600 }}>
-                                                        {STATUS_LABELS_SO[so.status] || so.status}
-                                                    </span>
-                                                </div>
-                                                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {[so.source_location, so.customer_vendor, so.warehouse_name].filter(Boolean).join(' · ') || '—'}
-                                                </div>
-                                            </div>
-                                            {isCompleted && <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>รับครบแล้ว</span>}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
 const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) => {
     const [documents, setDocuments] = useState<Inv2ReceiveDocument[]>([]);
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
+    const [itemsPerPage, setItemsPerPage] = useState(20);
     const [showModal, setShowModal] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [editDocId, setEditDocId] = useState<number | null>(null);
 
     const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-    const [soList, setSoList] = useState<Inv2StockOrder[]>([]);
-    const [selectedSOId, setSelectedSOId] = useState<number | null>(null);
-
+        
     // Detail modal state
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [detailDoc, setDetailDoc] = useState<any>(null);
@@ -222,71 +117,73 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
     const [formNotes, setFormNotes] = useState('');
     const [formImages, setFormImages] = useState<string[]>([]);
     const [formItems, setFormItems] = useState<ReceiveFormItem[]>([]);
-    // SO header info (read-only display when SO is selected)
-    const [soHeaderInfo, setSOHeaderInfo] = useState<{
-        source_location?: string;
-        customer_vendor?: string;
-        delivery_location?: string;
-        expected_date?: string;
-    }>({});
-
+    
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
             const [rcvRes, whRes, pRes] = await Promise.all([
-                inv2ListReceive({ company_id: companyId, search: search || undefined }),
+                inv2ListReceive({ company_id: companyId, search: search || undefined, page: page, pageSize: itemsPerPage }),
                 listWarehouses(companyId), listProducts(companyId),
             ]);
             setDocuments(rcvRes?.data || []);
+            if (rcvRes?.pagination) {
+                setTotalPages(rcvRes.pagination.totalPages || 1);
+                setTotalItems(rcvRes.pagination.total || 0);
+            } else {
+                setTotalPages(1); setTotalItems(0);
+            }
             setWarehouses(Array.isArray(whRes) ? whRes : whRes?.data || []);
             setProducts(Array.isArray(pRes) ? pRes : pRes?.data || []);
         } catch (e) { console.error(e); }
         setLoading(false);
-    }, [companyId, search]);
+    }, [companyId, search, page, itemsPerPage]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
     const openCreateModal = async () => {
-        setSelectedSOId(null); setFormWarehouse(warehouses[0]?.id || 0);
+        setEditDocId(null);
+        setFormWarehouse(warehouses[0]?.id || 0);
         setFormReceiveDate(new Date().toISOString().slice(0, 10));
         setFormDocNumber(''); setFormNotes(''); setFormImages([]); setFormItems([]);
-        setSOHeaderInfo({});
-        try {
-            const res = await inv2ListSO({ company_id: companyId, pageSize: 200 });
-            setSoList((res?.data || []).filter((s: Inv2StockOrder) => s.status !== 'Cancelled'));
-        } catch { setSoList([]); }
         setShowModal(true);
     };
 
-    const handleSelectSO = async (soId: number) => {
-        setSelectedSOId(soId);
+    const handleEditClick = async (doc: any) => {
+        setLoading(true);
         try {
-            const res = await inv2GetSO(soId);
+            const res = await inv2GetReceiveDoc(doc.id);
             if (res?.success && res.data) {
-                const h = res.data.header;
-                setFormWarehouse(h.warehouse_id);
-                setSOHeaderInfo({
-                    source_location: h.source_location || '',
-                    customer_vendor: h.customer_vendor || '',
-                    delivery_location: h.delivery_location || '',
-                    expected_date: h.expected_date || '',
-                });
-                setFormItems(res.data.items
-                    .filter((i: any) => (i.remaining_quantity || 0) > 0)
-                    .map((i: any) => ({
-                        so_item_id: i.id, product_id: i.product_id,
-                        product_name: i.product_name || products.find(p => p.id === i.product_id)?.name || '',
-                        product_sku: i.product_sku || products.find(p => p.id === i.product_id)?.sku || '',
-                        variant: i.variant || '', lot_number: '', quantity: i.remaining_quantity || 0,
-                        max_quantity: i.remaining_quantity || 0,
-                        unit_cost: i.unit_cost ? Number(i.unit_cost) : undefined,
-                        mfg_date: '', exp_date: '', notes: i.notes || '',
-                        department: i.department || '',
-                        delivery_date: i.delivery_date || h.expected_date || '',
-                    })));
+                const detailDoc = res.data.document;
+                const detailItems = res.data.items || [];
+                setEditDocId(detailDoc.id);
+                setFormWarehouse(detailDoc.warehouse_id || warehouses[0]?.id || 0);
+                setFormReceiveDate(detailDoc.receive_date || new Date().toISOString().slice(0, 10));
+                setFormDocNumber(detailDoc.doc_number || '');
+                setFormNotes(detailDoc.notes || '');
+                setFormImages(detailDoc.images || []);
+                setFormItems(detailItems.map((i: any) => ({
+                    product_id: i.product_id,
+                    variant: i.variant,
+                    lot_number: i.lot_number,
+                    quantity: i.quantity,
+                    unit_cost: i.unit_cost,
+                    mfg_date: i.mfg_date,
+                    exp_date: i.exp_date,
+                    notes: i.notes,
+                    department: i.department,
+                    delivery_date: i.so_delivery_date,
+                    so_item_id: i.so_item_id,
+                    max_quantity: i.so_item_id ? i.quantity : undefined
+                })));
+                setShowModal(true);
+            } else {
+                alert('โหลดข้อมูลเอกสารล้มเหลว');
             }
-        } catch { }
+        } catch (e) { console.error(e); }
+        setLoading(false);
     };
+
+    
 
     const addManualItem = () => setFormItems([...formItems, { product_id: 0, variant: '', lot_number: '', quantity: 0, unit_cost: undefined, mfg_date: '', exp_date: '', notes: '', department: '', delivery_date: '' }]);
     const updateItem = (idx: number, field: string, value: any) => setFormItems(formItems.map((item, i) => i === idx ? { ...item, [field]: value } : item));
@@ -298,8 +195,24 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
         if (validItems.length === 0) return alert('เพิ่มรายการอย่างน้อย 1 รายการ');
         setSaving(true);
         try {
-        const autoLot = 'LOT-' + formReceiveDate.replace(/-/g, '');
-            await inv2SaveReceive({ doc_number: formDocNumber || undefined, stock_order_id: selectedSOId || null, warehouse_id: formWarehouse, receive_date: formReceiveDate, notes: formNotes || null, images: formImages, items: validItems.map(i => ({ ...i, lot_number: i.lot_number || autoLot })), user_id: userId, company_id: companyId });
+            const autoLot = 'LOT-' + formReceiveDate.replace(/-/g, '');
+            const payload = {
+                id: editDocId,
+                doc_number: formDocNumber || undefined,
+                stock_order_id: null,
+                warehouse_id: formWarehouse,
+                receive_date: formReceiveDate,
+                notes: formNotes || null,
+                images: formImages,
+                items: validItems.map(i => ({ ...i, lot_number: i.lot_number || autoLot })),
+                user_id: userId,
+                company_id: companyId
+            };
+            if (editDocId) {
+                await inv2EditReceive(payload);
+            } else {
+                await inv2SaveReceive(payload);
+            }
             setShowModal(false); loadData();
         } catch (e: any) { alert('บันทึกไม่สำเร็จ: ' + (e?.message || '')); }
         setSaving(false);
@@ -347,7 +260,35 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
     };
 
     const totalQty = formItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
-    const selectedSO = soList.find(s => s.id === selectedSOId);
+
+    const effectivePage = Math.min(Math.max(page, 1), totalPages);
+    const displayStart = totalItems === 0 ? 0 : (effectivePage - 1) * itemsPerPage + 1;
+    const displayEnd = totalItems === 0 ? 0 : Math.min(effectivePage * itemsPerPage, totalItems);
+
+    const handlePageChange = (p: number) => setPage(p);
+    const handleItemsPerPageChange = (val: number) => {
+        setItemsPerPage(val);
+        setPage(1);
+    };
+
+    const getPageNumbers = () => {
+        const pages: Array<number | '...'> = [];
+        const maxVisiblePages = 5;
+        if (totalPages <= maxVisiblePages) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else if (effectivePage <= 3) {
+            for (let i = 1; i <= 4; i++) pages.push(i);
+            pages.push('...'); pages.push(totalPages);
+        } else if (effectivePage >= totalPages - 2) {
+            pages.push(1); pages.push('...');
+            for (let i = totalPages - 3; i <= totalPages; i++) pages.push(i);
+        } else {
+            pages.push(1); pages.push('...');
+            for (let i = effectivePage - 1; i <= effectivePage + 1; i++) pages.push(i);
+            pages.push('...'); pages.push(totalPages);
+        }
+        return pages;
+    };
 
     return (
         <div style={{ padding: '24px' }}>
@@ -367,7 +308,7 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
             {/* Search */}
             <div style={{ position: 'relative', marginBottom: '20px', maxWidth: '400px' }}>
                 <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-                <input placeholder="ค้นหาเลขเอกสาร, SO..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px' }} />
+                <input placeholder="ค้นหาเลขเอกสาร, SO..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px' }} />
             </div>
 
             {/* List Table */}
@@ -379,7 +320,7 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                 ) : (
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead><tr style={{ background: '#f8fafc' }}>
-                            {['เลขที่เอกสาร', 'อ้างอิง SO', 'คลัง', 'วันที่รับ', 'รายการ', 'จำนวน', 'ผู้ทำรายการ', 'หมายเหตุ', ''].map(h => (
+                            {['เลขที่เอกสาร', 'คลัง', 'วันที่รับ', 'รายการ', 'จำนวน', 'ผู้ทำรายการ', 'หมายเหตุ', ''].map(h => (
                                 <th key={h || 'action'} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #e5e7eb', textTransform: 'uppercase' }}>{h}</th>
                             ))}
                         </tr></thead>
@@ -387,7 +328,6 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                             {documents.map(doc => (
                                 <tr key={doc.id} style={{ borderBottom: '1px solid #f3f4f6' }} onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
                                     <td style={{ padding: '12px 16px', fontWeight: 600, color: '#1a1a2e', fontSize: '14px' }}>{doc.doc_number}</td>
-                                    <td style={{ padding: '12px 16px', fontSize: '13px', color: doc.so_number ? '#6366f1' : '#9ca3af' }}>{doc.so_number || '—'}</td>
                                     <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151' }}>{doc.warehouse_name}</td>
                                     <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151' }}>{doc.receive_date}</td>
                                     <td style={{ padding: '12px 16px', fontSize: '14px', color: '#6b7280' }}>{doc.item_count || 0}</td>
@@ -396,6 +336,9 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                                     <td style={{ padding: '12px 16px', fontSize: '13px', color: '#9ca3af', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.notes || '—'}</td>
                                     <td style={{ padding: '12px 16px' }}>
                                         <div style={{ display: 'flex', gap: '6px' }}>
+                                            <button onClick={() => handleEditClick(doc)} style={{ padding: '5px 10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', color: '#1d4ed8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 600 }}>
+                                                ✏️ แก้ไข
+                                            </button>
                                             <button onClick={() => handleViewDetail(doc.id)} style={{ padding: '5px 10px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', color: '#047857', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 600 }}>
                                                 <Eye size={13} /> ดู
                                             </button>
@@ -408,6 +351,70 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                             ))}
                         </tbody>
                     </table>
+                )}
+                {/* Pagination */}
+                {!loading && totalItems > 0 && (
+                    <div style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', background: '#fff', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
+                        <div style={{ fontSize: '13px', color: '#64748b' }}>
+                            Showing {displayStart} to {displayEnd} of {totalItems} entries
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '13px', color: '#64748b' }}>Lines per page</span>
+                                <select 
+                                    value={itemsPerPage} 
+                                    onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+                                    style={{ padding: '6px 24px 6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', color: '#334155', background: '#fff', outline: 'none', cursor: 'pointer', appearance: 'auto' }}
+                                >
+                                    {[5, 10, 20, 50, 100].map(v => (
+                                        <option key={v} value={v}>{v}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <button
+                                    onClick={() => handlePageChange(1)}
+                                    disabled={page <= 1}
+                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #cbd5e1', background: page <= 1 ? '#f1f5f9' : '#fff', color: page <= 1 ? '#94a3b8' : '#334155', cursor: page <= 1 ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}
+                                >
+                                    <ChevronsLeft size={16} />
+                                </button>
+                                <button
+                                    onClick={() => handlePageChange(page - 1)}
+                                    disabled={page <= 1}
+                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #cbd5e1', background: page <= 1 ? '#f1f5f9' : '#fff', color: page <= 1 ? '#94a3b8' : '#334155', cursor: page <= 1 ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}
+                                >
+                                    <ChevronLeft size={16} />
+                                </button>
+                                
+                                {getPageNumbers().map((p, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => p !== '...' && handlePageChange(p)}
+                                        disabled={p === '...'}
+                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '32px', height: '32px', padding: '0 8px', borderRadius: '6px', border: p === '...' ? 'none' : (p === page ? '1px solid #3b82f6' : '1px solid #cbd5e1'), background: p === page ? '#3b82f6' : (p === '...' ? 'transparent' : '#fff'), color: p === page ? '#fff' : '#334155', cursor: p === '...' ? 'default' : 'pointer', fontWeight: p === page ? 600 : 400, fontSize: '13px', transition: 'all 0.2s' }}
+                                    >
+                                        {p}
+                                    </button>
+                                ))}
+
+                                <button
+                                    onClick={() => handlePageChange(page + 1)}
+                                    disabled={page >= totalPages}
+                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #cbd5e1', background: page >= totalPages ? '#f1f5f9' : '#fff', color: page >= totalPages ? '#94a3b8' : '#334155', cursor: page >= totalPages ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}
+                                >
+                                    <ChevronRight size={16} />
+                                </button>
+                                <button
+                                    onClick={() => handlePageChange(totalPages)}
+                                    disabled={page >= totalPages}
+                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #cbd5e1', background: page >= totalPages ? '#f1f5f9' : '#fff', color: page >= totalPages ? '#94a3b8' : '#334155', cursor: page >= totalPages ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}
+                                >
+                                    <ChevronsRight size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </div>
 
@@ -435,13 +442,13 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                                 <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 140px 1fr', gap: '0', border: '1px solid #e2e8f0', margin: '20px', borderRadius: '10px', overflow: 'hidden' }}>
                                     <div style={{ padding: '10px 14px', background: '#f0fdfa', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#0f766e' }}>เลขที่เอกสาร</div>
                                     <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontWeight: 700, fontSize: '14px', color: '#1e293b' }}>{detailDoc.doc_number}</div>
-                                    <div style={{ padding: '10px 14px', background: '#f0fdfa', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#0f766e' }}>อ้างอิง SO</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', color: detailDoc.so_number ? '#6366f1' : '#9ca3af' }}>{detailDoc.so_number || '— ไม่อ้างอิง —'}</div>
+                                    <div style={{ padding: '10px 14px', background: '#f0fdfa', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#0f766e' }}>วันที่รับ</div>
+                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>{detailDoc.receive_date}</div>
 
                                     <div style={{ padding: '10px 14px', background: '#f0fdfa', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#0f766e' }}>คลังสินค้า</div>
                                     <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '13px' }}>{detailDoc.warehouse_name || '—'}</div>
-                                    <div style={{ padding: '10px 14px', background: '#f0fdfa', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#0f766e' }}>วันที่รับ</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>{detailDoc.receive_date}</div>
+                                    <div style={{ padding: '10px 14px', background: '#f0fdfa', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#0f766e' }}></div>
+                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}></div>
 
                                     {detailDoc.source_location && (<>
                                         <div style={{ padding: '10px 14px', background: '#f0fdfa', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#0f766e' }}>จากสถานที่ผลิต</div>
@@ -537,12 +544,7 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                                 </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                {selectedSO && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.15)', borderRadius: '20px', padding: '5px 14px 5px 10px' }}>
-                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24', boxShadow: '0 0 6px #fbbf24' }} />
-                                        <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff' }}>อ้างอิง: {selectedSO.so_number}</span>
-                                    </div>
-                                )}
+                                
                                 <button onClick={() => setShowModal(false)} style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(239,68,68,0.8)', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <X size={16} />
                                 </button>
@@ -552,58 +554,26 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                         {/* ── Scrollable Body ── */}
                         <div style={{ flex: 1, overflow: 'auto' }}>
 
-                            {/* ── SO Reference Selector (Searchable) ── */}
-                            <SOSearchSelector
-                                soList={soList}
-                                selectedSOId={selectedSOId}
-                                onSelect={(soId) => soId ? handleSelectSO(soId) : (() => { setSelectedSOId(null); setSOHeaderInfo({}); setFormItems([]); })()}
-                            />
-
                             {/* ── Form Grid ── */}
                             <div style={{ padding: '20px' }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 140px 1fr', gap: '0', border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-                                    {/* Row 1 */}
                                     <div style={{ padding: '10px 14px', background: '#ecfdf5', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>เลขที่เอกสาร</div>
                                     <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
                                         <input value={formDocNumber} onChange={e => setFormDocNumber(e.target.value)} placeholder="Auto (ถ้าไม่ระบุ)" style={inputStyle} />
                                     </div>
-                                    <div style={{ padding: '10px 14px', background: '#ecfdf5', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>จากสถานที่ผลิต</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '13px', color: soHeaderInfo.source_location ? '#334155' : '#94a3b8' }}>{soHeaderInfo.source_location || '—'}</span>
-                                    </div>
-                                    {/* Row 2 */}
-                                    <div style={{ padding: '10px 14px', background: '#ecfdf5', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>ลูกค้า/ผู้ขาย</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', display: 'flex', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '13px', color: soHeaderInfo.customer_vendor ? '#334155' : '#94a3b8' }}>{soHeaderInfo.customer_vendor || '—'}</span>
-                                    </div>
-                                    <div style={{ padding: '10px 14px', background: '#ecfdf5', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>คลังสินค้า</div>
+                                    <div style={{ padding: '10px 14px', background: '#ecfdf5', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>วันที่รับ</div>
                                     <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0' }}>
+                                        <input type="date" value={formReceiveDate} onChange={e => setFormReceiveDate(e.target.value)} style={inputStyle} />
+                                    </div>
+                                    <div style={{ padding: '10px 14px', background: '#ecfdf5', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>คลังสินค้า</div>
+                                    <div style={{ padding: '10px 14px', borderRight: '1px solid #e2e8f0' }}>
                                         <select value={formWarehouse} onChange={e => setFormWarehouse(Number(e.target.value))} style={selectStyle}>
                                             <option value={0}>— เลือกคลัง —</option>
                                             {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                                         </select>
                                     </div>
-                                    {/* Row 3 */}
-                                    <div style={{ padding: '10px 14px', background: '#ecfdf5', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>วันที่รับ</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
-                                        <input type="date" value={formReceiveDate} onChange={e => setFormReceiveDate(e.target.value)} style={inputStyle} />
-                                    </div>
-                                    <div style={{ padding: '10px 14px', background: '#ecfdf5', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>สถานที่จัดส่ง</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '13px', color: soHeaderInfo.delivery_location ? '#334155' : '#94a3b8' }}>{soHeaderInfo.delivery_location || '—'}</span>
-                                    </div>
-                                    {/* Row 4 */}
-                                    <div style={{ padding: '10px 14px', background: '#ecfdf5', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>อ้างอิง SO</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', display: 'flex', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '13px', fontWeight: 600, color: selectedSO ? '#6366f1' : '#94a3b8' }}>{selectedSO?.so_number || 'ไม่มี'}</span>
-                                    </div>
-                                    <div style={{ padding: '10px 14px', background: '#ecfdf5', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>วันที่ส่งมอบ (SO)</div>
-                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '13px', color: soHeaderInfo.expected_date ? '#334155' : '#94a3b8' }}>{soHeaderInfo.expected_date || '—'}</span>
-                                    </div>
-                                    {/* Row 5 */}
                                     <div style={{ padding: '10px 14px', background: '#ecfdf5', borderRight: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 600, color: '#047857', display: 'flex', alignItems: 'center' }}>หมายเหตุ</div>
-                                    <div style={{ padding: '10px 14px', gridColumn: 'span 3' }}>
+                                    <div style={{ padding: '10px 14px' }}>
                                         <input value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="—" style={inputStyle} />
                                     </div>
                                 </div>

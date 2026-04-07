@@ -2477,6 +2477,12 @@ export async function inv2GetReceiveDoc(docId: number) {
   return apiFetch(`inv2/receive_get.php?doc_id=${docId}`);
 }
 
+export async function inv2EditReceive(data: any) {
+  return apiFetch('inv2/receive_edit.php', {
+    method: 'POST', body: JSON.stringify(data)
+  });
+}
+
 export async function inv2DeleteReceive(docId: number) {
   return apiFetch('inv2/receive_delete.php', {
     method: 'POST', body: JSON.stringify({ doc_id: docId })

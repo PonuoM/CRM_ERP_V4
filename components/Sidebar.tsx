@@ -280,7 +280,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: "Warehouse V2",
       icon: Package,
       children: [
-        { label: "SO (คำสั่งซื้อ)", icon: ClipboardList, key: "inv2.so" },
         { label: "รับเข้า V2", icon: ArrowDownToLine, key: "inv2.receive" },
         { label: "จ่ายออก V2", icon: Upload, key: "inv2.dispatch" },
         { label: "ปรับปรุง V2", icon: Settings, key: "inv2.adjustment" },
