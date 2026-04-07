@@ -495,6 +495,23 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                                         )}
                                     </table>
                                 </div>
+
+                                {/* ── Attachments ── */}
+                                {detailDoc.images && detailDoc.images.length > 0 && (
+                                    <div style={{ padding: '0 20px 20px' }}>
+                                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f766e', marginBottom: '12px' }}>📎 รูปภาพแนบ</div>
+                                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                            {detailDoc.images.map((img: string, idx: number) => {
+                                                const srcUrl = img.startsWith('data:') ? img : (img.startsWith('http') ? img : `/CRM_ERP_V4/api/${img}`);
+                                                return (
+                                                    <div key={idx} style={{ position: 'relative', width: '100px', height: '100px', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', cursor: 'zoom-in', border: '1px solid #e2e8f0' }} onClick={() => setPreviewImage(srcUrl)}>
+                                                        <img src={srcUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>ไม่พบข้อมูล</div>
