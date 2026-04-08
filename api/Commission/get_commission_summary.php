@@ -40,7 +40,7 @@ try {
             break;
     }
 
-    $whereOrd = "o.id NOT REGEXP '-[0-9]+$'";
+    $whereOrd = "o.id NOT REGEXP '-[0-9]+$' AND (o.order_status IS NULL OR o.order_status NOT IN ('Returned', 'Cancelled', 'BadDebt'))";
     $whereCalc = "1=1";
     $paramsOrd = [];
     $paramsCalc = [];
