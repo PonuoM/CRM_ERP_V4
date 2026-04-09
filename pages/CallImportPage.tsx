@@ -18,6 +18,7 @@ import {
     Download,
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 
 interface CallImportPageProps {
     currentUser: { id: number; companyId: number };
@@ -1216,6 +1217,8 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
                     </div>
                 </div>
             )}
+            
+            <OnecallLoginSidebar currentUser={currentUser as any} />
         </div>
     );
 };
