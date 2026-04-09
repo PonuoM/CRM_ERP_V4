@@ -818,7 +818,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       'address.recipientFullName': ctx.recipientName,
       'address.recipientFirstName': ctx.address?.recipientFirstName || ctx.customer?.firstName || '',
       'address.recipientLastName': ctx.address?.recipientLastName || ctx.customer?.lastName || '',
-      'address.recipientPhone': ctx.address?.recipientPhone || ctx.displayPhone || '',
+      'address.recipientPhone': (() => {
+        const p = ctx.address?.recipientPhone;
+        if (!p) return ctx.displayPhone || '';
+        return (p.startsWith('0') || p.startsWith('+')) ? p : `0${p}`;
+      })(),
       'address.street': ctx.address?.street || '',
       'address.subdistrict': ctx.address?.subdistrict || '',
       'address.district': ctx.address?.district || '',
