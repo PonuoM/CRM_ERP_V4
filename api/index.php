@@ -7322,15 +7322,14 @@ function handle_order_slips(PDO $pdo, ?string $id): void
                 $checkOrdStmt->execute([$orderId]);
                 $pm = $checkOrdStmt->fetchColumn();
 
-                if ($pm === 'COD') {
-                    $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
-                    $countSlipStmt->execute([$orderId]);
-                    $existingSlips = (int) $countSlipStmt->fetchColumn();
+                // Applies to all payment methods now!
+                $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
+                $countSlipStmt->execute([$orderId]);
+                $existingSlips = (int) $countSlipStmt->fetchColumn();
 
-                    if ($existingSlips === 0) {
-                        $updOrdStmt = $pdo->prepare("UPDATE orders SET payment_status = 'PendingVerification' WHERE id = ?");
-                        $updOrdStmt->execute([$orderId]);
-                    }
+                if ($existingSlips === 0) {
+                    $updOrdStmt = $pdo->prepare("UPDATE orders SET payment_status = 'PendingVerification' WHERE id = ?");
+                    $updOrdStmt->execute([$orderId]);
                 }
             } catch (Throwable $e) {
                 // Log but do not block the slip upload? Or fail? 
@@ -7531,15 +7530,14 @@ function handle_order_slips(PDO $pdo, ?string $id): void
                     $recalcPaid = min($orderTotal, max($remainingSlipTotal, $debtTotal));
                     $pdo->prepare("UPDATE orders SET amount_paid = ? WHERE id = ?")->execute([$recalcPaid, $orderId]);
 
-                    if ($pm === 'COD') {
-                        $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
-                        $countSlipStmt->execute([$orderId]);
-                        $remainingSlips = (int) $countSlipStmt->fetchColumn();
+                    // Revert to Unpaid for all payment methods when last slip is deleted
+                    $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
+                    $countSlipStmt->execute([$orderId]);
+                    $remainingSlips = (int) $countSlipStmt->fetchColumn();
 
-                        if ($remainingSlips === 0 && $debtTotal <= 0) {
-                            $updOrdStmt = $pdo->prepare("UPDATE orders SET payment_status = 'Unpaid' WHERE id = ?");
-                            $updOrdStmt->execute([$orderId]);
-                        }
+                    if ($remainingSlips === 0 && $debtTotal <= 0) {
+                        $updOrdStmt = $pdo->prepare("UPDATE orders SET payment_status = 'Unpaid' WHERE id = ?");
+                        $updOrdStmt->execute([$orderId]);
                     }
                 } catch (Throwable $e) {
                     error_log("Error recalculating after slip delete: " . $e->getMessage());

@@ -15,8 +15,22 @@ try {
     $params = [];
 
     if (!empty($_GET['company_id'])) { $where[] = "w.company_id = ?"; $params[] = $_GET['company_id']; }
-    if (!empty($_GET['warehouse_id'])) { $where[] = "s.warehouse_id = ?"; $params[] = $_GET['warehouse_id']; }
-    if (!empty($_GET['product_id'])) { $where[] = "s.product_id = ?"; $params[] = $_GET['product_id']; }
+    if (!empty($_GET['warehouse_id'])) {
+        $w_ids = array_filter(array_map('intval', explode(',', $_GET['warehouse_id'])));
+        if (!empty($w_ids)) {
+            $inQuery = implode(',', array_fill(0, count($w_ids), '?'));
+            $where[] = "s.warehouse_id IN ($inQuery)";
+            $params = array_merge($params, $w_ids);
+        }
+    }
+    if (!empty($_GET['product_id'])) {
+        $p_ids = array_filter(array_map('intval', explode(',', $_GET['product_id'])));
+        if (!empty($p_ids)) {
+            $inQuery = implode(',', array_fill(0, count($p_ids), '?'));
+            $where[] = "s.product_id IN ($inQuery)";
+            $params = array_merge($params, $p_ids);
+        }
+    }
     if (!empty($_GET['search'])) {
         $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR s.lot_number LIKE ?)";
         $params[] = "%{$_GET['search']}%";
@@ -33,7 +47,16 @@ try {
                    s.quantity, s.mfg_date, s.exp_date, s.unit_cost,
                    s.created_at, s.updated_at,
                    w.name as warehouse_name,
-                   p.name as product_name, p.sku as product_sku, p.unit as product_unit
+                   p.name as product_name, p.sku as product_sku, p.unit as product_unit,
+                   (
+                       SELECT COALESCE(SUM(m.quantity), 0)
+                       FROM inv2_movements m
+                       WHERE m.warehouse_id = s.warehouse_id
+                         AND m.product_id = s.product_id
+                         AND COALESCE(m.variant,'') = COALESCE(s.variant,'')
+                         AND COALESCE(m.lot_number,'') = COALESCE(s.lot_number,'')
+                         AND m.movement_type = 'OUT'
+                   ) as dispatched_quantity
             FROM inv2_stock s
             INNER JOIN warehouses w ON s.warehouse_id = w.id
             INNER JOIN products p ON s.product_id = p.id

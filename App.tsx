@@ -259,6 +259,7 @@ import Inv2DispatchPage from "./pages/Inv2DispatchPage";
 import Inv2AdjustmentPage from "./pages/Inv2AdjustmentPage";
 import Inv2StockViewPage from "./pages/Inv2StockViewPage";
 import Inv2HistoryPage from "./pages/Inv2HistoryPage";
+import Inv2WarehouseMappingPage from "./pages/Inv2WarehouseMappingPage";
 import StatementManagementPage from "./pages/StatementManagementPage";
 import usePersistentState from "./utils/usePersistentState";
 import { generateMainOrderId } from "./utils/orderIdGenerator";
@@ -7515,6 +7516,8 @@ const App: React.FC = () => {
         return <Inv2StockViewPage companyId={currentUser.companyId!} />;
       case "ประวัติ V2":
         return <Inv2HistoryPage companyId={currentUser.companyId!} />;
+      case "ผูกคลัง V2":
+        return <Inv2WarehouseMappingPage companyId={currentUser.companyId!} />;
 
       // PROCESSED: Finance
       case "nav.finance_approval":

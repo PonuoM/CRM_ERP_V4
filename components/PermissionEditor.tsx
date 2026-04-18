@@ -80,6 +80,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'inv2.adjustment', label: 'ปรับปรุง V2 (Adjustment)' },
             { key: 'inv2.stock', label: 'สต็อก V2 (Stock View)' },
             { key: 'inv2.history', label: 'ประวัติ V2 (History)' },
+            { key: 'inv2.mapping', label: 'ผูกคลัง V2 (Warehouse Mapping)' },
         ]
     },
     'Promotions': {

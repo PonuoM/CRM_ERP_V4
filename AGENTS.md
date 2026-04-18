@@ -35,4 +35,5 @@
 ## Agent‑Specific Instructions
 - Prefer root‑level modules over `src/`. Do not relocate files unless part of a planned refactor.
 - Respect the `@` alias and existing import patterns; keep changes minimal and scoped.
+- **CRITICAL WORKFLOW RULE**: NEVER use the `run_command` (terminal) tool to run scripts (like PHP) or gather information. The terminal pipe freezes on the user's Windows environment. Always use native tools (`view_file`, `grep_search`, `list_dir`) or execute scripts via `read_url_content` pointing to the Localhost (e.g., `http://localhost/CRM_ERP_V4/...`).
 

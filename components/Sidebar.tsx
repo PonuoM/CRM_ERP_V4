@@ -285,6 +285,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "ปรับปรุง V2", icon: Settings, key: "inv2.adjustment" },
         { label: "สต็อก V2", icon: BarChart3, key: "inv2.stock" },
         { label: "ประวัติ V2", icon: History, key: "inv2.history" },
+        { label: "ผูกคลัง V2", icon: FileText, key: "inv2.mapping" },
       ]
     },
     {

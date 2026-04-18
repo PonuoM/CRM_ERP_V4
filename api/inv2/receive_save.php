@@ -70,23 +70,51 @@ try {
                 ->execute([$qty, $soItemId]);
         }
 
-        // 3. Upsert inv2_stock (key: warehouse + product + lot)
-        $lotKey = $lotNumber ?? '';
-        $stmt = $pdo->prepare("SELECT id FROM inv2_stock WHERE warehouse_id = ? AND product_id = ? AND COALESCE(lot_number,'') = ?");
-        $stmt->execute([$warehouseId, $productId, $lotKey]);
-        $stockId = $stmt->fetchColumn();
+        // NEW LOGIC: Negative Healing Mechanism
+        $incomingRemaining = $qty;
 
-        if ($stockId) {
-            $pdo->prepare("UPDATE inv2_stock SET quantity = quantity + ?, mfg_date = COALESCE(?, mfg_date), exp_date = COALESCE(?, exp_date), unit_cost = COALESCE(?, unit_cost) WHERE id = ?")
-                ->execute([$qty, $mfgDate, $expDate, $unitCost, $stockId]);
-        } else {
-            $pdo->prepare("INSERT INTO inv2_stock (warehouse_id, product_id, lot_number, quantity, mfg_date, exp_date, unit_cost) VALUES (?,?,?,?,?,?,?)")
-                ->execute([$warehouseId, $productId, $lotNumber ?: null, $qty, $mfgDate, $expDate, $unitCost]);
+        $negSql = "SELECT id, lot_number, quantity, variant FROM inv2_stock WHERE warehouse_id = ? AND product_id = ? AND quantity < 0 ORDER BY created_at ASC";
+        $stmtNeg = $pdo->prepare($negSql);
+        $stmtNeg->execute([$warehouseId, $productId]);
+        $negLots = $stmtNeg->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($negLots as $nLot) {
+            if ($incomingRemaining <= 0) break;
+            
+            $deficit = abs((float)$nLot['quantity']);
+            $healAmount = min($incomingRemaining, $deficit);
+            
+            // Heal the negative lot
+            $pdo->prepare("UPDATE inv2_stock SET quantity = quantity + ? WHERE id = ?")
+                ->execute([$healAmount, $nLot['id']]);
+            
+            // Record the IN movement for healing the negative lot
+            $pdo->prepare("INSERT INTO inv2_movements (warehouse_id, product_id, variant, lot_number, movement_type, quantity, reference_type, reference_id, reference_doc_number, notes, created_by, company_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+                ->execute([$warehouseId, $productId, $nLot['variant'], $nLot['lot_number'], 'IN', $healAmount, 'receive_heal', $docId, $docNumber, "Auto-healed from incoming lot " . ($lotNumber ?? 'Unknown'), $userId, $companyId]);
+                
+            $incomingRemaining -= $healAmount;
         }
 
-        // 4. Insert movement log
-        $pdo->prepare("INSERT INTO inv2_movements (warehouse_id, product_id, variant, lot_number, movement_type, quantity, reference_type, reference_id, reference_doc_number, notes, created_by, company_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
-            ->execute([$warehouseId, $productId, $variant, $lotNumber, 'IN', $qty, 'receive', $docId, $docNumber, $itemNotes, $userId, $companyId]);
+        // Only create/update the actual new lot if there is still remaining quantity
+        if ($incomingRemaining > 0) {
+            // 3. Upsert inv2_stock (key: warehouse + product + lot)
+            $lotKey = $lotNumber ?? '';
+            $stmt = $pdo->prepare("SELECT id FROM inv2_stock WHERE warehouse_id = ? AND product_id = ? AND COALESCE(lot_number,'') = ?");
+            $stmt->execute([$warehouseId, $productId, $lotKey]);
+            $stockId = $stmt->fetchColumn();
+
+            if ($stockId) {
+                $pdo->prepare("UPDATE inv2_stock SET quantity = quantity + ?, mfg_date = COALESCE(?, mfg_date), exp_date = COALESCE(?, exp_date), unit_cost = COALESCE(?, unit_cost) WHERE id = ?")
+                    ->execute([$incomingRemaining, $mfgDate, $expDate, $unitCost, $stockId]);
+            } else {
+                $pdo->prepare("INSERT INTO inv2_stock (warehouse_id, product_id, lot_number, quantity, mfg_date, exp_date, unit_cost) VALUES (?,?,?,?,?,?,?)")
+                    ->execute([$warehouseId, $productId, $lotNumber ?: null, $incomingRemaining, $mfgDate, $expDate, $unitCost]);
+            }
+
+            // 4. Insert movement log for the remaining quantity
+            $pdo->prepare("INSERT INTO inv2_movements (warehouse_id, product_id, variant, lot_number, movement_type, quantity, reference_type, reference_id, reference_doc_number, notes, created_by, company_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+                ->execute([$warehouseId, $productId, $variant, $lotNumber, 'IN', $incomingRemaining, 'receive', $docId, $docNumber, $itemNotes, $userId, $companyId]);
+        }
     }
 
     // 5. Update SO status

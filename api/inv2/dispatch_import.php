@@ -58,61 +58,94 @@ try {
         $orderStatus = $row['order_status'] ?? null;
         $platform = $row['platform'] ?? null;
         $shop = $row['shop'] ?? null;
-        $warehouseName = $row['warehouse_name'] ?? null;
+        $warehouseName = $row['warehouse_name'] ?? null; // dispatch warehouse name
         $trackingNumber = $row['tracking_number'] ?? null;
         $status = $row['status'] ?? null;
         $productId = $row['product_id'] ?? null;
-        $warehouseId = $row['warehouse_id'] ?? null;
-
+        
         $stockDeducted = 0;
 
-        // Only attempt stock deduction if we have matched product, warehouse, and positive qty
-        if ($productId && $warehouseId && $qty > 0) {
-            // FIFO: Get stock lots sorted by exp_date ASC, created_at ASC
-            // Match by product + warehouse only (variant from CSV is informational, not a stock key)
+        // Lookup mapped main_warehouse_id if available
+        $mappedWarehouseId = null;
+        if ($warehouseName) {
+            $stmtMap = $pdo->prepare("SELECT main_warehouse_id FROM inv2_warehouse_mappings WHERE company_id = ? AND dispatch_warehouse_name = ?");
+            $stmtMap->execute([$companyId, $warehouseName]);
+            $mappedWarehouseId = $stmtMap->fetchColumn();
+        }
+        
+        $targetWarehouseId = $mappedWarehouseId ? $mappedWarehouseId : ($row['warehouse_id'] ?? null);
+
+        // Only attempt stock deduction if we have matched product, TARGET warehouse, and positive qty
+        if ($productId && $targetWarehouseId && $qty > 0) {
+            // FIFO: Get stock lots sorted by quantity>0 DESC (positive first), exp_date ASC, created_at ASC
             $fifoSql = "SELECT id, lot_number, variant, quantity, exp_date
                         FROM inv2_stock
-                        WHERE warehouse_id = ? AND product_id = ? AND quantity > 0
-                        ORDER BY COALESCE(exp_date, '9999-12-31') ASC, created_at ASC";
+                        WHERE warehouse_id = ? AND product_id = ? AND quantity > -999999
+                        ORDER BY quantity > 0 DESC, COALESCE(exp_date, '9999-12-31') ASC, created_at ASC";
 
             $stmtFifo = $pdo->prepare($fifoSql);
-            $stmtFifo->execute([$warehouseId, $productId]);
+            $stmtFifo->execute([$targetWarehouseId, $productId]);
             $lots = $stmtFifo->fetchAll(PDO::FETCH_ASSOC);
 
             $remaining = $qty;
             $deductions = [];
 
-            foreach ($lots as $lot) {
-                if ($remaining <= 0) break;
-                $deductQty = min($remaining, (float)$lot['quantity']);
-                $deductions[] = [
-                    'stock_id' => $lot['id'],
-                    'lot_number' => $lot['lot_number'],
-                    'variant' => $lot['variant'] ?? null,
-                    'quantity' => $deductQty
-                ];
-                $remaining -= $deductQty;
-            }
+            if (empty($lots)) {
+                // No lots exist at all! Force create a negative SYS-OVERDRAW lot
+                $pdo->prepare("INSERT INTO inv2_stock (warehouse_id, product_id, lot_number, quantity, mfg_date, exp_date, unit_cost) VALUES (?, ?, 'SYS-OVERDRAW', ?, NULL, NULL, 0)")
+                    ->execute([$targetWarehouseId, $productId, -$qty]);
+                
+                $pdo->prepare("INSERT INTO inv2_movements (warehouse_id, product_id, variant, lot_number, movement_type, quantity, reference_type, reference_doc_number, reference_order_id, notes, created_by, company_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+                    ->execute([$targetWarehouseId, $productId, $variantCode, 'SYS-OVERDRAW', 'OUT', $qty, 'dispatch', $batchDocNumber, $internalOrderId, $notes, $userId, $companyId]);
+                
+                $stockDeducted = 1;
+                $processedCount++;
+            } else {
+                foreach ($lots as $idxLot => $lot) {
+                    if ($remaining <= 0) break;
+                    
+                    if ($idxLot === count($lots) - 1) {
+                        // Very last available lot: Takes all remaining hit, goes negative if necessary
+                        $deductQty = $remaining;
+                    } else {
+                        // Normal FIFO
+                        $available = (float)$lot['quantity'];
+                        if ($available <= 0) $available = 0; // Skip negative balances until last lot
+                        $deductQty = min($remaining, $available);
+                    }
+                    
+                    if ($deductQty > 0) {
+                        $deductions[] = [
+                            'stock_id' => $lot['id'],
+                            'lot_number' => $lot['lot_number'],
+                            'variant' => $lot['variant'] ?? null,
+                            'quantity' => $deductQty
+                        ];
+                        $remaining -= $deductQty;
+                    }
+                }
 
-            if ($remaining <= 0.001) {
                 // Apply deductions
                 foreach ($deductions as $ded) {
                     $pdo->prepare("UPDATE inv2_stock SET quantity = quantity - ? WHERE id = ?")
                         ->execute([$ded['quantity'], $ded['stock_id']]);
 
                     $pdo->prepare("INSERT INTO inv2_movements (warehouse_id, product_id, variant, lot_number, movement_type, quantity, reference_type, reference_doc_number, reference_order_id, notes, created_by, company_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
-                        ->execute([$warehouseId, $productId, $ded['variant'] ?? null, $ded['lot_number'], 'OUT', $ded['quantity'], 'dispatch', $batchDocNumber, $internalOrderId, $notes, $userId, $companyId]);
+                        ->execute([$targetWarehouseId, $productId, $ded['variant'] ?? null, $ded['lot_number'], 'OUT', $ded['quantity'], 'dispatch', $batchDocNumber, $internalOrderId, $notes, $userId, $companyId]);
                 }
+                
                 $stockDeducted = 1;
                 $processedCount++;
-            } else {
-                $errors[] = "Row " . ($idx + 1) . " ($productSku): ของไม่พอ ต้องการ $qty มี " . ($qty - $remaining);
             }
+        } else {
+            if (!$productId) $errors[] = "Row " . ($idx + 1) . " ($productSku): ไม่พบ Product ID (Mapping ผิดพลาด)";
+            else if (!$targetWarehouseId) $errors[] = "Row " . ($idx + 1) . " ($productSku): ไม่สามารถจับคู่คลังจ่ายได้ ($warehouseName)";
+            else if ($qty <= 0) $errors[] = "Row " . ($idx + 1) . " ($productSku): จำนวน = 0";
         }
 
-        // Insert dispatch item (always, even if stock not deducted)
+        // Insert dispatch item 
         $pdo->prepare("INSERT INTO inv2_dispatch_items (batch_id, row_index, product_sku, product_name, variant_code, variant_name, internal_order_id, online_order_id, quantity, total_price, order_date, ship_date, order_status, platform, shop, warehouse_name, tracking_number, status, product_id, warehouse_id, stock_deducted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-            ->execute([$batchId, $idx, $productSku, $productName, $variantCode, $variantName, $internalOrderId, $onlineOrderId, $qty, $totalPrice, $orderDate, $shipDate, $orderStatus, $platform, $shop, $warehouseName, $trackingNumber, $status, $productId, $warehouseId, $stockDeducted]);
+            ->execute([$batchId, $idx, $productSku, $productName, $variantCode, $variantName, $internalOrderId, $onlineOrderId, $qty, $totalPrice, $orderDate, $shipDate, $orderStatus, $platform, $shop, $warehouseName, $trackingNumber, $status, $productId, $targetWarehouseId, $stockDeducted]);
     }
 
     // Update processed count

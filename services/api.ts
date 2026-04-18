@@ -2531,13 +2531,22 @@ export async function inv2SaveAdjustment(data: any) {
 }
 
 export async function inv2ListStock(params?: {
-  company_id?: number; warehouse_id?: number; product_id?: number;
+  company_id?: number; warehouse_id?: number | string | number[]; product_id?: number | string | number[];
   search?: string; hide_zero?: boolean;
 }) {
   const qs = new URLSearchParams();
   if (params?.company_id) qs.set('company_id', String(params.company_id));
-  if (params?.warehouse_id) qs.set('warehouse_id', String(params.warehouse_id));
-  if (params?.product_id) qs.set('product_id', String(params.product_id));
+  
+  if (params?.warehouse_id) {
+    if (Array.isArray(params.warehouse_id)) qs.set('warehouse_id', params.warehouse_id.join(','));
+    else qs.set('warehouse_id', String(params.warehouse_id));
+  }
+  
+  if (params?.product_id) {
+    if (Array.isArray(params.product_id)) qs.set('product_id', params.product_id.join(','));
+    else qs.set('product_id', String(params.product_id));
+  }
+
   if (params?.search) qs.set('search', params.search);
   if (params?.hide_zero) qs.set('hide_zero', '1');
   return apiFetch(`inv2/stock_view.php?${qs.toString()}`);
@@ -2566,6 +2575,16 @@ export async function inv2ListMovements(params?: {
 export async function inv2UploadImage(images: string[]) {
   return apiFetch('inv2/upload_image.php', {
     method: 'POST', body: JSON.stringify({ images })
+  });
+}
+
+export async function inv2ListWarehouseMappings(companyId: number) {
+  return apiFetch(`inv2/warehouse_mapping_list.php?company_id=${companyId}`);
+}
+
+export async function inv2SaveWarehouseMapping(data: { company_id: number; action?: 'save' | 'delete'; id?: number; dispatch_warehouse_name?: string; main_warehouse_id?: number }) {
+  return apiFetch('inv2/warehouse_mapping_save.php', {
+    method: 'POST', body: JSON.stringify(data)
   });
 }
 
