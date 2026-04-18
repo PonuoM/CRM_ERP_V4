@@ -175,8 +175,9 @@ try {
         $params[] = $company_id;
     }
 
-    // Filter sub-orders
+    // Filter sub-orders and exclude Returned/Cancelled/BadDebt for unstamped orders
     $where .= " AND o.id NOT REGEXP '-[0-9]+$'";
+    $where .= " AND (cso.order_id IS NOT NULL OR o.order_status IS NULL OR o.order_status NOT IN ('Returned', 'Cancelled', 'BadDebt'))";
 
     if ($start_date) {
         $where .= " AND o.order_date >= ?";

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { User as UserIcon, Search, Calendar, ChevronUp, ChevronDown } from "lucide-react";
 import { User } from "@/types";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 
 const InfoTip: React.FC<{ text: string }> = ({ text }) => (
     <span className="relative inline-flex ml-1 group cursor-help">
@@ -319,6 +320,9 @@ const CallDetailsPageV2: React.FC<CallDetailsPageV2Props> = ({
                     </div>
                 </div>
             </div>
+            
+            {/* Floating button and sidebar for pbX PBX Login */}
+            <OnecallLoginSidebar currentUser={currentUser} />
         </div >
     );
 };

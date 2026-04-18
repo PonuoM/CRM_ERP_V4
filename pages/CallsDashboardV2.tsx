@@ -15,6 +15,7 @@ import StatCard from "@/components/StatCard";
 import LineChart from "@/components/LineChart";
 import PieChart from "@/components/PieChart";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 
 const InfoTip: React.FC<{ text: string }> = ({ text }) => (
     <span className="relative inline-flex ml-1 group cursor-help">
@@ -546,6 +547,8 @@ const CallsDashboardV2: React.FC<CallsDashboardV2Props> = ({ user }) => {
                     </table>
                 </div>
             </div>
+            
+            <OnecallLoginSidebar currentUser={user} />
         </div>
     );
 };
