@@ -37,16 +37,22 @@ export function formatThaiDateTime(
     if (Number.isNaN(date.getTime())) return "-";
 
     // Use en-GB locale for CE year format (dd/mm/yyyy)
+    if (options?.dateStyle || options?.timeStyle) {
+      return date.toLocaleString("en-GB", {
+        timeZone: "Asia/Bangkok",
+        ...options,
+      });
+    }
+
     return date.toLocaleString("en-GB", {
       timeZone: "Asia/Bangkok",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-      hour: options?.timeStyle ? "2-digit" : undefined,
-      minute: options?.timeStyle ? "2-digit" : undefined,
       ...options,
     });
-  } catch {
+  } catch (error) {
+    console.error("formatThaiDateTime error:", error);
     return "-";
   }
 }

@@ -1991,7 +1991,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                       <span className="mr-1 text-gray-400">
                                         •
                                       </span>
-                                      <span>{line.summary}</span>
+                                      <span>{typeof line === 'string' ? line : line?.summary}</span>
                                     </div>
                                   ))
                                 )}
