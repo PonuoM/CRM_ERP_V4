@@ -3,6 +3,7 @@ import { Upload, Search, Loader2, AlertTriangle, CheckCircle2, FileSpreadsheet, 
 import { Warehouse, Product } from '../types';
 import { inv2ImportDispatch, inv2ListDispatch, inv2DeleteDispatch, inv2GetDispatchBatch, listWarehouses, listProducts } from '../services/api';
 import APP_BASE_PATH from '../appBasePath';
+import UniversalDateRangePicker from '../components/UniversalDateRangePicker';
 
 interface Inv2DispatchPageProps {
     companyId: number;
@@ -56,6 +57,12 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
     // Delete state
     const [deletingBatch, setDeletingBatch] = useState<number | null>(null);
 
+    // Export state
+    const [exportDateRange, setExportDateRange] = useState<{ start: string; end: string }>({
+        start: new Date().toISOString().split('T')[0],
+        end: new Date().toISOString().split('T')[0]
+    });
+
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
@@ -101,7 +108,14 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
 
                 const productSku = getCol('รหัสสินค้า');
                 const productName = getCol('ชื่อสินค้า');
-                const qty = parseFloat(getCol('จำนวนสินค้าที่ส่งจริง') || getCol('จำนวน')) || 0;
+                
+                // Fix parseFloat truncating at comma (e.g. "1,500" -> 1)
+                const rawQty = getCol('จำนวนสินค้าที่ส่งจริง') || getCol('จำนวน');
+                const qty = parseFloat(rawQty.replace(/,/g, '')) || 0;
+                
+                const rawPrice = getCol('ราคาสินค้าทั้งหมด');
+                const totalPriceCleaned = rawPrice.replace(/,/g, '');
+
                 const warehouseName = getCol('คลังส่งสินค้า');
 
                 // Match product by SKU
@@ -117,7 +131,7 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
                     internal_order_id: getCol('หมายเลขออเดอร์ภายใน'),
                     online_order_id: getCol('หมายเลขคำสั่งซื้อออนไลน์'),
                     quantity: qty,
-                    total_price: getCol('ราคาสินค้าทั้งหมด'),
+                    total_price: totalPriceCleaned,
                     order_date: getCol('วันที่สั่งซื้อ'),
                     ship_date: getCol('วันที่จัดส่ง'),
                     order_status: getCol('สถานะคำสั่งซื้อ'),
@@ -237,6 +251,20 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
         window.open(`${APP_BASE_PATH}api/inv2/dispatch_template.php`, '_blank');
     };
 
+    // ── Export CSV ──
+    const handleExport = () => {
+        if (!exportDateRange.start || !exportDateRange.end) {
+            alert('กรุณาเลือกช่วงวันที่ให้ครบถ้วน');
+            return;
+        }
+        
+        let startStr = exportDateRange.start;
+        let endStr = exportDateRange.end;
+        
+        const exportUrl = `${APP_BASE_PATH}api/inv2/export_dispatch_items.php?company_id=${companyId}&start_date=${startStr}&end_date=${endStr}`;
+        window.open(exportUrl, '_blank');
+    };
+
     const matchedCount = parsedRows.filter(r => r.matched).length;
     const withQtyCount = parsedRows.filter(r => r.quantity > 0 && r.matched).length;
 
@@ -253,7 +281,25 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
                     </h1>
                     <p style={{ color: '#6b7280', margin: '4px 0 0', fontSize: '14px' }}>Import ข้อมูลจ่ายออกจาก CSV — Auto FIFO หัก Stock</p>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <UniversalDateRangePicker
+                        value={exportDateRange}
+                        onChange={setExportDateRange}
+                        buttonStyle={{
+                            background: '#fff',
+                            border: '1.5px solid #d1d5db',
+                            borderRadius: '10px',
+                            color: '#374151',
+                            padding: '10px 18px',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            boxShadow: 'none'
+                        }}
+                    />
+                    <button onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+                        <Download size={16} /> Export CSV
+                    </button>
+                    &nbsp;&nbsp;&nbsp;
                     <button onClick={downloadTemplate} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', background: '#fff', color: '#374151', border: '1.5px solid #d1d5db', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
                         <Download size={16} /> ดาวน์โหลด Template
                     </button>

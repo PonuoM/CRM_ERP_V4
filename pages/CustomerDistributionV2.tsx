@@ -3,8 +3,10 @@ import { apiFetch } from '../services/api';
 import { User, Customer, UserRole } from '../types';
 import {
     Users, Package, Search, ChevronDown, Check, Loader2, AlertCircle,
-    RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2
+    RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download
 } from 'lucide-react';
+import UniversalDateRangePicker, { DateRange } from '../components/UniversalDateRangePicker';
+import resolveApiBasePath from '../utils/apiBasePath';
 import { mapCustomerFromApi } from '../utils/customerMapper';
 import Spinner from '../components/Spinner';
 import BlockedCustomersModal from '../components/BlockedCustomersModal';
@@ -71,6 +73,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [agents, setAgents] = useState<AgentWithBaskets[]>([]);
     const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
     const [targetBasket, setTargetBasket] = useState<string>('');
+    const [distributionExportRange, setDistributionExportRange] = useState<DateRange>({ start: '', end: '' });
 
     // UI state
     const [loading, setLoading] = useState(true);
@@ -1140,6 +1143,19 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const activeBasketInfo = baskets.find(b => b.basket_key === activeBasket);
     const isHoldingBasketActive = activeBasket === 'holding_before_redistribute';
 
+    // Handle Export Distribution
+    const handleExportDistribution = () => {
+        const companyId = currentUser?.companyId || 1;
+        const sd = distributionExportRange.start;
+        const ed = distributionExportRange.end;
+        const basket = activeBasket || '';
+
+        const basePath = typeof window !== 'undefined' ? resolveApiBasePath() : '/api';
+        const url = `${basePath.replace(/\/$/, '')}/Distribution/export_distribution.php?companyId=${companyId}&start_date=${sd}&end_date=${ed}&basket_key=${basket}`;
+        
+        window.open(url, '_blank');
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1157,6 +1173,21 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     <p className="text-gray-600">แจกลูกค้าจากถังต่างๆ ให้ Telesale</p>
                 </div>
                 <div className="flex gap-2 items-center">
+                    <UniversalDateRangePicker
+                        value={distributionExportRange}
+                        onChange={setDistributionExportRange}
+                        label="เวลาจ่ายออก"
+                        buttonClassName="w-56 px-3 py-1.5 text-left border border-gray-200 rounded-lg bg-white shadow-sm hover:border-blue-400 focus:ring-2 focus:ring-blue-500 transition-colors flex items-center justify-between"
+                        placeholder="เลือกช่วงวันที่"
+                    />
+                    <button
+                        onClick={handleExportDistribution}
+                        className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1.5 font-medium shadow-sm transition-colors"
+                        title="ดาวน์โหลด Export CSV"
+                    >
+                        <Download size={16} />
+                        Export
+                    </button>
                     <button
                         onClick={openFlexTransferModal}
                         className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
