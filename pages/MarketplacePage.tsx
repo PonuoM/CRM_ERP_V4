@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { apiFetch } from "../services/api";
+import { Download, Calendar } from "lucide-react";
 
 interface MarketplacePageProps {
     currentUser: any;
@@ -68,6 +69,12 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
     const [dashStoreFilter, setDashStoreFilter] = useState("all");
     const [dashboardData, setDashboardData] = useState<DashboardRow[]>([]);
     const [dashLoading, setDashLoading] = useState(false);
+
+    // Date Picker state
+    const [datePickerOpen, setDatePickerOpen] = useState(false);
+    const [tempStart, setTempStart] = useState("");
+    const [tempEnd, setTempEnd] = useState("");
+    const datePickerRef = useRef<HTMLDivElement>(null);
 
     const companyId = currentUser?.company_id || currentUser?.companyId;
 
@@ -301,6 +308,92 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
     };
 
     // ==================== DASHBOARD ====================
+    // Close date picker on click outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
+                setDatePickerOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const getDateRangePreset = (preset: string) => {
+        const today = new Date();
+        let start = new Date();
+        let end = new Date();
+
+        switch (preset) {
+            case "thisWeek":
+                const day = today.getDay();
+                const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+                start = new Date(today.setDate(diff));
+                end = new Date(start);
+                end.setDate(start.getDate() + 6);
+                break;
+            case "thisMonth":
+                start = new Date(today.getFullYear(), today.getMonth(), 1);
+                end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                break;
+            case "last7Days":
+                start = new Date(today);
+                start.setDate(today.getDate() - 6);
+                end = new Date(today);
+                break;
+            case "last30Days":
+                start = new Date(today);
+                start.setDate(today.getDate() - 29);
+                end = new Date(today);
+                break;
+        }
+
+        const formatDt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return { start: formatDt(start), end: formatDt(end) };
+    };
+
+    const exportDashboard = () => {
+        if (dashboardData.length === 0) {
+            alert("ไม่มีข้อมูลสำหรับ Export");
+            return;
+        }
+
+        let csvContent = "ร้านค้า,แพลตฟอร์ม,ค่าแอด,ยอดขาย,ออเดอร์,ตีกลับ,ยกเลิก,%Ads\n";
+        
+        dashboardData.forEach(row => {
+            const pctAds = Number(row.total_sales || 0) > 0 ? ((Number(row.ads_cost) / Number(row.total_sales)) * 100).toFixed(2) : "0.00";
+            const rowData = [
+                `"${row.store_name}"`,
+                `"${row.platform}"`,
+                row.ads_cost || 0,
+                row.total_sales || 0,
+                row.total_orders || 0,
+                row.returns_amount || 0,
+                row.cancelled_amount || 0,
+                pctAds
+            ];
+            csvContent += rowData.join(",") + "\n";
+        });
+
+        // Add summary row
+        const totalAds = dashboardData.reduce((a, r) => a + Number(r.ads_cost || 0), 0);
+        const totalSales = dashboardData.reduce((a, r) => a + Number(r.total_sales || 0), 0);
+        const totalOrders = dashboardData.reduce((a, r) => a + Number(r.total_orders || 0), 0);
+        const totalReturns = dashboardData.reduce((a, r) => a + Number(r.returns_amount || 0), 0);
+        const totalCancelled = dashboardData.reduce((a, r) => a + Number(r.cancelled_amount || 0), 0);
+        const totalPctAds = totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) : "0.00";
+        csvContent += `"รวมทั้งสิ้น","",${totalAds},${totalSales},${totalOrders},${totalReturns},${totalCancelled},${totalPctAds}\n`;
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `marketplace_dashboard_${dashDateFrom}_to_${dashDateTo}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const loadDashboard = useCallback(async () => {
         setDashLoading(true);
         try {
@@ -317,6 +410,13 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
         setDashLoading(false);
     }, [companyId, dashDateFrom, dashDateTo, dashStoreFilter]);
 
+    // Auto-fetch dashboard data when filters change or on initial mount
+    useEffect(() => {
+        if (view === "dashboard") {
+            loadDashboard();
+        }
+    }, [view, dashDateFrom, dashDateTo, dashStoreFilter, loadDashboard]);
+
     // Only show users with role_id 5 or is_system = 1
     const filteredUsers = users.filter((u: any) => {
         const rid = Number(u.role_id || 0);
@@ -331,8 +431,8 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
 
     // ==================== RENDER ====================
     return (
-        <div className="p-6 max-w-7xl mx-auto">
-            <h1 className="text-2xl font-bold text-gray-800 mb-6">Marketplace</h1>
+        <div className="p-4 sm:p-6 w-full">
+            <h1 className="text-2xl font-bold text-gray-800 mb-6">Marketplace Dashboard</h1>
 
             {/* ==================== SETTINGS ==================== */}
             {view === "settings" && (
@@ -543,11 +643,23 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                     </div>
 
                     {/* Date picker */}
-                    <div className="bg-white rounded-lg shadow px-4 py-3 mb-4 flex items-center gap-4">
-                        <span className="text-sm font-medium text-gray-600">📅 วันที่:</span>
-                        <input type="date" className={inputClass + ' w-44'} value={adsDate} onChange={e => setAdsDate(e.target.value)} />
-                        <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 1); setAdsDate(d.toISOString().slice(0, 10)); }} className="px-3 py-1.5 text-xs border rounded hover:bg-gray-100">เมื่อวาน</button>
-                        <button onClick={() => setAdsDate(new Date().toISOString().slice(0, 10))} className="px-3 py-1.5 text-xs border rounded hover:bg-gray-100">วันนี้</button>
+                    <div className="bg-white rounded-lg shadow px-4 py-3 mb-4 flex items-center gap-2 w-max">
+                        <span className="text-sm font-medium text-gray-600 mr-1 whitespace-nowrap">📅 วันที่:</span>
+                        
+                        <input type="date" className={inputClass + ' w-36'} value={adsDate} onChange={e => setAdsDate(e.target.value)} />
+                        
+                        <div className="h-6 w-px bg-gray-300 mx-1 shrink-0"></div>
+
+                        <button onClick={() => { if(adsDate){ const d = new Date(adsDate); d.setDate(d.getDate() - 1); setAdsDate(d.toISOString().slice(0, 10)); } }} className="w-24 py-1.5 text-xs border rounded bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors whitespace-nowrap text-center">
+                            ◀ ย้อนกลับ
+                        </button>
+
+                        <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 1); setAdsDate(d.toISOString().slice(0, 10)); }} className="w-24 py-1.5 text-xs border rounded hover:bg-gray-100 text-gray-600 transition-colors whitespace-nowrap text-center">เมื่อวาน</button>
+                        <button onClick={() => setAdsDate(new Date().toISOString().slice(0, 10))} className="w-24 py-1.5 text-xs border rounded hover:bg-gray-100 text-gray-600 transition-colors whitespace-nowrap text-center">วันนี้</button>
+
+                        <button onClick={() => { if(adsDate){ const d = new Date(adsDate); d.setDate(d.getDate() + 1); setAdsDate(d.toISOString().slice(0, 10)); } }} className="w-24 py-1.5 text-xs border rounded bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors whitespace-nowrap text-center">
+                            ถัดไป ▶
+                        </button>
                     </div>
 
                     {/* Save result */}
@@ -800,114 +912,296 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
 
             {/* ==================== DASHBOARD ==================== */}
             {view === "dashboard" && (
-                <section>
-                    <h2 className="text-lg font-semibold mb-4">แดชบอร์ด Marketplace</h2>
-                    <div className="bg-white rounded-lg shadow p-4 mb-4">
-                        <div className="flex flex-wrap items-end gap-4">
-                            <div>
-                                <label className={labelClass}>วันที่เริ่ม</label>
-                                <input type="date" className={inputClass} value={dashDateFrom} onChange={e => setDashDateFrom(e.target.value)} />
+                <section className="bg-white rounded-lg shadow p-5 flex flex-col flex-1 min-h-[500px] overflow-hidden">
+                    <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                        <h2 className="text-lg font-semibold text-gray-800">แดชบอร์ด Marketplace</h2>
+                        <button
+                            onClick={exportDashboard}
+                            className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md shadow-sm flex items-center gap-2 text-sm"
+                        >
+                            <Download className="w-4 h-4" />
+                            Export CSV
+                        </button>
+                    </div>
+
+                    <div className="mb-4 flex-shrink-0">
+                        <div className="flex gap-4 items-end">
+                            <div className="flex-1 relative">
+                                <label className={labelClass}>เลือกช่วงวันที่</label>
+                                <button
+                                    onClick={() => setDatePickerOpen(!datePickerOpen)}
+                                    className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between h-[42px]"
+                                >
+                                    <span className={dashDateFrom && dashDateTo ? "text-gray-900 text-sm" : "text-gray-500 text-sm"}>
+                                        {dashDateFrom && dashDateTo
+                                            ? `${new Date(dashDateFrom + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(dashDateTo + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
+                                            : "ทั้งหมด"}
+                                    </span>
+                                    <Calendar className="w-4 h-4 text-gray-400" />
+                                </button>
+                                {/* Date Picker Dropdown */}
+                                {datePickerOpen && (
+                                    <div
+                                        className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
+                                        ref={datePickerRef}
+                                    >
+                                        <div className="p-4">
+                                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                                <div>
+                                                    <label className="text-xs text-gray-500 mb-1 block">วันที่เริ่มต้น</label>
+                                                    <input
+                                                        type="date"
+                                                        value={tempStart || dashDateFrom}
+                                                        onChange={(e) => setTempStart(e.target.value)}
+                                                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs text-gray-500 mb-1 block">วันที่สิ้นสุด</label>
+                                                    <input
+                                                        type="date"
+                                                        value={tempEnd || dashDateTo}
+                                                        onChange={(e) => setTempEnd(e.target.value)}
+                                                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="border-t border-gray-100 pt-3">
+                                                <p className="text-xs font-medium text-gray-700 mb-2">เลือกช่วงเวลาด่วน:</p>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            const today = new Date();
+                                                            const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                                                            setTempStart(dateStr); setTempEnd(dateStr);
+                                                            setDashDateFrom(dateStr); setDashDateTo(dateStr);
+                                                            setDatePickerOpen(false);
+                                                        }}
+                                                        className="px-3 py-2 text-xs rounded bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center"
+                                                    >
+                                                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>วันนี้
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const yesterday = new Date();
+                                                            yesterday.setDate(yesterday.getDate() - 1);
+                                                            const dateStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+                                                            setTempStart(dateStr); setTempEnd(dateStr);
+                                                            setDashDateFrom(dateStr); setDashDateTo(dateStr);
+                                                            setDatePickerOpen(false);
+                                                        }}
+                                                        className="px-3 py-2 text-xs rounded bg-orange-100 text-orange-700 hover:bg-orange-200 flex items-center"
+                                                    >
+                                                        <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>เมื่อวาน
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const range = getDateRangePreset("thisWeek");
+                                                            setTempStart(range.start); setTempEnd(range.end);
+                                                        }}
+                                                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                                                    >
+                                                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>อาทิตย์นี้
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const range = getDateRangePreset("thisMonth");
+                                                            setTempStart(range.start); setTempEnd(range.end);
+                                                        }}
+                                                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                                                    >
+                                                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>เดือนนี้
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const range = getDateRangePreset("last7Days");
+                                                            setTempStart(range.start); setTempEnd(range.end);
+                                                        }}
+                                                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                                                    >
+                                                        <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>7 วันล่าสุด
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const range = getDateRangePreset("last30Days");
+                                                            setTempStart(range.start); setTempEnd(range.end);
+                                                        }}
+                                                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                                                    >
+                                                        <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>30 วันล่าสุด
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
+                                                <button
+                                                    onClick={() => {
+                                                        if (tempStart) setDashDateFrom(tempStart);
+                                                        if (tempEnd) setDashDateTo(tempEnd);
+                                                        setDatePickerOpen(false);
+                                                    }}
+                                                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                                                >
+                                                    ตกลง
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div>
-                                <label className={labelClass}>วันที่สิ้นสุด</label>
-                                <input type="date" className={inputClass} value={dashDateTo} onChange={e => setDashDateTo(e.target.value)} />
-                            </div>
-                            <div>
+                            
+                            <div className="flex-1">
                                 <label className={labelClass}>ร้านค้า</label>
                                 <select className={inputClass} value={dashStoreFilter} onChange={e => setDashStoreFilter(e.target.value)}>
                                     <option value="all">ทุกร้าน</option>
                                     {activeStores.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
                                 </select>
                             </div>
-                            <button
-                                onClick={loadDashboard}
-                                disabled={dashLoading}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 text-sm h-[42px]"
-                            >
-                                {dashLoading ? "กำลังโหลด..." : "ค้นหา"}
-                            </button>
+                            
+                            <div>
+                                <button
+                                    onClick={loadDashboard}
+                                    disabled={dashLoading}
+                                    className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
+                                >
+                                    {dashLoading ? "กำลังโหลด..." : "ค้นหา"}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
                     {/* Dashboard Table */}
-                    <div className="bg-white rounded-lg shadow overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-gray-50 text-gray-700">
-                                <tr>
-                                    <th className="px-3 py-2 text-left">ร้านค้า</th>
-                                    <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                                    <th className="px-3 py-2 text-right">ค่าแอด</th>
-                                    <th className="px-3 py-2 text-right bg-blue-50 text-blue-700">ยอดขาย</th>
-                                    <th className="px-3 py-2 text-right">ออเดอร์</th>
-                                    <th className="px-3 py-2 text-right text-amber-600">ตีกลับ</th>
-                                    <th className="px-3 py-2 text-right text-red-600">ยกเลิก</th>
-                                    <th className="px-3 py-2 text-right">%Ads</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(() => {
-                                    const filtered = dashboardData.filter(row =>
-                                        Number(row.ads_cost || 0) > 0 ||
-                                        Number(row.total_sales || 0) > 0 ||
-                                        Number(row.returns_amount || 0) > 0 ||
-                                        Number(row.cancelled_amount || 0) > 0
-                                    );
-                                    return filtered.length > 0 ? (
-                                        <>
-                                            {filtered.map((row, i) => {
-                                                const pctAds = Number(row.total_sales || 0) > 0
-                                                    ? (Number(row.ads_cost) / Number(row.total_sales)) * 100 : 0;
-                                                return (
-                                                    <tr key={i} className="border-b hover:bg-gray-50">
-                                                        <td className="px-3 py-2 font-medium">{row.store_name}</td>
-                                                        <td className="px-3 py-2">
-                                                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{row.platform}</span>
-                                                        </td>
-                                                        <td className="px-3 py-2 text-right">{fmtNum(row.ads_cost)}</td>
-                                                        <td className="px-3 py-2 text-right font-semibold text-blue-700">{fmtNum(row.total_sales)}</td>
-                                                        <td className="px-3 py-2 text-right">{Number(row.total_orders || 0).toLocaleString()}</td>
-                                                        <td className="px-3 py-2 text-right text-amber-600">{fmtNum(row.returns_amount)}</td>
-                                                        <td className="px-3 py-2 text-right text-red-600">{fmtNum(row.cancelled_amount)}</td>
-                                                        <td className="px-3 py-2 text-right">{pctAds.toFixed(2)}%</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                            {/* Summary */}
-                                            <tr className="bg-gray-100 font-bold border-t-2 border-gray-300">
-                                                <td className="px-3 py-2" colSpan={2}>รวมทั้งสิ้น</td>
-                                                <td className="px-3 py-2 text-right">{fmtNum(filtered.reduce((a, r) => a + Number(r.ads_cost || 0), 0))}</td>
-                                                <td className="px-3 py-2 text-right text-blue-700">
-                                                    {fmtNum(filtered.reduce((a, r) => a + Number(r.total_sales || 0), 0))}
-                                                </td>
-                                                <td className="px-3 py-2 text-right">
-                                                    {filtered.reduce((a, r) => a + Number(r.total_orders || 0), 0).toLocaleString()}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-amber-600">
-                                                    {fmtNum(filtered.reduce((a, r) => a + Number(r.returns_amount || 0), 0))}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-red-600">
-                                                    {fmtNum(filtered.reduce((a, r) => a + Number(r.cancelled_amount || 0), 0))}
-                                                </td>
-                                                <td className="px-3 py-2 text-right">
-                                                    {(() => {
-                                                        const totalAds = filtered.reduce((a, r) => a + Number(r.ads_cost || 0), 0);
-                                                        const totalSales = filtered.reduce((a, r) => a + Number(r.total_sales || 0), 0);
-                                                        return totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) + "%" : "0.00%";
-                                                    })()}
+                    {dashLoading ? (
+                        <div className="text-center py-8">
+                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto overflow-y-auto flex-1 bg-white rounded-lg border border-gray-200">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10 shadow-sm">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left bg-gray-50">ร้านค้า</th>
+                                        <th className="px-3 py-2 text-left bg-gray-50">แพลตฟอร์ม</th>
+                                        <th className="px-3 py-2 text-right bg-gray-50">
+                                            <div className="group relative inline-block cursor-help">
+                                                ค่าแอด
+                                                <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                                    <p className="font-bold mb-1">💰 ค่าแอด (Ads Cost)</p>
+                                                    <p>ยอดรวมค่าโฆษณาที่กรอกเข้าระบบ</p>
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <th className="px-3 py-2 text-right bg-blue-50 text-blue-700">
+                                            <div className="group relative inline-block cursor-help">
+                                                ยอดขาย
+                                                <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                                    <p className="font-bold mb-1">📊 ยอดขาย (Sales)</p>
+                                                    <p>ยอดรวม total_amount จากตาราง orders</p>
+                                                    <p className="mt-1 text-gray-300">ไม่รวม order ที่ถูกยกเลิก (Cancelled)</p>
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <th className="px-3 py-2 text-right bg-gray-50">ออเดอร์</th>
+                                        <th className="px-3 py-2 text-right bg-amber-50 text-amber-700">ตีกลับ</th>
+                                        <th className="px-3 py-2 text-right bg-red-50 text-red-700">ยกเลิก</th>
+                                        <th className="px-3 py-2 text-right bg-gray-50">
+                                            <div className="group relative inline-block cursor-help">
+                                                %Ads
+                                                <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                                    <p className="font-bold mb-1">📉 %Ads/ยอดขาย</p>
+                                                    <p>สัดส่วนค่าแอดเทียบยอดขาย</p>
+                                                    <p className="mt-1 text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขาย) × 100</p>
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <th className="px-3 py-2 text-right bg-gray-50">
+                                            <div className="group relative inline-block cursor-help">
+                                                ROAS
+                                                <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                                    <p className="font-bold mb-1">📈 ROAS (Return On Ad Spend)</p>
+                                                    <p>ผลตอบแทนจากค่าโฆษณา</p>
+                                                    <p className="mt-1 text-yellow-300 font-medium">= ยอดขาย ÷ ค่าแอด</p>
+                                                </div>
+                                            </div>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(() => {
+                                        const filtered = dashboardData.filter(row =>
+                                            Number(row.ads_cost || 0) > 0 ||
+                                            Number(row.total_sales || 0) > 0 ||
+                                            Number(row.returns_amount || 0) > 0 ||
+                                            Number(row.cancelled_amount || 0) > 0 ||
+                                            Number(row.total_orders || 0) > 0
+                                        );
+                                        return filtered.length > 0 ? (
+                                            <>
+                                                {filtered.map((row, i) => {
+                                                    const pctAds = Number(row.total_sales || 0) > 0
+                                                        ? (Number(row.ads_cost) / Number(row.total_sales)) * 100 : 0;
+                                                    const roas = Number(row.ads_cost || 0) > 0 ? Number(row.total_sales) / Number(row.ads_cost) : 0;
+                                                    return (
+                                                        <tr key={i} className="border-b hover:bg-gray-50">
+                                                            <td className="px-3 py-2 font-medium">{row.store_name}</td>
+                                                            <td className="px-3 py-2">
+                                                                <span className="px-2 py-0.5 bg-gray-100 text-gray-700 border rounded text-xs">{row.platform}</span>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right">{fmtNum(row.ads_cost)}</td>
+                                                            <td className="px-3 py-2 text-right font-semibold text-blue-700">{fmtNum(row.total_sales)}</td>
+                                                            <td className="px-3 py-2 text-right">{Number(row.total_orders || 0).toLocaleString()}</td>
+                                                            <td className="px-3 py-2 text-right text-amber-600">{fmtNum(row.returns_amount)}</td>
+                                                            <td className="px-3 py-2 text-right text-red-600">{fmtNum(row.cancelled_amount)}</td>
+                                                            <td className="px-3 py-2 text-right">{pctAds.toFixed(2)}%</td>
+                                                            <td className="px-3 py-2 text-right">{roas.toFixed(2)}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                {/* Summary */}
+                                                <tr className="bg-gray-100 font-bold border-t border-gray-300 sticky bottom-0 z-10 shadow-inner">
+                                                    <td className="px-3 py-3" colSpan={2}>รวมทั้งสิ้น</td>
+                                                    <td className="px-3 py-3 text-right">{fmtNum(filtered.reduce((a, r) => a + Number(r.ads_cost || 0), 0))}</td>
+                                                    <td className="px-3 py-3 text-right text-blue-700">
+                                                        {fmtNum(filtered.reduce((a, r) => a + Number(r.total_sales || 0), 0))}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-right">
+                                                        {filtered.reduce((a, r) => a + Number(r.total_orders || 0), 0).toLocaleString()}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-right text-amber-600">
+                                                        {fmtNum(filtered.reduce((a, r) => a + Number(r.returns_amount || 0), 0))}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-right text-red-600">
+                                                        {fmtNum(filtered.reduce((a, r) => a + Number(r.cancelled_amount || 0), 0))}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-right">
+                                                        {(() => {
+                                                            const totalAds = filtered.reduce((a, r) => a + Number(r.ads_cost || 0), 0);
+                                                            const totalSales = filtered.reduce((a, r) => a + Number(r.total_sales || 0), 0);
+                                                            return totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) + "%" : "0.00%";
+                                                        })()}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-right">
+                                                        {(() => {
+                                                            const totalAds = filtered.reduce((a, r) => a + Number(r.ads_cost || 0), 0);
+                                                            const totalSales = filtered.reduce((a, r) => a + Number(r.total_sales || 0), 0);
+                                                            return totalAds > 0 ? (totalSales / totalAds).toFixed(2) : "0.00";
+                                                        })()}
+                                                    </td>
+                                                </tr>
+                                            </>
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={9} className="text-center py-8 text-gray-500">
+                                                    {dashboardData.length === 0 ? "กดค้นหาเพื่อดูข้อมูล" : "ไม่พบข้อมูลในช่วงที่เลือก"}
                                                 </td>
                                             </tr>
-                                        </>
-                                    ) : (
-                                        <tr>
-                                            <td colSpan={8} className="text-center py-8 text-gray-500">
-                                                {dashboardData.length === 0 ? "กดค้นหาเพื่อดูข้อมูล" : "ไม่พบข้อมูลในช่วงที่เลือก"}
-                                            </td>
-                                        </tr>
-                                    )
-                                })()}
-                            </tbody>
-                        </table>
-                    </div>
+                                        )
+                                    })()}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </section>
             )}
         </div>
