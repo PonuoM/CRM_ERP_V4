@@ -76,6 +76,23 @@ try {
         $pdo->prepare("DELETE FROM commission_periods WHERE id = ?")->execute([$existing['id']]);
     }
     
+    // 0. Load Commission Settings & User Roles
+    $settingsStmt = $pdo->prepare("SELECT role_id, config_data FROM commission_settings WHERE company_id = ?");
+    $settingsStmt->execute([$company_id]);
+    $configs = [];
+    foreach ($settingsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        if ($row['config_data']) {
+            $configs[$row['role_id']] = json_decode($row['config_data'], true);
+        }
+    }
+    
+    $usersStmt = $pdo->prepare("SELECT id, role FROM users WHERE company_id = ?");
+    $usersStmt->execute([$company_id]);
+    $userRoles = [];
+    foreach ($usersStmt->fetchAll(PDO::FETCH_ASSOC) as $u) {
+        $userRoles[$u['id']] = (int)$u['role'];
+    }
+
     // 1. Get Eligible Orders
     // Using explicit table alias for clarity
     $ordersStmt = $pdo->prepare("
@@ -105,16 +122,20 @@ try {
     
     $salesData = []; // [user_id => ['total_sales' => 0, 'lines' => []]]
     
-    // Prepared statement for items
     $itemsStmt = $pdo->prepare("
         SELECT 
-            id, 
-            creator_id, 
-            net_total, 
-            is_freebie, 
-            parent_item_id 
-        FROM order_items 
-        WHERE parent_order_id = ?
+            oi.id, 
+            oi.creator_id, 
+            oi.net_total, 
+            oi.is_freebie, 
+            oi.parent_item_id,
+            oi.quantity,
+            o.basket_key_at_sale as order_basket_key,
+            p.report_category
+        FROM order_items oi
+        LEFT JOIN products p ON p.id = oi.product_id
+        LEFT JOIN orders o ON o.id = oi.parent_order_id
+        WHERE oi.parent_order_id = ?
     ");
     
     $totalOrdersProcessed = 0;
@@ -170,9 +191,7 @@ try {
             $beneficiary_id = $item_creator_id ?? $order_creator_id;
             
             // Skip promotion children ONLY if they belong to the same creator as the order
-            // If creator_id is different (upsell), we should include it even if it has parent_item_id
             if (!empty($item['parent_item_id'])) {
-                // If item has a creator_id and it's different from order creator, it's an upsell item
                 if ($item_creator_id && $item_creator_id != $order_creator_id) {
                     // This is an upsell item, don't skip it
                 } else {
@@ -182,20 +201,24 @@ try {
             }
             
             $item_net = (float)$item['net_total'];
+            $ratio_qty = (float)($item['quantity'] ?? 0) * $ratio;
             $commissionable_amount = $item_net * $ratio;
             
-            if ($commissionable_amount <= 0) continue;
+            if ($commissionable_amount <= 0 && $ratio_qty <= 0) continue;
             
             if (!$beneficiary_id) continue; // Should not happen if data integrity is good
+            
+            $basket_key = $item['order_basket_key'] ?? '';
+            $report_category = $item['report_category'] ?? 'อื่นๆ';
             
             // Add to sales data
             if (!isset($salesData[$beneficiary_id])) {
                 $salesData[$beneficiary_id] = [
                     'total_sales' => 0,
-                    'order_count' => 0, // We'll count unique orders later or just increment line count?
-                                        // Requirement usually counts Distinct Orders. 
-                                        // But here we are splitting. Let's count "transactions" or keep track of unique orders per user.
-                    'orders_seen' => [] 
+                    'order_count' => 0,
+                    'orders_seen' => [],
+                    'lines' => [],
+                    'items_data' => []
                 ];
             }
             
@@ -207,23 +230,24 @@ try {
                 $salesData[$beneficiary_id]['orders_seen'][$order_id] = true;
             }
             
-            // Prepare Line Data
-            // We might have multiple items for same user in same order. 
-            // We should aggregate them or insert multiple lines?
-            // "commission_order_lines" links to "orders". If we insert multiple lines for same order_id, 
-            // the Primary Key is 'id', so it supports multiple rows with same order_id.
-            // Let's insert per item for maximum detail if needed, OR aggregate per order per user.
-            // Aggregating per order per user is cleaner for the report (1 line per order for that user).
-            
             if (!isset($salesData[$beneficiary_id]['lines'][$order_id])) {
                 $salesData[$beneficiary_id]['lines'][$order_id] = [
                      'order_id' => $order_id,
                      'order_date' => $order['order_date'],
                      'confirmed_at' => $order['confirmed_at'] ?? $order['order_date'], // Fallback
-                     'amount' => 0
+                     'amount' => 0,
+                     'commission_amount' => 0
                 ];
             }
             $salesData[$beneficiary_id]['lines'][$order_id]['amount'] += $commissionable_amount;
+            
+            $salesData[$beneficiary_id]['items_data'][] = [
+                'order_id' => $order_id,
+                'amount' => $commissionable_amount,
+                'qty' => $ratio_qty,
+                'basket_key' => $basket_key,
+                'category' => $report_category
+            ];
             
             $hasCommissionableItems = true;
         }
@@ -233,16 +257,100 @@ try {
         }
     }
     
-    // Calculate Global Totals
+    // Calculate Commission Dynamically based on Settings
     $grandTotalSales = 0;
-    $grandTotalOrders = $totalOrdersProcessed; // Unique orders processed in this run
+    $grandTotalOrders = $totalOrdersProcessed; 
     $grandTotalCommission = 0;
     
-    foreach ($salesData as $uid => $data) {
+    foreach ($salesData as $user_id => &$data) {
         $grandTotalSales += $data['total_sales'];
-        $userComm = $data['total_sales'] * ($commission_rate / 100);
-        $grandTotalCommission += $userComm;
+        
+        $role_id = $userRoles[$user_id] ?? null;
+        $config = $configs[$role_id] ?? null;
+        $fallback_rate = $commission_rate;
+        
+        $userCommission = 0;
+        
+        if ($config) {
+            $digging_keys = $config['general']['digging_basket_keys'] ?? ["49", "50"];
+            
+            $categoriesSales = ['self' => [], 'digging' => []];
+            $categoriesQty = ['self' => [], 'digging' => []];
+            
+            foreach ($data['items_data'] as $it) {
+                $type = in_array((string)$it['basket_key'], $digging_keys) ? 'digging' : 'self';
+                $cat = $it['category'];
+                
+                if (!isset($categoriesSales[$type][$cat])) {
+                    $categoriesSales[$type][$cat] = 0;
+                    $categoriesQty[$type][$cat] = 0;
+                }
+                $categoriesSales[$type][$cat] += $it['amount'];
+                $categoriesQty[$type][$cat] += $it['qty'];
+            }
+            
+            foreach (['self', 'digging'] as $type) {
+                $rules = $config['rules'][$type] ?? [];
+                foreach ($categoriesSales[$type] as $cat => $catAmount) {
+                    $catQty = $categoriesQty[$type][$cat];
+                    $rule = $rules[$cat] ?? null;
+                    $catCommission = 0;
+                    
+                    if ($rule) {
+                        if ($rule['type'] === 'fixed_per_qty') {
+                            $catCommission = $catQty * (float)$rule['value'];
+                        } else if ($rule['type'] === 'percent_of_item') {
+                            $catCommission = $catAmount * ((float)$rule['value'] / 100);
+                        } else if ($rule['type'] === 'tiered_percent') {
+                            $baseVal = (($rule['tier_base'] ?? '') === 'total_sales_all_products') ? $data['total_sales'] : $catAmount;
+                            $matchedPercent = 0;
+                            if (!empty($rule['tiers'])) {
+                                foreach ($rule['tiers'] as $tier) {
+                                    $min = (float)$tier['min'];
+                                    $max = isset($tier['max']) && $tier['max'] !== null ? (float)$tier['max'] : PHP_FLOAT_MAX;
+                                    if ($baseVal >= $min && $baseVal <= $max) {
+                                        $matchedPercent = (float)$tier['percent'];
+                                    }
+                                }
+                            }
+                            $catCommission = $catAmount * ($matchedPercent / 100);
+                        }
+                    }
+                    
+                    $userCommission += $catCommission;
+                    
+                    // Distribute back to lines
+                    if ($catAmount > 0) {
+                        $catCommRatio = $catCommission / $catAmount;
+                        foreach ($data['items_data'] as $it) {
+                            $itType = in_array((string)$it['basket_key'], $digging_keys) ? 'digging' : 'self';
+                            if ($itType === $type && $it['category'] === $cat) {
+                                $data['lines'][$it['order_id']]['commission_amount'] += ($it['amount'] * $catCommRatio);
+                            }
+                        }
+                    } elseif ($catCommission > 0 && $catQty > 0) {
+                        $catCommRatio = $catCommission / $catQty;
+                        foreach ($data['items_data'] as $it) {
+                            $itType = in_array((string)$it['basket_key'], $digging_keys) ? 'digging' : 'self';
+                            if ($itType === $type && $it['category'] === $cat) {
+                                $data['lines'][$it['order_id']]['commission_amount'] += ($it['qty'] * $catCommRatio);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Fallback if no specific config
+            $userCommission = $data['total_sales'] * ($fallback_rate / 100);
+            foreach ($data['lines'] as $oid => &$ln) {
+                $ln['commission_amount'] = $ln['amount'] * ($fallback_rate / 100);
+            }
+        }
+        
+        $data['total_commission'] = $userCommission;
+        $grandTotalCommission += $userCommission;
     }
+    unset($data);
     
     // Insert Period
     $periodStmt = $pdo->prepare("
@@ -275,7 +383,7 @@ try {
     
     foreach ($salesData as $user_id => $data) {
         $userTotalSales = $data['total_sales'];
-        $userCommission = $userTotalSales * ($commission_rate / 100);
+        $userCommission = $data['total_commission'];
         $userOrderCount = $data['order_count'];
         
         $recordStmt->execute([
@@ -291,7 +399,7 @@ try {
         
         foreach ($data['lines'] as $line) {
             $lineAmount = $line['amount'];
-            $lineCommission = $lineAmount * ($commission_rate / 100);
+            $lineCommission = $line['commission_amount'];
             
             $lineStmt->execute([
                 $record_id,

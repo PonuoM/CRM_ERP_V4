@@ -947,7 +947,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
   const loadMarketingUserAdsGroups = async () => {
     try {
-      const res = await fetch(`${API_BASE}/Marketing_DB/get_all_marketing_user_ads_groups.php`);
+      const res = await fetch(`${API_BASE}/Marketing_DB/get_all_marketing_user_ads_groups.php?company_id=${currentUser.companyId}`);
       const data = await res.json();
       if (data.success) {
         setMarketingUserAdsGroups(data.data || []);

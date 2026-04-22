@@ -97,28 +97,22 @@ try {
                 // Still fully covered → keep status as-is
                 $newOrderStatus = $currentOrderStatus;
                 $newPaymentStatus = $currentPaymentStatus;
-            } else if ($remainingPaid > 0) {
-                // Partially covered → revert to PreApproved
-                $newPaymentStatus = 'PreApproved';
-                // Only revert order_status if it was Delivered (set by confirm)
-                $newOrderStatus = ($currentOrderStatus === 'Delivered') ? 'Confirmed' : $currentOrderStatus;
             } else {
-                // Nothing remaining → full revert
+                // Revert to PreApproved
                 $newPaymentStatus = 'PreApproved';
-                $newOrderStatus = in_array($currentOrderStatus, ['PreApproved', 'Delivered']) ? 'Confirmed' : $currentOrderStatus;
+                // Revert from Delivered (เสร็จสิ้น) back to PreApproved (รอบัญชีตรวจสอบ)
+                $newOrderStatus = ($currentOrderStatus === 'Delivered') ? 'PreApproved' : $currentOrderStatus;
             }
 
             // Don't revert cancelled/returned orders
             if (!in_array($currentOrderStatus, ['Cancelled', 'Returned'])) {
                 $updateStmt = $pdo->prepare("
                     UPDATE orders
-                    SET amount_paid = :amountPaid,
-                        payment_status = :paymentStatus,
+                    SET payment_status = :paymentStatus,
                         order_status = :orderStatus
                     WHERE id = :orderId AND company_id = :companyId
                 ");
                 $updateStmt->execute([
-                    ':amountPaid' => $remainingPaid,
                     ':paymentStatus' => $newPaymentStatus,
                     ':orderStatus' => $newOrderStatus,
                     ':orderId' => $orderId,

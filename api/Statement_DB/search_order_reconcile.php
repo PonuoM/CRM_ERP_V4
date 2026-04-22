@@ -48,7 +48,7 @@ try {
             srl.reconcile_type,
             srl.auto_matched,
             srl.created_at AS reconcile_created_at,
-            srl.confirmed_by,
+            NULL AS confirmed_by,
             srl.note,
             srl.confirmed_payment_method,
             srl.confirmed_at,
@@ -66,8 +66,8 @@ try {
             srb.created_at AS batch_created_at,
             u_created.first_name AS created_by_first,
             u_created.last_name AS created_by_last,
-            u_confirmed.first_name AS confirmed_by_first,
-            u_confirmed.last_name AS confirmed_by_last,
+            NULL AS confirmed_by_first,
+            NULL AS confirmed_by_last,
             NULL AS cod_document_number,
             NULL AS cod_document_id,
             NULL AS cod_total_amount,
@@ -81,8 +81,7 @@ try {
         INNER JOIN statement_reconcile_batches srb ON srb.id = srl.batch_id
         INNER JOIN statement_logs sl ON sl.id = srl.statement_log_id
         LEFT JOIN bank_account ba ON ba.id = srb.bank_account_id
-        LEFT JOIN users u_created ON u_created.id = srl.created_by
-        LEFT JOIN users u_confirmed ON u_confirmed.id = srl.confirmed_by
+        LEFT JOIN users u_created ON u_created.id = srb.created_by
         WHERE srb.company_id = ?
           AND srl.order_id LIKE ?
         ORDER BY srl.created_at DESC
@@ -136,7 +135,6 @@ try {
         FROM cod_documents cd
         INNER JOIN cod_records cr ON cr.document_id = cd.id
         LEFT JOIN statement_logs sl ON sl.id = cd.matched_statement_log_id
-        LEFT JOIN statement_batchs sb ON sb.id = sl.batch_id
         LEFT JOIN bank_account ba ON ba.id = sl.bank_account_id
         WHERE cd.company_id = ?
           AND (cd.document_number LIKE ? OR cr.order_id LIKE ?)

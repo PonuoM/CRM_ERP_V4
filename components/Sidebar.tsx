@@ -160,6 +160,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Revenue Recognition": "ปิดบัญชีลูกหนี้",
     "Calculate Commission": "คำนวณค่าคอมมิชชัน",
     "Commission Stamp": "จัดการค่าคอม",
+    "Commission Settings": "ตั้งค่าค่าคอมมิชชัน",
+    "Retro Commission": "จำลองค่าคอมย้อนหลัง",
     "System": "ระบบ",
     "Change Password": "เปลี่ยนรหัสผ่าน",
     "Marketing Dashboard": "แดชบอร์ด (มาร์เก็ตติ้ง)",
@@ -313,6 +315,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Statement Management", icon: FileText, key: "nav.statement_management" },
         { label: "Calculate Commission", icon: BarChart2, key: "finance-commission" },
         { label: "Commission Stamp", icon: CheckCircle, key: "finance-commission-stamp" },
+        { label: "Commission Settings", icon: Settings, key: "finance-commission-settings" },
+        { label: "Retro Commission", icon: FileText, key: "finance-retro-commission" },
         { label: "Debt", icon: FileText, key: "nav.debt" },
       ]
     },

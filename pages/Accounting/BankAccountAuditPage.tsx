@@ -380,65 +380,80 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     const handleUnpause = async (log: AuditLog, reconcileId?: number) => {
         const targetReconcileId = reconcileId || log.reconcile_id;
         if (!targetReconcileId) return;
-        // Prevent unmatch if linked to COD document
-        if (log.is_cod_document || log.cod_document_id) {
-            alert('ไม่สามารถยกเลิกการจับคู่ได้ เนื่องจากผูกกับเอกสาร COD');
-            return;
-        }
+        const isCod = Boolean(log.is_cod_document || log.cod_document_id);
+
         const isSuspenseOrDeposit = log.status === 'Suspense' || log.status === 'Deposit';
-        const confirmMsg = isSuspenseOrDeposit
-            ? 'ยืนยันยกเลิกการพักรับ? รายการจะกลับไปสถานะ Unmatched'
-            : 'ยืนยันยกเลิกการจับคู่ออเดอร์นี้?';
+        const confirmMsg = isCod
+            ? 'ยืนยันถอย (Unconfirm) เอกสาร COD? ระบบจะถอยคืนแค่ยอดเงินและเปลี่ยนสถานะการชำระเป็น "ยังไม่ชำระ" แต่สถานะพัสดุจะคงเดิม'
+            : isSuspenseOrDeposit
+                ? 'ยืนยันยกเลิกการพักรับ? รายการจะกลับไปสถานะ Unmatched'
+                : 'ยืนยันยกเลิกการจับคู่ออเดอร์นี้?';
         if (!window.confirm(confirmMsg)) {
             return;
         }
 
         try {
-            const res = await apiFetch('Statement_DB/reconcile_cancel.php', {
+            const endpoint = isCod ? 'Statement_DB/cod_reconcile_cancel.php' : 'Statement_DB/reconcile_cancel.php';
+            const reqBody = isCod 
+                ? { statement_log_id: log.id, company_id: currentUser.companyId || (currentUser as any).company_id }
+                : { id: targetReconcileId, company_id: currentUser.companyId || (currentUser as any).company_id };
+
+            const res = await apiFetch(endpoint, {
                 method: 'POST',
-                body: JSON.stringify({
-                    id: targetReconcileId,
-                    company_id: currentUser.companyId || (currentUser as any).company_id
-                })
+                body: JSON.stringify(reqBody)
             });
 
             if (res.ok) {
-                // Optimistic update: remove specific order from matched_orders
-                setLogs(prev => prev.map(l => {
-                    if (l.id !== log.id) return l;
-                    const remaining = (l.matched_orders || []).filter(m => m.reconcile_id !== targetReconcileId);
-                    if (remaining.length === 0) {
-                        // Last order removed → reset to Unmatched
+                if (isCod) {
+                    setLogs(prev => prev.map(l => {
+                        if (l.id !== log.id) return l;
                         return {
                             ...l,
-                            order_id: null,
-                            order_display: null,
-                            order_amount: null,
-                            payment_method: null,
                             status: 'Unmatched' as any,
-                            diff: 0,
-                            reconcile_id: null,
-                            confirmed_at: null,
-                            confirmed_action: null,
-                            note: null,
-                            matched_orders: [],
+                            is_cod_document: false,
+                            cod_document_id: null,
+                            order_amount: null,
+                            diff: 0
                         };
-                    } else {
-                        // Still has other orders
-                        const totalConfirmed = remaining.reduce((sum, m) => sum + m.confirmed_amount, 0);
-                        const diff = l.statement_amount - totalConfirmed;
-                        return {
-                            ...l,
-                            matched_orders: remaining,
-                            order_id: remaining.map(m => m.order_id).join(','),
-                            order_display: remaining.map(m => m.order_id).join(', '),
-                            order_amount: totalConfirmed,
-                            reconcile_id: remaining[0]?.reconcile_id || null,
-                            status: (Math.abs(diff) < 0.01 ? 'Exact' : diff > 0 ? 'Over' : 'Short') as any,
-                            diff,
-                        };
-                    }
-                }));
+                    }));
+                } else {
+                    // Optimistic update: remove specific order from matched_orders
+                    setLogs(prev => prev.map(l => {
+                        if (l.id !== log.id) return l;
+                        const remaining = (l.matched_orders || []).filter(m => m.reconcile_id !== targetReconcileId);
+                        if (remaining.length === 0) {
+                            // Last order removed → reset to Unmatched
+                            return {
+                                ...l,
+                                order_id: null,
+                                order_display: null,
+                                order_amount: null,
+                                payment_method: null,
+                                status: 'Unmatched' as any,
+                                diff: 0,
+                                reconcile_id: null,
+                                confirmed_at: null,
+                                confirmed_action: null,
+                                note: null,
+                                matched_orders: [],
+                            };
+                        } else {
+                            // Still has other orders
+                            const totalConfirmed = remaining.reduce((sum, m) => sum + m.confirmed_amount, 0);
+                            const diff = l.statement_amount - totalConfirmed;
+                            return {
+                                ...l,
+                                matched_orders: remaining,
+                                order_id: remaining.map(m => m.order_id).join(','),
+                                order_display: remaining.map(m => m.order_id).join(', '),
+                                order_amount: totalConfirmed,
+                                reconcile_id: remaining[0]?.reconcile_id || null,
+                                status: (Math.abs(diff) < 0.01 ? 'Exact' : diff > 0 ? 'Over' : 'Short') as any,
+                                diff,
+                            };
+                        }
+                    }));
+                }
                 // Background refresh to get new auto-match suggestions
                 fetchAuditLogs(true);
             } else {
@@ -451,15 +466,31 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     // Unconfirm (undo confirm) a reconcile log
     const handleUnconfirm = async (log: AuditLog, reconcileId: number) => {
-        if (!window.confirm('ยืนยันถอยการยืนยัน? ระบบจะลบการจับคู่นี้ออก และคำนวณยอดชำระใหม่')) return;
+        const isCod = Boolean(log.is_cod_document || log.cod_document_id);
+        const confirmMsg = isCod
+            ? 'ยืนยันถอย (Undo Confirm) ถอยการยืนยันเอกสาร COD? ถอยแล้วระบบจะยกเลิกการผูกและชำระเงินต่างๆ แต่คงสถานะการจัดส่งไว้'
+            : 'ยืนยันถอยการยืนยัน? ระบบจะลบการจับคู่นี้ออก และคำนวณยอดชำระใหม่';
+
+        if (!window.confirm(confirmMsg)) return;
+
         try {
-            const res = await apiFetch('Statement_DB/unconfirm_reconcile.php', {
-                method: 'POST',
-                body: JSON.stringify({
+            const endpoint = isCod ? 'Statement_DB/unconfirm_cod_document.php' : 'Statement_DB/unconfirm_reconcile.php';
+            const reqBody = isCod
+                ? {
+                    cod_document_id: log.cod_document_id || reconcileId, // For COD, reconcileId here might actually be something else, but log.cod_document_id is safest. Wait! Let's pass both.
+                    statement_log_id: log.id,
+                    company_id: currentUser.companyId || (currentUser as any).company_id,
+                    user_id: currentUser.id,
+                }
+                : {
                     id: reconcileId,
                     company_id: currentUser.companyId || (currentUser as any).company_id,
                     user_id: currentUser.id,
-                })
+                };
+
+            const res = await apiFetch(endpoint, {
+                method: 'POST',
+                body: JSON.stringify(reqBody)
             });
             if (res.ok) {
                 fetchAuditLogs(true);
@@ -957,6 +988,15 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                     ✕
                                                                 </button>
                                                             )}
+                                                            {(log.confirmed_action || '').includes('Confirmed') && (
+                                                                <button
+                                                                    onClick={() => handleUnconfirm(log, log.reconcile_id || log.cod_document_id!)}
+                                                                    className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 bg-white border border-orange-200 px-1.5 py-0.5 rounded transition-all"
+                                                                    title="ถอยยืนยัน COD (undo confirm)"
+                                                                >
+                                                                    ↩ ถอย
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     ) : log.order_id ? (
                                                         <div className="flex flex-col items-start gap-1">
@@ -972,7 +1012,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                         {mo.is_over_reconciled && (
                                                                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold" title={`ยอดรวม reconcile ฿${mo.total_reconciled_amount?.toLocaleString()} เกินยอดออเดอร์ ฿${mo.order_total_amount?.toLocaleString()} (ซ้ำ!)`}>⚠ เบิ้ล {mo.duplicate_reconcile_count}x</span>
                                                                         )}
-                                                                        {!mo.confirmed_at && !log.is_cod_document && !log.cod_document_id && (
+                                                                        {!mo.confirmed_at && (
                                                                             <button
                                                                                 onClick={() => handleUnpause(log, mo.reconcile_id)}
                                                                                 className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-1 py-0.5 rounded transition-colors"
@@ -981,7 +1021,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                                 ✕
                                                                             </button>
                                                                         )}
-                                                                        {mo.confirmed_at && !log.is_cod_document && !log.cod_document_id && (
+                                                                        {mo.confirmed_at && (
                                                                             <button
                                                                                 onClick={() => handleUnconfirm(log, mo.reconcile_id)}
                                                                                 className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 bg-white border border-orange-200 px-1.5 py-0.5 rounded transition-all"
@@ -1001,7 +1041,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                     {log.matched_orders?.[0]?.is_over_reconciled && (
                                                                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold" title={`ยอดรวม reconcile ฿${log.matched_orders[0].total_reconciled_amount?.toLocaleString()} เกินยอดออเดอร์ ฿${log.matched_orders[0].order_total_amount?.toLocaleString()} (ซ้ำ!)`}>⚠ เบิ้ล {log.matched_orders[0].duplicate_reconcile_count}x</span>
                                                                     )}
-                                                                    {!log.confirmed_at && log.reconcile_id && !log.is_cod_document && !log.cod_document_id && (
+                                                                    {!log.confirmed_at && log.reconcile_id && (
                                                                         <button
                                                                             onClick={() => handleUnpause(log)}
                                                                             className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-1 py-0.5 rounded transition-colors"
@@ -1010,7 +1050,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                             ✕
                                                                         </button>
                                                                     )}
-                                                                    {log.confirmed_at && log.reconcile_id && !log.is_cod_document && !log.cod_document_id && (
+                                                                    {log.confirmed_at && log.reconcile_id && (
                                                                         <button
                                                                             onClick={() => handleUnconfirm(log, log.reconcile_id!)}
                                                                             className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 bg-white border border-orange-200 px-1.5 py-0.5 rounded transition-all"

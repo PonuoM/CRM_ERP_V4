@@ -155,6 +155,8 @@ import BankAuditDashboardPage from "./pages/Accounting/BankAuditDashboardPage";
 import RevenueRecognitionPage from "./pages/Accounting/RevenueRecognitionPage";
 import CommissionPage from "./pages/Finance/CommissionPage";
 import CommissionStampPage from "./pages/Finance/CommissionStampPage";
+import CommissionSettingsPage from "./pages/Finance/CommissionSettingsPage";
+import RetroCommissionPage from "./pages/Finance/RetroCommissionPage";
 import AttendanceReportPage from "./pages/AttendanceReportPage";
 import OrdersReportPage from "./pages/OrdersReportPage";
 import OrderTabSettingsPage from "./pages/OrderTabSettingsPage";
@@ -7564,6 +7566,16 @@ const App: React.FC = () => {
       case "Commission Stamp":
       case "Stamp ค่าคอม":
         return <CommissionStampPage currentUser={currentUser} />;
+        
+      case "finance-commission-settings":
+      case "Commission Settings":
+      case "ตั้งค่าค่าคอมมิชชัน":
+        return <CommissionSettingsPage currentUser={currentUser} />;
+        
+      case "finance-retro-commission":
+      case "Retro Commission":
+      case "จำลองค่าคอมย้อนหลัง":
+        return <RetroCommissionPage currentUser={currentUser} />;
         return (
           <StatementManagementPage
             user={currentUser}

@@ -91,3 +91,13 @@ fix-*.ps1
 # Temp & fix directories
 temp/
 fix_encoding/
+
+# One-off export/update scripts
+export_duplicated_*.php
+update_order_fix.php
+
+# Company-specific MCP configs (credentials)
+MCP SQL SERVER_Company*.md
+
+# Windows artifacts
+nul

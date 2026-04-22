@@ -134,6 +134,8 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'nav.statement_management', label: 'Statement Management (จัดการ Statement)' },
             { key: 'finance-commission', label: 'Commission Menu (เมนูคำนวณค่าคอม)' },
             { key: 'finance-commission-stamp', label: 'Commission Stamp (Stamp ค่าคอม)' },
+            { key: 'finance-commission-settings', label: 'Commission Settings (ตั้งค่าค่าคอมมิชชัน)' },
+            { key: 'finance-retro-commission', label: 'Retro Commission (จำลองค่าคอมย้อนหลัง)' },
         ]
     },
     'Accounting Audit': {

@@ -13,14 +13,23 @@ try {
   
   $conn = db_connect();
   
+  $company_id = isset($_GET['company_id']) ? $_GET['company_id'] : null;
+  
   $sql = "SELECT mua.user_id, mua.ads_group, 
                  u.first_name, u.last_name, u.username
           FROM marketing_user_ads_group mua
-          JOIN users u ON mua.user_id = u.id
-          ORDER BY mua.ads_group, u.first_name";
+          JOIN users u ON mua.user_id = u.id";
+          
+  $params = [];
+  if ($company_id) {
+      $sql .= " WHERE u.company_id = ?";
+      $params[] = $company_id;
+  }
+  
+  $sql .= " ORDER BY mua.ads_group, u.first_name";
           
   $stmt = $conn->prepare($sql);
-  $stmt->execute();
+  $stmt->execute($params);
   $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
   
   echo json_encode(["success" => true, "data" => $data]);
