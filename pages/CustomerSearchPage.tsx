@@ -114,6 +114,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
         q: searchTerm.trim(),
         companyId: companyId,
         pageSize: 100, // Reasonable limit for search results
+        excludeBlocked: true,
       });
 
       const foundCustomers = (response.data || []).map((c: any) => mapCustomerFromApi(c));

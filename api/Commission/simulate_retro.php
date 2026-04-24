@@ -2,6 +2,7 @@
 /**
  * Simulate Retroactive Commission
  * Compares exact historically stamped orders inside a month against the dynamic commission engine calculation.
+ * OPTIMIZED: Fetches all order_items in ONE batch query instead of per-order loop.
  */
 require_once __DIR__ . "/../config.php";
 
@@ -20,8 +21,14 @@ try {
     }
     
     // 1. Find batches for this month/year
-    $batchStmt = $pdo->prepare("SELECT id FROM commission_stamp_batches WHERE for_month = ? AND for_year = ? AND company_id = ?");
-    $batchStmt->execute([$for_month, $for_year, $company_id]);
+    $batchStmt = $pdo->prepare("
+        SELECT id 
+        FROM commission_stamp_batches 
+        WHERE company_id = ? 
+        AND (for_month = ? OR (for_month IS NULL AND MONTH(created_at) = ?)) 
+        AND (for_year = ? OR (for_year IS NULL AND YEAR(created_at) = ?))
+    ");
+    $batchStmt->execute([$company_id, $for_month, $for_month, $for_year, $for_year]);
     $batch_ids = $batchStmt->fetchAll(PDO::FETCH_COLUMN);
     
     if (empty($batch_ids)) {
@@ -57,19 +64,44 @@ try {
     $ordersStmt->execute($batch_ids);
     $orders = $ordersStmt->fetchAll(PDO::FETCH_ASSOC);
     
+    if (empty($orders)) {
+        echo json_encode(['ok' => true, 'data' => []]);
+        exit;
+    }
+
+    // 5. *** KEY FIX: Fetch ALL items in ONE batch query ***
+    //    Old code did: foreach($orders) { $itemsStmt->execute([$order_id]); }
+    //    That caused N+1 queries (hundreds of round-trips) => timeout => Apache hang
+    $allOrderIds = [];
+    foreach ($orders as $order) {
+        $allOrderIds[$order['id']] = true;
+    }
+    $allOrderIds = array_keys($allOrderIds);
+    
+    $itemsInQuery = implode(',', array_fill(0, count($allOrderIds), '?'));
     $itemsStmt = $pdo->prepare("
         SELECT 
             oi.id, oi.creator_id, oi.net_total, oi.is_freebie, oi.parent_item_id, oi.quantity,
+            oi.parent_order_id,
             o.basket_key_at_sale as order_basket_key,
             p.report_category
         FROM order_items oi
         LEFT JOIN products p ON p.id = oi.product_id
         LEFT JOIN orders o ON o.id = oi.parent_order_id
-        WHERE oi.parent_order_id = ?
+        WHERE oi.parent_order_id IN ($itemsInQuery)
     ");
+    $itemsStmt->execute($allOrderIds);
+    $allItems = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
     
+    // Group items by parent_order_id for O(1) lookup
+    $itemsByOrder = [];
+    foreach ($allItems as $item) {
+        $itemsByOrder[$item['parent_order_id']][] = $item;
+    }
+    unset($allItems);
+    
+    // 6. Process orders using pre-fetched items
     $salesData = []; 
-    // Format: [user_id => ['total_sales' => 0, 'old_commission' => 0, 'items_data' => []]]
 
     foreach ($orders as $order) {
         $order_id = $order['id'];
@@ -92,18 +124,13 @@ try {
         }
         $salesData[$assigned_user_id]['old_commission'] += $old_commission;
         
-        // Fetch Items
-        $itemsStmt->execute([$order_id]);
-        $items = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
-        
+        // Lookup from pre-fetched map (no DB call!)
+        $items = $itemsByOrder[$order_id] ?? [];
         if (empty($items)) continue; 
         
-        // Emulating Ratio logic (simplifying ratio to 1 for simulation assuming exact payout target)
-        // If they need strict verified reconcile ratio, we'd need statement_reconcile_logs join per item
         $ratio = 1.0; 
         
         foreach ($items as $item) {
-            // Exclusion Logic
             if ((int)$item['is_freebie'] === 1) continue;
             
             $item_creator_id = !empty($item['creator_id']) ? $item['creator_id'] : null;
@@ -111,12 +138,10 @@ try {
                 if ($item_creator_id && $item_creator_id != $order_creator_id) {
                     // Upsell - include
                 } else {
-                    // Promo child - skip
-                    continue;
+                    continue; // Promo child - skip
                 }
             }
             
-            // Only add items that ACTUALLY belong to this stamped user
             $beneficiary_id = $item_creator_id ?? $order_creator_id;
             if ($beneficiary_id != $assigned_user_id) continue;
 
@@ -139,7 +164,7 @@ try {
         }
     }
     
-    // Process JSON Settings Engine
+    // 7. Commission calculation engine
     $results = [];
     foreach ($salesData as $user_id => $data) {
         $role_id = $data['role_id'];
@@ -159,39 +184,37 @@ try {
             'digging_sales' => 0
         ];
         
-        if ($config) {
-            $digging_keys = $config['general']['digging_basket_keys'] ?? ["49", "50"];
+        $digging_keys = isset($config['general']['digging_basket_keys']) ? $config['general']['digging_basket_keys'] : ["49", "50"];
+        $categoriesSales = ['self' => [], 'digging' => []];
+        $categoriesQty = ['self' => [], 'digging' => []];
+        
+        foreach ($data['items_data'] as $it) {
+            $type = in_array((string)$it['basket_key'], $digging_keys) ? 'digging' : 'self';
+            $cat = $it['category'];
             
-            $categoriesSales = ['self' => [], 'digging' => []];
-            $categoriesQty = ['self' => [], 'digging' => []];
-            
-            foreach ($data['items_data'] as $it) {
-                $type = in_array((string)$it['basket_key'], $digging_keys) ? 'digging' : 'self';
-                $cat = $it['category'];
-                
-                if (!isset($categoriesSales[$type][$cat])) {
-                    $categoriesSales[$type][$cat] = 0;
-                    $categoriesQty[$type][$cat] = 0;
-                }
-                $categoriesSales[$type][$cat] += $it['amount'];
-                $categoriesQty[$type][$cat] += $it['qty'];
-                
-                // Track visual metrics matching requested display format
-                if ($type === 'digging') {
-                    $metrics['digging_qty'] += $it['qty'];
-                    $metrics['digging_sales'] += $it['amount'];
-                } else if ($cat === 'กระสอบใหญ่') {
-                    $metrics['large_bag_qty'] += $it['qty'];
-                    $metrics['large_bag_sales'] += $it['amount'];
-                } else if ($cat === 'กระสอบเล็ก') {
-                    $metrics['small_bag_qty'] += $it['qty'];
-                    $metrics['small_bag_sales'] += $it['amount'];
-                } else if ($cat === 'ชีวภัณฑ์') {
-                    $metrics['bio_qty'] += $it['qty'];
-                    $metrics['bio_sales'] += $it['amount'];
-                }
+            if (!isset($categoriesSales[$type][$cat])) {
+                $categoriesSales[$type][$cat] = 0;
+                $categoriesQty[$type][$cat] = 0;
             }
+            $categoriesSales[$type][$cat] += $it['amount'];
+            $categoriesQty[$type][$cat] += $it['qty'];
             
+            if ($type === 'digging') {
+                $metrics['digging_qty'] += $it['qty'];
+                $metrics['digging_sales'] += $it['amount'];
+            } else if ($cat === 'กระสอบใหญ่') {
+                $metrics['large_bag_qty'] += $it['qty'];
+                $metrics['large_bag_sales'] += $it['amount'];
+            } else if ($cat === 'กระสอบเล็ก') {
+                $metrics['small_bag_qty'] += $it['qty'];
+                $metrics['small_bag_sales'] += $it['amount'];
+            } else if ($cat === 'ชีวภัณฑ์') {
+                $metrics['bio_qty'] += $it['qty'];
+                $metrics['bio_sales'] += $it['amount'];
+            }
+        }
+        
+        if ($config) {
             foreach (['self', 'digging'] as $type) {
                 $rules = $config['rules'][$type] ?? [];
                 foreach ($categoriesSales[$type] as $cat => $catAmount) {
@@ -234,8 +257,6 @@ try {
         ];
     }
     
-    // Calculate Supervisor specific Team metrics locally
-    // For now returning the aggregate raw output mapped for the frontend!
     echo json_encode([
         'ok' => true,
         'data' => $results

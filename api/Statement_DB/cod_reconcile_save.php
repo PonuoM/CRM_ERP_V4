@@ -254,7 +254,7 @@ try {
   $allCodRecords = $allCodRecordsStmt->fetchAll(PDO::FETCH_ASSOC);
 
   // Filter to only records with valid order_id for reconciliation
-  $codRecords = array_filter($allCodRecords, function($rec) {
+  $codRecords = array_filter($allCodRecords, function ($rec) {
     $orderId = trim((string) ($rec["order_id"] ?? ""));
     return $orderId !== "";
   });
@@ -356,7 +356,7 @@ try {
   $batchRunningTotals = [];
   $existingReconCache = [];
   $statementAmount = (float) $stmtInfo["amount"];
-  
+
   // Use totalCodAmountWithOrders for proportion calculation
   // This distributes the FULL statement amount to orders with valid order_id
   // Forced amounts (no order_id) are effectively distributed proportionally to all orders

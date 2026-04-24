@@ -43,10 +43,17 @@ const RetroCommissionPage: React.FC<RetroCommissionPageProps> = ({ currentUser }
   const fetchData = async () => {
     if (!user?.company_id) return;
     setLoading(true);
+    setData([]);
     setError('');
     
     try {
-      const res = await fetch(`${APP_BASE_PATH}api/Commission/simulate_retro.php?company_id=${user.company_id}&month=${selectedMonth}&year=${selectedYear}`);
+      const cacheBuster = new Date().getTime();
+      const res = await fetch(`${APP_BASE_PATH}api/Commission/simulate_retro.php?company_id=${user.company_id}&month=${selectedMonth}&year=${selectedYear}&_t=${cacheBuster}`, {
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
       const json = await res.json();
       
       if (!res.ok || !json.ok) {
@@ -61,11 +68,12 @@ const RetroCommissionPage: React.FC<RetroCommissionPageProps> = ({ currentUser }
     }
   };
 
+  // Auto-fetch when user, month, or year changes
   useEffect(() => {
     if (user?.company_id) {
        fetchData();
     }
-  }, [user]);
+  }, [user?.company_id, selectedMonth, selectedYear]);
 
   // Aggregation
   let totalOld = 0;
