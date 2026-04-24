@@ -1018,19 +1018,23 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
       if (uniqueOrderIds.size > 0) {
         const orderIdArray = Array.from(uniqueOrderIds);
-        // Batch update all orders in one request instead of N sequential calls
+        // Batch update all orders in chunks of 500 to prevent backend overload/limitations
         try {
-          const batchRes = await apiFetch('Order_DB/cod_batch_update_orders.php', {
-            method: 'POST',
-            body: JSON.stringify({ company_id: user.companyId, order_ids: orderIdArray }),
-          });
+          const CHUNK_SIZE = 500;
+          for (let i = 0; i < orderIdArray.length; i += CHUNK_SIZE) {
+            const chunk = orderIdArray.slice(i, i + CHUNK_SIZE);
+            const batchRes = await apiFetch('Order_DB/cod_batch_update_orders.php', {
+              method: 'POST',
+              body: JSON.stringify({ company_id: user.companyId, order_ids: chunk }),
+            });
 
-          if (batchRes?.ok && batchRes.updates) {
-            for (const [orderId, update] of Object.entries(batchRes.updates) as [string, any][]) {
-              orderUpdates[orderId] = {
-                amountPaid: update.amountPaid || 0,
-                paymentStatus: update.paymentStatus === 'PreApproved' ? PaymentStatus.PreApproved : PaymentStatus.PendingVerification,
-              };
+            if (batchRes?.ok && batchRes.updates) {
+              for (const [orderId, update] of Object.entries(batchRes.updates) as [string, any][]) {
+                orderUpdates[orderId] = {
+                  amountPaid: update.amountPaid || 0,
+                  paymentStatus: update.paymentStatus === 'PreApproved' ? PaymentStatus.PreApproved : PaymentStatus.PendingVerification,
+                };
+              }
             }
           }
         } catch (err) {
