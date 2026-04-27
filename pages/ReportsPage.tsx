@@ -930,10 +930,33 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       if (order.items && order.items.length > 0) {
         // มี items - แสดงแต่ละรายการ
         order.items.forEach(item => {
-          // ถ้าเป็นของแถม (isFreebie) ยอดรวมต้องเป็น 0
-          // EXTERNAL orders have price_per_unit=0, use net_total as fallback
-          const calculatedTotal = (item.pricePerUnit * item.quantity) - (item.discount || 0);
-          const itemTotal = item.isFreebie ? 0 : (calculatedTotal > 0 ? calculatedTotal : ((item as any).netTotal || 0));
+          // Promotion handling: parent row shows 0, child rows show promo price_override amounts
+          const isPromoParent = !!(item as any).isPromotionParent;
+          const isPromoChild = !!(item as any).parentItemId;
+          const qty = item.quantity || 0;
+          const netTotal = (item as any).netTotal || 0;
+          const retailPrice = item.pricePerUnit || 0;
+
+          // Calculate effective discount and item total based on item type
+          let effectiveDiscount: number;
+          let itemTotal: number;
+
+          if (isPromoParent) {
+            effectiveDiscount = 0;
+            itemTotal = 0;
+          } else if (isPromoChild) {
+            // net_total = price_override from promotion_items table
+            const retailTotal = qty * retailPrice;
+            effectiveDiscount = retailTotal - netTotal;
+            itemTotal = netTotal;
+          } else if (item.isFreebie) {
+            effectiveDiscount = item.discount || 0;
+            itemTotal = 0;
+          } else {
+            effectiveDiscount = item.discount || 0;
+            const calculatedTotal = (retailPrice * qty) - effectiveDiscount;
+            itemTotal = calculatedTotal > 0 ? calculatedTotal : netTotal;
+          }
 
           // กำหนด รหัสสินค้า/โปร
           let productCode = '-';
@@ -999,9 +1022,9 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'ชื่อโปร': promoName,
             'ของแถม': item.isFreebie ? 'ใช่' : 'ไม่',
             'จำนวน (ชิ้น)': item.quantity || 0,
-            'ราคาต่อหน่วย': `฿${(item.pricePerUnit || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            'ส่วนลด': `฿${(item.discount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            'ยอดรวมรายการ': item.isFreebie ? 0 : `฿${itemTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            'ราคาต่อหน่วย': `฿${(isPromoParent ? 0 : retailPrice).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            'ส่วนลด': `฿${effectiveDiscount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            'ยอดรวมรายการ': (item.isFreebie || isPromoParent) ? 0 : `฿${itemTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'ค่าจัดส่ง (ต่อบิล)': `฿${(order.shippingCost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'ส่วนลดท้ายบิล': `฿${(order.billDiscount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'ยอดรวมทั้งบิล': `฿${(order.totalAmount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
@@ -1420,17 +1443,42 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               // Show order-level fields only on first item row
               const isFirstItem = itemIndex === 0;
 
+              // Promotion handling: parent row shows 0, child rows show actual promo-split amounts
+              const isPromoParent = !!item.is_promotion_parent;
+              const isPromoChild = !!item.parent_item_id;
+
               // For Claim or Gift orders, set discount = qty * price so item total = 0
               const isClaimOrGift = order.payment_status === 'Claim' || order.payment_status === 'Gift';
               const originalPrice = Number(item.price_per_unit) || 0;
               const originalDiscount = Number(item.discount) || 0;
               const qty = Number(item.quantity) || 0;
               const netTotal = Number(item.net_total) || 0;
-              // If Claim/Gift, discount = full price (so total = 0), else use original discount
-              const effectiveDiscount = isClaimOrGift ? (qty * originalPrice) : originalDiscount;
-              // EXTERNAL orders have price_per_unit=0, use net_total as fallback
-              const calculatedTotal = (qty * originalPrice) - effectiveDiscount;
-              const itemTotal = calculatedTotal > 0 ? calculatedTotal : netTotal;
+
+              // For promo child items: net_total = price_override from promotion_items table
+              // Calculate promo discount = (retail price × qty) - price_override
+              // This shows how much the customer saved from the promo
+              let effectiveDiscount: number;
+              let itemTotal: number;
+
+              if (isPromoParent) {
+                // Promo parent row = 0 for everything (actual amounts are in child rows)
+                effectiveDiscount = 0;
+                itemTotal = 0;
+              } else if (isPromoChild) {
+                // Promo child: use net_total as ยอดรวม (= price_override from promotion_items)
+                // Discount = retail total - promo price
+                const retailTotal = qty * originalPrice;
+                effectiveDiscount = retailTotal - netTotal;
+                itemTotal = netTotal;
+              } else if (isClaimOrGift) {
+                effectiveDiscount = qty * originalPrice;
+                itemTotal = 0;
+              } else {
+                effectiveDiscount = originalDiscount;
+                // EXTERNAL orders have price_per_unit=0, use net_total as fallback
+                const calculatedTotal = (qty * originalPrice) - effectiveDiscount;
+                itemTotal = calculatedTotal > 0 ? calculatedTotal : netTotal;
+              }
 
               // Helper function to translate customer type to Thai
               const getCustomerTypeThai = (customerType: string) => {
@@ -1551,9 +1599,9 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 'ชื่อโปร': getPromoName(item, order.items || []),
                 'ของแถม': item.is_freebie ? 'ใช่' : 'ไม่',
                 'จำนวน (ชิ้น)': qty,
-                'ราคาต่อหน่วย': originalPrice,
+                'ราคาต่อหน่วย': isPromoParent ? 0 : originalPrice,
                 'ส่วนลด': effectiveDiscount,
-                'ยอดรวมรายการ': item.is_freebie ? 0 : itemTotal,
+                'ยอดรวมรายการ': (item.is_freebie || isPromoParent) ? 0 : itemTotal,
                 'ค่าจัดส่ง (ต่อบิล)': isFirstItem ? (Number(order.shipping_cost) || 0) : 0,
                 'ส่วนลดท้ายบิล': isFirstItem ? (Number(order.bill_discount) || 0) : 0,
                 'ยอดรวมทั้งบิล': isFirstItem ? (Number(order.total_amount) || 0) : 0,
