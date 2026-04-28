@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
 import { User } from '../../types';
-import { Calculator, CheckCircle, DollarSign, Calendar, Users, FileText, X } from 'lucide-react';
+import { Calculator, CheckCircle, DollarSign, Calendar, Users, FileText, X, Download } from 'lucide-react';
+import ExportTypeModal from '../../components/ExportTypeModal';
+import { downloadDataFile } from '../../utils/exportUtils';
 import resolveApiBasePath from '../../utils/apiBasePath';
 
 interface Period {
@@ -34,6 +36,9 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
     const [commissionRate, setCommissionRate] = useState(5.0);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [detailData, setDetailData] = useState<any>(null);
+    const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportTargetPeriodId, setExportTargetPeriodId] = useState<number | null>(null);
 
     useEffect(() => {
         fetchPeriods();
@@ -183,9 +188,51 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
         }
     };
 
-    const handleExport = (periodId: number) => {
-        const url = `${resolveApiBasePath()}/Commission/export_period_csv.php?period_id=${periodId}`;
-        window.open(url, '_blank');
+    const handleExportClick = (periodId: number) => {
+        setExportTargetPeriodId(periodId);
+        setIsExportTypeModalOpen(true);
+    };
+
+    const executeExport = async (type: 'csv' | 'xlsx') => {
+        if (!exportTargetPeriodId) return;
+
+        setIsExporting(true);
+        try {
+            const url = `${resolveApiBasePath()}/Commission/export_period_csv.php?period_id=${exportTargetPeriodId}&format=json`;
+            const response = await fetch(url);
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                const headers = [
+                    'Employee ID', 'Salesperson Name', 'Order Date', 'Order ID', 
+                    'Order Amount', 'Commission Rate (%)', 'Commission Amount', 'Confirmed Date'
+                ];
+                
+                const rows = result.data.map((r: any) => [
+                    r.employee_id,
+                    r.salesperson_name,
+                    r.order_date,
+                    r.order_id,
+                    r.order_amount,
+                    r.commission_rate,
+                    r.commission_amount,
+                    r.confirmed_at
+                ]);
+                
+                const period = result.period;
+                const filename = `commission_period_${period.period_year}_${String(period.period_month).padStart(2, '0')}`;
+
+                downloadDataFile([headers, ...rows], filename, type);
+            } else {
+                alert('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
+            }
+        } catch (e: any) {
+            alert('เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.message);
+        } finally {
+            setIsExporting(false);
+            setIsExportTypeModalOpen(false);
+            setExportTargetPeriodId(null);
+        }
     };
 
     const formatCurrency = (amount: number) => {
@@ -352,12 +399,12 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                                                 </button>
                                             )}
                                             <button
-                                                onClick={() => handleExport(period.id)}
+                                                onClick={() => handleExportClick(period.id)}
                                                 className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 flex-inline items-center"
-                                                title="Export CSV"
+                                                title="Export Data"
                                             >
-                                                <FileText className="w-3 h-3 inline mr-1" />
-                                                CSV
+                                                <Download className="w-3 h-3 inline mr-1" />
+                                                Export
                                             </button>
                                             <button
                                                 onClick={() => handleViewDetail(period.id)}
@@ -392,11 +439,11 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                             </h2>
                             <div className="flex items-center space-x-2">
                                 <button
-                                    onClick={() => handleExport(detailData.period.id)}
+                                    onClick={() => handleExportClick(detailData.period.id)}
                                     className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 flex items-center"
                                 >
-                                    <FileText className="w-4 h-4 mr-1" />
-                                    Export CSV
+                                    <Download className="w-4 h-4 mr-1" />
+                                    Export Data
                                 </button>
                                 <button
                                     onClick={() => setShowDetailModal(false)}
@@ -465,6 +512,14 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                     </div>
                 </div>
             )}
+
+            {/* Export Format Modal */}
+            <ExportTypeModal
+                isOpen={isExportTypeModalOpen}
+                onClose={() => !isExporting && setIsExportTypeModalOpen(false)}
+                onConfirm={executeExport}
+                isExporting={isExporting}
+            />
         </div>
     );
 };

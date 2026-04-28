@@ -157,7 +157,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Accounting Audit": "ตรวจสอบจากบัญชี",
     "Bank Account Audit": "ตรวจสอบบัญชีธนาคาร",
     "Bank Audit Dashboard": "แดชบอร์ดตรวจสอบบัญชี",
-    "Revenue Recognition": "ปิดบัญชีลูกหนี้",
+    "Revenue Recognition": "ปิดบัญชีลูกหนี้ (Revenue Recognition)",
     "Calculate Commission": "คำนวณค่าคอมมิชชัน",
     "Commission Stamp": "จัดการค่าคอม",
     "Commission Settings": "ตั้งค่าค่าคอมมิชชัน",

@@ -24,6 +24,56 @@ try {
         throw new Exception("Period not found");
     }
     
+    $format = $_GET['format'] ?? 'csv';
+
+    if ($format === 'json') {
+        $resultData = [];
+        
+        $recordsStmt = $pdo->prepare("
+            SELECT 
+                cr.*,
+                u.username,
+                u.first_name,
+                u.last_name
+            FROM commission_records cr
+            JOIN users u ON u.id = cr.user_id
+            WHERE cr.period_id = ?
+            ORDER BY cr.total_sales DESC
+        ");
+        $recordsStmt->execute([$period_id]);
+        $records = $recordsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($records as $record) {
+            $salespersonName = trim($record['first_name'] . ' ' . $record['last_name']);
+            $employeeId = $record['user_id'];
+            
+            $linesStmt = $pdo->prepare("
+                SELECT * FROM commission_order_lines 
+                WHERE record_id = ?
+                ORDER BY order_date DESC
+            ");
+            $linesStmt->execute([$record['id']]);
+            $orders = $linesStmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            foreach ($orders as $order) {
+                $resultData[] = [
+                    'employee_id' => $employeeId,
+                    'salesperson_name' => $salespersonName,
+                    'order_date' => $order['order_date'],
+                    'order_id' => $order['order_id'],
+                    'order_amount' => $order['order_amount'],
+                    'commission_rate' => $record['commission_rate'],
+                    'commission_amount' => $order['commission_amount'],
+                    'confirmed_at' => $order['confirmed_at']
+                ];
+            }
+        }
+        
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true, 'data' => $resultData, 'period' => $period]);
+        exit;
+    }
+    
     // Set headers for CSV download
     $filename = "commission_period_{$period['period_year']}_" . sprintf('%02d', $period['period_month']) . ".csv";
     header('Content-Type: text/csv; charset=utf-8');

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+﻿import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Search,
   Download,
@@ -28,9 +28,10 @@ import {
   listProducts,
 } from "@/services/api";
 import { listRoles, Role } from "@/services/roleApi";
-import MarketingDatePicker, {
-  DateRange,
-} from "@/components/Dashboard/MarketingDatePicker";
+import DateRangePicker, { DateRange } from "../components/DateRangePicker";
+import { downloadDataFile } from "../utils/exportUtils";
+import ExportTypeModal from "../components/ExportTypeModal";
+import MarketingDatePicker from "@/components/Dashboard/MarketingDatePicker";
 import MultiSelectPageFilter from "@/components/Dashboard/MultiSelectPageFilter";
 import MultiSelectProductFilter from "@/components/Dashboard/MultiSelectProductFilter";
 import MultiSelectAdsGroupFilter from "@/components/Dashboard/MultiSelectAdsGroupFilter";
@@ -242,6 +243,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
   // Export modal states
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [isDashboardExportModalOpen, setIsDashboardExportModalOpen] = useState(false);
+  const [isAdsLogExportTypeModalOpen, setIsAdsLogExportTypeModalOpen] = useState(false);
   const [exportDateRange, setExportDateRange] = useState({
     start: "",
     end: "",
@@ -284,6 +287,164 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
     return Array.from(map.values());
   }, [dashboardData]);
+
+  const exportDashboard = (type: 'csv' | 'xlsx') => {
+    let dataToExport: any[] = [];
+    let headers: string[] = [];
+
+    if (activeTab === "productDashboard") {
+      headers = [
+        "Product Ads Group",
+        "Ads Cost",
+        "Total Sales (Grand)",
+        "Sales",
+        "Returned",
+        "Cancelled",
+        "% Ads"
+      ];
+      dataToExport = productDashboardData.map(row => {
+        const grandTotal = Number(row.total_sales || 0) + Number(row.returned_sales || 0);
+        const pctAds = grandTotal > 0 ? ((Number(row.ads_cost) / grandTotal) * 100).toFixed(2) + "%" : "0.00%";
+        return [
+          row.ads_group,
+          Number(row.ads_cost).toFixed(2),
+          grandTotal.toFixed(2),
+          Number(row.total_sales).toFixed(2),
+          Number(row.returned_sales || 0).toFixed(2),
+          Number(row.cancelled_sales || 0).toFixed(2),
+          pctAds
+        ];
+      });
+    } else {
+      headers = [
+        "Page Name",
+        "Platform",
+        "Ads Cost",
+        "Impressions",
+        "Reach",
+        "Total Sales (Grand)",
+        "Sales",
+        "Returned",
+        "Cancelled",
+        "New Customer Sales",
+        "Reorder Sales",
+        "Clicks",
+        "Customers",
+        "ROAS",
+        "Cost per Click (CPC)",
+        "% New Customer Sales",
+        "% Ads",
+        "Conversion Rate"
+      ];
+      dataToExport = dashboardData.map(row => {
+        const totalAds = Number(row.ads_cost || 0);
+        const grandTotal = Number(row.total_sales || 0) + Number(row.returned_sales || 0);
+        const totalClicks = Number(row.clicks || 0);
+        const totalOrders = Number(row.total_orders || 0);
+        const totalNewSales = Number(row.new_customer_sales || 0);
+
+        const roas = totalAds > 0 ? (Number(row.total_sales || 0) / totalAds).toFixed(2) : "0.00";
+        const cpc = totalClicks > 0 ? (totalAds / totalClicks).toFixed(2) : "0.00";
+        const newPct = totalNewSales > 0 ? ((totalAds / totalNewSales) * 100).toFixed(2) + "%" : "0.00%";
+        const adsPct = grandTotal > 0 ? ((totalAds / grandTotal) * 100).toFixed(2) + "%" : "0.00%";
+        const cvr = totalClicks > 0 ? ((totalOrders / totalClicks) * 100).toFixed(2) + "%" : "0.00%";
+
+        return [
+          row.page_name,
+          row.platform || "",
+          totalAds.toFixed(2),
+          Number(row.impressions || 0),
+          Number(row.reach || 0),
+          grandTotal.toFixed(2),
+          Number(row.total_sales || 0).toFixed(2),
+          Number(row.returned_sales || 0).toFixed(2),
+          Number(row.cancelled_sales || 0).toFixed(2),
+          totalNewSales.toFixed(2),
+          Number(row.reorder_customer_sales || 0).toFixed(2),
+          totalClicks,
+          Number(row.total_customers || 0),
+          roas,
+          cpc,
+          newPct,
+          adsPct,
+          cvr
+        ];
+      });
+    }
+
+    const finalData = [headers, ...dataToExport];
+    const fileName = `marketing_dashboard_${activeTab}_${new Date().toISOString().split("T")[0]}`;
+    downloadDataFile(finalData, fileName, type);
+    setIsDashboardExportModalOpen(false);
+  };
+
+  const executeAdsLogExport = async (type: 'csv' | 'xlsx') => {
+    setExporting(true);
+    setIsAdsLogExportTypeModalOpen(false);
+    setExportModalOpen(false);
+    try {
+      const params = new URLSearchParams();
+      if (exportTempStart) params.set("date_from", exportTempStart);
+      if (exportTempEnd) params.set("date_to", exportTempEnd);
+      if (exportSelectedPages.length > 0) {
+        params.set("page_ids", exportSelectedPages.join(","));
+      }
+
+      // Add token manually just in case
+      const token = localStorage.getItem("token") || "";
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const response = await fetch(`${API_BASE}/Marketing_DB/ads_log_get.php?${params}`, { headers });
+      if (!response.ok) throw new Error("Export failed");
+      const resJson = await response.json();
+      if (!resJson.success) throw new Error(resJson.error || "Fetch failed");
+
+      const logs = resJson.data || [];
+      if (logs.length === 0) {
+        alert('à¹„à¸¡à¹ˆà¸žà¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸™à¸Šà¹ˆà¸§à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆà¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸');
+        return;
+      }
+
+      const csvHeaders = [
+        'ID',
+        'à¸§à¸±à¸™à¸—à¸µà¹ˆ',
+        'à¸Šà¸·à¹ˆà¸­à¹€à¸žà¸ˆ',
+        'à¹à¸žà¸¥à¸•à¸Ÿà¸­à¸£à¹Œà¸¡',
+        'à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸‡à¸²à¸™',
+        'à¸Šà¸·à¹ˆà¸­à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰',
+        'à¸„à¹ˆà¸²à¹‚à¸†à¸©à¸“à¸² (à¸šà¸²à¸—)',
+        'à¸à¸²à¸£à¹à¸ªà¸”à¸‡à¸œà¸¥ (Impressions)',
+        'à¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¸–à¸¶à¸‡ (Reach)',
+        'à¸à¸²à¸£à¸„à¸¥à¸´à¸ (Clicks)',
+        'à¸§à¸±à¸™à¸—à¸µà¹ˆà¸ªà¸£à¹‰à¸²à¸‡'
+      ];
+
+      const dataRows = logs.map((log: any) => [
+        log.id,
+        log.date,
+        log.page_name || '',
+        log.page_platform || '',
+        log.user_fullname || '',
+        log.user_username || '',
+        Number(log.ads_cost || 0),
+        Number(log.impressions || 0),
+        Number(log.reach || 0),
+        Number(log.clicks || 0),
+        log.created_at
+      ]);
+
+      const finalData = [csvHeaders, ...dataRows];
+      const fileName = `marketing_ads_log_${new Date().toISOString().split("T")[0]}`;
+      downloadDataFile(finalData, fileName, type);
+      
+    } catch (error) {
+      console.error("Export error:", error);
+      alert("à¸à¸²à¸£à¸ªà¹ˆà¸‡à¸­à¸­à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸¥à¹‰à¸¡à¹€à¸«à¸¥à¸§ à¸à¸£à¸¸à¸“à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // States for marketing user page management
   const [expandedPages, setExpandedPages] = useState<Set<number>>(new Set());
@@ -853,7 +1014,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   }, [adSpend]);
 
   const handleAddPage = async () => {
-    if (!newPage.name.trim()) return alert("กรุณากรอกชื่อเพจ");
+    if (!newPage.name.trim()) return alert("à¸à¸£à¸¸à¸“à¸²à¸à¸£à¸­à¸à¸Šà¸·à¹ˆà¸­à¹€à¸žà¸ˆ");
     try {
       const created = await createPage({
         name: newPage.name.trim(),
@@ -884,7 +1045,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
     } catch (e) {
       console.error("create page failed", e);
-      alert("เพิ่มเพจไม่สำเร็จ");
+      alert("à¹€à¸žà¸´à¹ˆà¸¡à¹€à¸žà¸ˆà¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
     }
   };
 
@@ -896,13 +1057,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       );
     } catch (e) {
       console.error("update page failed", e);
-      alert("อัปเดตสถานะเพจไม่สำเร็จ");
+      alert("à¸­à¸±à¸›à¹€à¸”à¸•à¸ªà¸–à¸²à¸™à¸°à¹€à¸žà¸ˆà¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
     }
   };
 
   const handleAddSpend = async () => {
     if (!newSpend.pageId || !newSpend.amount)
-      return alert("กรุณาเลือกเพจและกรอกจำนวนเงิน");
+      return alert("à¸à¸£à¸¸à¸“à¸²à¹€à¸¥à¸·à¸­à¸à¹€à¸žà¸ˆà¹à¸¥à¸°à¸à¸£à¸­à¸à¸ˆà¸³à¸™à¸§à¸™à¹€à¸‡à¸´à¸™");
     try {
       await createAdSpend({
         pageId: Number(newSpend.pageId),
@@ -932,7 +1093,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       setAdSpend(mapped);
     } catch (e) {
       console.error("create ad spend failed", e);
-      alert("บันทึกค่าโฆษณาไม่สำเร็จ");
+      alert("à¸šà¸±à¸™à¸—à¸¶à¸à¸„à¹ˆà¸²à¹‚à¸†à¸©à¸“à¸²à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
     }
   };
 
@@ -1115,7 +1276,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
   // Handle remove user from page
   const handleRemoveUser = async (userId: number, pageId: number) => {
-    if (!confirm("คุณต้องการลบผู้ใช้นี้จากเพจใช่หรือไม่?")) return;
+    if (!confirm("à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸¥à¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸™à¸µà¹‰à¸ˆà¸²à¸à¹€à¸žà¸ˆà¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?")) return;
 
     try {
       const res = await fetch(`${API_BASE}/Marketing_DB/remove_user_from_page.php`, {
@@ -1126,13 +1287,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       const data = await res.json();
       if (data.success) {
         loadMarketingPageUsers();
-        alert("ลบผู้ใช้จากเพจสำเร็จ");
+        alert("à¸¥à¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸ˆà¸²à¸à¹€à¸žà¸ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
       } else {
-        alert("ลบผู้ใช้จากเพจไม่สำเร็จ: " + data.error);
+        alert("à¸¥à¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸ˆà¸²à¸à¹€à¸žà¸ˆà¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: " + data.error);
       }
     } catch (e) {
       console.error("Failed to remove user:", e);
-      alert("ลบผู้ใช้จากเพจไม่สำเร็จ");
+      alert("à¸¥à¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸ˆà¸²à¸à¹€à¸žà¸ˆà¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
     }
   };
 
@@ -1153,13 +1314,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       if (data.success) {
         loadMarketingPageUsers();
         setSelectedPageForUser(null);
-        alert("เพิ่มผู้ใช้สำเร็จ");
+        alert("à¹€à¸žà¸´à¹ˆà¸¡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
       } else {
-        alert("เพิ่มผู้ใช้ไม่สำเร็จ: " + data.error);
+        alert("à¹€à¸žà¸´à¹ˆà¸¡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: " + data.error);
       }
     } catch (e) {
       console.error("Failed to add user:", e);
-      alert("เพิ่มผู้ใช้ไม่สำเร็จ");
+      alert("à¹€à¸žà¸´à¹ˆà¸¡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
     }
   };
 
@@ -1179,7 +1340,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     setAdsInputData(newData);
   };
 
-  // Handle save all ads data - ใช้ ads_log_insert.php และ ads_log_update.php
+  // Handle save all ads data - à¹ƒà¸Šà¹‰ ads_log_insert.php à¹à¸¥à¸° ads_log_update.php
   const handleSaveAllAdsData = async () => {
     // Validate that if any field is filled, all 4 must be filled
     for (const row of adsInputData) {
@@ -1192,19 +1353,19 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
       if (filledCount > 0 && filledCount < 4) {
         const pageName = userPages.find(p => p.id.toString() === row.pageId.toString())?.name || "Unknown Page";
-        alert(`กรุณากรอกข้อมูลให้ครบทั้ง 4 ช่องสำหรับเพจ "${pageName}" (ค่า Ads, อิมเพรสชั่น, การเข้าถึง, ทัก/คลิก)`);
+        alert(`à¸à¸£à¸¸à¸“à¸²à¸à¸£à¸­à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸«à¹‰à¸„à¸£à¸šà¸—à¸±à¹‰à¸‡ 4 à¸Šà¹ˆà¸­à¸‡à¸ªà¸³à¸«à¸£à¸±à¸šà¹€à¸žà¸ˆ "${pageName}" (à¸„à¹ˆà¸² Ads, à¸­à¸´à¸¡à¹€à¸žà¸£à¸ªà¸Šà¸±à¹ˆà¸™, à¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¸–à¸¶à¸‡, à¸—à¸±à¸/à¸„à¸¥à¸´à¸)`);
         return;
       }
     }
 
     if (adsInputData.length === 0) {
-      alert("ไม่มีข้อมูลที่ต้องการบันทึก");
+      alert("à¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸šà¸±à¸™à¸—à¸¶à¸");
       return;
     }
 
-    // แสดงข้อความยืนยัน
+    // à¹à¸ªà¸”à¸‡à¸‚à¹‰à¸­à¸„à¸§à¸²à¸¡à¸¢à¸·à¸™à¸¢à¸±à¸™
     const confirmed = confirm(
-      `คุณต้องการบันทึกข้อมูลค่า Ads จำนวน ${adsInputData.length} รายการ ในวันที่ ${selectedDate} ใช่หรือไม่?`,
+      `à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸šà¸±à¸™à¸—à¸¶à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸„à¹ˆà¸² Ads à¸ˆà¸³à¸™à¸§à¸™ ${adsInputData.length} à¸£à¸²à¸¢à¸à¸²à¸£ à¹ƒà¸™à¸§à¸±à¸™à¸—à¸µà¹ˆ ${selectedDate} à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?`,
     );
 
     if (!confirmed) {
@@ -1213,8 +1374,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
     setIsSaving(true);
     try {
-      // โหลดข้อมูลที่มีอยู่แล้วสำหรับตรวจสอบ (เฉพาะของผู้ใช้ปัจจุบัน)
-      // โหลดข้อมูลที่มีอยู่แล้วสำหรับตรวจสอบ (เฉพาะของผู้ใช้ปัจจุบัน)
+      // à¹‚à¸«à¸¥à¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸—à¸µà¹ˆà¸¡à¸µà¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§à¸ªà¸³à¸«à¸£à¸±à¸šà¸•à¸£à¸§à¸ˆà¸ªà¸­à¸š (à¹€à¸‰à¸žà¸²à¸°à¸‚à¸­à¸‡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™)
+      // à¹‚à¸«à¸¥à¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸—à¸µà¹ˆà¸¡à¸µà¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§à¸ªà¸³à¸«à¸£à¸±à¸šà¸•à¸£à¸§à¸ˆà¸ªà¸­à¸š (à¹€à¸‰à¸žà¸²à¸°à¸‚à¸­à¸‡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™)
       const params = new URLSearchParams();
       params.append('date_from', selectedDate);
       params.append('date_to', selectedDate);
@@ -1227,7 +1388,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       const existingLogsResult = await apiFetch(`Marketing_DB/ads_log_get.php?${params.toString()}`);
       const existingLogs = existingLogsResult.data || [];
 
-      // สร้าง Map ของ existing logs โดยใช้ page_id เป็น key
+      // à¸ªà¸£à¹‰à¸²à¸‡ Map à¸‚à¸­à¸‡ existing logs à¹‚à¸”à¸¢à¹ƒà¸Šà¹‰ page_id à¹€à¸›à¹‡à¸™ key
       const existingLogsMap = new Map();
       existingLogs.forEach((log) => {
         // Update: Map ALL existing logs regardless of user_id
@@ -1235,9 +1396,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
 
       const savePromises = adsInputData.map(async (row) => {
-        // ตรวจสอบว่ามีข้อมูลที่จำเป็นหรือไม่
+        // à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸§à¹ˆà¸²à¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸—à¸µà¹ˆà¸ˆà¸³à¹€à¸›à¹‡à¸™à¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ
         if (!row.adsCost && !row.impressions && !row.reach && !row.clicks) {
-          return { success: true, message: "Skipped empty record" }; // ข้ามรายการที่ไม่มีข้อมูล
+          return { success: true, message: "Skipped empty record" }; // à¸‚à¹‰à¸²à¸¡à¸£à¸²à¸¢à¸à¸²à¸£à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥
         }
 
         const pageId = Number(row.pageId);
@@ -1255,18 +1416,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
         let res;
         if (existingLog) {
-          // ถ้ามีข้อมูลอยู่แล้ว ให้อัปเดต
+          // à¸–à¹‰à¸²à¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ à¹ƒà¸«à¹‰à¸­à¸±à¸›à¹€à¸”à¸•
           res = await fetch(`${API_BASE}/Marketing_DB/ads_log_update.php`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               id: existingLog.id,
-              user_id: currentUser.id, // เพิ่ม user_id สำหรับตรวจสอบสิทธิ์
+              user_id: currentUser.id, // à¹€à¸žà¸´à¹ˆà¸¡ user_id à¸ªà¸³à¸«à¸£à¸±à¸šà¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸ªà¸´à¸—à¸˜à¸´à¹Œ
               ...payload,
             }),
           });
         } else {
-          // ถ้าไม่มีข้อมูล ให้สร้างใหม่
+          // à¸–à¹‰à¸²à¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥ à¹ƒà¸«à¹‰à¸ªà¸£à¹‰à¸²à¸‡à¹ƒà¸«à¸¡à¹ˆ
           res = await fetch(`${API_BASE}/Marketing_DB/ads_log_insert.php`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1276,10 +1437,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         return await res.json();
       });
 
-      // รอให้ทุก request เสร็จสิ้น
+      // à¸£à¸­à¹ƒà¸«à¹‰à¸—à¸¸à¸ request à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™
       const results = await Promise.all(savePromises);
 
-      // ตรวจสอบผลลัพธ์
+      // à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸œà¸¥à¸¥à¸±à¸žà¸˜à¹Œ
       const successCount = results.filter(
         (r) => r && r.success === true,
       ).length;
@@ -1289,24 +1450,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       const errorCount = results.length - successCount - skippedCount;
 
       if (successCount > 0) {
-        let message = `บันทึกข้อมูลสำเร็จ ${successCount} รายการ`;
+        let message = `à¸šà¸±à¸™à¸—à¸¶à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸ªà¸³à¹€à¸£à¹‡à¸ˆ ${successCount} à¸£à¸²à¸¢à¸à¸²à¸£`;
         if (skippedCount > 0) {
-          message += ` ข้าม ${skippedCount} รายการที่ไม่มีข้อมูล`;
+          message += ` à¸‚à¹‰à¸²à¸¡ ${skippedCount} à¸£à¸²à¸¢à¸à¸²à¸£à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥`;
         }
         if (errorCount > 0) {
-          message += ` และผิดพลาด ${errorCount} รายการ`;
+          message += ` à¹à¸¥à¸°à¸œà¸´à¸”à¸žà¸¥à¸²à¸” ${errorCount} à¸£à¸²à¸¢à¸à¸²à¸£`;
         }
         alert(message);
-        // โหลดข้อมูลใหม่หลังบันทึกเสร็จ
+        // à¹‚à¸«à¸¥à¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸«à¸¡à¹ˆà¸«à¸¥à¸±à¸‡à¸šà¸±à¸™à¸—à¸¶à¸à¹€à¸ªà¸£à¹‡à¸ˆ
         loadExistingAdsData();
       } else if (skippedCount > 0) {
-        alert(`ข้าม ${skippedCount} รายการที่ไม่มีข้อมูล`);
+        alert(`à¸‚à¹‰à¸²à¸¡ ${skippedCount} à¸£à¸²à¸¢à¸à¸²à¸£à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥`);
       } else {
-        alert("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
+        alert("à¸šà¸±à¸™à¸—à¸¶à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ à¸à¸£à¸¸à¸“à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ");
       }
     } catch (e) {
       console.error("Failed to save ads data:", e);
-      alert("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
+      alert("à¸šà¸±à¸™à¸—à¸¶à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ à¸à¸£à¸¸à¸“à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ");
     } finally {
       setIsSaving(false);
     }
@@ -1328,7 +1489,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         headers,
         body: JSON.stringify({
           id,
-          user_id: currentUser.id, // เพิ่ม user_id สำหรับตรวจสอบสิทธิ์
+          user_id: currentUser.id, // à¹€à¸žà¸´à¹ˆà¸¡ user_id à¸ªà¸³à¸«à¸£à¸±à¸šà¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸ªà¸´à¸—à¸˜à¸´à¹Œ
           ...updates,
         }),
       });
@@ -1366,7 +1527,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
   const handleDeleteCurrentLog = async () => {
     if (!editingLog) return;
-    if (!confirm("คุณต้องการลบข้อมูลนี้ใช่หรือไม่?")) return;
+    if (!confirm("à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸¥à¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸™à¸µà¹‰à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?")) return;
 
     const isProductMode = adsHistoryMode === 'product' || !!editingLog.product_id;
     let res;
@@ -1378,13 +1539,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
 
     if (res && res.success) {
-      alert("ลบข้อมูลเรียบร้อยแล้ว");
+      alert("à¸¥à¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹€à¸£à¸µà¸¢à¸šà¸£à¹‰à¸­à¸¢à¹à¸¥à¹‰à¸§");
       setIsEditModalOpen(false);
       setEditingLog(null);
       if (isProductMode) loadProductAdsLogs();
       else loadPageAdsLogs();
     } else {
-      alert("ลบข้อมูลไม่สำเร็จ: " + (res?.error || "Unknown error"));
+      alert("à¸¥à¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: " + (res?.error || "Unknown error"));
     }
   };
 
@@ -1438,7 +1599,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     if (newDate && newDate !== oldDate) {
       const existing = await checkAdsLogExists(newDate, updatedLog.page_id, updatedLog.product_id);
       if (existing) {
-        if (!confirm(`วันที่ ${newDate} มีข้อมูลอยู่แล้ว ต้องการเขียนทับหรือไม่? (ข้อมูลเก่าจะถูกลบ)`)) {
+        if (!confirm(`à¸§à¸±à¸™à¸—à¸µà¹ˆ ${newDate} à¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¹€à¸‚à¸µà¸¢à¸™à¸—à¸±à¸šà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ? (à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹€à¸à¹ˆà¸²à¸ˆà¸°à¸–à¸¹à¸à¸¥à¸š)`)) {
           return; // Cancelled
         }
         // Delete existing log
@@ -1450,7 +1611,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         }
 
         if (!delRes || !delRes.success) {
-          alert("ไม่สามารถลบข้อมูลเก่าได้: " + (delRes?.error || "Unknown error"));
+          alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸¥à¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹€à¸à¹ˆà¸²à¹„à¸”à¹‰: " + (delRes?.error || "Unknown error"));
           return;
         }
       }
@@ -1476,7 +1637,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
 
     if (res && res.success) {
-      alert("แก้ไขข้อมูลเรียบร้อยแล้ว");
+      alert("à¹à¸à¹‰à¹„à¸‚à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹€à¸£à¸µà¸¢à¸šà¸£à¹‰à¸­à¸¢à¹à¸¥à¹‰à¸§");
       setIsEditModalOpen(false);
       setEditingLog(null);
 
@@ -1487,7 +1648,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         loadPageAdsLogs();
       }
     } else {
-      alert("เกิดข้อผิดพลาด: " + (res?.error || "Failed to update"));
+      alert("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”: " + (res?.error || "Failed to update"));
     }
   };
 
@@ -1578,7 +1739,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       }
     } catch (e) {
       console.error("Failed to load existing ads data:", e);
-      alert("โหลดข้อมูลผิดพลาด กรุณาลองใหม่");
+      alert("à¹‚à¸«à¸¥à¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸œà¸´à¸”à¸žà¸¥à¸²à¸” à¸à¸£à¸¸à¸“à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ");
     } finally {
       setIsLoadingData(false);
     }
@@ -1615,7 +1776,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [selectedAdsGroupForUser, setSelectedAdsGroupForUser] = useState<string | null>(null);
 
   const handleRemoveUserFromAdsGroup = async (userId: number, adsGroup: string) => {
-    if (!confirm("คุณต้องการลบสิทธิ์การเข้าถึงกลุ่ม Ads นี้ของผู้ใช้ใช่หรือไม่?")) return;
+    if (!confirm("à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸¥à¸šà¸ªà¸´à¸—à¸˜à¸´à¹Œà¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¸–à¸¶à¸‡à¸à¸¥à¸¸à¹ˆà¸¡ Ads à¸™à¸µà¹‰à¸‚à¸­à¸‡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?")) return;
 
     try {
       const response = await fetch(`${API_BASE}/Marketing_DB/remove_user_from_ads_group.php`, {
@@ -1625,14 +1786,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
       const result = await response.json();
       if (result.success) {
-        alert("ลบสิทธิ์สำเร็จ");
+        alert("à¸¥à¸šà¸ªà¸´à¸—à¸˜à¸´à¹Œà¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
         loadMarketingUserAdsGroups();
       } else {
-        alert("เกิดข้อผิดพลาด: " + result.error);
+        alert("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”: " + result.error);
       }
     } catch (error) {
       console.error("Error removing user from ads group:", error);
-      alert("เกิดข้อผิดพลาดในการลบสิทธิ์");
+      alert("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¸¥à¸šà¸ªà¸´à¸—à¸˜à¸´à¹Œ");
     }
   };
 
@@ -1649,15 +1810,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
       const result = await response.json();
       if (result.success) {
-        alert("เพิ่มผู้ใช้ไปยังกลุ่ม Ads เรียบร้อยแล้ว");
+        alert("à¹€à¸žà¸´à¹ˆà¸¡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸›à¸¢à¸±à¸‡à¸à¸¥à¸¸à¹ˆà¸¡ Ads à¹€à¸£à¸µà¸¢à¸šà¸£à¹‰à¸­à¸¢à¹à¸¥à¹‰à¸§");
         setSelectedAdsGroupForUser(null);
         loadMarketingUserAdsGroups();
       } else {
-        alert("เกิดข้อผิดพลาด: " + result.error);
+        alert("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”: " + result.error);
       }
     } catch (error) {
       console.error("Error adding user to ads group:", error);
-      alert("เกิดข้อผิดพลาดในการเพิ่มผู้ใช้");
+      alert("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¹€à¸žà¸´à¹ˆà¸¡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰");
     }
   };
 
@@ -1690,15 +1851,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       );
       const data = await res.json();
       if (data.success) {
-        // Merge "ยังไม่ลงแอด" rows into existing page rows
+        // Merge "à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¥à¸‡à¹à¸­à¸”" rows into existing page rows
         const rawData = data.data || [];
         const mergedData: any[] = [];
         const noAdsRows: any[] = [];
         const pageRowMap = new Map<string, number>(); // page_id -> index in mergedData
 
-        // First pass: separate real rows and ยังไม่ลงแอด rows
+        // First pass: separate real rows and à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¥à¸‡à¹à¸­à¸” rows
         for (const row of rawData) {
-          if (row.staff_first_name === 'ยังไม่ลงแอด') {
+          if (row.staff_first_name === 'à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¥à¸‡à¹à¸­à¸”') {
             noAdsRows.push(row);
           } else {
             const idx = mergedData.length;
@@ -1710,7 +1871,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           }
         }
 
-        // Second pass: merge ยังไม่ลงแอด sales into existing page rows
+        // Second pass: merge à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¥à¸‡à¹à¸­à¸” sales into existing page rows
         for (const noAdsRow of noAdsRows) {
           const targetIdx = pageRowMap.get(String(noAdsRow.page_id));
           if (targetIdx !== undefined) {
@@ -1727,7 +1888,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             target.cancelled_sales = Number(target.cancelled_sales || 0) + Number(noAdsRow.cancelled_sales || 0);
             target.cancelled_orders = Number(target.cancelled_orders || 0) + Number(noAdsRow.cancelled_orders || 0);
           } else {
-            // No real user row for this page → keep ยังไม่ลงแอด row
+            // No real user row for this page â†’ keep à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¥à¸‡à¹à¸­à¸” row
             mergedData.push(noAdsRow);
           }
         }
@@ -1849,13 +2010,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const getHeaderTitle = () => {
     switch (activeTab) {
       case "dashboard":
-        return "Marketing Dashboard (แดชบอร์ด)";
+        return "Marketing Dashboard (à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”)";
       case "adsInput":
-        return "Ads Input (กรอกค่า Ads)";
+        return "Ads Input (à¸à¸£à¸­à¸à¸„à¹ˆà¸² Ads)";
       case "adsHistory":
-        return "Ads History (ประวัติการกรอก Ads)";
+        return "Ads History (à¸›à¸£à¸°à¸§à¸±à¸•à¸´à¸à¸²à¸£à¸à¸£à¸­à¸ Ads)";
       case "userManagement":
-        return "Marketing User Management (จัดการผู้ใช้การตลาด-เพจ)";
+        return "Marketing User Management (à¸ˆà¸±à¸”à¸à¸²à¸£à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸à¸²à¸£à¸•à¸¥à¸²à¸”-à¹€à¸žà¸ˆ)";
       default:
         return "Marketing";
     }
@@ -1945,7 +2106,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
   const handleSaveProductAdsData = async () => {
     if (!selectedDate) {
-      alert("กรุณาเลือกวันที่");
+      alert("à¸à¸£à¸¸à¸“à¸²à¹€à¸¥à¸·à¸­à¸à¸§à¸±à¸™à¸—à¸µà¹ˆ");
       return;
     }
 
@@ -1962,7 +2123,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }));
 
     if (dataToSave.length === 0) {
-      alert("ไม่พบข้อมูลที่ต้องบันทึก");
+      alert("à¹„à¸¡à¹ˆà¸žà¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸šà¸±à¸™à¸—à¸¶à¸");
       return;
     }
 
@@ -1977,13 +2138,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
       const result = await response.json();
       if (result.success) {
-        alert("บันทึกข้อมูลเรียบร้อยแล้ว");
+        alert("à¸šà¸±à¸™à¸—à¸¶à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹€à¸£à¸µà¸¢à¸šà¸£à¹‰à¸­à¸¢à¹à¸¥à¹‰à¸§");
       } else {
-        alert("เกิดข้อผิดพลาด: " + result.message);
+        alert("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”: " + result.message);
       }
     } catch (error) {
       console.error("Error saving product ads data:", error);
-      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+      alert("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ");
     } finally {
       setIsSaving(false);
     }
@@ -2036,55 +2197,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   }, [activeTab, adsInputMode, dateRange, selectedPages, selectedAdsGroups, dashboardSelectedUsers]);
   */
 
-  const exportDashboard = () => {
-    let dataToExport: any[] = [];
-    let headers: string[] = [];
-
-    if (adsInputMode === 'product') {
-      headers = ["Ads Group", "Ads Cost", "Grand Total Sales", "Sales", "Returned Sales", "Cancelled Sales", "%Ads"];
-      dataToExport = productDashboardData.map(row => ({
-        "Ads Group": row.ads_group,
-        "Ads Cost": row.ads_cost,
-        "Grand Total Sales": Number(row.total_sales || 0) + Number(row.returned_sales || 0),
-        "Sales": row.total_sales,
-        "Returned Sales": row.returned_sales || 0,
-        "Cancelled Sales": row.cancelled_sales || 0,
-        "%Ads": (() => {
-          const grandTotal = Number(row.total_sales || 0) + Number(row.returned_sales || 0);
-          return grandTotal > 0 ? ((Number(row.ads_cost) / grandTotal) * 100).toFixed(2) + "%" : "0.00%";
-        })()
-      }));
-    } else {
-      headers = ["Page", "Ads Cost", "Impressions", "Reach", "Clicks", "Sales", "Returned Sales", "Cancelled Sales", "New Cust Sales", "Reorder Sales", "Total Cust", "ROAS", "%Ads"];
-      dataToExport = dashboardData.map(row => ({
-        Page: row.page_name,
-        "Ads Cost": row.ads_cost,
-        "Impressions": row.impressions || 0,
-        "Reach": row.reach || 0,
-        "Clicks": row.clicks || 0,
-        "Sales": row.total_sales,
-        "Returned Sales": row.returned_sales || 0,
-        "Cancelled Sales": row.cancelled_sales || 0,
-        "New Cust Sales": row.new_customer_sales,
-        "Reorder Sales": row.reorder_customer_sales,
-        "Total Cust": row.total_customers,
-        "ROAS": Number(row.ads_cost) > 0 ? (Number(row.total_sales) / Number(row.ads_cost)).toFixed(2) : "0.00",
-        "%Ads": Number(row.total_sales) > 0 ? ((Number(row.ads_cost) / Number(row.total_sales)) * 100).toFixed(2) + "%" : "0.00%"
-      }));
-    }
-
-    const csvContent = "data:text/csv;charset=utf-8,"
-      + headers.join(",") + "\n"
-      + dataToExport.map(e => Object.values(e).map(v => `"${v}"`).join(",")).join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `marketing_dashboard_${adsInputMode}_${dateRange.start}_${dateRange.end}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const filteredPages = useMemo(() => {
     return pages.filter((page) => {
@@ -2160,7 +2272,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   onClick={() => setShowActivePages(!showActivePages)}
                 >
                   <h3 className="text-lg font-semibold text-gray-800">
-                    รายการเพจที่ใช้งานอยู่ (Active Pages)
+                    à¸£à¸²à¸¢à¸à¸²à¸£à¹€à¸žà¸ˆà¸—à¸µà¹ˆà¹ƒà¸Šà¹‰à¸‡à¸²à¸™à¸­à¸¢à¸¹à¹ˆ (Active Pages)
                   </h3>
                   {showActivePages ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
                 </div>
@@ -2170,7 +2282,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     <div className="relative">
                       <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
                       <input
-                        placeholder="ค้นหาชื่อเพจ..."
+                        placeholder="à¸„à¹‰à¸™à¸«à¸²à¸Šà¸·à¹ˆà¸­à¹€à¸žà¸ˆ..."
                         className="pl-8 text-sm border border-gray-300 rounded-md py-2 w-48"
                         value={pageFilterName}
                         onChange={(e) => setPageFilterName(e.target.value)}
@@ -2183,7 +2295,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       onChange={(e) => setPageFilterType(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <option value="All">ทุกประเภท</option>
+                      <option value="All">à¸—à¸¸à¸à¸›à¸£à¸°à¹€à¸ à¸—</option>
                       <option value="Pancake">Pancake</option>
                       <option value="Manual">Manual</option>
                     </select>
@@ -2203,7 +2315,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       onChange={(e) => setPageFilterUser(e.target.value === "All" ? "All" : Number(e.target.value))}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <option value="All">ทุกผู้ใช้</option>
+                      <option value="All">à¸—à¸¸à¸à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰</option>
                       {marketingUsersList.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.first_name} ({u.username})
@@ -2217,10 +2329,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               {showActivePages && (
                 <>
                   {loading ? (
-                    <div className="text-center py-4">กำลังโหลด...</div>
+                    <div className="text-center py-4">à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”...</div>
                   ) : filteredPages.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
-                      ไม่พบเพจที่ค้นหา
+                      à¹„à¸¡à¹ˆà¸žà¸šà¹€à¸žà¸ˆà¸—à¸µà¹ˆà¸„à¹‰à¸™à¸«à¸²
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -2229,12 +2341,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           <tr>
                             <th className="px-3 py-2 text-left w-10"></th>
                             <th className="px-3 py-2 text-left">ID</th>
-                            <th className="px-3 py-2 text-left">สถานะ</th>
-                            <th className="px-3 py-2 text-left">ประเภท</th>
-                            <th className="px-3 py-2 text-left">ชื่อเพจ</th>
-                            <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                            <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
-                            <th className="px-3 py-2 text-left">จัดการ</th>
+                            <th className="px-3 py-2 text-left">à¸ªà¸–à¸²à¸™à¸°</th>
+                            <th className="px-3 py-2 text-left">à¸›à¸£à¸°à¹€à¸ à¸—</th>
+                            <th className="px-3 py-2 text-left">à¸Šà¸·à¹ˆà¸­à¹€à¸žà¸ˆ</th>
+                            <th className="px-3 py-2 text-left">à¹à¸žà¸¥à¸•à¸Ÿà¸­à¸£à¹Œà¸¡</th>
+                            <th className="px-3 py-2 text-left">à¸ˆà¸³à¸™à¸§à¸™à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰</th>
+                            <th className="px-3 py-2 text-left">à¸ˆà¸±à¸”à¸à¸²à¸£</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2293,7 +2405,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                     }}
                                     className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
                                   >
-                                    +เพิ่มผู้ใช้
+                                    +à¹€à¸žà¸´à¹ˆà¸¡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰
                                   </button>
                                 </td>
                               </tr>
@@ -2302,7 +2414,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   <td colSpan={7} className="px-3 py-4 bg-gray-50">
                                     <div className="space-y-2">
                                       <h4 className="font-medium text-gray-700">
-                                        ผู้ใช้ที่เชื่อมต่อกับเพจนี้:
+                                        à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸—à¸µà¹ˆà¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­à¸à¸±à¸šà¹€à¸žà¸ˆà¸™à¸µà¹‰:
                                       </h4>
                                       {marketingPageUsers
                                         .filter((user) => user.page_id === page.id)
@@ -2328,7 +2440,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                               }
                                               className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
                                             >
-                                              ลบ
+                                              à¸¥à¸š
                                             </button>
                                           </div>
                                         ))}
@@ -2336,7 +2448,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                         (user) => user.page_id === page.id,
                                       ).length === 0 && (
                                           <div className="text-gray-500">
-                                            ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
+                                            à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¡à¸µà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸—à¸µà¹ˆà¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­à¸à¸±à¸šà¹€à¸žà¸ˆà¸™à¸µà¹‰
                                           </div>
                                         )}
                                     </div>
@@ -2363,7 +2475,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   onClick={() => setShowManagedProducts(!showManagedProducts)}
                 >
                   <h3 className="text-lg font-semibold text-gray-800">
-                    กลุ่ม Ads (Managed Ads Groups)
+                    à¸à¸¥à¸¸à¹ˆà¸¡ Ads (Managed Ads Groups)
                   </h3>
                   {showManagedProducts ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
                 </div>
@@ -2376,7 +2488,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       onChange={(e) => setProductFilterUser(e.target.value === "All" ? "All" : Number(e.target.value))}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <option value="All">ทุกผู้ใช้</option>
+                      <option value="All">à¸—à¸¸à¸à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰</option>
                       {marketingUsersList.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.first_name} ({u.username})
@@ -2390,10 +2502,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               {showManagedProducts && (
                 <>
                   {loading ? (
-                    <div className="text-center py-4">กำลังโหลด...</div>
+                    <div className="text-center py-4">à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”...</div>
                   ) : filteredAdsGroups.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
-                      ไม่พบกลุ่ม Ads (กรุณาตั้ง 'กลุ่ม Ads' ในหน้าจัดการสินค้า)
+                      à¹„à¸¡à¹ˆà¸žà¸šà¸à¸¥à¸¸à¹ˆà¸¡ Ads (à¸à¸£à¸¸à¸“à¸²à¸•à¸±à¹‰à¸‡ 'à¸à¸¥à¸¸à¹ˆà¸¡ Ads' à¹ƒà¸™à¸«à¸™à¹‰à¸²à¸ˆà¸±à¸”à¸à¸²à¸£à¸ªà¸´à¸™à¸„à¹‰à¸²)
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -2401,10 +2513,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <thead className="bg-gray-50 text-gray-700">
                           <tr>
                             <th className="px-3 py-2 text-left w-10"></th>
-                            <th className="px-3 py-2 text-left">กลุ่ม Ads</th>
-                            <th className="px-3 py-2 text-left">จำนวนสินค้า</th>
-                            <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
-                            <th className="px-3 py-2 text-left">จัดการ</th>
+                            <th className="px-3 py-2 text-left">à¸à¸¥à¸¸à¹ˆà¸¡ Ads</th>
+                            <th className="px-3 py-2 text-left">à¸ˆà¸³à¸™à¸§à¸™à¸ªà¸´à¸™à¸„à¹‰à¸²</th>
+                            <th className="px-3 py-2 text-left">à¸ˆà¸³à¸™à¸§à¸™à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰</th>
+                            <th className="px-3 py-2 text-left">à¸ˆà¸±à¸”à¸à¸²à¸£</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2433,7 +2545,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                     )}
                                   </td>
                                   <td className="px-3 py-2 font-medium">{adsGroup}</td>
-                                  <td className="px-3 py-2">{groupProducts.length} สินค้า</td>
+                                  <td className="px-3 py-2">{groupProducts.length} à¸ªà¸´à¸™à¸„à¹‰à¸²</td>
                                   <td className="px-3 py-2">
                                     {marketingUserAdsGroups.filter((m: any) => m.ads_group === adsGroup).length}
                                   </td>
@@ -2445,7 +2557,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                       }}
                                       className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
                                     >
-                                      +เพิ่มผู้ใช้
+                                      +à¹€à¸žà¸´à¹ˆà¸¡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰
                                     </button>
                                   </td>
                                 </tr>
@@ -2453,7 +2565,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   <tr>
                                     <td colSpan={5} className="px-3 py-4 bg-gray-50">
                                       <div className="space-y-2">
-                                        <h4 className="font-medium text-gray-700">ผู้ใช้ที่ดูแลกลุ่ม Ads นี้:</h4>
+                                        <h4 className="font-medium text-gray-700">à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸—à¸µà¹ˆà¸”à¸¹à¹à¸¥à¸à¸¥à¸¸à¹ˆà¸¡ Ads à¸™à¸µà¹‰:</h4>
                                         {marketingUserAdsGroups
                                           .filter((m: any) => m.ads_group === adsGroup)
                                           .map((m: any) => (
@@ -2466,16 +2578,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                 onClick={() => handleRemoveUserFromAdsGroup(m.user_id, adsGroup)}
                                                 className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
                                               >
-                                                ลบ
+                                                à¸¥à¸š
                                               </button>
                                             </div>
                                           ))
                                         }
                                         {marketingUserAdsGroups.filter((m: any) => m.ads_group === adsGroup).length === 0 && (
-                                          <div className="text-gray-500">ยังไม่มีผู้ใช้ดูแลกลุ่ม Ads นี้</div>
+                                          <div className="text-gray-500">à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¡à¸µà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸”à¸¹à¹à¸¥à¸à¸¥à¸¸à¹ˆà¸¡ Ads à¸™à¸µà¹‰</div>
                                         )}
                                         <div className="mt-3 pt-3 border-t">
-                                          <h4 className="font-medium text-gray-500 text-xs mb-1">สินค้าในกลุ่มนี้:</h4>
+                                          <h4 className="font-medium text-gray-500 text-xs mb-1">à¸ªà¸´à¸™à¸„à¹‰à¸²à¹ƒà¸™à¸à¸¥à¸¸à¹ˆà¸¡à¸™à¸µà¹‰:</h4>
                                           <div className="flex flex-wrap gap-1">
                                             {groupProducts.map((p: any) => (
                                               <span key={p.id} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
@@ -2510,20 +2622,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-4">
                   <h3 className="text-lg font-semibold text-gray-800">
-                    กรอกค่า Ads
+                    à¸à¸£à¸­à¸à¸„à¹ˆà¸² Ads
                   </h3>
                   <div className="flex bg-gray-100 rounded p-1">
                     <button
                       className={`px-3 py-1 text-sm rounded ${adsInputMode === 'page' ? 'bg-white shadow text-blue-600' : 'text-gray-600'}`}
                       onClick={() => setAdsInputMode('page')}
                     >
-                      รายเพจ
+                      à¸£à¸²à¸¢à¹€à¸žà¸ˆ
                     </button>
                     <button
                       className={`px-3 py-1 text-sm rounded ${adsInputMode === 'product' ? 'bg-white shadow text-blue-600' : 'text-gray-600'}`}
                       onClick={() => setAdsInputMode('product')}
                     >
-                      รายสินค้า
+                      à¸£à¸²à¸¢à¸ªà¸´à¸™à¸„à¹‰à¸²
                     </button>
                   </div>
                 </div>
@@ -2539,23 +2651,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     onClick={() => adsInputMode === 'page' ? loadExistingAdsData() : loadExistingProductAdsData()}
                     disabled={isLoadingData || (adsInputMode === 'product' && !selectedDate)}
                     className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    title="โหลดข้อมูลที่มีอยู่แล้ว"
+                    title="à¹‚à¸«à¸¥à¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸—à¸µà¹ˆà¸¡à¸µà¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§"
                   >
-                    {isLoadingData ? "กำลังโหลด..." : "โหลดข้อมูล"}
+                    {isLoadingData ? "à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”..." : "à¹‚à¸«à¸¥à¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥"}
                   </button>
                   <button
                     onClick={adsInputMode === 'page' ? handleSaveAllAdsData : handleSaveProductAdsData}
                     disabled={isSaving || (adsInputMode === 'product' && !selectedDate)}
                     className="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
-                    {isSaving ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}
+                    {isSaving ? "à¸à¸³à¸¥à¸±à¸‡à¸šà¸±à¸™à¸—à¸¶à¸..." : "à¸šà¸±à¸™à¸—à¸¶à¸à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”"}
                   </button>
                 </div>
               </div>
               {isLoadingData ? (
                 <div className="text-center py-8">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                  <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
+                  <p className="mt-2 text-gray-600">à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥...</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -2563,12 +2675,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 text-gray-700">
                         <tr>
-                          <th className="px-3 py-2 text-left">เพจ</th>
-                          <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                          <th className="px-3 py-2 text-left">ค่า Ads</th>
-                          <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
-                          <th className="px-3 py-2 text-left">การเข้าถึง</th>
-                          <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                          <th className="px-3 py-2 text-left">à¹€à¸žà¸ˆ</th>
+                          <th className="px-3 py-2 text-left">à¹à¸žà¸¥à¸•à¸Ÿà¸­à¸£à¹Œà¸¡</th>
+                          <th className="px-3 py-2 text-left">à¸„à¹ˆà¸² Ads</th>
+                          <th className="px-3 py-2 text-left">à¸­à¸´à¸¡à¹€à¸žà¸£à¸ªà¸Šà¸±à¹ˆà¸™</th>
+                          <th className="px-3 py-2 text-left">à¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¸–à¸¶à¸‡</th>
+                          <th className="px-3 py-2 text-left">à¸—à¸±à¸/à¸„à¸¥à¸´à¸</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2659,7 +2771,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               colSpan={6}
                               className="text-center py-8 text-gray-500"
                             >
-                              ไม่มีเพจที่คุณมีสิทธิ์จัดการ
+                              à¹„à¸¡à¹ˆà¸¡à¸µà¹€à¸žà¸ˆà¸—à¸µà¹ˆà¸„à¸¸à¸“à¸¡à¸µà¸ªà¸´à¸—à¸˜à¸´à¹Œà¸ˆà¸±à¸”à¸à¸²à¸£
                             </td>
                           </tr>
                         )}
@@ -2670,12 +2782,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 text-gray-700">
                         <tr>
-                          <th className="px-3 py-2 text-left">รหัสสินค้า (SKU)</th>
-                          <th className="px-3 py-2 text-left">ชื่อสินค้า</th>
-                          <th className="px-3 py-2 text-left">ค่า Ads</th>
-                          <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
-                          <th className="px-3 py-2 text-left">การเข้าถึง</th>
-                          <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                          <th className="px-3 py-2 text-left">à¸£à¸«à¸±à¸ªà¸ªà¸´à¸™à¸„à¹‰à¸² (SKU)</th>
+                          <th className="px-3 py-2 text-left">à¸Šà¸·à¹ˆà¸­à¸ªà¸´à¸™à¸„à¹‰à¸²</th>
+                          <th className="px-3 py-2 text-left">à¸„à¹ˆà¸² Ads</th>
+                          <th className="px-3 py-2 text-left">à¸­à¸´à¸¡à¹€à¸žà¸£à¸ªà¸Šà¸±à¹ˆà¸™</th>
+                          <th className="px-3 py-2 text-left">à¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¸–à¸¶à¸‡</th>
+                          <th className="px-3 py-2 text-left">à¸—à¸±à¸/à¸„à¸¥à¸´à¸</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2728,7 +2840,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={6} className="text-center py-8 text-gray-500">ไม่พบรายการสินค้า</td>
+                            <td colSpan={6} className="text-center py-8 text-gray-500">à¹„à¸¡à¹ˆà¸žà¸šà¸£à¸²à¸¢à¸à¸²à¸£à¸ªà¸´à¸™à¸„à¹‰à¸²</td>
                           </tr>
                         )}
                       </tbody>
@@ -2748,7 +2860,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <div>
                 <h3 className="text-lg font-semibold text-gray-800">
-                  แดชบอร์ดข้อมูล Ads
+                  à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥ Ads
                 </h3>
               </div>
               <button
@@ -2762,7 +2874,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md shadow-sm flex items-center gap-2"
               >
                 <Download className="w-4 h-4" />
-                ส่งออก CSV
+                à¸ªà¹ˆà¸‡à¸­à¸­à¸ CSV
               </button>
             </div>
 
@@ -2770,7 +2882,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             <div className="mb-4 flex-shrink-0">
               <div className="flex gap-4 items-end">
                 <div className="flex-1">
-                  <label className={labelClass}>เลือกช่วงวันที่</label>
+                  <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸à¸Šà¹ˆà¸§à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆ</label>
                   <button
                     onClick={() => setDatePickerOpen(!datePickerOpen)}
                     className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
@@ -2784,7 +2896,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     >
                       {dateRange.start && dateRange.end
                         ? `${new Date(dateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(dateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
-                        : "ทั้งหมด"}
+                        : "à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”"}
                     </span>
                     <Calendar className="w-4 h-4 text-gray-400" />
                   </button>
@@ -2793,7 +2905,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 <div className="flex-1">
                   {adsInputMode === 'page' ? (
                     <>
-                      <label className={labelClass}>เลือกเพจ</label>
+                      <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸à¹€à¸žà¸ˆ</label>
                       <MultiSelectPageFilter
                         pages={pages}
                         selectedPages={selectedPages}
@@ -2804,7 +2916,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     </>
                   ) : (
                     <>
-                      <label className={labelClass}>เลือกกลุ่มสินค้า</label>
+                      <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸à¸à¸¥à¸¸à¹ˆà¸¡à¸ªà¸´à¸™à¸„à¹‰à¸²</label>
                       <MultiSelectAdsGroupFilter
                         adsGroups={Array.from(uniqueAdsGroups.keys())}
                         selectedAdsGroups={selectedAdsGroups}
@@ -2816,13 +2928,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
                 {adsInputMode === 'page' && (
                   <div className="flex-1">
-                    <label className={labelClass}>ประเภทเพจ</label>
+                    <label className={labelClass}>à¸›à¸£à¸°à¹€à¸ à¸—à¹€à¸žà¸ˆ</label>
                     <select
                       className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm h-[42px]"
                       value={dashboardPageTypeFilter}
                       onChange={(e) => setDashboardPageTypeFilter(e.target.value)}
                     >
-                      <option value="All">ทั้งหมด</option>
+                      <option value="All">à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”</option>
                       {Array.from(new Set(dashboardData.map((r: any) => r.sell_product_type).filter(Boolean))).sort().map((type: any) => (
                         <option key={type} value={type}>{type}</option>
                       ))}
@@ -2831,7 +2943,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 )}
 
                 <div className="flex-1">
-                  <label className={labelClass}>ผู้ดูแลเพจ</label>
+                  <label className={labelClass}>à¸œà¸¹à¹‰à¸”à¸¹à¹à¸¥à¹€à¸žà¸ˆ</label>
                   <MultiSelectUserFilter
                     users={(() => {
                       const userMap = new Map();
@@ -2847,7 +2959,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 </div>
 
                 <div className="flex-1">
-                  <label className={labelClass}>ผู้ลงแอด</label>
+                  <label className={labelClass}>à¸œà¸¹à¹‰à¸¥à¸‡à¹à¸­à¸”</label>
                   <MultiSelectUserFilter
                     users={(adsUsersList.length > 0 ? adsUsersList : marketingUsersList)
                       .map((u: any) => ({
@@ -2864,13 +2976,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 {/* Page dropdown filter for product mode */}
                 {adsInputMode === 'product' && (
                   <div className="flex-1">
-                    <label className={labelClass}>เลือกเพจ</label>
+                    <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸à¹€à¸žà¸ˆ</label>
                     <select
                       value={productDashPageFilter}
                       onChange={(e) => setProductDashPageFilter(e.target.value)}
                       className="w-full text-sm border border-gray-300 rounded-md p-2 h-[42px]"
                     >
-                      <option value="all">ทุกเพจ</option>
+                      <option value="all">à¸—à¸¸à¸à¹€à¸žà¸ˆ</option>
                       {pages.filter(p => p.active !== false).map(p => (
                         <option key={p.id} value={String(p.id)}>{p.name}</option>
                       ))}
@@ -2890,7 +3002,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     disabled={dashboardLoading}
                     className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
                   >
-                    {dashboardLoading ? "กำลังโหลด..." : "ค้นหา"}
+                    {dashboardLoading ? "à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”..." : "à¸„à¹‰à¸™à¸«à¸²"}
                   </button>
                 </div>
               </div>
@@ -2905,7 +3017,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">
-                          วันที่เริ่มต้น
+                          à¸§à¸±à¸™à¸—à¸µà¹ˆà¹€à¸£à¸´à¹ˆà¸¡à¸•à¹‰à¸™
                         </label>
                         <input
                           type="date"
@@ -2916,7 +3028,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       </div>
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">
-                          วันที่สิ้นสุด
+                          à¸§à¸±à¸™à¸—à¸µà¹ˆà¸ªà¸´à¹‰à¸™à¸ªà¸¸à¸”
                         </label>
                         <input
                           type="date"
@@ -2929,7 +3041,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
                     <div className="border-t border-gray-100 pt-3">
                       <p className="text-xs font-medium text-gray-700 mb-2">
-                        เลือกช่วงเวลาด่วน:
+                        à¹€à¸¥à¸·à¸­à¸à¸Šà¹ˆà¸§à¸‡à¹€à¸§à¸¥à¸²à¸”à¹ˆà¸§à¸™:
                       </p>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -2943,7 +3055,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                          ทั้งหมด
+                          à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
                         </button>
                         <button
                           onClick={() => {
@@ -2957,7 +3069,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                          วันนี้
+                          à¸§à¸±à¸™à¸™à¸µà¹‰
                         </button>
                         <button
                           onClick={() => {
@@ -2972,7 +3084,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-orange-100 text-orange-700 hover:bg-orange-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
-                          เมื่อวาน
+                          à¹€à¸¡à¸·à¹ˆà¸­à¸§à¸²à¸™
                         </button>
                         <button
                           onClick={() => {
@@ -2983,7 +3095,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                          อาทิตย์นี้
+                          à¸­à¸²à¸—à¸´à¸•à¸¢à¹Œà¸™à¸µà¹‰
                         </button>
                         <button
                           onClick={() => {
@@ -2994,7 +3106,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                          เดือนนี้
+                          à¹€à¸”à¸·à¸­à¸™à¸™à¸µà¹‰
                         </button>
                         <button
                           onClick={() => {
@@ -3009,7 +3121,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>
-                          เดือนที่แล้ว
+                          à¹€à¸”à¸·à¸­à¸™à¸—à¸µà¹ˆà¹à¸¥à¹‰à¸§
                         </button>
                         <button
                           onClick={() => {
@@ -3020,7 +3132,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                          7 วันล่าสุด
+                          7 à¸§à¸±à¸™à¸¥à¹ˆà¸²à¸ªà¸¸à¸”
                         </button>
                         <button
                           onClick={() => {
@@ -3031,7 +3143,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                          30 วันล่าสุด
+                          30 à¸§à¸±à¸™à¸¥à¹ˆà¸²à¸ªà¸¸à¸”
                         </button>
                       </div>
                     </div>
@@ -3044,7 +3156,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         }}
                         className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
                       >
-                        ตกลง
+                        à¸•à¸à¸¥à¸‡
                       </button>
                     </div>
                   </div>
@@ -3060,13 +3172,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     className={`px-3 py-1 text-sm rounded ${adsInputMode === 'page' ? 'bg-white shadow text-blue-600' : 'text-gray-600'}`}
                     onClick={() => setAdsInputMode('page')}
                   >
-                    รายเพจ
+                    à¸£à¸²à¸¢à¹€à¸žà¸ˆ
                   </button>
                   <button
                     className={`px-3 py-1 text-sm rounded ${adsInputMode === 'product' ? 'bg-white shadow text-blue-600' : 'text-gray-600'}`}
                     onClick={() => setAdsInputMode('product')}
                   >
-                    รายสินค้า
+                    à¸£à¸²à¸¢à¸ªà¸´à¸™à¸„à¹‰à¸²
                   </button>
                 </div>
                 <button
@@ -3083,7 +3195,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             {dashboardLoading ? (
               <div className="text-center py-8">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
+                <p className="mt-2 text-gray-600">à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥...</p>
               </div>
             ) : (
               <div className="overflow-x-auto overflow-y-auto flex-1">
@@ -3093,107 +3205,107 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     <>
                       <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10 shadow-sm">
                         <tr>
-                          <th className="px-3 py-2 text-left bg-gray-50">เพจ</th>
-                          <th className="px-3 py-2 text-left bg-gray-50">ประเภทเพจ</th>
-                          <th className="px-3 py-2 text-left bg-gray-50">ผู้ดูแลเพจ</th>
-                          <th className="px-3 py-2 text-left bg-gray-50">ผู้ลงแอด</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">à¹€à¸žà¸ˆ</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">à¸›à¸£à¸°à¹€à¸ à¸—à¹€à¸žà¸ˆ</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">à¸œà¸¹à¹‰à¸”à¸¹à¹à¸¥à¹€à¸žà¸ˆ</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">à¸œà¸¹à¹‰à¸¥à¸‡à¹à¸­à¸”</th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
-                              ค่าแอด
+                              à¸„à¹ˆà¸²à¹à¸­à¸”
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">💰 ค่าแอด (Ads Cost)</p>
-                                <p>ยอดรวมค่าโฆษณาที่กรอกเข้าระบบ</p>
-                                <p className="mt-1 text-gray-300">= SUM ค่าแอดทุกวันในช่วงที่เลือก</p>
+                                <p className="font-bold mb-1">ðŸ’° à¸„à¹ˆà¸²à¹à¸­à¸” (Ads Cost)</p>
+                                <p>à¸¢à¸­à¸”à¸£à¸§à¸¡à¸„à¹ˆà¸²à¹‚à¸†à¸©à¸“à¸²à¸—à¸µà¹ˆà¸à¸£à¸­à¸à¹€à¸‚à¹‰à¸²à¸£à¸°à¸šà¸š</p>
+                                <p className="mt-1 text-gray-300">= SUM à¸„à¹ˆà¸²à¹à¸­à¸”à¸—à¸¸à¸à¸§à¸±à¸™à¹ƒà¸™à¸Šà¹ˆà¸§à¸‡à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸</p>
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">อิมเพรสชั่น</th>
-                          <th className="px-3 py-2 text-right bg-gray-50">การเข้าถึง</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">à¸­à¸´à¸¡à¹€à¸žà¸£à¸ªà¸Šà¸±à¹ˆà¸™</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">à¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¸–à¸¶à¸‡</th>
                           <th className="px-3 py-2 text-right bg-blue-50 text-blue-700">
                             <div className="group relative inline-block cursor-help">
-                              ยอดขายรวม
+                              à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸£à¸§à¸¡
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">💰 ยอดขายรวมทั้งหมด (Grand Total Sales)</p>
-                                <p>ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= ยอดขายสำเร็จ + ยอดตีกลับ</p>
+                                <p className="font-bold mb-1">ðŸ’° à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸£à¸§à¸¡à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” (Grand Total Sales)</p>
+                                <p>à¸¢à¸­à¸”à¸‚à¸²à¸¢ + à¸•à¸µà¸à¸¥à¸±à¸š (à¹„à¸¡à¹ˆà¸£à¸§à¸¡à¸¢à¸à¹€à¸¥à¸´à¸)</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸ªà¸³à¹€à¸£à¹‡à¸ˆ + à¸¢à¸­à¸”à¸•à¸µà¸à¸¥à¸±à¸š</p>
                               </div>
                             </div>
                           </th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
-                              ยอดขาย
+                              à¸¢à¸­à¸”à¸‚à¸²à¸¢
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">📊 ยอดขาย (Sales)</p>
-                                <p>ยอดรวม total_amount จากตาราง orders</p>
-                                <p className="mt-1 text-gray-300">ไม่รวม order ที่ถูกยกเลิก (Cancelled) และตีกลับ (Returned)</p>
+                                <p className="font-bold mb-1">ðŸ“Š à¸¢à¸­à¸”à¸‚à¸²à¸¢ (Sales)</p>
+                                <p>à¸¢à¸­à¸”à¸£à¸§à¸¡ total_amount à¸ˆà¸²à¸à¸•à¸²à¸£à¸²à¸‡ orders</p>
+                                <p className="mt-1 text-gray-300">à¹„à¸¡à¹ˆà¸£à¸§à¸¡ order à¸—à¸µà¹ˆà¸–à¸¹à¸à¸¢à¸à¹€à¸¥à¸´à¸ (Cancelled) à¹à¸¥à¸°à¸•à¸µà¸à¸¥à¸±à¸š (Returned)</p>
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-amber-50 text-amber-700">ตีกลับ</th>
-                          <th className="px-3 py-2 text-right bg-red-50 text-red-700">ยกเลิก</th>
+                          <th className="px-3 py-2 text-right bg-amber-50 text-amber-700">à¸•à¸µà¸à¸¥à¸±à¸š</th>
+                          <th className="px-3 py-2 text-right bg-red-50 text-red-700">à¸¢à¸à¹€à¸¥à¸´à¸</th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
-                              ยอดขาย ลค.ใหม่
+                              à¸¢à¸­à¸”à¸‚à¸²à¸¢ à¸¥à¸„.à¹ƒà¸«à¸¡à¹ˆ
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">🆕 ยอดขาย ลูกค้าใหม่</p>
-                                <p>ยอดขายเฉพาะลูกค้าที่สั่งครั้งแรก</p>
-                                <p className="mt-1 text-gray-300">= SUM(total_amount) เฉพาะ customer_type = 'New Customer'</p>
-                              </div>
-                            </div>
-                          </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
-                            <div className="group relative inline-block cursor-help">
-                              รีออเดอร์
-                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">🔄 รีออเดอร์ (Reorder Sales)</p>
-                                <p>ยอดขายเฉพาะลูกค้าที่เคยสั่งมาก่อน</p>
-                                <p className="mt-1 text-gray-300">= SUM(total_amount) เฉพาะ customer_type = 'Reorder Customer'</p>
+                                <p className="font-bold mb-1">ðŸ†• à¸¢à¸­à¸”à¸‚à¸²à¸¢ à¸¥à¸¹à¸à¸„à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆ</p>
+                                <p>à¸¢à¸­à¸”à¸‚à¸²à¸¢à¹€à¸‰à¸žà¸²à¸°à¸¥à¸¹à¸à¸„à¹‰à¸²à¸—à¸µà¹ˆà¸ªà¸±à¹ˆà¸‡à¸„à¸£à¸±à¹‰à¸‡à¹à¸£à¸</p>
+                                <p className="mt-1 text-gray-300">= SUM(total_amount) à¹€à¸‰à¸žà¸²à¸° customer_type = 'New Customer'</p>
                               </div>
                             </div>
                           </th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
-                              ทัก/คลิก
+                              à¸£à¸µà¸­à¸­à¹€à¸”à¸­à¸£à¹Œ
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">👆 ทัก/คลิก (Clicks)</p>
-                                <p>จำนวนทัก/คลิกรวมที่กรอกเข้าระบบ</p>
-                                <p className="mt-1 text-gray-300">= SUM คลิกทุกวันในช่วงที่เลือก</p>
+                                <p className="font-bold mb-1">ðŸ”„ à¸£à¸µà¸­à¸­à¹€à¸”à¸­à¸£à¹Œ (Reorder Sales)</p>
+                                <p>à¸¢à¸­à¸”à¸‚à¸²à¸¢à¹€à¸‰à¸žà¸²à¸°à¸¥à¸¹à¸à¸„à¹‰à¸²à¸—à¸µà¹ˆà¹€à¸„à¸¢à¸ªà¸±à¹ˆà¸‡à¸¡à¸²à¸à¹ˆà¸­à¸™</p>
+                                <p className="mt-1 text-gray-300">= SUM(total_amount) à¹€à¸‰à¸žà¸²à¸° customer_type = 'Reorder Customer'</p>
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">จำนวนลูกค้า</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">
+                            <div className="group relative inline-block cursor-help">
+                              à¸—à¸±à¸/à¸„à¸¥à¸´à¸
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">ðŸ‘† à¸—à¸±à¸/à¸„à¸¥à¸´à¸ (Clicks)</p>
+                                <p>à¸ˆà¸³à¸™à¸§à¸™à¸—à¸±à¸/à¸„à¸¥à¸´à¸à¸£à¸§à¸¡à¸—à¸µà¹ˆà¸à¸£à¸­à¸à¹€à¸‚à¹‰à¸²à¸£à¸°à¸šà¸š</p>
+                                <p className="mt-1 text-gray-300">= SUM à¸„à¸¥à¸´à¸à¸—à¸¸à¸à¸§à¸±à¸™à¹ƒà¸™à¸Šà¹ˆà¸§à¸‡à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸</p>
+                              </div>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">à¸ˆà¸³à¸™à¸§à¸™à¸¥à¸¹à¸à¸„à¹‰à¸²</th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
                               ROAS
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">📈 ROAS (Return On Ad Spend)</p>
-                                <p>ผลตอบแทนจากค่าโฆษณา</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= ยอดขาย ÷ ค่าแอด</p>
-                                <p className="mt-1 text-gray-300">ตัวอย่าง: ยอดขาย 10,000 ÷ ค่าแอด 5,000 = ROAS 2.00</p>
-                                <p className="text-gray-300">→ ลง 1 บาท ได้คืน 2 บาท</p>
+                                <p className="font-bold mb-1">ðŸ“ˆ ROAS (Return On Ad Spend)</p>
+                                <p>à¸œà¸¥à¸•à¸­à¸šà¹à¸—à¸™à¸ˆà¸²à¸à¸„à¹ˆà¸²à¹‚à¸†à¸©à¸“à¸²</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= à¸¢à¸­à¸”à¸‚à¸²à¸¢ Ã· à¸„à¹ˆà¸²à¹à¸­à¸”</p>
+                                <p className="mt-1 text-gray-300">à¸•à¸±à¸§à¸­à¸¢à¹ˆà¸²à¸‡: à¸¢à¸­à¸”à¸‚à¸²à¸¢ 10,000 Ã· à¸„à¹ˆà¸²à¹à¸­à¸” 5,000 = ROAS 2.00</p>
+                                <p className="text-gray-300">â†’ à¸¥à¸‡ 1 à¸šà¸²à¸— à¹„à¸”à¹‰à¸„à¸·à¸™ 2 à¸šà¸²à¸—</p>
                               </div>
                             </div>
                           </th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
-                              ราคาต่อทัก
+                              à¸£à¸²à¸„à¸²à¸•à¹ˆà¸­à¸—à¸±à¸
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">💬 ราคาต่อทัก (Cost per Click)</p>
-                                <p>ค่าใช้จ่ายต่อ 1 ทัก/คลิก</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= ค่าแอด ÷ ทัก/คลิก</p>
-                                <p className="mt-1 text-gray-300">ตัวอย่าง: ค่าแอด 10,000 ÷ คลิก 100 = 100 บาท/ทัก</p>
+                                <p className="font-bold mb-1">ðŸ’¬ à¸£à¸²à¸„à¸²à¸•à¹ˆà¸­à¸—à¸±à¸ (Cost per Click)</p>
+                                <p>à¸„à¹ˆà¸²à¹ƒà¸Šà¹‰à¸ˆà¹ˆà¸²à¸¢à¸•à¹ˆà¸­ 1 à¸—à¸±à¸/à¸„à¸¥à¸´à¸</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= à¸„à¹ˆà¸²à¹à¸­à¸” Ã· à¸—à¸±à¸/à¸„à¸¥à¸´à¸</p>
+                                <p className="mt-1 text-gray-300">à¸•à¸±à¸§à¸­à¸¢à¹ˆà¸²à¸‡: à¸„à¹ˆà¸²à¹à¸­à¸” 10,000 Ã· à¸„à¸¥à¸´à¸ 100 = 100 à¸šà¸²à¸—/à¸—à¸±à¸</p>
                               </div>
                             </div>
                           </th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
-                              %Ads/ยอด ลค.ใหม่
+                              %Ads/à¸¢à¸­à¸” à¸¥à¸„.à¹ƒà¸«à¸¡à¹ˆ
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">📉 %Ads/ยอดขาย ลูกค้าใหม่</p>
-                                <p>สัดส่วนค่าแอดเทียบยอดขายลูกค้าใหม่</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขาย ลค.ใหม่) × 100</p>
-                                <p className="mt-1 text-gray-300">ตัวอย่าง: ค่าแอด 5,000 ÷ ยอดขาย ลค.ใหม่ 10,000 = 50%</p>
-                                <p className="text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
+                                <p className="font-bold mb-1">ðŸ“‰ %Ads/à¸¢à¸­à¸”à¸‚à¸²à¸¢ à¸¥à¸¹à¸à¸„à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆ</p>
+                                <p>à¸ªà¸±à¸”à¸ªà¹ˆà¸§à¸™à¸„à¹ˆà¸²à¹à¸­à¸”à¹€à¸—à¸µà¸¢à¸šà¸¢à¸­à¸”à¸‚à¸²à¸¢à¸¥à¸¹à¸à¸„à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆ</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= (à¸„à¹ˆà¸²à¹à¸­à¸” Ã· à¸¢à¸­à¸”à¸‚à¸²à¸¢ à¸¥à¸„.à¹ƒà¸«à¸¡à¹ˆ) Ã— 100</p>
+                                <p className="mt-1 text-gray-300">à¸•à¸±à¸§à¸­à¸¢à¹ˆà¸²à¸‡: à¸„à¹ˆà¸²à¹à¸­à¸” 5,000 Ã· à¸¢à¸­à¸”à¸‚à¸²à¸¢ à¸¥à¸„.à¹ƒà¸«à¸¡à¹ˆ 10,000 = 50%</p>
+                                <p className="text-gray-300">â†’ à¸¢à¸´à¹ˆà¸‡à¸•à¹ˆà¸³à¸¢à¸´à¹ˆà¸‡à¸”à¸µ</p>
                               </div>
                             </div>
                           </th>
@@ -3201,23 +3313,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                             <div className="group relative inline-block cursor-help">
                               %Ads
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">📉 %Ads (Ads Cost Ratio)</p>
-                                <p>สัดส่วนค่าแอดเทียบยอดขายรวม</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขายรวม) × 100</p>
-                                <p className="mt-1 text-gray-300">ยอดขายรวม = ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
-                                <p className="text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
+                                <p className="font-bold mb-1">ðŸ“‰ %Ads (Ads Cost Ratio)</p>
+                                <p>à¸ªà¸±à¸”à¸ªà¹ˆà¸§à¸™à¸„à¹ˆà¸²à¹à¸­à¸”à¹€à¸—à¸µà¸¢à¸šà¸¢à¸­à¸”à¸‚à¸²à¸¢à¸£à¸§à¸¡</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= (à¸„à¹ˆà¸²à¹à¸­à¸” Ã· à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸£à¸§à¸¡) Ã— 100</p>
+                                <p className="mt-1 text-gray-300">à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸£à¸§à¸¡ = à¸¢à¸­à¸”à¸‚à¸²à¸¢ + à¸•à¸µà¸à¸¥à¸±à¸š (à¹„à¸¡à¹ˆà¸£à¸§à¸¡à¸¢à¸à¹€à¸¥à¸´à¸)</p>
+                                <p className="text-gray-300">â†’ à¸¢à¸´à¹ˆà¸‡à¸•à¹ˆà¸³à¸¢à¸´à¹ˆà¸‡à¸”à¸µ</p>
                               </div>
                             </div>
                           </th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
-                              %ปิดการขาย
+                              %à¸›à¸´à¸”à¸à¸²à¸£à¸‚à¸²à¸¢
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">🎯 %ปิดการขาย (Close Rate)</p>
-                                <p>อัตราการปิดการขายเทียบจำนวนคลิก</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= (จำนวน orders ÷ ทัก/คลิก) × 100</p>
-                                <p className="mt-1 text-gray-300">ตัวอย่าง: orders 50 ÷ คลิก 200 = 25%</p>
-                                <p className="text-gray-300">→ ยิ่งสูงยิ่งดี</p>
+                                <p className="font-bold mb-1">ðŸŽ¯ %à¸›à¸´à¸”à¸à¸²à¸£à¸‚à¸²à¸¢ (Close Rate)</p>
+                                <p>à¸­à¸±à¸•à¸£à¸²à¸à¸²à¸£à¸›à¸´à¸”à¸à¸²à¸£à¸‚à¸²à¸¢à¹€à¸—à¸µà¸¢à¸šà¸ˆà¸³à¸™à¸§à¸™à¸„à¸¥à¸´à¸</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= (à¸ˆà¸³à¸™à¸§à¸™ orders Ã· à¸—à¸±à¸/à¸„à¸¥à¸´à¸) Ã— 100</p>
+                                <p className="mt-1 text-gray-300">à¸•à¸±à¸§à¸­à¸¢à¹ˆà¸²à¸‡: orders 50 Ã· à¸„à¸¥à¸´à¸ 200 = 25%</p>
+                                <p className="text-gray-300">â†’ à¸¢à¸´à¹ˆà¸‡à¸ªà¸¹à¸‡à¸¢à¸´à¹ˆà¸‡à¸”à¸µ</p>
                               </div>
                             </div>
                           </th>
@@ -3306,7 +3418,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                             })}
                             {/* Summary Row */}
                             <tr className="bg-gray-100 font-bold border-t-2 border-gray-300">
-                              <td className="px-3 py-2" colSpan={4}>รวมทั้งสิ้น</td>
+                              <td className="px-3 py-2" colSpan={4}>à¸£à¸§à¸¡à¸—à¸±à¹‰à¸‡à¸ªà¸´à¹‰à¸™</td>
                               {(() => {
                                 const summaryRows = dashboardPageTypeFilter === "All"
                                   ? dashboardData
@@ -3388,47 +3500,47 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               colSpan={14}
                               className="text-center py-8 text-gray-500"
                             >
-                              ไม่มีข้อมูลในช่วงวันที่ที่เลือก
+                              à¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸™à¸Šà¹ˆà¸§à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆà¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸
                             </td>
                           </tr>
                         )}
                       </tbody>
                     </>
                   ) : (
-                    /* Create Product Dashboard Table — Simplified */
+                    /* Create Product Dashboard Table â€” Simplified */
                     <>
                       <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10 shadow-sm">
                         <tr>
-                          <th className="px-3 py-2 text-left bg-gray-50">กลุ่มสินค้า</th>
+                          <th className="px-3 py-2 text-left bg-gray-50">à¸à¸¥à¸¸à¹ˆà¸¡à¸ªà¸´à¸™à¸„à¹‰à¸²</th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
-                              ค่าแอด
+                              à¸„à¹ˆà¸²à¹à¸­à¸”
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">💰 ค่าแอด (Ads Cost)</p>
-                                <p>ยอดรวมค่าโฆษณาที่กรอกเข้าระบบ</p>
+                                <p className="font-bold mb-1">ðŸ’° à¸„à¹ˆà¸²à¹à¸­à¸” (Ads Cost)</p>
+                                <p>à¸¢à¸­à¸”à¸£à¸§à¸¡à¸„à¹ˆà¸²à¹‚à¸†à¸©à¸“à¸²à¸—à¸µà¹ˆà¸à¸£à¸­à¸à¹€à¸‚à¹‰à¸²à¸£à¸°à¸šà¸š</p>
                               </div>
                             </div>
                           </th>
                           <th className="px-3 py-2 text-right bg-blue-50 text-blue-700">
                             <div className="group relative inline-block cursor-help">
-                              ยอดขายรวม
+                              à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸£à¸§à¸¡
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">💰 ยอดขายรวมทั้งหมด (Grand Total Sales)</p>
-                                <p>ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
+                                <p className="font-bold mb-1">ðŸ’° à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸£à¸§à¸¡à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” (Grand Total Sales)</p>
+                                <p>à¸¢à¸­à¸”à¸‚à¸²à¸¢ + à¸•à¸µà¸à¸¥à¸±à¸š (à¹„à¸¡à¹ˆà¸£à¸§à¸¡à¸¢à¸à¹€à¸¥à¸´à¸)</p>
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">ยอดขาย</th>
-                          <th className="px-3 py-2 text-right bg-amber-50 text-amber-700">ตีกลับ</th>
-                          <th className="px-3 py-2 text-right bg-red-50 text-red-700">ยกเลิก</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">à¸¢à¸­à¸”à¸‚à¸²à¸¢</th>
+                          <th className="px-3 py-2 text-right bg-amber-50 text-amber-700">à¸•à¸µà¸à¸¥à¸±à¸š</th>
+                          <th className="px-3 py-2 text-right bg-red-50 text-red-700">à¸¢à¸à¹€à¸¥à¸´à¸</th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
                               %Ads
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">📉 %Ads (Ads Cost Ratio)</p>
-                                <p className="text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขายรวม) × 100</p>
-                                <p className="mt-1 text-gray-300">ยอดขายรวม = ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
-                                <p className="mt-1 text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
+                                <p className="font-bold mb-1">ðŸ“‰ %Ads (Ads Cost Ratio)</p>
+                                <p className="text-yellow-300 font-medium">= (à¸„à¹ˆà¸²à¹à¸­à¸” Ã· à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸£à¸§à¸¡) Ã— 100</p>
+                                <p className="mt-1 text-gray-300">à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸£à¸§à¸¡ = à¸¢à¸­à¸”à¸‚à¸²à¸¢ + à¸•à¸µà¸à¸¥à¸±à¸š (à¹„à¸¡à¹ˆà¸£à¸§à¸¡à¸¢à¸à¹€à¸¥à¸´à¸)</p>
+                                <p className="mt-1 text-gray-300">â†’ à¸¢à¸´à¹ˆà¸‡à¸•à¹ˆà¸³à¸¢à¸´à¹ˆà¸‡à¸”à¸µ</p>
                               </div>
                             </div>
                           </th>
@@ -3462,7 +3574,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               })}
                               {/* Summary Row */}
                               <tr className="bg-gray-100 font-bold border-t-2 border-gray-300">
-                                <td className="px-3 py-2">รวมทั้งสิ้น</td>
+                                <td className="px-3 py-2">à¸£à¸§à¸¡à¸—à¸±à¹‰à¸‡à¸ªà¸´à¹‰à¸™</td>
                                 <td className="px-3 py-2 text-right">
                                   {filteredData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
@@ -3490,7 +3602,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           ) : (
                             <tr>
                               <td colSpan={7} className="text-center py-8 text-gray-500">
-                                ไม่พบข้อมูลสินค้าในช่วงที่เลือก
+                                à¹„à¸¡à¹ˆà¸žà¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸ªà¸´à¸™à¸„à¹‰à¸²à¹ƒà¸™à¸Šà¹ˆà¸§à¸‡à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸
                               </td>
                             </tr>
                           )
@@ -3513,12 +3625,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
               <div className="p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  ส่งออกข้อมูล CSV
+                  à¸ªà¹ˆà¸‡à¸­à¸­à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥ CSV
                 </h3>
 
                 <div className="space-y-4">
                   <div>
-                    <label className={labelClass}>เลือกช่วงวันที่</label>
+                    <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸à¸Šà¹ˆà¸§à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆ</label>
                     <div className="relative">
                       <button
                         onClick={() =>
@@ -3535,7 +3647,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         >
                           {exportTempStart && exportTempEnd
                             ? `${new Date(exportTempStart + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(exportTempEnd + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
-                            : "ทั้งหมด"}
+                            : "à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”"}
                         </span>
                         <Calendar className="w-4 h-4 text-gray-400" />
                       </button>
@@ -3550,7 +3662,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                             <div className="grid grid-cols-2 gap-4 mb-4">
                               <div>
                                 <label className="text-xs text-gray-500 mb-1 block">
-                                  วันที่เริ่มต้น
+                                  à¸§à¸±à¸™à¸—à¸µà¹ˆà¹€à¸£à¸´à¹ˆà¸¡à¸•à¹‰à¸™
                                 </label>
                                 <input
                                   type="date"
@@ -3563,7 +3675,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               </div>
                               <div>
                                 <label className="text-xs text-gray-500 mb-1 block">
-                                  วันที่สิ้นสุด
+                                  à¸§à¸±à¸™à¸—à¸µà¹ˆà¸ªà¸´à¹‰à¸™à¸ªà¸¸à¸”
                                 </label>
                                 <input
                                   type="date"
@@ -3578,7 +3690,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
                             <div className="border-t border-gray-100 pt-3">
                               <p className="text-xs font-medium text-gray-700 mb-2">
-                                เลือกช่วงเวลาด่วน:
+                                à¹€à¸¥à¸·à¸­à¸à¸Šà¹ˆà¸§à¸‡à¹€à¸§à¸¥à¸²à¸”à¹ˆà¸§à¸™:
                               </p>
                               <div className="grid grid-cols-2 gap-2">
                                 <button
@@ -3590,7 +3702,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
                                 >
                                   <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                                  ทั้งหมด
+                                  à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
                                 </button>
                                 <button
                                   onClick={() => {
@@ -3601,7 +3713,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                                 >
                                   <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                                  อาทิตย์นี้
+                                  à¸­à¸²à¸—à¸´à¸•à¸¢à¹Œà¸™à¸µà¹‰
                                 </button>
                                 <button
                                   onClick={() => {
@@ -3612,7 +3724,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                                 >
                                   <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                                  เดือนนี้
+                                  à¹€à¸”à¸·à¸­à¸™à¸™à¸µà¹‰
                                 </button>
                                 <button
                                   onClick={() => {
@@ -3623,7 +3735,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                                 >
                                   <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                                  7 วันล่าสุด
+                                  7 à¸§à¸±à¸™à¸¥à¹ˆà¸²à¸ªà¸¸à¸”
                                 </button>
                                 <button
                                   onClick={() => {
@@ -3634,7 +3746,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                                 >
                                   <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                                  30 วันล่าสุด
+                                  30 à¸§à¸±à¸™à¸¥à¹ˆà¸²à¸ªà¸¸à¸”
                                 </button>
                               </div>
                             </div>
@@ -3650,7 +3762,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 }}
                                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
                               >
-                                ตกลง
+                                à¸•à¸à¸¥à¸‡
                               </button>
                             </div>
                           </div>
@@ -3660,7 +3772,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   </div>
 
                   <div>
-                    <label className={labelClass}>เลือกเพจ</label>
+                    <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸à¹€à¸žà¸ˆ</label>
                     <MultiSelectPageFilter
                       pages={pages.map((page) => ({
                         id: page.id,
@@ -3682,65 +3794,17 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
                     disabled={exporting}
                   >
-                    ยกเลิก
+                    à¸¢à¸à¹€à¸¥à¸´à¸
                   </button>
                   <button
-                    onClick={async () => {
-                      setExporting(true);
-                      try {
-                        const params = new URLSearchParams();
-                        if (exportTempStart)
-                          params.set("date_from", exportTempStart);
-                        if (exportTempEnd) params.set("date_to", exportTempEnd);
-                        if (exportSelectedPages.length > 0) {
-                          params.set("page_ids", exportSelectedPages.join(","));
-                        }
-
-                        const response = await fetch(
-                          `${API_BASE}/Marketing_DB/ads_log_export_csv.php?${params}`,
-                        );
-
-                        if (!response.ok) {
-                          throw new Error("Export failed");
-                        }
-
-                        // Get the filename from the response headers or create a default one
-                        const contentDisposition = response.headers.get(
-                          "content-disposition",
-                        );
-                        let filename = "marketing_ads_log.csv";
-                        if (contentDisposition) {
-                          const filenameMatch =
-                            contentDisposition.match(/filename="?([^"]+)"?/);
-                          if (filenameMatch) {
-                            filename = filenameMatch[1];
-                          }
-                        }
-
-                        // Create blob and download
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        window.URL.revokeObjectURL(url);
-
-                        setExportModalOpen(false);
-                      } catch (error) {
-                        console.error("Export error:", error);
-                        alert("การส่งออกข้อมูลล้มเหลว กรุณาลองใหม่");
-                      } finally {
-                        setExporting(false);
-                      }
+                    onClick={() => {
+                      setIsAdsLogExportTypeModalOpen(true);
                     }}
                     className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                     disabled={exporting}
                   >
                     <Download className="w-4 h-4" />
-                    {exporting ? "กำลังส่งออก..." : "ยืนยันและดาวน์โหลด"}
+                    {exporting ? "à¸à¸³à¸¥à¸±à¸‡à¸ªà¹ˆà¸‡à¸­à¸­à¸..." : "à¸¢à¸·à¸™à¸¢à¸±à¸™à¹à¸¥à¸°à¸”à¸²à¸§à¸™à¹Œà¹‚à¸«à¸¥à¸”"}
                   </button>
                 </div>
               </div>
@@ -3755,10 +3819,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           <section className="bg-white rounded-lg shadow p-5">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-lg font-semibold text-gray-800">
-                ประวัติการกรอก Ads
+                à¸›à¸£à¸°à¸§à¸±à¸•à¸´à¸à¸²à¸£à¸à¸£à¸­à¸ Ads
               </h3>
               <div className="text-sm text-gray-600">
-                ผู้ใช้:{" "}
+                à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰:{" "}
                 {currentUser.firstName && currentUser.lastName
                   ? `${currentUser.firstName} ${currentUser.lastName}`
                   : currentUser.username}
@@ -3767,7 +3831,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
             <div className="flex items-center gap-4 mb-4">
               <div className="text-sm text-gray-500">
-                สิทธิ์เข้าถึง {userAccessiblePages.length} เพจ
+                à¸ªà¸´à¸—à¸˜à¸´à¹Œà¹€à¸‚à¹‰à¸²à¸–à¸¶à¸‡ {userAccessiblePages.length} à¹€à¸žà¸ˆ
               </div>
               <div className="flex bg-gray-100 p-1 rounded-lg">
                 <button
@@ -3777,7 +3841,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
-                  รายเพจ
+                  à¸£à¸²à¸¢à¹€à¸žà¸ˆ
                 </button>
                 <button
                   onClick={() => setAdsHistoryMode('product')}
@@ -3786,7 +3850,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
-                  รายสินค้า
+                  à¸£à¸²à¸¢à¸ªà¸´à¸™à¸„à¹‰à¸²
                 </button>
               </div>
             </div>
@@ -3795,7 +3859,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             <div className="mb-4">
               <div className="flex gap-4 items-end">
                 <div className="flex-1">
-                  <label className={labelClass}>เลือกช่วงวันที่</label>
+                  <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸à¸Šà¹ˆà¸§à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆ</label>
                   <button
                     onClick={() =>
                       setAdsHistoryDatePickerOpen(!adsHistoryDatePickerOpen)
@@ -3811,7 +3875,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     >
                       {adsHistoryDateRange.start && adsHistoryDateRange.end
                         ? `${new Date(adsHistoryDateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(adsHistoryDateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
-                        : "ทั้งหมด"}
+                        : "à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”"}
                     </span>
                     <Calendar className="w-4 h-4 text-gray-400" />
                   </button>
@@ -3821,7 +3885,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   {/* Page Filter OR Product Filter */}
                   {adsHistoryMode === 'page' ? (
                     <>
-                      <label className={labelClass}>เลือกเพจ</label>
+                      <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸à¹€à¸žà¸ˆ</label>
                       <MultiSelectPageFilter
                         pages={(hasSystemAccess
                           ? pages
@@ -3840,7 +3904,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     </>
                   ) : (
                     <>
-                      <label className={labelClass}>เลือก Ads Group</label>
+                      <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸ Ads Group</label>
                       <MultiSelectAdsGroupFilter
                         adsGroups={[...uniqueAdsGroups.keys()]}
                         selectedAdsGroups={adsHistorySelectedAdsGroups}
@@ -3853,7 +3917,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 {/* User Filter - Only for System Roles */}
                 {(hasSystemAccess) && (
                   <div className="flex-1">
-                    <label className={labelClass}>เลือกผู้ใช้</label>
+                    <label className={labelClass}>à¹€à¸¥à¸·à¸­à¸à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰</label>
                     <MultiSelectUserFilter
                       users={marketingUsersList.map((user) => ({
                         id: user.id,
@@ -3873,7 +3937,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     disabled={adsLogsLoading}
                     className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
                   >
-                    {adsLogsLoading ? "กำลังโหลด..." : "ค้นหา"}
+                    {adsLogsLoading ? "à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”..." : "à¸„à¹‰à¸™à¸«à¸²"}
                   </button>
                 </div>
               </div>
@@ -3888,7 +3952,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">
-                          วันที่เริ่มต้น
+                          à¸§à¸±à¸™à¸—à¸µà¹ˆà¹€à¸£à¸´à¹ˆà¸¡à¸•à¹‰à¸™
                         </label>
                         <input
                           type="date"
@@ -3899,7 +3963,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       </div>
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">
-                          วันที่สิ้นสุด
+                          à¸§à¸±à¸™à¸—à¸µà¹ˆà¸ªà¸´à¹‰à¸™à¸ªà¸¸à¸”
                         </label>
                         <input
                           type="date"
@@ -3912,7 +3976,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
                     <div className="border-t border-gray-100 pt-3">
                       <p className="text-xs font-medium text-gray-700 mb-2">
-                        เลือกช่วงเวลาด่วน:
+                        à¹€à¸¥à¸·à¸­à¸à¸Šà¹ˆà¸§à¸‡à¹€à¸§à¸¥à¸²à¸”à¹ˆà¸§à¸™:
                       </p>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -3926,7 +3990,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                          ทั้งหมด
+                          à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
                         </button>
                         <button
                           onClick={() => {
@@ -3937,7 +4001,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                          อาทิตย์นี้
+                          à¸­à¸²à¸—à¸´à¸•à¸¢à¹Œà¸™à¸µà¹‰
                         </button>
                         <button
                           onClick={() => {
@@ -3948,7 +4012,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                          เดือนนี้
+                          à¹€à¸”à¸·à¸­à¸™à¸™à¸µà¹‰
                         </button>
                         <button
                           onClick={() => {
@@ -3959,7 +4023,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                          7 วันล่าสุด
+                          7 à¸§à¸±à¸™à¸¥à¹ˆà¸²à¸ªà¸¸à¸”
                         </button>
                         <button
                           onClick={() => {
@@ -3970,7 +4034,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
                           <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                          30 วันล่าสุด
+                          30 à¸§à¸±à¸™à¸¥à¹ˆà¸²à¸ªà¸¸à¸”
                         </button>
                       </div>
                     </div>
@@ -3986,7 +4050,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         }}
                         className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
                       >
-                        ตกลง
+                        à¸•à¸à¸¥à¸‡
                       </button>
                     </div>
                   </div>
@@ -3999,7 +4063,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               productAdsLogsLoading ? (
                 <div className="text-center py-8">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                  <p className="mt-2 text-gray-600">กำลังโหลดประวัติ...</p>
+                  <p className="mt-2 text-gray-600">à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”à¸›à¸£à¸°à¸§à¸±à¸•à¸´...</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -4019,12 +4083,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <thead className="bg-gray-50 text-gray-700">
                           <tr>
                             <th className="px-3 py-2 text-left w-8"></th>
-                            <th className="px-3 py-2 text-left">เพจ</th>
-                            <th className="px-3 py-2 text-right">จำนวนรายการ</th>
-                            <th className="px-3 py-2 text-right">รวมค่า Ads</th>
-                            <th className="px-3 py-2 text-right">รวม Impressions</th>
-                            <th className="px-3 py-2 text-right">รวม Reach</th>
-                            <th className="px-3 py-2 text-right">รวม Clicks</th>
+                            <th className="px-3 py-2 text-left">à¹€à¸žà¸ˆ</th>
+                            <th className="px-3 py-2 text-right">à¸ˆà¸³à¸™à¸§à¸™à¸£à¸²à¸¢à¸à¸²à¸£</th>
+                            <th className="px-3 py-2 text-right">à¸£à¸§à¸¡à¸„à¹ˆà¸² Ads</th>
+                            <th className="px-3 py-2 text-right">à¸£à¸§à¸¡ Impressions</th>
+                            <th className="px-3 py-2 text-right">à¸£à¸§à¸¡ Reach</th>
+                            <th className="px-3 py-2 text-right">à¸£à¸§à¸¡ Clicks</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -4065,14 +4129,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                         <table className="w-full text-xs">
                                           <thead className="text-gray-500 bg-gray-100">
                                             <tr>
-                                              <th className="px-3 py-1 text-left">วันที่</th>
-                                              <th className="px-3 py-1 text-left">ผู้บันทึก</th>
-                                              <th className="px-3 py-1 text-right">ค่า Ads</th>
+                                              <th className="px-3 py-1 text-left">à¸§à¸±à¸™à¸—à¸µà¹ˆ</th>
+                                              <th className="px-3 py-1 text-left">à¸œà¸¹à¹‰à¸šà¸±à¸™à¸—à¸¶à¸</th>
+                                              <th className="px-3 py-1 text-right">à¸„à¹ˆà¸² Ads</th>
                                               <th className="px-3 py-1 text-right">Imp.</th>
                                               <th className="px-3 py-1 text-right">Reach</th>
                                               <th className="px-3 py-1 text-right">Clicks</th>
                                               {(hasSystemAccess) && (
-                                                <th className="px-3 py-1 text-center">จัดการ</th>
+                                                <th className="px-3 py-1 text-center">à¸ˆà¸±à¸”à¸à¸²à¸£</th>
                                               )}
                                             </tr>
                                           </thead>
@@ -4113,7 +4177,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               </React.Fragment>
                             );
                           }) : (
-                            <tr><td colSpan={7} className="text-center py-8 text-gray-500">ไม่พบข้อมูล</td></tr>
+                            <tr><td colSpan={7} className="text-center py-8 text-gray-500">à¹„à¸¡à¹ˆà¸žà¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥</td></tr>
                           )}
                         </tbody>
                       </table>
@@ -4128,7 +4192,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               productAdsLogsLoading ? (
                 <div className="text-center py-8">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                  <p className="mt-2 text-gray-600">กำลังโหลดประวัติสินค้า...</p>
+                  <p className="mt-2 text-gray-600">à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”à¸›à¸£à¸°à¸§à¸±à¸•à¸´à¸ªà¸´à¸™à¸„à¹‰à¸²...</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -4147,12 +4211,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <thead className="bg-gray-50 text-gray-700">
                           <tr>
                             <th className="px-3 py-2 text-left w-8"></th>
-                            <th className="px-3 py-2 text-left">สินค้า (SKU)</th>
-                            <th className="px-3 py-2 text-right">จำนวนรายการ</th>
-                            <th className="px-3 py-2 text-right">รวมค่า Ads</th>
-                            <th className="px-3 py-2 text-right">รวม Imp.</th>
-                            <th className="px-3 py-2 text-right">รวม Reach</th>
-                            <th className="px-3 py-2 text-right">รวม Clicks</th>
+                            <th className="px-3 py-2 text-left">à¸ªà¸´à¸™à¸„à¹‰à¸² (SKU)</th>
+                            <th className="px-3 py-2 text-right">à¸ˆà¸³à¸™à¸§à¸™à¸£à¸²à¸¢à¸à¸²à¸£</th>
+                            <th className="px-3 py-2 text-right">à¸£à¸§à¸¡à¸„à¹ˆà¸² Ads</th>
+                            <th className="px-3 py-2 text-right">à¸£à¸§à¸¡ Imp.</th>
+                            <th className="px-3 py-2 text-right">à¸£à¸§à¸¡ Reach</th>
+                            <th className="px-3 py-2 text-right">à¸£à¸§à¸¡ Clicks</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -4198,14 +4262,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                           <table className="w-full text-xs">
                                             <thead className="bg-gray-100 text-gray-500">
                                               <tr>
-                                                <th className="px-3 py-1 text-left">วันที่</th>
-                                                <th className="px-3 py-1 text-left">เพจ</th>
-                                                <th className="px-3 py-1 text-left">ผู้บันทึก</th>
-                                                <th className="px-3 py-1 text-right">ค่า Ads</th>
+                                                <th className="px-3 py-1 text-left">à¸§à¸±à¸™à¸—à¸µà¹ˆ</th>
+                                                <th className="px-3 py-1 text-left">à¹€à¸žà¸ˆ</th>
+                                                <th className="px-3 py-1 text-left">à¸œà¸¹à¹‰à¸šà¸±à¸™à¸—à¸¶à¸</th>
+                                                <th className="px-3 py-1 text-right">à¸„à¹ˆà¸² Ads</th>
                                                 <th className="px-3 py-1 text-right">Imp.</th>
                                                 <th className="px-3 py-1 text-right">Reach</th>
                                                 <th className="px-3 py-1 text-right">Clicks</th>
-                                                {hasSystemAccess && <th className="px-3 py-1 text-center">จัดการ</th>}
+                                                {hasSystemAccess && <th className="px-3 py-1 text-center">à¸ˆà¸±à¸”à¸à¸²à¸£</th>}
                                               </tr>
                                             </thead>
                                             <tbody>
@@ -4223,7 +4287,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                       <button
                                                         onClick={() => { setEditingLog({ ...l, originalDate: l.date || l.log_date }); setIsEditModalOpen(true); }}
                                                         className="text-blue-600 hover:text-blue-800"
-                                                        title="แก้ไข"
+                                                        title="à¹à¸à¹‰à¹„à¸‚"
                                                       >
                                                         <Pencil className="w-3 h-3" />
                                                       </button>
@@ -4243,7 +4307,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           ) : (
                             <tr>
                               <td colSpan={7} className="text-center py-8 text-gray-500">
-                                ไม่พบข้อมูลประวัติ Ads สินค้า
+                                à¹„à¸¡à¹ˆà¸žà¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸›à¸£à¸°à¸§à¸±à¸•à¸´ Ads à¸ªà¸´à¸™à¸„à¹‰à¸²
                               </td>
                             </tr>
                           )}
@@ -4264,12 +4328,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         selectedPageForUser && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังเพจ</h3>
+              <h3 className="text-lg font-semibold mb-4">à¹€à¸žà¸´à¹ˆà¸¡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸›à¸¢à¸±à¸‡à¹€à¸žà¸ˆ</h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {/* Admin Users */}
                 {marketingUsersList.filter(u => u.role !== 'Marketing').length > 0 && (
                   <div className="sticky top-0 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 rounded-sm">
-                    ผู้ดูแลระบบ (System Admin)
+                    à¸œà¸¹à¹‰à¸”à¸¹à¹à¸¥à¸£à¸°à¸šà¸š (System Admin)
                   </div>
                 )}
                 {marketingUsersList
@@ -4287,7 +4351,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <div className="text-sm text-gray-600">{user.username}</div>
                       </div>
                       <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
-                        เลือก
+                        à¹€à¸¥à¸·à¸­à¸
                       </button>
                     </div>
                   ))}
@@ -4295,7 +4359,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 {/* Marketing Users */}
                 {marketingUsersList.filter(u => u.role === 'Marketing').length > 0 && (
                   <div className="sticky top-0 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 rounded-sm mt-3">
-                    ฝ่ายการตลาด (Marketing)
+                    à¸à¹ˆà¸²à¸¢à¸à¸²à¸£à¸•à¸¥à¸²à¸” (Marketing)
                   </div>
                 )}
                 {marketingUsersList
@@ -4313,20 +4377,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <div className="text-sm text-gray-600">{user.username}</div>
                       </div>
                       <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
-                        เลือก
+                        à¹€à¸¥à¸·à¸­à¸
                       </button>
                     </div>
                   ))}
 
                 {marketingUsersList.length === 0 && (
-                  <div className="text-gray-500 text-center py-4">ไม่มีผู้ใช้</div>
+                  <div className="text-gray-500 text-center py-4">à¹„à¸¡à¹ˆà¸¡à¸µà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰</div>
                 )}
               </div>
               <button
                 onClick={() => setSelectedPageForUser(null)}
                 className="mt-4 w-full px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
               >
-                ยกเลิก
+                à¸¢à¸à¹€à¸¥à¸´à¸
               </button>
             </div>
           </div>
@@ -4338,7 +4402,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         selectedAdsGroupForUser && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังกลุ่ม Ads: {selectedAdsGroupForUser}</h3>
+              <h3 className="text-lg font-semibold mb-4">à¹€à¸žà¸´à¹ˆà¸¡à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸›à¸¢à¸±à¸‡à¸à¸¥à¸¸à¹ˆà¸¡ Ads: {selectedAdsGroupForUser}</h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {(() => {
                   const availableUsers = marketingUsersList.filter(user =>
@@ -4349,14 +4413,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   const marketings = availableUsers.filter(u => u.role === 'Marketing');
 
                   if (availableUsers.length === 0) {
-                    return <div className="text-gray-500 text-center py-4">ผู้ใช้ทุกคนได้รับสิทธิ์แล้ว</div>;
+                    return <div className="text-gray-500 text-center py-4">à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸—à¸¸à¸à¸„à¸™à¹„à¸”à¹‰à¸£à¸±à¸šà¸ªà¸´à¸—à¸˜à¸´à¹Œà¹à¸¥à¹‰à¸§</div>;
                   }
 
                   return (
                     <>
                       {admins.length > 0 && (
                         <div className="sticky top-0 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 rounded-sm">
-                          ผู้ดูแลระบบ (System Admin)
+                          à¸œà¸¹à¹‰à¸”à¸¹à¹à¸¥à¸£à¸°à¸šà¸š (System Admin)
                         </div>
                       )}
                       {admins.map(user => (
@@ -4369,13 +4433,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                             <div className="font-medium">{user.first_name} {user.last_name}</div>
                             <div className="text-sm text-gray-600">{user.username}</div>
                           </div>
-                          <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">เลือก</button>
+                          <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">à¹€à¸¥à¸·à¸­à¸</button>
                         </div>
                       ))}
 
                       {marketings.length > 0 && (
                         <div className="sticky top-0 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 rounded-sm mt-3">
-                          ฝ่ายการตลาด (Marketing)
+                          à¸à¹ˆà¸²à¸¢à¸à¸²à¸£à¸•à¸¥à¸²à¸” (Marketing)
                         </div>
                       )}
                       {marketings.map(user => (
@@ -4388,7 +4452,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                             <div className="font-medium">{user.first_name} {user.last_name}</div>
                             <div className="text-sm text-gray-600">{user.username}</div>
                           </div>
-                          <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">เลือก</button>
+                          <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">à¹€à¸¥à¸·à¸­à¸</button>
                         </div>
                       ))}
                     </>
@@ -4399,7 +4463,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 onClick={() => setSelectedAdsGroupForUser(null)}
                 className="mt-4 w-full px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
               >
-                ยกเลิก
+                à¸¢à¸à¹€à¸¥à¸´à¸
               </button>
             </div>
           </div>
@@ -4413,7 +4477,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             <div className="bg-white rounded-lg shadow-lg w-full max-w-lg mx-4 overflow-hidden">
               <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
                 <h3 className="text-lg font-semibold text-gray-800">
-                  แก้ไขข้อมูล Ads
+                  à¹à¸à¹‰à¹„à¸‚à¸‚à¹‰à¸­à¸¡à¸¹à¸¥ Ads
                 </h3>
                 <button
                   onClick={() => setIsEditModalOpen(false)}
@@ -4426,7 +4490,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      วันที่
+                      à¸§à¸±à¸™à¸—à¸µà¹ˆ
                     </label>
                     <input
                       type="date"
@@ -4437,7 +4501,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      {editingLog.product_id ? "สินค้า" : "เพจ"}
+                      {editingLog.product_id ? "à¸ªà¸´à¸™à¸„à¹‰à¸²" : "à¹€à¸žà¸ˆ"}
                     </label>
                     <input
                       type="text"
@@ -4458,7 +4522,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    ค่า Ads (บาท)
+                    à¸„à¹ˆà¸² Ads (à¸šà¸²à¸—)
                   </label>
                   <input
                     type="number"
@@ -4529,20 +4593,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   onClick={handleDeleteCurrentLog}
                   className="px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                 >
-                  ลบข้อมูล
+                  à¸¥à¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥
                 </button>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setIsEditModalOpen(false)}
                     className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                   >
-                    ยกเลิก
+                    à¸¢à¸à¹€à¸¥à¸´à¸
                   </button>
                   <button
                     onClick={() => handleEditLogSave(editingLog)}
                     className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                   >
-                    บันทึก
+                    à¸šà¸±à¸™à¸—à¸¶à¸
                   </button>
                 </div>
               </div>
@@ -4550,6 +4614,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           </div>
         )
       }
+
+      {/* Dashboard Export Modal */}
+      <ExportTypeModal
+        isOpen={isDashboardExportModalOpen}
+        onClose={() => setIsDashboardExportModalOpen(false)}
+        onConfirm={exportDashboard}
+        isExporting={exporting}
+      />
+
+      {/* Ads Log Export Modal */}
+      <ExportTypeModal
+        isOpen={isAdsLogExportTypeModalOpen}
+        onClose={() => setIsAdsLogExportTypeModalOpen(false)}
+        onConfirm={executeAdsLogExport}
+        isExporting={exporting}
+      />
     </div >
   );
 

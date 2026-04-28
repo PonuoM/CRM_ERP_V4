@@ -41,6 +41,38 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     
+    $format = $_GET['format'] ?? 'csv';
+
+    if ($format === 'json') {
+        $rows = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $rows[] = [
+                'batch_doc_number' => $row['batch_doc_number'],
+                'batch_created_at' => $row['batch_created_at'],
+                'product_sku' => $row['product_sku'],
+                'product_name' => $row['product_name'],
+                'variant_code' => $row['variant_code'],
+                'variant_name' => $row['variant_name'],
+                'internal_order_id' => $row['internal_order_id'],
+                'online_order_id' => $row['online_order_id'],
+                'quantity' => $row['quantity'],
+                'total_price' => $row['total_price'],
+                'order_date' => $row['order_date'],
+                'ship_date' => $row['ship_date'],
+                'order_status' => $row['order_status'],
+                'platform' => $row['platform'],
+                'shop' => $row['shop'],
+                'warehouse_name' => $row['warehouse_name'],
+                'tracking_number' => $row['tracking_number'],
+                'status' => $row['status'],
+                'stock_deducted' => ($row['stock_deducted'] == '1') ? 'Yes' : 'No'
+            ];
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true, 'data' => $rows]);
+        exit;
+    }
+
     // Set headers for CSV download
     $filename = "dispatch_export_" . date('Ymd_His') . ".csv";
     if ($startDate && $endDate) {

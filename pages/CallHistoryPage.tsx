@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import ExportTypeModal from "@/components/ExportTypeModal";
+import { downloadDataFile } from "@/utils/exportUtils";
 
 // Helper function to get the correct base URL for OneCall API
 const getOneCallBaseUrl = (): string => {
@@ -483,6 +485,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     total: number;
     message: string;
   } | null>(null);
+  const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
   const [searchedAgent, setSearchedAgent] = useState("");
 
   // Pagination state
@@ -982,7 +985,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
   };
 
   // Main export function
-  const exportAllToCSV = async () => {
+  const executeExport = async (type: 'csv' | 'xlsx') => {
     try {
       setIsDataLoading(true);
       setExportProgress(null);
@@ -1062,24 +1065,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         ];
       });
 
-      const csvContent = [
-        headers.join(","),
-        ...rows.map((row) => row.join(",")),
-      ].join("\n");
-
-      const blob = new Blob(["\ufeff" + csvContent], {
-        type: "text/csv;charset=utf-8;",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute(
-        "download",
-        `recordings_all_${new Date().toISOString().split("T")[0]}.csv`,
-      );
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      downloadDataFile([headers, ...rows], `recordings_all_${new Date().toISOString().split("T")[0]}`, type);
+      setIsExportTypeModalOpen(false);
     } catch (error) {
       console.error("Error exporting CSV:", error);
       alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล: " + error.message);
@@ -3038,11 +3025,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                 <div className="flex gap-2">
                   <button
                     className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                    onClick={exportAllToCSV}
+                    onClick={() => setIsExportTypeModalOpen(true)}
                     disabled={isDataLoading}
                   >
                     <Phone className="w-4 h-4" />
-                    ส่งออก CSV
+                    ส่งออกข้อมูล
                   </button>
                 </div>
               </div>
@@ -3683,6 +3670,14 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
             }}
           />
         </div>
+
+        {/* Export Format Modal */}
+        <ExportTypeModal
+          isOpen={isExportTypeModalOpen}
+          onClose={() => !exportProgress && setIsExportTypeModalOpen(false)}
+          onConfirm={executeExport}
+          isExporting={!!exportProgress}
+        />
 
         {/* Export Progress Modal */}
         {exportProgress && (

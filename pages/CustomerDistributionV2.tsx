@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import UniversalDateRangePicker, { DateRange } from '../components/UniversalDateRangePicker';
 import resolveApiBasePath from '../utils/apiBasePath';
+import ExportTypeModal from '../components/ExportTypeModal';
+import { downloadDataFile } from '../utils/exportUtils';
 import { mapCustomerFromApi } from '../utils/customerMapper';
 import Spinner from '../components/Spinner';
 import BlockedCustomersModal from '../components/BlockedCustomersModal';
@@ -74,6 +76,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
     const [targetBasket, setTargetBasket] = useState<string>('');
     const [distributionExportRange, setDistributionExportRange] = useState<DateRange>({ start: '', end: '' });
+    const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     // UI state
     const [loading, setLoading] = useState(true);
@@ -1144,16 +1148,55 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const isHoldingBasketActive = activeBasket === 'holding_before_redistribute';
 
     // Handle Export Distribution
-    const handleExportDistribution = () => {
+    const executeExport = async (type: 'csv' | 'xlsx') => {
         const companyId = currentUser?.companyId || 1;
         const sd = distributionExportRange.start;
         const ed = distributionExportRange.end;
         const basket = activeBasket || '';
 
-        const basePath = typeof window !== 'undefined' ? resolveApiBasePath() : '/api';
-        const url = `${basePath.replace(/\/$/, '')}/Distribution/export_distribution.php?companyId=${companyId}&start_date=${sd}&end_date=${ed}&basket_key=${basket}`;
-        
-        window.open(url, '_blank');
+        setIsExporting(true);
+
+        try {
+            const basePath = typeof window !== 'undefined' ? resolveApiBasePath() : '/api';
+            const url = `${basePath.replace(/\/$/, '')}/Distribution/export_distribution.php?companyId=${companyId}&start_date=${sd}&end_date=${ed}&basket_key=${basket}&format=json`;
+            const response = await fetch(url);
+            const result = await response.json();
+
+            if (result.ok && result.data) {
+                const headers = [
+                    'วันที่จ่ายออก', 'รหัสลูกค้า', 'ชื่อลูกค้า', 'นามสกุล', 'เบอร์โทรศัพท์', 
+                    'จากตะกร้า', 'ไปตะกร้า', 'ผู้รับงาน (Telesale)', 'ผู้ดำเนินการแจก (Supervisor)'
+                ];
+                
+                const rows = result.data.map((row: any) => {
+                    const formattedDate = row.distribute_date ? new Date(row.distribute_date).toLocaleString('th-TH') : '-';
+                    const newAgentName = [row.new_agent_first, row.new_agent_last].filter(Boolean).join(' ').trim();
+                    const triggerName = [row.trigger_first, row.trigger_last].filter(Boolean).join(' ').trim();
+
+                    return [
+                        formattedDate,
+                        row.customer_id,
+                        row.first_name || '-',
+                        row.last_name || '-',
+                        row.phone || '-',
+                        row.from_basket_key || '-',
+                        row.to_basket_key || '-',
+                        newAgentName || '-',
+                        triggerName || '-'
+                    ];
+                });
+
+                const filename = `distribution_history_${new Date().toISOString().slice(0, 10)}`;
+                downloadDataFile([headers, ...rows], filename, type);
+            } else {
+                alert('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
+            }
+        } catch (e: any) {
+            alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + e.message);
+        } finally {
+            setIsExporting(false);
+            setIsExportTypeModalOpen(false);
+        }
     };
 
     if (loading) {
@@ -1181,9 +1224,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         placeholder="เลือกช่วงวันที่"
                     />
                     <button
-                        onClick={handleExportDistribution}
-                        className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1.5 font-medium shadow-sm transition-colors"
-                        title="ดาวน์โหลด Export CSV"
+                        onClick={() => setIsExportTypeModalOpen(true)}
+                        disabled={isExporting}
+                        className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1.5 font-medium shadow-sm transition-colors disabled:opacity-50"
+                        title="ดาวน์โหลด Export Data"
                     >
                         <Download size={16} />
                         Export
@@ -2512,6 +2556,14 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     fetchBlockedCustomers();
                     fetchAllBasketCounts();
                 }}
+            />
+
+            {/* Export Format Modal */}
+            <ExportTypeModal
+                isOpen={isExportTypeModalOpen}
+                onClose={() => !isExporting && setIsExportTypeModalOpen(false)}
+                onConfirm={executeExport}
+                isExporting={isExporting}
             />
         </div >
     );

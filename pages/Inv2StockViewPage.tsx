@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { BarChart3, Search, Loader2, Download, ChevronDown, ChevronRight, Check } from 'lucide-react';
 import { inv2ListStock, listWarehouses } from '../services/api';
+import ExportTypeModal from '@/components/ExportTypeModal';
+import { downloadDataFile } from '@/utils/exportUtils';
 
 export interface Inv2Stock {
     id: number;
@@ -99,6 +101,7 @@ const Inv2StockViewPage: React.FC<Inv2StockViewPageProps> = ({ companyId }) => {
     
     // Expand/Collapse state (key: whId-prodId)
     const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
+    const [showFormatModal, setShowFormatModal] = useState(false);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -183,42 +186,33 @@ const Inv2StockViewPage: React.FC<Inv2StockViewPageProps> = ({ companyId }) => {
         return diff > 0 && diff <= 30;
     };
 
-    const handleExportCSV = () => {
+    const handleExport = (fileType: 'csv' | 'xlsx') => {
         const headers = ['คลังสินค้า', 'รหัสสินค้า', 'ชื่อสินค้า', 'Variant', 'Lot Number', 'วันที่ผลิต', 'วันหมดอายุ', 'จำนวนคงเหลือ', 'จ่ายออก', 'หน่วย', 'ต้นทุน/หน่วย', 'มูลค่ารวม'];
-        let csvContent = '\uFEFF';
-        csvContent += headers.map(h => `"${h}"`).join(',') + '\n';
         
-        stockData.forEach(s => {
+        const rows = stockData.map(s => {
             const qty = Number(s.quantity) || 0;
             const dispatched = Number(s.dispatched_quantity) || 0;
             const cost = Number(s.unit_cost) || 0;
             const value = qty * cost;
             
-            const row = [
-                `"${s.warehouse_name || ''}"`,
-                `"${s.product_sku || ''}"`,
-                `"${s.product_name || ''}"`,
-                `"${s.variant || ''}"`,
-                `"${s.lot_number || ''}"`,
-                `"${s.mfg_date || ''}"`,
-                `"${s.exp_date || ''}"`,
+            return [
+                s.warehouse_name || '',
+                s.product_sku || '',
+                s.product_name || '',
+                s.variant || '',
+                s.lot_number || '',
+                s.mfg_date || '',
+                s.exp_date || '',
                 qty,
                 dispatched,
-                `"${s.product_unit || ''}"`,
+                s.product_unit || '',
                 cost,
                 value
             ];
-            csvContent += row.join(',') + '\n';
         });
         
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `Stock_V2_Export_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        downloadDataFile([headers, ...rows], `Stock_V2_Export_${new Date().toISOString().split('T')[0]}`, fileType);
+        setShowFormatModal(false);
     };
 
     const colCount = 11;
@@ -234,9 +228,9 @@ const Inv2StockViewPage: React.FC<Inv2StockViewPageProps> = ({ companyId }) => {
                     </h1>
                     <p style={{ color: '#6b7280', margin: '4px 0 0', fontSize: '14px' }}>สต็อกคงเหลือจากข้อมูลชุดใหม่ (V2)</p>
                 </div>
-                <button onClick={handleExportCSV} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                <button onClick={() => setShowFormatModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                     <Download size={18} />
-                    ดาวน์โหลด CSV
+                    ส่งออก
                 </button>
             </div>
 
@@ -394,6 +388,12 @@ const Inv2StockViewPage: React.FC<Inv2StockViewPageProps> = ({ companyId }) => {
                     </div>
                 )}
             </div>
+
+            <ExportTypeModal
+                isOpen={showFormatModal}
+                onClose={() => setShowFormatModal(false)}
+                onConfirm={handleExport}
+            />
         </div>
     );
 };

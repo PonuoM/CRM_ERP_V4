@@ -35,6 +35,8 @@ import OrderDetailModal from "../components/OrderDetailModal";
 import BulkReturnImport from "../components/BulkReturnImport";
 import Spinner from "../components/Spinner";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
+import ExportTypeModal from "../components/ExportTypeModal";
+import { downloadDataFile } from "../utils/exportUtils";
 
 interface ReturnManagementPageProps {
   user: User;
@@ -188,6 +190,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     return { start: start.toISOString(), end: end.toISOString() };
   });
   const [exporting, setExporting] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   // Advanced Filters
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -1478,6 +1481,92 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     );
   };
 
+  const executeExport = async (type: 'csv' | 'xlsx') => {
+    setExporting(true);
+    setIsExportModalOpen(false);
+    setShowExportPopup(false);
+    try {
+      const dateFrom = exportDateRange.start.split('T')[0];
+      const dateTo = exportDateRange.end.split('T')[0];
+      const res = await exportReturnOrders({
+        date_from: dateFrom,
+        date_to: dateTo,
+        companyId: user.companyId,
+      });
+      if (res?.success && Array.isArray(res.data)) {
+        if (res.data.length === 0) {
+          alert('ไม่พบข้อมูลในช่วงวันที่ที่เลือก');
+          return;
+        }
+        const statusMap: Record<string, string> = {
+          returning: 'กำลังตีกลับ',
+          returned: 'สภาพดี',
+          good: 'สภาพดี',
+          damaged: 'ชำรุด',
+          lost: 'ตีกลับสูญหาย',
+          pending: 'รอการดำเนินการ',
+          delivered: 'ส่งสำเร็จ',
+        };
+        const headers = [
+          'Order ID', 'Sub Order ID', 'วันที่สั่งซื้อ',
+          'ชื่อลูกค้า', 'เบอร์โทร',
+          'ที่อยู่', 'แขวง/ตำบล', 'เขต/อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์',
+          'Tracking No.', 'สถานะตีกลับ', 'หมายเหตุ',
+          'ยืนยันจบเคส', 'ค่าเคลม',
+          'ราคากล่อง', 'ยอดเก็บได้',
+          'ชื่อสินค้า', 'จำนวน', 'ผู้ขาย',
+          'วันที่บันทึก', 'ช่องทางชำระ', 'ผู้อัปเดต',
+        ];
+        let lastGroupKey = '';
+        const rows = res.data.map((r: any) => {
+          const groupKey = `${r.order_id}-${r.box_number}`;
+          const isFirstRow = groupKey !== lastGroupKey;
+          lastGroupKey = groupKey;
+
+          const customerName = `${r.customer_first_name || ''} ${r.customer_last_name || ''}`.trim() || '-';
+          const itemSeller = (r.item_creator_first_name || r.item_creator_last_name)
+            ? `${r.item_creator_first_name || ''} ${r.item_creator_last_name || ''}`.trim()
+            : `${r.seller_first_name || ''} ${r.seller_last_name || ''}`.trim() || '-';
+
+          return [
+            isFirstRow ? (r.order_id || '') : '',
+            isFirstRow ? (r.sub_order_id || '') : '',
+            isFirstRow ? (r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH') : '-') : '',
+            isFirstRow ? customerName : '',
+            isFirstRow ? (r.customer_phone || '-') : '',
+            isFirstRow ? (r.shipping_street || '-') : '',
+            isFirstRow ? (r.shipping_subdistrict || '-') : '',
+            isFirstRow ? (r.shipping_district || '-') : '',
+            isFirstRow ? (r.shipping_province || '-') : '',
+            isFirstRow ? (r.shipping_postal_code || '-') : '',
+            isFirstRow ? (r.tracking_number || '-') : '',
+            statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
+            isFirstRow ? (r.return_note || '-') : '',
+            isFirstRow ? (Number(r.return_complete) === 1 ? 'จบเคส' : '-') : '',
+            isFirstRow ? (r.return_claim != null && Number(r.return_claim) > 0 ? Number(r.return_claim) : '-') : '',
+            isFirstRow ? (r.cod_amount ?? 0) : '',
+            isFirstRow ? (r.collection_amount ?? 0) : '',
+            r.item_product_name || '-',
+            r.item_quantity || 0,
+            itemSeller,
+            isFirstRow ? (r.return_created_at ? new Date(r.return_created_at).toLocaleString('th-TH') : '-') : '',
+            isFirstRow ? (r.payment_method || '-') : '',
+            isFirstRow ? (r.returned_by_name && r.returned_by_name.trim() ? r.returned_by_name.trim() : '-') : '',
+          ];
+        });
+        
+        const finalData = [headers, ...rows];
+        downloadDataFile(finalData, `return_orders_${dateFrom}_${dateTo}`, type);
+      } else {
+        alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
+      }
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('เกิดข้อผิดพลาดในการ Export');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -1556,103 +1645,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                     />
                   </div>
                   <button
-                    onClick={async () => {
-                      setExporting(true);
-                      try {
-                        const dateFrom = exportDateRange.start.split('T')[0];
-                        const dateTo = exportDateRange.end.split('T')[0];
-                        const res = await exportReturnOrders({
-                          date_from: dateFrom,
-                          date_to: dateTo,
-                          companyId: user.companyId,
-                        });
-                        if (res?.success && Array.isArray(res.data)) {
-                          if (res.data.length === 0) {
-                            alert('ไม่พบข้อมูลในช่วงวันที่ที่เลือก');
-                            return;
-                          }
-                          const statusMap: Record<string, string> = {
-                            returning: 'กำลังตีกลับ',
-                            returned: 'สภาพดี',
-                            good: 'สภาพดี',
-                            damaged: 'ชำรุด',
-                            lost: 'ตีกลับสูญหาย',
-                            pending: 'รอการดำเนินการ',
-                            delivered: 'ส่งสำเร็จ',
-                          };
-                          const headers = [
-                            'Order ID', 'Sub Order ID', 'วันที่สั่งซื้อ',
-                            'ชื่อลูกค้า', 'เบอร์โทร',
-                            'ที่อยู่', 'แขวง/ตำบล', 'เขต/อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์',
-                            'Tracking No.', 'สถานะตีกลับ', 'หมายเหตุ',
-                            'ยืนยันจบเคส', 'ค่าเคลม',
-                            'ราคากล่อง', 'ยอดเก็บได้',
-                            'ชื่อสินค้า', 'จำนวน', 'ผู้ขาย',
-                            'วันที่บันทึก', 'ช่องทางชำระ', 'ผู้อัปเดต',
-                          ];
-                          // Group rows by order_id + box_number
-                          let lastGroupKey = '';
-                          const rows = res.data.map((r: any) => {
-                            const groupKey = `${r.order_id}-${r.box_number}`;
-                            const isFirstRow = groupKey !== lastGroupKey;
-                            lastGroupKey = groupKey;
-
-                            const customerName = `${r.customer_first_name || ''} ${r.customer_last_name || ''}`.trim() || '-';
-                            const itemSeller = (r.item_creator_first_name || r.item_creator_last_name)
-                              ? `${r.item_creator_first_name || ''} ${r.item_creator_last_name || ''}`.trim()
-                              : `${r.seller_first_name || ''} ${r.seller_last_name || ''}`.trim() || '-';
-
-                            return [
-                              isFirstRow ? (r.order_id || '') : '',
-                              isFirstRow ? (r.sub_order_id || '') : '',
-                              isFirstRow ? (r.order_date ? new Date(r.order_date).toLocaleDateString('th-TH') : '-') : '',
-                              isFirstRow ? customerName : '',
-                              isFirstRow ? (r.customer_phone || '-') : '',
-                              isFirstRow ? (r.shipping_street || '-') : '',
-                              isFirstRow ? (r.shipping_subdistrict || '-') : '',
-                              isFirstRow ? (r.shipping_district || '-') : '',
-                              isFirstRow ? (r.shipping_province || '-') : '',
-                              isFirstRow ? (r.shipping_postal_code || '-') : '',
-                              isFirstRow ? (r.tracking_number || '-') : '',
-                              statusMap[r.return_status?.toLowerCase()] || r.return_status || '-',
-                              isFirstRow ? (r.return_note || '-') : '',
-                              isFirstRow ? (Number(r.return_complete) === 1 ? 'จบเคส' : '-') : '',
-                              isFirstRow ? (r.return_claim != null && Number(r.return_claim) > 0 ? Number(r.return_claim) : '-') : '',
-                              isFirstRow ? (r.cod_amount ?? 0) : '',
-                              isFirstRow ? (r.collection_amount ?? 0) : '',
-                              r.item_product_name || '-',
-                              r.item_quantity || 0,
-                              itemSeller,
-                              isFirstRow ? (r.return_created_at ? new Date(r.return_created_at).toLocaleString('th-TH') : '-') : '',
-                              isFirstRow ? (r.payment_method || '-') : '',
-                              isFirstRow ? (r.returned_by_name && r.returned_by_name.trim() ? r.returned_by_name.trim() : '-') : '',
-                            ];
-                          });
-                          const csvContent = '\uFEFF' + headers.join(',') + '\n'
-                            + rows.map((row: any[]) => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-                          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                          const url = URL.createObjectURL(blob);
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.download = `return_orders_${dateFrom}_${dateTo}.csv`;
-                          link.click();
-                          URL.revokeObjectURL(url);
-                          setShowExportPopup(false);
-                        } else {
-                          alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
-                        }
-                      } catch (err) {
-                        console.error('Export error:', err);
-                        alert('เกิดข้อผิดพลาดในการ Export');
-                      } finally {
-                        setExporting(false);
-                      }
-                    }}
+                    onClick={() => setIsExportModalOpen(true)}
                     disabled={exporting}
                     className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
                   >
                     <Download size={14} />
-                    {exporting ? 'Exporting...' : 'Export CSV'}
+                    {exporting ? 'Exporting...' : 'Export'}
                   </button>
                 </div>
               )}
@@ -2409,7 +2407,15 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         onClose={() => setSelectedOrderId(null)}
         orderId={selectedOrderId}
       />
-    </div >
+
+      {/* Export Type Modal */}
+      <ExportTypeModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onConfirm={executeExport}
+        isExporting={exporting}
+      />
+    </div>
   );
 };
 

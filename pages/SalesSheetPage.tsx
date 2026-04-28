@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { User } from "../types";
 import { apiFetch } from "../services/api";
 import { Download, ChevronLeft, ChevronRight, Search, FileSpreadsheet, Loader2, X, ChevronDown, Check, ArrowUpDown } from "lucide-react";
+import ExportTypeModal from "../components/ExportTypeModal";
+import { downloadDataFile } from "../utils/exportUtils";
 
 interface SalesSheetPageProps {
     currentUser: User;
@@ -342,6 +344,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const [sellers, setSellers] = useState<Seller[]>([]);
     const [summary, setSummary] = useState({ total_orders: 0, total_items: 0, total_revenue: 0 });
     const [pagination, setPagination] = useState({ page: 1, pageSize: 200, total: 0, totalPages: 0 });
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
     // --- Multi-Select Column Filters ---
     // null = all selected (no filter), Set = specific values selected
@@ -525,30 +528,25 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    // CSV Export (exports filtered rows)
-    const exportCSV = () => {
+    // CSV/Excel Export (exports filtered rows)
+    const handleExport = (type: 'csv' | 'xlsx') => {
         const exportRows = hasActiveFilters ? filteredRows : rows;
         const headers = [
             "วันที่สั่ง", "เลขออเดอร์", "ผู้ขาย", "ประเภทลูกค้า", "ตะกร้าขาย",
             "ช่องทาง", "การชำระ", "ชื่อลูกค้า", "เบอร์โทร", "จังหวัด",
             "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "ยอดรวม (net)", "วันจัดส่ง", "สถานะ"
         ];
-        const csvRows = exportRows.map(r => [
+        const dataRows = exportRows.map(r => [
             formatDate(r.order_date), r.order_number, r.seller_name.trim(),
             getCustomerTypeThai(r.customer_type), r.basket_key_at_sale || "-",
             r.sales_channel || "-", getPaymentThai(r.payment_method),
             r.customer_name.trim(), r.customer_phone || "-", r.province || "-",
-            r.product_sku || "-", `"${(r.product_name || '-').replace(/"/g, '""')}"`,
-            r.quantity, formatMoney(r.net_total), formatDate(r.delivery_date), getStatusThai(r.order_status),
+            r.product_sku || "-", r.product_name || "-",
+            r.quantity, r.is_freebie ? 0 : r.net_total, formatDate(r.delivery_date), getStatusThai(r.order_status),
         ]);
-        const csv = [headers, ...csvRows].map(row => row.join(",")).join("\n");
-        const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `sales_sheet_${year}_${String(month).padStart(2, "0")}.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
+        const finalData = [headers, ...dataRows];
+        downloadDataFile(finalData, `sales_sheet_${year}_${String(month).padStart(2, "0")}`, type);
+        setIsExportModalOpen(false);
     };
 
     // Column definitions for the filter headers
@@ -592,12 +590,12 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                             </button>
                         )}
                         <button
-                            onClick={exportCSV}
+                            onClick={() => setIsExportModalOpen(true)}
                             disabled={rows.length === 0}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 disabled:opacity-40 transition-colors"
                         >
                             <Download className="w-3.5 h-3.5" />
-                            {hasActiveFilters ? `ดาวน์โหลด (${filteredRows.length})` : 'ดาวน์โหลด CSV'}
+                            {hasActiveFilters ? `ดาวน์โหลด (${filteredRows.length})` : 'ดาวน์โหลด Export'}
                         </button>
                     </div>
                 </div>
@@ -826,7 +824,14 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                     )}
                 </div>
             </div>
-        </div >
+            
+            {/* Modal */}
+            <ExportTypeModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                onConfirm={handleExport}
+            />
+        </div>
     );
 };
 
