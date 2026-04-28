@@ -13,6 +13,8 @@ import {
   X,
   ChevronDown,
 } from "lucide-react";
+import ExportTypeModal from "@/components/ExportTypeModal";
+import { downloadDataFile } from "@/utils/exportUtils";
 import { Page, Promotion, AdSpend, User, UserRole } from "@/types";
 import {
   listPages,
@@ -252,6 +254,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [exporting, setExporting] = useState(false);
   const [exportDatePickerOpen, setExportDatePickerOpen] = useState(false);
   const exportDatePickerRef = useRef<HTMLDivElement>(null);
+  
+  const [isDashboardExportModalOpen, setIsDashboardExportModalOpen] = useState(false);
+  const [isAdsLogExportModalOpen, setIsAdsLogExportModalOpen] = useState(false);
 
   // Aggregated dashboard data by page and date
   const aggregatedByPage = useMemo(() => {
@@ -2036,7 +2041,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   }, [activeTab, adsInputMode, dateRange, selectedPages, selectedAdsGroups, dashboardSelectedUsers]);
   */
 
-  const exportDashboard = () => {
+  const exportDashboard = (type: 'csv' | 'xlsx') => {
     let dataToExport: any[] = [];
     let headers: string[] = [];
 
@@ -2073,17 +2078,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       }));
     }
 
-    const csvContent = "data:text/csv;charset=utf-8,"
-      + headers.join(",") + "\n"
-      + dataToExport.map(e => Object.values(e).map(v => `"${v}"`).join(",")).join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `marketing_dashboard_${adsInputMode}_${dateRange.start}_${dateRange.end}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = `marketing_dashboard_${adsInputMode}_${dateRange.start}_${dateRange.end}`;
+    const rows = dataToExport.map(e => Object.values(e));
+    downloadDataFile([headers, ...rows], filename, type);
+    setIsDashboardExportModalOpen(false);
   };
 
   const filteredPages = useMemo(() => {
@@ -3070,10 +3068,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   </button>
                 </div>
                 <button
-                  onClick={exportDashboard}
+                  onClick={() => setIsDashboardExportModalOpen(true)}
                   className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm flex items-center gap-2"
                 >
-                  Export CSV
+                  Export
                 </button>
               </div>
             </div>
@@ -3685,62 +3683,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     ยกเลิก
                   </button>
                   <button
-                    onClick={async () => {
-                      setExporting(true);
-                      try {
-                        const params = new URLSearchParams();
-                        if (exportTempStart)
-                          params.set("date_from", exportTempStart);
-                        if (exportTempEnd) params.set("date_to", exportTempEnd);
-                        if (exportSelectedPages.length > 0) {
-                          params.set("page_ids", exportSelectedPages.join(","));
-                        }
-
-                        const response = await fetch(
-                          `${API_BASE}/Marketing_DB/ads_log_export_csv.php?${params}`,
-                        );
-
-                        if (!response.ok) {
-                          throw new Error("Export failed");
-                        }
-
-                        // Get the filename from the response headers or create a default one
-                        const contentDisposition = response.headers.get(
-                          "content-disposition",
-                        );
-                        let filename = "marketing_ads_log.csv";
-                        if (contentDisposition) {
-                          const filenameMatch =
-                            contentDisposition.match(/filename="?([^"]+)"?/);
-                          if (filenameMatch) {
-                            filename = filenameMatch[1];
-                          }
-                        }
-
-                        // Create blob and download
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        window.URL.revokeObjectURL(url);
-
-                        setExportModalOpen(false);
-                      } catch (error) {
-                        console.error("Export error:", error);
-                        alert("การส่งออกข้อมูลล้มเหลว กรุณาลองใหม่");
-                      } finally {
-                        setExporting(false);
-                      }
-                    }}
+                    onClick={() => setIsAdsLogExportModalOpen(true)}
                     className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                     disabled={exporting}
                   >
                     <Download className="w-4 h-4" />
-                    {exporting ? "กำลังส่งออก..." : "ยืนยันและดาวน์โหลด"}
+                    {exporting ? "กำลังเตรียมข้อมูล..." : "เลือกรูปแบบไฟล์ส่งออก"}
                   </button>
                 </div>
               </div>
@@ -4550,6 +4498,51 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           </div>
         )
       }
+      <ExportTypeModal
+        isOpen={isDashboardExportModalOpen}
+        onClose={() => setIsDashboardExportModalOpen(false)}
+        onConfirm={exportDashboard}
+        isExporting={exporting}
+      />
+
+      <ExportTypeModal
+        isOpen={isAdsLogExportModalOpen}
+        onClose={() => setIsAdsLogExportModalOpen(false)}
+        onConfirm={async (type) => {
+          setExporting(true);
+          try {
+            const params = new URLSearchParams();
+            if (exportTempStart) params.set("date_from", exportTempStart);
+            if (exportTempEnd) params.set("date_to", exportTempEnd);
+            if (exportSelectedPages.length > 0) {
+              params.set("page_ids", exportSelectedPages.join(","));
+            }
+            params.set("format", "json");
+
+            const response = await fetch(`${API_BASE}/Marketing_DB/ads_log_export_csv.php?${params}`);
+            
+            if (!response.ok) {
+              throw new Error("Export failed");
+            }
+
+            const result = await response.json();
+            if (result.success && result.data && result.data.length > 0) {
+              const filename = `marketing_ads_log_${new Date().toISOString().split('T')[0]}`;
+              downloadDataFile(result.data, filename, type);
+            } else {
+              alert("ไม่มีข้อมูลสำหรับส่งออก");
+            }
+          } catch (error) {
+            console.error("Export error:", error);
+            alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
+          } finally {
+            setExporting(false);
+            setIsAdsLogExportModalOpen(false);
+            setExportModalOpen(false);
+          }
+        }}
+        isExporting={exporting}
+      />
     </div >
   );
 
