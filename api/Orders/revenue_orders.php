@@ -31,10 +31,11 @@ try {
     $year = isset($_GET['year']) ? (int) $_GET['year'] : (int) date('Y');
     $userId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : null;
     $type = isset($_GET['type']) ? $_GET['type'] : '';
+    $statusName = isset($_GET['status_name']) ? $_GET['status_name'] : '';
 
-    if ($companyId <= 0 || !in_array($type, ['returned', 'cancelled', 'upsell'])) {
+    if ($companyId <= 0 || !in_array($type, ['returned', 'cancelled', 'upsell', 'status'])) {
         http_response_code(400);
-        echo json_encode(['error' => 'Invalid parameters. Required: company_id, type (returned|cancelled|upsell)']);
+        echo json_encode(['error' => 'Invalid parameters. Required: company_id, type (returned|cancelled|upsell|status)']);
         exit();
     }
 
@@ -95,6 +96,44 @@ try {
             GROUP BY o.id, o.order_date, o.order_status, customer_name, customer_phone
             ORDER BY o.order_date DESC
         ";
+    } elseif ($type === 'status') {
+        // Query by specific status(es), e.g., 'Pending', 'Preparing,Picking'
+        $statuses = array_filter(array_map('trim', explode(',', $statusName)));
+        if (empty($statuses)) {
+            $statuses = ['']; // fallback
+        }
+        $placeholders = implode(',', array_fill(0, count($statuses), '?'));
+        
+        $sql = "
+            SELECT 
+                o.id as order_id,
+                o.order_date,
+                o.order_status,
+                CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) as customer_name,
+                c.phone as customer_phone,
+                COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as amount
+            FROM order_items oi
+            JOIN orders o ON oi.parent_order_id = o.id
+            LEFT JOIN customers c ON o.customer_id = c.customer_id AND c.company_id = o.company_id
+            WHERE o.company_id = ?
+            AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
+            AND o.order_status IN ($placeholders)
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND oi.parent_item_id IS NULL
+        ";
+        
+        $params = array_merge([$companyId, $year, $month], $statuses);
+        
+        if ($userId > 0) {
+            $sql .= " AND oi.creator_id = ? ";
+            $params[] = $userId;
+        }
+        
+        $sql .= "
+            GROUP BY o.id, o.order_date, o.order_status, customer_name, customer_phone
+            ORDER BY o.order_date DESC
+        ";
+        
     } else {
         // Upsell: basket_key_at_sale = 51
         $sql = "

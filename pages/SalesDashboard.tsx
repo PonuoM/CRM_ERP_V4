@@ -85,7 +85,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
 
   // Revenue Orders Modal State
   const [revenueModalOpen, setRevenueModalOpen] = useState(false);
-  const [revenueModalType, setRevenueModalType] = useState<'returned' | 'cancelled' | 'upsell'>('returned');
+  const [revenueModalType, setRevenueModalType] = useState<'returned' | 'cancelled' | 'upsell' | 'status'>('returned');
+  const [revenueModalStatusName, setRevenueModalStatusName] = useState('');
   const [revenueModalTitle, setRevenueModalTitle] = useState('');
   const [revenueOrders, setRevenueOrders] = useState<any[]>([]);
   const [revenueOrdersLoading, setRevenueOrdersLoading] = useState(false);
@@ -94,17 +95,18 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
   const [orderDetailModalOpen, setOrderDetailModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  const openRevenueModal = async (type: 'returned' | 'cancelled' | 'upsell', title: string) => {
+  const openRevenueModal = async (type: 'returned' | 'cancelled' | 'upsell' | 'status', title: string, statusName?: string) => {
     if (!user?.companyId) return;
     setRevenueModalType(type);
     setRevenueModalTitle(title);
+    if (statusName) setRevenueModalStatusName(statusName);
     setRevenueModalOpen(true);
     setRevenueModalPage(1);
     setRevenueOrdersLoading(true);
     try {
       const isCompanyAdmin = user.role === 'Admin Control' || user.role === 'Super Admin';
       const userIdFilter = isCompanyAdmin ? undefined : user.id;
-      const result = await getRevenueOrders(user.companyId, month, year, type, userIdFilter);
+      const result = await getRevenueOrders(user.companyId, month, year, type, userIdFilter, statusName);
       if (result.ok) {
         setRevenueOrders(result.orders || []);
       }
@@ -631,34 +633,59 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
             <h3 className="text-md font-semibold text-gray-700 mb-4">
               สถานะออเดอร์
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 text-sm">
               {loading ? (
                 <Spinner />
               ) : (
                 <>
-                  <div className="bg-yellow-50 p-4 rounded-lg text-center">
+                  <div 
+                    className="bg-yellow-50 p-3 rounded-lg text-center cursor-pointer hover:shadow-md transition-all border border-transparent hover:border-yellow-200"
+                    onClick={() => openRevenueModal('status', 'ออเดอร์: รอดำเนินการ', 'Pending')}
+                  >
                     <div className="text-2xl font-bold text-yellow-600">{orderStats?.statusCounts?.['Pending'] || 0}</div>
-                    <div className="text-gray-600 mt-1">รอดำเนินการ</div>
+                    <div className="text-gray-600 mt-1 flex items-center justify-center gap-1 text-xs"><Eye className="w-3 h-3 text-yellow-500" />รอดำเนินการ</div>
                   </div>
-                  <div className="bg-purple-50 p-4 rounded-lg text-center">
+                  <div 
+                    className="bg-purple-50 p-3 rounded-lg text-center cursor-pointer hover:shadow-md transition-all border border-transparent hover:border-purple-200"
+                    onClick={() => openRevenueModal('status', 'ออเดอร์: กำลังจัดเตรียม', 'Preparing,Picking')}
+                  >
                     <div className="text-2xl font-bold text-purple-600">{(orderStats?.statusCounts?.['Preparing'] || 0) + (orderStats?.statusCounts?.['Picking'] || 0)}</div>
-                    <div className="text-gray-600 mt-1">กำลังจัดเตรียม</div>
+                    <div className="text-gray-600 mt-1 flex items-center justify-center gap-1 text-xs"><Eye className="w-3 h-3 text-purple-500" />กำลังเตรียม</div>
                   </div>
-                  <div className="bg-blue-50 p-4 rounded-lg text-center">
+                  <div 
+                    className="bg-blue-50 p-3 rounded-lg text-center cursor-pointer hover:shadow-md transition-all border border-transparent hover:border-blue-200"
+                    onClick={() => openRevenueModal('status', 'ออเดอร์: กำลังจัดส่ง', 'Shipping')}
+                  >
                     <div className="text-2xl font-bold text-blue-600">{orderStats?.statusCounts?.['Shipping'] || 0}</div>
-                    <div className="text-gray-600 mt-1">กำลังจัดส่ง</div>
+                    <div className="text-gray-600 mt-1 flex items-center justify-center gap-1 text-xs"><Eye className="w-3 h-3 text-blue-500" />กำลังจัดส่ง</div>
                   </div>
-                  <div className="bg-orange-50 p-4 rounded-lg text-center">
+                  <div 
+                    className="bg-orange-50 p-3 rounded-lg text-center cursor-pointer hover:shadow-md transition-all border border-transparent hover:border-orange-200"
+                    onClick={() => openRevenueModal('status', 'ออเดอร์: รอตรวจสอบ', 'PreApproved,AwaitingVerification')}
+                  >
                     <div className="text-2xl font-bold text-orange-600">{(orderStats?.statusCounts?.['PreApproved'] || 0) + (orderStats?.statusCounts?.['AwaitingVerification'] || 0)}</div>
-                    <div className="text-gray-600 mt-1">รอตรวจสอบ</div>
+                    <div className="text-gray-600 mt-1 flex items-center justify-center gap-1 text-xs"><Eye className="w-3 h-3 text-orange-500" />รอตรวจสอบ</div>
                   </div>
-                  <div className="bg-green-50 p-4 rounded-lg text-center">
+                  <div 
+                    className="bg-green-50 p-3 rounded-lg text-center cursor-pointer hover:shadow-md transition-all border border-transparent hover:border-green-200"
+                    onClick={() => openRevenueModal('status', 'ออเดอร์: เสร็จสิ้น', 'Delivered')}
+                  >
                     <div className="text-2xl font-bold text-green-600">{orderStats?.statusCounts?.['Delivered'] || 0}</div>
-                    <div className="text-gray-600 mt-1">เสร็จสิ้น</div>
+                    <div className="text-gray-600 mt-1 flex items-center justify-center gap-1 text-xs"><Eye className="w-3 h-3 text-green-500" />เสร็จสิ้น</div>
                   </div>
-                  <div className="bg-gray-50 p-4 rounded-lg text-center">
+                  <div 
+                    className="bg-red-50 p-3 rounded-lg text-center cursor-pointer hover:shadow-md transition-all border border-transparent hover:border-red-200"
+                    onClick={() => openRevenueModal('status', 'ออเดอร์: ตีกลับ', 'Returned')}
+                  >
+                    <div className="text-2xl font-bold text-red-600">{orderStats?.statusCounts?.['Returned'] || 0}</div>
+                    <div className="text-gray-600 mt-1 flex items-center justify-center gap-1 text-xs"><Eye className="w-3 h-3 text-red-500" />ตีกลับ</div>
+                  </div>
+                  <div 
+                    className="bg-gray-50 p-3 rounded-lg text-center cursor-pointer hover:shadow-md transition-all border border-transparent hover:border-gray-300"
+                    onClick={() => openRevenueModal('status', 'ออเดอร์: ยกเลิก', 'Cancelled')}
+                  >
                     <div className="text-2xl font-bold text-gray-600">{orderStats?.statusCounts?.['Cancelled'] || 0}</div>
-                    <div className="text-gray-600 mt-1">ยกเลิก</div>
+                    <div className="text-gray-600 mt-1 flex items-center justify-center gap-1 text-xs"><Eye className="w-3 h-3 text-gray-500" />ยกเลิก</div>
                   </div>
                 </>
               )}

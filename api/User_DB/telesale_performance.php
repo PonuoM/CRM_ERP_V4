@@ -27,13 +27,14 @@ try {
     $currentUserId = $user['id'];
     $currentUserRole = strtolower($user['role'] ?? '');
 
-    // Role check - Admin, CEO, or Supervisor only
-    $isAdmin = strpos($currentUserRole, 'admin') !== false && strpos($currentUserRole, 'supervisor') === false;
+    // Role check - Admin, CEO, Supervisor, or Telesale
+    $isAdmin = strpos($currentUserRole, 'admin') !== false && strpos($currentUserRole, 'supervisor') === false && strpos($currentUserRole, 'admin page') === false;
     $isSupervisor = strpos($currentUserRole, 'supervisor') !== false;
     $isCEO = strpos($currentUserRole, 'ceo') !== false;
+    $isTelesale = strpos($currentUserRole, 'telesale') !== false || strpos($currentUserRole, 'admin page') !== false;
 
-    if (!$isAdmin && !$isSupervisor && !$isCEO) {
-        json_response(['success' => false, 'message' => 'Access denied. Admin, CEO, or Supervisor only.'], 403);
+    if (!$isAdmin && !$isSupervisor && !$isCEO && !$isTelesale) {
+        json_response(['success' => false, 'message' => 'Access denied. Valid role required.'], 403);
         exit;
     }
 
@@ -59,7 +60,7 @@ try {
         $dateParamsCalls = [sprintf('%04d-%02d', $year, $month)];
     }
 
-    // Build user filter for Supervisor (Admin and CEO see all)
+    // Build user filter for Supervisor and Telesale (Admin and CEO see all)
     $userFilter = "";
     $userParams = [];
 
@@ -67,6 +68,10 @@ try {
         // Supervisor sees their team AND themselves
         $userFilter = " AND (u.supervisor_id = ? OR u.id = ?)";
         $userParams = [$currentUserId, $currentUserId];
+    } elseif (!$isAdmin && !$isCEO && !$isSupervisor) {
+        // Normal telesale sees only themselves
+        $userFilter = " AND u.id = ?";
+        $userParams = [$currentUserId];
     }
 
     // ========================================
@@ -101,12 +106,12 @@ try {
 
     $sqlVisibleUsers = "
         SELECT u.id FROM users u 
-        WHERE u.company_id = ? AND u.role LIKE '%telesale%' AND u.status = 'active' $userFilter
+        WHERE u.company_id = ? AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%') AND u.status = 'active' $userFilter
         UNION
         SELECT DISTINCT u.id FROM users u
         JOIN order_items oi ON oi.creator_id = u.id
         JOIN orders o ON oi.parent_order_id = o.id
-        WHERE u.company_id = ? AND u.role LIKE '%telesale%' AND u.status != 'active'
+        WHERE u.company_id = ? AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%') AND u.status != 'active'
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
@@ -147,7 +152,7 @@ try {
         LEFT JOIN call_import_logs cl ON cl.matched_user_id = u.id
             AND $dateFilterCalls
         WHERE u.company_id = ?
-            AND u.role LIKE '%telesale%'
+            AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
             AND $visibleFilter
             $userFilter
         GROUP BY u.id, u.first_name, u.last_name, u.phone
@@ -183,7 +188,7 @@ try {
             AND oi.parent_item_id IS NULL
             AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale != 51)  -- NOT upsell
             AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
+            AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
             AND $visibleFilter
             $userFilter
         GROUP BY oi.creator_id
@@ -217,7 +222,7 @@ try {
             AND oi.parent_item_id IS NULL
             AND oi.basket_key_at_sale = 51  -- IS upsell (basket 51)
             AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
+            AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
             AND $visibleFilter
             $userFilter
         GROUP BY oi.creator_id
@@ -274,7 +279,7 @@ try {
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.parent_item_id IS NULL
             AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
+            AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
             AND $visibleFilter
             $userFilter
         GROUP BY oi.creator_id, category_type
@@ -317,7 +322,7 @@ try {
         WHERE c.current_basket_key IN ($allSegmentKeysIn)
             AND c.company_id = ?
             AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
+            AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
             AND u.status = 'active'
             $userFilter
         GROUP BY c.assigned_to
@@ -365,7 +370,7 @@ try {
             AND oi.parent_item_id IS NULL
             AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($allSegmentKeysIn)
             AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
+            AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
             AND $visibleFilter
             $userFilter
         GROUP BY oi.creator_id
@@ -405,7 +410,7 @@ try {
             JOIN users u ON a.user_id = u.id
             WHERE DATE(a.work_date) = ?
                 AND u.company_id = ?
-                AND u.role LIKE '%telesale%'
+                AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
                 AND $visibleFilter
                 $userFilter
             GROUP BY a.user_id
@@ -424,7 +429,7 @@ try {
             WHERE a.work_date BETWEEN ? AND ?
                 AND a.work_date < CURDATE()
                 AND u.company_id = ?
-                AND u.role LIKE '%telesale%'
+                AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
                 AND $visibleFilter
                 $userFilter
             GROUP BY a.user_id
@@ -458,7 +463,7 @@ try {
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.parent_item_id IS NULL
             AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
+            AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
             AND $visibleFilter
             $userFilter
         GROUP BY oi.creator_id
@@ -702,7 +707,7 @@ try {
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.parent_item_id IS NULL
             AND u.company_id = ?
-            AND u.role LIKE '%telesale%'
+            AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%')
             AND $visibleFilter
             $userFilter
     ";

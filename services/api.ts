@@ -1101,8 +1101,9 @@ export async function getRevenueOrders(
   companyId: number,
   month: string,
   year: string,
-  type: 'returned' | 'cancelled' | 'upsell',
-  userId?: number
+  type: 'returned' | 'cancelled' | 'upsell' | 'status',
+  userId?: number,
+  statusName?: string
 ) {
   const token = localStorage.getItem("token");
   const headers: Record<string, string> = {};
@@ -1114,6 +1115,7 @@ export async function getRevenueOrders(
   params.set("year", year);
   params.set("type", type);
   if (userId) params.set("user_id", String(userId));
+  if (statusName) params.set("status_name", statusName);
 
   const res = await fetch(`${apiBasePath}/Orders/revenue_orders.php?${params.toString()}`, {
     method: "GET",
