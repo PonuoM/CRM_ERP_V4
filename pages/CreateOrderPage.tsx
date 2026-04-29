@@ -4528,23 +4528,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const selectedPlatform = platforms.find((p) => p.name === salesChannel);
 
-      // Check if platform requires page selection
-
-      // - Platform name is not "โทร"
-
-      // - Platform has showPagesFrom set (or uses its own pages by default)
-
-      const hasShowPagesFrom =
-        selectedPlatform?.showPagesFrom &&
-        selectedPlatform.showPagesFrom.trim() !== "";
-
-      const usesOwnPages =
-        !selectedPlatform?.showPagesFrom || selectedPlatform.showPagesFrom === "";
-
-      const shouldHavePage =
-        selectedPlatform &&
-        selectedPlatform.name !== "โทร" &&
-        (hasShowPagesFrom || usesOwnPages);
+      // Check if platform requires page selection (data-driven via require_page column)
+      const shouldHavePage = selectedPlatform && selectedPlatform.requirePage !== false;
 
       if (shouldHavePage && !salesChannelPageId) {
         highlightField("salesChannelPage");
@@ -4691,22 +4676,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         salesChannelPageId: (() => {
           const selectedPlatform = platforms.find((p) => p.name === salesChannel);
 
-          if (!selectedPlatform || selectedPlatform.name === "โทร")
+          // If platform doesn't require page, skip
+          if (!selectedPlatform || selectedPlatform.requirePage === false)
             return undefined;
 
-          const hasShowPagesFrom =
-            selectedPlatform?.showPagesFrom &&
-            selectedPlatform.showPagesFrom.trim() !== "";
-
-          const usesOwnPages =
-            !selectedPlatform?.showPagesFrom ||
-            selectedPlatform.showPagesFrom === "";
-
-          // Only set pageId if platform should have pages (has showPagesFrom or uses own pages)
-
-          return hasShowPagesFrom || usesOwnPages
-            ? salesChannelPageId || undefined
-            : undefined;
+          return salesChannelPageId || undefined;
         })(),
 
         warehouseId: warehouseId || undefined,
@@ -7742,22 +7716,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               (p) => p.name === salesChannel,
                             );
 
-                            // Show page dropdown if:
-
-                            // 1. Platform is not "โทร" AND has showPagesFrom set
-
-                            // 2. OR platform doesn't have showPagesFrom (uses its own pages)
-
-                            const hasShowPagesFrom =
-                              selectedPlatform?.showPagesFrom &&
-                              selectedPlatform.showPagesFrom.trim() !== "";
-
-                            return (
-                              selectedPlatform &&
-                              selectedPlatform.name !== "โทร" &&
-                              (hasShowPagesFrom ||
-                                !selectedPlatform.showPagesFrom)
-                            );
+                            // Show page dropdown only if platform requires page selection (data-driven)
+                            return selectedPlatform && selectedPlatform.requirePage !== false;
                           })() && (
                               <select
                                 ref={salesChannelPageRef}

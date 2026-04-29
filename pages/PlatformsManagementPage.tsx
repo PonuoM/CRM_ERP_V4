@@ -19,6 +19,7 @@ interface Platform {
   active: boolean;
   sortOrder: number;
   showPagesFrom?: string | null;
+  requirePage: boolean;
   roleShow?: string[];
 }
 
@@ -84,6 +85,7 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
             active: Boolean(p.active),
             sortOrder: p.sort_order || 0,
             showPagesFrom: p.show_pages_from || null,
+            requirePage: p.require_page === undefined || p.require_page === null ? true : Boolean(Number(p.require_page)),
             roleShow: (() => {
               const raw = p.role_show;
               if (!raw) return [];
@@ -152,6 +154,7 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
               ? newPlatform.showPagesFrom
               : null
             : null,
+        requirePage: newPlatform.requirePage,
         roleShow: newPlatform.roleShow || [],
       });
 
@@ -183,6 +186,7 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
               ? updatedPlatform.showPagesFrom
               : null
             : null,
+        requirePage: updatedPlatform.requirePage,
         roleShow: updatedPlatform.roleShow || [],
       });
 
@@ -325,6 +329,9 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
                   รายละเอียด
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  เลือกเพจ
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   สถานะ
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
@@ -349,6 +356,11 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {platform.description || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${platform.requirePage ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-500"}`}>
+                      {platform.requirePage ? "ต้องเลือก" : "ไม่ต้อง"}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <button
@@ -444,6 +456,7 @@ const AddPlatformModal: React.FC<{
           ? Math.max(...existingPlatforms.map((p) => p.sortOrder || 0)) + 1
           : 1,
       showPagesFrom: null as string | null,
+      requirePage: true,
       roleShow: [] as string[],
     });
 
@@ -679,17 +692,35 @@ const AddPlatformModal: React.FC<{
             <div className="flex items-center">
               <input
                 type="checkbox"
-                id="active"
+                id="add-active"
                 checked={formData.active}
                 onChange={(e) =>
                   setFormData({ ...formData, active: e.target.checked })
                 }
                 className="mr-2"
               />
-              <label htmlFor="active" className="text-sm text-gray-700">
+              <label htmlFor="add-active" className="text-sm text-gray-700">
                 เปิดใช้งาน
               </label>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-md p-3">
+            <input
+              type="checkbox"
+              id="add-requirePage"
+              checked={formData.requirePage}
+              onChange={(e) =>
+                setFormData({ ...formData, requirePage: e.target.checked })
+              }
+              className="mr-1"
+            />
+            <label htmlFor="add-requirePage" className="text-sm text-gray-700">
+              <strong>ต้องเลือกเพจ</strong> ในหน้าสร้างออเดอร์
+            </label>
+            <p className="text-xs text-gray-500 ml-auto">
+              ปิดสำหรับแพลตฟอร์มที่ไม่ต้องเลือกเพจ เช่น โทร
+            </p>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t">
@@ -727,6 +758,7 @@ const EditPlatformModal: React.FC<{
     active: platform.active,
     sortOrder: platform.sortOrder,
     showPagesFrom: platform.showPagesFrom || null,
+    requirePage: platform.requirePage,
     roleShow: platform.roleShow || [],
   });
 
@@ -946,17 +978,35 @@ const EditPlatformModal: React.FC<{
           <div className="flex items-center">
             <input
               type="checkbox"
-              id="active"
+              id="edit-active"
               checked={formData.active}
               onChange={(e) =>
                 setFormData({ ...formData, active: e.target.checked })
               }
               className="mr-2"
             />
-            <label htmlFor="active" className="text-sm text-gray-700">
+            <label htmlFor="edit-active" className="text-sm text-gray-700">
               เปิดใช้งาน
             </label>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-md p-3">
+          <input
+            type="checkbox"
+            id="edit-requirePage"
+            checked={formData.requirePage}
+            onChange={(e) =>
+              setFormData({ ...formData, requirePage: e.target.checked })
+            }
+            className="mr-1"
+          />
+          <label htmlFor="edit-requirePage" className="text-sm text-gray-700">
+            <strong>ต้องเลือกเพจ</strong> ในหน้าสร้างออเดอร์
+          </label>
+          <p className="text-xs text-gray-500 ml-auto">
+            ปิดสำหรับแพลตฟอร์มที่ไม่ต้องเลือกเพจ เช่น โทร
+          </p>
         </div>
 
         <div className="flex justify-end gap-2 pt-4 border-t">

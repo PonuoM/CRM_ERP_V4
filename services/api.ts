@@ -537,6 +537,7 @@ export async function createPlatform(payload: {
   active?: boolean;
   sortOrder?: number;
   showPagesFrom?: string | null;
+  requirePage?: boolean;
   roleShow?: string[];
 }) {
   return apiFetch("platforms", {
@@ -549,6 +550,7 @@ export async function createPlatform(payload: {
       active: payload.active ?? true,
       sortOrder: payload.sortOrder ?? 0,
       showPagesFrom: payload.showPagesFrom && payload.showPagesFrom.trim() !== '' ? payload.showPagesFrom : null,
+      requirePage: payload.requirePage ?? true,
       roleShow: Array.isArray(payload.roleShow) && payload.roleShow.length > 0 ? payload.roleShow : null,
     }),
   });
@@ -561,6 +563,7 @@ export async function updatePlatform(id: number, payload: {
   active?: boolean;
   sortOrder?: number;
   showPagesFrom?: string | null;
+  requirePage?: boolean;
   roleShow?: string[] | null;
 }) {
   // Build payload with showPagesFrom handling
@@ -571,6 +574,11 @@ export async function updatePlatform(id: number, payload: {
     updatePayload.showPagesFrom = payload.showPagesFrom && payload.showPagesFrom.trim() !== ''
       ? payload.showPagesFrom
       : null;
+  }
+
+  // Always pass requirePage if provided
+  if (payload.requirePage !== undefined) {
+    updatePayload.requirePage = payload.requirePage;
   }
 
   if (payload.roleShow !== undefined) {

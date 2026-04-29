@@ -1393,6 +1393,7 @@ const App: React.FC = () => {
               active: p.active,
               sortOrder: p.sort_order,
               showPagesFrom: p.show_pages_from || null,
+              requirePage: p.require_page === undefined || p.require_page === null ? true : Boolean(Number(p.require_page)),
             }))
             : [],
         );

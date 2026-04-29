@@ -6704,10 +6704,11 @@ function handle_platforms(PDO $pdo, ?string $id): void
                     json_response(['error' => 'COMPANY_ID_REQUIRED'], 400);
                     return;
                 }
-                $stmt = $pdo->prepare('INSERT INTO platforms (name, display_name, description, company_id, active, sort_order, show_pages_from, role_show) VALUES (?,?,?,?,?,?,?,?)');
+                $stmt = $pdo->prepare('INSERT INTO platforms (name, display_name, description, company_id, active, sort_order, show_pages_from, require_page, role_show) VALUES (?,?,?,?,?,?,?,?,?)');
                 $active = isset($in['active']) ? (!empty($in['active']) ? 1 : 0) : 1;
                 $sortOrder = isset($in['sortOrder']) ? (int) $in['sortOrder'] : 0;
                 $showPagesFrom = isset($in['showPagesFrom']) ? (trim($in['showPagesFrom']) ?: null) : null;
+                $requirePage = isset($in['requirePage']) ? (!empty($in['requirePage']) ? 1 : 0) : 1;
                 $roleShow = isset($in['roleShow']) ? $in['roleShow'] : null;
                 if (is_array($roleShow)) {
                     $roleShow = json_encode(array_values($roleShow));
@@ -6722,6 +6723,7 @@ function handle_platforms(PDO $pdo, ?string $id): void
                     $active,
                     $sortOrder,
                     $showPagesFrom,
+                    $requirePage,
                     $roleShow
                 ]);
                 json_response(['id' => $pdo->lastInsertId()]);
@@ -6765,6 +6767,10 @@ function handle_platforms(PDO $pdo, ?string $id): void
                 if (isset($in['showPagesFrom'])) {
                     $set[] = 'show_pages_from = ?';
                     $params[] = trim($in['showPagesFrom']) ?: null;
+                }
+                if (array_key_exists('requirePage', $in)) {
+                    $set[] = 'require_page = ?';
+                    $params[] = !empty($in['requirePage']) ? 1 : 0;
                 }
                 if (array_key_exists('roleShow', $in)) {
                     $set[] = 'role_show = ?';
