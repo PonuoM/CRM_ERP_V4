@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Upload, Search, Loader2, AlertTriangle, CheckCircle2, FileSpreadsheet, Download, Trash2, ChevronDown, ChevronRight, Eye, X } from 'lucide-react';
+import ExportTypeModal from '../components/ExportTypeModal';
+import { downloadDataFile } from '../utils/exportUtils';
 import { Warehouse, Product } from '../types';
 import { inv2ImportDispatch, inv2ListDispatch, inv2DeleteDispatch, inv2GetDispatchBatch, listWarehouses, listProducts } from '../services/api';
 import APP_BASE_PATH from '../appBasePath';
@@ -62,6 +64,8 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
         start: new Date().toISOString().split('T')[0],
         end: new Date().toISOString().split('T')[0]
     });
+    const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -251,18 +255,50 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
         window.open(`${APP_BASE_PATH}api/inv2/dispatch_template.php`, '_blank');
     };
 
-    // ── Export CSV ──
+    // ── Export CSV/Excel ──
     const handleExport = () => {
         if (!exportDateRange.start || !exportDateRange.end) {
             alert('กรุณาเลือกช่วงวันที่ให้ครบถ้วน');
             return;
         }
-        
+        setIsExportTypeModalOpen(true);
+    };
+
+    const executeExport = async (type: 'csv' | 'xlsx') => {
         let startStr = exportDateRange.start;
         let endStr = exportDateRange.end;
         
-        const exportUrl = `${APP_BASE_PATH}api/inv2/export_dispatch_items.php?company_id=${companyId}&start_date=${startStr}&end_date=${endStr}`;
-        window.open(exportUrl, '_blank');
+        setIsExporting(true);
+        try {
+            const url = `${APP_BASE_PATH}api/inv2/export_dispatch_items.php?company_id=${companyId}&start_date=${startStr}&end_date=${endStr}&format=json`;
+            const response = await fetch(url);
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                const headers = [
+                    'หมายเลข Batch (อ้างอิง)', 'เวลาที่ Import', 'รหัสสินค้า', 'ชื่อสินค้า', 
+                    'รหัสรูปแบบ', 'รูปแบบสินค้า', 'หมายเลขออเดอร์ภายใน', 'หมายเลขคำสั่งซื้อออนไลน์', 
+                    'จำนวน', 'ราคาสินค้าทั้งหมด', 'วันที่สั่งซื้อ', 'วันที่จัดส่ง', 'สถานะคำสั่งซื้อ', 
+                    'แพลตฟอร์ม', 'ร้านค้า', 'คลังส่งสินค้า', 'หมายเลขพัสดุ', 'สถานะ', 'สถานะหักคลัง'
+                ];
+                
+                const rows = result.data.map((r: any) => [
+                    r.batch_doc_number, r.batch_created_at, r.product_sku, r.product_name,
+                    r.variant_code, r.variant_name, r.internal_order_id, r.online_order_id,
+                    r.quantity, r.total_price, r.order_date, r.ship_date, r.order_status,
+                    r.platform, r.shop, r.warehouse_name, r.tracking_number, r.status, r.stock_deducted
+                ]);
+                
+                downloadDataFile([headers, ...rows], `dispatch_export_${startStr}_to_${endStr}`, type);
+            } else {
+                alert('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
+            }
+        } catch (e: any) {
+            alert('เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.message);
+        } finally {
+            setIsExporting(false);
+            setIsExportTypeModalOpen(false);
+        }
     };
 
     const matchedCount = parsedRows.filter(r => r.matched).length;
@@ -297,7 +333,7 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
                         }}
                     />
                     <button onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
-                        <Download size={16} /> Export CSV
+                        <Download size={16} /> ส่งออกข้อมูล
                     </button>
                     &nbsp;&nbsp;&nbsp;
                     <button onClick={downloadTemplate} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', background: '#fff', color: '#374151', border: '1.5px solid #d1d5db', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
@@ -501,6 +537,14 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
                     </div>
                 )}
             </div>
+
+            {/* Export Format Modal */}
+            <ExportTypeModal
+                isOpen={isExportTypeModalOpen}
+                onClose={() => !isExporting && setIsExportTypeModalOpen(false)}
+                onConfirm={executeExport}
+                isExporting={isExporting}
+            />
         </div>
     );
 };

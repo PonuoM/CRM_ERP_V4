@@ -4,6 +4,8 @@ import usePersistentState from '../utils/usePersistentState';
 import { Search, ChevronLeft, ChevronRight, Download, DollarSign, ShoppingBag, CreditCard, TrendingUp, CheckCircle, Package, Truck, AlertCircle, XCircle, RotateCcw, Ban, FileWarning } from 'lucide-react';
 import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
+import ExportTypeModal from '../components/ExportTypeModal';
+import { downloadDataFile } from '../utils/exportUtils';
 
 interface StatementRow {
     statement_id: number;
@@ -199,6 +201,7 @@ const AccountingReportPage: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [banks, setBanks] = useState<BankAccount[]>([]);
     const [showOutstandingModal, setShowOutstandingModal] = useState(false);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
     // Filters
     const [selectedMonth, setSelectedMonth] = usePersistentState<number>('acc:month', new Date().getMonth() + 1);
@@ -270,45 +273,36 @@ const AccountingReportPage: React.FC = () => {
         }
     };
 
-    const handleExport = () => {
+    const executeExport = (type: 'csv' | 'xlsx') => {
         if (!statements.length) return;
+        setIsExportModalOpen(false);
 
         const headers = [
             "วันที่", "เวลา", "ธนาคาร", "ยอดเงินเข้า", "ช่องทาง", "รายละเอียด",
             "เลขที่ออเดอร์", "ยอดออเดอร์", "วิธีชำระ", "สถานะออเดอร์", "สถานะยืนยัน"
         ];
 
-        const csvContent = [
-            headers.join(','),
-            ...statements.map(s => {
-                const dateObj = new Date(s.transfer_at);
-                const dateStr = dateObj.toLocaleDateString('th-TH');
-                const timeStr = dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        const rows = statements.map(s => {
+            const dateObj = new Date(s.transfer_at);
+            const dateStr = dateObj.toLocaleDateString('th-TH');
+            const timeStr = dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
-                return [
-                    `"${dateStr}"`,
-                    `"${timeStr}"`,
-                    `"${(s.bank_name || '').replace(/"/g, '""')}"`,
-                    s.statement_amount,
-                    `"${(s.channel || '').replace(/"/g, '""')}"`,
-                    `"${(s.description || '').replace(/"/g, '""')}"`,
-                    `"${s.order_id || ''}"`,
-                    s.order_total_amount || 0,
-                    `"${mapPaymentMethod(s.payment_method) || ''}"`,
-                    `"${mapOrderStatus(s.order_status) || ''}"`,
-                    `"${s.payment_status || ''}"`
-                ].join(',');
-            })
-        ].join('\n');
+            return [
+                dateStr,
+                timeStr,
+                s.bank_name || '',
+                s.statement_amount,
+                s.channel || '',
+                s.description || '',
+                s.order_id || '',
+                s.order_total_amount || 0,
+                mapPaymentMethod(s.payment_method) || '',
+                mapOrderStatus(s.order_status) || '',
+                s.payment_status || ''
+            ];
+        });
 
-        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `statement_report_${selectedYear}_${selectedMonth}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        downloadDataFile([headers, ...rows], `statement_report_${selectedYear}_${selectedMonth}`, type);
     };
 
     const mapPaymentMethod = (method: string | null) => {
@@ -466,7 +460,7 @@ const AccountingReportPage: React.FC = () => {
                     </div>
 
                     <button
-                        onClick={handleExport}
+                        onClick={() => setIsExportModalOpen(true)}
                         disabled={statements.length === 0}
                         className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 shadow-sm transition-all text-sm font-medium disabled:opacity-50"
                     >
@@ -761,6 +755,12 @@ const AccountingReportPage: React.FC = () => {
                 onUpdate={() => {
                     loadData();
                 }}
+            />
+
+            <ExportTypeModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                onConfirm={executeExport}
             />
         </div>
     );

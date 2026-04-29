@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { apiFetch } from "../services/api";
 import { Download, Calendar } from "lucide-react";
+import ExportTypeModal from '../components/ExportTypeModal';
+import { downloadDataFile } from '../utils/exportUtils';
 
 interface MarketplacePageProps {
     currentUser: any;
@@ -75,6 +77,8 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
     const [tempStart, setTempStart] = useState("");
     const [tempEnd, setTempEnd] = useState("");
     const datePickerRef = useRef<HTMLDivElement>(null);
+    const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     const companyId = currentUser?.company_id || currentUser?.companyId;
 
@@ -352,19 +356,21 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
         return { start: formatDt(start), end: formatDt(end) };
     };
 
-    const exportDashboard = () => {
+    const executeExport = (type: 'csv' | 'xlsx') => {
         if (dashboardData.length === 0) {
             alert("ไม่มีข้อมูลสำหรับ Export");
             return;
         }
 
-        let csvContent = "ร้านค้า,แพลตฟอร์ม,ค่าแอด,ยอดขาย,ออเดอร์,ตีกลับ,ยกเลิก,%Ads\n";
+        setIsExporting(true);
+
+        const headers = ["ร้านค้า", "แพลตฟอร์ม", "ค่าแอด", "ยอดขาย", "ออเดอร์", "ตีกลับ", "ยกเลิก", "%Ads"];
         
-        dashboardData.forEach(row => {
+        const rows = dashboardData.map(row => {
             const pctAds = Number(row.total_sales || 0) > 0 ? ((Number(row.ads_cost) / Number(row.total_sales)) * 100).toFixed(2) : "0.00";
-            const rowData = [
-                `"${row.store_name}"`,
-                `"${row.platform}"`,
+            return [
+                row.store_name,
+                row.platform,
                 row.ads_cost || 0,
                 row.total_sales || 0,
                 row.total_orders || 0,
@@ -372,7 +378,6 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                 row.cancelled_amount || 0,
                 pctAds
             ];
-            csvContent += rowData.join(",") + "\n";
         });
 
         // Add summary row
@@ -382,16 +387,21 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
         const totalReturns = dashboardData.reduce((a, r) => a + Number(r.returns_amount || 0), 0);
         const totalCancelled = dashboardData.reduce((a, r) => a + Number(r.cancelled_amount || 0), 0);
         const totalPctAds = totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) : "0.00";
-        csvContent += `"รวมทั้งสิ้น","",${totalAds},${totalSales},${totalOrders},${totalReturns},${totalCancelled},${totalPctAds}\n`;
+        
+        rows.push([
+            "รวมทั้งสิ้น",
+            "",
+            totalAds,
+            totalSales,
+            totalOrders,
+            totalReturns,
+            totalCancelled,
+            totalPctAds
+        ]);
 
-        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `marketplace_dashboard_${dashDateFrom}_to_${dashDateTo}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        downloadDataFile([headers, ...rows], `marketplace_dashboard_${dashDateFrom}_to_${dashDateTo}`, type);
+        setIsExporting(false);
+        setIsExportTypeModalOpen(false);
     };
 
     const loadDashboard = useCallback(async () => {
@@ -916,11 +926,12 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                     <div className="flex items-center justify-between mb-4 flex-shrink-0">
                         <h2 className="text-lg font-semibold text-gray-800">แดชบอร์ด Marketplace</h2>
                         <button
-                            onClick={exportDashboard}
-                            className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md shadow-sm flex items-center gap-2 text-sm"
+                            onClick={() => setIsExportTypeModalOpen(true)}
+                            disabled={dashboardData.length === 0 || dashLoading || isExporting}
+                            className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md shadow-sm flex items-center gap-2 text-sm disabled:opacity-50"
                         >
                             <Download className="w-4 h-4" />
-                            Export CSV
+                            Export Data
                         </button>
                     </div>
 
@@ -1204,6 +1215,14 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                     )}
                 </section>
             )}
+
+            {/* Export Format Modal */}
+            <ExportTypeModal
+                isOpen={isExportTypeModalOpen}
+                onClose={() => !isExporting && setIsExportTypeModalOpen(false)}
+                onConfirm={executeExport}
+                isExporting={isExporting}
+            />
         </div>
     );
 };

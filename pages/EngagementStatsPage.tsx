@@ -1,4 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { format, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isWithinInterval, isBefore, isAfter } from 'date-fns';
+import { th } from 'date-fns/locale';
 import { Order, Customer, CallHistory, Page, User, UserRole } from '@/types';
 import ReactApexChart from 'react-apexcharts';
 import { Users as UsersIcon, Phone, ShoppingCart, Activity, ChevronDown, X, Search, Settings, Save, Download, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -68,6 +70,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   const [selectedPagesForExport, setSelectedPagesForExport] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<{ current: number, total: number }>({ current: 0, total: 0 });
+  const [isApiExportTypeModalOpen, setIsApiExportTypeModalOpen] = useState<boolean>(false);
+  const [isAllPagesExportTypeModalOpen, setIsAllPagesExportTypeModalOpen] = useState<boolean>(false);
 
   // Upload modal state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
@@ -695,32 +699,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     }
   };
 
-  // Export CSV function for mock data
-  const exportCSV = () => {
-    const headers = [
-      'Page ID', 'เวลา', 'ลูกค้าใหม่', 'ลูกค้าเก่า', 'รวม', 'กี่เท่า', 'ยอดออเดอร์', 'ออเดอร์ลูกค้าใหม่', '% สั่งซื้อ/ติดต่อ', '% สั่งซื้อ/ลูกค้าใหม่'
-    ];
-    const csvRows = rows.map(r => [
-      selectedPageId === 'all' ? '' : String(selectedPageId), r.date, r.newInteract, r.oldInteract, r.totalInteract, r.newInteract > 0 ? (r.oldInteract / r.newInteract).toFixed(2) : '0', r.totalOrders, r.ordersFromNew, r.pctOrderPerInteract.toFixed(2), r.pctOrderPerNew.toFixed(2)
-    ]);
-    csvRows.push([
-      '', 'รวม', sum.newInteract, sum.oldInteract, sum.totalInteract, sum.talked, sum.totalOrders, sum.ordersFromNew, '', ''
-    ]);
-
-    // Add BOM for UTF-8 to ensure proper Thai character display in Excel
-    const BOM = '\uFEFF';
-    const csvContent = [headers, ...csvRows].map(r => r.join(',')).join('\n');
-    const csvWithBOM = BOM + csvContent;
-
-    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `engagement-stats-${fmtDate(startDate)}-to-${fmtDate(endDate)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
+  // Dead mock data export removed
   // Fetch engagement stats for export
   const fetchEngagementStatsForExport = async (pageId: string, accessToken: string, since: number, until: number) => {
     // Format date range for API (DD/MM/YYYY HH:mm:ss - DD/MM/YYYY HH:mm:ss)
@@ -777,8 +756,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     return engagementResult;
   };
 
-  // Export data from API to CSV
-  const exportAPIDataToCSV = async () => {
+  // Export data from API to CSV/Excel
+  const executeExportAPIData = async (type: 'csv' | 'xlsx') => {
+    setIsApiExportTypeModalOpen(false);
     if (!currentUser || selectedPagesForExport.size === 0) {
       alert('กรุณาเลือกเพจอย่างน้อย 1 เพจ');
       return;
@@ -904,18 +884,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         ];
       });
 
-      // Add BOM for UTF-8 to ensure proper Thai character display in Excel
-      const BOM = '\uFEFF';
-      const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
-      const csvWithBOM = BOM + csvContent;
-
-      const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `engagement-stats-export-${s.toISOString().split('T')[0]}-to-${e.toISOString().split('T')[0]}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const finalData = [headers, ...rows];
+      downloadDataFile(finalData, `engagement-stats-export-${s.toISOString().split('T')[0]}-to-${e.toISOString().split('T')[0]}`, type);
 
       // Close modal after successful export
       setIsExportModalOpen(false);
@@ -1439,7 +1409,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             onClick={() => setIsExportModalOpen(true)}
             className="border border-gray-300 rounded-md px-3 py-1.5 text-sm flex items-center gap-1 text-gray-700 bg-white hover:bg-gray-50"
           >
-            <Download className="w-4 h-4" /> CSV
+            <Download className="w-4 h-4" /> ส่งออกข้อมูล
           </button>
           {isStoreDbEnabled && (
             <button
@@ -1942,98 +1912,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   </div>
                 )}
 
-                {/* Download CSV Button - Only show after data is loaded */}
+                {/* Download Button - Only show after data is loaded */}
                 {Object.keys(allPagesEngagementData).length > 0 && (
                   <button
-                    onClick={() => {
-                      // Process data for CSV export
-                      const csvData: any[] = [];
-
-                      // Collect data from all pages
-                      Object.values(allPagesEngagementData).forEach((pageData: any) => {
-                        if (pageData && pageData.data) {
-                          const series = pageData.data.series || [];
-                          const categories = pageData.data.categories || [];
-
-                          // Find the series we need
-                          const inboxSeries = series.find((s: any) => s.name === 'inbox') || { data: [] };
-                          const commentSeries = series.find((s: any) => s.name === 'comment') || { data: [] };
-                          const totalSeries = series.find((s: any) => s.name === 'total') || { data: [] };
-                          const newCustomerRepliedSeries = series.find((s: any) => s.name === 'new_customer_replied') || { data: [] };
-                          const orderCountSeries = series.find((s: any) => s.name === 'order_count') || { data: [] };
-                          const oldOrderCountSeries = series.find((s: any) => s.name === 'old_order_count') || { data: [] };
-
-                          // Create rows for each date
-                          categories.forEach((date: string, index: number) => {
-                            const inbox = inboxSeries.data[index] || 0;
-                            const comment = commentSeries.data[index] || 0;
-                            const total = totalSeries.data[index] || 0;
-                            const newCustomerReplied = newCustomerRepliedSeries.data[index] || 0;
-                            const orderCount = orderCountSeries.data[index] || 0;
-                            const oldOrderCount = oldOrderCountSeries.data[index] || 0;
-
-                            const oldCustomerReplied = total - newCustomerReplied;
-                            const newOrderCount = orderCount - oldOrderCount;
-
-                            csvData.push({
-                              page_id: pageData.pageId,
-                              page_name: pageData.pageName,
-                              date: date,
-                              newCustomerReplied: newCustomerReplied,
-                              oldCustomerReplied: oldCustomerReplied,
-                              total: total,
-                              orderCount: orderCount,
-                              newOrderCount: newOrderCount
-                            });
-                          });
-                        }
-                      });
-
-                      // Sort data by date
-                      csvData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-                      // Generate CSV
-                      const headers = [
-                        'Page ID', 'เพจ', 'เวลา', 'ลูกค้าใหม่', 'ลูกค้าเก่า', 'รวม', 'กี่เท่า', 'ยอดออเดอร์', 'ออเดอร์ลูกค้าใหม่', '% สั่งซื้อ/ติดต่อ', '% สั่งซื้อ/ลูกค้าใหม่'
-                      ];
-
-                      const rows = csvData.map(item => {
-                        return [
-                          item.page_id,
-                          item.page_name,
-                          item.date,
-                          item.newCustomerReplied,
-                          item.oldCustomerReplied,
-                          item.total,
-                          item.newCustomerReplied > 0 ? (item.oldCustomerReplied / item.newCustomerReplied).toFixed(2) : '0',
-                          item.orderCount,
-                          item.newOrderCount,
-                          item.total > 0 ? ((item.orderCount / item.total) * 100).toFixed(2) + '%' : '-',
-                          item.newCustomerReplied > 0 ? ((item.newOrderCount / item.newCustomerReplied) * 100).toFixed(2) + '%' : '-'
-                        ];
-                      });
-
-                      // Add BOM for UTF-8 to ensure proper Thai character display in Excel
-                      const BOM = '\uFEFF';
-                      const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
-                      const csvWithBOM = BOM + csvContent;
-
-                      const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-
-                      // Generate filename with date range
-                      const s = new Date(pageTabDateRange.start);
-                      const e = new Date(pageTabDateRange.end);
-                      a.download = `all-pages-engagement-${s.toISOString().split('T')[0]}-to-${e.toISOString().split('T')[0]}.csv`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
+                    onClick={() => setIsAllPagesExportTypeModalOpen(true)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
                   >
                     <Download className="w-4 h-4 inline mr-1" />
-                    ดาวน์โหลด CSV
+                    ส่งออกข้อมูล
                   </button>
                 )}
               </div>
@@ -2172,7 +2058,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
             <div className={`bg-white rounded-lg p-6 w-full max-w-4xl ${isExportRangePopoverOpen ? 'h-auto' : 'max-h-[90vh]'} overflow-y-auto`}>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">ส่งออกข้อมูลเป็น CSV</h2>
+                <h2 className="text-xl font-semibold">ส่งออกข้อมูล</h2>
                 <button
                   onClick={() => setIsExportModalOpen(false)}
                   className="p-1 rounded-full hover:bg-gray-100"
@@ -2406,11 +2292,11 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                     ยกเลิก
                   </button>
                   <button
-                    onClick={exportAPIDataToCSV}
+                    onClick={() => setIsApiExportTypeModalOpen(true)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
                     disabled={isExporting || selectedPagesForExport.size === 0 || !exportDateRange}
                   >
-                    {isExporting ? 'กำลังส่งออก...' : 'ดาวน์โหลด CSV'}
+                    {isExporting ? 'กำลังส่งออก...' : 'ส่งออกข้อมูล'}
                   </button>
                 </div>
               </div>
@@ -2743,6 +2629,69 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         onClose={() => setIsTokenErrorModalOpen(false)}
         errors={tokenErrors}
         successCount={tokenErrorSuccessCount}
+      />
+      {/* Export Format Modals */}
+      <ExportTypeModal
+        isOpen={isApiExportTypeModalOpen}
+        onClose={() => setIsApiExportTypeModalOpen(false)}
+        onConfirm={executeExportAPIData}
+        isExporting={isExporting}
+      />
+      
+      <ExportTypeModal
+        isOpen={isAllPagesExportTypeModalOpen}
+        onClose={() => setIsAllPagesExportTypeModalOpen(false)}
+        onConfirm={(type) => {
+          setIsAllPagesExportTypeModalOpen(false);
+          const csvData: any[] = [];
+          Object.values(allPagesEngagementData).forEach((pageData: any) => {
+            if (pageData && pageData.data) {
+              const series = pageData.data.series || [];
+              const categories = pageData.data.categories || [];
+              const inboxSeries = series.find((s: any) => s.name === 'inbox') || { data: [] };
+              const commentSeries = series.find((s: any) => s.name === 'comment') || { data: [] };
+              const totalSeries = series.find((s: any) => s.name === 'total') || { data: [] };
+              const newCustomerRepliedSeries = series.find((s: any) => s.name === 'new_customer_replied') || { data: [] };
+              const orderCountSeries = series.find((s: any) => s.name === 'order_count') || { data: [] };
+              const oldOrderCountSeries = series.find((s: any) => s.name === 'old_order_count') || { data: [] };
+
+              categories.forEach((date: string, index: number) => {
+                const total = totalSeries.data[index] || 0;
+                const newCustomerReplied = newCustomerRepliedSeries.data[index] || 0;
+                const orderCount = orderCountSeries.data[index] || 0;
+                const oldOrderCount = oldOrderCountSeries.data[index] || 0;
+                const oldCustomerReplied = total - newCustomerReplied;
+                const newOrderCount = orderCount - oldOrderCount;
+
+                csvData.push({
+                  page_id: pageData.pageId,
+                  page_name: pageData.pageName,
+                  date: date,
+                  newCustomerReplied: newCustomerReplied,
+                  oldCustomerReplied: oldCustomerReplied,
+                  total: total,
+                  orderCount: orderCount,
+                  newOrderCount: newOrderCount
+                });
+              });
+            }
+          });
+
+          csvData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          const headers = ['Page ID', 'เพจ', 'เวลา', 'ลูกค้าใหม่', 'ลูกค้าเก่า', 'รวม', 'กี่เท่า', 'ยอดออเดอร์', 'ออเดอร์ลูกค้าใหม่', '% สั่งซื้อ/ติดต่อ', '% สั่งซื้อ/ลูกค้าใหม่'];
+          const rows = csvData.map(item => [
+            item.page_id, item.page_name, item.date, item.newCustomerReplied, item.oldCustomerReplied, item.total,
+            item.newCustomerReplied > 0 ? (item.oldCustomerReplied / item.newCustomerReplied).toFixed(2) : '0',
+            item.orderCount, item.newOrderCount,
+            item.total > 0 ? ((item.orderCount / item.total) * 100).toFixed(2) + '%' : '-',
+            item.newCustomerReplied > 0 ? ((item.newOrderCount / item.newCustomerReplied) * 100).toFixed(2) + '%' : '-'
+          ]);
+
+          const s = new Date(pageTabDateRange.start);
+          const e = new Date(pageTabDateRange.end);
+          downloadDataFile([headers, ...rows], `all-pages-engagement-${s.toISOString().split('T')[0]}-to-${e.toISOString().split('T')[0]}`, type);
+        }}
+        isExporting={false}
       />
     </>
   );

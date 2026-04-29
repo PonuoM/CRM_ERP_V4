@@ -57,6 +57,18 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
 
+    $format = $_GET['format'] ?? 'csv';
+
+    if ($format === 'json') {
+        $data = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $data[] = $row;
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true, 'data' => $data]);
+        exit;
+    }
+
     header('Content-Type: text/csv; charset=utf-8');
     header("Content-Disposition: attachment; filename=\"distribution_history_" . date('Y-m-d') . ".csv\"");
     $output = fopen('php://output', 'w');

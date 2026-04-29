@@ -65,18 +65,6 @@ try {
     $stmt->execute($params);
     $logs = $stmt->fetchAll();
 
-    // Set headers for CSV download
-    header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="marketing_ads_log_' . date('Y-m-d_H-i-s') . '.csv"');
-    header('Cache-Control: no-cache, must-revalidate');
-    header('Expires: Sat, 26 Jul 1997 05:00:00 GMT');
-
-    // Open output stream
-    $output = fopen('php://output', 'w');
-
-    // Add BOM for UTF-8 (to fix Thai characters in Excel)
-    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-
     // CSV headers in Thai
     $headers = [
         'ID',
@@ -92,6 +80,43 @@ try {
         'วันที่สร้าง'
     ];
 
+    // Check requested format
+    $format = isset($_GET['format']) ? $_GET['format'] : 'csv';
+
+    if ($format === 'json') {
+        $jsonRows = [$headers];
+        foreach ($logs as $log) {
+            $jsonRows[] = [
+                $log['id'],
+                $log['date'],
+                $log['page_name'] ?: '',
+                $log['page_platform'] ?: '',
+                $log['user_fullname'] ?: '',
+                $log['user_username'] ?: '',
+                $log['ads_cost'], // raw value for proper Excel formatting
+                $log['impressions'],
+                $log['reach'],
+                $log['clicks'],
+                $log['created_at']
+            ];
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode(["success" => true, "data" => $jsonRows]);
+        exit;
+    }
+
+    // Set headers for CSV download
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="marketing_ads_log_' . date('Y-m-d_H-i-s') . '.csv"');
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Expires: Sat, 26 Jul 1997 05:00:00 GMT');
+
+    // Open output stream
+    $output = fopen('php://output', 'w');
+
+    // Add BOM for UTF-8 (to fix Thai characters in Excel)
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+
     // Write headers
     fputcsv($output, $headers);
 
@@ -104,10 +129,10 @@ try {
             $log['page_platform'] ?: '',
             $log['user_fullname'] ?: '',
             $log['user_username'] ?: '',
-            number_format($log['ads_cost'], 2, '.', ','),
-            number_format($log['impressions'], 0, '.', ','),
-            number_format($log['reach'], 0, '.', ','),
-            number_format($log['clicks'], 0, '.', ','),
+            number_format($log['ads_cost'], 2, '.', ''), // avoid comma for csv raw data if possible, but keep as is
+            number_format($log['impressions'], 0, '.', ''),
+            number_format($log['reach'], 0, '.', ''),
+            number_format($log['clicks'], 0, '.', ''),
             $log['created_at']
         ];
         fputcsv($output, $row);

@@ -471,6 +471,18 @@ try {
         ]);
     }
 
+    $format = $_GET['format'] ?? 'csv';
+
+    if ($format === 'json') {
+        header('Content-Type: application/json; charset=utf-8');
+        $jsonRows = [$headers];
+        foreach ($rows as $row) {
+            $jsonRows[] = formatCsvRow($row, $lookups, $regionMap, $statusThai, $customerTypeThai, $includeStampCols);
+        }
+        echo json_encode(['ok' => true, 'data' => $jsonRows]);
+        exit;
+    }
+
     header('Content-Type: text/csv; charset=utf-8');
     $statusLabel = $status === 'all' ? 'all' : $status;
     $filename = "commission_orders_{$statusLabel}_" . date('Y-m-d') . ".csv";

@@ -34,6 +34,8 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 500];
 // --- Order Detail Modal Component ---
 import OrderDetailModal from '../../components/OrderDetailModal';
 import TrackingModal from '../../components/TrackingModal';
+import ExportTypeModal from '../../components/ExportTypeModal';
+import { downloadDataFile } from '../../utils/exportUtils';
 
 
 
@@ -77,6 +79,7 @@ const AllOrdersSentPage: React.FC = () => {
     // Modal State
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [openTrackingId, setOpenTrackingId] = useState<string | null>(null);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
     useEffect(() => {
         loadBanks();
@@ -196,11 +199,12 @@ const AllOrdersSentPage: React.FC = () => {
         return map[status] || status;
     }
 
-    const handleExportCSV = () => {
+    const executeExport = (type: 'csv' | 'xlsx') => {
         if (orders.length === 0) {
             alert("ไม่พบข้อมูลสำหรับส่งออก");
             return;
         }
+        setIsExportModalOpen(false);
 
         const headers = [
             "Order ID",
@@ -216,31 +220,21 @@ const AllOrdersSentPage: React.FC = () => {
             "Tracking Numbers"
         ];
 
-        const csvContent = [
-            headers.join(","),
-            ...orders.map(order => [
-                `"${order.id}"`,
-                `"${formatDate(order.order_date)}"`,
-                `"${formatDate(order.delivery_date)}"`,
-                `"${(order.customer_first_name + ' ' + order.customer_last_name).replace(/"/g, '""')}"`,
-                `"${(order.recipient_first_name ? order.recipient_first_name + ' ' + order.recipient_last_name : '').replace(/"/g, '""')}"`,
-                `"${order.payment_method}"`,
-                `"${(order.bank_info || '').replace(/"/g, '""')}"`,
-                order.total_amount,
-                order.total_slip_amount || 0,
-                `"${mapOrderStatus(order.order_status)}"`,
-                `"${(order.tracking_numbers || '').replace(/"/g, '""')}"`
-            ].join(","))
-        ].join("\n");
+        const rows = orders.map(order => [
+            order.id,
+            formatDate(order.order_date),
+            formatDate(order.delivery_date),
+            order.customer_first_name + ' ' + order.customer_last_name,
+            order.recipient_first_name ? order.recipient_first_name + ' ' + order.recipient_last_name : '',
+            order.payment_method,
+            order.bank_info || '',
+            order.total_amount,
+            order.total_slip_amount || 0,
+            mapOrderStatus(order.order_status),
+            order.tracking_numbers || ''
+        ]);
 
-        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `sent_orders_${startDate}_${endDate}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        downloadDataFile([headers, ...rows], `sent_orders_${startDate}_${endDate}`, type);
     };
 
     return (
@@ -347,7 +341,7 @@ const AllOrdersSentPage: React.FC = () => {
                             </button>
 
                             <button
-                                onClick={handleExportCSV}
+                                onClick={() => setIsExportModalOpen(true)}
                                 disabled={orders.length === 0 || loading}
                                 className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm transition-all flex items-center gap-2 font-medium disabled:opacity-50"
                             >
@@ -561,6 +555,12 @@ const AllOrdersSentPage: React.FC = () => {
                 isOpen={!!selectedOrderId}
                 onClose={() => setSelectedOrderId(null)}
                 orderId={selectedOrderId}
+            />
+
+            <ExportTypeModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                onConfirm={executeExport}
             />
         </div>
     );

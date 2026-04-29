@@ -14,7 +14,8 @@ import {
   FileSpreadsheet,
   Loader2,
   RotateCcw,
-  ExternalLink
+  ExternalLink,
+  Headphones
 } from 'lucide-react';
 import { Order, Customer, Product, WarehouseStock, StockMovement, PaymentMethod, PaymentStatus, OrderStatus, User, Page } from '../types';
 import { calculateCustomerGrade } from '@/utils/customerGrade';
@@ -22,6 +23,8 @@ import { apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
 import APP_BASE_PATH from '../appBasePath';
 import DateRangePicker, { DateRange } from '../components/DateRangePicker';
+import ExportTypeModal from '../components/ExportTypeModal';
+import { downloadDataFile } from '../utils/exportUtils';
 
 const getCustomerDisplayName = (customer: Customer): string => {
   const first = (customer.firstName || '').trim();
@@ -46,7 +49,7 @@ interface ReportsPageProps {
   pages?: Page[];
 }
 
-type ReportType = 'stock' | 'lot-stock' | 'customers' | 'orders-raw' | 'return-summary' | 'commission';
+type ReportType = 'stock' | 'lot-stock' | 'customers' | 'orders-raw' | 'return-summary' | 'commission' | 'call-history';
 
 interface ReportCard {
   id: ReportType;
@@ -109,6 +112,14 @@ const reportCards: ReportCard[] = [
     icon: DollarSign,
     color: 'bg-emerald-500',
     disabled: false
+  },
+  {
+    id: 'call-history',
+    title: 'บันทึกการโทร',
+    description: 'รายงานบันทึกการโทรติดต่อลูกค้าจากระบบโทรศัพท์ แยกตามองค์กร',
+    icon: Headphones,
+    color: 'bg-blue-500',
+    disabled: false
   }
 ];
 
@@ -128,6 +139,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [fetchedOrders, setFetchedOrders] = useState<Order[]>([]);
   const [fetchedCustomers, setFetchedCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -152,11 +164,18 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   const [commGroupBy, setCommGroupBy] = useState<'month' | 'week' | 'day'>('month');
   const [isCommLoading, setIsCommLoading] = useState(false);
   const [isCommExporting, setIsCommExporting] = useState(false);
+  const [commExportStatus, setCommExportStatus] = useState<string | null>(null);
+  const [isCommExportModalOpen, setIsCommExportModalOpen] = useState(false);
   const now = new Date();
   const defaultCommStart = `${now.getFullYear()}-01-01T00:00`;
   const defaultCommEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T23:59`;
   const [commSummaryRange, setCommSummaryRange] = useState<DateRange>({ start: defaultCommStart, end: defaultCommEnd });
   const [commExportRange, setCommExportRange] = useState<DateRange>({ start: defaultCommStart, end: defaultCommEnd });
+
+  // Call history export state
+  const [isCallHistoryExporting, setIsCallHistoryExporting] = useState(false);
+  const [callHistoryPreviewRows, setCallHistoryPreviewRows] = useState<any[]>([]);
+  const [isCallHistoryPreviewLoading, setIsCallHistoryPreviewLoading] = useState(false);
 
   // Calculate date range for filtering
   const getDateRange = () => {
@@ -445,19 +464,117 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     fetchCommSummary();
   }, [selectedReport, commGroupBy, commSummaryRange, currentUser]);
 
+  // Fetch Call History preview
+  useEffect(() => {
+    if (selectedReport !== 'call-history') return;
+    const fetchCallHistoryPreview = async () => {
+      setIsCallHistoryPreviewLoading(true);
+      try {
+        const companyId = currentUser?.companyId || 1;
+        const { filterStartDate, filterEndDate } = getDateRange();
+        const formatLocalDate = (d: Date) => {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+        const sd = formatLocalDate(filterStartDate);
+        const ed = formatLocalDate(filterEndDate);
+        const path = `Reports/export_call_history.php?company_id=${companyId}&start_date=${sd}&end_date=${ed}&format=preview`;
+        const res = await apiFetch(path);
+        
+        if (res && res.data) {
+          setCallHistoryPreviewRows(res.data);
+        } else {
+          setCallHistoryPreviewRows([]);
+        }
+      } catch (e) {
+        console.error('Failed to fetch call history preview:', e);
+        setCallHistoryPreviewRows([]);
+      } finally {
+        setIsCallHistoryPreviewLoading(false);
+      }
+    };
+    fetchCallHistoryPreview();
+  }, [selectedReport, dateRange, startDate, endDate, currentUser]);
+
   // Commission export handler
-  const handleCommExport = (status: string) => {
+  const handleCommExportClick = (status: string) => {
+    setCommExportStatus(status);
+    setIsCommExportModalOpen(true);
+  };
+
+  const executeCommExport = async (fileType: 'csv' | 'xlsx') => {
+    if (!commExportStatus) return;
     setIsCommExporting(true);
     try {
       const companyId = currentUser?.companyId || 1;
       const sd = commExportRange.start.split('T')[0];
       const ed = commExportRange.end.split('T')[0];
-      const path = `Commission/export_commission_orders.php?company_id=${companyId}&status=${status}&start_date=${sd}&end_date=${ed}`;
+      const path = `Commission/export_commission_orders.php?company_id=${companyId}&status=${commExportStatus}&start_date=${sd}&end_date=${ed}&format=json`;
       const baseUrl = resolveApiBasePath().replace(/\/$/, '');
       const token = localStorage.getItem('authToken') || '';
-      window.open(`${baseUrl}/${path}&token=${encodeURIComponent(token)}`, '_blank');
-    } catch (e) { console.error(e); }
-    setIsCommExporting(false);
+      
+      const response = await fetch(`${baseUrl}/${path}&token=${encodeURIComponent(token)}`);
+      if (!response.ok) throw new Error('Network response was not ok');
+      const result = await response.json();
+      
+      if (result.ok && result.data && result.data.length > 0) {
+        const statusLabel = commExportStatus === 'all' ? 'all' : commExportStatus;
+        const filename = `commission_orders_${statusLabel}_${new Date().toISOString().split('T')[0]}`;
+        downloadDataFile(result.data, filename, fileType);
+      } else {
+        alert(result.error || "ไม่มีข้อมูลสำหรับส่งออก");
+      }
+    } catch (e) { 
+      console.error(e); 
+      alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
+    } finally {
+      setIsCommExporting(false);
+      setIsCommExportModalOpen(false);
+    }
+  };
+
+  // Call History export handler
+  const [isCallHistoryExportModalOpen, setIsCallHistoryExportModalOpen] = useState(false);
+  const handleCallHistoryExportClick = () => {
+    setIsCallHistoryExportModalOpen(true);
+  };
+
+  const executeCallHistoryExport = async (fileType: 'csv' | 'xlsx') => {
+    setIsCallHistoryExporting(true);
+    try {
+      const companyId = currentUser?.companyId || 1;
+      const { filterStartDate, filterEndDate } = getDateRange();
+      const formatLocalDate = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+      const sd = formatLocalDate(filterStartDate);
+      const ed = formatLocalDate(filterEndDate);
+      const path = `Reports/export_call_history.php?company_id=${companyId}&start_date=${sd}&end_date=${ed}&format=json`;
+      const baseUrl = resolveApiBasePath().replace(/\/$/, '');
+      const token = localStorage.getItem('authToken') || '';
+      
+      const response = await fetch(`${baseUrl}/${path}&token=${encodeURIComponent(token)}`);
+      if (!response.ok) throw new Error('Network response was not ok');
+      const result = await response.json();
+      
+      if (result.ok && result.data && result.data.length > 0) {
+        const filename = `call_history_${new Date().toISOString().split('T')[0]}`;
+        downloadDataFile(result.data, filename, fileType);
+      } else {
+        alert(result.error || "ไม่มีข้อมูลสำหรับส่งออก");
+      }
+    } catch (e) { 
+      console.error(e); 
+      alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
+    } finally {
+      setIsCallHistoryExporting(false);
+      setIsCallHistoryExportModalOpen(false);
+    }
   };
 
   // Commission period label helper
@@ -1117,41 +1234,16 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     };
   }, [orders, allCustomers, products, warehouseStock, stockMovements, productLots, dateRange, startDate, endDate, orderBoxesMap]);
 
-  // ฟังก์ชันดาวน์โหลด CSV
-  const downloadCSV = (data: any[], filename: string) => {
-    if (data.length === 0) {
-      alert('ไม่มีข้อมูลสำหรับดาวน์โหลด');
-      return;
-    }
+  // (local downloadCSV removed, using downloadDataFile instead)
 
-    const headers = Object.keys(data[0]);
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row =>
-        headers.map(header => {
-          const value = row[header];
-          // Escape comma and quotes
-          if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-            return `"${value.replace(/"/g, '""')}"`;
-          }
-          return value ?? '';
-        }).join(',')
-      )
-    ].join('\n');
-
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportClick = () => {
+    if (!selectedReport) return;
+    setIsExportModalOpen(true);
   };
 
-  const handleExport = async () => {
+  const executeExport = async (type: 'csv' | 'xlsx') => {
     if (!selectedReport) return;
+    setIsExportModalOpen(false);
 
     // For return-summary, fetch CSV from export_return_orders API
     if (selectedReport === 'return-summary') {
@@ -1217,7 +1309,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           };
         });
 
-        downloadCSV(csvRows, `return-report_${startDateStr}_${endDateStr}`);
+        downloadDataFile(csvRows, `return-report_${startDateStr}_${endDateStr}`, type);
       } catch (error) {
         console.error('Failed to export return data:', error);
         alert('ไม่สามารถดาวน์โหลดรายงานได้ กรุณาลองใหม่');
@@ -1627,7 +1719,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           });
 
         const filename = `orders-raw_${startDateStr}_${endDateStr}`;
-        downloadCSV(exportRows, filename);
+        downloadDataFile(exportRows, filename, type);
       } catch (error) {
         console.error('Failed to export orders:', error);
         alert('ไม่สามารถดาวน์โหลดรายงานได้ กรุณาลองใหม่');
@@ -1654,7 +1746,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     };
 
     const { data, filename } = exportData[selectedReport];
-    downloadCSV(data, filename);
+    downloadDataFile(data, filename, type);
   };
 
   // ตรวจสอบว่ารายงานมีข้อมูลหรือไม่
@@ -1671,6 +1763,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       case 'return-summary':
         return true; // Always available — data fetched on demand
       case 'commission':
+        return true; // Always available — data fetched on demand
+      case 'call-history':
         return true; // Always available — data fetched on demand
       default:
         return false;
@@ -1810,7 +1904,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 </div>
               </div>
               <button
-                onClick={handleExport}
+                onClick={handleExportClick}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
               >
                 <Download className="w-4 h-4" />
@@ -2112,7 +2206,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                     </p>
                   </div>
                   <button
-                    onClick={handleExport}
+                    onClick={handleExportClick}
                     disabled={isExporting}
                     className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 text-sm font-medium disabled:opacity-50"
                   >
@@ -2127,6 +2221,52 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 <p className="text-gray-500">เลือกช่วงวันที่แล้วรอสักครู่...</p>
               </div>
             )}
+          </div>
+        );
+
+      case 'call-history':
+        return (
+          <div>
+            <h3 className="text-xl font-semibold mb-4">รายงานบันทึกการโทร</h3>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <Headphones className="w-5 h-5 text-gray-500" />
+                  <h2 className="font-semibold text-gray-800">ส่งออกข้อมูลบันทึกการโทร</h2>
+                </div>
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                <div className="flex items-center gap-3 flex-wrap mt-2">
+                  <button
+                    onClick={() => executeCallHistoryExport('csv')}
+                    disabled={isCallHistoryExporting}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                  >
+                    {isCallHistoryExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    ดาวน์โหลดข้อมูล (CSV)
+                  </button>
+                  <button
+                    onClick={() => executeCallHistoryExport('xlsx')}
+                    disabled={isCallHistoryExporting}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 transition-colors disabled:opacity-50"
+                  >
+                    {isCallHistoryExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    ดาวน์โหลดข้อมูล (Excel)
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-6">
+              {isCallHistoryPreviewLoading ? (
+                <div className="text-center py-10">
+                  <Loader2 className="w-8 h-8 text-blue-500 mx-auto mb-3 animate-spin" />
+                  <p className="text-gray-500">กำลังโหลดตัวอย่างข้อมูล...</p>
+                </div>
+              ) : (
+                renderTable(callHistoryPreviewRows, 'ตัวอย่างบันทึกการโทร', 15)
+              )}
+            </div>
           </div>
         );
 
@@ -2240,7 +2380,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                   ].map(({ status, label, color }) => (
                     <button
                       key={status}
-                      onClick={() => handleCommExport(status)}
+                      onClick={() => handleCommExportClick(status)}
                       disabled={isCommExporting}
                       className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors
                         ${color === 'gray' ? 'border-gray-300 text-gray-700 hover:bg-gray-50' :
@@ -2455,17 +2595,6 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               )}
             </div>
 
-            <button
-              onClick={handleExport}
-              disabled={!selectedReport || !isReportDataAvailable(selectedReport) || isExporting}
-              className={`ml-auto px-4 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium ${selectedReport && isReportDataAvailable(selectedReport) && !isExporting
-                ? 'bg-green-500 text-white hover:bg-green-600 cursor-pointer'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-            >
-              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {isExporting ? 'กำลังดาวน์โหลด...' : 'ดาวน์โหลด CSV'}
-            </button>
           </div>
 
           {/* Department Filter Dropdown */}
@@ -2542,6 +2671,18 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
         {renderReportContent()}
       </div>
+      <ExportTypeModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onConfirm={executeExport}
+        isExporting={isExporting}
+      />
+      <ExportTypeModal
+        isOpen={isCommExportModalOpen}
+        onClose={() => setIsCommExportModalOpen(false)}
+        onConfirm={executeCommExport}
+        isExporting={isCommExporting}
+      />
     </div>
   );
 };

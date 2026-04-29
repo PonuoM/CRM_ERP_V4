@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import OrderDetailModal from "@/components/OrderDetailModal";
+import ExportTypeModal from "@/components/ExportTypeModal";
+import { downloadDataFile } from "@/utils/exportUtils";
 
 interface PaymentSlip {
   id: string;
@@ -99,6 +101,7 @@ const SlipAll: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [viewingOrderId, setViewingOrderId] = useState<string | null>(null);
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -400,43 +403,29 @@ const SlipAll: React.FC = () => {
     }
   };
 
-  const handleExport = () => {
-    // Simulate export functionality
-    const csvContent = [
-      [
-        "Order ID",
-        "ชื่อไฟล์",
-        "สถานะ",
-        "ลูกค้า",
-        "จำนวนเงิน",
-        "วันที่อัปโหลด",
-        "ผู้อัปโหลด",
-      ],
-      ...filteredGroups.flatMap(group => group.slips.map((slip) => [
-        slip.orderId || "-",
-        slip.name,
-        getStatusText(slip.status),
-        slip.customerName || "",
-        slip.amount || "",
-        formatDate(slip.uploadedAt),
-        slip.uploadedBy || "",
-      ])),
-    ]
-      .map((row) => row.join(","))
-      .join("\n");
+  const handleExport = (fileType: 'csv' | 'xlsx') => {
+    const headers = [
+      "Order ID",
+      "ชื่อไฟล์",
+      "สถานะ",
+      "ลูกค้า",
+      "จำนวนเงิน",
+      "วันที่อัปโหลด",
+      "ผู้อัปโหลด",
+    ];
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `payment_slips_${new Date().toISOString().split("T")[0]}.csv`,
-    );
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const rows = filteredGroups.flatMap(group => group.slips.map((slip) => [
+      slip.orderId || "-",
+      slip.name,
+      getStatusText(slip.status),
+      slip.customerName || "",
+      slip.amount || "",
+      formatDate(slip.uploadedAt),
+      slip.uploadedBy || "",
+    ]));
+
+    downloadDataFile([headers, ...rows], `payment_slips_${new Date().toISOString().split("T")[0]}`, fileType);
+    setShowFormatModal(false);
   };
 
   return (
@@ -467,7 +456,7 @@ const SlipAll: React.FC = () => {
               รีเฟรช
             </button>
             <button
-              onClick={handleExport}
+              onClick={() => setShowFormatModal(true)}
               disabled={filteredGroups.length === 0}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
@@ -953,11 +942,20 @@ const SlipAll: React.FC = () => {
 
       {viewingOrderId && (
         <OrderDetailModal
-          isOpen={!!viewingOrderId}
           orderId={viewingOrderId}
+          isOpen={!!viewingOrderId}
           onClose={() => setViewingOrderId(null)}
+          onStatusUpdate={() => {
+            loadSlips();
+          }}
         />
       )}
+
+      <ExportTypeModal
+        isOpen={showFormatModal}
+        onClose={() => setShowFormatModal(false)}
+        onConfirm={handleExport}
+      />
     </div>
   );
 };

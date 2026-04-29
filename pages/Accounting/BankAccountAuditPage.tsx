@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
 import { User, Customer, Activity, LineItem, Order } from '../../types';
 import { Search, Loader2, ExternalLink, Filter, CheckSquare, Download, X, EyeOff, Eye } from 'lucide-react';
+import ExportTypeModal from '../../components/ExportTypeModal';
+import { downloadDataFile } from '../../utils/exportUtils';
 import OrderDetailModal from '../../components/OrderDetailModal';
 import type { StatementContext } from '../../components/OrderDetailModal';
 import SlipOrderSearchModal from '../../components/SlipOrderSearchModal';
@@ -91,6 +93,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     // State for COD document detail modal
     const [isCodDetailModalOpen, setIsCodDetailModalOpen] = useState(false);
     const [selectedCodLog, setSelectedCodLog] = useState<AuditLog | null>(null);
+    const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     // Function to open COD document detail modal
     const openCodDetailModal = (log: AuditLog) => {
@@ -695,63 +699,46 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         }
     };
 
-    const handleExportCSV = () => {
+    const executeExport = (type: 'csv' | 'xlsx') => {
         if (logs.length === 0) {
             alert("ไม่พบข้อมูลสำหรับส่งออก");
             return;
         }
 
+        setIsExporting(true);
         const selectedBank = banks.find(b => String(b.id) === selectedBankId);
         const bankName = selectedBank ? `${selectedBank.bank} ${selectedBank.bank_number} (${selectedBank.account_name})` : '';
 
         const headers = [
-            "ID",
-            "Bank Account",
-            "Statement Date/Time",
-            "Statement Amount",
-            "Channel",
-            "Description",
-            "Order ID",
-            "Order Amount",
-            "Payment Method",
-            "Status",
-            "Confirmed At",
-            "Note"
+            "ID", "Bank Account", "Statement Date/Time", "Statement Amount", "Channel",
+            "Description", "Order ID", "Order Amount", "Payment Method", "Status",
+            "Confirmed At", "Note"
         ];
 
-        const csvContent = [
-            headers.join(","),
-            ...logs.map(log => [
-                log.id,
-                `"${(bankName || '').replace(/"/g, '""')}"`,
-                `"${formatDate(log.transfer_at)}"`,
-                log.statement_amount,
-                `"${log.channel || ''}"`,
-                `"${(log.description || '').replace(/"/g, '""')}"`,
-                `"${log.order_id || ''}"`,
-                log.order_amount || '',
-                `"${log.payment_method || ''}"`,
-                `"${log.status === 'Unmatched' ? 'ยังไม่จับคู่' :
-                    log.status === 'Exact' ? 'พอดี' :
-                        log.status === 'Over' ? 'เกิน' :
-                            log.status === 'Short' ? 'ขาด' :
-                                log.status === 'Suspense' ? 'พักรับ' :
-                                    log.status === 'Deposit' ? 'มัดจำรับ' :
-                                        log.status
-                }"`,
-                `"${log.confirmed_at ? formatDate(log.confirmed_at) : ''}"`,
-                `"${(log.note || '').replace(/"/g, '""')}"`
-            ].join(","))
-        ].join("\n");
+        const rows = logs.map(log => [
+            log.id,
+            bankName,
+            formatDate(log.transfer_at),
+            log.statement_amount,
+            log.channel || '',
+            log.description || '',
+            log.order_id || '',
+            log.order_amount || '',
+            log.payment_method || '',
+            log.status === 'Unmatched' ? 'ยังไม่จับคู่' :
+                log.status === 'Exact' ? 'พอดี' :
+                    log.status === 'Over' ? 'เกิน' :
+                        log.status === 'Short' ? 'ขาด' :
+                            log.status === 'Suspense' ? 'พักรับ' :
+                                log.status === 'Deposit' ? 'มัดจำรับ' :
+                                    log.status,
+            log.confirmed_at ? formatDate(log.confirmed_at) : '',
+            log.note || ''
+        ]);
 
-        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `bank_audit_${startDate}_${endDate}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        downloadDataFile([headers, ...rows], `bank_audit_${startDate}_${endDate}`, type);
+        setIsExporting(false);
+        setIsExportTypeModalOpen(false);
     };
 
     const handleOrderIdSearch = async () => {
@@ -840,12 +827,12 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                 </button>
 
                                 <button
-                                    onClick={handleExportCSV}
-                                    disabled={logs.length === 0 || loading}
+                                    onClick={() => setIsExportTypeModalOpen(true)}
+                                    disabled={logs.length === 0 || loading || isExporting}
                                     className="mb-[1px] px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                                 >
                                     <Download className="w-4 h-4 mr-2" />
-                                    Export CSV
+                                    {isExporting ? 'กำลังส่งออก...' : 'ส่งออกข้อมูล'}
                                 </button>
 
                                 {/* Filter toggle buttons */}
@@ -1557,6 +1544,13 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     </div>
                 </div>
             )}
+
+            <ExportTypeModal
+                isOpen={isExportTypeModalOpen}
+                onClose={() => !isExporting && setIsExportTypeModalOpen(false)}
+                onConfirm={executeExport}
+                isExporting={isExporting}
+            />
         </>
     );
 };

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from "react";
 import { User } from "../types";
 import { apiFetch } from "../services/api";
 import { Calendar, Download, Clock, Users } from "lucide-react";
+import ExportTypeModal from '../components/ExportTypeModal';
+import { downloadDataFile } from '../utils/exportUtils';
 
 interface AttendanceReportPageProps {
     currentUser: User;
@@ -44,6 +46,8 @@ const AttendanceReportPage: React.FC<AttendanceReportPageProps> = ({ currentUser
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<ReportData | null>(null);
     const [selectedRole, setSelectedRole] = useState<string>(""); // "" = all roles
+    const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     // Generate year options (current year and 2 years back)
     const yearOptions = useMemo(() => {
@@ -80,9 +84,10 @@ const AttendanceReportPage: React.FC<AttendanceReportPageProps> = ({ currentUser
         return data.data[selectedRole] || [];
     }, [data, selectedRole]);
 
-    // Export to CSV
-    const exportCSV = () => {
+    // Export to CSV/XLSX
+    const executeExport = (type: 'csv' | 'xlsx') => {
         if (!data) return;
+        setIsExporting(true);
 
         const headers = ["ชื่อ", "ตำแหน่ง"];
         for (let d = 1; d <= data.daysInMonth; d++) {
@@ -90,27 +95,23 @@ const AttendanceReportPage: React.FC<AttendanceReportPageProps> = ({ currentUser
         }
         headers.push("รวม (ชม.)", "วันทำงาน");
 
-        const rows: string[][] = [headers];
+        const rows: any[][] = [];
 
         Object.entries(data.data).forEach(([role, users]) => {
             users.forEach(user => {
-                const row = [user.name, role];
+                const row: any[] = [user.name, role];
                 for (let d = 1; d <= data.daysInMonth; d++) {
                     row.push(formatHoursMinutes(user.days[d] || 0));
                 }
                 row.push(formatHoursMinutes(user.totalSeconds));
-                row.push(user.workDays.toString());
+                row.push(user.workDays);
                 rows.push(row);
             });
         });
 
-        const csvContent = rows.map(row => row.join(",")).join("\n");
-        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `attendance_report_${year}_${month}.csv`;
-        link.click();
+        downloadDataFile([headers, ...rows], `attendance_report_${year}_${month}`, type);
+        setIsExporting(false);
+        setIsExportTypeModalOpen(false);
     };
 
     // Calculate role summary
@@ -171,12 +172,12 @@ const AttendanceReportPage: React.FC<AttendanceReportPageProps> = ({ currentUser
                     </div>
 
                     <button
-                        onClick={exportCSV}
-                        disabled={!data}
+                        onClick={() => setIsExportTypeModalOpen(true)}
+                        disabled={!data || isExporting}
                         className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         <Download className="w-4 h-4" />
-                        Export CSV
+                        Export Data
                     </button>
                 </div>
             </div>
@@ -290,6 +291,14 @@ const AttendanceReportPage: React.FC<AttendanceReportPageProps> = ({ currentUser
                     <p className="text-lg">ไม่พบข้อมูลการเข้างานในเดือนนี้</p>
                 </div>
             )}
+
+            {/* Export Format Modal */}
+            <ExportTypeModal
+                isOpen={isExportTypeModalOpen}
+                onClose={() => !isExporting && setIsExportTypeModalOpen(false)}
+                onConfirm={executeExport}
+                isExporting={isExporting}
+            />
         </div>
     );
 };

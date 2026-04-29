@@ -5,6 +5,8 @@ import OrderDetailModal from '../components/OrderDetailModal';
 import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle, XCircle, AlertOctagon, Download, Filter, Clock } from 'lucide-react';
 import { getDebtCollectionOrders, getDebtCollectionSummary, closeDebtCase, DebtCollectionSummary, getDebtCollectionHistory, updateDebtCollection, exportDebtCollection } from '../services/api';
 import DateRangePicker from '../components/DateRangePicker';
+import ExportTypeModal from '../components/ExportTypeModal';
+import { downloadDataFile } from '../utils/exportUtils';
 
 interface DebtCollectionPageProps {
   user: User;
@@ -56,6 +58,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   const [exporting, setExporting] = useState(false);
   const [exportType, setExportType] = useState<'orders' | 'history'>('history');
   const [exportStatus, setExportStatus] = useState<string>('');
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   // Fetch Summary Statistics (Global)
   const fetchSummary = async () => {
@@ -259,7 +262,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   };
 
   // CSV Export Handler
-  const handleExportCSV = async () => {
+  const handlePrepareExport = () => {
     if (!exportStartDate || !exportEndDate) {
       alert('กรุณาเลือกวันที่เริ่มต้นและสิ้นสุด');
       return;
@@ -268,6 +271,11 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
       alert('กรุณาเลือกสถานะเคส');
       return;
     }
+    setShowExportModal(false);
+    setShowFormatModal(true);
+  };
+
+  const executeExport = async (fileType: 'csv' | 'xlsx') => {
     setExporting(true);
     try {
       if (exportType === 'history') {
@@ -305,7 +313,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
             r.slipTransferDates || ''
           ]);
 
-          downloadCSV(headers, rows, `debt_tracking_history_${exportStartDate}_${exportEndDate}.csv`);
+          downloadDataFile([headers, ...rows], `debt_tracking_history_${exportStartDate}_${exportEndDate}`, fileType);
         } else {
           alert('ไม่พบข้อมูล หรือเกิดข้อผิดพลาด');
         }
@@ -350,31 +358,18 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
             }
           });
 
-          downloadCSV(headers, rows, `debt_collection_${activeTab}_${exportStartDate}_${exportEndDate}.csv`);
+          downloadDataFile([headers, ...rows], `debt_collection_${activeTab}_${exportStartDate}_${exportEndDate}`, fileType);
         } else {
           alert('ไม่พบข้อมูล หรือเกิดข้อผิดพลาด');
         }
       }
-      setShowExportModal(false);
+      setShowFormatModal(false);
     } catch (err) {
       console.error('Export failed:', err);
       alert('เกิดข้อผิดพลาดในการดาวน์โหลด');
     } finally {
       setExporting(false);
     }
-  };
-
-  const downloadCSV = (headers: string[], rows: any[][], filename: string) => {
-    const csvContent = [headers, ...rows]
-      .map(row => row.map((cell: any) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const bom = '\uFEFF';
-    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(link.href);
   };
 
   // Indices for display
@@ -393,7 +388,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
           className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
         >
           <Download size={16} />
-          ดาวน์โหลด CSV
+          ดาวน์โหลดรายงาน
         </button>
       </div>
 
@@ -886,7 +881,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
         showExportModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">ดาวน์โหลด CSV</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4">ดาวน์โหลดรายงาน</h3>
               <div className="space-y-4">
                 {/* Export Type Toggle */}
                 <div>
@@ -965,18 +960,25 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                   ยกเลิก
                 </button>
                 <button
-                  onClick={handleExportCSV}
+                  onClick={handlePrepareExport}
                   disabled={exporting || !exportStartDate || !exportEndDate || !exportStatus}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                  {exporting ? 'กำลังดาวน์โหลด...' : 'ดาวน์โหลด'}
+                  <Download size={16} />
+                  ถัดไป
                 </button>
               </div>
             </div>
           </div>
         )
       }
+
+      <ExportTypeModal
+        isOpen={showFormatModal}
+        onClose={() => setShowFormatModal(false)}
+        onConfirm={executeExport}
+        isExporting={exporting}
+      />
     </div >
   );
 };

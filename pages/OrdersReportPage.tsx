@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from "react";
 import { User } from "../types";
 import { apiFetch } from "../services/api";
 import { Calendar, Download, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
+import ExportTypeModal from "../components/ExportTypeModal";
+import { downloadDataFile } from "../utils/exportUtils";
 
 interface OrdersReportPageProps {
     currentUser: User;
@@ -50,6 +52,7 @@ const OrdersReportPage: React.FC<OrdersReportPageProps> = ({ currentUser }) => {
     const [orders, setOrders] = useState<OrderRow[]>([]);
     const [total, setTotal] = useState(0);
     const [users, setUsers] = useState<Record<number, string>>({});
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
     const yearOptions = useMemo(() => {
         const currentYear = new Date().getFullYear();
@@ -99,7 +102,8 @@ const OrdersReportPage: React.FC<OrdersReportPageProps> = ({ currentUser }) => {
 
     const totalPages = Math.ceil(total / pageSize);
 
-    const exportCSV = () => {
+    const executeExport = (type: 'csv' | 'xlsx') => {
+        setIsExportModalOpen(false);
         const headers = ["วันที่สั่ง", "ออเดอร์", "วันที่ส่ง", "ผู้ขาย", "ราคา", "ช่องทางชำระ", "สถานะการชำระ", "สถานะออเดอร์", "ขนส่ง", "Tracking"];
         const rows = orders.map((o) => [
             formatDate(o.order_date),
@@ -114,13 +118,7 @@ const OrdersReportPage: React.FC<OrdersReportPageProps> = ({ currentUser }) => {
             o.tracking_numbers || "-",
         ]);
 
-        const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
-        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `orders_report_${year}_${month}.csv`;
-        link.click();
+        downloadDataFile([headers, ...rows], `orders_report_${year}_${month}`, type);
     };
 
     return (
@@ -177,7 +175,7 @@ const OrdersReportPage: React.FC<OrdersReportPageProps> = ({ currentUser }) => {
                     </select>
 
                     <button
-                        onClick={exportCSV}
+                        onClick={() => setIsExportModalOpen(true)}
                         disabled={orders.length === 0}
                         className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50"
                     >
@@ -288,6 +286,12 @@ const OrdersReportPage: React.FC<OrdersReportPageProps> = ({ currentUser }) => {
                     )}
                 </div>
             )}
+
+            <ExportTypeModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                onConfirm={executeExport}
+            />
         </div>
     );
 };

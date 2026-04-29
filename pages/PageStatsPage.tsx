@@ -8,6 +8,8 @@ import PancakeEnvOffSidebar from '@/components/PancakeEnvOffSidebar';
 import PancakeTokenErrorModal, { TokenError } from '@/components/PancakeTokenErrorModal';
 import resolveApiBasePath from '@/utils/apiBasePath';
 import { listPages } from '@/services/api';
+import ExportTypeModal from '@/components/ExportTypeModal';
+import { downloadDataFile } from '@/utils/exportUtils';
 
 interface PageStatsPageProps {
   orders?: Order[];
@@ -87,6 +89,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<{ current: number, total: number }>({ current: 0, total: 0 });
   const [exportViewMode, setExportViewMode] = useState<'daily' | 'hourly'>('daily');
+  const [showFormatModal, setShowFormatModal] = useState(false);
   const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState<boolean>(false);
   const [databaseDateRange, setDatabaseDateRange] = useState<string>('');
   const [databaseRangeTempStart, setDatabaseRangeTempStart] = useState<Date | null>(null);
@@ -471,18 +474,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       '', 'รวม', totals.newCustomers, totals.totalPhones, totals.newPhones, totals.totalComments, totals.totalChats, totals.totalPageComments, totals.totalPageChats, totals.newChats, totals.chatsFromOldCustomers, totals.webLoggedIn, totals.webGuest, totals.ordersCount, '', '', ''
     ]);
 
-    // Add BOM for UTF-8 to ensure proper Thai character display in Excel
-    const BOM = '\uFEFF';
-    const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const csvWithBOM = BOM + csvContent;
-
-    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `page-stats-${fmtDate(startDate)}-to-${fmtDate(new Date())}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadDataFile([headers, ...rows], `page-stats-${fmtDate(startDate)}-to-${fmtDate(new Date())}`, 'csv');
   };
 
   // Fetch page stats for export
@@ -507,7 +499,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   };
 
   // Export data from API to CSV
-  const exportAPIDataToCSV = async () => {
+  const exportAPIDataToCSV = async (fileType: 'csv' | 'xlsx') => {
     if (!currentUser || selectedPagesForExport.size === 0) {
       alert('กรุณาเลือกเพจอย่างน้อย 1 เพจ');
       return;
@@ -698,21 +690,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         ];
       });
 
-      // Add BOM for UTF-8 to ensure proper Thai character display in Excel
-      const BOM = '\uFEFF';
-      const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
-      const csvWithBOM = BOM + csvContent;
-
-      const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `page-stats-export-${s.toISOString().split('T')[0]}-to-${e.toISOString().split('T')[0]}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadDataFile([headers, ...rows], `page-stats-export-${s.toISOString().split('T')[0]}-to-${e.toISOString().split('T')[0]}`, fileType);
 
       // Close modal after successful export
       setIsExportModalOpen(false);
+      setShowFormatModal(false);
       alert('ส่งออกข้อมูลเรียบร้อย');
     } catch (error) {
       console.error('Error exporting data:', error);
@@ -2500,11 +2482,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                   ยกเลิก
                 </button>
                 <button
-                  onClick={exportAPIDataToCSV}
+                  onClick={() => setShowFormatModal(true)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
                   disabled={isExporting || selectedPagesForExport.size === 0 || !exportDateRange}
                 >
-                  {isExporting ? 'กำลังส่งออก...' : 'ดาวน์โหลด CSV'}
+                  ถัดไป
                 </button>
               </div>
             </div>
@@ -2890,6 +2872,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         onClose={() => setIsTokenErrorModalOpen(false)}
         errors={tokenErrors}
         successCount={tokenErrorSuccessCount}
+      />
+      {/* Format Selection Modal */}
+      <ExportTypeModal
+        isOpen={showFormatModal}
+        onClose={() => setShowFormatModal(false)}
+        onConfirm={exportAPIDataToCSV}
+        isExporting={isExporting}
       />
     </div>
   );
