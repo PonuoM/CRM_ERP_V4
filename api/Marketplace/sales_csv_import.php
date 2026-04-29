@@ -5,14 +5,41 @@ header("Access-Control-Allow-Methods: POST");
 
 require_once __DIR__ . '/../config.php';
 
-// Excel serial date to PHP date
-function excelSerialToDate($serial) {
-    if (empty($serial) || !is_numeric($serial)) return null;
-    $serial = floatval($serial);
-    if ($serial < 1) return null;
-    $unixDays = $serial - 25569;
-    $timestamp = $unixDays * 86400;
-    return date('Y-m-d', intval($timestamp));
+// Flexible date parser for CSV imports (Best Practice implementation using DateTime)
+function parseDate($dateStr) {
+    if (empty($dateStr)) return null;
+    $dateStr = trim($dateStr);
+    
+    // 1. Excel Serial Date (e.g. 44200)
+    if (is_numeric($dateStr)) {
+        $serial = floatval($dateStr);
+        if ($serial < 1) return null;
+        // Excel's epoch is 1899-12-30
+        $date = new DateTime('1899-12-30');
+        $date->modify('+' . floor($serial) . ' days');
+        return $date->format('Y-m-d');
+    }
+
+    // 2. String Dates using explicit formats
+    $formats = ['d/m/Y', 'Y-m-d', 'd-m-Y', 'Y/m/d'];
+    foreach ($formats as $format) {
+        $date = DateTime::createFromFormat($format, $dateStr);
+        if ($date !== false) {
+            // Check for logical date errors (e.g. catches 31/02/2026 which PHP would normally roll over to March)
+            $errors = DateTime::getLastErrors();
+            if ($errors !== false && $errors['warning_count'] == 0 && $errors['error_count'] == 0) {
+                 return $date->format('Y-m-d');
+            }
+        }
+    }
+
+    // 3. Fallback using strtotime
+    $time = strtotime($dateStr);
+    if ($time !== false) {
+        return date('Y-m-d', $time);
+    }
+    
+    return null;
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -194,8 +221,8 @@ try {
         $onlineOrderId = trim($cols[5]);
         $quantity = intval($cols[6]);
         $totalPrice = floatval(str_replace(',', '', $cols[7]));
-        $orderDate = excelSerialToDate($cols[8]);
-        $shippingDate = excelSerialToDate($cols[9]);
+        $orderDate = parseDate($cols[8]);
+        $shippingDate = parseDate($cols[9]);
         $orderStatus = trim($cols[10]);
         $platform = trim($cols[11]);
         $storeName = trim($cols[12]);
