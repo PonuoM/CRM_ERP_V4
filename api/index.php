@@ -2581,6 +2581,26 @@ function handle_products(PDO $pdo, ?string $id): void
                     return;
                 }
 
+                if ($id === 'check_duplicate_skus') {
+                    $companyId = $_GET['company_id'] ?? null;
+                    if (!$companyId) {
+                        json_response(["success" => false, "error" => "Missing company_id"], 400);
+                    }
+                    $stmt = $pdo->prepare("
+                        SELECT sku, COUNT(*) as count, GROUP_CONCAT(source) as sources, GROUP_CONCAT(name SEPARATOR ' || ') as names
+                        FROM (
+                            SELECT sku, 'product' as source, name FROM products WHERE company_id = ? AND sku IS NOT NULL AND sku != ''
+                            UNION ALL
+                            SELECT sku, 'promotion' as source, name FROM promotions WHERE company_id = ? AND sku IS NOT NULL AND sku != ''
+                        ) as all_skus
+                        GROUP BY sku
+                        HAVING COUNT(*) > 1
+                    ");
+                    $stmt->execute([$companyId, $companyId]);
+                    $duplicates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    json_response(["success" => true, "duplicates" => $duplicates]);
+                }
+
                 $stmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');
                 $stmt->execute([$id]);
                 $row = $stmt->fetch();

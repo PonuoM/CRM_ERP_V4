@@ -116,12 +116,18 @@ try {
     // ========== PHASE 2: Validate product codes ==========
     $unknownProducts = []; // code => [line numbers]
     if (!empty($allProductCodes)) {
-        // Get all known SKUs for this company
-        $stmt = $conn->prepare("SELECT sku FROM products WHERE company_id = ?");
-        $stmt->execute([$companyId]);
+        // Get all known SKUs for this company from both products and promotions
+        $stmt = $conn->prepare("
+            SELECT sku FROM products WHERE company_id = ?
+            UNION
+            SELECT sku FROM promotions WHERE company_id = ?
+        ");
+        $stmt->execute([$companyId, $companyId]);
         $knownSkus = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $knownSkus[$row['sku']] = true;
+            if (!empty($row['sku'])) {
+                $knownSkus[$row['sku']] = true;
+            }
         }
 
         // Check each parsed row for unknown SKUs and track line numbers
