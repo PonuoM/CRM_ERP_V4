@@ -4650,7 +4650,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                   }
                                   className="w-full text-left border border-gray-200 rounded px-2 py-1 text-sm bg-white"
                                 >
-                                  <option value="">รอตรวจสอบ / จัดส่งสำเร็จ</option>
+                                  <option value="">ยกเลิกตีกลับ / จัดส่งสำเร็จ</option>
                                   <option value="good">สภาพดี (Good)</option>
                                   <option value="returned">เข้าคลัง (Returned)</option>
                                   <option value="damaged">ชำรุด (Damaged)</option>

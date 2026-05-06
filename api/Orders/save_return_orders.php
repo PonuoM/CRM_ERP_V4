@@ -37,6 +37,28 @@ try {
     $affectedOrderIds = []; // Track order_ids that need total_amount recalc
     $processedBoxIds = []; // Track already-processed box IDs (dedup for multi-tracking same box)
 
+    // ─── Prepare statements for efficient execution and Pessimistic Locking (FOR UPDATE) ───
+    $stmtBySubId = $pdo->prepare("SELECT id, order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1 FOR UPDATE");
+    $stmtByOrderIdBox = $pdo->prepare("SELECT id, order_id, box_number FROM order_boxes WHERE order_id = ? AND box_number = ? LIMIT 1 FOR UPDATE");
+    $stmtByTracking = $pdo->prepare("
+        SELECT ob.id, ob.order_id, ob.box_number
+        FROM order_tracking_numbers otn
+        JOIN order_boxes ob ON ob.order_id = otn.parent_order_id AND ob.box_number = otn.box_number
+        WHERE otn.tracking_number = ?
+        LIMIT 1 FOR UPDATE
+    ");
+    $stmtAllReturned = $pdo->prepare("
+        SELECT
+            COUNT(*) as total_boxes,
+            SUM(CASE WHEN status = 'RETURNED' THEN 1 ELSE 0 END) as returned_boxes
+        FROM order_boxes
+        WHERE order_id = ?
+        FOR UPDATE
+    ");
+    $stmtCheckParent = $pdo->prepare("SELECT order_status FROM orders WHERE id = ? FOR UPDATE");
+
+    $orderCache = []; // Cache to prevent N+1 queries for boxes belonging to the same order
+
     foreach ($returns as $item) {
         $subOrderId = $item['sub_order_id'] ?? '';
         $status = array_key_exists('status', $item) ? $item['status'] : 'returning';
@@ -49,31 +71,19 @@ try {
         // ─── Resolve order_boxes row ───
         $boxRow = null;
 
-        // Method 1: By sub_order_id
         if ($subOrderId) {
-            $stmt = $pdo->prepare("SELECT id, order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
-            $stmt->execute([$subOrderId]);
-            $boxRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmtBySubId->execute([$subOrderId]);
+            $boxRow = $stmtBySubId->fetch(PDO::FETCH_ASSOC);
         }
 
-        // Method 2: By order_id and box_number
         if (!$boxRow && isset($item['order_id'], $item['box_number'])) {
-            $stmt = $pdo->prepare("SELECT id, order_id, box_number FROM order_boxes WHERE order_id = ? AND box_number = ? LIMIT 1");
-            $stmt->execute([$item['order_id'], $item['box_number']]);
-            $boxRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmtByOrderIdBox->execute([$item['order_id'], $item['box_number']]);
+            $boxRow = $stmtByOrderIdBox->fetch(PDO::FETCH_ASSOC);
         }
 
-        // Method 2: By tracking_number → order_tracking_numbers → order_boxes
         if (!$boxRow && $trackingNumber) {
-            $stmt = $pdo->prepare("
-                SELECT ob.id, ob.order_id, ob.box_number
-                FROM order_tracking_numbers otn
-                JOIN order_boxes ob ON ob.order_id = otn.parent_order_id AND ob.box_number = otn.box_number
-                WHERE otn.tracking_number = ?
-                LIMIT 1
-            ");
-            $stmt->execute([$trackingNumber]);
-            $boxRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmtByTracking->execute([$trackingNumber]);
+            $boxRow = $stmtByTracking->fetch(PDO::FETCH_ASSOC);
         }
 
         if (!$boxRow) {
@@ -98,26 +108,27 @@ try {
         }
 
         // ─── Block undo (pending/delivered/empty) if ALL boxes are already RETURNED ───
-        // Return sub-status changes (returning→returned→good→damaged→lost) are still allowed
         $undoStatuses = ['pending', 'delivered', ''];
-        $stmtAllReturned = $pdo->prepare("
-            SELECT
-                COUNT(*) as total_boxes,
-                SUM(CASE WHEN status = 'RETURNED' THEN 1 ELSE 0 END) as returned_boxes
-            FROM order_boxes
-            WHERE order_id = ?
-        ");
-        $stmtAllReturned->execute([$boxRow['order_id']]);
-        $boxCounts = $stmtAllReturned->fetch(PDO::FETCH_ASSOC);
+        
+        $orderId = $boxRow['order_id'];
+        if (!isset($orderCache[$orderId])) {
+            $stmtAllReturned->execute([$orderId]);
+            $boxCounts = $stmtAllReturned->fetch(PDO::FETCH_ASSOC);
+            
+            $stmtCheckParent->execute([$orderId]);
+            $parent = $stmtCheckParent->fetch(PDO::FETCH_ASSOC);
+            
+            $orderCache[$orderId] = [
+                'boxCounts' => $boxCounts,
+                'parent' => $parent
+            ];
+        }
+        $boxCounts = $orderCache[$orderId]['boxCounts'];
+        $parent = $orderCache[$orderId]['parent'];
 
         if ($boxCounts && $boxCounts['total_boxes'] > 0 && $boxCounts['total_boxes'] == $boxCounts['returned_boxes'] && in_array($status, $undoStatuses)) {
-            // Check if parent order is actually 'Returned'
-            $stmtCheckParent = $pdo->prepare("SELECT order_status FROM orders WHERE id = ?");
-            $stmtCheckParent->execute([$boxRow['order_id']]);
-            $parent = $stmtCheckParent->fetch(PDO::FETCH_ASSOC);
-
             if ($parent && strcasecmp($parent['order_status'], 'Returned') === 0 && empty($input['parent_order_status'])) {
-                $errors[] = "Order {$boxRow['order_id']} ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม 'ยกเลิกตีกลับ' เพื่อเปลี่ยนสถานะทั้ง Order";
+                $errors[] = "Order {$orderId} ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม 'ยกเลิกตีกลับ' เพื่อเปลี่ยนสถานะทั้ง Order";
                 continue;
             }
         }
@@ -148,9 +159,7 @@ try {
                 if (!empty($input['parent_order_status'])) {
                     $revertStatus = $input['parent_order_status'];
                 } else {
-                    $stmtOrder = $pdo->prepare("SELECT order_status FROM orders WHERE id = ?");
-                    $stmtOrder->execute([$boxRow['order_id']]);
-                    $parentOrder = $stmtOrder->fetch(PDO::FETCH_ASSOC);
+                    $parentOrder = $orderCache[$orderId]['parent'];
                     $revertStatus = $parentOrder ? $parentOrder['order_status'] : 'PENDING';
                 }
                 

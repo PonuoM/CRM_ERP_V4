@@ -253,17 +253,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const [revertLoading, setRevertLoading] = useState(false);
 
   const revertStatusOptions = [
-    { value: 'Pending', label: 'รอดำเนินการ' },
-    { value: 'AwaitingVerification', label: 'รอตรวจสอบ' },
-    { value: 'Confirmed', label: 'ยืนยันแล้ว' },
-    { value: 'Preparing', label: 'กำลังจัดเตรียม' },
-    { value: 'Picking', label: 'กำลังหยิบสินค้า' },
+    { value: 'Pending', label: 'รอดึงข้อมูล' },
+    { value: 'Preparing', label: 'กำลังจัดสินค้า' },
     { value: 'Shipping', label: 'กำลังจัดส่ง' },
-    { value: 'PreApproved', label: 'รอตรวจสอบจากบัญชี' },
-    { value: 'Delivered', label: 'ส่งสำเร็จ' },
+    { value: 'Delivered', label: 'เสร็จสิ้น' },
     { value: 'Cancelled', label: 'ยกเลิก' },
-    { value: 'Claiming', label: 'เคลม' },
-    { value: 'BadDebt', label: 'หนี้เสีย' },
+    { value: 'BadDebt', label: 'หนี้สูญ' },
   ];
 
   // State for Bulk Import Modal
@@ -2194,7 +2189,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                               : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
                               }`}
                           >
-                            ⏳ รอตรวจสอบ / จัดส่งสำเร็จ
+                            ⏳ ยกเลิกตีกลับ / จัดส่งสำเร็จ
                           </button>
                           {/* Returning */}
                           <button
