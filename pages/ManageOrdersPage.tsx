@@ -758,16 +758,37 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         : Array.isArray(r.tracking_details)
           ? r.tracking_details.map((t: any) => t.tracking_number).filter(Boolean)
           : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : []),
-      boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({
-        boxNumber: Number(b.box_number ?? 0),
-        codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
-        collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
-        collectedAmount: Number(b.collected_amount ?? 0),
-        waivedAmount: Number(b.waived_amount ?? 0),
-        paymentMethod: b.payment_method ?? undefined,
-        status: b.status ?? undefined,
-        subOrderId: b.sub_order_id ?? undefined,
-      })) : [],
+      boxes: (() => {
+        if (!Array.isArray(r.boxes)) return [];
+        
+        // Build tracking lookup map for O(1) access
+        const trackingList = Array.isArray(r.tracking_details) ? r.tracking_details : (Array.isArray(r.trackingDetails) ? r.trackingDetails : []);
+        const trackingMap = new Map<number, string>();
+        trackingList.forEach((t: any) => {
+          const boxNum = Number(t.box_number ?? t.boxNumber);
+          const trackNum = t.tracking_number ?? t.trackingNumber;
+          if (!isNaN(boxNum) && trackNum) {
+            trackingMap.set(boxNum, String(trackNum));
+          }
+        });
+
+        return r.boxes.map((b: any) => {
+          const boxNum = Number(b.box_number ?? 0);
+          return {
+            boxNumber: boxNum,
+            codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
+            collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
+            collectedAmount: Number(b.collected_amount ?? 0),
+            waivedAmount: Number(b.waived_amount ?? 0),
+            paymentMethod: b.payment_method ?? undefined,
+            status: b.status ?? undefined,
+            subOrderId: b.sub_order_id ?? undefined,
+            returnStatus: b.return_status ?? undefined,
+            returnNote: b.return_note ?? undefined,
+            trackingNumber: b.tracking_number ?? trackingMap.get(boxNum) ?? undefined,
+          };
+        });
+      })(),
       notes: r.notes ?? undefined,
       reconcileAction: r.reconcile_action || undefined,
     };

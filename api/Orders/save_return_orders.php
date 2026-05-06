@@ -39,7 +39,7 @@ try {
 
     foreach ($returns as $item) {
         $subOrderId = $item['sub_order_id'] ?? '';
-        $status = $item['status'] ?? 'returning';
+        $status = array_key_exists('status', $item) ? $item['status'] : 'returning';
         $note = $item['note'] ?? '';
         $trackingNumber = $item['tracking_number'] ?? '';
         $returnComplete = isset($item['return_complete']) ? (int) $item['return_complete'] : 0;
@@ -53,6 +53,13 @@ try {
         if ($subOrderId) {
             $stmt = $pdo->prepare("SELECT id, order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
             $stmt->execute([$subOrderId]);
+            $boxRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+
+        // Method 2: By order_id and box_number
+        if (!$boxRow && isset($item['order_id'], $item['box_number'])) {
+            $stmt = $pdo->prepare("SELECT id, order_id, box_number FROM order_boxes WHERE order_id = ? AND box_number = ? LIMIT 1");
+            $stmt->execute([$item['order_id'], $item['box_number']]);
             $boxRow = $stmt->fetch(PDO::FETCH_ASSOC);
         }
 
@@ -128,6 +135,15 @@ try {
             $stmtUpdate->execute([$status, $note ?: null, $returnComplete, $returnClaim, $returnedBy, $boxRow['id']]);
         } else {
             // Undo flow (pending, delivered, etc.): restore collection_amount = cod_amount, clear return fields
+            // If status is null (from OrderManagementModal clearing the dropdown), revert to parent order status
+            $revertStatus = $status;
+            if (!$revertStatus) {
+                $stmtOrder = $pdo->prepare("SELECT order_status FROM orders WHERE id = ?");
+                $stmtOrder->execute([$boxRow['order_id']]);
+                $parentOrder = $stmtOrder->fetch(PDO::FETCH_ASSOC);
+                $revertStatus = $parentOrder ? $parentOrder['order_status'] : 'PENDING';
+            }
+
             $stmtUpdate = $pdo->prepare("
                 UPDATE order_boxes
                 SET return_status = NULL,
@@ -142,7 +158,7 @@ try {
                     updated_at = NOW()
                 WHERE id = ?
             ");
-            $stmtUpdate->execute([$status, $boxRow['id']]);
+            $stmtUpdate->execute([$revertStatus, $boxRow['id']]);
         }
         $updatedCount++;
 

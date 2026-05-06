@@ -38,9 +38,12 @@ import {
   X,
   CornerDownRight,
   ChevronDown,
-  ChevronRight,
   Trash,
+  RotateCcw,
+  ChevronRight,
 } from "lucide-react";
+import { checkReturnStatusChange } from "../utils/orderReturnLogic";
+import { calculateOrderTotal } from "../utils/orderCalculations";
 import {
   getPaymentStatusChip,
   getStatusChip,
@@ -243,6 +246,18 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [fetchedCustomer, setFetchedCustomer] = useState<Customer | null>(null);
   const [fetchedActivities, setFetchedActivities] = useState<Activity[]>([]);
+
+  // Revert Return states
+
+
+  // Modal logic states
+  const [returnStatusChangeModal, setReturnStatusChangeModal] = useState<{
+    isOpen: boolean;
+    type: 'PROMPT_NEW_STATUS' | 'PROMPT_CONFIRM_RETURN';
+    newOrderStatus?: OrderStatus;
+    isImmediate?: boolean;
+  } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Cancellation type states
   const [cancellationTypes, setCancellationTypes] = useState<{ id: number; label: string; description: string }[]>([]);
@@ -773,6 +788,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         collectedAmount: Number(b.collectedAmount ?? b.collected_amount ?? 0),
         waivedAmount: Number(b.waivedAmount ?? b.waived_amount ?? 0),
         trackingNumber: b.trackingNumber ?? b.tracking_number,
+        returnStatus: b.returnStatus ?? b.return_status,
+        returnNote: b.returnNote ?? b.return_note,
       }))
       : [];
 
@@ -860,18 +877,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       "returned",
       "cancelled",
       "baddebt",
-      "claiming",
-      "preapproved",
+      "claiming"
     ];
 
-    // Return TRUE if NOT locked (Modifiable)
-    // If currentStatus is in locked list -> Locked -> Return FALSE
-    const isLockedStatus = lockedStatusesLower.includes(currentStatus);
-
-    // Debug log (can be seen in browser console if needed)
-    // console.log('Check Lock:', { currentStatus, isLockedStatus, permission });
-
-    return !isLockedStatus;
+    return !lockedStatusesLower.includes(currentStatus);
   }, [currentOrder.orderStatus, permission]);
 
   const isLocked = !isModifiable;
@@ -1399,19 +1408,35 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
             }))
             : prev.items,
 
-          boxes: Array.isArray(r.boxes)
-            ? r.boxes.map((b: any) => ({
-              boxNumber: Number(b.box_number ?? b.boxNumber ?? 1),
-              codAmount: Number(b.cod_amount ?? b.codAmount ?? b.collection_amount ?? 0),
-              collectionAmount: Number(b.collection_amount ?? b.collectionAmount ?? b.cod_amount ?? 0),
-              collectedAmount: Number(b.collected_amount ?? b.collectedAmount ?? 0),
-              waivedAmount: Number(b.waived_amount ?? b.waivedAmount ?? 0),
-              paymentMethod: b.payment_method ?? b.paymentMethod,
-              status: b.status,
-              subOrderId: b.sub_order_id ?? b.subOrderId,
-              trackingNumber: b.tracking_number ?? b.trackingNumber,
-            }))
-            : prev.boxes,
+          boxes: (() => {
+            if (!Array.isArray(r.boxes)) return prev.boxes;
+            
+            const trackingMap = new Map<number, string>();
+            trackingDetails.forEach((t: any) => {
+              const boxNum = Number(t.box_number ?? t.boxNumber);
+              const trackNum = t.tracking_number ?? t.trackingNumber;
+              if (!isNaN(boxNum) && trackNum) {
+                trackingMap.set(boxNum, String(trackNum));
+              }
+            });
+
+            return r.boxes.map((b: any) => {
+              const boxNum = Number(b.box_number ?? b.boxNumber ?? 1);
+              return {
+                boxNumber: boxNum,
+                codAmount: Number(b.cod_amount ?? b.codAmount ?? b.collection_amount ?? 0),
+                collectionAmount: Number(b.collection_amount ?? b.collectionAmount ?? b.cod_amount ?? 0),
+                collectedAmount: Number(b.collected_amount ?? b.collectedAmount ?? 0),
+                waivedAmount: Number(b.waived_amount ?? b.waivedAmount ?? 0),
+                paymentMethod: b.payment_method ?? b.paymentMethod,
+                status: b.status,
+                subOrderId: b.sub_order_id ?? b.subOrderId,
+                trackingNumber: b.tracking_number ?? b.trackingNumber ?? trackingMap.get(boxNum),
+                returnStatus: b.return_status ?? b.returnStatus,
+                returnNote: b.return_note ?? b.returnNote,
+              };
+            });
+          })(),
 
           trackingNumbers: Array.isArray(r.trackingNumbers)
             ? r.trackingNumbers
@@ -1785,6 +1810,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       currentOrder.items,
       currentOrder.shippingCost,
       currentOrder.billDiscount,
+      currentOrder.boxes
     );
 
     if (
@@ -2183,10 +2209,12 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   const handleBoxFieldChange = (
     boxNumber: number,
-    field: "collectionAmount" | "collectedAmount" | "waivedAmount",
-    value: number,
+    field: "collectionAmount" | "collectedAmount" | "waivedAmount" | "returnStatus",
+    value: number | string,
   ) => {
-    const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
+    // Only apply numeric constraints if the field is numeric
+    const isNumericField = ["collectionAmount", "collectedAmount", "waivedAmount"].includes(field);
+    const safe = isNumericField && typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value as number) : value;
 
     // Persist to ref immediately
     if (!boxOverrides.current[boxNumber]) {
@@ -2200,7 +2228,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       boxOverrides.current[boxNumber].codAmount = safe;
     }
 
+    let newBoxes: any[] = [];
     setCurrentOrder((prev) => {
+      if (!prev) return prev;
       const boxes = (prev.boxes || []).map((box) => {
         if (box.boxNumber === boxNumber) {
           const updates: any = { [field]: safe };
@@ -2223,8 +2253,23 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           )
           : prev.codAmount;
 
+      newBoxes = boxes;
       return { ...prev, boxes, codAmount: codTotal };
     });
+
+    if (field === "returnStatus" && currentOrder) {
+      const returnStatusCheck = checkReturnStatusChange(currentOrder.orderStatus, newBoxes);
+      if (returnStatusCheck.type !== 'NONE') {
+        setReturnStatusChangeModal({
+          isOpen: true,
+          type: returnStatusCheck.type,
+          newOrderStatus: returnStatusCheck.type === 'PROMPT_NEW_STATUS' 
+            ? (currentOrder.orderStatus === OrderStatus.Returned ? OrderStatus.Pending : currentOrder.orderStatus)
+            : OrderStatus.Returned,
+          isImmediate: true
+        });
+      }
+    }
   };
 
   const handleBoxTrackingChange = (boxNumber: number, value: string) => {
@@ -2241,61 +2286,72 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   // Removed manual confirm button: payment status derives from amountPaid
 
-  const calculateOrderTotal = (
-    items: any[],
-    shippingCost: number,
-    billDiscount: number,
-  ) => {
-    // Exclude child promotion items (parentItemId != null) to avoid double-counting
-    const billableItems = items.filter((item: any) => {
-      const isChildItem = item.parentItemId || item.parent_item_id;
-      return !isChildItem;
-    });
-    const goodsSum = billableItems.reduce(
-      (acc, item) => {
-        const isFreebie = item.isFreebie || (item as any).is_freebie;
-        const price = Number(item.pricePerUnit || (item as any).price_per_unit || 0);
-        const qty = Number(item.quantity || (item as any).quantity || 0);
-        return acc + (isFreebie ? 0 : qty * price);
-      },
-      0,
-    );
-    const itemsDiscount = billableItems.reduce(
-      (acc, item) => {
-        const isFreebie = item.isFreebie || (item as any).is_freebie;
-        const disc = Number(item.discount || (item as any).discount || 0);
-        return acc + (isFreebie ? 0 : disc);
-      },
-      0,
-    );
-    const subTotal = goodsSum - itemsDiscount;
-    const billDiscountAmount = Number(billDiscount) || 0;
-    return subTotal + (Number(shippingCost) || 0) - billDiscountAmount;
-  };
+
 
   const handleSave = async () => {
     if (!currentUser) return;
 
+    const returnStatusCheck = checkReturnStatusChange(currentOrder.orderStatus, currentOrder.boxes || []);
+    
+    if (returnStatusCheck.type === 'PROMPT_NEW_STATUS') {
+      setReturnStatusChangeModal({
+        isOpen: true,
+        type: 'PROMPT_NEW_STATUS',
+        newOrderStatus: currentOrder.orderStatus === OrderStatus.Returned ? OrderStatus.Pending : currentOrder.orderStatus
+      });
+      return;
+    }
+
+    if (returnStatusCheck.type === 'PROMPT_CONFIRM_RETURN') {
+      setReturnStatusChangeModal({
+        isOpen: true,
+        type: 'PROMPT_CONFIRM_RETURN',
+        newOrderStatus: OrderStatus.Returned
+      });
+      return;
+    }
+
+    await proceedWithSave(currentOrder.orderStatus);
+  };
+
+  const proceedWithSave = async (finalOrderStatus: OrderStatus, zeroOutBoxes: boolean = false) => {
+    setIsSaving(true);
+    try {
+      let effectiveBoxes = [...(currentOrder.boxes || [])];
+
+    if (zeroOutBoxes) {
+      effectiveBoxes = effectiveBoxes.map(b => ({
+        ...b,
+        collectionAmount: 0,
+        codAmount: 0
+      }));
+      effectiveBoxes.forEach(b => {
+        if (b.boxNumber && boxOverrides.current[b.boxNumber]) {
+          boxOverrides.current[b.boxNumber].collectionAmount = undefined;
+          boxOverrides.current[b.boxNumber].codAmount = undefined;
+        }
+      });
+    }
     // Validate cancellation type when status is Cancelled
-    if (currentOrder.orderStatus === OrderStatus.Cancelled && !selectedCancellationTypeId) {
+    if (finalOrderStatus === OrderStatus.Cancelled && !selectedCancellationTypeId) {
       setCancellationError('กรุณาเลือกประเภทการยกเลิกก่อน');
       cancellationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     setCancellationError('');
-
     // Validate COD if applicable
     if (currentOrder.paymentMethod === PaymentMethod.COD) {
       const codTotal =
-        currentOrder.boxes?.reduce(
+        effectiveBoxes.reduce(
           (sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0),
           0,
-        ) || 0;
+        );
       const orderTotal = calculateOrderTotal(
         currentOrder.items,
         currentOrder.shippingCost,
         currentOrder.billDiscount,
-      );
+        effectiveBoxes
+      ).totalAmount;
 
       // [PREVENTION] AwaitingVerification requires Amount Paid > 0
       if (currentOrder.orderStatus === OrderStatus.AwaitingVerification) {
@@ -2348,7 +2404,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const boxes = uniqueBoxes.map((boxNum) => {
       // Find the existing box config directly from currentOrder.boxes
       // This preserves whatever amount the user typed in the COD box list
-      const existingBox = currentOrder.boxes?.find((b) => b.boxNumber === boxNum);
+      const existingBox = effectiveBoxes.find((b) => b.boxNumber === boxNum);
 
       if (existingBox) {
         // Fix: Ensure codAmount matches the collectionAmount input
@@ -2448,6 +2504,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     const updatedOrder = {
       ...currentOrder,
+      orderStatus: finalOrderStatus,
       totalAmount: calculatedTotals.totalAmount,
       updatedBy: currentUser.id,
       boxes: finalBoxes, // Add generated boxes array
@@ -2465,10 +2522,41 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       }
     }
 
+    // Check if return statuses changed
+    const hasReturnStatusChanges = finalBoxes.some(box => {
+      const originalBox = order.boxes?.find((b: any) => b.boxNumber === box.boxNumber);
+      return box.returnStatus !== originalBox?.returnStatus || box.returnNote !== originalBox?.returnNote;
+    });
+
+    if (hasReturnStatusChanges) {
+      try {
+        const payload = finalBoxes.map(box => ({
+          order_id: currentOrder.id,
+          box_number: box.boxNumber,
+          status: box.returnStatus || null,
+          note: box.returnNote || null,
+          tracking_number: box.trackingNumber || null,
+          returned_by: currentUser.id
+        }));
+        
+        await apiFetch(`Orders/save_return_orders.php`, {
+          method: 'POST',
+          body: JSON.stringify({
+            returns: payload
+          })
+        });
+      } catch (err) {
+        console.error('Failed to save return orders:', err);
+      }
+    }
+
     setCurrentOrder(updatedOrder);
 
-    onSave(updatedOrder);
+    await Promise.resolve(onSave(updatedOrder));
     setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const formatAddress = (address?: Address | null) => {
@@ -2523,45 +2611,36 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   // Totals derived from items minus discounts plus shipping
 
   const calculatedTotals = useMemo(() => {
-    // Filter out freebie items AND child items before calculating totals
-    const nonFreebieItems = currentOrder.items.filter((item: any) => {
-      const isFreebie = item.isFreebie || item.is_freebie;
-      const isChild = item.parentItemId || (item as any).parent_item_id; // Child items should not be counted
-      return !isFreebie && !isChild;
-    });
-
-    const itemsSubtotal = nonFreebieItems.reduce((sum, item) => {
-      const price = Number(item.pricePerUnit || (item as any).price_per_unit || 0);
-      const qty = Number(item.quantity || (item as any).quantity || 0);
-      const disc = Number(item.discount || (item as any).discount || 0);
-      const itemTotal = price * qty - disc;
-
-      return sum + itemTotal;
-    }, 0);
-
-    const itemsDiscount = nonFreebieItems.reduce(
-      (sum, item) => sum + (Number(item.discount || (item as any).discount) || 0),
-      0,
-    );
-
     const shippingCost = Number(currentOrder.shippingCost || 0);
-
     const billDiscount = Number(currentOrder.billDiscount || 0);
 
-    const totalAmount = itemsSubtotal - billDiscount + shippingCost;
+    const {
+      itemsSubtotal,
+      itemsDiscount,
+      totalAmount,
+      rawItemsSubtotal,
+      rawItemsDiscount,
+      rawTotalAmount,
+      returnedAmount
+    } = calculateOrderTotal(
+      currentOrder.items,
+      shippingCost,
+      billDiscount,
+      currentOrder.boxes
+    );
 
     return {
       itemsSubtotal,
-
       itemsDiscount,
-
       billDiscount,
-
       shippingCost,
-
       totalAmount,
+      rawItemsSubtotal,
+      rawItemsDiscount,
+      rawTotalAmount,
+      returnedAmount
     };
-  }, [currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount]);
+  }, [currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount, currentOrder.boxes]);
 
   const remainingBalance = useMemo(() => {
     const paid = currentOrder.amountPaid || 0;
@@ -2649,20 +2728,23 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         <div className="space-y-4 text-sm">
           <div className="flex justify-end mb-2">
             {!isEditing ? (
-              <button
-                onClick={() => setIsEditing(true)}
-                disabled={isLocked}
-                className={`flex items-center px-3 py-1.5 text-white text-sm rounded-md transition-colors ${isLocked ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
-              >
-                <Edit2 size={14} className="mr-1.5" />
-                แก้ไขออเดอร์
-              </button>
+              <div className="flex space-x-2">
+
+                <button
+                  onClick={() => setIsEditing(true)}
+                  disabled={isLocked}
+                  className={`flex items-center px-3 py-1.5 text-white text-sm rounded-md transition-colors ${isLocked ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
+                >
+                  <Edit2 size={14} className="mr-1.5" />
+                  แก้ไขออเดอร์
+                </button>
+              </div>
             ) : (
               <div className="flex items-center space-x-2">
+
                 <button
                   onClick={() => {
                     setIsEditing(false);
-
                     setCurrentOrder(order); // Reset changes
                   }}
                   className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition-colors"
@@ -3679,15 +3761,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       colSpan={1}
                       className="px-3 py-2 text-right text-xs font-medium text-gray-900"
                     >
-                      ฿{calculatedTotals.itemsSubtotal.toLocaleString()}
+                      ฿{(calculatedTotals.rawItemsSubtotal + calculatedTotals.rawItemsDiscount).toLocaleString()}
                     </td>
 
                     <td className="px-3 py-2 text-right text-xs text-red-600">
-                      -฿{calculatedTotals.itemsDiscount.toLocaleString()}
+                      -฿{calculatedTotals.rawItemsDiscount.toLocaleString()}
                     </td>
 
                     <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
-                      ฿{calculatedTotals.itemsSubtotal.toLocaleString()}
+                      ฿{calculatedTotals.rawItemsSubtotal.toLocaleString()}
                     </td>
 
                     <td colSpan={showInputs ? 2 : 1}></td>
@@ -3731,7 +3813,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       colSpan={showInputs ? 3 : 2}
                       className="px-3 py-2 text-right text-base font-bold text-gray-900"
                     >
-                      ฿{calculatedTotals.totalAmount.toLocaleString()}
+                      ฿{calculatedTotals.rawTotalAmount.toLocaleString()}
                     </td>
                   </tr>
                 </tfoot>
@@ -4298,13 +4380,12 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               </InfoCard>
             )}
 
-          {currentOrder.paymentMethod === PaymentMethod.COD &&
-            currentOrder.boxes &&
+          {currentOrder.boxes &&
             currentOrder.boxes.length > 0 && (
               <div className="border rounded-xl p-4 shadow-sm mb-4">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="text-sm font-semibold text-gray-800">
-                    ยอด COD ต่อกล่อง
+                    {currentOrder.paymentMethod === PaymentMethod.COD ? "ยอด COD ต่อกล่อง" : "ข้อมูลกล่องสินค้า / สถานะการตีกลับ"}
                   </h3>
                   {showInputs && (
                     <div className="flex items-center space-x-2">
@@ -4330,6 +4411,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                     <div className="flex justify-between items-center text-sm mb-1">
                       <span className="text-gray-600">ยอดรวมออเดอร์:</span>
                       <span className="font-medium text-gray-900">
+                        {calculatedTotals.returnedAmount > 0 && (
+                          <span className="text-gray-500 font-normal mr-2">
+                            (ยอด {calculatedTotals.rawTotalAmount.toLocaleString()} - ตีกลับ {calculatedTotals.returnedAmount.toLocaleString()})
+                          </span>
+                        )}
                         ฿{calculatedTotals.totalAmount.toLocaleString()}
                       </span>
                     </div>
@@ -4383,20 +4469,32 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           กล่อง / Tracking
                         </th>
 
-                        <th className="px-3 py-2 text-right font-semibold">
-                          ยอดเก็บเงิน
-                        </th>
+                        {currentOrder.paymentMethod === PaymentMethod.COD && (
+                          <th className="px-3 py-2 text-right font-semibold">
+                            ยอดเก็บเงิน
+                          </th>
+                        )}
 
-                        <th className="px-3 py-2 text-right font-semibold">
-                          เก็บแล้ว
-                        </th>
+                        {currentOrder.paymentMethod === PaymentMethod.COD && (
+                          <th className="px-3 py-2 text-right font-semibold">
+                            เก็บแล้ว
+                          </th>
+                        )}
 
-                        <th className="px-3 py-2 text-right font-semibold">
-                          ยกเลิก/ยก
-                        </th>
+                        {currentOrder.paymentMethod === PaymentMethod.COD && (
+                          <th className="px-3 py-2 text-right font-semibold">
+                            ยกเลิก/ยก
+                          </th>
+                        )}
 
-                        <th className="px-3 py-2 text-right font-semibold">
-                          คงเหลือ
+                        {currentOrder.paymentMethod === PaymentMethod.COD && (
+                          <th className="px-3 py-2 text-right font-semibold">
+                            คงเหลือ
+                          </th>
+                        )}
+
+                        <th className="px-3 py-2 text-left font-semibold">
+                          สถานะตีกลับ
                         </th>
                       </tr>
                     </thead>
@@ -4458,71 +4556,111 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               </div>
                             </td>
 
-                            <td className="px-3 py-2 text-right">
-                              {showInputs && !isLocked ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  value={collection}
+                            {currentOrder.paymentMethod === PaymentMethod.COD && (
+                              <td className="px-3 py-2 text-right">
+                                {showInputs && !isLocked ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={collection}
+                                    onChange={(e) =>
+                                      handleBoxFieldChange(
+                                        box.boxNumber,
+                                        "collectionAmount",
+                                        Number(e.target.value),
+                                      )
+                                    }
+                                    className="w-full text-right border border-gray-200 rounded px-2 py-1"
+                                  />
+                                ) : (
+                                  <span>฿{collection.toLocaleString()}</span>
+                                )}
+                              </td>
+                            )}
+
+                            {currentOrder.paymentMethod === PaymentMethod.COD && (
+                              <td className="px-3 py-2 text-right">
+                                {showInputs && !isLocked ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={paid}
+                                    onChange={(e) =>
+                                      handleBoxFieldChange(
+                                        box.boxNumber,
+                                        "collectedAmount",
+                                        Number(e.target.value),
+                                      )
+                                    }
+                                    className="w-full text-right border border-gray-200 rounded px-2 py-1"
+                                  />
+                                ) : (
+                                  <span>฿{paid.toLocaleString()}</span>
+                                )}
+                              </td>
+                            )}
+
+                            {currentOrder.paymentMethod === PaymentMethod.COD && (
+                              <td className="px-3 py-2 text-right text-red-600">
+                                {showInputs && !isLocked ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={waived}
+                                    onChange={(e) =>
+                                      handleBoxFieldChange(
+                                        box.boxNumber,
+                                        "waivedAmount",
+                                        Number(e.target.value),
+                                      )
+                                    }
+                                    className="w-full text-right border border-gray-200 rounded px-2 py-1"
+                                  />
+                                ) : (
+                                  <span>-฿{waived.toLocaleString()}</span>
+                                )}
+                              </td>
+                            )}
+
+                            {currentOrder.paymentMethod === PaymentMethod.COD && (
+                              <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                ฿{remaining.toLocaleString()}
+                              </td>
+                            )}
+
+                            <td className="px-3 py-2">
+                              {showInputs ? (
+                                <select
+                                  value={box.returnStatus || ""}
                                   onChange={(e) =>
                                     handleBoxFieldChange(
                                       box.boxNumber,
-                                      "collectionAmount",
-                                      Number(e.target.value),
+                                      "returnStatus",
+                                      e.target.value,
                                     )
                                   }
-                                  className="w-full text-right border border-gray-200 rounded px-2 py-1"
-                                />
+                                  className="w-full text-left border border-gray-200 rounded px-2 py-1 text-sm bg-white"
+                                >
+                                  <option value="">รอตรวจสอบ / ไม่ระบุ</option>
+                                  <option value="good">สภาพดี (Good)</option>
+                                  <option value="returned">เข้าคลัง (Returned)</option>
+                                  <option value="damaged">ชำรุด (Damaged)</option>
+                                  <option value="lost">สูญหาย (Lost)</option>
+                                  <option value="returning">กำลังตีกลับ (Returning)</option>
+                                </select>
                               ) : (
-                                <span>฿{collection.toLocaleString()}</span>
+                                <span className="text-sm">
+                                  {box.returnStatus === 'good' && <span className="text-green-600 font-medium">สภาพดี</span>}
+                                  {box.returnStatus === 'returned' && <span className="text-blue-600 font-medium">เข้าคลัง</span>}
+                                  {box.returnStatus === 'damaged' && <span className="text-red-600 font-medium">ชำรุด</span>}
+                                  {box.returnStatus === 'lost' && <span className="text-gray-600 font-medium">สูญหาย</span>}
+                                  {box.returnStatus === 'returning' && <span className="text-orange-600 font-medium">กำลังตีกลับ</span>}
+                                  {!box.returnStatus && <span className="text-gray-400">-</span>}
+                                </span>
                               )}
-                            </td>
-
-                            <td className="px-3 py-2 text-right">
-                              {showInputs && !isLocked ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  value={paid}
-                                  onChange={(e) =>
-                                    handleBoxFieldChange(
-                                      box.boxNumber,
-                                      "collectedAmount",
-                                      Number(e.target.value),
-                                    )
-                                  }
-                                  className="w-full text-right border border-gray-200 rounded px-2 py-1"
-                                />
-                              ) : (
-                                <span>฿{paid.toLocaleString()}</span>
-                              )}
-                            </td>
-
-                            <td className="px-3 py-2 text-right text-red-600">
-                              {showInputs && !isLocked ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  value={waived}
-                                  onChange={(e) =>
-                                    handleBoxFieldChange(
-                                      box.boxNumber,
-                                      "waivedAmount",
-                                      Number(e.target.value),
-                                    )
-                                  }
-                                  className="w-full text-right border border-gray-200 rounded px-2 py-1"
-                                />
-                              ) : (
-                                <span>-฿{waived.toLocaleString()}</span>
-                              )}
-                            </td>
-
-                            <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                              ฿{remaining.toLocaleString()}
                             </td>
                           </tr>
                         );
@@ -4604,9 +4742,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
             )}
 
 
-          {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
-            currentOrder.paymentMethod === PaymentMethod.PayAfter) &&
-            currentOrder.boxes &&
+          {currentOrder.boxes &&
             currentOrder.boxes.length > 0 && (
               <InfoCard icon={Truck} title="Tracking รายกล่อง">
                 <div className="flex flex-wrap gap-2">
@@ -4806,12 +4942,28 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               ยกเลิก
             </button>
 
-            {!isOrderCompleted && (
+            {isEditing && (
               <button
                 onClick={handleSave}
-                className="px-4 py-2 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200"
+                disabled={isSaving}
+                className={`px-4 py-2 font-semibold rounded-lg flex items-center justify-center transition-colors
+                  ${isSaving 
+                    ? "bg-blue-100 text-blue-400 cursor-not-allowed" 
+                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                  }
+                `}
               >
-                บันทึกการเปลี่ยนแปลง
+                {isSaving ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    กำลังบันทึก...
+                  </>
+                ) : (
+                  "บันทึกการเปลี่ยนแปลง"
+                )}
               </button>
             )}
           </div>
@@ -4916,7 +5068,83 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
             </div>
           </div>
         )}
-      </Modal >
+      </Modal>
+
+      {/* Return Status Change Modal */}
+      {returnStatusChangeModal?.isOpen && (
+        <Modal
+          title={returnStatusChangeModal.type === 'PROMPT_NEW_STATUS' ? "เลือกสถานะออเดอร์ใหม่" : "ยืนยันการเปลี่ยนสถานะ"}
+          onClose={() => setReturnStatusChangeModal(null)}
+          size="sm"
+        >
+          <div className="p-4 space-y-4">
+            {returnStatusChangeModal.type === 'PROMPT_NEW_STATUS' ? (
+              <>
+                <p className="text-gray-700">
+                  คุณได้ยกเลิกสถานะตีกลับของกล่องสินค้าแล้ว กรุณาเลือกสถานะใหม่สำหรับออเดอร์นี้:
+                </p>
+                <select
+                  value={returnStatusChangeModal.newOrderStatus || ""}
+                  onChange={(e) => setReturnStatusChangeModal(prev => prev ? { ...prev, newOrderStatus: e.target.value as OrderStatus } : null)}
+                  className="w-full border rounded px-3 py-2 text-sm focus:ring-blue-500 border-gray-300"
+                >
+                  <option value="Pending">รอดึงข้อมูล</option>
+                  <option value="Preparing">กำลังจัดสินค้า</option>
+                  <option value="Shipping">กำลังจัดส่ง</option>
+                  <option value="Delivered">เสร็จสิ้น</option>
+                  <option value="Returned" disabled>ตีกลับ</option>
+                  <option value="Cancelled">ยกเลิก</option>
+                  <option value="BadDebt">หนี้สูญ</option>
+                </select>
+              </>
+            ) : (
+              <p className="text-gray-700">
+                เนื่องจากทุกกล่องถูกทำเครื่องหมายเป็นตีกลับแล้ว สถานะของออเดอร์หลักจะถูกเปลี่ยนเป็น "ตีกลับ" (Returned) ยืนยันหรือไม่?
+              </p>
+            )}
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <button
+                onClick={() => setReturnStatusChangeModal(null)}
+                className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => {
+                  if (returnStatusChangeModal.newOrderStatus) {
+                    setReturnStatusChangeModal(null);
+                    if (returnStatusChangeModal.isImmediate) {
+                      setCurrentOrder(prev => {
+                        if (!prev) return prev;
+                        let newBoxes = prev.boxes || [];
+                        if (returnStatusChangeModal.type === 'PROMPT_CONFIRM_RETURN') {
+                          newBoxes = newBoxes.map(b => ({ ...b, collectionAmount: 0, codAmount: 0 }));
+                          newBoxes.forEach(b => {
+                            if (b.boxNumber && boxOverrides.current[b.boxNumber]) {
+                              boxOverrides.current[b.boxNumber].collectionAmount = undefined;
+                              boxOverrides.current[b.boxNumber].codAmount = undefined;
+                            }
+                          });
+                        }
+                        const codTotal = prev.paymentMethod === PaymentMethod.COD 
+                            ? newBoxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0)
+                            : prev.codAmount;
+                        return { ...prev, orderStatus: returnStatusChangeModal.newOrderStatus!, boxes: newBoxes, codAmount: codTotal };
+                      });
+                    } else {
+                      proceedWithSave(returnStatusChangeModal.newOrderStatus, returnStatusChangeModal.type === 'PROMPT_CONFIRM_RETURN');
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors"
+              >
+                ยืนยัน
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Product Selector Modal */}
       < ProductSelectorModal
