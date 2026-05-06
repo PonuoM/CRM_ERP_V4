@@ -894,14 +894,17 @@ function enrichOrderWithBoxes(payload: any) {
   }
 }
 
-export async function saveReturnOrders(returns: any[], userId?: number) {
+export async function saveReturnOrders(returns: any[], userId?: number, parentOrderStatus?: string) {
   // Inject returned_by into each item if userId is provided
   const enriched = userId
     ? returns.map(r => ({ ...r, returned_by: r.returned_by ?? userId }))
     : returns;
   return apiFetch("Orders/save_return_orders.php", {
     method: "POST",
-    body: JSON.stringify({ returns: enriched }),
+    body: JSON.stringify({ 
+      returns: enriched,
+      ...(parentOrderStatus ? { parent_order_status: parentOrderStatus } : {})
+    }),
   });
 }
 

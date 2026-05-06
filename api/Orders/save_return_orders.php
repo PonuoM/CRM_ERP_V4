@@ -97,9 +97,9 @@ try {
             $returnComplete = 0;
         }
 
-        // ─── Block undo (pending/delivered) if ALL boxes are already RETURNED ───
+        // ─── Block undo (pending/delivered/empty) if ALL boxes are already RETURNED ───
         // Return sub-status changes (returning→returned→good→damaged→lost) are still allowed
-        $undoStatuses = ['pending', 'delivered'];
+        $undoStatuses = ['pending', 'delivered', ''];
         $stmtAllReturned = $pdo->prepare("
             SELECT
                 COUNT(*) as total_boxes,
@@ -111,8 +111,15 @@ try {
         $boxCounts = $stmtAllReturned->fetch(PDO::FETCH_ASSOC);
 
         if ($boxCounts && $boxCounts['total_boxes'] > 0 && $boxCounts['total_boxes'] == $boxCounts['returned_boxes'] && in_array($status, $undoStatuses)) {
-            $errors[] = "Order {$boxRow['order_id']} ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม 'ยกเลิกตีกลับ' เพื่อเปลี่ยนสถานะทั้ง Order";
-            continue;
+            // Check if parent order is actually 'Returned'
+            $stmtCheckParent = $pdo->prepare("SELECT order_status FROM orders WHERE id = ?");
+            $stmtCheckParent->execute([$boxRow['order_id']]);
+            $parent = $stmtCheckParent->fetch(PDO::FETCH_ASSOC);
+
+            if ($parent && strcasecmp($parent['order_status'], 'Returned') === 0 && empty($input['parent_order_status'])) {
+                $errors[] = "Order {$boxRow['order_id']} ตีกลับครบทุกกล่องแล้ว กรุณาใช้ปุ่ม 'ยกเลิกตีกลับ' เพื่อเปลี่ยนสถานะทั้ง Order";
+                continue;
+            }
         }
 
         if ($isReturn) {
@@ -138,10 +145,19 @@ try {
             // If status is null (from OrderManagementModal clearing the dropdown), revert to parent order status
             $revertStatus = $status;
             if (!$revertStatus) {
-                $stmtOrder = $pdo->prepare("SELECT order_status FROM orders WHERE id = ?");
-                $stmtOrder->execute([$boxRow['order_id']]);
-                $parentOrder = $stmtOrder->fetch(PDO::FETCH_ASSOC);
-                $revertStatus = $parentOrder ? $parentOrder['order_status'] : 'PENDING';
+                if (!empty($input['parent_order_status'])) {
+                    $revertStatus = $input['parent_order_status'];
+                } else {
+                    $stmtOrder = $pdo->prepare("SELECT order_status FROM orders WHERE id = ?");
+                    $stmtOrder->execute([$boxRow['order_id']]);
+                    $parentOrder = $stmtOrder->fetch(PDO::FETCH_ASSOC);
+                    $revertStatus = $parentOrder ? $parentOrder['order_status'] : 'PENDING';
+                }
+                
+                // Safety check: if reverting, the box status shouldn't remain 'RETURNED'
+                if (strtoupper($revertStatus) === 'RETURNED') {
+                    $revertStatus = 'PENDING';
+                }
             }
 
             $stmtUpdate = $pdo->prepare("
@@ -185,23 +201,34 @@ try {
         }
     }
 
-    // ─── Auto-set orders.order_status = 'Returned' when ALL boxes are RETURNED ───
+    // ─── Auto-set or Explicitly set orders.order_status ───
     if (!empty($affectedOrderIds)) {
-        $stmtCheckAll = $pdo->prepare("
-            SELECT
-                COUNT(*) as total_boxes,
-                SUM(CASE WHEN ob.status = 'RETURNED' THEN 1 ELSE 0 END) as returned_boxes
-            FROM order_boxes ob
-            WHERE ob.order_id = ?
-        ");
-        $stmtSetReturned = $pdo->prepare("
-            UPDATE orders SET order_status = 'Returned' WHERE id = ? AND order_status != 'Returned'
-        ");
-        foreach (array_keys($affectedOrderIds) as $orderId) {
-            $stmtCheckAll->execute([$orderId]);
-            $counts = $stmtCheckAll->fetch(PDO::FETCH_ASSOC);
-            if ($counts && $counts['total_boxes'] > 0 && $counts['total_boxes'] == $counts['returned_boxes']) {
-                $stmtSetReturned->execute([$orderId]);
+        $parentOrderStatus = $input['parent_order_status'] ?? null;
+
+        if ($parentOrderStatus) {
+            // Explicit override from payload (e.g. user chose to Undo and picked a new status)
+            $stmtSetParent = $pdo->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
+            foreach (array_keys($affectedOrderIds) as $orderId) {
+                $stmtSetParent->execute([$parentOrderStatus, $orderId]);
+            }
+        } else {
+            // Auto-set to 'Returned' if ALL boxes are returned
+            $stmtCheckAll = $pdo->prepare("
+                SELECT
+                    COUNT(*) as total_boxes,
+                    SUM(CASE WHEN ob.status = 'RETURNED' THEN 1 ELSE 0 END) as returned_boxes
+                FROM order_boxes ob
+                WHERE ob.order_id = ?
+            ");
+            $stmtSetReturned = $pdo->prepare("
+                UPDATE orders SET order_status = 'Returned' WHERE id = ? AND order_status != 'Returned'
+            ");
+            foreach (array_keys($affectedOrderIds) as $orderId) {
+                $stmtCheckAll->execute([$orderId]);
+                $counts = $stmtCheckAll->fetch(PDO::FETCH_ASSOC);
+                if ($counts && $counts['total_boxes'] > 0 && $counts['total_boxes'] == $counts['returned_boxes']) {
+                    $stmtSetReturned->execute([$orderId]);
+                }
             }
         }
     }
