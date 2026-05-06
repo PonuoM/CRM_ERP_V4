@@ -2228,6 +2228,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       boxOverrides.current[boxNumber].codAmount = safe;
     }
 
+    if (field === "returnStatus") {
+      if ([PaymentMethod.COD, PaymentMethod.PayAfter].includes(currentOrder?.paymentMethod as PaymentMethod)) {
+        if (safe && safe !== "") {
+          boxOverrides.current[boxNumber].collectionAmount = 0;
+          boxOverrides.current[boxNumber].codAmount = 0;
+        }
+      }
+    }
+
     let newBoxes: any[] = [];
     setCurrentOrder((prev) => {
       if (!prev) return prev;
@@ -2238,6 +2247,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           // This ensures that the manual input overrides any previous calculated value
           if (field === "collectionAmount") {
             updates.codAmount = safe;
+          }
+
+          if (field === "returnStatus") {
+            if ([PaymentMethod.COD, PaymentMethod.PayAfter].includes(prev.paymentMethod)) {
+              if (safe && safe !== "") {
+                updates.collectionAmount = 0;
+                updates.codAmount = 0;
+              }
+            }
           }
           return { ...box, ...updates };
         }
@@ -2319,7 +2337,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     try {
       let effectiveBoxes = [...(currentOrder.boxes || [])];
 
-    if (zeroOutBoxes) {
+    if (zeroOutBoxes && [PaymentMethod.COD, PaymentMethod.PayAfter].includes(currentOrder.paymentMethod)) {
       effectiveBoxes = effectiveBoxes.map(b => ({
         ...b,
         collectionAmount: 0,
@@ -4469,29 +4487,21 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           กล่อง / Tracking
                         </th>
 
-                        {currentOrder.paymentMethod === PaymentMethod.COD && (
-                          <th className="px-3 py-2 text-right font-semibold">
-                            ยอดเก็บเงิน
-                          </th>
-                        )}
+                        <th className="px-3 py-2 text-right font-semibold">
+                          ยอดเก็บเงิน
+                        </th>
 
-                        {currentOrder.paymentMethod === PaymentMethod.COD && (
-                          <th className="px-3 py-2 text-right font-semibold">
-                            เก็บแล้ว
-                          </th>
-                        )}
+                        <th className="px-3 py-2 text-right font-semibold">
+                          เก็บแล้ว
+                        </th>
 
-                        {currentOrder.paymentMethod === PaymentMethod.COD && (
-                          <th className="px-3 py-2 text-right font-semibold">
-                            ยกเลิก/ยก
-                          </th>
-                        )}
+                        <th className="px-3 py-2 text-right font-semibold">
+                          ยกเลิก/ยก
+                        </th>
 
-                        {currentOrder.paymentMethod === PaymentMethod.COD && (
-                          <th className="px-3 py-2 text-right font-semibold">
-                            คงเหลือ
-                          </th>
-                        )}
+                        <th className="px-3 py-2 text-right font-semibold">
+                          คงเหลือ
+                        </th>
 
                         <th className="px-3 py-2 text-left font-semibold">
                           สถานะตีกลับ
@@ -4541,6 +4551,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         );
 
                         const rowBg = idx % 2 === 0 ? "bg-white" : "bg-gray-50";
+                        const canEditFinancials = [PaymentMethod.COD, PaymentMethod.PayAfter].includes(currentOrder.paymentMethod as PaymentMethod);
 
                         return (
                           <tr key={`box-${idx}`} className={rowBg}>
@@ -4556,7 +4567,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               </div>
                             </td>
 
-                            {currentOrder.paymentMethod === PaymentMethod.COD && (
                               <td className="px-3 py-2 text-right">
                                 {showInputs && !isLocked ? (
                                   <input
@@ -4571,15 +4581,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                         Number(e.target.value),
                                       )
                                     }
-                                    className="w-full text-right border border-gray-200 rounded px-2 py-1"
+                                    disabled={!canEditFinancials}
+                                    className={`w-full text-right border rounded px-2 py-1 ${!canEditFinancials ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed' : 'border-gray-200'}`}
                                   />
                                 ) : (
                                   <span>฿{collection.toLocaleString()}</span>
                                 )}
                               </td>
-                            )}
 
-                            {currentOrder.paymentMethod === PaymentMethod.COD && (
                               <td className="px-3 py-2 text-right">
                                 {showInputs && !isLocked ? (
                                   <input
@@ -4594,15 +4603,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                         Number(e.target.value),
                                       )
                                     }
-                                    className="w-full text-right border border-gray-200 rounded px-2 py-1"
+                                    disabled={!canEditFinancials}
+                                    className={`w-full text-right border rounded px-2 py-1 ${!canEditFinancials ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed' : 'border-gray-200'}`}
                                   />
                                 ) : (
                                   <span>฿{paid.toLocaleString()}</span>
                                 )}
                               </td>
-                            )}
 
-                            {currentOrder.paymentMethod === PaymentMethod.COD && (
                               <td className="px-3 py-2 text-right text-red-600">
                                 {showInputs && !isLocked ? (
                                   <input
@@ -4617,19 +4625,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                         Number(e.target.value),
                                       )
                                     }
-                                    className="w-full text-right border border-gray-200 rounded px-2 py-1"
+                                    disabled={!canEditFinancials}
+                                    className={`w-full text-right border rounded px-2 py-1 ${!canEditFinancials ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed' : 'border-gray-200'}`}
                                   />
                                 ) : (
                                   <span>-฿{waived.toLocaleString()}</span>
                                 )}
                               </td>
-                            )}
 
-                            {currentOrder.paymentMethod === PaymentMethod.COD && (
                               <td className="px-3 py-2 text-right font-semibold text-gray-900">
                                 ฿{remaining.toLocaleString()}
                               </td>
-                            )}
 
                             <td className="px-3 py-2">
                               {showInputs ? (
@@ -4644,7 +4650,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                   }
                                   className="w-full text-left border border-gray-200 rounded px-2 py-1 text-sm bg-white"
                                 >
-                                  <option value="">รอตรวจสอบ / ไม่ระบุ</option>
+                                  <option value="">รอตรวจสอบ / จัดส่งสำเร็จ</option>
                                   <option value="good">สภาพดี (Good)</option>
                                   <option value="returned">เข้าคลัง (Returned)</option>
                                   <option value="damaged">ชำรุด (Damaged)</option>
@@ -4673,67 +4679,68 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           รวม ({currentOrder.boxes.length} กล่อง)
                         </td>
 
-                        <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
-                          ฿{calculatedTotals.totalAmount.toLocaleString()}
-                        </td>
+                            <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
+                              ฿{calculatedTotals.totalAmount.toLocaleString()}
+                            </td>
 
-                        <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
-                          ฿
-                          {(() => {
-                            const hasAnyCollected = currentOrder.boxes.some(
-                              (b) => (b.collectedAmount ?? 0) > 0,
-                            );
+                            <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
+                              ฿
+                              {(() => {
+                                const hasAnyCollected = currentOrder.boxes.some(
+                                  (b) => (b.collectedAmount ?? 0) > 0,
+                                );
 
-                            if (hasAnyCollected) {
-                              // If any box has collectedAmount, sum them up
-                              return currentOrder.boxes.reduce(
-                                (sum, b) => sum + (b.collectedAmount ?? 0),
-                                0,
-                              );
-                            } else if ((currentOrder.amountPaid ?? 0) > 0) {
-                              // If no collectedAmount but amountPaid exists, use amountPaid
-                              return currentOrder.amountPaid ?? 0;
-                            }
-                            return 0;
-                          })().toLocaleString()}
-                        </td>
+                                if (hasAnyCollected) {
+                                  // If any box has collectedAmount, sum them up
+                                  return currentOrder.boxes.reduce(
+                                    (sum, b) => sum + (b.collectedAmount ?? 0),
+                                    0,
+                                  );
+                                } else if ((currentOrder.amountPaid ?? 0) > 0) {
+                                  // If no collectedAmount but amountPaid exists, use amountPaid
+                                  return currentOrder.amountPaid ?? 0;
+                                }
+                                return 0;
+                              })().toLocaleString()}
+                            </td>
 
-                        <td className="px-3 py-2 text-right text-sm font-semibold text-red-600">
-                          -฿
-                          {currentOrder.boxes
-                            .reduce((sum, b) => sum + (b.waivedAmount ?? 0), 0)
-                            .toLocaleString()}
-                        </td>
+                            <td className="px-3 py-2 text-right text-sm font-semibold text-red-600">
+                              -฿
+                              {currentOrder.boxes
+                                .reduce((sum, b) => sum + (b.waivedAmount ?? 0), 0)
+                                .toLocaleString()}
+                            </td>
 
-                        <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
-                          ฿
-                          {(() => {
-                            const hasAnyCollected = currentOrder.boxes.some(
-                              (b) => (b.collectedAmount ?? 0) > 0,
-                            );
-                            let totalCollected = 0;
+                            <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
+                              ฿
+                              {(() => {
+                                const hasAnyCollected = currentOrder.boxes.some(
+                                  (b) => (b.collectedAmount ?? 0) > 0,
+                                );
+                                let totalCollected = 0;
 
-                            if (hasAnyCollected) {
-                              totalCollected = currentOrder.boxes.reduce(
-                                (sum, b) => sum + (b.collectedAmount ?? 0),
-                                0,
-                              );
-                            } else if ((currentOrder.amountPaid ?? 0) > 0) {
-                              totalCollected = currentOrder.amountPaid ?? 0;
-                            }
+                                if (hasAnyCollected) {
+                                  totalCollected = currentOrder.boxes.reduce(
+                                    (sum, b) => sum + (b.collectedAmount ?? 0),
+                                    0,
+                                  );
+                                } else if ((currentOrder.amountPaid ?? 0) > 0) {
+                                  totalCollected = currentOrder.amountPaid ?? 0;
+                                }
 
-                            const totalWaived = currentOrder.boxes.reduce(
-                              (sum, b) => sum + (b.waivedAmount ?? 0),
-                              0,
-                            );
-                            return Math.max(
-                              0,
-                              calculatedTotals.totalAmount -
-                              totalCollected -
-                              totalWaived,
-                            );
-                          })().toLocaleString()}
-                        </td>
+                                const totalWaived = currentOrder.boxes.reduce(
+                                  (sum, b) => sum + (b.waivedAmount ?? 0),
+                                  0,
+                                );
+                                return Math.max(
+                                  0,
+                                  calculatedTotals.totalAmount -
+                                  totalCollected -
+                                  totalWaived,
+                                );
+                              })().toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2"></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -5119,13 +5126,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         if (!prev) return prev;
                         let newBoxes = prev.boxes || [];
                         if (returnStatusChangeModal.type === 'PROMPT_CONFIRM_RETURN') {
-                          newBoxes = newBoxes.map(b => ({ ...b, collectionAmount: 0, codAmount: 0 }));
-                          newBoxes.forEach(b => {
-                            if (b.boxNumber && boxOverrides.current[b.boxNumber]) {
-                              boxOverrides.current[b.boxNumber].collectionAmount = undefined;
-                              boxOverrides.current[b.boxNumber].codAmount = undefined;
-                            }
-                          });
+                          if ([PaymentMethod.COD, PaymentMethod.PayAfter].includes(prev.paymentMethod)) {
+                            newBoxes = newBoxes.map(b => ({ ...b, collectionAmount: 0, codAmount: 0 }));
+                            newBoxes.forEach(b => {
+                              if (b.boxNumber && boxOverrides.current[b.boxNumber]) {
+                                boxOverrides.current[b.boxNumber].collectionAmount = undefined;
+                                boxOverrides.current[b.boxNumber].codAmount = undefined;
+                              }
+                            });
+                          }
                         }
                         const codTotal = prev.paymentMethod === PaymentMethod.COD 
                             ? newBoxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0)

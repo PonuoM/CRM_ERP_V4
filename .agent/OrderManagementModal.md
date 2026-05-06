@@ -37,7 +37,14 @@ Usage in `App.tsx`: permission is determined by the active page context (e.g., `
 - **Lightbox**: Click on a slip to view it in full size.
 
 ### 3. COD & Box Management
-- **Boxes**: Supports splitting order into multiple boxes. Each box has tracking number, COD amount, and collection status.
+- **Boxes**: Supports splitting order into multiple boxes. Each box has tracking number, COD amount, collection status, and return status.
+- **Financial Columns Display**: 
+  - The 4 financial columns (Collection Amount, Collected, Waived, Remaining) are **always visible** regardless of the payment method to preserve table structure and allow auditing.
+  - **Editability**: If `paymentMethod` is NOT `COD` or `PayAfter` (e.g., Transfer, Freebie), the financial inputs are strictly **disabled (greyed out)**.
+- **Return Status Behavior**:
+  - Empty status is labeled `"รอตรวจสอบ / จัดส่งสำเร็จ"`.
+  - **Auto-Zero on Return**: If an order is `COD` or `PayAfter`, changing a box's return status to anything other than empty will **automatically zero out** its `collectionAmount` and `codAmount`.
+  - For non-COD orders (Transfer, Claim, Freebie), changing the return status retains the original financial values (typically 0) without triggering the auto-zero logic.
 - **Validation**:
   - Ensures total COD amount across boxes matches `Order Total`.
   - Prevents saving if detailed COD amounts don't sum up correctly (tolerance < 0.1).

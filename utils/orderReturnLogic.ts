@@ -14,7 +14,7 @@ export const checkReturnStatusChange = (
   const hasEmptyBox = currentBoxes.some(b => !b.returnStatus || b.returnStatus === '');
   const allBoxesHaveReturnStatus = currentBoxes.every(b => b.returnStatus && b.returnStatus !== '');
 
-  // If order is Returned, but there is an empty box ("รอตรวจสอบ / ไม่ระบุ"), it can't be Returned anymore.
+  // If order is Returned, but there is an empty box ("รอตรวจสอบ / จัดส่งสำเร็จ"), it can't be Returned anymore.
   if (currentOrderStatus === 'Returned' && hasEmptyBox) {
     return { type: 'PROMPT_NEW_STATUS' };
   }
