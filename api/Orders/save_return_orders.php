@@ -169,6 +169,11 @@ try {
                 }
             }
 
+            // Workaround for MySQL Trigger 1644: "cannot change collection_amount after shipping"
+            // We split the update: first restore collection_amount (while status is still RETURNED), then change status to SHIPPING.
+            $stmtRestoreAmount = $pdo->prepare("UPDATE order_boxes SET collection_amount = cod_amount WHERE id = ?");
+            $stmtRestoreAmount->execute([$boxRow['id']]);
+
             $stmtUpdate = $pdo->prepare("
                 UPDATE order_boxes
                 SET return_status = NULL,
@@ -179,7 +184,6 @@ try {
                     returned_by = NULL,
                     status = UPPER(?),
                     collected_amount = 0,
-                    collection_amount = cod_amount,
                     updated_at = NOW()
                 WHERE id = ?
             ");

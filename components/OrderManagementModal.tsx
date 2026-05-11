@@ -2237,42 +2237,33 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       }
     }
 
-    let newBoxes: any[] = [];
-    setCurrentOrder((prev) => {
-      if (!prev) return prev;
-      const boxes = (prev.boxes || []).map((box) => {
-        if (box.boxNumber === boxNumber) {
-          const updates: any = { [field]: safe };
-          // Force sync: if user edits collection amount, set codAmount too
-          // This ensures that the manual input overrides any previous calculated value
-          if (field === "collectionAmount") {
-            updates.codAmount = safe;
-          }
-
-          if (field === "returnStatus") {
-            if ([PaymentMethod.COD, PaymentMethod.PayAfter].includes(prev.paymentMethod)) {
-              if (safe && safe !== "") {
-                updates.collectionAmount = 0;
-                updates.codAmount = 0;
-              }
-            }
-          }
-          return { ...box, ...updates };
+    let newBoxes = (currentOrder?.boxes || []).map((box) => {
+      if (box.boxNumber === boxNumber) {
+        const updates: any = { [field]: safe };
+        if (field === "collectionAmount") {
+          updates.codAmount = safe;
         }
 
-        return box;
-      });
+        if (field === "returnStatus") {
+          if ([PaymentMethod.COD, PaymentMethod.PayAfter].includes(currentOrder?.paymentMethod as PaymentMethod)) {
+            if (safe && safe !== "") {
+              updates.collectionAmount = 0;
+              updates.codAmount = 0;
+            }
+          }
+        }
+        return { ...box, ...updates };
+      }
+      return box;
+    });
 
-      const codTotal =
-        prev.paymentMethod === PaymentMethod.COD
-          ? boxes.reduce(
-            (sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0),
-            0,
-          )
-          : prev.codAmount;
+    const codTotal = currentOrder?.paymentMethod === PaymentMethod.COD
+      ? newBoxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0)
+      : currentOrder?.codAmount;
 
-      newBoxes = boxes;
-      return { ...prev, boxes, codAmount: codTotal };
+    setCurrentOrder((prev) => {
+      if (!prev) return prev;
+      return { ...prev, boxes: newBoxes, codAmount: codTotal };
     });
 
     if (field === "returnStatus" && currentOrder) {
@@ -2560,7 +2551,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         await apiFetch(`Orders/save_return_orders.php`, {
           method: 'POST',
           body: JSON.stringify({
-            returns: payload
+            returns: payload,
+            parent_order_status: currentOrder.orderStatus
           })
         });
       } catch (err) {
