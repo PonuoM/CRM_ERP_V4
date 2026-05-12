@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, User, Company, UserRole, Warehouse } from '../types';
 import { PlusCircle, Edit, Trash2, Package, Eye, Plus, ToggleLeft, ToggleRight } from 'lucide-react';
-import { listProductLots, listProducts, getProductTotalStock, listWarehouses, updateProduct, updateProductLot } from '@/services/api';
+import { listProductLots, listProducts, getProductTotalStock, listWarehouses, updateProduct, updateProductLot, apiFetch } from '@/services/api';
 import LotManagementModal from '../components/LotManagementModal';
 
 interface ProductManagementPageProps {
@@ -24,6 +24,33 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
   const [showLotManagementModal, setShowLotManagementModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedWarehouse, setSelectedWarehouse] = useState<number | null>(null);
+
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [duplicateSkus, setDuplicateSkus] = useState<any[]>([]);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+
+  const handleCheckDuplicates = async () => {
+    setCheckingDuplicates(true);
+    try {
+      const effectiveCompanyId = currentUser?.companyId || (currentUser as any)?.company_id || 1;
+      const json = await apiFetch(`products/check_duplicate_skus?company_id=${effectiveCompanyId}`);
+      
+      if (json.success) {
+        if (json.duplicates && json.duplicates.length > 0) {
+          setDuplicateSkus(json.duplicates);
+          setShowDuplicateModal(true);
+        } else {
+          alert('ไม่พบ SKU ซ้ำในระบบ');
+        }
+      } else {
+        alert('Error: ' + json.error);
+      }
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    } finally {
+      setCheckingDuplicates(false);
+    }
+  };
 
   // โหลดข้อมูลคลังสินค้า
   useEffect(() => {
@@ -224,13 +251,22 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
           <h2 className="text-2xl font-bold text-gray-800">จัดการสินค้า</h2>
           <p className="text-gray-600">จัดการข้อมูลสินค้าทั้งหมดในระบบ</p>
         </div>
-        <button
-          onClick={() => openModal('addProduct')}
-          className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm"
-        >
-          <PlusCircle size={16} className="mr-2" />
-          เพิ่มสินค้าใหม่
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleCheckDuplicates}
+            disabled={checkingDuplicates}
+            className="bg-orange-100 text-orange-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-orange-200 shadow-sm disabled:opacity-50"
+          >
+            {checkingDuplicates ? 'กำลังตรวจสอบ...' : '🔍 ตรวจสอบ SKU ซ้ำ'}
+          </button>
+          <button
+            onClick={() => openModal('addProduct')}
+            className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm"
+          >
+            <PlusCircle size={16} className="mr-2" />
+            เพิ่มสินค้าใหม่
+          </button>
+        </div>
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow mb-6 flex items-center space-x-4">
@@ -537,6 +573,70 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
             setSelectedProduct(null);
           }}
         />
+      )}
+
+      {/* Modal ตรวจสอบ SKU ซ้ำ */}
+      {showDuplicateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-red-600">⚠️ พบ SKU ซ้ำในระบบ</h3>
+              <button onClick={() => setShowDuplicateModal(false)} className="text-gray-500 hover:text-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="bg-red-50 p-4 rounded mb-4 text-sm text-red-700 shrink-0">
+              พบ SKU ซ้ำซ้อนกันระหว่างตาราง Products และ Promotions จำนวน {duplicateSkus.length} รายการ
+            </div>
+
+            <div className="overflow-auto flex-1 border rounded">
+              <table className="w-full text-sm text-left border-collapse">
+                <thead className="bg-gray-50 border-b sticky top-0 shadow-sm z-10">
+                  <tr>
+                    <th className="px-4 py-2 border-r whitespace-nowrap">รหัส SKU</th>
+                    <th className="px-4 py-2 border-r whitespace-nowrap">จำนวนที่พบ</th>
+                    <th className="px-4 py-2 border-r">แหล่งที่มา</th>
+                    <th className="px-4 py-2">ชื่อสินค้า/โปรโมชั่น</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {duplicateSkus.map((dup: any, idx: number) => (
+                    <tr key={idx} className="border-b hover:bg-red-50">
+                      <td className="px-4 py-2 border-r font-mono font-bold text-red-600 align-top">{dup.sku}</td>
+                      <td className="px-4 py-2 border-r align-top text-center">{dup.count}</td>
+                      <td className="px-4 py-2 border-r align-top text-xs">
+                        {dup.sources.split(',').map((s: string, i: number) => (
+                          <div key={i} className={`inline-block px-1.5 py-0.5 rounded mr-1 mb-1 ${s === 'product' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                            {s}
+                          </div>
+                        ))}
+                      </td>
+                      <td className="px-4 py-2 align-top">
+                        <ul className="list-disc list-inside space-y-1">
+                          {dup.names.split(' || ').map((n: string, i: number) => (
+                            <li key={i} className="text-xs text-gray-700">{n}</li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="mt-4 pt-4 border-t flex justify-end shrink-0">
+              <button 
+                onClick={() => setShowDuplicateModal(false)}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded font-medium text-sm"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

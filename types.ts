@@ -573,6 +573,8 @@ export interface CodBox {
   status?: string;
   subOrderId?: string;
   trackingNumber?: string;
+  returnStatus?: string;
+  returnNote?: string;
 }
 
 export interface TrackingDetail {

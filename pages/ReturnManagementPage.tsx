@@ -85,6 +85,108 @@ interface VerifiedOrder {
   returned_by_name?: string;
 }
 
+// ─── ReturnImageGallery: Extracted outside to prevent re-mounting on every keystroke ───
+const ReturnImageGallery = ({ subOrderId }: { subOrderId: string }) => {
+  const [images, setImages] = useState<any[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Resolve image URL
+  const resolveImgUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const filename = url.split('/').pop() || '';
+    const apiBase = resolveApiBasePath().replace(/\/$/, '');
+    return `${apiBase}/uploads/returns/${filename}`;
+  };
+
+  useEffect(() => {
+    if (subOrderId) {
+      getReturnImages(subOrderId).then((res: any) => {
+        if (res?.status === 'success') setImages(res.images || []);
+      }).catch(() => {});
+    }
+  }, [subOrderId]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await uploadReturnImage(subOrderId, file);
+      if (res?.success && res.image) {
+        setImages(prev => [res.image, ...prev]);
+      } else {
+        alert(res?.message || 'อัปโหลดไม่สำเร็จ');
+      }
+    } catch {
+      alert('เกิดข้อผิดพลาดในการอัปโหลด');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('ลบรูปนี้?')) return;
+    try {
+      const res = await deleteReturnImage(id);
+      if (res?.success) {
+        setImages(prev => prev.filter(img => img.id !== id));
+      }
+    } catch {
+      alert('ลบไม่สำเร็จ');
+    }
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-100">
+      <div className="flex items-center gap-2 mb-1.5">
+        <Camera size={13} className="text-gray-400" />
+        <span className="text-[11px] text-gray-500 font-medium">รูปพัสดุ ({images.length})</span>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="px-2 py-0.5 bg-sky-50 text-sky-600 border border-sky-200 rounded text-[10px] font-medium hover:bg-sky-100 disabled:opacity-50 transition-colors"
+        >
+          {uploading ? '⏳' : '📷 อัปโหลด'}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+      </div>
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {images.map((img: any) => {
+            const fullUrl = resolveImgUrl(img.url);
+            return (
+              <div key={img.id} className="relative group">
+                <img
+                  src={fullUrl}
+                  alt=""
+                  className="w-14 h-14 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => setLightbox(fullUrl)}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleDelete(img.id); }}
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                >×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {lightbox && (
+        <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="" className="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl" />
+          <button className="absolute top-4 right-4 text-white text-2xl font-bold hover:text-gray-300" onClick={() => setLightbox(null)}>✕</button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   user,
 }) => {
@@ -122,15 +224,18 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const [searchOrderId, setSearchOrderId] = useState("");
   const [filterSearch, setFilterSearch] = useState("");
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
+  const [requiresParentStatusChange, setRequiresParentStatusChange] = useState(false);
+  const [undoParentStatus, setUndoParentStatus] = useState("Delivered");
 
   // Manage Modal State
   const [showExportPopup, setShowExportPopup] = useState(false);
   const [managingOrder, setManagingOrder] = useState<Order | null>(null);
   interface ManageRow {
     trackingNumber: string;
+    displayTrackingNumbers?: string[];
 
     subOrderId: string | null;
-    status: "pending" | "returning" | "delivered" | "delivering" | "other" | "lost" | "good" | "damaged";
+    status: "pending" | "returning" | "delivered" | "delivering" | "other" | "lost" | "good" | "damaged" | "";
     collectedAmount?: number;
     note: string;
     items: any[];
@@ -148,17 +253,12 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const [revertLoading, setRevertLoading] = useState(false);
 
   const revertStatusOptions = [
-    { value: 'Pending', label: 'รอดำเนินการ' },
-    { value: 'AwaitingVerification', label: 'รอตรวจสอบ' },
-    { value: 'Confirmed', label: 'ยืนยันแล้ว' },
-    { value: 'Preparing', label: 'กำลังจัดเตรียม' },
-    { value: 'Picking', label: 'กำลังหยิบสินค้า' },
+    { value: 'Pending', label: 'รอดึงข้อมูล' },
+    { value: 'Preparing', label: 'กำลังจัดสินค้า' },
     { value: 'Shipping', label: 'กำลังจัดส่ง' },
-    { value: 'PreApproved', label: 'รอตรวจสอบจากบัญชี' },
-    { value: 'Delivered', label: 'ส่งสำเร็จ' },
+    { value: 'Delivered', label: 'เสร็จสิ้น' },
     { value: 'Cancelled', label: 'ยกเลิก' },
-    { value: 'Claiming', label: 'เคลม' },
-    { value: 'BadDebt', label: 'หนี้เสีย' },
+    { value: 'BadDebt', label: 'หนี้สูญ' },
   ];
 
   // State for Bulk Import Modal
@@ -229,8 +329,63 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         typeof (managingOrder as any).tracking_numbers === "string"
           ? (managingOrder as any).tracking_numbers
           : "";
+      const orderBoxes = (managingOrder as any).boxes || [];
 
-      if (Array.isArray(trackingDetails) && trackingDetails.length > 0) {
+      // Priority 1: Box-Centric Grouping
+      if (orderBoxes.length > 0) {
+        orderBoxes.forEach((box: any) => {
+          let displayTrackings: string[] = [];
+          const bNum = box.boxNumber || box.box_number;
+
+          if (Array.isArray(trackingDetails)) {
+            const matchingDetails = trackingDetails.filter(
+              (d: any) =>
+                d.box_number == bNum ||
+                d.boxNumber == bNum ||
+                (d.subOrderId && d.subOrderId.endsWith(`-${bNum}`)) ||
+                (d.sub_order_id && d.sub_order_id.endsWith(`-${bNum}`))
+            );
+            matchingDetails.forEach((d) => {
+              if (d.trackingNumber) displayTrackings.push(d.trackingNumber);
+              else if (d.tracking_number) displayTrackings.push(d.tracking_number);
+            });
+          }
+
+          if (displayTrackings.length === 0) {
+            if (box.trackingNumber) displayTrackings.push(box.trackingNumber);
+            else if (box.tracking_number) displayTrackings.push(box.tracking_number);
+            else if (orderBoxes.length === 1 && trackingNumbersArr.length > 0) {
+              displayTrackings = [...trackingNumbersArr];
+            } else if (orderBoxes.length === 1 && trackingNumbersStr) {
+              displayTrackings = trackingNumbersStr.split(",").map((s: string) => s.trim()).filter(Boolean);
+            }
+          }
+
+          const uniqueTrackings = Array.from(new Set(displayTrackings));
+          const sId = box.sub_order_id || box.subOrderId || `${managingOrder.id}-${bNum}`;
+
+          let relevantItems: any[] = [];
+          if (managingOrder.items && Array.isArray(managingOrder.items)) {
+            relevantItems = managingOrder.items.filter(
+              (i: any) => i.box_number == bNum || i.boxNumber == bNum
+            );
+          }
+
+          rows.push({
+            trackingNumber: uniqueTrackings[0] || `BOX-${bNum}`,
+            displayTrackingNumbers: uniqueTrackings,
+            subOrderId: sId,
+            status: "pending",
+            collectedAmount: 0,
+            note: "",
+            originalStatus: "pending",
+            items: relevantItems,
+          });
+        });
+      }
+      // Priority 2: Tracking Details (Fallback for old orders without boxes)
+
+      else if (Array.isArray(trackingDetails) && trackingDetails.length > 0) {
         trackingDetails.forEach((d: any) => {
           const tNum = d.trackingNumber || d.tracking_number;
           if (tNum) {
@@ -277,7 +432,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           }
         });
       }
-      // Priority 2: Tracking Numbers Array (Simple list)
+      // Priority 3: Tracking Numbers Array (Simple list)
       else if (
         Array.isArray(trackingNumbersArr) &&
         trackingNumbersArr.length > 0
@@ -296,7 +451,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           }
         });
       }
-      // Priority 3: Tracking Numbers String (Comma separated)
+      // Priority 4: Tracking Numbers String (Comma separated)
       else if (trackingNumbersStr) {
         const parts = trackingNumbersStr.split(",");
         parts.forEach((t) => {
@@ -560,16 +715,25 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   const handleManageSave = async () => {
     if (!managingOrder) return;
 
-    // Filter for actions
-    // Allow sending 'pending' to clear status
     const actionRows = manageRows;
 
     if (actionRows.length === 0) {
-      alert("กรุณาเลือกสถานะอย่างน้อย 1 รายการ");
+      alert("กรุณาเลือกรายการ 1 รายการ");
       return;
     }
 
-    // Open Confirmation Modal instead of window.confirm
+    const orderStatus = (managingOrder as any)?.orderStatus || (managingOrder as any)?.order_status || '';
+    const isOrderReturned = orderStatus.toLowerCase() === 'returned';
+    const hasUndo = actionRows.some(r => r.status === '' || r.status === 'pending' || r.status === 'delivered');
+
+    if (isOrderReturned && hasUndo) {
+      setRequiresParentStatusChange(true);
+      setUndoParentStatus("Delivered");
+    } else {
+      setRequiresParentStatusChange(false);
+      setUndoParentStatus("");
+    }
+
     setIsConfirmSaveOpen(true);
   };
 
@@ -583,7 +747,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       // Prepare payload for all actioned items
       const payload = actionRows.map((r) => ({
         sub_order_id: r.subOrderId || managingOrder?.id || "", // Fallback to main ID if sub is missing
-        status: r.status || "returning", // Use row status directly (Manual Manage Mode)
+        status: r.status !== undefined ? r.status : "returning", // Preserve empty string for Undo
         collected_amount: r.collectedAmount || 0,
         note: r.note || "",
         tracking_number: r.trackingNumber, // Essential for new flow
@@ -591,7 +755,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         return_claim: r.returnClaim ?? null,
       }));
 
-      const res = await saveReturnOrders(payload, user.id);
+      const res = await saveReturnOrders(
+        payload, 
+        user.id, 
+        requiresParentStatusChange ? undoParentStatus : undefined
+      );
       if (res && res.status === "success") {
         // Check if there are errors despite "success" status
         if (res.errors && res.errors.length > 0 && res.updatedCount === 0) {
@@ -1155,111 +1323,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     }
   };
 
-  // ─── ReturnImageGallery: inline component for each card ───
-  const ReturnImageGallery = ({ subOrderId }: { subOrderId: string }) => {
-    const [images, setImages] = useState<any[]>([]);
-    const [uploading, setUploading] = useState(false);
-    const [lightbox, setLightbox] = useState<string | null>(null);
-    const fileRef = useRef<HTMLInputElement>(null);
 
-    // Resolve image URL: DB stores relative path like /CRM_ERP_V4/api/uploads/returns/...
-    // On Vite dev server we need the full Apache URL
-    const resolveImgUrl = (url: string) => {
-      if (!url) return '';
-      // If already absolute URL, return as-is
-      if (url.startsWith('http://') || url.startsWith('https://')) return url;
-      // Extract just the filename from the stored URL
-      const filename = url.split('/').pop() || '';
-      // Use the API base path to construct the full URL
-      const apiBase = resolveApiBasePath().replace(/\/$/, '');
-      return `${apiBase}/uploads/returns/${filename}`;
-    };
-
-    useEffect(() => {
-      if (subOrderId) {
-        getReturnImages(subOrderId).then((res: any) => {
-          if (res?.status === 'success') setImages(res.images || []);
-        }).catch(() => {});
-      }
-    }, [subOrderId]);
-
-    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setUploading(true);
-      try {
-        const res = await uploadReturnImage(subOrderId, file);
-        if (res?.success && res.image) {
-          setImages(prev => [res.image, ...prev]);
-        } else {
-          alert(res?.message || 'อัปโหลดไม่สำเร็จ');
-        }
-      } catch {
-        alert('เกิดข้อผิดพลาดในการอัปโหลด');
-      } finally {
-        setUploading(false);
-        if (fileRef.current) fileRef.current.value = '';
-      }
-    };
-
-    const handleDelete = async (id: number) => {
-      if (!confirm('ลบรูปนี้?')) return;
-      try {
-        const res = await deleteReturnImage(id);
-        if (res?.success) {
-          setImages(prev => prev.filter(img => img.id !== id));
-        }
-      } catch {
-        alert('ลบไม่สำเร็จ');
-      }
-    };
-
-    return (
-      <div className="mt-2 pt-2 border-t border-gray-100">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Camera size={13} className="text-gray-400" />
-          <span className="text-[11px] text-gray-500 font-medium">รูปพัสดุ ({images.length})</span>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="px-2 py-0.5 bg-sky-50 text-sky-600 border border-sky-200 rounded text-[10px] font-medium hover:bg-sky-100 disabled:opacity-50 transition-colors"
-          >
-            {uploading ? '⏳' : '📷 อัปโหลด'}
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
-        </div>
-        {images.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {images.map((img: any) => {
-              const fullUrl = resolveImgUrl(img.url);
-              return (
-                <div key={img.id} className="relative group">
-                  <img
-                    src={fullUrl}
-                    alt=""
-                    className="w-14 h-14 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => setLightbox(fullUrl)}
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); handleDelete(img.id); }}
-                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                  >×</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {lightbox && (
-          <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center" onClick={() => setLightbox(null)}>
-            <img src={lightbox} alt="" className="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl" />
-            <button className="absolute top-4 right-4 text-white text-2xl font-bold hover:text-gray-300" onClick={() => setLightbox(null)}>✕</button>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const VerifiedListTable = () => {
     const isGoodTab = activeTab === "good";
@@ -2019,7 +2083,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
             <div className="px-6 py-4 bg-white border-b border-gray-200 flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-gray-800 text-lg">จัดการสินค้าตีกลับ</h3>
-                <p className="text-xs text-gray-400 mt-0.5">แยกราย Sub Order ID</p>
+                <p className="text-xs text-gray-400 mt-0.5">แยกรายกล่อง (Box)</p>
               </div>
               <button
                 onClick={() => setManagingOrder(null)}
@@ -2073,8 +2137,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                       {/* Top row: Tracking info */}
                       <div className="flex items-start gap-4 mb-3">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-mono font-bold text-gray-800 text-sm">{row.trackingNumber}</span>
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            {row.displayTrackingNumbers && row.displayTrackingNumbers.length > 0 ? (
+                              row.displayTrackingNumbers.map((tNum, tIdx) => (
+                                <span key={tIdx} className="font-mono font-bold text-gray-800 text-sm">{tNum}</span>
+                              ))
+                            ) : (
+                              <span className="font-mono font-bold text-gray-800 text-sm">{row.trackingNumber}</span>
+                            )}
                             {row.subOrderId && (
                               <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-[10px] font-mono">{row.subOrderId}</span>
                             )}
@@ -2107,21 +2177,19 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                       {/* Status Selection - Pill Buttons */}
                       <div className="border-t border-gray-100 pt-3">
                         <div className="flex flex-wrap gap-1.5 mb-2">
-                          {/* Pending */}
                           <button
                             type="button"
-                            disabled={isOrderReturned}
                             onClick={() => {
                               const newRows = [...manageRows];
-                              newRows[idx].status = "pending";
+                              newRows[idx].status = "";
                               setManageRows(newRows);
                             }}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${row.status === 'pending'
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${!row.status || row.status === 'pending' || row.status === 'delivered' || row.status === ''
                               ? 'bg-gray-700 text-white border-gray-700 shadow-sm'
                               : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                              } ${isOrderReturned ? 'opacity-30 cursor-not-allowed' : ''}`}
+                              }`}
                           >
-                            ⏳ รอดำเนินการ
+                            ⏳ ยกเลิกตีกลับ / จัดส่งสำเร็จ
                           </button>
                           {/* Returning */}
                           <button
@@ -2321,6 +2389,24 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                   </span>{" "}
                   รายการ ใช่หรือไม่?
                 </p>
+                {requiresParentStatusChange && (
+                  <div className="mb-4 bg-amber-50 p-4 rounded-lg border border-amber-200">
+                    <p className="text-amber-800 text-sm font-medium mb-2">
+                      คุณได้ยกเลิกสถานะตีกลับของบางกล่อง โปรดเลือกสถานะออเดอร์หลักใหม่
+                    </p>
+                    <select
+                      value={undoParentStatus}
+                      onChange={(e) => setUndoParentStatus(e.target.value)}
+                      className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      {revertStatusOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="flex gap-3 justify-center">
                   <button
                     onClick={() => setIsConfirmSaveOpen(false)}

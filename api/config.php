@@ -51,6 +51,8 @@ function db_connect(): PDO
     ];
     try {
       $pdo = new PDO($dsn, $DB_USER, $DB_PASS, $opts);
+      // Disable ONLY_FULL_GROUP_BY to restore compatibility with AppServ SQL queries
+      $pdo->exec("SET SESSION sql_mode = (SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))");
       return $pdo;
     } catch (Throwable $e) {
       $lastError = $e;

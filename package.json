@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "vitest",
+    "test:run": "vitest run",
     "build": "vite build",
     "preview": "vite preview",
     "host:build": "npx tsx scripts/host/host-build.ts",
