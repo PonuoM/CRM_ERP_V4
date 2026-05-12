@@ -71,30 +71,53 @@ try {
             // Get parent order id (remove sub-order suffix like -1, -2)
             $parentOrderId = preg_replace('/-\d+$/', '', $existingOrderId);
 
-            // GUARD: Check if order has tracking (already shipped) before setting Delivered
-            $trackingCheckStmt = $pdo->prepare(
-                "SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = :orderId"
-            );
-            $trackingCheckStmt->execute([':orderId' => $parentOrderId]);
-            $hasTracking = (int) $trackingCheckStmt->fetchColumn() > 0;
+            // GUARD: เช็คว่าจ่ายครบยอดหรือยัง ก่อน mark Approved/Delivered
+            // ใช้ slip ที่ confirmed รวม + reconcile log ที่ confirmed รวม เป็นตัวประเมิน amount_paid ที่แท้จริง
+            $totalCheckStmt = $pdo->prepare("SELECT total_amount, amount_paid FROM orders WHERE id = :orderId");
+            $totalCheckStmt->execute([':orderId' => $parentOrderId]);
+            $orderRow = $totalCheckStmt->fetch(PDO::FETCH_ASSOC);
+            $totalAmount = (float) ($orderRow['total_amount'] ?? 0);
+            $amountPaid  = (float) ($orderRow['amount_paid'] ?? 0);
+            $isFullyPaid = $totalAmount > 0 && $amountPaid >= ($totalAmount - 0.01);
 
-            if ($hasTracking) {
-                $updateOrderStmt = $pdo->prepare("
-                    UPDATE orders 
-                    SET payment_status = 'Approved',
-                        order_status = 'Delivered'
-                    WHERE id = :orderId
-                      AND order_status NOT IN ('Cancelled', 'Returned')
-                ");
+            if ($isFullyPaid) {
+                // จ่ายครบ → Approved (+ Delivered ถ้ามี tracking)
+                $trackingCheckStmt = $pdo->prepare(
+                    "SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = :orderId OR order_id = :orderId"
+                );
+                $trackingCheckStmt->execute([':orderId' => $parentOrderId]);
+                $hasTracking = (int) $trackingCheckStmt->fetchColumn() > 0;
+
+                if ($hasTracking) {
+                    $updateOrderStmt = $pdo->prepare("
+                        UPDATE orders
+                        SET payment_status = 'Approved',
+                            order_status = 'Delivered'
+                        WHERE id = :orderId
+                          AND order_status NOT IN ('Cancelled', 'Returned')
+                    ");
+                } else {
+                    $updateOrderStmt = $pdo->prepare("
+                        UPDATE orders
+                        SET payment_status = 'Approved'
+                        WHERE id = :orderId
+                          AND order_status NOT IN ('Cancelled', 'Returned')
+                    ");
+                }
+                $updateOrderStmt->execute([':orderId' => $parentOrderId]);
             } else {
+                // ยังจ่ายไม่ครบ → คง payment_status = 'Unpaid' (mental model: "ยังไม่ครบ = ยังไม่จบ")
+                // PreApproved สงวนไว้สำหรับ "จ่ายครบแล้ว รออนุมัติเต็มยอด" เท่านั้น
+                // ไม่แตะ order_status (ค้างที่ Shipping/Picking ฯลฯ ตามจริง)
                 $updateOrderStmt = $pdo->prepare("
-                    UPDATE orders 
-                    SET payment_status = 'Approved'
+                    UPDATE orders
+                    SET payment_status = 'Unpaid'
                     WHERE id = :orderId
                       AND order_status NOT IN ('Cancelled', 'Returned')
+                      AND payment_status NOT IN ('Approved', 'Paid')
                 ");
+                $updateOrderStmt->execute([':orderId' => $parentOrderId]);
             }
-            $updateOrderStmt->execute([':orderId' => $parentOrderId]);
         }
 
         echo json_encode(['ok' => true, 'message' => 'Confirmed successfully']);

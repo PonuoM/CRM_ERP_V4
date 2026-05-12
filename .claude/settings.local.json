@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_check_assignment_field.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_repeat_customer_report.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_repeat_customer_export_csv.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_check_customer_27072.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_check_buckets.php)",
+      "Bash(php -r ' *)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_check_duplicate_orders.php)",
+      "Bash(taskkill /F /FI \"IMAGENAME eq php.exe\")",
+      "Read(//c/Users/user/.claude/projects/c--AppServ-www-CRM-ERP-V4/**)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_repeat_customer_export_clean.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_repeat_customer_export_clean.php 1)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_repeat_customer_export_clean.php 2)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_check_2_orders.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_fix_2_orders_revert.php)",
+      "Bash(php -l c:/AppServ/www/CRM_ERP_V4/api/index.php)",
+      "Bash(php -l c:/AppServ/www/CRM_ERP_V4/api/Statement_DB/reconcile_cancel.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_check_ice68.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_fix_ice68_revert.php)",
+      "Bash(php -l c:/AppServ/www/CRM_ERP_V4/api/Statement_DB/confirm_reconcile.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_check_partial_paid.php)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_fix_partial_paid_batch.php preview)",
+      "Bash(php c:/AppServ/www/CRM_ERP_V4/tmp_fix_partial_paid_batch.php commit)"
+    ]
+  }
+}

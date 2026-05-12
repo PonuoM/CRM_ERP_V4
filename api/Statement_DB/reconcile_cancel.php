@@ -33,6 +33,7 @@ if (!$id || !$companyId) {
 try {
     $pdo = db_connect();
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    set_audit_context($pdo, 'statement/reconcile_cancel');
 
     // Fetch the reconcile log details before deleting (need order_id, batch_id, reconcile_type)
     $stmt = $pdo->prepare("
@@ -88,7 +89,12 @@ try {
             if (in_array($currentOrderStatus, $earlyFulfillmentStages, true)) {
                 $newOrderStatus = $currentOrderStatus; // Keep as-is
             } elseif ($remainingPaid <= 0 && in_array($currentOrderStatus, ['PreApproved', 'Delivered'])) {
-                $newOrderStatus = 'Confirmed';
+                // ถ้ามี tracking แสดงว่า shipped แล้ว → revert เป็น Shipping (ไม่ใช่ย้อนไปก่อน picking)
+                // ใช้ทั้ง parent_order_id และ order_id เพราะตาราง order_tracking_numbers ใช้ field ต่างกันตามชนิด order
+                $trackStmt = $pdo->prepare("SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
+                $trackStmt->execute([$orderId, $orderId]);
+                $hasTracking = (int) $trackStmt->fetchColumn();
+                $newOrderStatus = $hasTracking > 0 ? 'Shipping' : 'Confirmed';
             } else {
                 $newOrderStatus = $currentOrderStatus;
             }

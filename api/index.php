@@ -7512,38 +7512,58 @@ function handle_order_slips(PDO $pdo, ?string $id): void
 
             /**
              * [MODIFIED] Logic per request:
-             * After delete, if order is COD and slips count == 0, revert status to 'Unpaid'
+             * - ถ้าลบสลิปสุดท้าย (no slips remaining) = ไม่มีหลักฐานการจ่าย
+             *   → amount_paid = 0, payment_status = 'Unpaid'
+             *   → order_status: ถ้าเคย PreApproved/Delivered/Confirmed + มี tracking → Shipping
+             * - ถ้ายังมีสลิปอื่นเหลือ → recalc amount_paid จาก slips ที่เหลือเท่านั้น (ไม่ใช้ debt fallback)
+             *
+             * NOTE: debt_collection records ไม่แตะ (จะคงไว้สำหรับ workflow แยก)
              */
             if ($orderId) {
                 try {
                     set_audit_context($pdo, 'index/slip_delete');
-                    $checkOrdStmt = $pdo->prepare("SELECT payment_method, total_amount FROM orders WHERE id = ?");
+                    $checkOrdStmt = $pdo->prepare("SELECT payment_method, total_amount, order_status FROM orders WHERE id = ?");
                     $checkOrdStmt->execute([$orderId]);
                     $orderRow = $checkOrdStmt->fetch(PDO::FETCH_ASSOC);
-                    $pm = $orderRow['payment_method'] ?? '';
                     $orderTotal = (float) ($orderRow['total_amount'] ?? 0);
+                    $currentOrderStatus = (string) ($orderRow['order_status'] ?? '');
 
-                    // Recalculate amount_paid from remaining sources
-                    $slipSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_slips WHERE order_id = ?");
-                    $slipSumStmt->execute([$orderId]);
-                    $remainingSlipTotal = (float) $slipSumStmt->fetchColumn();
-
-                    $debtSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection WHERE order_id = ?");
-                    $debtSumStmt->execute([$orderId]);
-                    $debtTotal = (float) $debtSumStmt->fetchColumn();
-
-                    // Use max of remaining sources, capped at total_amount
-                    $recalcPaid = min($orderTotal, max($remainingSlipTotal, $debtTotal));
-                    $pdo->prepare("UPDATE orders SET amount_paid = ? WHERE id = ?")->execute([$recalcPaid, $orderId]);
-
-                    // Revert to Unpaid for all payment methods when last slip is deleted
+                    // นับสลิปที่เหลือ
                     $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
                     $countSlipStmt->execute([$orderId]);
                     $remainingSlips = (int) $countSlipStmt->fetchColumn();
 
-                    if ($remainingSlips === 0 && $debtTotal <= 0) {
-                        $updOrdStmt = $pdo->prepare("UPDATE orders SET payment_status = 'Unpaid' WHERE id = ?");
-                        $updOrdStmt->execute([$orderId]);
+                    if ($remainingSlips === 0) {
+                        // ลบสลิปสุดท้าย → revert เต็มชุด (ไม่มีหลักฐานจ่าย)
+                        $newAmountPaid = 0;
+                        $newPaymentStatus = 'Unpaid';
+
+                        // ตัดสินใจ order_status ตาม fulfillment state
+                        $newOrderStatus = $currentOrderStatus;
+                        if (in_array($currentOrderStatus, ['PreApproved', 'Delivered', 'Confirmed'], true)) {
+                            // ใช้ทั้ง parent_order_id และ order_id เพราะตาราง order_tracking_numbers ใช้ field ต่างกันตามชนิด order
+                            $trackStmt = $pdo->prepare("SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
+                            $trackStmt->execute([$orderId, $orderId]);
+                            $hasTracking = (int) $trackStmt->fetchColumn();
+                            if ($hasTracking > 0) {
+                                $newOrderStatus = 'Shipping';
+                            }
+                        }
+
+                        $updStmt = $pdo->prepare("
+                            UPDATE orders
+                            SET amount_paid = ?, payment_status = ?, order_status = ?
+                            WHERE id = ?
+                        ");
+                        $updStmt->execute([$newAmountPaid, $newPaymentStatus, $newOrderStatus, $orderId]);
+                    } else {
+                        // ยังมีสลิปอื่นเหลือ → recalc amount_paid จาก slips ที่เหลือ
+                        $slipSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_slips WHERE order_id = ?");
+                        $slipSumStmt->execute([$orderId]);
+                        $remainingSlipTotal = (float) $slipSumStmt->fetchColumn();
+
+                        $recalcPaid = min($orderTotal, $remainingSlipTotal);
+                        $pdo->prepare("UPDATE orders SET amount_paid = ? WHERE id = ?")->execute([$recalcPaid, $orderId]);
                     }
                 } catch (Throwable $e) {
                     error_log("Error recalculating after slip delete: " . $e->getMessage());
