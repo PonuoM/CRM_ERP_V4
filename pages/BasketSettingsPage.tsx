@@ -32,6 +32,8 @@ interface BasketConfig {
     on_fail_reevaluate?: boolean;
     has_loop?: boolean;
     blocked_target_baskets?: string | null;
+    extend_days_per_appointment?: number | null;
+    max_total_days?: number | null;
 }
 
 interface ReturnConfig {
@@ -1906,8 +1908,34 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                 )}
                                             </div>
 
+                                            {/* Dynamic Retention Rules */}
+                                            {editingBasket.fail_after_days ? (
+                                                <div className="grid grid-cols-2 gap-4 mb-3 pt-3 border-t border-red-200">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">บวกเวลาเพิ่ม (วัน) ต่อ 1 นัดหมาย</label>
+                                                        <input
+                                                            type="number"
+                                                            value={editingBasket.extend_days_per_appointment ?? ''}
+                                                            onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_per_appointment: e.target.value ? parseInt(e.target.value) : 0 })}
+                                                            className="w-full border rounded-lg p-2"
+                                                            placeholder="0 = ปิดใช้งาน"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">เพดานเวลาสูงสุดรวม (วัน)</label>
+                                                        <input
+                                                            type="number"
+                                                            value={editingBasket.max_total_days ?? ''}
+                                                            onChange={(e) => setEditingBasket({ ...editingBasket, max_total_days: e.target.value ? parseInt(e.target.value) : null })}
+                                                            className="w-full border rounded-lg p-2"
+                                                            placeholder="เช่น 90"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ) : null}
+
                                             {/* Loop-specific fields */}
-                                            {editingBasket.has_loop && (
+                                            {Boolean(editingBasket.has_loop) && (
                                                 <div className="grid grid-cols-2 gap-4 mb-3 pt-3 border-t border-red-200">
                                                     <div>
                                                         <label className="block text-sm font-medium text-gray-700 mb-1">วนสูงสุด (รอบ)</label>
@@ -1950,7 +1978,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                         กลับถังตามเกณฑ์อัตโนมัติ (Re-Evaluate)
                                                     </label>
                                                 </div>
-                                                {editingBasket.on_fail_reevaluate && (
+                                                {Boolean(editingBasket.on_fail_reevaluate) && (
                                                     <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
                                                         <strong>หมายเหตุ:</strong> ระบบจะคำนวณถังเป้าหมายโดยอัตโนมัติจาก "วันนับจาก Order ล่าสุด"<br />
                                                         • &lt;180 วัน → กลับถังแจกเดิม<br />
@@ -1991,7 +2019,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                         </div>
 
                                         {/* Blocked Target Baskets - Only show when re-evaluate is enabled */}
-                                        {editingBasket.on_fail_reevaluate && (
+                                        {Boolean(editingBasket.on_fail_reevaluate) && (
                                             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                                                 <label className="block text-sm font-medium text-red-800 mb-2">
                                                     🚫 ถังที่ห้ามย้ายไป (Blocked Targets)
@@ -2027,7 +2055,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                         );
                                                     })}
                                                 </div>
-                                                {editingBasket.blocked_target_baskets && (
+                                                {Boolean(editingBasket.blocked_target_baskets) && (
                                                     <div className="mt-2 pt-2 border-t border-red-200 text-xs text-red-600">
                                                         <strong>IDs ที่ถูก Block:</strong> {editingBasket.blocked_target_baskets}
                                                     </div>

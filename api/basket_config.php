@@ -113,8 +113,9 @@ try {
                  min_days_since_order, max_days_since_order, days_since_first_order, 
                  days_since_registered, target_page, display_order, is_active, company_id,
                  on_sale_basket_key, fail_after_days, on_fail_basket_key, on_fail_reevaluate, has_loop,
-                 max_distribution_count, hold_days_before_redistribute, linked_basket_key, on_max_dist_basket_key, blocked_target_baskets)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 max_distribution_count, hold_days_before_redistribute, linked_basket_key, on_max_dist_basket_key, blocked_target_baskets,
+                 extend_days_per_appointment, max_total_days)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             $stmt->execute([
@@ -139,7 +140,9 @@ try {
                 $input['hold_days_before_redistribute'] ?? null,
                 $input['linked_basket_key'] ?? null,
                 $input['on_max_dist_basket_key'] ?? null,
-                $input['blocked_target_baskets'] ?? null
+                $input['blocked_target_baskets'] ?? null,
+                $input['extend_days_per_appointment'] ?? 0,
+                $input['max_total_days'] ?? null
             ]);
 
             $newId = $pdo->lastInsertId();
@@ -179,7 +182,9 @@ try {
                 'hold_days_before_redistribute',
                 'linked_basket_key',
                 'on_max_dist_basket_key',
-                'blocked_target_baskets'
+                'blocked_target_baskets',
+                'extend_days_per_appointment',
+                'max_total_days'
             ];
 
             foreach ($allowedFields as $field) {

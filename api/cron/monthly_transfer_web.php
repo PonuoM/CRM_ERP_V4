@@ -164,25 +164,60 @@ foreach ($companies as $companyId) {
         $holdDays = (int)($config['hold_days_before_redistribute'] ?? 0);
         $maxDist = (int)($config['max_distribution_count'] ?? 0);
         $blockedTargets = array_filter(explode(',', $config['blocked_target_baskets'] ?? ''));
+        $extendDaysPerAppt = (int)($config['extend_days_per_appointment'] ?? 0);
+        $maxTotalDays = (int)($config['max_total_days'] ?? 0);
         
         echo "=== [$basketName] ID:$basketId ===\n";
         
         // หาลูกค้าที่หมดเวลา
         $limitClause = $limit ? "LIMIT " . ($limit - $processed) : "";
-        $customersStmt = $pdo->prepare("
-            SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
-                   c.current_basket_key, c.distribution_count,
-                   DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
-                   DATEDIFF(NOW(), c.last_order_date) as days_since_order
-            FROM customers c
-            WHERE c.company_id = ?
-              AND c.current_basket_key = ?
-              AND c.basket_entered_date IS NOT NULL
-              AND DATEDIFF(NOW(), c.basket_entered_date) >= ?
-              AND DATEDIFF(NOW(), c.last_order_date) >= ?
-            $limitClause
-        ");
-        $customersStmt->execute([$companyId, $basketId, $failDays, $failDays]);
+        
+        if ($extendDaysPerAppt > 0 && $maxTotalDays > 0) {
+            // Best Practice: Dynamic Retention Time (Rule Engine)
+            // Extending holding time by $extendDaysPerAppt for every appointment created after entering the basket, capped at $maxTotalDays
+            $customersStmt = $pdo->prepare("
+                SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
+                       c.current_basket_key, c.distribution_count,
+                       DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
+                       DATEDIFF(NOW(), c.last_order_date) as days_since_order,
+                       COALESCE((
+                           SELECT COUNT(*) FROM appointments a 
+                           WHERE a.customer_id = c.customer_id AND a.date >= c.basket_entered_date
+                       ), 0) as valid_appointments
+                FROM customers c
+                WHERE c.company_id = ?
+                  AND c.current_basket_key = ?
+                  AND c.basket_entered_date IS NOT NULL
+                  AND DATEDIFF(NOW(), c.basket_entered_date) >= LEAST(?, ? + (
+                      COALESCE((
+                          SELECT COUNT(*) FROM appointments a 
+                          WHERE a.customer_id = c.customer_id AND a.date >= c.basket_entered_date
+                      ), 0) * ?
+                  ))
+                  AND DATEDIFF(NOW(), c.last_order_date) >= ?
+                $limitClause
+            ");
+            $customersStmt->execute([$companyId, $basketId, $maxTotalDays, $failDays, $extendDaysPerAppt, $failDays]);
+            echo "Using dynamic retention: +$extendDaysPerAppt days/appt (Max: $maxTotalDays)\n";
+        } else {
+            // Standard query (fast)
+            $customersStmt = $pdo->prepare("
+                SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
+                       c.current_basket_key, c.distribution_count,
+                       DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
+                       DATEDIFF(NOW(), c.last_order_date) as days_since_order,
+                       0 as valid_appointments
+                FROM customers c
+                WHERE c.company_id = ?
+                  AND c.current_basket_key = ?
+                  AND c.basket_entered_date IS NOT NULL
+                  AND DATEDIFF(NOW(), c.basket_entered_date) >= ?
+                  AND DATEDIFF(NOW(), c.last_order_date) >= ?
+                $limitClause
+            ");
+            $customersStmt->execute([$companyId, $basketId, $failDays, $failDays]);
+        }
+        
         $customers = $customersStmt->fetchAll(PDO::FETCH_ASSOC);
         
         echo "Found " . count($customers) . " customers exceeding $failDays days\n";
@@ -200,6 +235,14 @@ foreach ($companies as $companyId) {
             $daysInBasket = $customer['days_in_basket'];
             $daysSinceOrder = $customer['days_since_order'] ?? 9999;
             $distCount = (int)$customer['distribution_count'];
+            $appts = (int)$customer['valid_appointments'];
+            
+            if ($appts > 0 && $extendDaysPerAppt > 0 && $maxTotalDays > 0) {
+                $allowedDays = min($maxTotalDays, $failDays + ($appts * $extendDaysPerAppt));
+                echo "  -> #$customerId: $name | In basket $daysInBasket days | Allowed $allowedDays days ($appts appts)\n";
+            } else {
+                echo "  -> #$customerId: $name | In basket $daysInBasket days (Limit: $failDays days)\n";
+            }
             
             // กำหนดถังปลายทาง
             $targetBasketKey = $onFailBasketKey;
