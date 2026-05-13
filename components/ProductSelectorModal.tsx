@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product, Promotion, QuotaProduct } from '../types';
-import { listQuotaProducts, getQuotaSummary } from '../services/quotaApi';
+import { listQuotaProducts, getUserQuotaDetail } from '../services/quotaApi';
 
 export interface QuotaInfo {
     productId: number;
@@ -65,27 +65,44 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
         if (isOpen && companyId && tab === 'quota' && quotaProducts.length > 0) {
             setLoadingQuota(true);
             (async () => {
-                const newMap = new Map<number, { remaining: number; totalQuota: number }>();
-                for (const qp of quotaProducts) {
+                if (currentUserId) {
                     try {
-                        const summaries = await getQuotaSummary(companyId, qp.id);
-                        if (currentUserId) {
-                            const userSummary = summaries.find((s: any) => Number(s.userId) === currentUserId);
-                            if (userSummary) {
+                        const details = await getUserQuotaDetail({ companyId, userId: currentUserId, rateScheduleId: 'all' });
+                        const newMap = new Map<number, { remaining: number; totalQuota: number }>();
+                        
+                        for (const qp of quotaProducts) {
+                            let totalRemaining = 0;
+                            let totalQuotaVal = 0;
+                            let hasRate = false;
+                            
+                            // Find all valid rates that include this quota product
+                            const applicableRates = details.filter(d => 
+                                d.scopeIds && 
+                                d.scopeIds.includes(qp.id) &&
+                                !d.isExpired
+                            );
+                            
+                            for (const rate of applicableRates) {
+                                hasRate = true;
+                                totalRemaining += Number(rate.remaining ?? 0);
+                                totalQuotaVal += Number(rate.totalQuota ?? 0);
+                            }
+                            
+                            if (hasRate) {
                                 newMap.set(qp.productId, {
-                                    remaining: Number(userSummary.remaining ?? 0),
-                                    totalQuota: Number(userSummary.totalQuota ?? 0),
+                                    remaining: totalRemaining,
+                                    totalQuota: totalQuotaVal,
                                 });
                             }
                         }
-                    } catch { /* ignore per-product errors */ }
+                        setQuotaTabMap(newMap);
+                    } catch { /* ignore */ }
                 }
-                setQuotaTabMap(newMap);
             })()
                 .catch(() => {})
                 .finally(() => setLoadingQuota(false));
         }
-    }, [isOpen, companyId, tab, quotaProducts.length]);
+    }, [isOpen, companyId, tab, quotaProducts.length, currentUserId]);
 
     // Set of product IDs that are quota products (to exclude from normal tab)
     const quotaProductIds = new Set(quotaProducts.map(qp => qp.productId));

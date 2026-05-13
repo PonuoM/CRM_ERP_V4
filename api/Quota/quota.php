@@ -1259,6 +1259,7 @@ function handleUserQuotaDetail(PDO $conn) {
 
         $details[] = [
             'rateScheduleId' => $rateId,
+            'scopeIds' => $scopeIds,
             'rateName' => $rate['rate_name'] ?: null,
             'productLabel' => $productLabel,
             'quotaMode' => $rate['quota_mode'],

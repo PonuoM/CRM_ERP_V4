@@ -302,6 +302,7 @@ export interface UserQuotaDetailItem {
   pendingAutoQuota?: number;
   isConfirmed?: boolean;
   isExpired?: boolean;
+  scopeIds?: number[];
 }
 
 export async function getUserQuotaDetail(params: {
