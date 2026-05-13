@@ -689,17 +689,37 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     let cancelled = false;
     (async () => {
       try {
-        const { listQuotaProducts, calculateUserQuota } = await import('../services/quotaApi');
+        const { listQuotaProducts, getUserQuotaDetail } = await import('../services/quotaApi');
         const qps = await listQuotaProducts(currentUser.companyId);
         const activeQps = qps.filter(q => q.isActive);
         if (activeQps.length === 0 || cancelled) return;
+        
         const newMap = new Map<number, number>();
+        const details = await getUserQuotaDetail({ 
+            companyId: currentUser.companyId, 
+            userId: currentUser.id, 
+            rateScheduleId: 'all' 
+        });
+
         for (const qp of activeQps) {
           try {
-            const calc = await calculateUserQuota(qp.id, currentUser.id);
-            if (calc && typeof calc.remaining === 'number') {
+            let totalRemaining = 0;
+            let hasRate = false;
+            
+            const applicableRates = details.filter(d => 
+                d.scopeIds && 
+                d.scopeIds.includes(qp.id) &&
+                !d.isExpired
+            );
+            
+            for (const rate of applicableRates) {
+                hasRate = true;
+                totalRemaining += Number(rate.remaining ?? 0);
+            }
+
+            if (hasRate) {
               const cost = qp.quotaCost ?? 1;
-              newMap.set(qp.productId, Math.max(0, Math.floor(calc.remaining / cost)));
+              newMap.set(qp.productId, Math.max(0, Math.floor(totalRemaining / cost)));
             }
           } catch { /* skip */ }
         }
@@ -4448,7 +4468,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       // 🎫 QUOTA ENFORCEMENT: Check if order items exceed remaining quota
       try {
-        const { listQuotaProducts, calculateUserQuota } = await import('../services/quotaApi');
+        const { listQuotaProducts, getUserQuotaDetail } = await import('../services/quotaApi');
         const qProducts = await listQuotaProducts(currentUser.companyId);
         if (qProducts.length > 0) {
           // Build lookup: productId → { quotaProductId, quotaCost }
@@ -4476,13 +4496,28 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           }
 
           // Check remaining for each quota product
+          const details = await getUserQuotaDetail({ companyId: currentUser.companyId, userId: currentUser.id, rateScheduleId: 'all' });
+          
           for (const [qpId, needed] of neededMap.entries()) {
             if (needed <= 0) continue;
             try {
-              const calc = await calculateUserQuota(qpId, currentUser.id);
-              if (calc && typeof calc.remaining === 'number' && needed > calc.remaining) {
+              let totalRemaining = 0;
+              let hasRate = false;
+              
+              const applicableRates = details.filter(d => 
+                  d.scopeIds && 
+                  d.scopeIds.includes(qpId) &&
+                  !d.isExpired
+              );
+              
+              for (const rate of applicableRates) {
+                  hasRate = true;
+                  totalRemaining += Number(rate.remaining ?? 0);
+              }
+              
+              if (hasRate && needed > totalRemaining) {
                 const name = nameMap.get(qpId) ?? `Product #${qpId}`;
-                alert(`โควตาไม่เพียงพอสำหรับ "${name}" — ต้องการ ${needed} แต่คงเหลือ ${calc.remaining}`);
+                alert(`โควตาไม่เพียงพอสำหรับ "${name}" — ต้องการ ${needed} แต่คงเหลือ ${totalRemaining}`);
                 return;
               }
             } catch (calcErr) {
