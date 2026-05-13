@@ -3,6 +3,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/Services/ShippingSyncService.php';
 require_once __DIR__ . '/Services/BasketRoutingService.php';
 require_once __DIR__ . '/Quota/quota_record_helper.php';
+require_once __DIR__ . '/Services/CustomerStatsHelper.php';
 
 // API Version for debugging deployment issues
 define('API_VERSION', '2026-01-24-0947-BASKET-FIX');
@@ -3291,6 +3292,9 @@ function handle_finance_approval_counts(PDO $pdo): void
     ]);
 }
 
+// recalculate_customer_stats_safe() is provided by Services/CustomerStatsHelper.php
+
+
 function handle_orders(PDO $pdo, ?string $id): void
 {
     if ($id === 'get_upsell_orders.php') {
@@ -4691,6 +4695,19 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 // Return updated order with debug info
                 $o = get_order($pdo, $id);
+
+                // Recalculate customer stats safely
+                if ($o && !empty($o['customer_id'])) {
+                    try {
+                        $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                        $findStmt->execute([$o['customer_id'], is_numeric($o['customer_id']) ? (int) $o['customer_id'] : null]);
+                        $customerResult = $findStmt->fetch();
+                        if ($customerResult && $customerResult['customer_id']) {
+                            recalculate_customer_stats_safe($pdo, (int)$customerResult['customer_id']);
+                        }
+                    } catch (Throwable $e) {}
+                }
+
                 $o['basket_routing'] = $basketRoutingDebug;
                 json_response($o);
 
@@ -5358,32 +5375,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                         if ($customerData) {
                             $customerPk = $customerData['customer_id']; // This is the int PK
 
-                            if ($orderTotal > 0) {
-                                // Update total_purchases and grade if order has value
-                                $currentTotal = floatval($customerData['total_purchases'] ?? 0);
-                                $newTotal = $currentTotal + $orderTotal;
-
-                                // Calculate new grade based on total purchases
-                                $newGrade = 'D';
-                                if ($newTotal >= 50000) {
-                                    $newGrade = 'A';
-                                } else if ($newTotal >= 10000) {
-                                    $newGrade = 'B';
-                                } else if ($newTotal >= 5000) {
-                                    $newGrade = 'C';
-                                } else if ($newTotal >= 2000) {
-                                    $newGrade = 'D';
-                                }
-
-                                $updateCustomer = $pdo->prepare('UPDATE customers SET total_purchases = ?, grade = ?, last_order_date = ? WHERE customer_id = ?');
-                                $updateCustomer->execute([$newTotal, $newGrade, $orderDate, $customerPk]);
-                                error_log("Updated customer {$customerPk}: total_purchases={$newTotal}, grade={$newGrade}, last_order_date={$orderDate}");
-                            } else {
-                                // Only update last_order_date if order total is 0
-                                $updateCustomer = $pdo->prepare('UPDATE customers SET last_order_date = ? WHERE customer_id = ?');
-                                $updateCustomer->execute([$orderDate, $customerPk]);
-                                error_log("Updated customer {$customerPk}: last_order_date={$orderDate} (order total = 0)");
-                            }
+                            // Recalculate customer stats safely using the new helper function
+                            recalculate_customer_stats_safe($pdo, (int)$customerPk);
                         } else {
                             error_log("Customer not found for ID: {$customerId}");
                         }
@@ -5674,6 +5667,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $customerId = $updatedOrder['customer_id'] ?? $customerId;
                 $warehouseIdForAllocation = $updatedOrder['warehouse_id'] !== null ? (int) $updatedOrder['warehouse_id'] : null;
                 $companyIdForAllocation = $updatedOrder['company_id'] !== null ? (int) $updatedOrder['company_id'] : null;
+
 
                 try {
                     if (
@@ -6294,6 +6288,18 @@ function handle_orders(PDO $pdo, ?string $id): void
                         error_log("[API/orders PATCH] Basket routing error for order #$id: " . $routeError->getMessage());
                         $basketRoutingDebug['error'] = $routeError->getMessage();
                     }
+                }
+
+                // Recalculate customer stats safely at the very end of PATCH
+                if ($customerId) {
+                    try {
+                        $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                        $findStmt->execute([$customerId, is_numeric($customerId) ? (int) $customerId : null]);
+                        $customerResult = $findStmt->fetch();
+                        if ($customerResult && $customerResult['customer_id']) {
+                            recalculate_customer_stats_safe($pdo, (int)$customerResult['customer_id']);
+                        }
+                    } catch (Throwable $e) {}
                 }
 
                 $response = ['ok' => true, 'basket_routing' => $basketRoutingDebug];
@@ -12106,6 +12112,11 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                     $updateParams[] = $orderId;
                     $updateOrderStmt = $pdo->prepare("UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?");
                     $updateOrderStmt->execute($updateParams);
+
+                    // Recalculate customer stats if order amount changed
+                    if (!empty($order['customer_id'])) {
+                        recalculate_customer_stats_safe($pdo, (int)$order['customer_id']);
+                    }
 
                     // Maintain per-box COD/collection amounts in order_boxes for COD orders
                     if (($order['payment_method'] ?? '') === 'COD' && !empty($boxNetAdditions)) {

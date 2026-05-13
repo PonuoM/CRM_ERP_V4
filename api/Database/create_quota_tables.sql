@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS quota_products (
 -- 2. อัตรา ยอดขาย/โควตา (ตั้งล่วงหน้าตามวันที่)
 CREATE TABLE IF NOT EXISTS quota_rate_schedules (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    rate_name VARCHAR(255) DEFAULT NULL COMMENT 'ชื่อ rate schedule (เช่น "รอบ ม.ค. 69")',
     quota_product_id INT DEFAULT NULL COMMENT 'FK → quota_products.id (NULL = global)',
     sales_per_quota DECIMAL(10,2) NOT NULL COMMENT 'ยอดขายกี่บาท = 1 โควตา',
     effective_date DATE NOT NULL COMMENT 'มีผลตั้งแต่วันนี้เป็นต้นไป',
