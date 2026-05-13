@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../services/api';
-import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, RefreshCw, Users, Calendar, Package, ShieldCheck, Search, ArrowRight, CheckCircle2, XCircle, ChevronRight, ChevronDown, ArrowLeft, Eye, UserX, Building2, AlertTriangle } from 'lucide-react';
+import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, RefreshCw, Users, Calendar, Package, ShieldCheck, Search, ArrowRight, CheckCircle2, XCircle, ChevronRight, ChevronDown, ArrowLeft, Eye, UserX, Building2, AlertTriangle, BarChart3 } from 'lucide-react';
 import { User } from '../types';
 
 interface BasketSettingsPageProps {
@@ -77,6 +77,12 @@ const BASKET_GROUPS = [
         label: 'ค้าง Upsell',
         icon: AlertTriangle,
         description: 'ลูกค้าค้าง Basket 51 ไม่มี order Pending'
+    },
+    {
+        key: 'stats_audit',
+        label: 'ตรวจสอบยอดขาย',
+        icon: BarChart3,
+        description: 'ตรวจสอบยอดขายและวันที่สั่งซื้อล่าสุด'
     }
 ];
 
@@ -160,6 +166,13 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
     const [upSelected, setUpSelected] = useState<Set<number>>(new Set());
     const [upExpanded, setUpExpanded] = useState<Set<number>>(new Set());
     const [upFixResult, setUpFixResult] = useState<any>(null);
+
+    // Stats audit state
+    const [statsScanning, setStatsScanning] = useState(false);
+    const [statsFixing, setStatsFixing] = useState(false);
+    const [statsResult, setStatsResult] = useState<any>(null);
+    const [statsFixResult, setStatsFixResult] = useState<any>(null);
+    const [statsFilter, setStatsFilter] = useState<string | null>(null); // 'all' | 'wrong_total' | 'wrong_order_count' | 'wrong_last_date' | 'future_dates'
 
     // Load companies list for Super Admin
     useEffect(() => {
@@ -405,6 +418,77 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
         });
     };
 
+    // Stats audit handlers
+    const handleStatsScan = async () => {
+        setStatsScanning(true);
+        setStatsResult(null);
+        setStatsFixResult(null);
+        setStatsFilter(null);
+        try {
+            const res = await apiFetch(`customer_stats_audit.php?action=scan&companyId=${effectiveCompanyId}&limit=500`);
+            setStatsResult(res);
+        } catch (error) {
+            console.error('Stats scan failed:', error);
+            setMessage({ type: 'error', text: 'สแกนล้มเหลว' });
+        } finally {
+            setStatsScanning(false);
+        }
+    };
+
+    // Filter customers by issue type
+    const statsFilteredCustomers = statsResult?.customers?.filter((c: any) => {
+        if (!statsFilter || statsFilter === 'all') return true;
+        if (statsFilter === 'wrong_total') return c.cached_total !== c.actual_total;
+        if (statsFilter === 'wrong_order_count') return Number(c.cached_order_count) !== Number(c.actual_order_count);
+        if (statsFilter === 'wrong_last_date') return (c.cached_last_order || '1970-01-01') !== (c.actual_last_date || '1970-01-01');
+        if (statsFilter === 'future_dates') return c.cached_last_order && c.cached_last_order > new Date().toISOString().slice(0, 19);
+        return true;
+    }) ?? [];
+
+    const handleStatsFix = async () => {
+        if (!statsResult || statsResult.total_wrong === 0) return;
+        if (!confirm(`ยืนยันแก้ไขสถิติลูกค้า ${statsResult.total_wrong.toLocaleString()} คน?\n\nระบบจะคำนวณยอดซื้อ, จำนวนออเดอร์, วันสั่งซื้อ และเกรดใหม่ทั้งหมด\n\n(อาจใช้เวลาสักครู่ ระบบจะทยอยแก้ทีละรอบจนเสร็จ)`)) return;
+        
+        setStatsFixing(true);
+        let totalFixed = 0;
+        let totalErrors = 0;
+        let remaining = statsResult.total_wrong;
+        
+        try {
+            while (remaining > 0) {
+                const res = await apiFetch(`customer_stats_audit.php?action=fix&companyId=${effectiveCompanyId}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ batch: 500 }),
+                });
+                
+                totalFixed += res.fixed || 0;
+                totalErrors += res.errors || 0;
+                remaining -= (res.fixed + res.errors);
+                
+                // If the backend didn't process anything, break to avoid infinite loop
+                if (res.total === 0) break;
+                
+                // Show progressive result
+                setStatsFixResult({
+                    total: statsResult.total_wrong,
+                    fixed: totalFixed,
+                    errors: totalErrors,
+                    fixed_at: new Date().toLocaleTimeString('th-TH')
+                });
+            }
+            
+            setMessage({ type: 'success', text: `แก้ไขสำเร็จ ${totalFixed} คน` });
+            
+            // Re-scan automatically when done
+            handleStatsScan();
+        } catch (error) {
+            console.error('Stats fix failed:', error);
+            setMessage({ type: 'error', text: 'แก้ไขล้มเหลว หรือเกิด Timeout กรุณากดสแกนและซ่อมแซมต่อ' });
+        } finally {
+            setStatsFixing(false);
+        }
+    };
+
     const statusColor = (s: string) => {
         switch (s) {
             case 'Delivered': return 'bg-green-100 text-green-700';
@@ -440,7 +524,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                 <p className="text-gray-500">จัดการเงื่อนไขการจัดกลุ่มลูกค้าและการคืน Pool</p>
                             </div>
                         </div>
-                        {isSuperAdmin && companies.length > 0 && (activeGroup === 'reevaluate' || activeGroup === 'misassigned' || activeGroup === 'upsell_stuck') && (
+                        {isSuperAdmin && companies.length > 0 && (activeGroup === 'reevaluate' || activeGroup === 'misassigned' || activeGroup === 'upsell_stuck' || activeGroup === 'stats_audit') && (
                             <div className="flex items-center gap-2">
                                 <Building2 size={20} className="text-gray-400" />
                                 <select
@@ -1209,6 +1293,231 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                     <button
                                                         onClick={handleUpScan}
                                                         disabled={upScanning}
+                                                        className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+                                                    >
+                                                        <RefreshCw size={20} /> สแกนใหม่
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ) : activeGroup === 'stats_audit' ? (
+                            /* Stats Audit Panel */
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                                    <BarChart3 size={24} className="text-indigo-600" />
+                                    ตรวจสอบยอดขายและวันที่สั่งซื้อล่าสุด
+                                </h2>
+                                <p className="text-gray-500 text-sm mb-6">
+                                    สแกนหาลูกค้าที่ยอดซื้อรวม, จำนวนออเดอร์, หรือวันสั่งซื้อล่าสุดใน customers ไม่ตรงกับข้อมูลจริงในตาราง orders
+                                </p>
+
+                                {/* Scan Button */}
+                                <button
+                                    onClick={handleStatsScan}
+                                    disabled={statsScanning}
+                                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 mb-6 shadow-sm"
+                                >
+                                    {statsScanning ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
+                                    {statsScanning ? 'กำลังสแกน...' : 'สแกนหาข้อมูลไม่ตรง (Dry Run)'}
+                                </button>
+
+                                {/* Fix Result */}
+                                {statsFixResult && (
+                                    <div className="mb-6 p-6 bg-green-50 border border-green-200 rounded-xl">
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <CheckCircle2 size={28} className="text-green-600" />
+                                            <h3 className="text-lg font-bold text-green-800">แก้ไขเรียบร้อย!</h3>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-4 text-center">
+                                            <div className="bg-white rounded-lg p-3">
+                                                <div className="text-2xl font-bold text-gray-800">{statsFixResult.total}</div>
+                                                <div className="text-xs text-gray-500">พบไม่ตรง</div>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-3">
+                                                <div className="text-2xl font-bold text-green-600">{statsFixResult.fixed}</div>
+                                                <div className="text-xs text-gray-500">แก้ไขแล้ว</div>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-3">
+                                                <div className="text-2xl font-bold text-red-600">{statsFixResult.errors}</div>
+                                                <div className="text-xs text-gray-500">ผิดพลาด</div>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-3">แก้ไขเมื่อ: {statsFixResult.fixed_at}</p>
+                                        <button
+                                            onClick={handleStatsScan}
+                                            className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm flex items-center gap-2"
+                                        >
+                                            <Search size={16} /> สแกนอีกครั้ง
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Scan Result */}
+                                {statsResult && (
+                                    <div>
+                                        {/* Summary Header */}
+                                        <div className={`p-5 rounded-xl mb-6 ${statsResult.total_wrong === 0 ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                                            <div className="flex items-center gap-3">
+                                                {statsResult.total_wrong === 0
+                                                    ? <CheckCircle2 size={28} className="text-green-600" />
+                                                    : <AlertCircle size={28} className="text-amber-600" />
+                                                }
+                                                <div>
+                                                    <h3 className={`text-lg font-bold ${statsResult.total_wrong === 0 ? 'text-green-800' : 'text-amber-800'}`}>
+                                                        {statsResult.total_wrong === 0
+                                                            ? '✅ ข้อมูลทุกคนถูกต้อง!'
+                                                            : `⚠️ พบ ${statsResult.total_wrong.toLocaleString()} คนที่ข้อมูลไม่ตรง`
+                                                        }
+                                                    </h3>
+                                                    <p className="text-xs text-gray-500">สแกนเมื่อ: {statsResult.scanned_at} | ลูกค้าทั้งหมด: {statsResult.total_customers?.toLocaleString()}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Breakdown Cards */}
+                                        {statsResult.total_wrong > 0 && (
+                                            <>
+                                                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                                                    <div
+                                                        onClick={() => setStatsFilter(statsFilter === 'all' ? null : 'all')}
+                                                        className={`bg-white border rounded-xl p-4 text-center cursor-pointer transition-all hover:shadow-md ${
+                                                            statsFilter === 'all' || !statsFilter ? 'ring-2 ring-amber-400 border-amber-300' : 'opacity-60 hover:opacity-100'
+                                                        }`}
+                                                    >
+                                                        <div className="text-2xl font-bold text-amber-600">{statsResult.total_wrong.toLocaleString()}</div>
+                                                        <div className="text-xs text-gray-500 mt-1">ไม่ตรงทั้งหมด</div>
+                                                    </div>
+                                                    <div
+                                                        onClick={() => setStatsFilter(statsFilter === 'wrong_total' ? null : 'wrong_total')}
+                                                        className={`bg-white border rounded-xl p-4 text-center cursor-pointer transition-all hover:shadow-md ${
+                                                            statsFilter === 'wrong_total' ? 'ring-2 ring-red-400 border-red-300' : 'opacity-60 hover:opacity-100'
+                                                        }`}
+                                                    >
+                                                        <div className="text-2xl font-bold text-red-600">{statsResult.breakdown?.wrong_total ?? 0}</div>
+                                                        <div className="text-xs text-gray-500 mt-1">ยอดซื้อไม่ตรง</div>
+                                                    </div>
+                                                    <div
+                                                        onClick={() => setStatsFilter(statsFilter === 'wrong_order_count' ? null : 'wrong_order_count')}
+                                                        className={`bg-white border rounded-xl p-4 text-center cursor-pointer transition-all hover:shadow-md ${
+                                                            statsFilter === 'wrong_order_count' ? 'ring-2 ring-orange-400 border-orange-300' : 'opacity-60 hover:opacity-100'
+                                                        }`}
+                                                    >
+                                                        <div className="text-2xl font-bold text-orange-600">{statsResult.breakdown?.wrong_order_count ?? 0}</div>
+                                                        <div className="text-xs text-gray-500 mt-1">จำนวนออเดอร์ไม่ตรง</div>
+                                                    </div>
+                                                    <div
+                                                        onClick={() => setStatsFilter(statsFilter === 'wrong_last_date' ? null : 'wrong_last_date')}
+                                                        className={`bg-white border rounded-xl p-4 text-center cursor-pointer transition-all hover:shadow-md ${
+                                                            statsFilter === 'wrong_last_date' ? 'ring-2 ring-blue-400 border-blue-300' : 'opacity-60 hover:opacity-100'
+                                                        }`}
+                                                    >
+                                                        <div className="text-2xl font-bold text-blue-600">{statsResult.breakdown?.wrong_last_date ?? 0}</div>
+                                                        <div className="text-xs text-gray-500 mt-1">วันสั่งซื้อล่าสุดไม่ตรง</div>
+                                                    </div>
+                                                    <div
+                                                        onClick={() => setStatsFilter(statsFilter === 'future_dates' ? null : 'future_dates')}
+                                                        className={`bg-white border rounded-xl p-4 text-center cursor-pointer transition-all hover:shadow-md ${
+                                                            statsFilter === 'future_dates' ? 'ring-2 ring-purple-400 border-purple-300' : 'opacity-60 hover:opacity-100'
+                                                        }`}
+                                                    >
+                                                        <div className="text-2xl font-bold text-purple-600">{statsResult.future_dates ?? 0}</div>
+                                                        <div className="text-xs text-gray-500 mt-1">วันที่อนาคต</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Active filter indicator */}
+                                                {statsFilter && statsFilter !== 'all' && (
+                                                    <div className="flex items-center gap-2 mb-4 text-sm">
+                                                        <span className="text-gray-500">กรอง:</span>
+                                                        <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium">
+                                                            {statsFilter === 'wrong_total' && 'ยอดซื้อไม่ตรง'}
+                                                            {statsFilter === 'wrong_order_count' && 'จำนวนออเดอร์ไม่ตรง'}
+                                                            {statsFilter === 'wrong_last_date' && 'วันสั่งซื้อล่าสุดไม่ตรง'}
+                                                            {statsFilter === 'future_dates' && 'วันที่อนาคต'}
+                                                        </span>
+                                                        <span className="text-gray-400">({statsFilteredCustomers.length} คน)</span>
+                                                        <button
+                                                            onClick={() => setStatsFilter(null)}
+                                                            className="text-gray-400 hover:text-gray-600 ml-1"
+                                                        >×</button>
+                                                    </div>
+                                                )}
+
+                                                {/* Customer Table */}
+                                                <h4 className="font-semibold text-gray-700 mb-3">
+                                                    รายชื่อลูกค้าที่ไม่ตรง ({statsFilteredCustomers.length} คน{statsResult.showing < statsResult.total_wrong ? ` จากทั้งหมด ${statsResult.total_wrong.toLocaleString()}` : ''})
+                                                </h4>
+                                                <div className="bg-white border rounded-xl overflow-hidden mb-6 max-h-[500px] overflow-y-auto">
+                                                    <table className="w-full text-xs">
+                                                        <thead className="bg-gray-50 sticky top-0">
+                                                            <tr>
+                                                                <th className="text-left p-2 font-medium">ID</th>
+                                                                <th className="text-left p-2 font-medium">ชื่อ</th>
+                                                                <th className="text-right p-2 font-medium">ยอดซื้อ (เดิม)</th>
+                                                                <th className="text-right p-2 font-medium">ยอดซื้อ (จริง)</th>
+                                                                <th className="text-right p-2 font-medium">ส่วนต่าง</th>
+                                                                <th className="text-center p-2 font-medium">เกรด</th>
+                                                                <th className="text-left p-2 font-medium">วันสั่งซื้อล่าสุด (เดิม)</th>
+                                                                <th className="text-left p-2 font-medium">วันสั่งซื้อล่าสุด (จริง)</th>
+                                                                <th className="text-left p-2 font-medium">ปัญหา</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {statsFilteredCustomers.map((c: any) => (
+                                                                <tr key={c.customer_id} className="border-t hover:bg-blue-50">
+                                                                    <td className="p-2 text-gray-500">{c.customer_id}</td>
+                                                                    <td className="p-2 font-medium max-w-[120px] truncate">{c.name}</td>
+                                                                    <td className={`p-2 text-right ${c.cached_total !== c.actual_total ? 'text-red-600 font-medium' : ''}`}>
+                                                                        {Number(c.cached_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                    </td>
+                                                                    <td className="p-2 text-right text-green-600 font-medium">
+                                                                        {Number(c.actual_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                    </td>
+                                                                    <td className={`p-2 text-right font-bold ${c.diff_total > 0 ? 'text-green-600' : c.diff_total < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                                                                        {c.diff_total > 0 ? '+' : ''}{Number(c.diff_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                    </td>
+                                                                    <td className="p-2 text-center">
+                                                                        {c.grade_mismatch ? (
+                                                                            <span className="text-red-600 font-bold">{c.cached_grade}→{c.actual_grade}</span>
+                                                                        ) : (
+                                                                            <span className="text-gray-400">{c.cached_grade}</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className={`p-2 ${(c.cached_last_order || '').substring(0, 10) !== (c.actual_last_date || '').substring(0, 10) ? 'text-red-600' : 'text-gray-500'}`}>
+                                                                        {c.cached_last_order ? c.cached_last_order.substring(0, 10) : '-'}
+                                                                    </td>
+                                                                    <td className="p-2 text-green-600 font-medium">
+                                                                        {c.actual_last_date ? c.actual_last_date.substring(0, 10) : '-'}
+                                                                    </td>
+                                                                    <td className="p-2">
+                                                                        <div className="flex flex-wrap gap-1">
+                                                                            {(c.issues || []).map((issue: string, i: number) => (
+                                                                                <span key={i} className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px]">{issue}</span>
+                                                                            ))}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                {/* Fix Button */}
+                                                <div className="flex gap-3">
+                                                    <button
+                                                        onClick={handleStatsFix}
+                                                        disabled={statsFixing}
+                                                        className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                                    >
+                                                        {statsFixing ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                                                        {statsFixing ? 'กำลังแก้ไข...' : `ยืนยันแก้ไขทั้งหมด ${statsResult.total_wrong.toLocaleString()} คน`}
+                                                    </button>
+                                                    <button
+                                                        onClick={handleStatsScan}
+                                                        disabled={statsScanning}
                                                         className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
                                                     >
                                                         <RefreshCw size={20} /> สแกนใหม่

@@ -71,6 +71,11 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
   };
 
 
+  // Whether notes are required (min 10 chars) based on call status
+  const isNotesRequired = status === 'รับสาย' || status === 'ได้คุย';
+  const notesMinLength = 10;
+  const isNotesValid = !isNotesRequired || notes.trim().length >= notesMinLength;
+
   const handleSave = async () => {
     if (!status) {
       alert('กรุณาเลือกสถานะการโทร');
@@ -78,6 +83,10 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
     }
     if (!callResult) {
       alert('กรุณาเลือกผลการโทร');
+      return;
+    }
+    if (isNotesRequired && !isNotesValid) {
+      alert(`กรุณากรอกหมายเหตุอย่างน้อย ${notesMinLength} ตัวอักษร เมื่อเลือกสถานะ "${status}"`);
       return;
     }
 
@@ -201,16 +210,29 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
           </div>
         </div>
         <div>
-          <label className="block text-gray-700 font-medium mb-1">หมายเหตุ</label>
+          <label className="block text-gray-700 font-medium mb-1">
+            หมายเหตุ
+            {isNotesRequired && <span className="text-red-500 ml-1">* (จำเป็น)</span>}
+          </label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             disabled={isSaving}
             rows={4}
-            className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
-            placeholder="รายละเอียดเพิ่มเติม..."
+            className={`w-full p-2 border rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 ${
+              isNotesRequired && notes.length > 0 && !isNotesValid
+                ? 'border-red-400'
+                : 'border-gray-300'
+            }`}
+            placeholder={isNotesRequired ? `กรุณากรอกอย่างน้อย ${notesMinLength} ตัวอักษร...` : 'รายละเอียดเพิ่มเติม...'}
             style={{ colorScheme: 'light' }}
           ></textarea>
+          {isNotesRequired && (
+            <p className={`text-xs mt-1 ${isNotesValid ? 'text-green-600' : 'text-red-500'}`}>
+              {notes.trim().length}/{notesMinLength} ตัวอักษร
+              {isNotesValid ? ' ✓' : ` (ต้องอย่างน้อย ${notesMinLength} ตัวอักษร)`}
+            </p>
+          )}
         </div>
         <div>
           <label className="block text-gray-700 font-medium mb-1">เพิ่ม Tag</label>
