@@ -22,6 +22,25 @@
 function recalculate_customer_stats_safe(PDO $pdo, int $customerId): void
 {
     try {
+        // 0. Fetch basket info for current_basket_sales_amount
+        $stmtCust = $pdo->prepare("SELECT basket_entered_date, assigned_to FROM customers WHERE customer_id = ?");
+        $stmtCust->execute([$customerId]);
+        $custInfo = $stmtCust->fetch(PDO::FETCH_ASSOC);
+        $basketSales = 0.00;
+        
+        if ($custInfo && $custInfo['basket_entered_date'] && $custInfo['assigned_to']) {
+            $stmtBasket = $pdo->prepare("
+                SELECT SUM(total_amount)
+                FROM orders
+                WHERE customer_id = ?
+                  AND order_date >= ?
+                  AND creator_id = ?
+                  AND order_status IN ('Preparing', 'Shipping', 'Delivered')
+            ");
+            $stmtBasket->execute([$customerId, $custInfo['basket_entered_date'], $custInfo['assigned_to']]);
+            $basketSales = (float)($stmtBasket->fetchColumn() ?: 0.00);
+        }
+
         // 1. Aggregate order stats
         $stmt = $pdo->prepare("
             SELECT
@@ -56,7 +75,8 @@ function recalculate_customer_stats_safe(PDO $pdo, int $customerId): void
                 grade               = ?,
                 has_sold_before     = ?,
                 is_new_customer     = ?,
-                is_repeat_customer  = ?
+                is_repeat_customer  = ?,
+                current_basket_sales_amount = ?
             WHERE customer_id = ?
         ");
 
@@ -71,6 +91,7 @@ function recalculate_customer_stats_safe(PDO $pdo, int $customerId): void
             $hasSoldBefore,
             $isNewCustomer,
             $isRepeatCustomer,
+            $basketSales,
             $customerId,
         ]);
 
@@ -93,6 +114,25 @@ function recalculate_customer_stats_safe(PDO $pdo, int $customerId): void
 function recalculate_customer_full_stats(PDO $pdo, int $customerId): void
 {
     try {
+        // 0. Fetch basket info for current_basket_sales_amount
+        $stmtCust = $pdo->prepare("SELECT basket_entered_date, assigned_to FROM customers WHERE customer_id = ?");
+        $stmtCust->execute([$customerId]);
+        $custInfo = $stmtCust->fetch(PDO::FETCH_ASSOC);
+        $basketSales = 0.00;
+        
+        if ($custInfo && $custInfo['basket_entered_date'] && $custInfo['assigned_to']) {
+            $stmtBasket = $pdo->prepare("
+                SELECT SUM(total_amount)
+                FROM orders
+                WHERE customer_id = ?
+                  AND order_date >= ?
+                  AND creator_id = ?
+                  AND order_status IN ('Preparing', 'Shipping', 'Delivered')
+            ");
+            $stmtBasket->execute([$customerId, $custInfo['basket_entered_date'], $custInfo['assigned_to']]);
+            $basketSales = (float)($stmtBasket->fetchColumn() ?: 0.00);
+        }
+
         // 1. Aggregate order stats
         $stmt = $pdo->prepare("
             SELECT
@@ -138,7 +178,8 @@ function recalculate_customer_full_stats(PDO $pdo, int $customerId): void
                 is_repeat_customer  = ?,
                 total_calls         = ?,
                 follow_up_count     = ?,
-                last_follow_up_date = ?
+                last_follow_up_date = ?,
+                current_basket_sales_amount = ?
             WHERE customer_id = ?
         ");
 
@@ -155,6 +196,7 @@ function recalculate_customer_full_stats(PDO $pdo, int $customerId): void
             $totalCalls,
             (int) ($appStats['cnt'] ?? 0),
             $appStats['last_dt'] ?? null,
+            $basketSales,
             $customerId,
         ]);
     } catch (Throwable $e) {

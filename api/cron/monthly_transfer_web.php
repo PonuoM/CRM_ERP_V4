@@ -188,13 +188,7 @@ foreach ($companies as $companyId) {
                            SELECT COUNT(*) FROM appointments a 
                            WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to
                        ), 0) as valid_appointments,
-                       COALESCE((
-                           SELECT SUM(total_amount) FROM orders o 
-                           WHERE o.customer_id = c.customer_id 
-                           AND o.order_date >= c.basket_entered_date 
-                           AND o.creator_id = c.assigned_to 
-                           AND o.order_status IN ('Preparing', 'Shipping', 'Delivered')
-                       ), 0) as valid_sales_amount
+                       COALESCE(c.current_basket_sales_amount, 0) as valid_sales_amount
                 FROM customers c
                 WHERE c.company_id = ?
                   AND c.current_basket_key = ?
@@ -205,13 +199,7 @@ foreach ($companies as $companyId) {
                           WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to
                       ), 0) * ?
                   ) + IF(
-                      COALESCE((
-                          SELECT SUM(total_amount) FROM orders o 
-                          WHERE o.customer_id = c.customer_id 
-                          AND o.order_date >= c.basket_entered_date 
-                          AND o.creator_id = c.assigned_to 
-                          AND o.order_status IN ('Preparing', 'Shipping', 'Delivered')
-                      ), 0) >= ?, ?, 0
+                      COALESCE(c.current_basket_sales_amount, 0) >= ?, ?, 0
                   ))
                   AND DATEDIFF(NOW(), c.last_order_date) >= ?
                 $limitClause
@@ -394,7 +382,7 @@ foreach ($companies as $companyId) {
                         INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at)
                         VALUES (?, ?, ?, ?, ?, 'monthly_cron', ?, ?, NOW())
                     ");
-                    $transNote = "Auto-move from '$basketName' (In: {$daysInBasket}d, Order: {$daysSinceOrder}d) -> $targetBasketName";
+                    $transNote = "Auto-move from '$basketName' (In: {$daysInBasket}d) -> $targetBasketName [Stats: Sales {$customer['valid_sales_amount']}฿, Appts {$customer['valid_appointments']}]";
                     $logTrans->execute([$customerId, $basketId, $targetBasketId, $assignedTo, $assignedToNew, $assignedTo, $transNote]);
 
                     // 2. Log return/fail
@@ -402,7 +390,7 @@ foreach ($companies as $companyId) {
                         INSERT INTO basket_return_log (customer_id, previous_assigned_to, reason, days_since_last_order, batch_date, created_at)
                         VALUES (?, ?, ?, ?, CURDATE(), NOW())
                     ");
-                    $reason = "Monthly Fail: Exceeded {$failDays} days in $basketName";
+                    $reason = "Monthly Fail: Exceeded {$failDays} days in $basketName [Stats: Sales {$customer['valid_sales_amount']}฿, Appts {$customer['valid_appointments']}]";
                     $logReturn->execute([$customerId, $assignedTo, $reason, $daysSinceOrder]);
                     
                     echo " [OK]\n";
