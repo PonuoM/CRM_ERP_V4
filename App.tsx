@@ -572,6 +572,7 @@ const App: React.FC = () => {
       'Export History': 'reports.export_history',
       'Users': 'data.users',
       'Products': 'data.products',
+      'Quota Settings': 'data.quota_settings',
       'Pages': 'data.pages',
       'Marketing Dashboard': 'marketing.dashboard',
       'Ads Input': 'marketing.ads_input',

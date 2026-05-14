@@ -151,6 +151,7 @@ const PERMISSION_GROUPS_DEF = {
         items: [
             { key: 'data.users', label: 'จัดการ Users (ผู้ใช้งาน)' },
             { key: 'data.products', label: 'จัดการ Products (สินค้า)' },
+            { key: 'data.quota_settings', label: 'Quota Settings (ตั้งค่าโควต้าสินค้า)' },
             { key: 'data.pages', label: 'จัดการ Pages (เพจ)' },
             { key: 'data.platforms', label: 'จัดการ Platforms' },
             { key: 'data.bank_accounts', label: 'จัดการ Bank Accounts (บัญชีธนาคาร)' },
