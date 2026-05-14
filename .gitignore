@@ -101,3 +101,5 @@ MCP SQL SERVER_Company*.md
 
 # Windows artifacts
 nul
+
+!api/tests/test_monthly_cron.php

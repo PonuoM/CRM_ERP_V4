@@ -118,7 +118,7 @@ try {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
-            $stmt->execute([
+            $params = [
                 $input['basket_key'],
                 $input['basket_name'],
                 $input['min_order_count'] ?? null,
@@ -145,7 +145,15 @@ try {
                 $input['max_total_days'] ?? null,
                 $input['extend_days_sales_amount_threshold'] ?? null,
                 $input['extend_days_sales_reward'] ?? null
-            ]);
+            ];
+
+            foreach ($params as &$p) {
+                if ($p === false) $p = 0;
+                elseif ($p === true) $p = 1;
+                elseif ($p === '') $p = null;
+            }
+
+            $stmt->execute($params);
 
             $newId = $pdo->lastInsertId();
             echo json_encode(['ok' => true, 'id' => $newId]);
@@ -194,7 +202,11 @@ try {
             foreach ($allowedFields as $field) {
                 if (array_key_exists($field, $input)) {
                     $fields[] = "$field = ?";
-                    $params[] = $input[$field];
+                    $val = $input[$field];
+                    if ($val === false) $val = 0;
+                    elseif ($val === true) $val = 1;
+                    elseif ($val === '') $val = null;
+                    $params[] = $val;
                 }
             }
 
