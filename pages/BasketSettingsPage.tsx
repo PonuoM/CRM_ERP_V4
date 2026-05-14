@@ -34,6 +34,8 @@ interface BasketConfig {
     blocked_target_baskets?: string | null;
     extend_days_per_appointment?: number | null;
     max_total_days?: number | null;
+    extend_days_sales_amount_threshold?: number | null;
+    extend_days_sales_reward?: number | null;
 }
 
 interface ReturnConfig {
@@ -1910,28 +1912,53 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
 
                                             {/* Dynamic Retention Rules */}
                                             {editingBasket.fail_after_days ? (
-                                                <div className="grid grid-cols-2 gap-4 mb-3 pt-3 border-t border-red-200">
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-gray-700 mb-1">บวกเวลาเพิ่ม (วัน) ต่อ 1 นัดหมาย</label>
-                                                        <input
-                                                            type="number"
-                                                            value={editingBasket.extend_days_per_appointment ?? ''}
-                                                            onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_per_appointment: e.target.value ? parseInt(e.target.value) : 0 })}
-                                                            className="w-full border rounded-lg p-2"
-                                                            placeholder="0 = ปิดใช้งาน"
-                                                        />
+                                                <>
+                                                    <div className="grid grid-cols-2 gap-4 mb-3 pt-3 border-t border-red-200">
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">บวกเวลาเพิ่ม (วัน) ต่อ 1 นัดหมาย</label>
+                                                            <input
+                                                                type="number"
+                                                                value={editingBasket.extend_days_per_appointment ?? ''}
+                                                                onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_per_appointment: e.target.value ? parseInt(e.target.value) : 0 })}
+                                                                className="w-full border rounded-lg p-2"
+                                                                placeholder="0 = ปิดใช้งาน"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">เพดานเวลาสูงสุดรวม (วัน)</label>
+                                                            <input
+                                                                type="number"
+                                                                value={editingBasket.max_total_days ?? ''}
+                                                                onChange={(e) => setEditingBasket({ ...editingBasket, max_total_days: e.target.value ? parseInt(e.target.value) : null })}
+                                                                className="w-full border rounded-lg p-2"
+                                                                placeholder="เช่น 90"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-gray-700 mb-1">เพดานเวลาสูงสุดรวม (วัน)</label>
-                                                        <input
-                                                            type="number"
-                                                            value={editingBasket.max_total_days ?? ''}
-                                                            onChange={(e) => setEditingBasket({ ...editingBasket, max_total_days: e.target.value ? parseInt(e.target.value) : null })}
-                                                            className="w-full border rounded-lg p-2"
-                                                            placeholder="เช่น 90"
-                                                        />
+                                                    
+                                                    <div className="grid grid-cols-2 gap-4 mb-3">
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">ยอดขายขั้นต่ำที่ได้ต่ออายุ (บาท)</label>
+                                                            <input
+                                                                type="number"
+                                                                value={editingBasket.extend_days_sales_amount_threshold ?? ''}
+                                                                onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_sales_amount_threshold: e.target.value ? parseFloat(e.target.value) : null })}
+                                                                className="w-full border rounded-lg p-2"
+                                                                placeholder="เช่น 50000"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนวันที่ต่ออายุจากยอดขาย (วัน)</label>
+                                                            <input
+                                                                type="number"
+                                                                value={editingBasket.extend_days_sales_reward ?? ''}
+                                                                onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_sales_reward: e.target.value ? parseInt(e.target.value) : null })}
+                                                                className="w-full border rounded-lg p-2"
+                                                                placeholder="เช่น 30"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                </>
                                             ) : null}
 
                                             {/* Loop-specific fields */}

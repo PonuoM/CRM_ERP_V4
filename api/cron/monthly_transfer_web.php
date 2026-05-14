@@ -166,15 +166,19 @@ foreach ($companies as $companyId) {
         $blockedTargets = array_filter(explode(',', $config['blocked_target_baskets'] ?? ''));
         $extendDaysPerAppt = (int)($config['extend_days_per_appointment'] ?? 0);
         $maxTotalDays = (int)($config['max_total_days'] ?? 0);
+        $salesThreshold = (float)($config['extend_days_sales_amount_threshold'] ?? 0);
+        $salesRewardDays = (int)($config['extend_days_sales_reward'] ?? 0);
         
         echo "=== [$basketName] ID:$basketId ===\n";
         
         // หาลูกค้าที่หมดเวลา
         $limitClause = $limit ? "LIMIT " . ($limit - $processed) : "";
         
-        if ($extendDaysPerAppt > 0 && $maxTotalDays > 0) {
+        $useDynamicRetention = ($extendDaysPerAppt > 0 || ($salesThreshold > 0 && $salesRewardDays > 0)) && $maxTotalDays > 0;
+        
+        if ($useDynamicRetention) {
             // Best Practice: Dynamic Retention Time (Rule Engine)
-            // Extending holding time by $extendDaysPerAppt for every appointment created after entering the basket, capped at $maxTotalDays
+            // Extending holding time by appointments and sales threshold, capped at $maxTotalDays
             $customersStmt = $pdo->prepare("
                 SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
                        c.current_basket_key, c.distribution_count,
@@ -182,8 +186,15 @@ foreach ($companies as $companyId) {
                        DATEDIFF(NOW(), c.last_order_date) as days_since_order,
                        COALESCE((
                            SELECT COUNT(*) FROM appointments a 
-                           WHERE a.customer_id = c.customer_id AND a.date >= c.basket_entered_date
-                       ), 0) as valid_appointments
+                           WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to
+                       ), 0) as valid_appointments,
+                       COALESCE((
+                           SELECT SUM(total_amount) FROM orders o 
+                           WHERE o.customer_id = c.customer_id 
+                           AND o.order_date >= c.basket_entered_date 
+                           AND o.creator_id = c.assigned_to 
+                           AND o.order_status IN ('Preparing', 'Shipping', 'Delivered')
+                       ), 0) as valid_sales_amount
                 FROM customers c
                 WHERE c.company_id = ?
                   AND c.current_basket_key = ?
@@ -191,14 +202,22 @@ foreach ($companies as $companyId) {
                   AND DATEDIFF(NOW(), c.basket_entered_date) >= LEAST(?, ? + (
                       COALESCE((
                           SELECT COUNT(*) FROM appointments a 
-                          WHERE a.customer_id = c.customer_id AND a.date >= c.basket_entered_date
+                          WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to
                       ), 0) * ?
+                  ) + IF(
+                      COALESCE((
+                          SELECT SUM(total_amount) FROM orders o 
+                          WHERE o.customer_id = c.customer_id 
+                          AND o.order_date >= c.basket_entered_date 
+                          AND o.creator_id = c.assigned_to 
+                          AND o.order_status IN ('Preparing', 'Shipping', 'Delivered')
+                      ), 0) >= ?, ?, 0
                   ))
                   AND DATEDIFF(NOW(), c.last_order_date) >= ?
                 $limitClause
             ");
-            $customersStmt->execute([$companyId, $basketId, $maxTotalDays, $failDays, $extendDaysPerAppt, $failDays]);
-            echo "Using dynamic retention: +$extendDaysPerAppt days/appt (Max: $maxTotalDays)\n";
+            $customersStmt->execute([$companyId, $basketId, $maxTotalDays, $failDays, $extendDaysPerAppt, $salesThreshold, $salesRewardDays, $failDays]);
+            echo "Using dynamic retention: +$extendDaysPerAppt days/appt, +$salesRewardDays days/sales>=$salesThreshold (Max: $maxTotalDays)\n";
         } else {
             // Standard query (fast)
             $customersStmt = $pdo->prepare("
@@ -206,7 +225,8 @@ foreach ($companies as $companyId) {
                        c.current_basket_key, c.distribution_count,
                        DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
                        DATEDIFF(NOW(), c.last_order_date) as days_since_order,
-                       0 as valid_appointments
+                       0 as valid_appointments,
+                       0 as valid_sales_amount
                 FROM customers c
                 WHERE c.company_id = ?
                   AND c.current_basket_key = ?
@@ -236,10 +256,12 @@ foreach ($companies as $companyId) {
             $daysSinceOrder = $customer['days_since_order'] ?? 9999;
             $distCount = (int)$customer['distribution_count'];
             $appts = (int)$customer['valid_appointments'];
+            $salesAmount = (float)($customer['valid_sales_amount'] ?? 0);
             
-            if ($appts > 0 && $extendDaysPerAppt > 0 && $maxTotalDays > 0) {
-                $allowedDays = min($maxTotalDays, $failDays + ($appts * $extendDaysPerAppt));
-                echo "  -> #$customerId: $name | In basket $daysInBasket days | Allowed $allowedDays days ($appts appts)\n";
+            if ($useDynamicRetention) {
+                $salesBonus = ($salesThreshold > 0 && $salesAmount >= $salesThreshold) ? $salesRewardDays : 0;
+                $allowedDays = min($maxTotalDays, $failDays + ($appts * $extendDaysPerAppt) + $salesBonus);
+                echo "  -> #$customerId: $name | In basket $daysInBasket days | Allowed $allowedDays days ($appts appts, sales $salesAmount)\n";
             } else {
                 echo "  -> #$customerId: $name | In basket $daysInBasket days (Limit: $failDays days)\n";
             }

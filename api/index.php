@@ -8276,9 +8276,11 @@ function handle_appointments(PDO $pdo, ?string $id): void
             }
             break;
         case 'POST':
+            $authUser = get_authenticated_user($pdo);
+            $createdBy = $authUser ? $authUser['id'] : null;
             $in = json_input();
-            $stmt = $pdo->prepare('INSERT INTO appointments (customer_id, date, title, status, notes) VALUES (?,?,?,?,?)');
-            $stmt->execute([$in['customerId'] ?? null, $in['date'] ?? date('c'), $in['title'] ?? '', $in['status'] ?? 'รอดำเนินการ', $in['notes'] ?? null]);
+            $stmt = $pdo->prepare('INSERT INTO appointments (customer_id, date, title, status, notes, created_by) VALUES (?,?,?,?,?,?)');
+            $stmt->execute([$in['customerId'] ?? null, $in['date'] ?? date('c'), $in['title'] ?? '', $in['status'] ?? 'รอดำเนินการ', $in['notes'] ?? null, $createdBy]);
             json_response(['id' => $pdo->lastInsertId()]);
             break;
         case 'PATCH':
