@@ -189,12 +189,21 @@ const Sidebar: React.FC<SidebarProps> = ({
     "ประวัติ V2": "ประวัติทั้งหมด",
     "Database Management": "จัดการฐานข้อมูล",
     "Quota Settings": "ตั้งค่าโควตา",
+    "Monitor": "ติดตามการทำงาน",
+    "Daily Monitoring": "ติดตามรายวัน",
   };
 
   const t = (s: string): string => TH[s] ?? s;
 
   // MASTER MENU DEFINITION
   const MASTER_MENU: NavItem[] = [
+    {
+      label: "Monitor",
+      icon: BarChart3,
+      children: [
+        { label: "Daily Monitoring", icon: Phone, key: "monitor.daily" },
+      ]
+    },
     {
       label: "Home",
       icon: Home,

@@ -95,6 +95,7 @@ import AllSalesPage from "./pages/AllSalesPage";
 import CustomerSearchPage from "./pages/CustomerSearchPage";
 import TelesaleOrdersPage from "./pages/TelesaleOrdersPage";
 import SupervisorTeamPage from "./pages/SupervisorTeamPage";
+import DailyMonitoringPage from "./pages/Monitor/DailyMonitoringPage";
 import ReportsPage from "./pages/ReportsPage";
 import ProductSalesReportPage from "./pages/ProductSalesReportPage";
 import ProductAnalysisPage from "./pages/ProductAnalysisPage";
@@ -7348,6 +7349,11 @@ const App: React.FC = () => {
       case "home.telesale_performance":
       case "วิเคราะห์ประสิทธิภาพ Telesale":
         return <TelesalePerformancePage />;
+
+      case "Daily Monitoring":
+      case "monitor.daily":
+      case "ติดตามรายวัน":
+        return <DailyMonitoringPage user={currentUser} />;
 
       case "Attendance Management":
       case "nav.attendance_management":
