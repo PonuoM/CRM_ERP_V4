@@ -20,6 +20,11 @@ import {
     aggregateOneCallByUsers,
     isToday,
 } from "@/services/onecallRealtime";
+import {
+    KpiRowSkeleton,
+    ChartSkeleton,
+    TableRowsSkeleton,
+} from "@/components/Monitor/Skeleton";
 
 interface TeamTotals {
     total_calls: number;
@@ -405,6 +410,9 @@ const DailyMonitoringPage: React.FC<Props> = ({ user }) => {
 
     const totals = data?.team_totals;
     const target = data?.target_per_day || 40;
+    // While realtime is being fetched for today, treat KPI/chart/table as loading
+    // because the DB numbers (which we already rendered) are likely 0 for today.
+    const isLoadingData = loading || (refreshingRealtime && isToday(date));
 
     return (
         <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
@@ -473,57 +481,65 @@ const DailyMonitoringPage: React.FC<Props> = ({ user }) => {
             )}
 
             {/* KPI cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
-                <KpiCard
-                    title="สายโทรทั้งหมด"
-                    value={totals ? totals.total_calls.toLocaleString() : "—"}
-                    subtext={totals ? `${totals.active_users} คนทำงาน` : ""}
-                    icon={Phone}
-                    color="bg-blue-50 text-blue-600"
-                />
-                <KpiCard
-                    title="สายที่ได้คุย"
-                    value={totals ? totals.talked_calls.toLocaleString() : "—"}
-                    subtext={totals ? `อัตราคุย ${Math.round(totals.talk_rate * 100)}%` : ""}
-                    icon={PhoneCall}
-                    color="bg-green-50 text-green-600"
-                />
-                <KpiCard
-                    title="เวลาโทรรวม"
-                    value={totals ? formatMinutes(totals.total_minutes) : "—"}
-                    subtext={`รวมทีม (ชม:นาที:วินาที)`}
-                    icon={Clock}
-                    color="bg-purple-50 text-purple-600"
-                />
-                <KpiCard
-                    title="เป้าหมายต่อคน"
-                    value={`${target}`}
-                    subtext="สายที่ได้คุย/วัน"
-                    icon={Target}
-                    color="bg-amber-50 text-amber-600"
-                />
-            </div>
+            {isLoadingData ? (
+                <KpiRowSkeleton count={4} />
+            ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+                    <KpiCard
+                        title="สายโทรทั้งหมด"
+                        value={totals ? totals.total_calls.toLocaleString() : "—"}
+                        subtext={totals ? `${totals.active_users} คนทำงาน` : ""}
+                        icon={Phone}
+                        color="bg-blue-50 text-blue-600"
+                    />
+                    <KpiCard
+                        title="สายที่ได้คุย"
+                        value={totals ? totals.talked_calls.toLocaleString() : "—"}
+                        subtext={totals ? `อัตราคุย ${Math.round(totals.talk_rate * 100)}%` : ""}
+                        icon={PhoneCall}
+                        color="bg-green-50 text-green-600"
+                    />
+                    <KpiCard
+                        title="เวลาโทรรวม"
+                        value={totals ? formatMinutes(totals.total_minutes) : "—"}
+                        subtext={`รวมทีม (ชม:นาที:วินาที)`}
+                        icon={Clock}
+                        color="bg-purple-50 text-purple-600"
+                    />
+                    <KpiCard
+                        title="เป้าหมายต่อคน"
+                        value={`${target}`}
+                        subtext="สายที่ได้คุย/วัน"
+                        icon={Target}
+                        color="bg-amber-50 text-amber-600"
+                    />
+                </div>
+            )}
 
             {/* Hourly chart */}
-            <div className="bg-white p-4 sm:p-5 rounded-lg shadow-sm border border-gray-200 mb-5">
-                <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-md font-semibold text-gray-800">
-                        จำนวนสายแยกตามชั่วโมง (08:00 – 18:00)
-                    </h3>
-                </div>
-                {chartConfig ? (
-                    <ReactApexChart
-                        options={chartConfig.options}
-                        series={chartConfig.series}
-                        type="bar"
-                        height={300}
-                    />
-                ) : (
-                    <div className="h-[300px] flex items-center justify-center text-gray-400 text-sm">
-                        {loading ? "กำลังโหลด..." : "ไม่มีข้อมูล"}
+            {isLoadingData ? (
+                <ChartSkeleton height={300} title="จำนวนสายแยกตามชั่วโมง (08:00 – 18:00)" />
+            ) : (
+                <div className="bg-white p-4 sm:p-5 rounded-lg shadow-sm border border-gray-200 mb-5">
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-md font-semibold text-gray-800">
+                            จำนวนสายแยกตามชั่วโมง (08:00 – 18:00)
+                        </h3>
                     </div>
-                )}
-            </div>
+                    {chartConfig ? (
+                        <ReactApexChart
+                            options={chartConfig.options}
+                            series={chartConfig.series}
+                            type="bar"
+                            height={300}
+                        />
+                    ) : (
+                        <div className="h-[300px] flex items-center justify-center text-gray-400 text-sm">
+                            ไม่มีข้อมูล
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Members table */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -595,12 +611,8 @@ const DailyMonitoringPage: React.FC<Props> = ({ user }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {loading ? (
-                                <tr>
-                                    <td colSpan={7} className="px-3 py-10 text-center text-gray-400">
-                                        กำลังโหลด...
-                                    </td>
-                                </tr>
+                            {isLoadingData ? (
+                                <TableRowsSkeleton rows={8} colCount={7} />
                             ) : sortedMembers.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="px-3 py-10 text-center text-gray-400">

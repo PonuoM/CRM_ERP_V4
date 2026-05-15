@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { User } from "@/types";
+import { KpiRowSkeleton, TableRowsSkeleton } from "@/components/Monitor/Skeleton";
 
 interface TeamTotals {
     selected: number;
@@ -184,36 +185,40 @@ const TeamAppointmentsPage: React.FC<Props> = ({ user }) => {
             )}
 
             {/* KPI cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
-                <KpiCard
-                    title="วันนี้"
-                    value={totals ? totals.today : "—"}
-                    subtext="นัดหมายที่รอดำเนินการ"
-                    icon={CalendarDays}
-                    color="bg-blue-50 text-blue-600"
-                />
-                <KpiCard
-                    title={rangeDays > 1 ? `ช่วงที่เลือก (${rangeDays} วัน)` : "ในวันที่เลือก"}
-                    value={totals ? totals.selected : "—"}
-                    subtext="ภายในช่วงเวลาที่เลือก"
-                    icon={Clock}
-                    color="bg-green-50 text-green-600"
-                />
-                <KpiCard
-                    title="หน้าต่าง 7 วัน"
-                    value={totals ? totals.week : "—"}
-                    subtext="ตั้งแต่วันที่เลือก +7 วัน"
-                    icon={UsersIcon}
-                    color="bg-amber-50 text-amber-600"
-                />
-                <KpiCard
-                    title="ค้าง (Overdue)"
-                    value={totals ? totals.overdue : "—"}
-                    subtext="เลยวันแล้วยังไม่ปิด"
-                    icon={AlertCircle}
-                    color="bg-red-50 text-red-600"
-                />
-            </div>
+            {loading ? (
+                <KpiRowSkeleton count={4} />
+            ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+                    <KpiCard
+                        title="วันนี้"
+                        value={totals ? totals.today : "—"}
+                        subtext="นัดหมายที่รอดำเนินการ"
+                        icon={CalendarDays}
+                        color="bg-blue-50 text-blue-600"
+                    />
+                    <KpiCard
+                        title={rangeDays > 1 ? `ช่วงที่เลือก (${rangeDays} วัน)` : "ในวันที่เลือก"}
+                        value={totals ? totals.selected : "—"}
+                        subtext="ภายในช่วงเวลาที่เลือก"
+                        icon={Clock}
+                        color="bg-green-50 text-green-600"
+                    />
+                    <KpiCard
+                        title="หน้าต่าง 7 วัน"
+                        value={totals ? totals.week : "—"}
+                        subtext="ตั้งแต่วันที่เลือก +7 วัน"
+                        icon={UsersIcon}
+                        color="bg-amber-50 text-amber-600"
+                    />
+                    <KpiCard
+                        title="ค้าง (Overdue)"
+                        value={totals ? totals.overdue : "—"}
+                        subtext="เลยวันแล้วยังไม่ปิด"
+                        icon={AlertCircle}
+                        color="bg-red-50 text-red-600"
+                    />
+                </div>
+            )}
 
             {/* Per-member counts */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-5">
@@ -240,11 +245,7 @@ const TeamAppointmentsPage: React.FC<Props> = ({ user }) => {
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr>
-                                    <td colSpan={5} className="px-3 py-10 text-center text-gray-400">
-                                        กำลังโหลด...
-                                    </td>
-                                </tr>
+                                <TableRowsSkeleton rows={6} colCount={5} />
                             ) : (data?.members || []).length === 0 ? (
                                 <tr>
                                     <td colSpan={5} className="px-3 py-10 text-center text-gray-400">
@@ -333,11 +334,7 @@ const TeamAppointmentsPage: React.FC<Props> = ({ user }) => {
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr>
-                                    <td colSpan={6} className="px-3 py-10 text-center text-gray-400">
-                                        กำลังโหลด...
-                                    </td>
-                                </tr>
+                                <TableRowsSkeleton rows={8} colCount={6} />
                             ) : filteredAppts.length === 0 ? (
                                 <tr>
                                     <td colSpan={6} className="px-3 py-10 text-center text-gray-400">

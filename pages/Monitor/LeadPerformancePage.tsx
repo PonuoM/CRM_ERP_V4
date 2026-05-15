@@ -12,6 +12,11 @@ import {
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { User } from "@/types";
+import {
+    KpiRowSkeleton,
+    ChartSkeleton,
+    TableRowsSkeleton,
+} from "@/components/Monitor/Skeleton";
 
 interface TeamTotals {
     distributed: number;
@@ -246,53 +251,61 @@ const LeadPerformancePage: React.FC<Props> = ({ user }) => {
             )}
 
             {/* KPI cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
-                <KpiCard
-                    title="แจกให้ทีม"
-                    value={totals ? fmtNum(totals.distributed) : "—"}
-                    subtext="ลูกค้า unique ที่ได้รับเดือนนี้"
-                    icon={UsersIcon}
-                    color="bg-blue-50 text-blue-600"
-                />
-                <KpiCard
-                    title="โทรได้คุย"
-                    value={totals ? fmtNum(totals.called) : "—"}
-                    subtext={totals ? `${fmtPct(totals.call_rate)} ของที่แจก` : ""}
-                    icon={PhoneCall}
-                    color="bg-green-50 text-green-600"
-                />
-                <KpiCard
-                    title="ปิดบิล (ลูกค้า)"
-                    value={totals ? fmtNum(totals.closed) : "—"}
-                    subtext={totals ? `${fmtPct(totals.close_rate)} ของที่แจก / ${fmtPct(totals.call_close)} ของที่คุย` : ""}
-                    icon={ShoppingCart}
-                    color="bg-amber-50 text-amber-600"
-                />
-                <KpiCard
-                    title="ยอดขายรวม"
-                    value={totals ? fmtMoney(totals.sales) : "—"}
-                    subtext="รวมทีมในเดือนที่เลือก"
-                    icon={DollarSign}
-                    color="bg-purple-50 text-purple-600"
-                />
-            </div>
+            {loading ? (
+                <KpiRowSkeleton count={4} />
+            ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+                    <KpiCard
+                        title="แจกให้ทีม"
+                        value={totals ? fmtNum(totals.distributed) : "—"}
+                        subtext="ลูกค้า unique ที่ได้รับเดือนนี้"
+                        icon={UsersIcon}
+                        color="bg-blue-50 text-blue-600"
+                    />
+                    <KpiCard
+                        title="โทรได้คุย"
+                        value={totals ? fmtNum(totals.called) : "—"}
+                        subtext={totals ? `${fmtPct(totals.call_rate)} ของที่แจก` : ""}
+                        icon={PhoneCall}
+                        color="bg-green-50 text-green-600"
+                    />
+                    <KpiCard
+                        title="ปิดบิล (ลูกค้า)"
+                        value={totals ? fmtNum(totals.closed) : "—"}
+                        subtext={totals ? `${fmtPct(totals.close_rate)} ของที่แจก / ${fmtPct(totals.call_close)} ของที่คุย` : ""}
+                        icon={ShoppingCart}
+                        color="bg-amber-50 text-amber-600"
+                    />
+                    <KpiCard
+                        title="ยอดขายรวม"
+                        value={totals ? fmtMoney(totals.sales) : "—"}
+                        subtext="รวมทีมในเดือนที่เลือก"
+                        icon={DollarSign}
+                        color="bg-purple-50 text-purple-600"
+                    />
+                </div>
+            )}
 
             {/* Funnel chart */}
-            <div className="bg-white p-4 sm:p-5 rounded-lg shadow-sm border border-gray-200 mb-5">
-                <h3 className="text-md font-semibold text-gray-800 mb-2">Conversion Funnel</h3>
-                {funnelChart ? (
-                    <ReactApexChart
-                        options={funnelChart.options}
-                        series={funnelChart.series}
-                        type="bar"
-                        height={240}
-                    />
-                ) : (
-                    <div className="h-[240px] flex items-center justify-center text-gray-400 text-sm">
-                        {loading ? "กำลังโหลด..." : "ไม่มีข้อมูล"}
-                    </div>
-                )}
-            </div>
+            {loading ? (
+                <ChartSkeleton height={240} title="Conversion Funnel" />
+            ) : (
+                <div className="bg-white p-4 sm:p-5 rounded-lg shadow-sm border border-gray-200 mb-5">
+                    <h3 className="text-md font-semibold text-gray-800 mb-2">Conversion Funnel</h3>
+                    {funnelChart ? (
+                        <ReactApexChart
+                            options={funnelChart.options}
+                            series={funnelChart.series}
+                            type="bar"
+                            height={240}
+                        />
+                    ) : (
+                        <div className="h-[240px] flex items-center justify-center text-gray-400 text-sm">
+                            ไม่มีข้อมูล
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Per-member table */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -351,11 +364,7 @@ const LeadPerformancePage: React.FC<Props> = ({ user }) => {
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr>
-                                    <td colSpan={6} className="px-3 py-10 text-center text-gray-400">
-                                        กำลังโหลด...
-                                    </td>
-                                </tr>
+                                <TableRowsSkeleton rows={8} colCount={6} />
                             ) : sortedMembers.length === 0 ? (
                                 <tr>
                                     <td colSpan={6} className="px-3 py-10 text-center text-gray-400">
