@@ -52,7 +52,7 @@ UNIQUE(`product_id, company_id`)
 **Confirm:** คำนวณจาก `calc_period_start→end`, `require_confirm=1` → รอ admin ยืนยัน, `usage_end_date` → หมดอายุ
 
 ### 3. `quota_allocations` — ประวัติแจกโควตา
-`id`, `quota_product_id`, `user_id`, `company_id`, `quantity`, `source` (auto|admin|auto_confirmed), `source_detail`, `allocated_by`, `period_start/end`, `valid_from`, `valid_until`, `deleted_at`
+`id`, `quota_product_id`, `user_id`, `company_id`, `quantity`, `sales_at_allocation` (บันทึกยอดขายตอนแอดมินกดยืนยัน), `source` (auto|admin|auto_confirmed), `source_detail`, `allocated_by`, `period_start/end`, `valid_from`, `valid_until`, `deleted_at`
 
 ### 4. `quota_usage` — ประวัติใช้โควตา
 `id`, `quota_product_id`, `user_id`, `company_id`, `order_id`, `quantity_used`, `period_start/end`, `deleted_at`

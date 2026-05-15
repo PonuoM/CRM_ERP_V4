@@ -713,6 +713,7 @@ export interface QuotaAllocation {
   userId: number;
   companyId: number;
   quantity: number;
+  salesAtAllocation?: number;
   source: 'auto' | 'admin' | 'auto_confirmed';
   sourceDetail?: string;
   allocatedBy?: number;
@@ -726,6 +727,8 @@ export interface QuotaAllocation {
   userLastName?: string;
   allocatedByFirstName?: string;
   allocatedByLastName?: string;
+  productName?: string;
+  rateName?: string;
 }
 
 export interface QuotaSummary {
@@ -743,6 +746,7 @@ export interface QuotaSummary {
   quotaMode: string;
   pendingAutoQuota?: number;    // confirm mode: โควตาที่คำนวณได้แต่ยังไม่ยืนยัน
   isConfirmed?: boolean;        // confirm mode: ยืนยันแล้วหรือยัง
+  salesAtAllocation?: number;   // confirm mode: ยอดขายที่ใช้ในการยืนยันยัง
   isExpired?: boolean;          // confirm mode: หมดอายุแล้วหรือยัง
   usageEndDate?: string;        // confirm mode: วันหมดอายุ
   requireConfirm?: number;      // confirm mode: 1=รอยืนยัน, 0=ไม่ต้อง

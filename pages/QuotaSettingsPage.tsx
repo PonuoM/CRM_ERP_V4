@@ -1638,7 +1638,12 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                   <div className="text-xs text-gray-400">{row.role}</div>
                                 </td>
                                 <td className="px-4 py-3 text-right font-mono text-gray-600">
-                                  ฿{Number(row.totalSales).toLocaleString()}
+                                  <div>฿{Number(row.totalSales).toLocaleString()}</div>
+                                  {row.salesAtAllocation !== undefined && row.salesAtAllocation !== null && (
+                                    <div className="text-xs text-green-600 mt-1" title="ยอดขาย ณ เวลาที่กดยืนยันโควตา">
+                                      (ยืนยัน: ฿{Number(row.salesAtAllocation).toLocaleString()})
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="px-4 py-3 text-right font-mono text-blue-600 font-medium">
                                   {Number(row.totalAutoQuota)}
@@ -1933,9 +1938,13 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                             {alloc.source === 'admin' ? 'Admin' : 'Auto'}
                           </span>
                           <span className="font-medium text-gray-800">+{alloc.quantity}</span>
+                          {alloc.productName && <span className="text-sm font-semibold text-gray-500">[{alloc.productName}]</span>}
                         </div>
-                        {alloc.sourceDetail && (
-                          <p className="text-xs text-gray-400 mt-1">{alloc.sourceDetail}</p>
+                        {alloc.salesAtAllocation !== undefined && (
+                          <p className="text-xs text-green-600 mt-1">ยอดขายที่ใช้คำนวณ: ฿{alloc.salesAtAllocation.toLocaleString()}</p>
+                        )}
+                        {(alloc.rateName || alloc.sourceDetail) && (
+                          <p className="text-xs text-gray-400 mt-1">อ้างอิง: {alloc.rateName || alloc.sourceDetail}</p>
                         )}
                         {alloc.allocatedByFirstName && (
                           <p className="text-xs text-gray-400">โดย: {alloc.allocatedByFirstName} {alloc.allocatedByLastName}</p>

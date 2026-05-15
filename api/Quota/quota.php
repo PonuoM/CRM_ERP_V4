@@ -222,10 +222,14 @@ function handleListAllocations(PDO $conn) {
     $stmt = $conn->prepare("
         SELECT qa.*, 
             u.first_name AS user_first_name, u.last_name AS user_last_name,
-            ab.first_name AS allocated_by_first_name, ab.last_name AS allocated_by_last_name
+            ab.first_name AS allocated_by_first_name, ab.last_name AS allocated_by_last_name,
+            qp.name AS product_name,
+            qrs.name AS rate_name
         FROM quota_allocations qa
         LEFT JOIN users u ON u.id = qa.user_id
         LEFT JOIN users ab ON ab.id = qa.allocated_by
+        LEFT JOIN quota_products qp ON qp.id = qa.quota_product_id
+        LEFT JOIN quota_rate_schedules qrs ON qrs.id = qa.source_detail AND qa.source = 'auto_confirmed'
         $whereClause
         ORDER BY qa.created_at DESC
         LIMIT 200
@@ -341,6 +345,7 @@ function handleSummary(PDO $conn) {
             'requireConfirm' => $calc['requireConfirm'] ?? null,
             'isBeforeUsageStart' => $calc['isBeforeUsageStart'] ?? false,
             'rateScheduleId' => $calc['rateScheduleId'] ?? null,
+            'salesAtAllocation' => $calc['salesAtAllocation'] ?? null,
         ];
     }
 
@@ -1175,6 +1180,7 @@ function handleSummaryByRate(PDO $conn) {
             'requireConfirm' => $calc['requireConfirm'] ?? null,
             'isBeforeUsageStart' => $calc['isBeforeUsageStart'] ?? false,
             'rateScheduleId' => intval($rate['id']),
+            'salesAtAllocation' => $calc['salesAtAllocation'] ?? null,
         ];
     }
 
@@ -1358,18 +1364,22 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
             // Check confirmed allocations across all scope products
             $in = implode(',', array_map('intval', $scopeProductIds));
             $stmtConf = $conn->prepare("
-                SELECT COALESCE(SUM(quantity), 0) AS confirmed_total
+                SELECT COALESCE(SUM(quantity), 0) AS confirmed_total,
+                       MAX(sales_at_allocation) AS sales_at_allocation
                 FROM quota_allocations
                 WHERE quota_product_id IN ($in) AND user_id = :uid AND source = 'auto_confirmed'
                 AND source_detail = :rsId AND deleted_at IS NULL
             ");
             $stmtConf->execute([':uid' => $userId, ':rsId' => (string)$rate['id']]);
-            $confirmedQuota = floatval($stmtConf->fetch()['confirmed_total']);
+            $confRow = $stmtConf->fetch(PDO::FETCH_ASSOC);
+            $confirmedQuota = floatval($confRow['confirmed_total']);
+            $salesAtAllocation = $confRow['sales_at_allocation'] !== null ? floatval($confRow['sales_at_allocation']) : null;
             $isConfirmed = $confirmedQuota > 0;
             $autoQuota = $confirmedQuota;
         } else {
             $isConfirmed = null;
             $autoQuota = $pendingAutoQuota;
+            $salesAtAllocation = null;
         }
 
         // Check expiry
@@ -1491,6 +1501,7 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
         'requireConfirm' => isset($rate['require_confirm']) ? intval($rate['require_confirm']) : null,
         'isBeforeUsageStart' => $isBeforeUsageStart,
         'rateScheduleId' => intval($rate['id']),
+        'salesAtAllocation' => $salesAtAllocation ?? null,
     ];
 }
 
@@ -1571,13 +1582,14 @@ function handleBulkConfirmQuota(PDO $conn, array $data) {
             $prodQuota = ($spRate > 0) ? floor($sales / $spRate) : 0;
 
             $conn->prepare("
-                INSERT INTO quota_allocations (quota_product_id, user_id, company_id, quantity, source, source_detail, allocated_by, period_start, period_end)
-                VALUES (:qpId, :uid, :cid, :qty, 'auto_confirmed', :rsId, :ab, :ps, :pe)
+                INSERT INTO quota_allocations (quota_product_id, user_id, company_id, quantity, sales_at_allocation, source, source_detail, allocated_by, period_start, period_end)
+                VALUES (:qpId, :uid, :cid, :qty, :sales, 'auto_confirmed', :rsId, :ab, :ps, :pe)
             ")->execute([
                 ':qpId' => $qpId,
                 ':uid' => $uid,
                 ':cid' => $companyId,
                 ':qty' => $prodQuota,
+                ':sales' => $sales,
                 ':rsId' => (string)$rateScheduleId,
                 ':ab' => $confirmedBy,
                 ':ps' => $calcStart,

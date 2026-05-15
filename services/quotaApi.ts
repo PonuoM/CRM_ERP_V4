@@ -375,6 +375,7 @@ function mapAllocation(r: any): QuotaAllocation {
     userId: Number(r.user_id),
     companyId: Number(r.company_id),
     quantity: Number(r.quantity),
+    salesAtAllocation: r.sales_at_allocation ? Number(r.sales_at_allocation) : undefined,
     source: r.source,
     sourceDetail: r.source_detail || undefined,
     allocatedBy: r.allocated_by ? Number(r.allocated_by) : undefined,
@@ -387,5 +388,7 @@ function mapAllocation(r: any): QuotaAllocation {
     userLastName: r.user_last_name || undefined,
     allocatedByFirstName: r.allocated_by_first_name || undefined,
     allocatedByLastName: r.allocated_by_last_name || undefined,
+    productName: r.product_name || undefined,
+    rateName: r.rate_name || undefined,
   };
 }
