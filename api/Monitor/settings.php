@@ -2,12 +2,12 @@
 /**
  * Monitor — Settings API
  *
- * GET  → returns current daily call target (per company)
- * POST → updates daily call target (Admin / Supervisor only)
+ * GET  → returns current daily call target + minute target (per company)
+ * POST → updates settings (Admin / Supervisor only)
  *
  * Stored in `env` table:
- *   key = MONITOR_DAILY_CALL_TARGET_{company_id}
- *   value = integer string (e.g. "40")
+ *   MONITOR_DAILY_CALL_TARGET_{company_id}         (talked calls/day, default 40)
+ *   MONITOR_DAILY_CALL_MINUTE_TARGET_{company_id}  (call minutes/day, default 100)
  */
 
 require_once __DIR__ . '/../config.php';
@@ -24,18 +24,17 @@ try {
 
     $companyId = (int) $user['company_id'];
     $role      = strtolower($user['role'] ?? '');
-    $key       = "MONITOR_DAILY_CALL_TARGET_{$companyId}";
+    $callKey   = "MONITOR_DAILY_CALL_TARGET_{$companyId}";
+    $minKey    = "MONITOR_DAILY_CALL_MINUTE_TARGET_{$companyId}";
 
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
     if ($method === 'GET') {
-        $stmt = $pdo->prepare("SELECT value FROM env WHERE `key` = ? LIMIT 1");
-        $stmt->execute([$key]);
-        $row = $stmt->fetch();
         json_response([
             'success' => true,
             'data' => [
-                'daily_call_target' => $row ? (int) $row['value'] : 40,
+                'daily_call_target'   => (int) (fetch_setting($pdo, $callKey) ?: 40),
+                'daily_minute_target' => (int) (fetch_setting($pdo, $minKey) ?: 100),
             ],
         ]);
         exit;
@@ -51,28 +50,35 @@ try {
         }
 
         $body = json_decode(file_get_contents('php://input'), true) ?: [];
-        $target = isset($body['daily_call_target']) ? (int) $body['daily_call_target'] : null;
-        if ($target === null || $target < 1 || $target > 500) {
-            json_response(['success' => false, 'message' => 'daily_call_target must be 1..500'], 400);
+
+        $updated = [];
+
+        if (isset($body['daily_call_target'])) {
+            $val = (int) $body['daily_call_target'];
+            if ($val < 1 || $val > 500) {
+                json_response(['success' => false, 'message' => 'daily_call_target must be 1..500'], 400);
+                exit;
+            }
+            upsert_setting($pdo, $callKey, (string) $val, $companyId);
+            $updated['daily_call_target'] = $val;
+        }
+
+        if (isset($body['daily_minute_target'])) {
+            $val = (int) $body['daily_minute_target'];
+            if ($val < 1 || $val > 1440) {
+                json_response(['success' => false, 'message' => 'daily_minute_target must be 1..1440'], 400);
+                exit;
+            }
+            upsert_setting($pdo, $minKey, (string) $val, $companyId);
+            $updated['daily_minute_target'] = $val;
+        }
+
+        if (empty($updated)) {
+            json_response(['success' => false, 'message' => 'No valid fields to update'], 400);
             exit;
         }
 
-        // Upsert
-        $stmt = $pdo->prepare("SELECT id FROM env WHERE `key` = ? LIMIT 1");
-        $stmt->execute([$key]);
-        $existing = $stmt->fetch();
-        if ($existing) {
-            $stmt = $pdo->prepare("UPDATE env SET value = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([(string) $target, (int) $existing['id']]);
-        } else {
-            $stmt = $pdo->prepare("INSERT INTO env (`key`, value, company_id, created_at) VALUES (?, ?, ?, NOW())");
-            $stmt->execute([$key, (string) $target, $companyId]);
-        }
-
-        json_response([
-            'success' => true,
-            'data' => ['daily_call_target' => $target],
-        ]);
+        json_response(['success' => true, 'data' => $updated]);
         exit;
     }
 
@@ -81,4 +87,26 @@ try {
 } catch (Throwable $e) {
     error_log("Monitor/settings.php error: " . $e->getMessage());
     json_response(['success' => false, 'message' => 'Server error', 'detail' => $e->getMessage()], 500);
+}
+
+function fetch_setting(PDO $pdo, string $key)
+{
+    $stmt = $pdo->prepare("SELECT value FROM env WHERE `key` = ? LIMIT 1");
+    $stmt->execute([$key]);
+    $row = $stmt->fetch();
+    return $row ? $row['value'] : null;
+}
+
+function upsert_setting(PDO $pdo, string $key, string $value, int $companyId): void
+{
+    $stmt = $pdo->prepare("SELECT id FROM env WHERE `key` = ? LIMIT 1");
+    $stmt->execute([$key]);
+    $row = $stmt->fetch();
+    if ($row) {
+        $stmt = $pdo->prepare("UPDATE env SET value = ?, updated_at = NOW() WHERE id = ?");
+        $stmt->execute([$value, (int) $row['id']]);
+    } else {
+        $stmt = $pdo->prepare("INSERT INTO env (`key`, value, company_id, created_at) VALUES (?, ?, ?, NOW())");
+        $stmt->execute([$key, $value, $companyId]);
+    }
 }

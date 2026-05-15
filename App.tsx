@@ -98,6 +98,7 @@ import SupervisorTeamPage from "./pages/SupervisorTeamPage";
 import DailyMonitoringPage from "./pages/Monitor/DailyMonitoringPage";
 import LeadPerformancePage from "./pages/Monitor/LeadPerformancePage";
 import TeamAppointmentsPage from "./pages/Monitor/TeamAppointmentsPage";
+import SalesMonitoringPage from "./pages/Monitor/SalesMonitoringPage";
 import ReportsPage from "./pages/ReportsPage";
 import ProductSalesReportPage from "./pages/ProductSalesReportPage";
 import ProductAnalysisPage from "./pages/ProductAnalysisPage";
@@ -7366,6 +7367,11 @@ const App: React.FC = () => {
       case "monitor.team_appointments":
       case "นัดหมายของทีม":
         return <TeamAppointmentsPage user={currentUser} />;
+
+      case "Sales Monitoring":
+      case "monitor.sales":
+      case "ภาพรวมทีมขาย":
+        return <SalesMonitoringPage user={currentUser} />;
 
       case "Attendance Management":
       case "nav.attendance_management":
