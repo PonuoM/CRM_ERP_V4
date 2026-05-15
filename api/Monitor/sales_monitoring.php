@@ -203,21 +203,24 @@ try {
     $totalDistByUser = [];
     foreach ($stmt->fetchAll() as $r) $totalDistByUser[(int) $r['uid']] = (int) $r['total_distributed'];
 
-    // 6) Summary stats (company-wide)
-    $stmt = $pdo->prepare("SELECT COUNT(*) c FROM customers WHERE company_id = ? AND assigned_to IS NULL");
-    $stmt->execute([$companyId]);
-    $unattended = (int) $stmt->fetch()['c'];
-
+    // 6) Summary stats — scoped to viewer's visible team
+    // "แจกวันนี้" = distinct customers distributed to anyone in the visible user set today
     $stmt = $pdo->prepare("
         SELECT COUNT(DISTINCT customer_id) AS c
         FROM basket_transition_log
         WHERE transition_type IN ('distribute','redistribute','manual')
           AND DATE(created_at) = ?
+          AND assigned_to_new IN ($idsIn)
     ");
     $stmt->execute([$today]);
     $distributedToday = (int) $stmt->fetch()['c'];
 
-    $stmt = $pdo->prepare("SELECT COUNT(*) c FROM customers WHERE company_id = ?");
+    // "ลูกค้าทั้งหมด" = total customers assigned to the visible user set
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) c
+        FROM customers
+        WHERE company_id = ? AND assigned_to IN ($idsIn)
+    ");
     $stmt->execute([$companyId]);
     $totalCustomers = (int) $stmt->fetch()['c'];
 
@@ -256,6 +259,7 @@ try {
             'first_name'       => $m['first_name'],
             'last_name'        => $m['last_name'],
             'name'             => trim(($m['first_name'] ?? '') . ' ' . ($m['last_name'] ?? '')),
+            'phone'            => $m['phone'],
             'role'             => $m['role'],
             'role_id'          => (int) $m['role_id'],
             'department'       => $department,
@@ -299,7 +303,6 @@ try {
             'summary' => [
                 'staff_count' => count($staff),
                 'total_customers' => $totalCustomers,
-                'unattended' => $unattended,
                 'distributed_today' => $distributedToday,
             ],
             'staff' => $staff,
@@ -332,7 +335,7 @@ function empty_payload($period, $start, $end, $callTarget, $minuteTarget)
         'period_start' => $start,
         'period_end' => $end,
         'targets' => ['daily_calls' => $callTarget, 'daily_minutes' => $minuteTarget],
-        'summary' => ['staff_count' => 0, 'total_customers' => 0, 'unattended' => 0, 'distributed_today' => 0],
+        'summary' => ['staff_count' => 0, 'total_customers' => 0, 'distributed_today' => 0],
         'staff' => [],
     ];
 }

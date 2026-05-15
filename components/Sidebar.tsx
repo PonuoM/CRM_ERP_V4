@@ -207,6 +207,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       children: [
         { label: "Sales Monitoring", icon: DollarSign, key: "monitor.sales" },
         { label: "Daily Monitoring", icon: Phone, key: "monitor.daily" },
+        { label: "Dashboard Talk Time", icon: Phone, key: "home.talktime_dashboard" },
         { label: "Lead Performance", icon: BarChart2, key: "monitor.lead_performance" },
         { label: "Team Appointments", icon: Calendar, key: "monitor.team_appointments" },
       ]
@@ -216,7 +217,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: Home,
       children: [
         { label: "Dashboard", icon: LayoutDashboard, key: "home.dashboard" },
-        { label: "Dashboard Talk Time", icon: Phone, key: "home.talktime_dashboard" },
         { label: "Sales Overview", icon: LayoutDashboard, key: "home.sales_overview" },
         { label: "Attendance Report", icon: Clock, key: "home.attendance_report" },
         { label: "Orders Report", icon: ShoppingCart, key: "home.orders_report" },

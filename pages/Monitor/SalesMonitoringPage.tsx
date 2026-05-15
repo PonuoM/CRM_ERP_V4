@@ -1,23 +1,17 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
-    Users as UsersIcon,
-    Phone,
-    PhoneCall,
-    ShoppingCart,
-    DollarSign,
-    Target,
-    Clock,
     RefreshCw,
     Settings as SettingsIcon,
-    UserPlus,
-    Tag,
-    AlertTriangle,
     TrendingUp,
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { User } from "@/types";
 import { Skeleton } from "@/components/Monitor/Skeleton";
 import TeamInsights, { InsightItem } from "@/components/Monitor/TeamInsights";
+import {
+    fetchOneCallRecordings,
+    aggregateOneCallByUsers,
+} from "@/services/onecallRealtime";
 
 type Period = "today" | "week" | "month" | "all";
 type SortKey = "score" | "sales" | "orders" | "calls" | "customers" | "close_rate" | "minutes";
@@ -28,6 +22,7 @@ interface StaffStat {
     first_name: string;
     last_name: string;
     name: string;
+    phone?: string;
     role: string;
     role_id: number;
     department: "CRM Telesale" | "Sale Admin";
@@ -56,7 +51,7 @@ interface StaffStat {
 interface SalesData {
     period: Period;
     targets: { daily_calls: number; daily_minutes: number };
-    summary: { staff_count: number; total_customers: number; unattended: number; distributed_today: number };
+    summary: { staff_count: number; total_customers: number; distributed_today: number };
     staff: StaffStat[];
     viewer?: { user_id: number; role: string; is_supervisor: boolean; is_admin: boolean };
 }
@@ -100,19 +95,13 @@ function scoreStaff(s: StaffStat): number {
 
 // ── SummaryBar ─────────────────────────────────────────────────────────────
 const SummaryBar: React.FC<{ data?: SalesData; loading: boolean }> = ({ data, loading }) => {
-    const items = [
+    const items: { id: string; num: number | null; label: string; highlight?: "primary" | "negative" }[] = [
         { id: "staff", num: data?.summary.staff_count ?? null, label: "พนักงาน CRM" },
         { id: "customers", num: data?.summary.total_customers ?? null, label: "ลูกค้าทั้งหมด" },
         {
-            id: "unattended",
-            num: data?.summary.unattended ?? null,
-            label: "ไม่มีผู้ดูแล",
-            highlight: (data?.summary.unattended ?? 0) > 0 ? "negative" : undefined,
-        },
-        {
             id: "today",
             num: data?.summary.distributed_today ?? null,
-            label: "แจกวันนี้",
+            label: "แจกวันนี้ (ทีม)",
             highlight: (data?.summary.distributed_today ?? 0) > 0 ? "primary" : undefined,
         },
     ];
@@ -212,37 +201,6 @@ const Toolbar: React.FC<{
         </div>
     );
 };
-
-// ── QuickLinks ─────────────────────────────────────────────────────────
-const QuickLinks: React.FC<{ unattended: number }> = ({ unattended }) => (
-    <div className="bg-gray-50/60 border border-gray-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center gap-2 mb-3">
-        <span className="text-[11px] font-semibold text-gray-500 mr-1">Quick:</span>
-        <button
-            disabled
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-600 cursor-not-allowed opacity-70"
-            title="กำลังพัฒนา"
-        >
-            <Phone className="w-3.5 h-3.5" />
-            ลูกค้าควรโทรวันนี้
-        </button>
-        <button
-            disabled
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-600 cursor-not-allowed opacity-70"
-            title="กำลังพัฒนา"
-        >
-            <UserPlus className="w-3.5 h-3.5" />
-            ลูกค้าใหม่ {unattended > 0 ? `(${unattended})` : ""}
-        </button>
-        <button
-            disabled
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-pink-50 text-pink-600 cursor-not-allowed opacity-70"
-            title="กำลังพัฒนา"
-        >
-            <Tag className="w-3.5 h-3.5" />
-            โปร พ.ค. 69
-        </button>
-    </div>
-);
 
 // ── StaffCard ─────────────────────────────────────────────────────────
 const SEG_COLORS = { new: "#3b82f6", active: "#22c55e", risk: "#f59e0b", tank: "#94a3b8" };
@@ -549,11 +507,57 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showSettings, setShowSettings] = useState(false);
+    const [refreshingRealtime, setRefreshingRealtime] = useState(false);
 
     const canEditSettings = useMemo(() => {
         const r = (user.role || "").toLowerCase();
         return r.includes("admin") || r.includes("supervisor") || r.includes("ceo");
     }, [user]);
+
+    // Overlay realtime OneCall call data onto the DB snapshot (only used when
+    // period = today — call_import_logs catches up overnight).
+    const overlayRealtime = useCallback(async (base: SalesData) => {
+        setRefreshingRealtime(true);
+        try {
+            const todayISO = new Date();
+            const ymd = `${todayISO.getFullYear()}-${String(todayISO.getMonth() + 1).padStart(2, "0")}-${String(todayISO.getDate()).padStart(2, "0")}`;
+            const rt = await fetchOneCallRecordings(ymd);
+            if (!rt.success || !rt.recordings) {
+                if (rt.error) setError(`OneCall realtime: ${rt.error} (แสดงข้อมูลจาก DB)`);
+                return;
+            }
+            const users = base.staff.map((s) => ({ user_id: s.user_id, phone: s.phone || "" }));
+            const agg = aggregateOneCallByUsers(rt.recordings, users);
+
+            const overlay = base.staff.map((s) => {
+                const acc = agg.members[s.user_id];
+                if (!acc) {
+                    return { ...s, calls_total: 0, talked_calls: 0, total_min: 0, avg_min: 0,
+                             calls_per_cust: 0 };
+                }
+                const totalMin = Math.round((acc.total_seconds / 60) * 10) / 10;
+                const avgMin = acc.total_calls > 0
+                    ? Math.round((acc.total_seconds / acc.total_calls / 60) * 100) / 100
+                    : 0;
+                const ratio = s.assigned_total > 0
+                    ? Math.round((acc.total_calls / s.assigned_total) * 100) / 100
+                    : 0;
+                return {
+                    ...s,
+                    calls_total: acc.total_calls,
+                    talked_calls: acc.talked_calls,
+                    total_min: totalMin,
+                    avg_min: avgMin,
+                    calls_per_cust: ratio,
+                };
+            });
+            setData({ ...base, staff: overlay });
+        } catch (rtErr: any) {
+            setError(`OneCall realtime ผิดพลาด: ${rtErr?.message || ""}`);
+        } finally {
+            setRefreshingRealtime(false);
+        }
+    }, []);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -571,13 +575,18 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
             );
             const json = await res.json();
             if (!res.ok || !json.success) throw new Error(json?.message || `HTTP ${res.status}`);
-            setData(json.data);
+            const baseData: SalesData = json.data;
+            setData(baseData);
+            setLoading(false);
+
+            if (period === "today") {
+                overlayRealtime(baseData);
+            }
         } catch (e: any) {
             setError(e?.message || "โหลดข้อมูลไม่สำเร็จ");
-        } finally {
             setLoading(false);
         }
-    }, [apiBase, period]);
+    }, [apiBase, period, overlayRealtime]);
 
     useEffect(() => {
         fetchData();
@@ -732,6 +741,19 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
                     <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                         <TrendingUp className="w-6 h-6 text-green-600" />
                         ติดตามทีมขาย — ภาพรวม Performance
+                        {period === "today" && (
+                            refreshingRealtime ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                    กำลังอัพเดต Realtime...
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                    Realtime
+                                </span>
+                            )
+                        )}
                     </h1>
                     <p className="text-sm text-gray-500 mt-0.5">
                         ลูกค้าในมือ / โทร / ยอดขาย / การแจกงาน — แยกตามคน
@@ -740,7 +762,6 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
             </div>
 
             <SummaryBar data={data || undefined} loading={loading} />
-            <QuickLinks unattended={data?.summary.unattended ?? 0} />
             <Toolbar
                 period={period}
                 onPeriod={setPeriod}
