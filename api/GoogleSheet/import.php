@@ -60,7 +60,12 @@ function previewGoogleSheetData(PDO $pdo, ?string $startDate = null, ?string $en
             $orderNumber = $row[1] ?? null;
             $rawDeliveryDate = isset($row[2]) ? trim($row[2]) : null;
             // Strip trailing dash-number suffixes (e.g. "12/1/26-2" -> "12/1/26")
-            $deliveryDate = $rawDeliveryDate ? preg_replace('/-\d+$/', '', $rawDeliveryDate) : null;
+            // Skip ISO format yyyy-mm-dd (e.g. "2026-03-07") to avoid stripping the day part.
+            if ($rawDeliveryDate && !preg_match('/^\d{4}-\d{1,2}-\d{1,2}$/', $rawDeliveryDate)) {
+                $deliveryDate = preg_replace('/-\d+$/', '', $rawDeliveryDate);
+            } else {
+                $deliveryDate = $rawDeliveryDate;
+            }
             $rawDeliveryStatus = isset($row[3]) ? $row[3] : null;
             $orderStatus = null;
             $deliveryStatus = null;
