@@ -190,12 +190,25 @@ const Sidebar: React.FC<SidebarProps> = ({
     "ประวัติ V2": "ประวัติทั้งหมด",
     "Database Management": "จัดการฐานข้อมูล",
     "Quota Settings": "ตั้งค่าโควตา",
+    "Monitor": "ติดตามการทำงาน",
+    "Daily Monitoring": "ติดตามรายวัน",
+    "Lead Performance": "อัตราการปิดการขาย",
+    "Team Appointments": "นัดหมายของทีม",
   };
 
   const t = (s: string): string => TH[s] ?? s;
 
   // MASTER MENU DEFINITION
   const MASTER_MENU: NavItem[] = [
+    {
+      label: "Monitor",
+      icon: BarChart3,
+      children: [
+        { label: "Daily Monitoring", icon: Phone, key: "monitor.daily" },
+        { label: "Lead Performance", icon: BarChart2, key: "monitor.lead_performance" },
+        { label: "Team Appointments", icon: Calendar, key: "monitor.team_appointments" },
+      ]
+    },
     {
       label: "Home",
       icon: Home,
