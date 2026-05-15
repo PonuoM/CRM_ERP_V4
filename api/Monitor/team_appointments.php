@@ -79,21 +79,27 @@ try {
     }
     $idsIn = implode(',', $userIds);
 
-    // Per-member counts (selected day / next N days window / overdue)
+    // Per-member counts. Use range comparisons (not DATE() function) so the
+    // composite index (customer_id, status, date) can be used efficiently.
+    $dayStart  = $date . ' 00:00:00';
+    $dayEnd    = date('Y-m-d', strtotime($date . ' +1 day')) . ' 00:00:00';
+    $windowEnd = date('Y-m-d', strtotime($date . ' +' . $rangeDays . ' day')) . ' 00:00:00';
+    $today     = date('Y-m-d') . ' 00:00:00';
+    $lookback  = date('Y-m-d', strtotime($date . ' -90 day')) . ' 00:00:00';
+
     $sqlPer = "
         SELECT u.id AS uid,
-            SUM(CASE WHEN DATE(a.date) = ? AND a.status IN ('รอดำเนินการ','ใหม่') THEN 1 ELSE 0 END) AS selected_day,
-            SUM(CASE WHEN DATE(a.date) BETWEEN ? AND DATE_ADD(?, INTERVAL ? DAY)
-                          AND a.status IN ('รอดำเนินการ','ใหม่') THEN 1 ELSE 0 END) AS week_window,
-            SUM(CASE WHEN DATE(a.date) < CURDATE() AND a.status IN ('รอดำเนินการ','ใหม่') THEN 1 ELSE 0 END) AS overdue
+            SUM(CASE WHEN a.date >= ? AND a.date < ? AND a.status IN ('รอดำเนินการ','ใหม่') THEN 1 ELSE 0 END) AS selected_day,
+            SUM(CASE WHEN a.date >= ? AND a.date < ? AND a.status IN ('รอดำเนินการ','ใหม่') THEN 1 ELSE 0 END) AS week_window,
+            SUM(CASE WHEN a.date < ? AND a.status IN ('รอดำเนินการ','ใหม่') THEN 1 ELSE 0 END) AS overdue
         FROM users u
         LEFT JOIN customers c ON c.assigned_to = u.id
-        LEFT JOIN appointments a ON a.customer_id = c.customer_id AND a.date >= DATE_SUB(?, INTERVAL 90 DAY)
+        LEFT JOIN appointments a ON a.customer_id = c.customer_id AND a.date >= ?
         WHERE u.id IN ($idsIn)
         GROUP BY u.id
     ";
     $stmt = $pdo->prepare($sqlPer);
-    $stmt->execute([$date, $date, $date, $rangeDays - 1, $date]);
+    $stmt->execute([$dayStart, $dayEnd, $dayStart, $windowEnd, $today, $lookback]);
     $perUser = [];
     foreach ($stmt->fetchAll() as $r) {
         $perUser[(int) $r['uid']] = [
@@ -116,12 +122,12 @@ try {
         JOIN users u ON u.id = c.assigned_to
         WHERE u.id IN ($idsIn)
           AND a.status IN ('รอดำเนินการ','ใหม่')
-          AND DATE(a.date) BETWEEN ? AND DATE_ADD(?, INTERVAL ? DAY)
+          AND a.date >= ? AND a.date < ?
         ORDER BY a.date ASC
         LIMIT 200
     ";
     $stmt = $pdo->prepare($sqlList);
-    $stmt->execute([$date, $date, $rangeDays - 1]);
+    $stmt->execute([$dayStart, $windowEnd]);
     $appts = $stmt->fetchAll();
 
     // Team totals
@@ -132,14 +138,15 @@ try {
         $totals['overdue']  += $p['overdue'];
     }
     // Today total — re-query for "today" specifically (in case `date` != today)
+    $todayEnd = date('Y-m-d', strtotime('+1 day')) . ' 00:00:00';
     $stmt = $pdo->prepare("
         SELECT COUNT(*) AS c FROM appointments a
         JOIN customers c ON c.customer_id = a.customer_id
         WHERE c.assigned_to IN ($idsIn)
           AND a.status IN ('รอดำเนินการ','ใหม่')
-          AND DATE(a.date) = CURDATE()
+          AND a.date >= ? AND a.date < ?
     ");
-    $stmt->execute();
+    $stmt->execute([$today, $todayEnd]);
     $totals['today'] = (int) ($stmt->fetch()['c'] ?? 0);
 
     // Build member rows
