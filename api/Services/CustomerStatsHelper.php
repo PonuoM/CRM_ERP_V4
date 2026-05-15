@@ -107,23 +107,13 @@ function recalculate_customer_full_stats(PDO $pdo, int $customerId): void
         $stmt->execute([$customerId]);
         $orderStats = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // 2. Call history
-        $callStmt = $pdo->prepare("SELECT COUNT(*) AS cnt FROM call_history WHERE customer_id = ?");
-        $callStmt->execute([$customerId]);
-        $totalCalls = (int) $callStmt->fetchColumn();
-
-        // 3. Appointments
-        $appStmt = $pdo->prepare("SELECT COUNT(*) AS cnt, MAX(date) AS last_dt FROM appointments WHERE customer_id = ?");
-        $appStmt->execute([$customerId]);
-        $appStats = $appStmt->fetch(PDO::FETCH_ASSOC);
+        // 2. Call history (REMOVED: User requested to stop updating total_calls)
+        // 3. Appointments (REMOVED: User requested to stop updating follow_up_count, last_follow_up_date)
 
         // 4. Derived values
         $actualTotal      = floatval($orderStats['actual_total'] ?? 0);
         $orderCount       = (int) ($orderStats['actual_order_count'] ?? 0);
         $newGrade         = calculate_customer_grade($actualTotal);
-        $hasSoldBefore    = $orderCount > 0 ? 1 : 0;
-        $isNewCustomer    = $orderCount === 0 ? 1 : 0;
-        $isRepeatCustomer = $orderCount > 1 ? 1 : 0;
         $lastDate         = $orderStats['actual_last_date'];
 
         // 5. Update everything at once
@@ -133,13 +123,7 @@ function recalculate_customer_full_stats(PDO $pdo, int $customerId): void
                 order_count         = ?,
                 first_order_date    = ?,
                 last_order_date     = CASE WHEN ? > NOW() THEN NOW() ELSE ? END,
-                grade               = ?,
-                has_sold_before     = ?,
-                is_new_customer     = ?,
-                is_repeat_customer  = ?,
-                total_calls         = ?,
-                follow_up_count     = ?,
-                last_follow_up_date = ?
+                grade               = ?
             WHERE customer_id = ?
         ");
 
@@ -150,12 +134,6 @@ function recalculate_customer_full_stats(PDO $pdo, int $customerId): void
             $lastDate,
             $lastDate,
             $newGrade,
-            $hasSoldBefore,
-            $isNewCustomer,
-            $isRepeatCustomer,
-            $totalCalls,
-            (int) ($appStats['cnt'] ?? 0),
-            $appStats['last_dt'] ?? null,
             $customerId,
         ]);
     } catch (Throwable $e) {

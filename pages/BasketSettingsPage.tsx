@@ -1946,6 +1946,15 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                                 className="w-full border rounded-lg p-2"
                                                                 placeholder="เช่น 50000"
                                                             />
+                                                            <div className="group relative mt-1.5 inline-block">
+                                                                <div className="flex items-center gap-1 text-xs text-blue-500 cursor-help">
+                                                                    <AlertCircle className="w-3.5 h-3.5" />
+                                                                    <span>เงื่อนไขการคำนวณยอดขาย</span>
+                                                                </div>
+                                                                <div className="absolute left-0 top-full mt-1 hidden group-hover:block w-72 bg-gray-800 text-white text-xs p-2.5 rounded shadow-xl z-50">
+                                                                    การคำนวณจะใช้ยอดขายจาก <b>บิลเดียวที่สูงที่สุด (MAX)</b> ที่มีสถานะ Picking, Shipping, Delivered โดยบิลนั้นจะต้องถูกสร้างหลังจากวันที่ลูกค้าเข้าตะกร้านี้ (หรือย้อนหลังไม่เกิน 40 วัน) จะไม่มีการนำบิลย่อยมาสะสมรวมกัน
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                         <div>
                                                             <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนวันที่ต่ออายุจากยอดขาย (วัน)</label>
