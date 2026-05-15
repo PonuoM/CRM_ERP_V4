@@ -174,6 +174,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Marketplace Dashboard": "แดชบอร์ด Marketplace",
     "Marketplace Ads Input": "กรอกค่า Ads (Marketplace)",
     "Marketplace Sales Import": "นำเข้ายอดขาย",
+    "Marketplace Invoices": "สลิป / การเงิน",
     "Marketplace Settings": "ตั้งค่าร้านค้า",
     "Google Sheet Import": "อัพสถานะ Aiport",
     "Product Analysis": "วิเคราะห์ผลิตภัณฑ์",
@@ -377,6 +378,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Marketplace Dashboard", icon: BarChart2, key: "marketplace.dashboard" },
         { label: "Marketplace Ads Input", icon: Pencil, key: "marketplace.ads_input" },
         { label: "Marketplace Sales Import", icon: FileUp, key: "marketplace.sales_import" },
+        { label: "Marketplace Invoices", icon: FileText, key: "marketplace.invoices" },
         { label: "Marketplace Settings", icon: Settings, key: "marketplace.settings" },
       ]
     },

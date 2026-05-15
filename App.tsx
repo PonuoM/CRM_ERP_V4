@@ -7736,6 +7736,8 @@ const App: React.FC = () => {
         return <MarketplacePage currentUser={currentUser} view="adsInput" />;
       case "Marketplace Sales Import":
         return <MarketplacePage currentUser={currentUser} view="salesImport" />;
+      case "Marketplace Invoices":
+        return <MarketplacePage currentUser={currentUser} view="invoices" />;
       case "Marketplace Settings":
         return <MarketplacePage currentUser={currentUser} view="settings" />;
       case "Companies":

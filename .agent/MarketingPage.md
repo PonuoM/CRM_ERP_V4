@@ -29,8 +29,9 @@ This component implements the Marketing Dashboard and Management interface. It s
 - **Features**:
     - Server-side pagination (`adsHistoryServerPagination`).
     - Edit/Delete functionality for individual log entries.
-    - distinct "Page" and "Product" history modes.
+    - Distinct "Page" and "Product" history modes.
     - Filterable by Date, Page/Product, and User.
+    - **Export**: Ability to export historical ads data (filtered by current search parameters) to CSV.
 
 ### 4. User Management (`userManagement`)
 - **Access**: Restricted to System Admins or Users with `is_system` role flag.
@@ -46,6 +47,7 @@ This component implements the Marketing Dashboard and Management interface. It s
     - `Marketing_DB/product_ads_dashboard_data.php`: Product level dashboard stats.
     - `Marketing_DB/ads_log_get.php` / `insert.php` / `update.php` / `delete.php`: Page-level ads CRUD.
     - `Marketing_DB/product_ads_log_get.php` ...: Product-level ads CRUD.
+    - `Marketing_DB/ads_log_export_csv.php`: Export capability for Page-level and Product-level Ads History.
     - `Marketing_DB/get_user_pages.php` / `get_marketing_page_users.php`: User permission mapping.
 
 ## Roles & Permissions
