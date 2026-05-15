@@ -57,6 +57,11 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
     const [csvPreview, setCsvPreview] = useState<string[][]>([]);
     const [csvImporting, setCsvImporting] = useState(false);
     const [csvResult, setCsvResult] = useState<any>(null);
+
+    // JST Sales Import
+    const [jstFile, setJstFile] = useState<File | null>(null);
+    const [jstImporting, setJstImporting] = useState(false);
+
     const [importBatches, setImportBatches] = useState<any[]>([]);
     const [viewBatchId, setViewBatchId] = useState<number | null>(null);
     const [batchOrders, setBatchOrders] = useState<any[]>([]);
@@ -269,6 +274,43 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
         } catch (e: any) {
             setCsvResult({ success: false, error: e?.message || 'Error' });
         } finally { setCsvImporting(false); }
+    };
+
+    // ==================== JST EXCEL IMPORT ====================
+    const handleJstSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setJstFile(file);
+        setCsvResult(null);
+    };
+
+    const handleJstImport = async () => {
+        if (!jstFile) return;
+        setJstImporting(true);
+        setCsvResult(null);
+        try {
+            const formData = new FormData();
+            formData.append('jst_file', jstFile);
+            formData.append('company_id', String(companyId));
+            formData.append('user_id', String(currentUser?.id));
+
+            // Upload directly to server-side streaming endpoint using apiFetch
+            const res = await apiFetch(`Marketplace/sales_jst_import.php`, {
+                method: 'POST',
+                body: formData
+            });
+
+            setCsvResult(res);
+            if (res && res.success) {
+                loadImportBatches(); 
+                loadStores(); 
+                setJstFile(null);
+            }
+        } catch (e: any) {
+            setCsvResult({ success: false, error: e?.message || 'Error uploading JST file' });
+        } finally {
+            setJstImporting(false);
+        }
     };
 
     const loadImportBatches = useCallback(async () => {
@@ -750,10 +792,25 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                             {csvFile && <span className="text-sm text-gray-600 bg-gray-50 px-3 py-1.5 rounded border">{csvFile.name}</span>}
                             <button
                                 onClick={handleCsvImport}
-                                disabled={!csvFile || csvImporting}
+                                disabled={!csvFile || csvImporting || jstImporting}
                                 className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 text-sm"
                             >
-                                {csvImporting ? "กำลังนำเข้า..." : "📤 นำเข้าข้อมูล"}
+                                {csvImporting ? "กำลังนำเข้า..." : "📤 นำเข้า CSV"}
+                            </button>
+
+                            <div className="h-8 w-px bg-gray-300 mx-2"></div>
+
+                            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-green-50 hover:bg-green-100 border border-green-300 rounded-md text-sm font-medium text-green-700 transition-colors">
+                                📊 เลือกไฟล์ JST (Excel)
+                                <input type="file" accept=".xlsx,.xls" onChange={handleJstSelect} className="hidden" />
+                            </label>
+                            {jstFile && <span className="text-sm text-green-700 bg-green-50 px-3 py-1.5 rounded border border-green-200">{jstFile.name}</span>}
+                            <button
+                                onClick={handleJstImport}
+                                disabled={!jstFile || jstImporting || csvImporting}
+                                className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 text-sm"
+                            >
+                                {jstImporting ? "กำลังนำเข้า..." : "📤 นำเข้า JST"}
                             </button>
                         </div>
 
