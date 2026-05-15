@@ -10,6 +10,15 @@ interface PermissionEditorProps {
 
 // Full Permission Structure mapped from Sidebar.tsx
 const PERMISSION_GROUPS_DEF = {
+    'Monitor': {
+        label: 'ติดตามการทำงาน (Monitor)',
+        items: [
+            { key: 'monitor.sales', label: 'Sales Monitoring (ภาพรวมทีมขาย)' },
+            { key: 'monitor.daily', label: 'Daily Monitoring (ติดตามรายวัน)' },
+            { key: 'monitor.lead_performance', label: 'Lead Performance (อัตราการปิดการขาย)' },
+            { key: 'monitor.team_appointments', label: 'Team Appointments (นัดหมายของทีม)' },
+        ]
+    },
     'Home': {
         label: 'หน้าแรก (Home)',
         items: [
