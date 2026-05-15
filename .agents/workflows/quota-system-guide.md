@@ -106,7 +106,7 @@ PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื
 ### ขั้นตอน
 1. **ดึง latest rate** → `effective_date ≤ NOW()` ORDER DESC LIMIT 1 (product-specific → fallback global/scoped)
 2. **คำนวณ period** → Reset monthly: วันที่ X ของเดือน | Reset interval: anchor + N × interval | Cumulative: ALL rates → segmented
-3. **ยอดขาย** → `SUM(oi.quantity × oi.price_per_unit)` จาก `order_items` JOIN `orders` WHERE `o.order_status != 'Cancelled'`
+3. **ยอดขาย** → `SUM(net_total)` โดยนับเฉพาะสินค้าที่ไม่ใช่ของแถม (`is_freebie = 0`) และไม่ใช่สินค้าย่อยในโปรโมชัน (`parent_item_id IS NULL`) จากตาราง `order_items` JOIN `orders` WHERE `o.order_status NOT IN ('Cancelled', 'Returned')`
 4. **Auto** = `FLOOR(totalSales / salesPerQuota)` · **Admin** = SUM allocations (+ validity filter) · **Used** = SUM quota_usage
 5. **Remaining** = `autoQuota + adminQuota - totalUsed`
 

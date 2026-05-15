@@ -83,9 +83,12 @@ try {
             if ($isFullyPaid) {
                 // จ่ายครบ → Approved (+ Delivered ถ้ามี tracking)
                 $trackingCheckStmt = $pdo->prepare(
-                    "SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = :orderId OR order_id = :orderId"
+                    "SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = :orderId1 OR order_id = :orderId2"
                 );
-                $trackingCheckStmt->execute([':orderId' => $parentOrderId]);
+                $trackingCheckStmt->execute([
+                    ':orderId1' => $parentOrderId,
+                    ':orderId2' => $parentOrderId
+                ]);
                 $hasTracking = (int) $trackingCheckStmt->fetchColumn() > 0;
 
                 if ($hasTracking) {

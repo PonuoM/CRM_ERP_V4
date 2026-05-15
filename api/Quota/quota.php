@@ -1031,12 +1031,16 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
  */
 function _calcSalesInPeriod(PDO $conn, int $userId, int $quotaProductId, string $dateCol, string $periodStart, string $periodEnd): float {
     $stmt = $conn->prepare("
-        SELECT COALESCE(SUM(oi.quantity * oi.price_per_unit), 0) AS total_sales
+        SELECT COALESCE(SUM(
+            CASE WHEN (oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL
+                 THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)
+                 ELSE 0 END
+        ), 0) AS total_sales
         FROM order_items oi
         JOIN orders o ON o.id = oi.parent_order_id
         WHERE oi.creator_id = :userId
         AND o.company_id = (SELECT company_id FROM quota_products WHERE id = :qpId AND deleted_at IS NULL)
-        AND o.order_status != 'Cancelled'
+        AND o.order_status NOT IN ('Cancelled', 'Returned', 'ตีกลับ', 'ยกเลิก')
         AND $dateCol >= :periodStart
         AND $dateCol < :periodEnd
     ");

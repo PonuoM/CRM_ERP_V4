@@ -3,7 +3,7 @@ import {
   Package, Plus, Edit, Trash2, Calendar, DollarSign,
   ChevronDown, ChevronRight, Search, RefreshCcw,
   TrendingUp, Users, Clock, Gift, Eye, Settings,
-  AlertCircle, CheckCircle, X, Filter
+  AlertCircle, CheckCircle, X, Filter, Info
 } from 'lucide-react';
 import type { Product, User, QuotaProduct, QuotaRateSchedule, QuotaAllocation, QuotaSummary } from '../types';
 import {
@@ -1129,7 +1129,16 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
                   {/* 3. ช่วงออเดอร์ที่ใช้คำนวณ */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ช่วงออเดอร์ที่ใช้คำนวณ *</label>
+                    <div className="flex items-center gap-1 mb-1">
+                      <label className="block text-sm font-medium text-gray-700">ช่วงออเดอร์ที่ใช้คำนวณ *</label>
+                      <div className="group relative flex items-center">
+                        <Info size={14} className="text-gray-400 hover:text-blue-500 cursor-help" />
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-50">
+                          ระบบจะคำนวณยอดขายจากออเดอร์ทั้งหมดในช่วงเวลานี้ โดย <strong>ไม่รวม</strong> ออเดอร์ที่มีสถานะ ยกเลิก (Cancelled) และ ตีกลับ (Returned)
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
+                        </div>
+                      </div>
+                    </div>
                     <DateRangePicker
                       value={{
                         start: rateForm.calcPeriodStart ? rateForm.calcPeriodStart + 'T00:00:00' : new Date().toISOString(),
