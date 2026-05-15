@@ -196,6 +196,7 @@ const DailyMonitoringPage: React.FC<Props> = ({ user }) => {
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
     const [showSettings, setShowSettings] = useState(false);
     const [dataSource, setDataSource] = useState<"db" | "realtime">("db");
+    const [refreshingRealtime, setRefreshingRealtime] = useState(false);
 
     const canEditSettings = useMemo(() => {
         const r = (user.role || "").toLowerCase();
@@ -206,6 +207,51 @@ const DailyMonitoringPage: React.FC<Props> = ({ user }) => {
             r.includes("super")
         );
     }, [user]);
+
+    const overlayRealtime = useCallback(
+        async (baseData: MonitorData) => {
+            setRefreshingRealtime(true);
+            try {
+                const rt = await fetchOneCallRecordings(baseData.date);
+                if (!rt.success || !rt.recordings) {
+                    if (rt.error) setError(`OneCall realtime: ${rt.error} (แสดงข้อมูลจาก DB)`);
+                    return;
+                }
+                const users = baseData.members.map((m) => ({
+                    user_id: m.user_id,
+                    phone: m.phone,
+                }));
+                const agg = aggregateOneCallByUsers(rt.recordings, users);
+                const target = baseData.target_per_day || 40;
+                const mergedMembers = baseData.members.map((m) => {
+                    const acc = agg.members[m.user_id];
+                    const talked = acc?.talked_calls ?? 0;
+                    return {
+                        ...m,
+                        total_calls: acc?.total_calls ?? 0,
+                        connected_calls: acc?.connected_calls ?? 0,
+                        talked_calls: talked,
+                        total_minutes: acc ? Math.round((acc.total_seconds / 60) * 10) / 10 : 0,
+                        morning_calls: acc?.morning_calls ?? 0,
+                        afternoon_calls: acc?.afternoon_calls ?? 0,
+                        target_progress:
+                            target > 0 ? Math.round((talked / target) * 1000) / 1000 : 0,
+                    };
+                });
+                setData({
+                    ...baseData,
+                    team_totals: agg.team_totals,
+                    hourly: agg.hourly,
+                    members: mergedMembers,
+                });
+            } catch (rtErr: any) {
+                setError(`OneCall realtime ผิดพลาด: ${rtErr?.message || ""} — แสดงข้อมูลจาก DB แทน`);
+            } finally {
+                setRefreshingRealtime(false);
+            }
+        },
+        [],
+    );
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -222,63 +268,26 @@ const DailyMonitoringPage: React.FC<Props> = ({ user }) => {
             if (!res.ok || !json.success) {
                 throw new Error(json?.message || `HTTP ${res.status}`);
             }
-            let nextData: MonitorData = json.data;
+            const dbData: MonitorData = json.data;
 
-            // For today, OneCall API has the live data — call_import_logs only
-            // catches up overnight. Overlay live numbers onto the DB user list.
+            // Render DB data immediately so the page is interactive within ~200ms,
+            // then upgrade to realtime in the background when looking at today.
+            setData(dbData);
+            setLoading(false);
+
             if (isToday(date)) {
                 setDataSource("realtime");
-                try {
-                    const rt = await fetchOneCallRecordings(date);
-                    if (rt.success && rt.recordings) {
-                        const users = nextData.members.map((m) => ({
-                            user_id: m.user_id,
-                            phone: m.phone,
-                        }));
-                        const agg = aggregateOneCallByUsers(rt.recordings, users);
-                        const target = nextData.target_per_day || 40;
-                        const mergedMembers = nextData.members.map((m) => {
-                            const acc = agg.members[m.user_id];
-                            const talked = acc?.talked_calls ?? 0;
-                            return {
-                                ...m,
-                                total_calls: acc?.total_calls ?? 0,
-                                connected_calls: acc?.connected_calls ?? 0,
-                                talked_calls: talked,
-                                total_minutes: acc ? Math.round((acc.total_seconds / 60) * 10) / 10 : 0,
-                                morning_calls: acc?.morning_calls ?? 0,
-                                afternoon_calls: acc?.afternoon_calls ?? 0,
-                                target_progress:
-                                    target > 0 ? Math.round((talked / target) * 1000) / 1000 : 0,
-                            };
-                        });
-                        nextData = {
-                            ...nextData,
-                            team_totals: agg.team_totals,
-                            hourly: agg.hourly,
-                            members: mergedMembers,
-                        };
-                    } else if (rt.error) {
-                        // Show a soft warning but keep DB data so UI still renders
-                        setError(`OneCall realtime: ${rt.error} (กำลังแสดงข้อมูลจาก DB)`);
-                    }
-                } catch (rtErr: any) {
-                    setError(
-                        `OneCall realtime ผิดพลาด: ${rtErr?.message || ""} — แสดงข้อมูลจาก DB แทน`,
-                    );
-                }
+                // Fire and forget; setData inside will trigger re-render
+                overlayRealtime(dbData);
             } else {
                 setDataSource("db");
             }
-
-            setData(nextData);
         } catch (e: any) {
             setError(e?.message || "โหลดข้อมูลไม่สำเร็จ");
             setData(null);
-        } finally {
             setLoading(false);
         }
-    }, [apiBase, date]);
+    }, [apiBase, date, overlayRealtime]);
 
     useEffect(() => {
         fetchData();
@@ -406,9 +415,17 @@ const DailyMonitoringPage: React.FC<Props> = ({ user }) => {
                         <PhoneCall className="w-6 h-6 text-green-600" />
                         ติดตามทีม — รายวัน
                         {dataSource === "realtime" ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                Realtime
+                            <span
+                                className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${refreshingRealtime
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-green-100 text-green-700"
+                                    }`}
+                            >
+                                <span
+                                    className={`w-1.5 h-1.5 rounded-full ${refreshingRealtime ? "bg-amber-500 animate-pulse" : "bg-green-500 animate-pulse"
+                                        }`}
+                                />
+                                {refreshingRealtime ? "กำลังอัพเดต Realtime..." : "Realtime"}
                             </span>
                         ) : (
                             <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
