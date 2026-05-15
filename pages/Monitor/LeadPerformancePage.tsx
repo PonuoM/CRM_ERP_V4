@@ -6,8 +6,6 @@ import {
     ShoppingCart,
     RefreshCw,
     TrendingUp,
-    ChevronDown,
-    ChevronUp,
     DollarSign,
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
@@ -15,8 +13,10 @@ import { User } from "@/types";
 import {
     KpiRowSkeleton,
     ChartSkeleton,
-    TableRowsSkeleton,
+    Skeleton,
 } from "@/components/Monitor/Skeleton";
+import MemberCard, { CardStatus, BulletItem } from "@/components/Monitor/MemberCard";
+import TeamInsights, { InsightItem } from "@/components/Monitor/TeamInsights";
 
 interface TeamTotals {
     distributed: number;
@@ -49,9 +49,12 @@ interface LeadPerformanceData {
     members: MemberRow[];
 }
 
-type SortField = "name" | "distributed" | "called" | "closed" | "sales" | "close_rate";
 
 const THAI_MONTHS = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+
+const fmtNum = (n: number) => n.toLocaleString("th-TH");
+const fmtMoney = (n: number) => `฿${Math.round(n).toLocaleString("th-TH")}`;
+const fmtPct = (r: number) => `${(r * 100).toFixed(1)}%`;
 
 const KpiCard: React.FC<{
     title: string;
@@ -86,8 +89,6 @@ const LeadPerformancePage: React.FC<Props> = ({ user }) => {
     const [data, setData] = useState<LeadPerformanceData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [sortField, setSortField] = useState<SortField>("closed");
-    const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -159,41 +160,116 @@ const LeadPerformancePage: React.FC<Props> = ({ user }) => {
         return { options, series };
     }, [totals]);
 
-    const sortedMembers = useMemo(() => {
+    // Cards sorted by closed desc (top performers first)
+    const cardMembers = useMemo(() => {
         if (!data) return [];
-        const arr = [...data.members];
-        arr.sort((a, b) => {
-            if (sortField === "name") {
-                return sortDir === "asc" ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-            }
-            const av = (a as any)[sortField] as number;
-            const bv = (b as any)[sortField] as number;
-            return sortDir === "asc" ? av - bv : bv - av;
+        return [...data.members].sort((a, b) => b.closed - a.closed);
+    }, [data]);
+
+    // Insights derived from team data
+    const insights = useMemo<InsightItem[]>(() => {
+        if (!data || data.members.length === 0) return [];
+        const items: InsightItem[] = [];
+        const t = data.team_totals;
+        const members = data.members;
+
+        // Team funnel summary
+        items.push({
+            tone: t.close_rate >= 0.02 ? "good" : t.close_rate >= 0.005 ? "info" : "warn",
+            text: (
+                <>
+                    เดือนนี้แจก <b>{t.distributed.toLocaleString()}</b> ลูกค้า → คุย{" "}
+                    <b>{t.called.toLocaleString()}</b> ({fmtPct(t.call_rate)}) → ปิดบิล{" "}
+                    <b>{t.closed.toLocaleString()}</b> ({fmtPct(t.close_rate)}) — ยอดรวม{" "}
+                    <b>{fmtMoney(t.sales)}</b>
+                </>
+            ),
         });
-        return arr;
-    }, [data, sortField, sortDir]);
 
-    const toggleSort = (f: SortField) => {
-        if (sortField === f) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        else {
-            setSortField(f);
-            setSortDir("desc");
+        // Top closer
+        const top = [...members].filter((m) => m.distributed > 0).sort((a, b) => b.close_rate - a.close_rate)[0];
+        if (top && top.closed > 0) {
+            items.push({
+                tone: "highlight",
+                text: (
+                    <>
+                        <b>Top closer:</b> <b className="text-yellow-700">{top.name}</b> ปิด{" "}
+                        <b>{top.closed}</b> ลูกค้า ({fmtPct(top.close_rate)} ของที่แจก) — ยอด{" "}
+                        <b>{fmtMoney(top.sales)}</b>
+                    </>
+                ),
+            });
         }
-    };
 
-    const SortIcon: React.FC<{ field: SortField }> = ({ field }) => {
-        if (sortField !== field) return <ChevronDown className="w-3 h-3 inline opacity-30" />;
-        return sortDir === "desc" ? (
-            <ChevronDown className="w-3 h-3 inline text-green-600" />
-        ) : (
-            <ChevronUp className="w-3 h-3 inline text-green-600" />
+        // Untouched leads
+        const untouchedTotal = members.reduce(
+            (s, m) => s + Math.max(0, m.distributed - m.called),
+            0,
         );
+        if (untouchedTotal > 0 && t.distributed > 0) {
+            const pct = Math.round((untouchedTotal / t.distributed) * 100);
+            items.push({
+                tone: pct > 50 ? "bad" : "warn",
+                text: (
+                    <>
+                        มีลูกค้า <b>{untouchedTotal.toLocaleString()}</b> รายที่แจกแล้วยังไม่ได้คุย
+                        (<b>{pct}%</b> ของที่แจก) — เสี่ยงหลุดเพราะ follow ไม่ทัน
+                    </>
+                ),
+            });
+        }
+
+        // Low performers: distributed > 50 but close_rate < team_close_rate * 0.5
+        const teamRate = t.close_rate;
+        const low = members
+            .filter((m) => m.distributed >= 50 && m.close_rate < teamRate * 0.5)
+            .sort((a, b) => a.close_rate - b.close_rate)
+            .slice(0, 3);
+        if (low.length > 0 && teamRate > 0) {
+            items.push({
+                tone: "bad",
+                text: (
+                    <>
+                        <b>ปิดน้อยกว่าค่าเฉลี่ยทีมครึ่งหนึ่ง:</b>{" "}
+                        {low.map((m, i) => (
+                            <span key={m.user_id}>
+                                {i > 0 && ", "}
+                                <b>{m.name}</b> ({fmtPct(m.close_rate)})
+                            </span>
+                        ))}{" "}
+                        — ควรดูคุณภาพการโทร
+                    </>
+                ),
+            });
+        }
+
+        // Sales leader
+        const salesTop = [...members].sort((a, b) => b.sales - a.sales)[0];
+        if (salesTop && salesTop.sales > 0 && salesTop.user_id !== top?.user_id) {
+            items.push({
+                tone: "good",
+                text: (
+                    <>
+                        <b>ยอดขายสูงสุด:</b> <b className="text-green-700">{salesTop.name}</b> ทำได้{" "}
+                        <b>{fmtMoney(salesTop.sales)}</b>
+                    </>
+                ),
+            });
+        }
+
+        return items;
+    }, [data]);
+
+    // Status from close_rate vs team avg
+    const statusFromCloseRate = (closeRate: number, distributed: number, teamAvg: number): CardStatus => {
+        if (distributed === 0) return "idle";
+        if (teamAvg === 0) return "idle";
+        if (closeRate >= teamAvg * 1.5) return "great";
+        if (closeRate >= teamAvg) return "good";
+        if (closeRate >= teamAvg * 0.5) return "warn";
+        return "bad";
     };
 
-    const fmtNum = (n: number) => n.toLocaleString("th-TH");
-    const fmtMoney = (n: number) =>
-        `฿${Math.round(n).toLocaleString("th-TH")}`;
-    const fmtPct = (r: number) => `${(r * 100).toFixed(1)}%`;
 
     const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
 
@@ -249,6 +325,9 @@ const LeadPerformancePage: React.FC<Props> = ({ user }) => {
                     {error}
                 </div>
             )}
+
+            {/* Insights */}
+            {!loading && insights.length > 0 && <TeamInsights items={insights} />}
 
             {/* KPI cards */}
             {loading ? (
@@ -307,121 +386,93 @@ const LeadPerformancePage: React.FC<Props> = ({ user }) => {
                 </div>
             )}
 
-            {/* Per-member table */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                    <h3 className="text-md font-semibold text-gray-800 flex items-center gap-2">
-                        <UsersIcon className="w-4 h-4 text-gray-500" />
-                        รายละเอียดรายคน
-                        {data && (
-                            <span className="text-xs font-normal text-gray-500">
-                                ({data.members.length} คน)
-                            </span>
-                        )}
-                    </h3>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-gray-600">
-                            <tr>
-                                <th
-                                    onClick={() => toggleSort("name")}
-                                    className="px-3 py-2 text-left font-medium cursor-pointer hover:bg-gray-100 whitespace-nowrap"
-                                >
-                                    ชื่อ <SortIcon field="name" />
-                                </th>
-                                <th
-                                    onClick={() => toggleSort("distributed")}
-                                    className="px-3 py-2 text-right font-medium cursor-pointer hover:bg-gray-100 whitespace-nowrap"
-                                >
-                                    แจกให้ <SortIcon field="distributed" />
-                                </th>
-                                <th
-                                    onClick={() => toggleSort("called")}
-                                    className="px-3 py-2 text-right font-medium cursor-pointer hover:bg-gray-100 whitespace-nowrap"
-                                >
-                                    ได้คุย <SortIcon field="called" />
-                                </th>
-                                <th
-                                    onClick={() => toggleSort("closed")}
-                                    className="px-3 py-2 text-right font-medium cursor-pointer hover:bg-gray-100 whitespace-nowrap"
-                                >
-                                    ปิดบิล <SortIcon field="closed" />
-                                </th>
-                                <th
-                                    onClick={() => toggleSort("sales")}
-                                    className="px-3 py-2 text-right font-medium cursor-pointer hover:bg-gray-100 whitespace-nowrap"
-                                >
-                                    ยอดขาย <SortIcon field="sales" />
-                                </th>
-                                <th
-                                    onClick={() => toggleSort("close_rate")}
-                                    className="px-3 py-2 text-right font-medium cursor-pointer hover:bg-gray-100 whitespace-nowrap"
-                                >
-                                    ปิด% <SortIcon field="close_rate" />
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {loading ? (
-                                <TableRowsSkeleton rows={8} colCount={6} />
-                            ) : sortedMembers.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="px-3 py-10 text-center text-gray-400">
-                                        ไม่มีข้อมูล
-                                    </td>
-                                </tr>
-                            ) : (
-                                sortedMembers.map((m) => {
-                                    const closePct = Math.round(m.close_rate * 1000) / 10;
-                                    const barColor =
-                                        closePct >= 5 ? "bg-green-500" : closePct >= 2 ? "bg-amber-500" : "bg-red-500";
-                                    return (
-                                        <tr key={m.user_id} className="border-t border-gray-100 hover:bg-gray-50">
-                                            <td className="px-3 py-2 whitespace-nowrap">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-7 h-7 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-xs font-bold">
-                                                        {(m.first_name || "?").charAt(0)}
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-medium text-gray-800 text-sm">
-                                                            {m.name || "—"}
-                                                        </div>
-                                                        <div className="text-[11px] text-gray-400">{m.role}</div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-3 py-2 text-right tabular-nums">{fmtNum(m.distributed)}</td>
-                                            <td className="px-3 py-2 text-right tabular-nums text-green-700 font-semibold">
-                                                {fmtNum(m.called)}
-                                            </td>
-                                            <td className="px-3 py-2 text-right tabular-nums text-amber-700 font-semibold">
-                                                {fmtNum(m.closed)}
-                                            </td>
-                                            <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                                                {m.sales > 0 ? fmtMoney(m.sales) : "—"}
-                                            </td>
-                                            <td className="px-3 py-2 whitespace-nowrap">
-                                                <div className="flex items-center gap-2 justify-end">
-                                                    <div className="flex-1 max-w-[80px] h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                        <div
-                                                            className={`h-full ${barColor}`}
-                                                            style={{ width: `${Math.min(100, closePct * 5)}%` }}
-                                                        />
-                                                    </div>
-                                                    <span className="text-xs font-semibold tabular-nums w-12 text-right">
-                                                        {closePct.toFixed(1)}%
-                                                    </span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+            {/* Member cards (grid) */}
+            <div className="mb-2 flex items-center gap-2">
+                <UsersIcon className="w-4 h-4 text-gray-500" />
+                <h3 className="text-md font-semibold text-gray-800">
+                    KPI รายคน
+                    {data && (
+                        <span className="text-xs font-normal text-gray-500 ml-2">
+                            ({data.members.length} คน — เรียงตามปิดบิลมากสุด)
+                        </span>
+                    )}
+                </h3>
             </div>
+            {loading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                        <div key={i} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="w-10 h-10 rounded-full" />
+                                <div className="flex-1 space-y-2">
+                                    <Skeleton className="h-3 w-24" />
+                                    <Skeleton className="h-2.5 w-16" />
+                                </div>
+                            </div>
+                            <Skeleton className="h-3 w-full" />
+                            <Skeleton className="h-3 w-5/6" />
+                            <Skeleton className="h-3 w-2/3" />
+                            <Skeleton className="h-2 w-full mt-2" />
+                        </div>
+                    ))}
+                </div>
+            ) : cardMembers.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-10 text-center text-gray-400">
+                    ไม่มีข้อมูล
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {cardMembers.map((m, idx) => {
+                        const teamAvg = data?.team_totals.close_rate ?? 0;
+                        const status = statusFromCloseRate(m.close_rate, m.distributed, teamAvg);
+                        const pct = m.close_rate * 100;
+                        const bullets: BulletItem[] = [
+                            {
+                                icon: <UsersIcon className="w-3.5 h-3.5 text-blue-500" />,
+                                label: "แจกให้",
+                                value: fmtNum(m.distributed),
+                            },
+                            {
+                                icon: <PhoneCall className="w-3.5 h-3.5 text-green-500" />,
+                                label: "โทรได้คุย",
+                                value: fmtNum(m.called),
+                                hint: `${fmtPct(m.call_rate)}`,
+                            },
+                            {
+                                icon: <ShoppingCart className="w-3.5 h-3.5 text-amber-500" />,
+                                label: "ปิดบิล",
+                                value: fmtNum(m.closed),
+                                hint: fmtPct(m.close_rate),
+                                emphasize: true,
+                            },
+                            {
+                                icon: <DollarSign className="w-3.5 h-3.5 text-purple-500" />,
+                                label: "ยอดขาย",
+                                value: m.sales > 0 ? fmtMoney(m.sales) : "—",
+                            },
+                        ];
+                        return (
+                            <MemberCard
+                                key={m.user_id}
+                                name={m.name}
+                                role={m.role}
+                                initial={(m.first_name || "?").charAt(0)}
+                                status={status}
+                                bullets={bullets}
+                                progressPercent={Math.min(100, pct * 10)}
+                                progressLabel={`Close rate ${pct.toFixed(2)}%`}
+                                badge={
+                                    idx === 0 && m.closed > 0 ? (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">
+                                            ⭐ TOP
+                                        </span>
+                                    ) : undefined
+                                }
+                            />
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 };
