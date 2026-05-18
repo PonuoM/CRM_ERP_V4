@@ -6820,6 +6820,11 @@ const App: React.FC = () => {
           users={companyUsers}
           currentUser={currentUser}
           onTakeCustomer={handleTakeCustomer}
+          onStartCreateOrder={(customer) => {
+            setPreviousPage(activePage);
+            setCreateOrderInitialData({ customer });
+            setActivePage("CreateOrder");
+          }}
         />
       );
     }
@@ -7420,6 +7425,11 @@ const App: React.FC = () => {
             users={users}
             currentUser={currentUser}
             onTakeCustomer={handleTakeCustomer}
+            onStartCreateOrder={(customer) => {
+              setPreviousPage(activePage);
+              setCreateOrderInitialData({ customer });
+              setActivePage("CreateOrder");
+            }}
           />
         );
 

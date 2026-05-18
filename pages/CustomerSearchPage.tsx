@@ -11,7 +11,7 @@ import {
   Facebook,
   MessageSquare,
   UserPlus,
-
+  ShoppingCart,
 } from "lucide-react";
 
 interface CustomerSearchPageProps {
@@ -20,6 +20,7 @@ interface CustomerSearchPageProps {
   users: User[];
   currentUser?: User;
   onTakeCustomer?: (customer: Customer) => void;
+  onStartCreateOrder?: (customer: Customer) => void;
   pages?: Page[];
 }
 
@@ -29,6 +30,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
   users,
   currentUser,
   onTakeCustomer,
+  onStartCreateOrder,
   pages: propPages,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -367,14 +369,14 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                 </p>
                 {currentUser &&
                   currentUser.role !== UserRole.Backoffice &&
-                  onTakeCustomer &&
+                  onStartCreateOrder &&
                   !customerDetails.assignedTo && (
                     <button
-                      onClick={() => onTakeCustomer(selectedCustomer)}
-                      className="mt-4 bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm"
+                      onClick={() => onStartCreateOrder(selectedCustomer)}
+                      className="mt-4 bg-amber-100 text-amber-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-amber-200 shadow-sm"
                     >
-                      <UserPlus size={16} className="mr-2" />
-                      รับลูกค้า
+                      <ShoppingCart size={16} className="mr-2" />
+                      สร้างคำสั่งซื้อ
                     </button>
                   )}
               </div>
