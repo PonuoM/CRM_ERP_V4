@@ -504,6 +504,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       eligibleOwners.filter(
         (candidate) =>
           candidate.id !== user.id &&
+          candidate.status !== "inactive" &&
           (candidate.role === UserRole.Supervisor ||
             candidate.role === UserRole.Telesale),
       ),
@@ -574,7 +575,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       return;
     }
     if (
-      selectedOwnerId == null ||
+      selectedOwnerId !== null &&
       !filteredEligibleOwners.some(
         (candidate) => candidate.id === selectedOwnerId,
       )
@@ -612,17 +613,17 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       return;
     }
 
-    if (selectedOwnerId == null) {
-      setOwnerChangeError("กรุณาเลือกผู้ดูแลใหม่");
-      return;
-    }
+    // if (selectedOwnerId == null) {
+    //   setOwnerChangeError("กรุณาเลือกผู้ดูแลใหม่");
+    //   return;
+    // }
 
     if (selectedOwnerId === customer.assignedTo) {
       setOwnerChangeError("กรุณาเลือกผู้ดูแลคนอื่น");
       return;
     }
 
-    const isEligible = filteredEligibleOwners.some(
+    const isEligible = selectedOwnerId === null || filteredEligibleOwners.some(
       (candidate) => candidate.id === selectedOwnerId,
     );
 
@@ -635,16 +636,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       setOwnerChangeLoading(true);
       setOwnerChangeError(null);
 
-      // Call API to update customer assigned_to
-      const customerIdToUpdate = customer.pk ? String(customer.pk) : customer.id;
-      const dateAssigned = new Date().toISOString();
-      await updateCustomer(customerIdToUpdate, {
-        assignedTo: selectedOwnerId,
-        assigned_to: selectedOwnerId,
-        dateAssigned,
-        date_assigned: dateAssigned
-      });
-
+      // Removed API call here because onChangeOwner (App.tsx) already performs it
       // Call callback to update parent state
       if (onChangeOwner) {
         await Promise.resolve(onChangeOwner(customer.id, selectedOwnerId));
@@ -1191,7 +1183,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                         setOwnerChangeError(null);
                       }}
                     >
-                      <option value="">เลือกผู้ดูแลใหม่</option>
+                      {isSystem && <option value="">-- ไม่ระบุ --</option>}
                       {ownerGroups.map((group) => (
                         <optgroup key={group.key} label={group.label}>
                           {group.users.map((candidate) => (
@@ -1212,7 +1204,6 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                         className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         disabled={
                           ownerChangeLoading ||
-                          selectedOwnerId == null ||
                           selectedOwnerId === customer.assignedTo
                         }
                       >

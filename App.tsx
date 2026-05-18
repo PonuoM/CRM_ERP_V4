@@ -4016,42 +4016,46 @@ const App: React.FC = () => {
 
   const handleChangeCustomerOwner = async (
     customerId: string,
-    newOwnerId: number,
+    newOwnerId: number | null,
   ) => {
-    const targetUser = users.find((u) => u.id === newOwnerId);
-    if (!targetUser) {
-      throw new Error(
-        "à¹„à¸¡à¹ˆà¸žà¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸‡à¸²à¸™à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸",
-      );
-    }
+    let targetUser: User | undefined = undefined;
+    let sameCompany = true;
 
-    const sameCompany =
-      isSuperAdmin || targetUser.companyId === currentUser.companyId;
-
-    if (!sameCompany) {
-      throw new Error("ไม่สามารถย้ายลูกค้าไปยังบริษัทอื่นได้");
-    }
-
-    if (currentUser.role === UserRole.Supervisor) {
-      const isTeamMember =
-        targetUser.role === UserRole.Telesale &&
-        targetUser.supervisorId === currentUser.id;
-      const isSupervisorLevel =
-        targetUser.role === UserRole.Supervisor ||
-        targetUser.id === currentUser.id;
-
-      if (!isTeamMember && !isSupervisorLevel) {
-        throw new Error(
-          "หัวหน้าสต็อกสามารถโอนย้ายให้ลูกสต็อกของตัวเองหรือหัวหน้าฝ่ายในบริษัทเดียวกันเท่านั้น",
-        );
-      }
-    } else if (currentUser.role === UserRole.Telesale) {
-      if (currentUser.supervisorId !== targetUser.id) {
-        throw new Error("เกิดข้อผิดพลาดในการอัพเดทข้อมูล กรุณาลองใหม่อีกครั้ง");
+    if (newOwnerId !== null) {
+      targetUser = users.find((u) => u.id === newOwnerId);
+      if (!targetUser) {
+        throw new Error("ไม่พบผู้ใช้งานที่เลือกระบบ");
       }
     }
+    if (newOwnerId !== null && targetUser) {
+      sameCompany =
+        isSuperAdmin || targetUser.companyId === currentUser.companyId;
 
-    const dateAssigned = new Date().toISOString();
+      if (!sameCompany) {
+        throw new Error("ไม่สามารถย้ายลูกค้าไปยังบริษัทอื่นได้");
+      }
+
+      if (currentUser.role === UserRole.Supervisor) {
+        const isTeamMember =
+          targetUser.role === UserRole.Telesale &&
+          targetUser.supervisorId === currentUser.id;
+        const isSupervisorLevel =
+          targetUser.role === UserRole.Supervisor ||
+          targetUser.id === currentUser.id;
+
+        if (!isTeamMember && !isSupervisorLevel) {
+          throw new Error(
+            "หัวหน้าสต็อกสามารถโอนย้ายให้ลูกสต็อกของตัวเองหรือหัวหน้าฝ่ายในบริษัทเดียวกันเท่านั้น",
+          );
+        }
+      } else if (currentUser.role === UserRole.Telesale) {
+        if (currentUser.supervisorId !== targetUser.id) {
+          throw new Error("เกิดข้อผิดพลาดในการอัพเดทข้อมูล กรุณาลองใหม่อีกครั้ง");
+        }
+      }
+    }
+
+    const dateAssigned = new Date().toISOString().slice(0, 19).replace('T', ' ');
     let customer = customers.find((c) => c.id === customerId);
     // Fallback: Check viewingCustomerData if not found in main list
     if (
@@ -4092,7 +4096,7 @@ const App: React.FC = () => {
         customerId: String(customer.pk || customer.id),
         timestamp: new Date().toISOString(),
         type: ActivityType.StatusChange,
-        description: `เปลี่ยนผู้ดูแลจาก "${companyUsers.find(u => u.id === customer.assignedTo)?.firstName || '-'}" เป็น "${targetUser.firstName}"`,
+        description: `เปลี่ยนผู้ดูแลจาก "${companyUsers.find(u => u.id === customer!.assignedTo)?.firstName || '-'}" เป็น "${targetUser ? targetUser.firstName : 'ไม่ระบุ'}"`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`
       };
 
@@ -8355,3 +8359,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

@@ -2383,7 +2383,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     'email=COALESCE(?, email)',
                     'province=COALESCE(?, province)',
                     'company_id=COALESCE(?, company_id)',
-                    'assigned_to=COALESCE(?, assigned_to)',
+                    (array_key_exists('assignedTo', $in) || array_key_exists('assigned_to', $in)) ? 'assigned_to=?' : 'assigned_to=COALESCE(?, assigned_to)',
                     'date_assigned=COALESCE(?, date_assigned)',
                     'date_registered=COALESCE(?, date_registered)',
                     'follow_up_date=COALESCE(?, follow_up_date)',
