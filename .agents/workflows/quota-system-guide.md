@@ -169,8 +169,8 @@ PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื
 - **Pending counts:** pre-loaded `⏳ N รอยืนยัน` badge ใน dropdown options
 - **Checkbox + Bulk confirm:** แสดงเฉพาะ confirm mode + require_confirm=1 (checkbox ทำงานแยกต่อตาราง)
 - **Allocation modal:** เลือกสินค้าเอง (checkbox "สินค้าทั้งหมด" default ติ๊ก / เอาติ๊กออก → toggle ทีละตัว) + จำนวนต่อสินค้า + วันเริ่ม/หมดอายุ + หมายเหตุ + สรุปจำนวนแถว (ไม่ส่ง periodStart/periodEnd)
-- **Breakdown modal (👁️):** รายละเอียดแยกตาม rate + product badges (djb2 hash สี)
-
+- **Breakdown modal (👁️):** ประวัติโควตา แสดงรายละเอียดแยกตาม rate + แสดงชื่อสินค้า (`[Product Name]`) และชื่อ Rate อ้างอิงเพื่อป้องกันการสับสนว่าเป็นข้อมูลซ้ำซ้อน
+- **Snapshot ยอดขาย (Audit):** ในโหมดรอยืนยัน เมื่อกดยืนยันโควตา ระบบจะดึงยอดขาย ณ เสี้ยววินาทีนั้นมาเก็บใน `sales_at_allocation` และแสดงตัวเลข `(ยืนยัน: ฿xxx,xxx)` สีเขียวใต้ยอดขาย Real-time ในตารางหลัก + ประวัติ Modal
 **คงเหลือ (conditional):** `>0` green | `=0` gray | `<0` red | expired → gray ขีดฆ่า | before usage → gray
 
 **Mode "ทั้งหมด" vs เลือก rate:** ทั้งหมด → aggregate, ไม่มี period/checkbox/confirm | เลือก rate → มีทุกอย่าง

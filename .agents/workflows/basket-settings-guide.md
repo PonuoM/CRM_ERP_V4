@@ -73,10 +73,11 @@ description:
 - **Order Tracking:** `min_order_count`, `max_order_count`, `min_days_since_order`, `max_days_since_order`
 - **Dynamic Fail Rules:** 
   - `fail_after_days`: ฐานของเวลาถือครอง (เบส 30 วัน)
-  - `extend_days_per_appointment`: จำนวนวันที่ยืดให้ต่อ 1 นัดหมาย
-  - `extend_days_sales_amount_threshold`: ยอดขายสะสมขั้นต่ำที่ต้องทำได้เพื่อรับการต่อเวลา
-  - `extend_days_sales_reward`: จำนวนวันที่บวกเพิ่มให้เมื่อยอดขายถึงเกณฑ์
-  - `max_total_days`: เพดานวันสุงสุด
+  - `extend_days_per_appointment`: จำนวนวันที่ต่ออายุให้ 1 นัดหมาย
+  - `max_extend_appointments`: จำนวนนัดหมายสูงสุดที่ให้ผล (NULL หรือ 0 = ไม่จำกัด)
+  - `extend_days_sales_amount_threshold`: ยอดขายขั้นต่ำที่ได้ต่ออายุ
+  - `extend_days_sales_reward`: จำนวนวันที่ต่ออายุจากยอดขาย
+  - `max_total_days`: เพดานวันสูงสุด
 - **Re-Evaluate Rules:** 
   - `on_fail_reevaluate`: หากหมดอายุ ให้วิ่งเข้าการประเมินถังอัตโนมัติ แทนที่จะย้ายไปถังเป้าหมายตายตัว
   - `blocked_target_baskets`: ระบุตะกร้าที่ **ห้าม** ย้ายไป (ใช้บล็อกข้ามสาย เช่น ห้ามลูกค้าสาย A ไปโผล่สาย B)

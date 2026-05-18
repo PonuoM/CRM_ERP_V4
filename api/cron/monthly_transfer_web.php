@@ -165,6 +165,7 @@ foreach ($companies as $companyId) {
         $maxDist = (int)($config['max_distribution_count'] ?? 0);
         $blockedTargets = array_filter(explode(',', $config['blocked_target_baskets'] ?? ''));
         $extendDaysPerAppt = (int)($config['extend_days_per_appointment'] ?? 0);
+        $maxExtendAppts = (int)($config['max_extend_appointments'] ?? 0);
         $maxTotalDays = (int)($config['max_total_days'] ?? 0);
         if ($maxTotalDays <= 0) $maxTotalDays = 9999;
         $salesThreshold = (float)($config['extend_days_sales_amount_threshold'] ?? 0);
@@ -188,7 +189,11 @@ foreach ($companies as $companyId) {
                        COALESCE((
                            SELECT COUNT(*) FROM appointments a 
                            WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to
-                       ), 0) as valid_appointments,
+                       ), 0) as raw_valid_appointments,
+                       IF(? > 0, 
+                          LEAST(COALESCE((SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to), 0), ?),
+                          COALESCE((SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to), 0)
+                       ) as valid_appointments,
                        COALESCE((
                            SELECT MAX(o.total_amount)
                            FROM orders o
@@ -202,10 +207,10 @@ foreach ($companies as $companyId) {
                   AND c.current_basket_key = ?
                   AND c.basket_entered_date IS NOT NULL
                   AND DATEDIFF(NOW(), c.basket_entered_date) >= LEAST(?, ? + (
-                      COALESCE((
-                          SELECT COUNT(*) FROM appointments a 
-                          WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to
-                      ), 0) * ?
+                      IF(? > 0, 
+                          LEAST(COALESCE((SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to), 0), ?),
+                          COALESCE((SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_at >= c.basket_entered_date AND a.created_by = c.assigned_to), 0)
+                      ) * ?
                   ) + IF(
                       COALESCE((
                           SELECT MAX(o.total_amount)
@@ -219,8 +224,13 @@ foreach ($companies as $companyId) {
                   AND DATEDIFF(NOW(), c.last_order_date) >= ?
                 $limitClause
             ");
-            $customersStmt->execute([$companyId, $basketId, $maxTotalDays, $failDays, $extendDaysPerAppt, $salesThreshold, $salesRewardDays, $failDays]);
-            echo "Using dynamic retention: +$extendDaysPerAppt days/appt, +$salesRewardDays days/sales>=$salesThreshold (Max: $maxTotalDays)\n";
+            $customersStmt->execute([
+                $maxExtendAppts, $maxExtendAppts, // For SELECT valid_appointments
+                $companyId, $basketId, 
+                $maxTotalDays, $failDays, $maxExtendAppts, $maxExtendAppts, $extendDaysPerAppt, // For WHERE clause
+                $salesThreshold, $salesRewardDays, $failDays
+            ]);
+            echo "Using dynamic retention: +$extendDaysPerAppt days/appt (Max: $maxExtendAppts appts), +$salesRewardDays days/sales>=$salesThreshold (Max: $maxTotalDays)\n";
         } else {
             // Standard query (fast)
             $customersStmt = $pdo->prepare("

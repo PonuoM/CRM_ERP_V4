@@ -36,6 +36,7 @@ interface BasketConfig {
     max_total_days?: number | null;
     extend_days_sales_amount_threshold?: number | null;
     extend_days_sales_reward?: number | null;
+    max_extend_appointments?: number | null;
 }
 
 interface ReturnConfig {
@@ -1913,7 +1914,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                             {/* Dynamic Retention Rules */}
                                             {editingBasket.fail_after_days ? (
                                                 <>
-                                                    <div className="grid grid-cols-2 gap-4 mb-3 pt-3 border-t border-red-200">
+                                                    <div className="grid grid-cols-3 gap-4 mb-3 pt-3 border-t border-red-200">
                                                         <div>
                                                             <label className="block text-sm font-medium text-gray-700 mb-1">บวกเวลาเพิ่ม (วัน) ต่อ 1 นัดหมาย</label>
                                                             <input
@@ -1922,6 +1923,16 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                                 onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_per_appointment: e.target.value ? parseInt(e.target.value) : 0 })}
                                                                 className="w-full border rounded-lg p-2"
                                                                 placeholder="0 = ปิดใช้งาน"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนนัดหมายสูงสุดที่ให้ผล</label>
+                                                            <input
+                                                                type="number"
+                                                                value={editingBasket.max_extend_appointments ?? ''}
+                                                                onChange={(e) => setEditingBasket({ ...editingBasket, max_extend_appointments: e.target.value ? parseInt(e.target.value) : null })}
+                                                                className="w-full border rounded-lg p-2"
+                                                                placeholder="ว่าง หรือ 0 = ไม่จำกัด"
                                                             />
                                                         </div>
                                                         <div>
