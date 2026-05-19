@@ -90,10 +90,10 @@ function parseDateDMY($dateStr)
 // ── Pre-load user phones for matching (scoped by company_id) ──
 $userPhones = [];
 if ($companyId) {
-    $stmt = $pdo->prepare("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != '' AND company_id = ? AND role IN ('Telesale', 'Supervisor Telesale')");
+    $stmt = $pdo->prepare("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != '' AND company_id = ? AND status = 'active' AND role IN ('Telesale', 'Supervisor Telesale') ORDER BY id ASC");
     $stmt->execute([$companyId]);
 } else {
-    $stmt = $pdo->query("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != '' AND role IN ('Telesale', 'Supervisor Telesale')");
+    $stmt = $pdo->query("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != '' AND status = 'active' AND role IN ('Telesale', 'Supervisor Telesale') ORDER BY id ASC");
 }
 while ($row = $stmt->fetch()) {
     $normalized = last9digits($row['phone']);

@@ -545,7 +545,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       return users.filter(
         (user) =>
           user.role === UserRole.Telesale &&
-          user.supervisorId === currentUser.id,
+          user.supervisorId === currentUser.id &&
+          user.status !== 'inactive' && user.status !== 'resigned',
       );
     }
     return [];
@@ -556,7 +557,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     if (isPrivileged) {
       return users.filter(
         (user) =>
-          user.role === UserRole.Supervisor || user.role === UserRole.Telesale,
+          (user.role === UserRole.Supervisor || user.role === UserRole.Telesale) &&
+          user.status !== 'inactive' && user.status !== 'resigned',
       );
     }
     return [];
