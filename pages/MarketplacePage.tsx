@@ -267,7 +267,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                 const lines = text.split(/\r?\n/).filter(l => l.trim());
                 if (lines.length <= 1) throw new Error("ไฟล์ CSV ว่างเปล่าหรือไม่มีข้อมูล");
 
-                const parsedRecords: any[] = [];
+                const recordsMap = new Map<string, any>();
                 const errors: string[] = [];
 
                 for (let i = 1; i < lines.length; i++) {
@@ -301,15 +301,29 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                         continue;
                     }
 
-                    parsedRecords.push({
-                        store_id: store.id,
-                        date: parsedDate,
-                        user_id: currentUser?.id,
-                        ads_cost: parseFloat(adsCostStr) || 0,
-                        impressions: parseInt(impressionsStr) || 0,
-                        clicks: parseInt(clicksStr) || 0
-                    });
+                    const adsCost = parseFloat(adsCostStr) || 0;
+                    const impressions = parseInt(impressionsStr) || 0;
+                    const clicks = parseInt(clicksStr) || 0;
+
+                    const key = `${store.id}_${parsedDate}`;
+                    if (recordsMap.has(key)) {
+                        const existing = recordsMap.get(key);
+                        existing.ads_cost += adsCost;
+                        existing.impressions += impressions;
+                        existing.clicks += clicks;
+                    } else {
+                        recordsMap.set(key, {
+                            store_id: store.id,
+                            date: parsedDate,
+                            user_id: currentUser?.id,
+                            ads_cost: adsCost,
+                            impressions: impressions,
+                            clicks: clicks
+                        });
+                    }
                 }
+
+                const parsedRecords = Array.from(recordsMap.values());
 
                 if (parsedRecords.length === 0) {
                     throw new Error("ไม่มีข้อมูลที่สามารถนำเข้าได้\\n" + errors.join('\\n'));
@@ -533,7 +547,10 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                             <button onClick={() => window.open(`${window.location.origin}${APP_BASE_PATH}api/Marketplace/ads_csv_template.php`, '_blank')} className="flex items-center gap-1 px-3 py-2 border border-gray-300 text-gray-700 bg-white rounded-md hover:bg-gray-50 text-sm font-medium shadow-sm transition-colors">
                                 <Download size={16} /> โหลด Template
                             </button>
-                            <label className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium shadow-sm cursor-pointer transition-colors whitespace-nowrap">
+                            <label 
+                                className={`flex items-center gap-1 px-3 py-2 text-white rounded-md text-sm font-medium shadow-sm whitespace-nowrap transition-colors ${adsCsvImporting || adsActiveStores.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 cursor-pointer'}`}
+                                title={adsActiveStores.length === 0 ? "ต้องมีการตั้งค่าร้านค้าก่อนถึงจะสามารถนำเข้าค่าโฆษณาได้" : ""}
+                            >
                                 <Upload size={14} />
                                 {adsCsvImporting ? "กำลังนำเข้า..." : "Import CSV"}
                                 <input type="file" accept=".csv" className="hidden" onChange={handleAdsCsvImport} disabled={adsCsvImporting || adsActiveStores.length === 0} />
