@@ -81,7 +81,7 @@ try {
     $i_internal = -1; $i_online = -1; $i_pcode = -1; $i_pname = -1; $i_vcode = -1;
     $i_qty = -1; $i_price = -1; $i_odate = -1; $i_sdate = -1; $i_ostatus = -1;
     $i_platform = -1; $i_store = -1; $i_store_alt = -1; $i_warehouse = -1;
-    $i_tracking = -1; $i_status = -1;
+    $i_tracking = -1; $i_status = -1; $i_cancel_reason = -1;
 
     $orders = [];
     $allProductCodes = [];
@@ -153,10 +153,29 @@ try {
                     if ($h === 'คลังสินค้าส่งออก') $i_warehouse = $c;
                     if ($h === 'เลขพัสดุ') $i_tracking = $c;
                     if ($h === 'สถานะขนส่ง') $i_status = $c;
+                    if ($h === 'สาเหตุการยกเลิก' || $h === 'เหตุผลที่ยกเลิก' || strtolower($h) === 'cancel reason' || $h === 'เหตุผลการคืนเงิน/คืนสินค้า') $i_cancel_reason = $c;
                 }
                 
-                if ($i_pcode === -1 || $i_internal === -1 || ($i_store === -1 && $i_store_alt === -1)) {
-                    echo json_encode(["success" => false, "error" => "รูปแบบไฟล์ไม่ถูกต้อง (หาคอลัมน์ รหัสสินค้า, หมายเลขออเดอร์ภายใน, หรือ ร้านค้า ไม่พบ)"]);
+                $missingHeaders = [];
+                if ($i_internal === -1) $missingHeaders[] = 'หมายเลขออเดอร์ภายใน';
+                if ($i_online === -1) $missingHeaders[] = 'หมายเลขคำสั่งซื้อออนไลน์';
+                if ($i_pcode === -1) $missingHeaders[] = 'รหัสสินค้า';
+                if ($i_pname === -1) $missingHeaders[] = 'ชื่อสินค้า';
+                if ($i_vcode === -1) $missingHeaders[] = 'รูปแบบสินค้า';
+                if ($i_qty === -1) $missingHeaders[] = 'จำนวน';
+                if ($i_price === -1) $missingHeaders[] = 'จํานวนเงินเท่านั้น';
+                if ($i_odate === -1) $missingHeaders[] = 'เวลาสั่งซื้อ';
+                if ($i_sdate === -1) $missingHeaders[] = 'วันที่จัดส่ง';
+                if ($i_ostatus === -1) $missingHeaders[] = 'สถานะคำสั่งซื้อ';
+                if ($i_platform === -1) $missingHeaders[] = 'แพลตฟอร์ม';
+                if ($i_store === -1 && $i_store_alt === -1) $missingHeaders[] = 'ร้านค้า';
+                if ($i_warehouse === -1) $missingHeaders[] = 'คลังสินค้าส่งออก';
+                if ($i_tracking === -1) $missingHeaders[] = 'เลขพัสดุ';
+                if ($i_status === -1) $missingHeaders[] = 'สถานะขนส่ง';
+                if ($i_cancel_reason === -1) $missingHeaders[] = 'สาเหตุการยกเลิก';
+
+                if (!empty($missingHeaders)) {
+                    echo json_encode(["success" => false, "error" => "รูปแบบไฟล์ไม่ถูกต้อง ขาดคอลัมน์ที่จำเป็นดังนี้: " . implode(", ", $missingHeaders)]);
                     $reader->close();
                     $zip->close();
                     exit;
@@ -201,6 +220,7 @@ try {
             $warehouse = ($i_warehouse !== -1 && isset($rowData[$i_warehouse])) ? trim((string)$rowData[$i_warehouse]) : '';
             $trackingNumber = ($i_tracking !== -1 && isset($rowData[$i_tracking])) ? trim((string)$rowData[$i_tracking]) : '';
             $status = ($i_status !== -1 && isset($rowData[$i_status])) ? trim((string)$rowData[$i_status]) : '';
+            $cancelReason = ($i_cancel_reason !== -1 && isset($rowData[$i_cancel_reason])) ? trim((string)$rowData[$i_cancel_reason]) : '';
 
             $orders[] = [
                 'product_code' => $sku,
@@ -218,7 +238,8 @@ try {
                 'store_name' => $storeName,
                 'warehouse' => $warehouse,
                 'tracking_number' => $trackingNumber,
-                'status' => $status
+                'status' => $status,
+                'cancel_reason' => $cancelReason
             ];
 
             if ($sku !== '') $allProductCodes[$sku] = true;
@@ -323,8 +344,8 @@ try {
         (batch_id, product_code, product_name, variant_code, variant_name,
          internal_order_id, online_order_id, quantity, total_price,
          order_date, shipping_date, order_status, platform, store_name,
-         warehouse, tracking_number, status, company_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         warehouse, tracking_number, status, cancel_reason, company_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ");
 
     $imported = 0;
@@ -338,7 +359,7 @@ try {
                 $batchId, $row['product_code'], $row['product_name'], $row['variant_code'], $row['variant_name'],
                 $row['internal_order_id'], $row['online_order_id'], $row['quantity'], $row['total_price'],
                 $row['order_date'], $row['shipping_date'], $row['order_status'], $row['platform'], $row['store_name'],
-                $row['warehouse'], $row['tracking_number'], $row['status'], $companyId
+                $row['warehouse'], $row['tracking_number'], $row['status'], $row['cancel_reason'], $companyId
             ]);
             $imported++;
         } catch (Exception $e) {

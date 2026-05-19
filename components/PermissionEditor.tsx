@@ -116,6 +116,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'marketplace.dashboard', label: 'Marketplace Dashboard (แดชบอร์ด Marketplace)' },
             { key: 'marketplace.ads_input', label: 'Marketplace Ads Input (กรอกค่า Ads)' },
             { key: 'marketplace.sales_import', label: 'Marketplace Sales Import (นำเข้ายอดขาย)' },
+            { key: 'marketplace.invoices', label: 'Marketplace Invoices (สลิป / การเงิน)' },
             { key: 'marketplace.settings', label: 'Marketplace Settings (ตั้งค่าร้านค้า)' },
         ]
     },

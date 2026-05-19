@@ -3,6 +3,7 @@ import { apiFetch } from "../services/api";
 import { Download, Calendar, BarChart2, DollarSign, Package, Settings, FileText, Upload } from "lucide-react";
 import ExportTypeModal from '../components/ExportTypeModal';
 import { downloadDataFile } from '../utils/exportUtils';
+import APP_BASE_PATH from '../appBasePath';
 
 import MarketplaceDashboard from "./Marketplace/MarketplaceDashboard";
 import MarketplaceSalesData from "./Marketplace/MarketplaceSalesData";
@@ -52,6 +53,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
     const [adsLoadingData, setAdsLoadingData] = useState(false);
     const [adsSaving, setAdsSaving] = useState(false);
     const [adsSaveResult, setAdsSaveResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [adsCsvImporting, setAdsCsvImporting] = useState(false);
 
     // CSV Sales Import
     const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -138,9 +140,26 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
 
     const activeStores = useMemo(() => stores.filter(s => s.active), [stores]);
 
+    const adsActiveStores = useMemo(() => {
+        const roleStr = String(currentUser?.role || '').toLowerCase();
+        const isSysAdmin = currentUser?.is_system === 1 || currentUser?.is_system === true || currentUser?.isSystem || 
+                           roleStr === 'super admin' || roleStr === 'admin control' || roleStr === 'ceo';
+
+        if (isSysAdmin) {
+            return activeStores;
+        }
+
+        const myId = String(currentUser?.id);
+        return activeStores.filter(s => {
+            if (!s.manager_user_id) return false;
+            const managerIds = String(s.manager_user_id).split(',').map(id => id.trim());
+            return managerIds.includes(myId);
+        });
+    }, [activeStores, currentUser]);
+
     // ==================== ADS INPUT (V2 Style) ====================
     const loadAdsData = useCallback(async () => {
-        if (!adsDate || activeStores.length === 0) { setAdsRows([]); setAdsOriginalRows([]); return; }
+        if (!adsDate || adsActiveStores.length === 0) { setAdsRows([]); setAdsOriginalRows([]); return; }
         setAdsLoadingData(true);
         setAdsSaveResult(null);
         try {
@@ -149,7 +168,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
             const logsMap = new Map<number, any>();
             for (const log of existingLogs) logsMap.set(Number(log.store_id), log);
 
-            const newRows = activeStores.map(s => {
+            const newRows = adsActiveStores.map(s => {
                 const existing = logsMap.get(Number(s.id));
                 return {
                     storeId: s.id, storeName: s.name, platform: s.platform,
@@ -164,7 +183,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
             setAdsOriginalRows(JSON.parse(JSON.stringify(newRows)));
         } catch (e) { console.error(e); }
         finally { setAdsLoadingData(false); }
-    }, [adsDate, activeStores, companyId]);
+    }, [adsDate, adsActiveStores, companyId]);
 
     useEffect(() => {
         if (activeTab === 'adsInput') loadAdsData();
@@ -209,6 +228,114 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
         } catch (e: any) {
             setAdsSaveResult({ type: 'error', text: e?.message || 'Error' });
         } finally { setAdsSaving(false); }
+    };
+
+    const parseDateStr = (dateStr: string) => {
+        if (!dateStr) return null;
+        dateStr = dateStr.trim();
+        if (!isNaN(Number(dateStr))) {
+            const serial = parseFloat(dateStr);
+            if (serial < 1) return null;
+            const date = new Date((serial - 25569) * 86400 * 1000);
+            return date.toISOString().split('T')[0];
+        }
+        
+        const parts = dateStr.split(/[-/]/);
+        if (parts.length === 3) {
+            if (parts[2].length === 4) {
+                return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+        }
+        const time = Date.parse(dateStr);
+        if (!isNaN(time)) {
+            return new Date(time).toISOString().split('T')[0];
+        }
+        return null;
+    };
+
+    const handleAdsCsvImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setAdsCsvImporting(true);
+        setAdsSaveResult(null);
+
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            try {
+                let text = ev.target?.result as string;
+                if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
+                const lines = text.split(/\r?\n/).filter(l => l.trim());
+                if (lines.length <= 1) throw new Error("ไฟล์ CSV ว่างเปล่าหรือไม่มีข้อมูล");
+
+                const parsedRecords: any[] = [];
+                const errors: string[] = [];
+
+                for (let i = 1; i < lines.length; i++) {
+                    const l = lines[i];
+                    const cols: string[] = [];
+                    let inQuote = false, cur = '';
+                    for (const ch of l) {
+                        if (ch === '"') { inQuote = !inQuote; }
+                        else if (ch === ',' && !inQuote) { cols.push(cur); cur = ''; }
+                        else cur += ch;
+                    }
+                    cols.push(cur);
+
+                    if (cols.length < 3) continue;
+
+                    const dateStr = cols[0];
+                    const storeName = cols[1]?.trim();
+                    const adsCostStr = cols[2]?.replace(/,/g, '');
+                    const impressionsStr = cols[3]?.replace(/,/g, '') || '0';
+                    const clicksStr = cols[4]?.replace(/,/g, '') || '0';
+
+                    const parsedDate = parseDateStr(dateStr);
+                    if (!parsedDate) {
+                        errors.push(`บรรทัด ${i+1}: รูปแบบวันที่ไม่ถูกต้อง (${dateStr})`);
+                        continue;
+                    }
+
+                    const store = adsActiveStores.find(s => s.name.toLowerCase() === storeName.toLowerCase());
+                    if (!store) {
+                        errors.push(`บรรทัด ${i+1}: ไม่พบร้านค้าชื่อ "${storeName}" ในระบบ (หรือคุณไม่มีสิทธิ์เข้าถึง)`);
+                        continue;
+                    }
+
+                    parsedRecords.push({
+                        store_id: store.id,
+                        date: parsedDate,
+                        user_id: currentUser?.id,
+                        ads_cost: parseFloat(adsCostStr) || 0,
+                        impressions: parseInt(impressionsStr) || 0,
+                        clicks: parseInt(clicksStr) || 0
+                    });
+                }
+
+                if (parsedRecords.length === 0) {
+                    throw new Error("ไม่มีข้อมูลที่สามารถนำเข้าได้\\n" + errors.join('\\n'));
+                }
+
+                const json = await apiFetch('Marketplace/ads_log_upsert.php', {
+                    method: 'POST', body: JSON.stringify({ records: parsedRecords }),
+                });
+
+                if (json && json.success) {
+                    const d = json.data || {};
+                    let msg = `นำเข้าสำเร็จ! (เพิ่มใหม่ ${d.inserted || 0}, อัปเดต ${d.updated || 0})`;
+                    if (errors.length > 0) msg += `\n* มีบางรายการถูกข้ามไป:\n` + errors.slice(0, 5).join('\n') + (errors.length > 5 ? '\n...' : '');
+                    setAdsSaveResult({ type: 'success', text: msg });
+                    await loadAdsData();
+                } else {
+                    setAdsSaveResult({ type: 'error', text: json.error || 'เกิดข้อผิดพลาดในการบันทึก' });
+                }
+            } catch (err: any) {
+                setAdsSaveResult({ type: 'error', text: err?.message || 'Error parsing CSV' });
+            } finally {
+                setAdsCsvImporting(false);
+                e.target.value = '';
+            }
+        };
+        reader.readAsText(file, 'utf-8');
     };
 
     // ==================== CSV SALES IMPORT ====================
@@ -329,8 +456,8 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
         if (viewBatchId) loadBatchOrders(viewBatchId);
     }, [viewBatchId, loadBatchOrders]);
 
-    const downloadTemplate = () => {
-        window.open(`${window.location.origin}${(window as any).__APP_BASE || '/beta_test/'}api/Marketplace/sales_csv_template.php`, '_blank');
+    const downloadCsvTemplate = () => {
+        window.open(`${window.location.origin}${APP_BASE_PATH}api/Marketplace/sales_csv_template.php`, '_blank');
     };
 
     const filteredUsers = users.filter((u: any) => {
@@ -386,7 +513,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                     handleJstSelect={handleJstSelect} handleJstImport={handleJstImport}
                     importBatches={importBatches} viewBatchId={viewBatchId} setViewBatchId={setViewBatchId}
                     batchOrders={batchOrders} batchSummary={batchSummary} handleDeleteBatch={handleDeleteBatch}
-                    downloadTemplate={downloadTemplate}
+                    downloadTemplate={downloadCsvTemplate}
                 />
             )}
 
@@ -402,7 +529,16 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                             <h2 className="text-lg font-bold text-gray-800">บันทึกค่าโฆษณารายวัน</h2>
                             <p className="text-xs text-gray-500">กรอกค่าโฆษณาแยกตามร้านค้า (ต้องเลือกวันที่ก่อน)</p>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="mt-6 flex flex-wrap gap-2 items-center">
+                            <button onClick={() => window.open(`${window.location.origin}${APP_BASE_PATH}api/Marketplace/ads_csv_template.php`, '_blank')} className="flex items-center gap-1 px-3 py-2 border border-gray-300 text-gray-700 bg-white rounded-md hover:bg-gray-50 text-sm font-medium shadow-sm transition-colors">
+                                <Download size={16} /> โหลด Template
+                            </button>
+                            <label className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium shadow-sm cursor-pointer transition-colors whitespace-nowrap">
+                                <Upload size={14} />
+                                {adsCsvImporting ? "กำลังนำเข้า..." : "Import CSV"}
+                                <input type="file" accept=".csv" className="hidden" onChange={handleAdsCsvImport} disabled={adsCsvImporting || adsActiveStores.length === 0} />
+                            </label>
+                            <div className="h-6 w-px bg-gray-300 mx-1 hidden sm:block"></div>
                             <input type="date" className="border rounded-md px-3 py-2 text-sm" value={adsDate} onChange={e => setAdsDate(e.target.value)} />
                             <button onClick={handleAdsSaveAll} disabled={adsSaving || adsRows.length === 0} className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 text-sm font-medium shadow-sm">
                                 {adsSaving ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
@@ -424,8 +560,8 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                             </div>
                         ) : adsLoadingData ? (
                             <div className="text-center py-10 text-gray-500">กำลังโหลดข้อมูล...</div>
-                        ) : activeStores.length === 0 ? (
-                            <div className="text-center py-10 text-gray-500">ยังไม่มีร้านค้าที่เปิดใช้งาน ไปที่แท็บ "ตั้งค่าร้านค้า"</div>
+                        ) : adsActiveStores.length === 0 ? (
+                            <div className="text-center py-10 text-gray-500">คุณไม่มีสิทธิ์เข้าถึงร้านค้าใดๆ หรือยังไม่มีร้านค้าเปิดใช้งาน</div>
                         ) : (
                             <div className="overflow-x-auto border rounded">
                                 <table className="w-full text-sm text-left">

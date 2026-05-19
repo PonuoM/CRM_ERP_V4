@@ -94,7 +94,7 @@ try {
 
         $cols = str_getcsv($line);
         if (count($cols) < 8) continue;
-        while (count($cols) < 16) $cols[] = '';
+        while (count($cols) < 17) $cols[] = '';
 
         $productCode = trim($cols[0]);
         $storeName = trim($cols[12]);
@@ -207,8 +207,8 @@ try {
         (batch_id, product_code, product_name, variant_code, variant_name,
          internal_order_id, online_order_id, quantity, total_price,
          order_date, shipping_date, order_status, platform, store_name,
-         warehouse, tracking_number, status, company_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         warehouse, tracking_number, status, cancel_reason, company_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ");
 
     $imported = 0;
@@ -235,13 +235,14 @@ try {
         $warehouse = trim($cols[13]);
         $trackingNumber = trim($cols[14]);
         $status = trim($cols[15]);
+        $cancelReason = trim($cols[16]);
 
         try {
             $stmtInsert->execute([
                 $batchId, $productCode, $productName, $variantCode, $variantName,
                 $internalOrderId, $onlineOrderId, $quantity, $totalPrice,
                 $orderDate, $shippingDate, $orderStatus, $platform, $storeName,
-                $warehouse, $trackingNumber, $status, $companyId
+                $warehouse, $trackingNumber, $status, $cancelReason, $companyId
             ]);
             $imported++;
         } catch (Exception $e) {
