@@ -20,7 +20,23 @@ register_shutdown_function(function () {
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv("DB_HOST") ?: "localhost";
 $DB_PORT = getenv("DB_PORT") ?: "3306";
+
+$is_test_env = false;
+// Also check getallheaders() if $_SERVER doesn't map custom headers reliably in some Apache configs
+if (isset($_SERVER['HTTP_X_TEST_ENVIRONMENT']) && $_SERVER['HTTP_X_TEST_ENVIRONMENT'] === 'true') {
+  $is_test_env = true;
+} else if (function_exists('getallheaders')) {
+  $headers = getallheaders();
+  if (isset($headers['X-Test-Environment']) && $headers['X-Test-Environment'] === 'true') {
+    $is_test_env = true;
+  }
+}
+
 $DB_NAME = getenv("DB_NAME") ?: "primacom_mini_erp";
+if ($is_test_env) {
+  $DB_NAME = getenv("DB_NAME_TEST") ?: "primacom_mini_erp_test";
+}
+
 $DB_USER = getenv("DB_USER") ?: "primacom_bloguser";
 // $DB_PASS = getenv("DB_PASS") ?: "MzBpsVmDmhg8afrxgaUg"; 
 $DB_PASS = getenv("DB_PASS") ?: "pJnL53Wkhju2LaGPytw8";
