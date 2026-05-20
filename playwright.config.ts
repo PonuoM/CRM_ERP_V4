@@ -10,6 +10,11 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
+    // ทำให้เห็นหน้าต่าง Browser จริงเด้งขึ้นมา และหน่วงเวลาแต่ละ Action ให้มองทัน
+    headless: false,
+    launchOptions: {
+      slowMo: 1000, // หน่วงเวลา 1 วินาทีต่อการคลิก/พิมพ์ (ปรับลดได้ถ้าช้าไป)
+    },
     // Inject the header so our PHP backend uses the test database
     extraHTTPHeaders: {
       'X-Test-Environment': 'true',
