@@ -5047,6 +5047,31 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $shippingProvider = null;
                 }
 
+                $slipUrl = $in['slipUrl'] ?? null;
+                if ($slipUrl === '') $slipUrl = null;
+                // If slipUrl is a data URL image, persist to file and store path
+                if (is_string($slipUrl) && strpos($slipUrl, 'data:image') === 0) {
+                    try {
+                        if (preg_match('/^data:(image\/(png|jpeg|jpg|gif));base64,(.*)$/', $slipUrl, $m)) {
+                            $ext = $m[2] === 'jpeg' ? 'jpg' : $m[2];
+                            $data = base64_decode($m[3]);
+                            if ($data !== false) {
+                                $dir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'slips';
+                                if (!is_dir($dir)) {
+                                    @mkdir($dir, 0775, true);
+                                }
+                                $fname = 'slip_' . preg_replace('/[^A-Za-z0-9_-]+/', '', $mainOrderId) . '_' . date('Ymd_His') . '.' . $ext;
+                                $path = $dir . DIRECTORY_SEPARATOR . $fname;
+                                if (file_put_contents($path, $data) !== false) {
+                                    $slipUrl = 'api/uploads/slips/' . $fname;
+                                }
+                            }
+                        }
+                    } catch (Throwable $e) {
+                        error_log("Error saving base64 slipUrl in createOrder: " . $e->getMessage());
+                    }
+                }
+
                 $values = [
                     $mainOrderId,
                     $in['customerId'],
@@ -5072,7 +5097,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $in['totalAmount'] ?? 0,
                     $paymentMethod,
                     $in['paymentStatus'] ?? null,
-                    $in['slipUrl'] ?? null,
+                    $slipUrl,
                     $in['amountPaid'] ?? null,
                     $codAmountValue,
                     $in['orderStatus'] ?? null,
