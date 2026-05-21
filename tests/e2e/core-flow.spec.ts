@@ -53,16 +53,16 @@ test.describe('E2E Core Flow: Order -> Export -> Tracking -> Audit', () => {
       await expect(page.locator('text=ชื่อลูกค้า').first()).toBeVisible({ timeout: 10000 }).catch(() => { });
 
       // 2. ค้นหาลูกค้าเดิมที่มีในระบบ (ใช้ข้อมูลจาก company_id = 5)
-      // เพิ่มลูกค้า "สมชาย ทดสอบ" เข้าไปใน DB (company_id=5) เรียบร้อยแล้ว
+      // ค้นหาด้วยเบอร์โทรเพื่อให้ได้ลูกค้าแบบเจาะจง ไม่ซ้ำกับคนอื่น
       const searchInput = page.locator('input[placeholder*="พิมพ์เพื่อค้นหา"]').first();
       if (await searchInput.isVisible()) {
-        await searchInput.fill('สมชาย');
+        await searchInput.fill('0867482639');
         
         // รอให้ระบบ Debounce (500ms) และรอโหลดข้อมูลจาก API
         await page.waitForTimeout(2000);
         
-        // ค้นหาเป้าหมายใน Dropdown
-        const searchResult = page.locator('text=สมชาย').first(); 
+        // ค้นหาเป้าหมายใน Dropdown (ชื่อ สมชาย 88 มั่นคง)
+        const searchResult = page.locator('text=สมชาย 88').first(); 
         await expect(searchResult).toBeVisible({ timeout: 10000 });
         await searchResult.click();
       } else {
@@ -74,24 +74,60 @@ test.describe('E2E Core Flow: Order -> Export -> Tracking -> Audit', () => {
         await phoneInput.fill('0980954755');
       }
 
+      // 2.5 จัดการที่อยู่จัดส่ง
+      // ถ้าที่อยู่ลูกค้าไม่ครบ ให้กรอกข้อมูลที่อยู่เพิ่มเติม
+      const addressInput = page.locator('input[placeholder*="บ้านเลขที่"], input[name="street"]').first();
+      if (await addressInput.isVisible()) {
+        const currentAddress = await addressInput.inputValue();
+        if (!currentAddress) {
+          await addressInput.fill('123 ถนนสุขุมวิท ทดสอบ');
+        }
+      }
+
+      // กรอก อำเภอ/เขต
+      const districtInput = page.locator('input[placeholder*="ค้นหาหรือเลือกอำเภอ"]').first();
+      if (await districtInput.isVisible()) {
+        const currentDistrict = await districtInput.inputValue();
+        if (!currentDistrict) {
+          await districtInput.fill('เมืองสมุทรปราการ');
+          await page.waitForTimeout(1000); // รอผลการค้นหา
+          const districtItem = page.locator('text=เมืองสมุทรปราการ').first();
+          await districtItem.click();
+        }
+      }
+
+      // กรอก ตำบล/แขวง
+      const subDistrictInput = page.locator('input[placeholder*="ค้นหาหรือเลือกตำบล"]').first();
+      if (await subDistrictInput.isVisible()) {
+        const currentSubDistrict = await subDistrictInput.inputValue();
+        if (!currentSubDistrict) {
+          await subDistrictInput.fill('ปากน้ำ');
+          await page.waitForTimeout(1000); // รอผลการค้นหา
+          const subDistrictItem = page.locator('text=ปากน้ำ').first();
+          await subDistrictItem.click();
+        }
+      }
+
       // 3. เลือกสินค้า
-      // ค้นหาปุ่มเลือกสินค้า
-      const selectProductBtn = page.locator('button:has-text("เลือกสินค้า"), button:has-text("เพิ่มสินค้า")').first();
+      // ค้นหาปุ่มเพิ่มสินค้า
+      const selectProductBtn = page.locator('button:has-text("+ เพิ่มสินค้า")').first();
       if (await selectProductBtn.isVisible()) {
         await selectProductBtn.click();
-        // รอให้ Modal สินค้าโหลด แล้วกดปุ่ม "เลือก" สินค้าชิ้นแรก
-        await page.locator('button:has-text("เลือก"), button:has-text("เพิ่ม")').first().click();
-        // ปิด Modal (ถ้ามีปุ่มยืนยัน)
-        const confirmProductBtn = page.locator('button:has-text("ยืนยัน"), button:has-text("ตกลง")').first();
-        if (await confirmProductBtn.isVisible()) {
-          await confirmProductBtn.click();
+        
+        // รอให้ Modal สินค้าโหลด และกดปุ่ม "เลือก" ของสินค้ารายการแรก
+        await page.waitForTimeout(1000);
+        const chooseBtn = page.locator('button:has-text("เลือก")').first();
+        if (await chooseBtn.isVisible()) {
+          await chooseBtn.click();
         }
+        
+        // กด Escape เพื่อปิด Modal (เผื่อว่ามันไม่ปิดอัตโนมัติ)
+        await page.keyboard.press('Escape');
       }
 
       // 3.1 เลือก สถานะลูกค้า
       const customerStatusSelect = page.locator('select').filter({ hasText: /ลูกค้าใหม่|ซื้อซ้ำ|อัพเซล/ }).first();
       if (await customerStatusSelect.isVisible()) {
-         // เลือก option ที่ 2 (Index 1) เช่น "ซื้อซ้ำ" หรืออะไรก็ตามที่มี (ข้าม placeholder)
          await customerStatusSelect.selectOption({ index: 1 });
       }
 
@@ -103,7 +139,6 @@ test.describe('E2E Core Flow: Order -> Export -> Tracking -> Audit', () => {
       
       const salesChannelPageSelect = page.locator('select').filter({ hasText: /เลือกเพจ/ }).first();
       if (await salesChannelPageSelect.isVisible()) {
-         // บาง platform อาจไม่มี page 
          const options = await salesChannelPageSelect.locator('option').count();
          if (options > 1) {
              await salesChannelPageSelect.selectOption({ index: 1 });
@@ -113,29 +148,39 @@ test.describe('E2E Core Flow: Order -> Export -> Tracking -> Audit', () => {
       // 3.3 เลือก วันที่จัดส่ง
       const deliveryDateInput = page.locator('input[placeholder*="เลือกวันที่จัดส่ง"]').first();
       if (await deliveryDateInput.isVisible()) {
-         // คลิกเพื่อให้ DatePicker เปิดขึ้นมา
          await deliveryDateInput.click();
-         // กดเลือกวันที่ปัจจุบัน (มักจะมี class ที่ระบุถึงวันนี้ หรือ aria-current="date")
-         // ถ้าหาไม่เจอ ให้คลิกวันแรกที่เจอในเดือนนั้นที่กดได้
-         const todayBtn = page.locator('.react-datepicker__day--today, .react-datepicker__day').first();
-         if (await todayBtn.isVisible()) {
-             await todayBtn.click();
-         } else {
-             // Fallback: กด enter เพื่อเลือกวันที่ปัจจุบัน หรือ escape ปิด
-             await page.keyboard.press('Enter');
+         await page.waitForTimeout(500);
+         await page.keyboard.press('Enter');
+         await page.keyboard.press('Escape');
+      }
+
+      // 3.4 เลือก ขนส่งที่ต้องการใช้
+      const shippingSelect = page.locator('select').filter({ hasText: /เลือกขนส่ง/ }).first();
+      if (await shippingSelect.isVisible()) {
+         const options = await shippingSelect.locator('option').count();
+         if (options > 1) {
+             await shippingSelect.selectOption({ index: 1 });
          }
       }
 
-      // 4. เลือกวิธีชำระเงิน เป็น COD (ถ้ามี Dropdown)
-      const paymentSelect = page.locator('select').first();
+      // 4. เลือกวิธีชำระเงิน เป็น COD (เก็บเงินปลายทาง)
+      // ค้นหา Dropdown วิธีการชำระเงิน จาก text ภายใน option
+      const paymentSelect = page.locator('select').filter({ hasText: 'เลือกวิธีการชำระเงิน' }).first();
       if (await paymentSelect.isVisible()) {
-        // ลองเลือก option ที่มีคำว่า COD
-        const codOption = await paymentSelect.locator('option:has-text("COD")').first();
-        if (await codOption.isVisible()) {
-          const value = await codOption.getAttribute('value');
-          if (value) await paymentSelect.selectOption(value);
+        // เลือก COD โดยใช้ value 'COD' 
+        await paymentSelect.selectOption('COD');
+        
+        // รอให้ UI ของ COD แสดงขึ้นมา
+        await page.waitForTimeout(1000);
+        
+        // กดปุ่ม "แบ่งยอดเท่าๆ กัน" เพื่อตั้งราคากล่อง COD อัตโนมัติ
+        const divideBtn = page.locator('button:has-text("แบ่งยอดเท่าๆ กัน")').first();
+        if (await divideBtn.isVisible()) {
+           await divideBtn.click();
         }
       }
+
+
 
       // 5. กดบันทึกคำสั่งซื้อ
       const saveBtn = page.locator('button:has-text("บันทึก"), button:has-text("สร้างคำสั่งซื้อ"), button:has-text("ยืนยันออเดอร์")').first();
