@@ -30,7 +30,7 @@ erDiagram
    * `id`: เลขที่ออเดอร์ (Primary Key)
    * `order_date`: วันที่สั่งซื้อ
    * `customer_id`: รหัสลูกค้า
-   * `total_amount`: ยอดรวมคำสั่งซื้อ
+   * `total_amount`: ยอดรวมคำสั่งซื้อ (หากสถานะเป็น Returned จะดึงจากยอด `cod_amount` ในตาราง `order_boxes` แทน)
    * `payment_method`: ช่องทางการชำระเงิน
    * `order_status`: สถานะคำสั่งซื้อ (เช่น 'Returned', 'Cancelled')
    * `company_id`: รหัสบริษัท (เช่น 1)
@@ -76,7 +76,10 @@ SELECT
     c.first_name AS customer_first_name,
     c.last_name AS customer_last_name,
     c.phone AS customer_phone,
-    o.total_amount,
+    IF(o.order_status = 'Returned', 
+        COALESCE((SELECT SUM(ob.cod_amount) FROM order_boxes ob WHERE ob.order_id = o.id), 0), 
+        o.total_amount
+    ) AS total_amount,
     o.payment_method,
     o.order_status,
     ct.label AS cancel_type,
@@ -96,7 +99,13 @@ WHERE o.order_date >= '2026-05-01 00:00:00'
   AND o.order_date <= '2026-05-31 23:59:59'
   AND o.company_id = 1
   AND u.role_id IN (6, 7)
-  AND o.order_status IN ('Returned', 'Cancelled')
+  AND (
+      o.order_status IN ('Returned', 'Cancelled')
+      OR EXISTS (
+          SELECT 1 FROM order_boxes ob2 
+          WHERE ob2.order_id = o.id AND ob2.return_status IS NOT NULL
+      )
+  )
 ORDER BY o.order_date DESC;
 ```
 
@@ -160,7 +169,10 @@ $sql = "
         o.customer_id,
         CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
         c.phone AS customer_phone,
-        o.total_amount,
+        IF(o.order_status = 'Returned', 
+            COALESCE((SELECT SUM(ob.cod_amount) FROM order_boxes ob WHERE ob.order_id = o.id), 0), 
+            o.total_amount
+        ) AS total_amount,
         o.payment_method,
         o.order_status,
         ct.label AS cancel_type,
@@ -180,7 +192,13 @@ $sql = "
       AND o.order_date <= '2026-05-31 23:59:59'
       AND o.company_id = 1
       AND u.role_id IN (6, 7)
-      AND o.order_status IN ('Returned', 'Cancelled')
+      AND (
+          o.order_status IN ('Returned', 'Cancelled')
+          OR EXISTS (
+              SELECT 1 FROM order_boxes ob2 
+              WHERE ob2.order_id = o.id AND ob2.return_status IS NOT NULL
+          )
+      )
     ORDER BY o.order_date DESC
 ";
 
