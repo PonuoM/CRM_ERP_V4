@@ -7,72 +7,63 @@ const paymentMethods = [
   { name: 'รับสินค้าก่อน', value: 'PayAfter' }
 ];
 
-test.describe('E2E Core Flow: Order Creation Variations', () => {
+test.describe('E2E Core Flow: Order Creation Variations (Multi-Role)', () => {
   // ตั้งค่า timeout ให้นานขึ้นเล็กน้อย เผื่อการโหลดข้อมูลจาก DB
   test.setTimeout(60000);
 
   // 2. วนลูปเพื่อสร้าง Test Case 3 อัน (แยกตามวิธีชำระเงิน)
   for (const method of paymentMethods) {
-    test(`Create Order, Export, Tracking, Bank Audit - ${method.name}`, async ({ page }) => {
+    test(`Create Order, Export, Tracking, Bank Audit - ${method.name}`, async ({ browser }) => {
+
+      // สร้าง Browser Context 3 Roles แบบแยกหน้าต่างกัน
+      const telesaleContext = await browser.newContext({ storageState: 'playwright/.auth/telesale.json' });
+      const backofficeContext = await browser.newContext({ storageState: 'playwright/.auth/backoffice.json' });
+      const financeContext = await browser.newContext({ storageState: 'playwright/.auth/finance.json' });
+
+      const telesalePage = await telesaleContext.newPage();
+      const backofficePage = await backofficeContext.newPage();
+      const financePage = await financeContext.newPage();
 
       // ==========================================
-      // STEP 1: Login / Auth Setup
+      // STEP 1 & 2: Create Order (by Telesale)
       // ==========================================
-      await test.step('Login', async () => {
-        await page.goto('/');
+      await test.step('Telesale Creates Order', async () => {
+        await telesalePage.goto('/');
 
-        // ใช้ getByPlaceholder / getByRole ตาม Best Practice
-        await page.getByPlaceholder(/sername/i).fill('bosstest');
-        await page.getByPlaceholder(/assword/i).fill('1234');
-        await page.getByRole('button', { name: 'Sign in' }).click();
-
-        // รอจนกว่าจะเข้าสู่หน้าหลักสำเร็จ
-        await expect(page.locator('nav, .sidebar').first()).toBeVisible({ timeout: 15000 }).catch(() => { });
-
-        const clockInModalText = page.getByText('เริ่มงานวันนี้ไหม?').first();
-        if (await clockInModalText.isVisible({ timeout: 5000 }).catch(() => false)) {
-          await page.getByRole('button', { name: 'บันทึกเข้างาน' }).first().click();
-        }
-      });
-
-      // ==========================================
-      // STEP 2: Create Order
-      // ==========================================
-      await test.step('Create Order', async () => {
         // 1. นำทางไปยังเมนู Dashboard และกดสร้างออเดอร์
-        await page.getByText('แดชบอร์ด').first().click();
+        await telesalePage.getByText('แดชบอร์ด').first().click();
 
-        const acknowledgeBtn = page.getByRole('button', { name: 'รับทราบ' }).first();
+        const acknowledgeBtn = telesalePage.getByRole('button', { name: 'รับทราบ' }).first();
         if (await acknowledgeBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
           await acknowledgeBtn.click();
         }
 
-        await page.keyboard.press('Escape');
+        await telesalePage.keyboard.press('Escape');
 
         // ใช้ getByRole เพื่อความชัดเจนตาม Best Practice
-        await page.getByRole('button', { name: /สร้างคำสั่งซื้อ/ }).first().click();
+        await telesalePage.getByRole('button', { name: /สร้างคำสั่งซื้อ/ }).first().click();
 
-        await expect(page.getByText('ชื่อลูกค้า').first()).toBeVisible({ timeout: 10000 }).catch(() => { });
+        await expect(telesalePage.getByText('ชื่อลูกค้า').first()).toBeVisible({ timeout: 10000 }).catch(() => { });
 
         // 2. ค้นหาลูกค้าเดิม
-        const searchInput = page.getByPlaceholder('พิมพ์เพื่อค้นหา').first();
+        const searchInput = telesalePage.getByPlaceholder('พิมพ์เพื่อค้นหา').first();
         if (await searchInput.isVisible()) {
           await searchInput.fill('0867482639');
-          await page.waitForTimeout(2000);
+          await telesalePage.waitForTimeout(2000);
           
-          const searchResult = page.getByText('สมชาย 88').first(); 
+          const searchResult = telesalePage.getByText('สมชาย 88').first(); 
           await expect(searchResult).toBeVisible({ timeout: 10000 });
           await searchResult.click();
         } else {
-          const nameInput = page.getByPlaceholder(/ชื่อ/).first();
+          const nameInput = telesalePage.getByPlaceholder(/ชื่อ/).first();
           await nameInput.fill('ลูกค้าเก่า ทดสอบ');
           
-          const phoneInput = page.getByPlaceholder(/เบอร์โทร/).first();
+          const phoneInput = telesalePage.getByPlaceholder(/เบอร์โทร/).first();
           await phoneInput.fill('0980954755');
         }
 
         // 2.5 จัดการที่อยู่จัดส่ง
-        const addressInput = page.getByPlaceholder(/บ้านเลขที่/).first();
+        const addressInput = telesalePage.getByPlaceholder(/บ้านเลขที่/).first();
         if (await addressInput.isVisible()) {
           const currentAddress = await addressInput.inputValue();
           if (!currentAddress) {
@@ -80,53 +71,53 @@ test.describe('E2E Core Flow: Order Creation Variations', () => {
           }
         }
 
-        const districtInput = page.getByPlaceholder(/ค้นหาหรือเลือกอำเภอ/).first();
+        const districtInput = telesalePage.getByPlaceholder(/ค้นหาหรือเลือกอำเภอ/).first();
         if (await districtInput.isVisible()) {
           const currentDistrict = await districtInput.inputValue();
           if (!currentDistrict) {
             await districtInput.fill('เมืองสมุทรปราการ');
-            await page.waitForTimeout(1000);
-            await page.getByText('เมืองสมุทรปราการ', { exact: true }).first().click();
+            await telesalePage.waitForTimeout(1000);
+            await telesalePage.getByText('เมืองสมุทรปราการ', { exact: true }).first().click();
           }
         }
 
-        const subDistrictInput = page.getByPlaceholder(/ค้นหาหรือเลือกตำบล/).first();
+        const subDistrictInput = telesalePage.getByPlaceholder(/ค้นหาหรือเลือกตำบล/).first();
         if (await subDistrictInput.isVisible()) {
           const currentSubDistrict = await subDistrictInput.inputValue();
           if (!currentSubDistrict) {
             await subDistrictInput.fill('ปากน้ำ');
-            await page.waitForTimeout(1000);
-            await page.getByText('ปากน้ำ', { exact: true }).first().click();
+            await telesalePage.waitForTimeout(1000);
+            await telesalePage.getByText('ปากน้ำ', { exact: true }).first().click();
           }
         }
 
         // 3. เลือกสินค้า
-        const selectProductBtn = page.getByRole('button', { name: '+ เพิ่มสินค้า' }).first();
+        const selectProductBtn = telesalePage.getByRole('button', { name: '+ เพิ่มสินค้า' }).first();
         if (await selectProductBtn.isVisible()) {
           await selectProductBtn.click();
           
-          await page.waitForTimeout(1000);
-          const chooseBtn = page.getByRole('button', { name: 'เลือก' }).first();
+          await telesalePage.waitForTimeout(1000);
+          const chooseBtn = telesalePage.getByRole('button', { name: 'เลือก' }).first();
           if (await chooseBtn.isVisible()) {
             await chooseBtn.click();
           }
           
-          await page.keyboard.press('Escape');
+          await telesalePage.keyboard.press('Escape');
         }
 
         // 3.1 เลือก สถานะลูกค้า
-        const customerStatusSelect = page.locator('select').filter({ hasText: /ลูกค้าใหม่|ซื้อซ้ำ|อัพเซล/ }).first();
+        const customerStatusSelect = telesalePage.locator('select').filter({ hasText: /ลูกค้าใหม่|ซื้อซ้ำ|อัพเซล/ }).first();
         if (await customerStatusSelect.isVisible()) {
            await customerStatusSelect.selectOption({ index: 1 });
         }
 
         // 3.2 เลือก ช่องทางขาย และ เพจ
-        const salesChannelSelect = page.locator('select').filter({ hasText: /Facebook|Line|Tiktok/i }).first();
+        const salesChannelSelect = telesalePage.locator('select').filter({ hasText: /Facebook|Line|Tiktok/i }).first();
         if (await salesChannelSelect.isVisible()) {
            await salesChannelSelect.selectOption({ index: 1 });
         }
         
-        const salesChannelPageSelect = page.locator('select').filter({ hasText: /เลือกเพจ/ }).first();
+        const salesChannelPageSelect = telesalePage.locator('select').filter({ hasText: /เลือกเพจ/ }).first();
         if (await salesChannelPageSelect.isVisible()) {
            const options = await salesChannelPageSelect.locator('option').count();
            if (options > 1) {
@@ -135,16 +126,16 @@ test.describe('E2E Core Flow: Order Creation Variations', () => {
         }
 
         // 3.3 เลือก วันที่จัดส่ง
-        const deliveryDateInput = page.getByPlaceholder(/เลือกวันที่จัดส่ง/).first();
+        const deliveryDateInput = telesalePage.getByPlaceholder(/เลือกวันที่จัดส่ง/).first();
         if (await deliveryDateInput.isVisible()) {
            await deliveryDateInput.click();
-           await page.waitForTimeout(500);
-           await page.keyboard.press('Enter');
-           await page.keyboard.press('Escape');
+           await telesalePage.waitForTimeout(500);
+           await telesalePage.keyboard.press('Enter');
+           await telesalePage.keyboard.press('Escape');
         }
 
         // 3.4 เลือก ขนส่งที่ต้องการใช้
-        const shippingSelect = page.locator('select').filter({ hasText: /เลือกขนส่ง/ }).first();
+        const shippingSelect = telesalePage.locator('select').filter({ hasText: /เลือกขนส่ง/ }).first();
         if (await shippingSelect.isVisible()) {
            const options = await shippingSelect.locator('option').count();
            if (options > 1) {
@@ -153,17 +144,17 @@ test.describe('E2E Core Flow: Order Creation Variations', () => {
         }
 
         // 4. เลือกวิธีชำระเงิน ตาม Parameterized Method
-        const paymentSelect = page.locator('select').filter({ hasText: 'เลือกวิธีการชำระเงิน' }).first();
+        const paymentSelect = telesalePage.locator('select').filter({ hasText: 'เลือกวิธีการชำระเงิน' }).first();
         if (await paymentSelect.isVisible()) {
           
           // เลือก value จาก array เช่น 'Transfer', 'COD', 'PayAfter'
           await paymentSelect.selectOption(method.value);
           
-          await page.waitForTimeout(1000);
+          await telesalePage.waitForTimeout(1000);
           
           // ถ้าเป็น COD ต้องแบ่งยอด
           if (method.value === 'COD') {
-            const divideBtn = page.getByRole('button', { name: 'แบ่งยอดเท่าๆ กัน' }).first();
+            const divideBtn = telesalePage.getByRole('button', { name: 'แบ่งยอดเท่าๆ กัน' }).first();
             if (await divideBtn.isVisible()) {
                await divideBtn.click();
             }
@@ -171,7 +162,7 @@ test.describe('E2E Core Flow: Order Creation Variations', () => {
           
           // ถ้าเป็นโอนเงิน ต้องอัปโหลดสลิปจำลอง
           if (method.value === 'Transfer') {
-            const fileInput = page.locator('input[type="file"]').first();
+            const fileInput = telesalePage.locator('input[type="file"]').first();
             // สร้างภาพจำลองขนาด 1x1 pixel (Base64) เพื่ออัปโหลดเป็นสลิป
             const dummyImageBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
             await fileInput.setInputFiles({
@@ -179,14 +170,14 @@ test.describe('E2E Core Flow: Order Creation Variations', () => {
               mimeType: 'image/png',
               buffer: dummyImageBuffer
             });
-            await page.waitForTimeout(1500); // รอรูปโหลดและฟอร์มจำนวนเงินแสดงขึ้นมา
+            await telesalePage.waitForTimeout(1500); // รอรูปโหลดและฟอร์มจำนวนเงินแสดงขึ้นมา
 
             // ดึงราคายอดสุทธิจากหน้าจอมาใส่เป็นจำนวนเงิน
-            const netTotalText = await page.locator('span:has-text("ยอดสุทธิ") + span').first().innerText();
+            const netTotalText = await telesalePage.locator('span:has-text("ยอดสุทธิ") + span').first().innerText();
             const amount = netTotalText.replace(/[^\d.]/g, ''); // ตัดตัวอักษร ฿ หรือ , ออก
 
             // กรอกจำนวนเงินในสลิป
-            const slipAmountInput = page.locator('div').filter({ has: page.locator('label:has-text("จำนวนเงิน")') }).locator('input[type="number"]').first();
+            const slipAmountInput = telesalePage.locator('div').filter({ has: telesalePage.locator('label:has-text("จำนวนเงิน")') }).locator('input[type="number"]').first();
             if (await slipAmountInput.isVisible()) {
                await slipAmountInput.fill(amount);
             }
@@ -194,35 +185,48 @@ test.describe('E2E Core Flow: Order Creation Variations', () => {
         }
 
         // 5. กดบันทึกคำสั่งซื้อ
-        const saveBtn = page.getByRole('button', { name: /บันทึก|สร้างคำสั่งซื้อ|ยืนยันออเดอร์/ }).first();
+        const saveBtn = telesalePage.getByRole('button', { name: /บันทึก|สร้างคำสั่งซื้อ|ยืนยันออเดอร์/ }).first();
         await saveBtn.click();
 
-        await expect(page.locator('text=สำเร็จ, text=Success, .swal2-success').first()).toBeVisible({ timeout: 15000 }).catch(() => {
+        await expect(telesalePage.locator('.toast').first()).toBeVisible({ timeout: 15000 }).catch(() => {
           console.log("อาจจะไม่เจอ Pop-up Success แต่บันทึกสำเร็จ กรุณาตรวจสอบอีกครั้ง");
         });
       });
 
       // ==========================================
-      // STEP 3: Export Data for Shipping
+      // STEP 3: Manage / Export Data (by Backoffice)
       // ==========================================
-      await test.step('Export Data', async () => {
-        await page.goto('/?page=Export History');
+      await test.step('Backoffice Manages Order', async () => {
+        // นำทางไปหน้า จัดการคำสั่งซื้อ
+        await backofficePage.goto('/?page=Manage%20Orders');
+        
+        await backofficePage.waitForTimeout(2000);
+
+        // TODO: (ส่วนที่สอบถาม) 
+        // 1. กดเข้าแท็บ "รอส่งออก" 
+        // 2. ค้นหาออเดอร์ที่ Telesale เพิ่งสร้าง (ด้วยเบอร์โทร/ชื่อ)
+        // 3. ติ๊กเลือกแล้วกดส่งออก
+        console.log('Backoffice user accesses Manage Orders.');
       });
 
       // ==========================================
-      // STEP 4: Tracking Setup
+      // STEP 4: Tracking Setup (by Backoffice)
       // ==========================================
-      await test.step('Link Tracking Number', async () => {
-        await page.goto('/?page=Bulk Tracking');
+      await test.step('Backoffice Link Tracking Number', async () => {
+        await backofficePage.goto('/?page=Bulk%20Tracking');
       });
 
       // ==========================================
-      // STEP 5: Bank Audit / Statement
+      // STEP 5: Bank Audit / Statement (by Finance)
       // ==========================================
-      await test.step('Bank Statement Audit', async () => {
-        await page.goto('/?page=BankAccountAuditPage'); 
+      await test.step('Finance Bank Statement Audit', async () => {
+        await financePage.goto('/?page=BankAccountAuditPage'); 
       });
 
+      // ปิดหน้าต่างให้เรียบร้อยเมื่อจบ
+      await telesaleContext.close();
+      await backofficeContext.close();
+      await financeContext.close();
     });
   }
 });
