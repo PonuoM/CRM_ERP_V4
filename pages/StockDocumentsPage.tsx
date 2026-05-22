@@ -4,6 +4,7 @@ import { User } from '@/types';
 import { listStockTransactions, deleteStockTransaction } from '@/services/api';
 import ReceiveStockModal from '@/components/Inventory/ReceiveStockModal';
 import StockAdjustmentModal from '@/components/Inventory/StockAdjustmentModal';
+import { useToast } from "../components/Toast";
 
 interface StockDocumentsPageProps {
     currentUser?: User;
@@ -11,6 +12,7 @@ interface StockDocumentsPageProps {
 }
 
 const StockDocumentsPage: React.FC<StockDocumentsPageProps> = ({ currentUser, companyId }) => {
+    const toast = useToast();
     const [activeTab, setActiveTab] = useState<'all' | 'receive' | 'adjustment'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(false);
@@ -79,13 +81,13 @@ const StockDocumentsPage: React.FC<StockDocumentsPageProps> = ({ currentUser, co
         try {
             const res = await deleteStockTransaction(t.id);
             if (res.success) {
-                alert('ลบเอกสารสำเร็จ');
+                toast.success('ลบเอกสารสำเร็จ');
                 fetchTransactions();
             } else {
-                alert('Error: ' + res.error);
+                toast.warning('Error: ' + res.error);
             }
         } catch (err: any) {
-            alert('Failed to delete: ' + err.message);
+            toast.warning('Failed to delete: ' + err.message);
         }
     };
 

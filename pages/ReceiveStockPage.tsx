@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { PackagePlus, Plus, Trash2, Save, Calendar, FileText, Search, Image as ImageIcon } from 'lucide-react';
 import { User, Warehouse, Product } from '@/types';
 import { listWarehouses, listProducts, listProductLots, createStockTransaction } from '@/services/api';
+import { useToast } from "../components/Toast";
 
 interface ReceiveStockPageProps {
   currentUser?: User;
@@ -25,6 +26,7 @@ interface StockItem {
 }
 
 const ReceiveStockPage: React.FC<ReceiveStockPageProps> = ({ currentUser, companyId }) => {
+    const toast = useToast();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
@@ -91,18 +93,18 @@ const ReceiveStockPage: React.FC<ReceiveStockPageProps> = ({ currentUser, compan
 
   const handleSave = async () => {
     if (items.length === 0) {
-      alert('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
+      toast.warning('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
       return;
     }
 
     // Validate
     for (const item of items) {
       if (!item.productId || !item.warehouseId || !item.quantity) {
-        alert('กรุณากรอกข้อมูลสินค้า คลังสินค้า และจำนวนให้ครบถ้วน');
+        toast.warning('กรุณากรอกข้อมูลสินค้า คลังสินค้า และจำนวนให้ครบถ้วน');
         return;
       }
       if (item.lotSelection === 'new' && !item.lotNumber) {
-        alert('กรุณาระบุเลข Lot สำหรับสินค้าใหม่');
+        toast.warning('กรุณาระบุเลข Lot สำหรับสินค้าใหม่');
         return;
       }
     }
@@ -131,16 +133,16 @@ const ReceiveStockPage: React.FC<ReceiveStockPageProps> = ({ currentUser, compan
 
       const res = await createStockTransaction(payload);
       if (res.success) {
-        alert(`บันทึกรับสินค้าสำเร็จ เลขที่เอกสาร: ${res.document_number}`);
+        toast.success(`บันทึกรับสินค้าสำเร็จ เลขที่เอกสาร: ${res.document_number}`);
         setItems([]);
         setDocNotes('');
         setDocNumber('');
         // Maybe redirect?
       } else {
-        alert('เกิดข้อผิดพลาด: ' + (res.error || 'Unknown error'));
+        toast.warning('เกิดข้อผิดพลาด: ' + (res.error || 'Unknown error'));
       }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast.warning('Error: ' + err.message);
     } finally {
       setSaving(false);
     }

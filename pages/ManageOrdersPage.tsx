@@ -10,6 +10,7 @@ import { apiFetch } from '../services/api';
 import { listQuotaProducts } from '../services/quotaApi';
 import usePersistentState from '../utils/usePersistentState';
 import Spinner from '../components/Spinner';
+import { useToast } from "../components/Toast";
 
 interface ManageOrdersPageProps {
   user: User;
@@ -37,6 +38,7 @@ const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500, 9999];
 const SHIPPING_PROVIDERS = ["J&T Express", "Flash Express", "Kerry Express", "Aiport Logistic", "ไปรษณีย์ไทย"];
 
 const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, products, openModal, onProcessOrders, onCancelOrders, onUpdateShippingProvider }) => {
+    const toast = useToast();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -161,12 +163,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       setRefreshCounter(prev => prev + 1);
 
       // Success UI
-      alert(`ส่งออกและอัปเดตสำเร็จ ${finalExportList.length} รายการ`);
+      toast.success(`ส่งออกและอัปเดตสำเร็จ ${finalExportList.length} รายการ`);
       setValidationModal(prev => ({ ...prev, isOpen: false }));
 
     } catch (error) {
       console.error('An error occurred during the export process:', error);
-      alert(`เกิดข้อผิดพลาด: ${error instanceof Error ? error.message : 'Undefined error'}`);
+      toast.warning(`เกิดข้อผิดพลาด: ${error instanceof Error ? error.message : 'Undefined error'}`);
     } finally {
       setIsProcessing(false);
       setExportProgress(null);
@@ -1242,7 +1244,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         return false;
       });
       if (blocked.length > 0) {
-        alert(`ออเดอร์ต่อไปนี้ต้องมีสลิปและสถานะการชำระ (โอน) ต้องไม่เป็นค้างชำระก่อน Export:\n${blocked.map(b => `- ${b.id}`).join('\n')}`);
+        toast.warning(`ออเดอร์ต่อไปนี้ต้องมีสลิปและสถานะการชำระ (โอน) ต้องไม่เป็นค้างชำระก่อน Export:\n${blocked.map(b => `- ${b.id}`).join('\n')}`);
         return;
       }
 
@@ -1250,7 +1252,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     } catch (e) {
       console.error('pre-export validation failed', e);
-      alert('ตรวจสอบข้อมูลก่อน Export ไม่สำเร็จ กรุณาลองใหม่');
+      toast.success('ตรวจสอบข้อมูลก่อน Export ไม่สำเร็จ กรุณาลองใหม่');
       return;
     }
 
@@ -1275,7 +1277,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
       } catch (e) {
         console.error('Failed to validate tab rules', e);
-        alert('เกิดข้อผิดพลาดในการตรวจสอบเงื่อนไขการส่งออก');
+        toast.warning('เกิดข้อผิดพลาดในการตรวจสอบเงื่อนไขการส่งออก');
         return;
       }
     }
@@ -1319,13 +1321,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         onProcessOrders(ordersToProcess);
 
         // แสดงข้อความยืนยัน
-        alert(`ย้ายออเดอร์ ${selectedIds.length} รายการไปยัง "รอดึงข้อมูล" เรียบร้อยแล้ว`);
+        toast.success(`ย้ายออเดอร์ ${selectedIds.length} รายการไปยัง "รอดึงข้อมูล" เรียบร้อยแล้ว`);
 
         // ล้างการเลือก
         setSelectedIds([]);
       } catch (error) {
         console.error('Failed to move orders to awaiting export:', error);
-        alert('เกิดข้อผิดพลาดในการย้ายออเดอร์ กรุณาลองใหม่');
+        toast.warning('เกิดข้อผิดพลาดในการย้ายออเดอร์ กรุณาลองใหม่');
       }
     }
   };
@@ -1435,7 +1437,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       await onUpdateShippingProvider(orderId, shippingProvider);
     } catch (error) {
       console.error('Failed to update shipping provider', error);
-      alert('ไม่สามารถอัปเดตขนส่งได้');
+      toast.warning('ไม่สามารถอัปเดตขนส่งได้');
     } finally {
       setShippingSavingIds(prev => {
         const next = new Set(prev);
@@ -1485,10 +1487,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     try {
       await Promise.all(selectedIds.map(id => onUpdateShippingProvider(id, provider)));
-      alert('อัปเดตขนส่งเรียบร้อยแล้ว');
+      toast.success('อัปเดตขนส่งเรียบร้อยแล้ว');
     } catch (error) {
       console.error('Failed to bulk update shipping provider', error);
-      alert('เกิดข้อผิดพลาดในการอัปเดตขนส่ง');
+      toast.warning('เกิดข้อผิดพลาดในการอัปเดตขนส่ง');
     }
   };
 
@@ -2077,26 +2079,26 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                               <button
                                 onClick={async () => {
                                   const tplId = historyTemplateSelection[exp.id];
-                                  if (!tplId) { alert('กรุณาเลือก Template'); return; }
+                                  if (!tplId) { toast.warning('กรุณาเลือก Template'); return; }
                                   setReExportingId(exp.id);
                                   try {
                                     const res: any = await getExportOrderIds(exp.id);
                                     const orderIds: string[] = res?.orderIds || [];
-                                    if (orderIds.length === 0) { alert('ไม่พบข้อมูลออเดอร์ในประวัตินี้'); return; }
+                                    if (orderIds.length === 0) { toast.warning('ไม่พบข้อมูลออเดอร์ในประวัตินี้'); return; }
 
                                     const results = await Promise.allSettled(orderIds.map(id => apiFetch(`orders/${encodeURIComponent(id)}`)));
                                     const orders: Order[] = results
                                       .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value)
                                       .map(r => mapApiOrderToModel(r.value));
 
-                                    if (orders.length === 0) { alert('ไม่สามารถโหลดข้อมูลออเดอร์ได้'); return; }
+                                    if (orders.length === 0) { toast.warning('ไม่สามารถโหลดข้อมูลออเดอร์ได้'); return; }
 
                                     const selectedTpl = exportTemplates.find((t: any) => t.id === tplId);
                                     setSelectedTemplateId(tplId);
                                     await generateAndDownloadCsv(orders, selectedTpl, true);
                                   } catch (e) {
                                     console.error('Re-export failed', e);
-                                    alert('ส่งออกซ้ำไม่สำเร็จ');
+                                    toast.success('ส่งออกซ้ำไม่สำเร็จ');
                                   } finally {
                                     setReExportingId(null);
                                   }

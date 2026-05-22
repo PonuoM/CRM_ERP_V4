@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Promotion, Product } from '../types';
 import PromotionModal from '../components/PromotionModal';
 import { apiFetch } from '../services/api';
+import { useToast } from "../components/Toast";
 
 interface PromotionHistoryPageProps {
   promotions: Promotion[];
@@ -16,6 +17,7 @@ const PromotionHistoryPage: React.FC<PromotionHistoryPageProps> = ({
   onRefresh,
   companyId
 }) => {
+    const toast = useToast();
   const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -79,7 +81,7 @@ const PromotionHistoryPage: React.FC<PromotionHistoryPageProps> = ({
       onRefresh(); // Refresh the list
     } catch (error) {
       console.error('Error activating promotion:', error);
-      alert('เกิดข้อผิดพลาดในการเปิดใช้งานโปรโมชั่น');
+      toast.warning('เกิดข้อผิดพลาดในการเปิดใช้งานโปรโมชั่น');
     }
   };
 

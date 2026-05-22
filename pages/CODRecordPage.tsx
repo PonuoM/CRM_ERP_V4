@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { User } from "../types";
 import { Upload, FileText, Calendar, DollarSign, Search, UploadCloud, Plus, Trash2, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import { apiFetch } from "../services/api";
+import { useToast } from "../components/Toast";
 
 interface CODRecordPageProps {
   user: User;
@@ -33,6 +34,7 @@ const createEmptyRow = (id: number): RowData => ({
 });
 
 const CODRecordPage: React.FC<CODRecordPageProps> = ({ user }) => {
+    const toast = useToast();
   const [rows, setRows] = useState<RowData[]>(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
   const [isVerified, setIsVerified] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -172,7 +174,7 @@ const CODRecordPage: React.FC<CODRecordPageProps> = ({ user }) => {
       const text = await file.text();
       const lines = text.split("\n").filter((line) => line.trim());
       if (lines.length < 2) {
-        alert("ไฟล์ไม่มีข้อมูล");
+        toast.warning("ไฟล์ไม่มีข้อมูล");
         return;
       }
 
@@ -198,7 +200,7 @@ const CODRecordPage: React.FC<CODRecordPageProps> = ({ user }) => {
       }
     } catch (error) {
       console.error("Error parsing CSV:", error);
-      alert("เกิดข้อผิดพลาดในการอ่านไฟล์");
+      toast.warning("เกิดข้อผิดพลาดในการอ่านไฟล์");
     }
   };
 
@@ -206,7 +208,7 @@ const CODRecordPage: React.FC<CODRecordPageProps> = ({ user }) => {
     try {
       const sessionUser = localStorage.getItem("sessionUser");
       if (!sessionUser) {
-        alert("ไม่พบข้อมูลผู้ใช้");
+        toast.warning("ไม่พบข้อมูลผู้ใช้");
         return;
       }
 
@@ -217,7 +219,7 @@ const CODRecordPage: React.FC<CODRecordPageProps> = ({ user }) => {
       const receivedAmount = parseFloat(row.receivedAmount.replace(/[^\d.-]/g, '')) || 0;
 
       if (!row.trackingNumber.trim() || codAmount <= 0) {
-        alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+        toast.warning("กรุณากรอกข้อมูลให้ครบถ้วน");
         return;
       }
 
@@ -234,7 +236,7 @@ const CODRecordPage: React.FC<CODRecordPageProps> = ({ user }) => {
         }),
       });
 
-      alert("บันทึกข้อมูล COD เรียบร้อยแล้ว");
+      toast.success("บันทึกข้อมูล COD เรียบร้อยแล้ว");
       // Update local state
       setRows((prev) =>
         prev.map((r) =>
@@ -245,7 +247,7 @@ const CODRecordPage: React.FC<CODRecordPageProps> = ({ user }) => {
       );
     } catch (error) {
       console.error("Error saving COD record:", error);
-      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+      toast.warning("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
     }
   };
 
@@ -257,19 +259,19 @@ const CODRecordPage: React.FC<CODRecordPageProps> = ({ user }) => {
     );
     
     if (validRows.length === 0) {
-      alert('ไม่มีข้อมูลที่พร้อมสำหรับบันทึก');
+      toast.warning('ไม่มีข้อมูลที่พร้อมสำหรับบันทึก');
       return;
     }
 
     if (window.confirm(`คุณต้องการบันทึกข้อมูล COD จำนวน ${validRows.length} รายการใช่หรือไม่?`)) {
       try {
         await Promise.all(validRows.map(row => handleSaveRecord(row)));
-        alert(`บันทึกข้อมูล COD เรียบร้อยแล้ว ${validRows.length} รายการ`);
+        toast.success(`บันทึกข้อมูล COD เรียบร้อยแล้ว ${validRows.length} รายการ`);
         setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
         setIsVerified(false);
       } catch (error) {
         console.error("Error importing records:", error);
-        alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        toast.warning("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
       }
     }
   };

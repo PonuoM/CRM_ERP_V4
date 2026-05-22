@@ -39,6 +39,7 @@ import MultiSelectAdsGroupFilter from "@/components/Dashboard/MultiSelectAdsGrou
 import MultiSelectUserFilter from "@/components/Dashboard/MultiSelectUserFilter";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { isSystemCheck } from "@/utils/isSystemCheck";
+import { useToast } from "../components/Toast";
 
 const API_BASE = resolveApiBasePath();
 
@@ -180,6 +181,7 @@ const getPageTypeBadgeClasses = (rawType?: string | null): { label: string; clas
 };
 
 const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
+    const toast = useToast();
   const [activeTab, setActiveTab] = useState<
     "userManagement" | "adsInput" | "dashboard" | "adsHistory"
   >(view || "dashboard");
@@ -858,7 +860,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   }, [adSpend]);
 
   const handleAddPage = async () => {
-    if (!newPage.name.trim()) return alert("กรุณากรอกชื่อเพจ");
+    if (!newPage.name.trim()) return toast.warning("กรุณากรอกชื่อเพจ");
     try {
       const created = await createPage({
         name: newPage.name.trim(),
@@ -889,7 +891,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
     } catch (e) {
       console.error("create page failed", e);
-      alert("เพิ่มเพจไม่สำเร็จ");
+      toast.success("เพิ่มเพจไม่สำเร็จ");
     }
   };
 
@@ -901,13 +903,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       );
     } catch (e) {
       console.error("update page failed", e);
-      alert("อัปเดตสถานะเพจไม่สำเร็จ");
+      toast.success("อัปเดตสถานะเพจไม่สำเร็จ");
     }
   };
 
   const handleAddSpend = async () => {
     if (!newSpend.pageId || !newSpend.amount)
-      return alert("กรุณาเลือกเพจและกรอกจำนวนเงิน");
+      return toast.warning("กรุณาเลือกเพจและกรอกจำนวนเงิน");
     try {
       await createAdSpend({
         pageId: Number(newSpend.pageId),
@@ -937,7 +939,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       setAdSpend(mapped);
     } catch (e) {
       console.error("create ad spend failed", e);
-      alert("บันทึกค่าโฆษณาไม่สำเร็จ");
+      toast.success("บันทึกค่าโฆษณาไม่สำเร็จ");
     }
   };
 
@@ -1131,13 +1133,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       const data = await res.json();
       if (data.success) {
         loadMarketingPageUsers();
-        alert("ลบผู้ใช้จากเพจสำเร็จ");
+        toast.success("ลบผู้ใช้จากเพจสำเร็จ");
       } else {
-        alert("ลบผู้ใช้จากเพจไม่สำเร็จ: " + data.error);
+        toast.success("ลบผู้ใช้จากเพจไม่สำเร็จ: " + data.error);
       }
     } catch (e) {
       console.error("Failed to remove user:", e);
-      alert("ลบผู้ใช้จากเพจไม่สำเร็จ");
+      toast.success("ลบผู้ใช้จากเพจไม่สำเร็จ");
     }
   };
 
@@ -1158,13 +1160,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       if (data.success) {
         loadMarketingPageUsers();
         setSelectedPageForUser(null);
-        alert("เพิ่มผู้ใช้สำเร็จ");
+        toast.success("เพิ่มผู้ใช้สำเร็จ");
       } else {
-        alert("เพิ่มผู้ใช้ไม่สำเร็จ: " + data.error);
+        toast.success("เพิ่มผู้ใช้ไม่สำเร็จ: " + data.error);
       }
     } catch (e) {
       console.error("Failed to add user:", e);
-      alert("เพิ่มผู้ใช้ไม่สำเร็จ");
+      toast.success("เพิ่มผู้ใช้ไม่สำเร็จ");
     }
   };
 
@@ -1197,13 +1199,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
       if (filledCount > 0 && filledCount < 4) {
         const pageName = userPages.find(p => p.id.toString() === row.pageId.toString())?.name || "Unknown Page";
-        alert(`กรุณากรอกข้อมูลให้ครบทั้ง 4 ช่องสำหรับเพจ "${pageName}" (ค่า Ads, อิมเพรสชั่น, การเข้าถึง, ทัก/คลิก)`);
+        toast.warning(`กรุณากรอกข้อมูลให้ครบทั้ง 4 ช่องสำหรับเพจ "${pageName}" (ค่า Ads, อิมเพรสชั่น, การเข้าถึง, ทัก/คลิก)`);
         return;
       }
     }
 
     if (adsInputData.length === 0) {
-      alert("ไม่มีข้อมูลที่ต้องการบันทึก");
+      toast.warning("ไม่มีข้อมูลที่ต้องการบันทึก");
       return;
     }
 
@@ -1301,17 +1303,17 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         if (errorCount > 0) {
           message += ` และผิดพลาด ${errorCount} รายการ`;
         }
-        alert(message);
+        toast.warning(message);
         // โหลดข้อมูลใหม่หลังบันทึกเสร็จ
         loadExistingAdsData();
       } else if (skippedCount > 0) {
-        alert(`ข้าม ${skippedCount} รายการที่ไม่มีข้อมูล`);
+        toast.warning(`ข้าม ${skippedCount} รายการที่ไม่มีข้อมูล`);
       } else {
-        alert("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
+        toast.success("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
       }
     } catch (e) {
       console.error("Failed to save ads data:", e);
-      alert("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
+      toast.success("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
     } finally {
       setIsSaving(false);
     }
@@ -1383,13 +1385,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
 
     if (res && res.success) {
-      alert("ลบข้อมูลเรียบร้อยแล้ว");
+      toast.success("ลบข้อมูลเรียบร้อยแล้ว");
       setIsEditModalOpen(false);
       setEditingLog(null);
       if (isProductMode) loadProductAdsLogs();
       else loadPageAdsLogs();
     } else {
-      alert("ลบข้อมูลไม่สำเร็จ: " + (res?.error || "Unknown error"));
+      toast.success("ลบข้อมูลไม่สำเร็จ: " + (res?.error || "Unknown error"));
     }
   };
 
@@ -1455,7 +1457,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         }
 
         if (!delRes || !delRes.success) {
-          alert("ไม่สามารถลบข้อมูลเก่าได้: " + (delRes?.error || "Unknown error"));
+          toast.warning("ไม่สามารถลบข้อมูลเก่าได้: " + (delRes?.error || "Unknown error"));
           return;
         }
       }
@@ -1481,7 +1483,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
 
     if (res && res.success) {
-      alert("แก้ไขข้อมูลเรียบร้อยแล้ว");
+      toast.success("แก้ไขข้อมูลเรียบร้อยแล้ว");
       setIsEditModalOpen(false);
       setEditingLog(null);
 
@@ -1492,7 +1494,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         loadPageAdsLogs();
       }
     } else {
-      alert("เกิดข้อผิดพลาด: " + (res?.error || "Failed to update"));
+      toast.warning("เกิดข้อผิดพลาด: " + (res?.error || "Failed to update"));
     }
   };
 
@@ -1583,7 +1585,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       }
     } catch (e) {
       console.error("Failed to load existing ads data:", e);
-      alert("โหลดข้อมูลผิดพลาด กรุณาลองใหม่");
+      toast.warning("โหลดข้อมูลผิดพลาด กรุณาลองใหม่");
     } finally {
       setIsLoadingData(false);
     }
@@ -1630,14 +1632,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
       const result = await response.json();
       if (result.success) {
-        alert("ลบสิทธิ์สำเร็จ");
+        toast.success("ลบสิทธิ์สำเร็จ");
         loadMarketingUserAdsGroups();
       } else {
-        alert("เกิดข้อผิดพลาด: " + result.error);
+        toast.warning("เกิดข้อผิดพลาด: " + result.error);
       }
     } catch (error) {
       console.error("Error removing user from ads group:", error);
-      alert("เกิดข้อผิดพลาดในการลบสิทธิ์");
+      toast.warning("เกิดข้อผิดพลาดในการลบสิทธิ์");
     }
   };
 
@@ -1654,15 +1656,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
       const result = await response.json();
       if (result.success) {
-        alert("เพิ่มผู้ใช้ไปยังกลุ่ม Ads เรียบร้อยแล้ว");
+        toast.success("เพิ่มผู้ใช้ไปยังกลุ่ม Ads เรียบร้อยแล้ว");
         setSelectedAdsGroupForUser(null);
         loadMarketingUserAdsGroups();
       } else {
-        alert("เกิดข้อผิดพลาด: " + result.error);
+        toast.warning("เกิดข้อผิดพลาด: " + result.error);
       }
     } catch (error) {
       console.error("Error adding user to ads group:", error);
-      alert("เกิดข้อผิดพลาดในการเพิ่มผู้ใช้");
+      toast.warning("เกิดข้อผิดพลาดในการเพิ่มผู้ใช้");
     }
   };
 
@@ -1950,7 +1952,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
   const handleSaveProductAdsData = async () => {
     if (!selectedDate) {
-      alert("กรุณาเลือกวันที่");
+      toast.warning("กรุณาเลือกวันที่");
       return;
     }
 
@@ -1967,7 +1969,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }));
 
     if (dataToSave.length === 0) {
-      alert("ไม่พบข้อมูลที่ต้องบันทึก");
+      toast.warning("ไม่พบข้อมูลที่ต้องบันทึก");
       return;
     }
 
@@ -1982,13 +1984,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       });
       const result = await response.json();
       if (result.success) {
-        alert("บันทึกข้อมูลเรียบร้อยแล้ว");
+        toast.success("บันทึกข้อมูลเรียบร้อยแล้ว");
       } else {
-        alert("เกิดข้อผิดพลาด: " + result.message);
+        toast.warning("เกิดข้อผิดพลาด: " + result.message);
       }
     } catch (error) {
       console.error("Error saving product ads data:", error);
-      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+      toast.warning("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
     } finally {
       setIsSaving(false);
     }
@@ -4530,11 +4532,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               const filename = `marketing_ads_log_${new Date().toISOString().split('T')[0]}`;
               downloadDataFile(result.data, filename, type);
             } else {
-              alert("ไม่มีข้อมูลสำหรับส่งออก");
+              toast.warning("ไม่มีข้อมูลสำหรับส่งออก");
             }
           } catch (error) {
             console.error("Export error:", error);
-            alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
+            toast.warning("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
           } finally {
             setExporting(false);
             setIsAdsLogExportModalOpen(false);

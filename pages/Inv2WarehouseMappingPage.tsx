@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Database, Link as LinkIcon, Plus, Trash2, Loader2, Save } from 'lucide-react';
 import { inv2ListWarehouseMappings, inv2SaveWarehouseMapping, listWarehouses } from '../services/api';
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { useToast } from "../components/Toast";
 
 interface Mapping {
     id: number;
@@ -15,6 +16,7 @@ interface Inv2WarehouseMappingPageProps {
 }
 
 const Inv2WarehouseMappingPage: React.FC<Inv2WarehouseMappingPageProps> = ({ companyId }) => {
+    const toast = useToast();
     const [mappings, setMappings] = useState<Mapping[]>([]);
     const [unmappedNames, setUnmappedNames] = useState<string[]>([]);
     const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -44,7 +46,7 @@ const Inv2WarehouseMappingPage: React.FC<Inv2WarehouseMappingPageProps> = ({ com
     useEffect(() => { loadData(); }, [loadData]);
 
     const handleSaveMapping = async (dispatchName: string, mainWhId: number) => {
-        if (!dispatchName || !mainWhId) return alert('กรุณาระบุชื่อคลังจ่ายและเลือกคลังหลักให้ครบ');
+        if (!dispatchName || !mainWhId) return toast.warning('กรุณาระบุชื่อคลังจ่ายและเลือกคลังหลักให้ครบ');
         setSaving(true);
         try {
             const res = await inv2SaveWarehouseMapping({
@@ -71,11 +73,11 @@ const Inv2WarehouseMappingPage: React.FC<Inv2WarehouseMappingPageProps> = ({ com
                 setNewMainWhId(0);
                 loadData();
             } else {
-                alert(res?.error || 'เกิดข้อผิดพลาดในการบันทึก');
+                toast.warning(res?.error || 'เกิดข้อผิดพลาดในการบันทึก');
             }
         } catch (e) {
             console.error(e);
-            alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+            toast.warning('เกิดข้อผิดพลาดในการเชื่อมต่อ');
         }
         setSaving(false);
     };
@@ -92,7 +94,7 @@ const Inv2WarehouseMappingPage: React.FC<Inv2WarehouseMappingPageProps> = ({ com
             if (res?.success) {
                 loadData();
             } else {
-                alert(res?.error || 'ลบไม่สำเร็จ');
+                toast.success(res?.error || 'ลบไม่สำเร็จ');
             }
         } catch (e) {
             console.error(e);

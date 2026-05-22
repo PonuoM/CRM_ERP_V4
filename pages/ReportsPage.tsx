@@ -25,6 +25,7 @@ import APP_BASE_PATH from '../appBasePath';
 import DateRangePicker, { DateRange } from '../components/DateRangePicker';
 import ExportTypeModal from '../components/ExportTypeModal';
 import { downloadDataFile } from '../utils/exportUtils';
+import { useToast } from "../components/Toast";
 
 const getCustomerDisplayName = (customer: Customer): string => {
   const first = (customer.firstName || '').trim();
@@ -134,6 +135,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   users = [],
   pages = []
 }) => {
+    const toast = useToast();
   const [selectedReport, setSelectedReport] = useState<ReportType | null>(null);
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'this-month' | 'last-month' | 'custom'>('month');
   const [startDate, setStartDate] = useState<string>('');
@@ -524,11 +526,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const filename = `commission_orders_${statusLabel}_${new Date().toISOString().split('T')[0]}`;
         downloadDataFile(result.data, filename, fileType);
       } else {
-        alert(result.error || "ไม่มีข้อมูลสำหรับส่งออก");
+        toast.warning(result.error || "ไม่มีข้อมูลสำหรับส่งออก");
       }
     } catch (e) { 
       console.error(e); 
-      alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
+      toast.warning("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
     } finally {
       setIsCommExporting(false);
       setIsCommExportModalOpen(false);
@@ -566,11 +568,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const filename = `call_history_${new Date().toISOString().split('T')[0]}`;
         downloadDataFile(result.data, filename, fileType);
       } else {
-        alert(result.error || "ไม่มีข้อมูลสำหรับส่งออก");
+        toast.warning(result.error || "ไม่มีข้อมูลสำหรับส่งออก");
       }
     } catch (e) { 
       console.error(e); 
-      alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
+      toast.warning("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
     } finally {
       setIsCallHistoryExporting(false);
       setIsCallHistoryExportModalOpen(false);
@@ -1262,7 +1264,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const rows = response?.data || [];
 
         if (rows.length === 0) {
-          alert('ไม่มีข้อมูลตีกลับในช่วงวันที่ที่เลือก');
+          toast.warning('ไม่มีข้อมูลตีกลับในช่วงวันที่ที่เลือก');
           return;
         }
 
@@ -1312,7 +1314,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         downloadDataFile(csvRows, `return-report_${startDateStr}_${endDateStr}`, type);
       } catch (error) {
         console.error('Failed to export return data:', error);
-        alert('ไม่สามารถดาวน์โหลดรายงานได้ กรุณาลองใหม่');
+        toast.warning('ไม่สามารถดาวน์โหลดรายงานได้ กรุณาลองใหม่');
       } finally {
         setIsExporting(false);
       }
@@ -1722,7 +1724,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         downloadDataFile(exportRows, filename, type);
       } catch (error) {
         console.error('Failed to export orders:', error);
-        alert('ไม่สามารถดาวน์โหลดรายงานได้ กรุณาลองใหม่');
+        toast.warning('ไม่สามารถดาวน์โหลดรายงานได้ กรุณาลองใหม่');
       } finally {
         setIsExporting(false);
       }
@@ -2518,7 +2520,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                       const end = new Date(newEnd);
                       const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
                       if (diffDays > 31) {
-                        alert('สามารถเลือกได้สูงสุด 31 วันเท่านั้น');
+                        toast.warning('สามารถเลือกได้สูงสุด 31 วันเท่านั้น');
                         const maxEnd = new Date(start);
                         maxEnd.setDate(maxEnd.getDate() + 31);
                         setEndDate(maxEnd.toISOString().split('T')[0]);

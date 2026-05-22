@@ -10,6 +10,7 @@ import {
   ProductLot,
 } from '@/services/api';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useToast } from "../components/Toast";
 
 type Allocation = {
   id: number;
@@ -33,6 +34,7 @@ type PendingAllocationState = {
 };
 
 const OrderAllocationPage: React.FC = () => {
+    const toast = useToast();
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([] as any);
   const [orders, setOrders] = useState<any[]>([]);
@@ -438,22 +440,22 @@ const OrderAllocationPage: React.FC = () => {
         clearPendingForItems(affectedIds);
         selectAllocationItems(affectedIds, false);
         setOrderWarehouseOverride(orderId, undefined);
-        alert(`จัดสรรสำเร็จ ${successfulItems.length} รายการ`);
+        toast.success(`จัดสรรสำเร็จ ${successfulItems.length} รายการ`);
       } else if (successfulItems.length > 0 && failedItems.length > 0) {
         // Partial success
         const affectedIds = successfulItems.map((item: Allocation) => item.id);
         clearPendingForItems(affectedIds);
         selectAllocationItems(affectedIds, false);
         const failedMessages = failedItems.map(f => f.error).join('\n');
-        alert(`จัดสรรสำเร็จ ${successfulItems.length} รายการ\n\nไม่สำเร็จ:\n${failedMessages}`);
+        toast.success(`จัดสรรสำเร็จ ${successfulItems.length} รายการ\n\nไม่สำเร็จ:\n${failedMessages}`);
       } else if (failedItems.length > 0) {
         // All failed
         const failedMessages = failedItems.map(f => f.error).join('\n');
-        alert(`ไม่สามารถจัดสรรได้:\n${failedMessages}`);
+        toast.warning(`ไม่สามารถจัดสรรได้:\n${failedMessages}`);
       }
     } catch (error) {
       console.error('Failed to confirm allocations', error);
-      alert('ยืนยันการจัดสรรไม่สำเร็จ');
+      toast.success('ยืนยันการจัดสรรไม่สำเร็จ');
     } finally {
       setConfirmingOrderId(null);
     }
@@ -479,7 +481,7 @@ const OrderAllocationPage: React.FC = () => {
       null;
 
     if (!warehouseId) {
-      alert('กรุณาเลือกคลังสินค้า');
+      toast.warning('กรุณาเลือกคลังสินค้า');
       return;
     }
 
@@ -522,17 +524,17 @@ const OrderAllocationPage: React.FC = () => {
 
       // Show result
       if (successfulItems.length > 0 && failedItems.length === 0) {
-        alert(`จัดสรรสำเร็จ ${successfulItems.length} รายการ`);
+        toast.success(`จัดสรรสำเร็จ ${successfulItems.length} รายการ`);
       } else if (successfulItems.length > 0 && failedItems.length > 0) {
         const failedMessages = failedItems.map(f => f.error).join('\n');
-        alert(`จัดสรรสำเร็จ ${successfulItems.length} รายการ\n\nไม่สำเร็จ:\n${failedMessages}`);
+        toast.success(`จัดสรรสำเร็จ ${successfulItems.length} รายการ\n\nไม่สำเร็จ:\n${failedMessages}`);
       } else if (failedItems.length > 0) {
         const failedMessages = failedItems.map(f => f.error).join('\n');
-        alert(`ไม่สามารถจัดสรรได้:\n${failedMessages}`);
+        toast.warning(`ไม่สามารถจัดสรรได้:\n${failedMessages}`);
       }
     } catch (error) {
       console.error('Failed to allocate and confirm', error);
-      alert('จัดสรรไม่สำเร็จ');
+      toast.success('จัดสรรไม่สำเร็จ');
     } finally {
       setConfirmingOrderId(null);
     }
@@ -657,7 +659,7 @@ const OrderAllocationPage: React.FC = () => {
                               if (warehouseId != null) {
                                 handleAllocateOrder(orderData, warehouseId);
                               } else {
-                                alert('กรุณาเลือกคลังสินค้า');
+                                toast.warning('กรุณาเลือกคลังสินค้า');
                               }
                             }}
                             className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 cursor-pointer"

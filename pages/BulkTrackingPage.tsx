@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Order, OrderStatus, User } from '../types';
 import { validateTrackingBulk, saveTrackingLog } from '../services/api';
 import { UploadCloud, CheckCircle, XCircle, AlertTriangle, Plus, Trash2, Loader2 } from 'lucide-react';
+import { useToast } from "../components/Toast";
 
 type ValidationStatus = 'valid' | 'duplicate' | 'error' | 'unchecked';
 interface RowData {
@@ -42,6 +43,7 @@ const detectShippingProvider = (trackingNumber: string): string => {
 };
 
 const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders: propsOrders, onBulkUpdateTracking, currentUser }) => {
+    const toast = useToast();
   const [rows, setRows] = useState<RowData[]>(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
   const [isVerified, setIsVerified] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -185,7 +187,7 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders: propsOrders
       setIsVerified(allValid);
     } catch (error) {
       console.error("Validation failed", error);
-      alert("Validation failed: " + error);
+      toast.warning("Validation failed: " + error);
     } finally {
       setValidating(false);
     }
@@ -243,13 +245,13 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders: propsOrders
             console.warn('Tracking log error (non-critical):', logErr);
           }
 
-          alert("นำเข้าข้อมูลเรียบร้อยแล้ว");
+          toast.success("นำเข้าข้อมูลเรียบร้อยแล้ว");
           // Reset
           setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
           setIsVerified(false);
         } catch (error) {
           console.error("Import failed", error);
-          alert("เกิดข้อผิดพลาดในการนำเข้า");
+          toast.warning("เกิดข้อผิดพลาดในการนำเข้า");
         }
       }
     }

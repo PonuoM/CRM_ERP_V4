@@ -5,6 +5,7 @@ import { Calculator, CheckCircle, DollarSign, Calendar, Users, FileText, X, Down
 import ExportTypeModal from '../../components/ExportTypeModal';
 import { downloadDataFile } from '../../utils/exportUtils';
 import resolveApiBasePath from '../../utils/apiBasePath';
+import { useToast } from "../../components/Toast";
 
 interface Period {
     id: number;
@@ -29,6 +30,7 @@ interface CommissionPageProps {
 }
 
 const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
+    const toast = useToast();
     const [periods, setPeriods] = useState<Period[]>([]);
     const [loading, setLoading] = useState(false);
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
@@ -76,13 +78,13 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
             const data = await res.json();
 
             if (data.ok) {
-                alert(`คำนวณสำเร็จ!\nยอดขายรวม: ${formatCurrency(data.data.total_sales)}\nค่าคอมรวม: ${formatCurrency(data.data.total_commission)}\nจำนวนออเดอร์: ${data.data.total_orders} รายการ`);
+                toast.success(`คำนวณสำเร็จ!\nยอดขายรวม: ${formatCurrency(data.data.total_sales)}\nค่าคอมรวม: ${formatCurrency(data.data.total_commission)}\nจำนวนออเดอร์: ${data.data.total_orders} รายการ`);
                 fetchPeriods();
             } else {
-                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+                toast.warning('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
             }
         } catch (error: any) {
-            alert('Error: ' + error.message);
+            toast.warning('Error: ' + error.message);
         } finally {
             setLoading(false);
         }
@@ -105,13 +107,13 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
             const data = await res.json();
 
             if (data.ok) {
-                alert('อนุมัติสำเร็จ!');
+                toast.success('อนุมัติสำเร็จ!');
                 fetchPeriods();
             } else {
-                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+                toast.warning('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
             }
         } catch (error: any) {
-            alert('Error: ' + error.message);
+            toast.warning('Error: ' + error.message);
         }
     };
 
@@ -131,19 +133,19 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
             const data = await res.json();
 
             if (data.ok) {
-                alert('บันทึกสำเร็จ!');
+                toast.success('บันทึกสำเร็จ!');
                 fetchPeriods();
             } else {
-                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+                toast.warning('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
             }
         } catch (error: any) {
-            alert('Error: ' + error.message);
+            toast.warning('Error: ' + error.message);
         }
     };
 
     const handleDelete = async (periodId: number, status: string) => {
         if (status === 'Paid') {
-            alert('ไม่สามารถลบรอบที่จ่ายเงินแล้ว');
+            toast.warning('ไม่สามารถลบรอบที่จ่ายเงินแล้ว');
             return;
         }
 
@@ -162,13 +164,13 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
             const data = await res.json();
 
             if (data.ok) {
-                alert('ลบสำเร็จ!');
+                toast.success('ลบสำเร็จ!');
                 fetchPeriods();
             } else {
-                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+                toast.warning('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
             }
         } catch (error: any) {
-            alert('Error: ' + error.message);
+            toast.warning('Error: ' + error.message);
         }
     };
 
@@ -181,10 +183,10 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                 setDetailData(data.data);
                 setShowDetailModal(true);
             } else {
-                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+                toast.warning('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
             }
         } catch (error: any) {
-            alert('Error: ' + error.message);
+            toast.warning('Error: ' + error.message);
         }
     };
 
@@ -224,10 +226,10 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
 
                 downloadDataFile([headers, ...rows], filename, type);
             } else {
-                alert('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
+                toast.warning('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
             }
         } catch (e: any) {
-            alert('เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.message);
+            toast.warning('เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.message);
         } finally {
             setIsExporting(false);
             setIsExportTypeModalOpen(false);

@@ -3,12 +3,14 @@ import { Role, listRoles, deleteRole } from '@/services/roleApi';
 import RoleEditor from '@/components/RoleEditor';
 import PermissionEditor from '@/components/PermissionEditor';
 import { Key, Pencil, Trash2, RotateCcw, Plus, X, Users, Shield } from 'lucide-react';
+import { useToast } from "../components/Toast";
 
 interface RoleManagementPageProps {
     onClose?: () => void;
 }
 
 export default function RoleManagementPage({ onClose }: RoleManagementPageProps) {
+    const toast = useToast();
     const [roles, setRoles] = useState<Role[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export default function RoleManagementPage({ onClose }: RoleManagementPageProps)
 
     async function handleDelete(role: Role) {
         if (role.is_system) {
-            alert('ไม่สามารถลบ Role ระบบได้');
+            toast.warning('ไม่สามารถลบ Role ระบบได้');
             return;
         }
 
@@ -48,7 +50,7 @@ export default function RoleManagementPage({ onClose }: RoleManagementPageProps)
             await deleteRole(role.id);
             loadRoles();
         } catch (err: any) {
-            alert(err.message || 'Failed to delete role');
+            toast.warning(err.message || 'Failed to delete role');
         }
     }
 

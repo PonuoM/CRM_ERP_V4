@@ -18,6 +18,7 @@ const parseDateSafe = (dateStr: string | undefined | null | number): number => {
 import { listCustomers, apiFetch } from '../services/api';
 import { mapCustomerFromApi } from '../utils/customerMapper';
 import usePersistentState from "@/utils/usePersistentState";
+import { useToast } from "../components/Toast";
 
 interface TelesaleDashboardProps {
   user: User;
@@ -49,6 +50,7 @@ const DateFilterButton: React.FC<{ label: string, value: string, activeValue: st
 );
 
 const FilterDropdown: React.FC<{ title: string; options: { id: string | number, name: string }[]; selected: (string | number)[]; onSelect: (id: string | number) => void; }> = ({ title, options, selected, onSelect }) => {
+    const toast = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -246,6 +248,7 @@ const SUB_MENU_VALUES: SubMenu[] = ['do', 'expiring', 'updates', 'all'];
 const ORDER_UPDATE_LOOKBACK_DAYS = 3;
 
 const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
+    const toast = useToast();
   const { user, customers, appointments, activities, calls, orders, onViewCustomer, openModal, systemTags, setActivePage, onUpsellClick, onChangeOwner, allUsers, refreshTrigger } = props;
 
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
@@ -1429,7 +1432,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     } catch (err) {
       // If failed, maybe empty?
       setServerSearchResults([]);
-      alert("เกิดข้อผิดพลาดในการค้นหาจาก Server");
+      toast.warning("เกิดข้อผิดพลาดในการค้นหาจาก Server");
     } finally {
       setIsServerSearching(false);
     }

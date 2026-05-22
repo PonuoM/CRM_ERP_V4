@@ -3,6 +3,7 @@ import { User as UserIcon, Search, Calendar } from "lucide-react";
 import { User } from "@/types";
 import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { useToast } from "../components/Toast";
 
 interface CallDetailsPageProps {
   currentUser: User;
@@ -21,6 +22,7 @@ interface EmployeeCallData {
 }
 
 const CallDetailsPage: React.FC<CallDetailsPageProps> = ({ currentUser }) => {
+    const toast = useToast();
   const [employeeCallData, setEmployeeCallData] = useState<EmployeeCallData[]>(
     [],
   );
@@ -266,7 +268,7 @@ const CallDetailsPage: React.FC<CallDetailsPageProps> = ({ currentUser }) => {
           });
           // You can add additional logic here after successful login
           // For example, store the token, update state, etc.
-          alert("เข้าสู่ระบบ Onecall สำเร็จ");
+          toast.success("เข้าสู่ระบบ Onecall สำเร็จ");
         }}
       />
     </>

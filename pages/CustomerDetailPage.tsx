@@ -61,6 +61,7 @@ import {
 import { formatThaiDateTime, formatThaiDate } from "../utils/time";
 import AddressManagementModal from "../components/AddressManagementModal";
 import OrderDetailModal from "../components/OrderDetailModal";
+import { useToast } from "../components/Toast";
 
 interface CustomerDetailPageProps {
   customer: Customer;
@@ -103,6 +104,7 @@ const InfoItem: React.FC<{
 );
 
 const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
+    const toast = useToast();
   const {
     customer,
     orders,
@@ -1818,7 +1820,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                     "กรุณาระบุเหตุผลในการบล็อค (อย่างน้อย 5 ตัวอักษร)",
                   ) || "";
                 if (!reason || reason.trim().length < 5) {
-                  alert("กรุณากรอกเหตุผลอย่างน้อย 5 ตัวอักษร");
+                  toast.warning("กรุณากรอกเหตุผลอย่างน้อย 5 ตัวอักษร");
                   return;
                 }
                 try {
@@ -1829,11 +1831,11 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                     reason: reason.trim(),
                     blockedBy: user.id,
                   });
-                  alert("บล็อคลูกค้าเรียบร้อย");
+                  toast.success("บล็อคลูกค้าเรียบร้อย");
                   window.location.reload();
                 } catch (e) {
                   console.error("block customer failed", e);
-                  alert("บล็อคลูกค้าไม่สำเร็จ");
+                  toast.success("บล็อคลูกค้าไม่สำเร็จ");
                 }
               }}
               className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center flex-1 whitespace-nowrap ${(customer as any).isBlocked ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-red-100 text-red-700 hover:bg-red-200"}`}

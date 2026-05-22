@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../services/api';
 import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, X, CheckCircle } from 'lucide-react';
 import { User } from '../types';
+import { useToast } from "../components/Toast";
 
 // MultiSelect Component
 const MultiSelect: React.FC<{
@@ -10,6 +11,7 @@ const MultiSelect: React.FC<{
     onChange: (selected: string[]) => void;
     placeholder?: string;
 }> = ({ options, value, onChange, placeholder = "Select..." }) => {
+    const toast = useToast();
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = React.useRef<HTMLDivElement>(null);
 
@@ -140,6 +142,7 @@ const PAYMENT_STATUSES = [
 ];
 
 const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser }) => {
+    const toast = useToast();
     const user = currentUser;
     const [rules, setRules] = useState<TabRule[]>([]);
     const [loading, setLoading] = useState(true);
@@ -275,10 +278,10 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
 
             await Promise.all(promises);
             await fetchRules();
-            alert('บันทึกข้อมูลเรียบร้อยแล้ว');
+            toast.success('บันทึกข้อมูลเรียบร้อยแล้ว');
         } catch (error) {
             console.error('Failed to save rules:', error);
-            alert('Failed to save changes');
+            toast.warning('Failed to save changes');
         } finally {
             setLoading(false);
             setSaving(false);

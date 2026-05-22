@@ -3,6 +3,7 @@ import { User, Company } from '../types';
 import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
 import Modal from '../components/Modal';
 import { listBankAccounts, createBankAccount, updateBankAccount, deleteBankAccount } from '../services/api';
+import { useToast } from "../components/Toast";
 
 interface BankAccount {
   id: number;
@@ -21,6 +22,7 @@ const BankAccountsManagementPage: React.FC<BankAccountsManagementPageProps> = ({
   currentUser, 
   companies 
 }) => {
+    const toast = useToast();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,7 +54,7 @@ const BankAccountsManagementPage: React.FC<BankAccountsManagementPageProps> = ({
       );
     } catch (error) {
       console.error('Error fetching bank accounts:', error);
-      alert('เกิดข้อผิดพลาดในการดึงข้อมูลบัญชีธนาคาร');
+      toast.warning('เกิดข้อผิดพลาดในการดึงข้อมูลบัญชีธนาคาร');
     } finally {
       setLoading(false);
     }
@@ -89,11 +91,11 @@ const BankAccountsManagementPage: React.FC<BankAccountsManagementPageProps> = ({
       
       await fetchBankAccounts(selectedCompanyId || undefined);
       setIsAddModalOpen(false);
-      alert('เพิ่มบัญชีธนาคารสำเร็จ');
+      toast.success('เพิ่มบัญชีธนาคารสำเร็จ');
     } catch (error: any) {
       console.error('Failed to create bank account:', error);
       const errorMsg = error?.data?.message || error?.message || 'เกิดข้อผิดพลาดในการเพิ่มบัญชีธนาคาร';
-      alert(errorMsg);
+      toast.warning(errorMsg);
     }
   };
 
@@ -108,11 +110,11 @@ const BankAccountsManagementPage: React.FC<BankAccountsManagementPageProps> = ({
       await fetchBankAccounts(selectedCompanyId || undefined);
       setIsEditModalOpen(false);
       setEditingBankAccount(null);
-      alert('แก้ไขบัญชีธนาคารสำเร็จ');
+      toast.success('แก้ไขบัญชีธนาคารสำเร็จ');
     } catch (error: any) {
       console.error('Failed to update bank account:', error);
       const errorMsg = error?.data?.message || error?.message || 'เกิดข้อผิดพลาดในการแก้ไขบัญชีธนาคาร';
-      alert(errorMsg);
+      toast.warning(errorMsg);
     }
   };
 
@@ -121,11 +123,11 @@ const BankAccountsManagementPage: React.FC<BankAccountsManagementPageProps> = ({
       try {
         await deleteBankAccount(id);
         await fetchBankAccounts(selectedCompanyId || undefined);
-        alert('ลบบัญชีธนาคารสำเร็จ');
+        toast.success('ลบบัญชีธนาคารสำเร็จ');
       } catch (error: any) {
         console.error('Failed to delete bank account:', error);
         const errorMsg = error?.data?.message || error?.message || 'เกิดข้อผิดพลาดในการลบบัญชีธนาคาร';
-        alert(errorMsg);
+        toast.warning(errorMsg);
       }
     }
   };
@@ -138,7 +140,7 @@ const BankAccountsManagementPage: React.FC<BankAccountsManagementPageProps> = ({
       await fetchBankAccounts(selectedCompanyId || undefined);
     } catch (error: any) {
       console.error('Failed to toggle bank account active status:', error);
-      alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะบัญชีธนาคาร');
+      toast.warning('เกิดข้อผิดพลาดในการเปลี่ยนสถานะบัญชีธนาคาร');
     }
   };
 
@@ -315,6 +317,7 @@ const AddBankAccountModal: React.FC<AddBankAccountModalProps> = ({
   onSave,
   onCancel,
 }) => {
+    const toast = useToast();
   const [bank, setBank] = useState('');
   const [bankNumber, setBankNumber] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -323,7 +326,7 @@ const AddBankAccountModal: React.FC<AddBankAccountModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!bank.trim() || !bankNumber.trim() || !companyId) {
-      alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+      toast.warning('กรุณากรอกข้อมูลให้ครบถ้วน');
       return;
     }
     onSave({
@@ -420,6 +423,7 @@ const EditBankAccountModal: React.FC<EditBankAccountModalProps> = ({
   onSave,
   onCancel,
 }) => {
+    const toast = useToast();
   const [bank, setBank] = useState(bankAccount.bank);
   const [bankNumber, setBankNumber] = useState(bankAccount.bankNumber);
   const [isActive, setIsActive] = useState(bankAccount.isActive);
@@ -427,7 +431,7 @@ const EditBankAccountModal: React.FC<EditBankAccountModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!bank.trim() || !bankNumber.trim()) {
-      alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+      toast.warning('กรุณากรอกข้อมูลให้ครบถ้วน');
       return;
     }
     onSave({

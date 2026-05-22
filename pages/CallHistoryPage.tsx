@@ -18,6 +18,7 @@ import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import ExportTypeModal from "@/components/ExportTypeModal";
 import { downloadDataFile } from "@/utils/exportUtils";
+import { useToast } from "../components/Toast";
 
 // Helper function to get the correct base URL for OneCall API
 const getOneCallBaseUrl = (): string => {
@@ -460,6 +461,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
   customers,
   users,
 }) => {
+    const toast = useToast();
   const [qCustomer, setQCustomer] = useState("");
   const [qCustomerPhone, setQCustomerPhone] = useState("");
   const [qAgentPhone, setQAgentPhone] = useState("");
@@ -618,13 +620,13 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         if (authResult.success && authResult.token) {
           setAccessToken(authResult.token);
         } else {
-          alert("ไม่สามารถยืนยันตัวตนได้: " + authResult.error);
+          toast.warning("ไม่สามารถยืนยันตัวตนได้: " + authResult.error);
           setIsAudioLoading(false);
           setCurrentPlayingId(null);
           return;
         }
       } catch (error) {
-        alert("เกิดข้อผิดพลาดในการยืนยันตัวตน: " + error.message);
+        toast.warning("เกิดข้อผิดพลาดในการยืนยันตัวตน: " + error.message);
         setIsAudioLoading(false);
         setCurrentPlayingId(null);
         return;
@@ -708,7 +710,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       });
 
       audio.addEventListener("error", () => {
-        alert("ไม่สามารถเล่นไฟล์เสียงได้");
+        toast.warning("ไม่สามารถเล่นไฟล์เสียงได้");
         setIsAudioLoading(false);
         setCurrentPlayingId(null);
       });
@@ -727,12 +729,12 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
           }, 1000);
         })
         .catch((error) => {
-          alert("ไม่สามารถเล่นเสียงได้: " + error.message);
+          toast.warning("ไม่สามารถเล่นเสียงได้: " + error.message);
           setIsAudioLoading(false);
           setCurrentPlayingId(null);
         });
     } catch (error) {
-      alert("ไม่สามารถดึงข้อมูลเสียงได้: " + error.message);
+      toast.warning("ไม่สามารถดึงข้อมูลเสียงได้: " + error.message);
       setIsAudioLoading(false);
       setCurrentPlayingId(null);
     }
@@ -773,7 +775,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
           }, 1000);
         })
         .catch((error) => {
-          alert("ไม่สามารถเล่นเสียงต่อได้: " + error.message);
+          toast.warning("ไม่สามารถเล่นเสียงต่อได้: " + error.message);
         });
     }
   };
@@ -995,7 +997,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       const exportParams = await exportAllRecordingsData();
 
       if (!exportParams.params || exportParams.params.length === 0) {
-        alert("ไม่สามารถสร้างพารามิเตอร์สำหรับส่งออกได้");
+        toast.warning("ไม่สามารถสร้างพารามิเตอร์สำหรับส่งออกได้");
         return;
       }
 
@@ -1021,7 +1023,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       }
 
       if (allObjects.length === 0) {
-        alert("ไม่มีข้อมูลสำหรับส่งออก");
+        toast.warning("ไม่มีข้อมูลสำหรับส่งออก");
         return;
       }
 
@@ -1071,7 +1073,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       setIsExportTypeModalOpen(false);
     } catch (error) {
       console.error("Error exporting CSV:", error);
-      alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล: " + error.message);
+      toast.warning("เกิดข้อผิดพลาดในการส่งออกข้อมูล: " + error.message);
     } finally {
       setIsDataLoading(false);
       setExportProgress(null);
@@ -1111,11 +1113,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         if (authResult.success && authResult.token) {
           setAccessToken(authResult.token);
         } else {
-          alert("ไม่สามารถยืนยันตัวตนได้: " + authResult.error);
+          toast.warning("ไม่สามารถยืนยันตัวตนได้: " + authResult.error);
           return;
         }
       } catch (error) {
-        alert("เกิดข้อผิดพลาดในการยืนยันตัวตน: " + error.message);
+        toast.warning("เกิดข้อผิดพลาดในการยืนยันตัวตน: " + error.message);
         return;
       }
     }
@@ -1176,7 +1178,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       // Clean up the object URL
       URL.revokeObjectURL(audioUrl);
     } catch (error) {
-      alert("ไม่สามารถดาวน์โหลดไฟล์เสียงได้: " + error.message);
+      toast.warning("ไม่สามารถดาวน์โหลดไฟล์เสียงได้: " + error.message);
     }
   };
 
@@ -3668,7 +3670,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
               });
               // You can add additional logic here after successful login
               // For example, update access token, refresh data, etc.
-              alert("เข้าสู่ระบบ Onecall สำเร็จ");
+              toast.success("เข้าสู่ระบบ Onecall สำเร็จ");
             }}
           />
         </div>

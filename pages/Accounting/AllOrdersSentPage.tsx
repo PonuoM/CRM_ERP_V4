@@ -36,10 +36,10 @@ import OrderDetailModal from '../../components/OrderDetailModal';
 import TrackingModal from '../../components/TrackingModal';
 import ExportTypeModal from '../../components/ExportTypeModal';
 import { downloadDataFile } from '../../utils/exportUtils';
-
-
+import { useToast } from "../../components/Toast";
 
 const AllOrdersSentPage: React.FC = () => {
+    const toast = useToast();
     const [orders, setOrders] = useState<SentOrder[]>([]);
     const [loading, setLoading] = useState(false);
     const [banks, setBanks] = useState<BankAccount[]>([]);
@@ -201,7 +201,7 @@ const AllOrdersSentPage: React.FC = () => {
 
     const executeExport = (type: 'csv' | 'xlsx') => {
         if (orders.length === 0) {
-            alert("ไม่พบข้อมูลสำหรับส่งออก");
+            toast.warning("ไม่พบข้อมูลสำหรับส่งออก");
             return;
         }
         setIsExportModalOpen(false);

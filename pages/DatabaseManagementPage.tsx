@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Database, Table, Download, Play, RefreshCw, Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle, Loader2, Copy, FileDown, Upload } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
+import { useToast } from "../components/Toast";
 
 interface TableInfo {
     name: string;
@@ -40,6 +41,7 @@ interface ImportError {
 type TabType = 'tables' | 'export_schema' | 'export_data' | 'import_sql' | 'run_sql';
 
 const DatabaseManagementPage: React.FC = () => {
+    const toast = useToast();
     const [activeTab, setActiveTab] = useState<TabType>('tables');
     const [tables, setTables] = useState<TableInfo[]>([]);
     const [loading, setLoading] = useState(false);
@@ -116,7 +118,7 @@ const DatabaseManagementPage: React.FC = () => {
                 setExpandedTable(tableName);
             }
         } catch (err: any) {
-            alert('Error: ' + err.message);
+            toast.warning('Error: ' + err.message);
         }
     };
 
@@ -130,10 +132,10 @@ const DatabaseManagementPage: React.FC = () => {
             if (res.success) {
                 setExportResult(res.sql);
             } else {
-                alert(res.error || 'Export failed');
+                toast.warning(res.error || 'Export failed');
             }
         } catch (err: any) {
-            alert('Error: ' + err.message);
+            toast.warning('Error: ' + err.message);
         } finally {
             setExportLoading(false);
         }
@@ -142,7 +144,7 @@ const DatabaseManagementPage: React.FC = () => {
     // ─── Export Data (ZIP download) ───
     const handleExportData = async () => {
         if (selectedTables.size === 0) {
-            alert('กรุณาเลือกตารางอย่างน้อย 1 ตาราง');
+            toast.warning('กรุณาเลือกตารางอย่างน้อย 1 ตาราง');
             return;
         }
         setExportLoading(true);
@@ -163,7 +165,7 @@ const DatabaseManagementPage: React.FC = () => {
                 const text = await res.text();
                 let msg = `HTTP ${res.status}`;
                 try { msg = JSON.parse(text).error || msg; } catch { }
-                alert('Export failed: ' + msg);
+                toast.warning('Export failed: ' + msg);
                 return;
             }
 
@@ -175,7 +177,7 @@ const DatabaseManagementPage: React.FC = () => {
             a.click();
             URL.revokeObjectURL(downloadUrl);
         } catch (err: any) {
-            alert('Error: ' + err.message);
+            toast.warning('Error: ' + err.message);
         } finally {
             setExportLoading(false);
         }
@@ -184,12 +186,12 @@ const DatabaseManagementPage: React.FC = () => {
     // ─── Import SQL (ZIP/SQL file upload) ───
     const handleImportSql = async () => {
         if (!importFile) {
-            alert('กรุณาเลือกไฟล์ .sql หรือ .zip');
+            toast.warning('กรุณาเลือกไฟล์ .sql หรือ .zip');
             return;
         }
         const ext = importFile.name.split('.').pop()?.toLowerCase();
         if (ext !== 'sql' && ext !== 'zip') {
-            alert('รองรับเฉพาะไฟล์ .sql หรือ .zip เท่านั้น');
+            toast.warning('รองรับเฉพาะไฟล์ .sql หรือ .zip เท่านั้น');
             return;
         }
         if (!window.confirm(`⚠️ ยืนยัน Import ไฟล์ "${importFile.name}" (${(importFile.size / 1024 / 1024).toFixed(1)} MB)?\n\nSQL จะถูก execute ทีละ statement (autocommit)\nFK checks จะถูกปิดระหว่าง import`)) {
@@ -239,7 +241,7 @@ const DatabaseManagementPage: React.FC = () => {
     // ─── Run SQL ───
     const handleRunSql = async () => {
         if (!sqlInput.trim()) {
-            alert('กรุณาใส่ SQL');
+            toast.warning('กรุณาใส่ SQL');
             return;
         }
         if (!window.confirm('⚠️ ยืนยันรัน SQL?\n\nSQL จะถูก execute ใน transaction (rollback ถ้า error)')) return;

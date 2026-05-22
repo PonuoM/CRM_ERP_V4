@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "../../services/api";
 import { Plus, Search, Edit, Trash, Upload, Download } from "lucide-react";
+import { useToast } from "../../components/Toast";
 
 interface SalesDataProps {
   companyId: number;
@@ -32,6 +33,7 @@ export default function MarketplaceSalesData({
   handleCsvSelect, handleCsvImport, handleJstSelect, handleJstImport,
   importBatches, viewBatchId, setViewBatchId, batchOrders, batchSummary, handleDeleteBatch, downloadTemplate
 }: SalesDataProps) {
+    const toast = useToast();
 
   const [activeSubTab, setActiveSubTab] = useState<"list" | "import">("list");
   
@@ -152,10 +154,10 @@ export default function MarketplaceSalesData({
         setShowModal(false);
         loadSales();
       } else {
-        alert(res.error || "Error");
+        toast.warning(res.error || "Error");
       }
     } catch (e: any) {
-      alert(e.message);
+      toast.warning(e.message);
     }
   };
 
@@ -169,10 +171,10 @@ export default function MarketplaceSalesData({
       if (res.success) {
         loadSales();
       } else {
-        alert(res.error || "Error");
+        toast.warning(res.error || "Error");
       }
     } catch (e: any) {
-      alert(e.message);
+      toast.warning(e.message);
     }
   };
 

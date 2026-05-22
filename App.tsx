@@ -3731,8 +3731,7 @@ const App: React.FC = () => {
       }
     } catch (e: any) {
       console.error("Create order failed", e);
-      alert(`สร้างออเดอร์ไม่สำเร็จ: ${e.message || "Unknown error"}`);
-      return undefined;
+      throw e;
     }
   };
 

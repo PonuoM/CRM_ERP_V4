@@ -3,6 +3,7 @@ import { Warehouse, Company, User } from '../types';
 import { Plus, Edit, Trash2, MapPin, Phone, Mail, User as UserIcon, Building2 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { createWarehouse, updateWarehouse, deleteWarehouse } from '../services/api';
+import { useToast } from "../components/Toast";
 
 interface WarehouseManagementPageProps {
   warehouses: Warehouse[];
@@ -17,6 +18,7 @@ const WarehouseManagementPage: React.FC<WarehouseManagementPageProps> = ({
   currentUser, 
   onWarehouseChange 
 }) => {
+    const toast = useToast();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null);
@@ -53,10 +55,10 @@ const WarehouseManagementPage: React.FC<WarehouseManagementPageProps> = ({
       };
       onWarehouseChange([...warehouses, warehouse]);
       setIsAddModalOpen(false);
-      alert('เพิ่มคลังสินค้าสำเร็จ');
+      toast.success('เพิ่มคลังสินค้าสำเร็จ');
     } catch (error) {
       console.error('Failed to create warehouse:', error);
-      alert('เกิดข้อผิดพลาดในการเพิ่มคลังสินค้า');
+      toast.warning('เกิดข้อผิดพลาดในการเพิ่มคลังสินค้า');
     }
   };
 
@@ -81,10 +83,10 @@ const WarehouseManagementPage: React.FC<WarehouseManagementPageProps> = ({
       onWarehouseChange(warehouses.map(w => w.id === updatedWarehouse.id ? updatedWarehouse : w));
       setIsEditModalOpen(false);
       setEditingWarehouse(null);
-      alert('แก้ไขคลังสินค้าสำเร็จ');
+      toast.success('แก้ไขคลังสินค้าสำเร็จ');
     } catch (error) {
       console.error('Failed to update warehouse:', error);
-      alert('เกิดข้อผิดพลาดในการแก้ไขคลังสินค้า');
+      toast.warning('เกิดข้อผิดพลาดในการแก้ไขคลังสินค้า');
     }
   };
 
@@ -93,10 +95,10 @@ const WarehouseManagementPage: React.FC<WarehouseManagementPageProps> = ({
       try {
         await deleteWarehouse(id);
         onWarehouseChange(warehouses.filter(w => w.id !== id));
-        alert('ลบคลังสินค้าสำเร็จ');
+        toast.success('ลบคลังสินค้าสำเร็จ');
       } catch (error) {
         console.error('Failed to delete warehouse:', error);
-        alert('เกิดข้อผิดพลาดในการลบคลังสินค้า อาจมีข้อมูลที่เกี่ยวข้องอยู่');
+        toast.warning('เกิดข้อผิดพลาดในการลบคลังสินค้า อาจมีข้อมูลที่เกี่ยวข้องอยู่');
       }
     }
   };
@@ -272,6 +274,7 @@ const AddWarehouseModal: React.FC<{
   onClose: () => void;
   onSave: (warehouse: Omit<Warehouse, 'id'>) => void;
 }> = ({ companies, onClose, onSave }) => {
+    const toast = useToast();
   const [formData, setFormData] = useState({
     name: '',
     companyId: companies[0]?.id || 1,
@@ -317,7 +320,7 @@ const AddWarehouseModal: React.FC<{
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('กรุณากรอกชื่อคลังสินค้า');
+      toast.warning('กรุณากรอกชื่อคลังสินค้า');
       return;
     }
     onSave(formData);
@@ -539,6 +542,7 @@ const EditWarehouseModal: React.FC<{
   onClose: () => void;
   onSave: (warehouse: Warehouse) => void;
 }> = ({ warehouse, companies, onClose, onSave }) => {
+    const toast = useToast();
   const [formData, setFormData] = useState({
     name: warehouse.name,
     companyId: warehouse.companyId,
@@ -584,7 +588,7 @@ const EditWarehouseModal: React.FC<{
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('กรุณากรอกชื่อคลังสินค้า');
+      toast.warning('กรุณากรอกชื่อคลังสินค้า');
       return;
     }
     onSave({ ...warehouse, ...formData });

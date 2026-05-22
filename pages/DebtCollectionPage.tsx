@@ -7,6 +7,7 @@ import { getDebtCollectionOrders, getDebtCollectionSummary, closeDebtCase, DebtC
 import DateRangePicker from '../components/DateRangePicker';
 import ExportTypeModal from '../components/ExportTypeModal';
 import { downloadDataFile } from '../utils/exportUtils';
+import { useToast } from "../components/Toast";
 
 interface DebtCollectionPageProps {
   user: User;
@@ -18,6 +19,7 @@ interface DebtCollectionPageProps {
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers, openModal }) => {
+    const toast = useToast();
   // State
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,14 +173,14 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
       });
 
       if (response.ok) {
-        alert('จบเคสเรียบร้อยแล้ว');
+        toast.success('จบเคสเรียบร้อยแล้ว');
         fetchOrders();
         fetchSummary(); // Refresh stats too
       } else {
-        alert(response.error || 'เกิดข้อผิดพลาดในการจบเคส');
+        toast.warning(response.error || 'เกิดข้อผิดพลาดในการจบเคส');
       }
     } catch (error: any) {
-      alert(error.message || 'เกิดข้อผิดพลาดในการจบเคส');
+      toast.warning(error.message || 'เกิดข้อผิดพลาดในการจบเคส');
     } finally {
       setClosingCase(false);
     }
@@ -210,14 +212,14 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
       });
 
       if (response.ok) {
-        alert('ยกเลิกการจบเคสเรียบร้อยแล้ว');
+        toast.success('ยกเลิกการจบเคสเรียบร้อยแล้ว');
         fetchOrders();
         fetchSummary();
       } else {
-        alert(response.error || 'เกิดข้อผิดพลาดในการยกเลิกจบเคส');
+        toast.warning(response.error || 'เกิดข้อผิดพลาดในการยกเลิกจบเคส');
       }
     } catch (error: any) {
-      alert(error.message || 'เกิดข้อผิดพลาดในการยกเลิกจบเคส');
+      toast.warning(error.message || 'เกิดข้อผิดพลาดในการยกเลิกจบเคส');
     } finally {
       setClosingCase(false);
     }
@@ -264,11 +266,11 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   // CSV Export Handler
   const handlePrepareExport = () => {
     if (!exportStartDate || !exportEndDate) {
-      alert('กรุณาเลือกวันที่เริ่มต้นและสิ้นสุด');
+      toast.warning('กรุณาเลือกวันที่เริ่มต้นและสิ้นสุด');
       return;
     }
     if (!exportStatus) {
-      alert('กรุณาเลือกสถานะเคส');
+      toast.warning('กรุณาเลือกสถานะเคส');
       return;
     }
     setShowExportModal(false);
@@ -315,7 +317,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
 
           downloadDataFile([headers, ...rows], `debt_tracking_history_${exportStartDate}_${exportEndDate}`, fileType);
         } else {
-          alert('ไม่พบข้อมูล หรือเกิดข้อผิดพลาด');
+          toast.warning('ไม่พบข้อมูล หรือเกิดข้อผิดพลาด');
         }
       } else {
         // ===== Export: ข้อมูลออเดอร์ =====
@@ -360,13 +362,13 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
 
           downloadDataFile([headers, ...rows], `debt_collection_${activeTab}_${exportStartDate}_${exportEndDate}`, fileType);
         } else {
-          alert('ไม่พบข้อมูล หรือเกิดข้อผิดพลาด');
+          toast.warning('ไม่พบข้อมูล หรือเกิดข้อผิดพลาด');
         }
       }
       setShowFormatModal(false);
     } catch (err) {
       console.error('Export failed:', err);
-      alert('เกิดข้อผิดพลาดในการดาวน์โหลด');
+      toast.warning('เกิดข้อผิดพลาดในการดาวน์โหลด');
     } finally {
       setExporting(false);
     }

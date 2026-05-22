@@ -8,6 +8,7 @@ import { downloadDataFile } from '../../utils/exportUtils';
 import OrderDetailModal from '../../components/OrderDetailModal';
 import type { StatementContext } from '../../components/OrderDetailModal';
 import SlipOrderSearchModal from '../../components/SlipOrderSearchModal';
+import { useToast } from "../../components/Toast";
 
 interface AuditLog {
     id: number;
@@ -47,6 +48,7 @@ interface BankAccountAuditPageProps {
 }
 
 const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser }) => {
+    const toast = useToast();
     const [banks, setBanks] = useState<BankAccount[]>([]);
     const [selectedBankId, setSelectedBankId] = useState<string>('');
     // Default to the first day of last month so seeded sample data shows up immediately
@@ -249,10 +251,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     };
                 }));
             } else {
-                alert('เพิ่มออเดอร์ไม่สำเร็จ: ' + (res.error || 'Server error'));
+                toast.success('เพิ่มออเดอร์ไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
         } catch (e: any) {
-            alert('Error: ' + e.message);
+            toast.warning('Error: ' + e.message);
         }
     };
 
@@ -317,10 +319,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     note: note || l.note,
                 } : l));
             } else {
-                alert('บันทึกไม่สำเร็จ: ' + (res.error || 'Server error'));
+                toast.success('บันทึกไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
         } catch (e: any) {
-            alert('Error: ' + e.message);
+            toast.warning('Error: ' + e.message);
         }
     };
 
@@ -374,10 +376,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     suggested_payment_method: undefined,
                 } : l));
             } else {
-                alert('บันทึกไม่สำเร็จ: ' + (res.error || 'Server error'));
+                toast.success('บันทึกไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
         } catch (e: any) {
-            alert('Error: ' + e.message);
+            toast.warning('Error: ' + e.message);
         }
     };
 
@@ -461,10 +463,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                 // Background refresh to get new auto-match suggestions
                 fetchAuditLogs(true);
             } else {
-                alert('ยกเลิกไม่สำเร็จ: ' + (res.error || 'Server error'));
+                toast.success('ยกเลิกไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
         } catch (e: any) {
-            alert('Error: ' + e.message);
+            toast.warning('Error: ' + e.message);
         }
     };
 
@@ -499,10 +501,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             if (res.ok) {
                 fetchAuditLogs(true);
             } else {
-                alert('ถอยยืนยันไม่สำเร็จ: ' + (res.error || 'Server error'));
+                toast.success('ถอยยืนยันไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
         } catch (e: any) {
-            alert('Error: ' + e.message);
+            toast.warning('Error: ' + e.message);
         }
     };
 
@@ -550,10 +552,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                 } : l));
                 fetchAuditLogs(true);
             } else {
-                alert('ยกเลิกไม่สำเร็จ: ' + (res.error || 'Server error'));
+                toast.success('ยกเลิกไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
         } catch (e: any) {
-            alert('Error: ' + e.message);
+            toast.warning('Error: ' + e.message);
         }
     };
 
@@ -591,7 +593,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             // Remove from selection
             setSelectedIds(prev => prev.filter(id => id !== log.id));
         } catch (e: any) {
-            alert('ยืนยันไม่สำเร็จ: ' + (e?.message || 'Server error'));
+            toast.success('ยืนยันไม่สำเร็จ: ' + (e?.message || 'Server error'));
         }
     };
 
@@ -684,7 +686,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             setSelectedIds([]);
         } catch (error: any) {
             console.error(error);
-            alert("เกิดข้อผิดพลาดในการบันทึก: " + (error?.message || "Unknown error"));
+            toast.warning("เกิดข้อผิดพลาดในการบันทึก: " + (error?.message || "Unknown error"));
         } finally {
             setLoading(false);
         }
@@ -701,7 +703,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     const executeExport = (type: 'csv' | 'xlsx') => {
         if (logs.length === 0) {
-            alert("ไม่พบข้อมูลสำหรับส่งออก");
+            toast.warning("ไม่พบข้อมูลสำหรับส่งออก");
             return;
         }
 

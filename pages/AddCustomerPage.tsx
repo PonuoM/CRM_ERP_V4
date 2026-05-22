@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Customer, User, UserRole, CustomerLifecycleStatus, Address, CustomerBehavioralStatus, CustomerGrade } from '../types';
 import { User as UserIcon, MapPin, Briefcase, PlusCircle, Facebook, MessageSquare, ShoppingCart, Save } from 'lucide-react';
+import { useToast } from "../components/Toast";
 
 interface AddCustomerPageProps {
   onSave: (customerData: Omit<Customer, 'id' | 'companyId' | 'totalPurchases' | 'totalCalls' | 'tags'> & { ownershipDays?: number }, andCreateOrder: boolean) => void;
@@ -23,6 +24,7 @@ const FormSection: React.FC<{ icon: React.ElementType, title: string, children: 
 
 
 const AddCustomerPage: React.FC<AddCustomerPageProps> = ({ onSave, onCancel, companyUsers }) => {
+    const toast = useToast();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
@@ -62,18 +64,18 @@ const AddCustomerPage: React.FC<AddCustomerPageProps> = ({ onSave, onCancel, com
 
   const handleSave = (andCreateOrder: boolean) => {
     if (!firstName.trim() || !phone.trim()) {
-      alert('กรุณากรอกชื่อและเบอร์โทรศัพท์');
+      toast.warning('กรุณากรอกชื่อและเบอร์โทรศัพท์');
       return;
     }
     if (phoneError) {
-      alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${phoneError}`);
+      toast.warning(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${phoneError}`);
       return;
     }
 
 
     const finalAssignedTo = assignmentType === 'agent' ? assignedTo : null;
     if (assignmentType === 'agent' && !finalAssignedTo) {
-        alert('กรุณาเลือกพนักงานที่จะมอบหมาย');
+        toast.warning('กรุณาเลือกพนักงานที่จะมอบหมาย');
         return;
     }
 

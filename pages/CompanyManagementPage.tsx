@@ -3,6 +3,7 @@ import { Company, User } from '../types';
 import { Plus, Edit, Trash2, Building2, MapPin, Phone, Mail, FileText } from 'lucide-react';
 import Modal from '../components/Modal';
 import { createCompany, updateCompany, deleteCompany } from '../services/api';
+import { useToast } from "../components/Toast";
 
 interface CompanyManagementPageProps {
   companies: Company[];
@@ -15,6 +16,7 @@ const CompanyManagementPage: React.FC<CompanyManagementPageProps> = ({
   currentUser, 
   onCompanyChange 
 }) => {
+    const toast = useToast();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
@@ -42,10 +44,10 @@ const CompanyManagementPage: React.FC<CompanyManagementPageProps> = ({
       };
       onCompanyChange([...companies, company]);
       setIsAddModalOpen(false);
-      alert('เพิ่มบริษัทสำเร็จ');
+      toast.success('เพิ่มบริษัทสำเร็จ');
     } catch (error) {
       console.error('Failed to create company:', error);
-      alert('เกิดข้อผิดพลาดในการเพิ่มบริษัท');
+      toast.warning('เกิดข้อผิดพลาดในการเพิ่มบริษัท');
     }
   };
 
@@ -62,10 +64,10 @@ const CompanyManagementPage: React.FC<CompanyManagementPageProps> = ({
       onCompanyChange(companies.map(c => c.id === updatedCompany.id ? updatedCompany : c));
       setIsEditModalOpen(false);
       setEditingCompany(null);
-      alert('แก้ไขบริษัทสำเร็จ');
+      toast.success('แก้ไขบริษัทสำเร็จ');
     } catch (error) {
       console.error('Failed to update company:', error);
-      alert('เกิดข้อผิดพลาดในการแก้ไขบริษัท');
+      toast.warning('เกิดข้อผิดพลาดในการแก้ไขบริษัท');
     }
   };
 
@@ -74,10 +76,10 @@ const CompanyManagementPage: React.FC<CompanyManagementPageProps> = ({
       try {
         await deleteCompany(id);
         onCompanyChange(companies.filter(c => c.id !== id));
-        alert('ลบบริษัทสำเร็จ');
+        toast.success('ลบบริษัทสำเร็จ');
       } catch (error) {
         console.error('Failed to delete company:', error);
-        alert('เกิดข้อผิดพลาดในการลบบริษัท อาจมีข้อมูลที่เกี่ยวข้องอยู่');
+        toast.warning('เกิดข้อผิดพลาดในการลบบริษัท อาจมีข้อมูลที่เกี่ยวข้องอยู่');
       }
     }
   };
@@ -223,6 +225,7 @@ const AddCompanyModal: React.FC<{
   onClose: () => void;
   onSave: (company: Omit<Company, 'id'>) => void;
 }> = ({ onClose, onSave }) => {
+    const toast = useToast();
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -234,7 +237,7 @@ const AddCompanyModal: React.FC<{
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('กรุณากรอกชื่อบริษัท');
+      toast.warning('กรุณากรอกชื่อบริษัท');
       return;
     }
     onSave(formData);
@@ -318,6 +321,7 @@ const EditCompanyModal: React.FC<{
   onClose: () => void;
   onSave: (company: Company) => void;
 }> = ({ company, onClose, onSave }) => {
+    const toast = useToast();
   const [formData, setFormData] = useState({
     name: company.name,
     address: company.address || '',
@@ -329,7 +333,7 @@ const EditCompanyModal: React.FC<{
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('กรุณากรอกชื่อบริษัท');
+      toast.warning('กรุณากรอกชื่อบริษัท');
       return;
     }
     onSave({ ...company, ...formData });

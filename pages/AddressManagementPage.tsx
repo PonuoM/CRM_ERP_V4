@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Pencil, Trash2, Search, Loader2, MapPin, ChevronDown, Globe, Map, Building2, Home } from 'lucide-react';
 import APP_BASE_PATH from '../appBasePath';
+import { useToast } from "../components/Toast";
 
 // ─── Types ────────────────────────────────────────────
 interface Geography { id: number; name: string; child_count?: number; }
@@ -38,6 +39,7 @@ function ConfirmDialog({ open, title, message, onConfirm, onCancel }: {
     open: boolean; title: string; message: string;
     onConfirm: () => void; onCancel: () => void;
 }) {
+    const toast = useToast();
     if (!open) return null;
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -55,6 +57,7 @@ function ConfirmDialog({ open, title, message, onConfirm, onCancel }: {
 
 // ─── Main Page ────────────────────────────────────────
 export default function AddressManagementPage() {
+    const toast = useToast();
     const [activeTab, setActiveTab] = useState<TabKey>('geographies');
     const tabs: { key: TabKey; label: string; icon: React.ElementType }[] = [
         { key: 'geographies', label: 'ภาค', icon: Globe },
@@ -103,6 +106,7 @@ export default function AddressManagementPage() {
 
 // ─── Geographies Tab ──────────────────────────────────
 function GeographiesTab() {
+    const toast = useToast();
     const [items, setItems] = useState<Geography[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -133,7 +137,7 @@ function GeographiesTab() {
             }
             setShowAdd(false); setEditItem(null); setFormName('');
             await load();
-        } catch (e: any) { alert(e.message); }
+        } catch (e: any) { toast.warning(e.message); }
         setSaving(false);
     };
 
@@ -143,7 +147,7 @@ function GeographiesTab() {
             await apiPost('delete_geography', { id: deleteId });
             setDeleteId(null);
             await load();
-        } catch (e: any) { alert(e.message); }
+        } catch (e: any) { toast.warning(e.message); }
     };
 
     return (
@@ -222,6 +226,7 @@ function GeographiesTab() {
 
 // ─── Provinces Tab ────────────────────────────────────
 function ProvincesTab() {
+    const toast = useToast();
     const [geographies, setGeographies] = useState<Geography[]>([]);
     const [items, setItems] = useState<Province[]>([]);
     const [loading, setLoading] = useState(true);
@@ -274,7 +279,7 @@ function ProvincesTab() {
             }
             setShowAdd(false); setEditItem(null); resetForm();
             await loadItems();
-        } catch (e: any) { alert(e.message); }
+        } catch (e: any) { toast.warning(e.message); }
         setSaving(false);
     };
 
@@ -282,7 +287,7 @@ function ProvincesTab() {
 
     const handleDelete = async () => {
         if (deleteId === null) return;
-        try { await apiPost('delete_province', { id: deleteId }); setDeleteId(null); await loadItems(); } catch (e: any) { alert(e.message); }
+        try { await apiPost('delete_province', { id: deleteId }); setDeleteId(null); await loadItems(); } catch (e: any) { toast.warning(e.message); }
     };
 
     return (
@@ -377,6 +382,7 @@ function ProvincesTab() {
 
 // ─── Districts Tab ────────────────────────────────────
 function DistrictsTab() {
+    const toast = useToast();
     const [provinces, setProvinces] = useState<Province[]>([]);
     const [items, setItems] = useState<District[]>([]);
     const [loading, setLoading] = useState(false);
@@ -426,13 +432,13 @@ function DistrictsTab() {
             }
             setShowAdd(false); setEditItem(null); resetForm();
             await loadItems();
-        } catch (e: any) { alert(e.message); }
+        } catch (e: any) { toast.warning(e.message); }
         setSaving(false);
     };
 
     const handleDelete = async () => {
         if (deleteId === null) return;
-        try { await apiPost('delete_district', { id: deleteId }); setDeleteId(null); await loadItems(); } catch (e: any) { alert(e.message); }
+        try { await apiPost('delete_district', { id: deleteId }); setDeleteId(null); await loadItems(); } catch (e: any) { toast.warning(e.message); }
     };
 
     return (
@@ -535,6 +541,7 @@ function DistrictsTab() {
 
 // ─── Sub-Districts Tab ────────────────────────────────
 function SubDistrictsTab() {
+    const toast = useToast();
     const [provinces, setProvinces] = useState<Province[]>([]);
     const [districts, setDistricts] = useState<District[]>([]);
     const [items, setItems] = useState<SubDistrict[]>([]);
@@ -593,13 +600,13 @@ function SubDistrictsTab() {
             }
             setShowAdd(false); setEditItem(null); resetForm();
             await loadItems();
-        } catch (e: any) { alert(e.message); }
+        } catch (e: any) { toast.warning(e.message); }
         setSaving(false);
     };
 
     const handleDelete = async () => {
         if (deleteId === null) return;
-        try { await apiPost('delete_sub_district', { id: deleteId }); setDeleteId(null); await loadItems(); } catch (e: any) { alert(e.message); }
+        try { await apiPost('delete_sub_district', { id: deleteId }); setDeleteId(null); await loadItems(); } catch (e: any) { toast.warning(e.message); }
     };
 
     return (

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Tag, TagType, User } from '@/types';
 import Modal from '@/components/Modal';
 import { createTag, deleteTag, updateTag } from '@/services/api';
+import { useToast } from "../components/Toast";
 
 interface TagsManagementPageProps {
   systemTags?: Tag[];
@@ -11,6 +12,7 @@ interface TagsManagementPageProps {
 }
 
 const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = [], users = [], currentUser, onTagDeleted }) => {
+    const toast = useToast();
   const [sysList, setSysList] = useState<Tag[]>(systemTags);
   const [keyword, setKeyword] = useState('');
   const [viewUser, setViewUser] = useState<User | null>(null);
@@ -46,7 +48,7 @@ const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = []
       setSysList(prev => [...prev, { id, name, type: TagType.System } as Tag]);
       setNewTagName('');
     } catch (e) {
-      alert('Failed to create tag');
+      toast.warning('Failed to create tag');
     }
   };
 
@@ -60,7 +62,7 @@ const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = []
         onTagDeleted(Number(tag.id));
       }
     } catch (e) {
-      alert('Failed to delete tag');
+      toast.warning('Failed to delete tag');
     }
   };
 
@@ -74,7 +76,7 @@ const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = []
       }
       window.location.reload(); // Refresh to show updated tags
     } catch (e) {
-      alert('Failed to delete tag');
+      toast.warning('Failed to delete tag');
     }
   };
 
@@ -172,6 +174,7 @@ export default TagsManagementPage;
 
 // Modals
 const SystemTagModal: React.FC<{ tag: Tag; onClose: () => void }> = ({ tag, onClose }) => {
+    const toast = useToast();
   const [name, setName] = useState(tag.name);
   const [color, setColor] = useState(tag.color || '#9333EA');
   const [loading, setLoading] = useState(false);
@@ -183,7 +186,7 @@ const SystemTagModal: React.FC<{ tag: Tag; onClose: () => void }> = ({ tag, onCl
       onClose();
       window.location.reload(); // Refresh to show updated tags
     } catch (e) {
-      alert('Failed to update tag');
+      toast.warning('Failed to update tag');
       setLoading(false);
     }
   };
@@ -225,6 +228,7 @@ const SystemTagModal: React.FC<{ tag: Tag; onClose: () => void }> = ({ tag, onCl
 };
 
 const UserTagModal: React.FC<{ item: { tag: Tag; owner: string; ownerId: number }; onClose: () => void; onDelete?: (tag: Tag) => void; onTagDeleted?: (tagId: number) => void }> = ({ item, onClose, onDelete, onTagDeleted }) => {
+    const toast = useToast();
   const [name, setName] = useState(item.tag.name);
   const [color, setColor] = useState(item.tag.color || '#9333EA');
   const [loading, setLoading] = useState(false);
@@ -237,7 +241,7 @@ const UserTagModal: React.FC<{ item: { tag: Tag; owner: string; ownerId: number 
       onClose();
       window.location.reload(); // Refresh to show updated tags
     } catch (e) {
-      alert('Failed to update tag');
+      toast.warning('Failed to update tag');
       setLoading(false);
     }
   };
@@ -258,7 +262,7 @@ const UserTagModal: React.FC<{ item: { tag: Tag; owner: string; ownerId: number 
         window.location.reload();
       }
     } catch (e) {
-      alert('Failed to delete tag');
+      toast.warning('Failed to delete tag');
       setDeleting(false);
     }
   };
@@ -310,6 +314,7 @@ const UserTagModal: React.FC<{ item: { tag: Tag; owner: string; ownerId: number 
 };
 
 const UserTagListModal: React.FC<{ user: User; onClose: () => void; onManageTag: (tag: Tag) => void }> = ({ user, onClose, onManageTag }) => {
+    const toast = useToast();
   const tags = user.customTags || [];
   return (
     <Modal title={`Tags ของ ${user.username} (${tags.length}/10)`} onClose={onClose}>

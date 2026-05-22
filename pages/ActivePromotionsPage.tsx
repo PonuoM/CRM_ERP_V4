@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Promotion, Product } from '../types';
 import PromotionModal from '../components/PromotionModal';
 import { apiFetch } from '../services/api';
+import { useToast } from "../components/Toast";
 
 interface ActivePromotionsPageProps {
   promotions: Promotion[];
@@ -16,6 +17,7 @@ const ActivePromotionsPage: React.FC<ActivePromotionsPageProps> = ({
   onRefresh,
   companyId
 }) => {
+    const toast = useToast();
   const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
@@ -74,7 +76,7 @@ const ActivePromotionsPage: React.FC<ActivePromotionsPageProps> = ({
       setOpenDropdown(null); // Close dropdown
     } catch (error) {
       console.error('Error toggling promotion status:', error);
-      alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะโปรโมชั่น: ' + error.message);
+      toast.warning('เกิดข้อผิดพลาดในการเปลี่ยนสถานะโปรโมชั่น: ' + error.message);
     }
   };
 

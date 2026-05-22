@@ -6,6 +6,7 @@ import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
 import ExportTypeModal from '../components/ExportTypeModal';
 import { downloadDataFile } from '../utils/exportUtils';
+import { useToast } from "../components/Toast";
 
 interface StatementRow {
     statement_id: number;
@@ -78,6 +79,7 @@ const OutstandingOrdersModal: React.FC<{
     year: number;
     onUpdate: () => void;
 }> = ({ isOpen, onClose, month, year, onUpdate }) => {
+    const toast = useToast();
     const [orders, setOrders] = useState<OutstandingOrder[]>([]);
     const [loading, setLoading] = useState(false);
     const [processingId, setProcessingId] = useState<string | null>(null);
@@ -110,7 +112,7 @@ const OutstandingOrdersModal: React.FC<{
             setOrders(prev => prev.filter(o => o.id !== orderId));
             onUpdate(); // Trigger dashboard refresh
         } catch (err) {
-            alert("Failed to update status");
+            toast.warning("Failed to update status");
         } finally {
             setProcessingId(null);
         }
@@ -196,6 +198,7 @@ const OutstandingOrdersModal: React.FC<{
 
 // --- Main Page Component ---
 const AccountingReportPage: React.FC = () => {
+    const toast = useToast();
     const [statements, setStatements] = useState<StatementRow[]>([]);
     const [orderStats, setOrderStats] = useState<DashboardStats | null>(null);
     const [loading, setLoading] = useState(false);

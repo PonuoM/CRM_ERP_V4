@@ -8,6 +8,7 @@ import {
 import { apiFetch } from '../../services/api';
 import resolveApiBasePath from '../../utils/apiBasePath';
 import DateRangePicker, { DateRange } from '../../components/DateRangePicker';
+import { useToast } from "../../components/Toast";
 
 interface CommissionStampPageProps {
   currentUser: User;
@@ -106,6 +107,7 @@ const createEmptyLumpSumRow = (id: number): LumpSumRow => ({
 });
 
 export default function CommissionStampPage({ currentUser }: CommissionStampPageProps) {
+    const toast = useToast();
   // === State ===
   const [batchName, setBatchName] = useState('');
   const [batchNote, setBatchNote] = useState('');
@@ -397,7 +399,7 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
   const handleStamp = async () => {
     if (parsedOrders.length === 0) return;
     if (!verified) {
-      alert('กรุณากดตรวจสอบข้อมูลก่อน Stamp');
+      toast.warning('กรุณากดตรวจสอบข้อมูลก่อน Stamp');
       return;
     }
     setIsStamping(true);
@@ -469,10 +471,10 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
         loadBatches();
         loadSummary();
       } else {
-        alert(res.error || 'Failed to update period');
+        toast.warning(res.error || 'Failed to update period');
       }
     } catch (e: any) {
-      alert(e.message);
+      toast.warning(e.message);
     }
     setIsEditingPeriod(false);
   };
@@ -574,10 +576,10 @@ export default function CommissionStampPage({ currentUser }: CommissionStampPage
           loadBatchOrders(lumpSumModalBatch.id);
         }
       } else {
-        alert(res.error || 'Stamp error');
+        toast.warning(res.error || 'Stamp error');
       }
     } catch (e: any) {
-      alert(e.message);
+      toast.warning(e.message);
     }
     setIsLumpSumStamping(false);
   };

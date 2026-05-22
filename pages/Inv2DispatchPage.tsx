@@ -6,6 +6,7 @@ import { Warehouse, Product } from '../types';
 import { inv2ImportDispatch, inv2ListDispatch, inv2DeleteDispatch, inv2GetDispatchBatch, listWarehouses, listProducts } from '../services/api';
 import APP_BASE_PATH from '../appBasePath';
 import UniversalDateRangePicker from '../components/UniversalDateRangePicker';
+import { useToast } from "../components/Toast";
 
 interface Inv2DispatchPageProps {
     companyId: number;
@@ -36,6 +37,7 @@ interface ParsedRow {
 }
 
 const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }) => {
+    const toast = useToast();
     const [batches, setBatches] = useState<any[]>([]);
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
@@ -96,7 +98,7 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
             // Remove BOM if present
             const cleanText = text.replace(/^\uFEFF/, '');
             const lines = cleanText.split(/\r?\n/).filter(l => l.trim());
-            if (lines.length < 2) return alert('ไฟล์ต้องมีอย่างน้อย header + 1 row');
+            if (lines.length < 2) return toast.warning('ไฟล์ต้องมีอย่างน้อย header + 1 row');
 
             // Parse header — handle possible hidden chars
             const headers = lines[0].split(',').map(h => h.trim().replace(/\u200B/g, '').replace(/"/g, ''));
@@ -176,7 +178,7 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
 
     // ── Import ──
     const handleImport = async () => {
-        if (parsedRows.length === 0) return alert('ไม่มีรายการที่จะ import');
+        if (parsedRows.length === 0) return toast.warning('ไม่มีรายการที่จะ import');
         setImporting(true);
         try {
             const result = await inv2ImportDispatch({
@@ -240,13 +242,13 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
         try {
             const res = await inv2DeleteDispatch(batchId);
             if (res?.success) {
-                alert(`ลบสำเร็จ — คืนยอด ${res.reversed_quantity} หน่วย`);
+                toast.success(`ลบสำเร็จ — คืนยอด ${res.reversed_quantity} หน่วย`);
                 if (expandedBatch === batchId) { setExpandedBatch(null); setBatchDetail(null); }
                 loadData();
             } else {
-                alert('ลบไม่สำเร็จ: ' + (res?.error || ''));
+                toast.success('ลบไม่สำเร็จ: ' + (res?.error || ''));
             }
-        } catch (e: any) { alert('เกิดข้อผิดพลาด: ' + (e?.message || '')); }
+        } catch (e: any) { toast.warning('เกิดข้อผิดพลาด: ' + (e?.message || '')); }
         setDeletingBatch(null);
     };
 
@@ -258,7 +260,7 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
     // ── Export CSV/Excel ──
     const handleExport = () => {
         if (!exportDateRange.start || !exportDateRange.end) {
-            alert('กรุณาเลือกช่วงวันที่ให้ครบถ้วน');
+            toast.warning('กรุณาเลือกช่วงวันที่ให้ครบถ้วน');
             return;
         }
         setIsExportTypeModalOpen(true);
@@ -291,10 +293,10 @@ const Inv2DispatchPage: React.FC<Inv2DispatchPageProps> = ({ companyId, userId }
                 
                 downloadDataFile([headers, ...rows], `dispatch_export_${startStr}_to_${endStr}`, type);
             } else {
-                alert('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
+                toast.warning('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
             }
         } catch (e: any) {
-            alert('เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.message);
+            toast.warning('เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.message);
         } finally {
             setIsExporting(false);
             setIsExportTypeModalOpen(false);

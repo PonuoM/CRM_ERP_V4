@@ -11,6 +11,7 @@ import PancakeEnvOffSidebar from '@/components/PancakeEnvOffSidebar';
 import PancakeTokenErrorModal, { TokenError } from '@/components/PancakeTokenErrorModal';
 import resolveApiBasePath from '@/utils/apiBasePath';
 import { listPages } from '@/services/api';
+import { useToast } from "../components/Toast";
 
 interface EngagementStatsPageProps {
   orders?: Order[];
@@ -36,6 +37,7 @@ function fmtDate(d: Date) {
 }
 
 const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], customers = [], calls = [], pages = [], users = [] }) => {
+    const toast = useToast();
   const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [range, setRange] = useState<DateRange>(() => {
     const end = new Date();
@@ -435,7 +437,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // Fetch engagement data from Pages.fm API
   const fetchEngagementData = async () => {
     if (!selectedPageId || !currentUser) {
-      alert('กรุณาเลือกเพจ');
+      toast.warning('กรุณาเลือกเพจ');
       return;
     }
 
@@ -690,9 +692,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
       // Show a user-friendly message for server internal errors
       if (errorMessage.includes('Server internal error')) {
-        alert('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
+        toast.warning('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
       } else {
-        alert('เกิดข้อผิดพลาด: ' + errorMessage);
+        toast.warning('เกิดข้อผิดพลาด: ' + errorMessage);
       }
     } finally {
       setIsSearching(false);
@@ -760,19 +762,19 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   const executeExportAPIData = async (type: 'csv' | 'xlsx') => {
     setIsApiExportTypeModalOpen(false);
     if (!currentUser || selectedPagesForExport.size === 0) {
-      alert('กรุณาเลือกเพจอย่างน้อย 1 เพจ');
+      toast.warning('กรุณาเลือกเพจอย่างน้อย 1 เพจ');
       return;
     }
 
     // Parse date range
     if (!exportDateRange) {
-      alert('กรุณาเลือกช่วงวันที่');
+      toast.warning('กรุณาเลือกช่วงวันที่');
       return;
     }
 
     const [sRaw, eRaw] = exportDateRange.split(' - ');
     if (!sRaw || !eRaw) {
-      alert('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
+      toast.warning('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
       return;
     }
 
@@ -800,7 +802,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
 
       if (!accessToken) {
-        alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        toast.warning(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
         return;
       }
 
@@ -889,14 +891,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
       // Close modal after successful export
       setIsExportModalOpen(false);
-      alert('ส่งออกข้อมูลเรียบร้อย');
+      toast.success('ส่งออกข้อมูลเรียบร้อย');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (errorMessage.includes('Server internal error')) {
-        alert('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
+        toast.warning('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
       } else {
-        alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + errorMessage);
+        toast.warning('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + errorMessage);
       }
     } finally {
       setIsExporting(false);
@@ -906,7 +908,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // Upload engagement data to database
   const uploadEngagementData = async () => {
     if (!currentUser) {
-      alert('กรุณาเข้าสู่ระบบ');
+      toast.warning('กรุณาเข้าสู่ระบบ');
       return;
     }
 
@@ -921,13 +923,13 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
     // Parse date range
     if (!uploadDateRange) {
-      alert('กรุณาเลือกช่วงวันที่');
+      toast.warning('กรุณาเลือกช่วงวันที่');
       return;
     }
 
     const [sRaw, eRaw] = uploadDateRange.split(' - ');
     if (!sRaw || !eRaw) {
-      alert('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
+      toast.warning('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
       return;
     }
 
@@ -945,7 +947,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       : allPages.filter(p => (p.page_id || p.id) === selectedPageId);
 
     if (pagesToProcess.length === 0) {
-      alert('ไม่พบเพจที่จะดำเนินการ');
+      toast.warning('ไม่พบเพจที่จะดำเนินการ');
       return;
     }
 
@@ -1113,7 +1115,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       // Refresh batches from database to get the actual database ID
       fetchUploadBatches();
 
-      alert(`อัปโหลดข้อมูลสำเร็จจาก ${allEngagementData.length} เพจ ทั้งหมด ${saveResult.recordsCount || totalRecords} รายการ`);
+      toast.success(`อัปโหลดข้อมูลสำเร็จจาก ${allEngagementData.length} เพจ ทั้งหมด ${saveResult.recordsCount || totalRecords} รายการ`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -1124,7 +1126,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           : batch
       ));
 
-      alert('เกิดข้อผิดพลาด: ' + errorMessage);
+      toast.warning('เกิดข้อผิดพลาด: ' + errorMessage);
     } finally {
       setIsUploading(false);
     }
@@ -1133,7 +1135,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // Fetch engagement data for all pages
   const fetchAllPagesEngagementData = async (dateRangeToUse?: DateRange) => {
     if (!currentUser) {
-      alert('กรุณาเข้าสู่ระบบ');
+      toast.warning('กรุณาเข้าสู่ระบบ');
       return;
     }
 
@@ -1152,7 +1154,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     });
 
     if (activePagesList.length === 0) {
-      alert('ไม่พบเพจที่จะดำเนินการ');
+      toast.warning('ไม่พบเพจที่จะดำเนินการ');
       return;
     }
 
@@ -1261,14 +1263,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       setAllPagesEngagementData(pagesData);
 
       if (Object.keys(pagesData).length === 0) {
-        alert('ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้');
+        toast.warning('ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้');
       } else {
-        alert(`โหลดข้อมูลสำเร็จจาก ${Object.keys(pagesData).length} เพจ`);
+        toast.success(`โหลดข้อมูลสำเร็จจาก ${Object.keys(pagesData).length} เพจ`);
       }
     } catch (error) {
       console.error('Error fetching all pages engagement data:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      alert('เกิดข้อผิดพลาด: ' + errorMessage);
+      toast.warning('เกิดข้อผิดพลาด: ' + errorMessage);
     } finally {
       setIsLoadingAllPagesData(false);
     }

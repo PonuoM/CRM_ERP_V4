@@ -6,6 +6,7 @@ import PageIconFront from "@/components/PageIconFront";
 import PancakeEnvOffSidebar from "@/components/PancakeEnvOffSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { Settings } from "lucide-react";
+import { useToast } from "../components/Toast";
 
 // Function to sync pages from pages.fm API to database
 const syncPagesWithDatabase = async (currentUser?: User) => {
@@ -309,6 +310,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   pages = [],
   currentUser,
 }) => {
+    const toast = useToast();
   const [keyword, setKeyword] = useState("");
   const [team, setTeam] = useState("all");
   const [status, setStatus] = useState("all");
@@ -433,7 +435,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     } catch (error) {
       console.error("Error updating pancake env:", error);
       setPancakeShowInCreateOrder(!newValue); // Revert on error
-      alert("Failed to update setting");
+      toast.warning("Failed to update setting");
     }
   };
 
@@ -675,7 +677,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm disabled:opacity-50"
               onClick={async () => {
                 if (!currentUser) {
-                  alert("ไม่พบข้อมูลผู้ใช้");
+                  toast.warning("ไม่พบข้อมูลผู้ใช้");
                   return;
                 }
 
@@ -700,15 +702,15 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                       message += `\nคำเตือน: ${result.pageListUserError}`;
                     }
 
-                    alert(message);
+                    toast.warning(message);
                     // Refresh pages data after sync
                     fetchPages();
                   } else {
-                    alert(`อัปเดตข้อมูลล้มเหลว: ${result.error}`);
+                    toast.warning(`อัปเดตข้อมูลล้มเหลว: ${result.error}`);
                   }
                 } catch (error) {
                   console.error("Sync error:", error);
-                  alert("เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
+                  toast.warning("เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
                 } finally {
                   setSyncing(false);
                 }
@@ -721,7 +723,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               className="px-4 py-2 bg-amber-500 text-white rounded-md text-sm disabled:opacity-50"
               onClick={async () => {
                 if (!currentUser?.companyId) {
-                  alert("ไม่พบข้อมูลผู้ใช้");
+                  toast.warning("ไม่พบข้อมูลผู้ใช้");
                   return;
                 }
 
@@ -732,20 +734,20 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                     `${apiBase}/Page_DB/env_manager.php?key=ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`
                   );
                   if (!envResponse.ok) {
-                    alert("ไม่สามารถดึง Access Token ได้");
+                    toast.warning("ไม่สามารถดึง Access Token ได้");
                     return;
                   }
                   const envData = await envResponse.json();
                   const accessToken = envData?.value || '';
                   if (!accessToken) {
-                    alert("ไม่พบ ACCESS_TOKEN");
+                    toast.warning("ไม่พบ ACCESS_TOKEN");
                     return;
                   }
 
                   // Get visible Pancake pages
                   const pancakePages = visiblePagesForCompany.filter(p => p.page_type === 'pancake');
                   if (pancakePages.length === 0) {
-                    alert("ไม่พบเพจ Pancake ที่จะทดสอบ");
+                    toast.warning("ไม่พบเพจ Pancake ที่จะทดสอบ");
                     return;
                   }
 
@@ -796,7 +798,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                   setIsTestResultModalOpen(true);
                 } catch (error) {
                   console.error('Test API error:', error);
-                  alert('เกิดข้อผิดพลาด: ' + (error instanceof Error ? error.message : 'Unknown'));
+                  toast.warning('เกิดข้อผิดพลาด: ' + (error instanceof Error ? error.message : 'Unknown'));
                 } finally {
                   setIsTesting(false);
                 }
@@ -809,7 +811,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               className="px-4 py-2 bg-red-600 text-white rounded-md text-sm disabled:opacity-50"
               onClick={async () => {
                 if (!currentUser?.companyId) {
-                  alert("กรุณาเลือกบริษัทให้ถูกต้องก่อน");
+                  toast.warning("กรุณาเลือกบริษัทให้ถูกต้องก่อน");
                   return;
                 }
 
@@ -845,13 +847,11 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
 
                   await fetchPages(); // รีเฟรชรายการหน้า
 
-                  alert("ปิดการใช้งาน Pancake สำเร็จแล้ว");
+                  toast.success("ปิดการใช้งาน Pancake สำเร็จแล้ว");
                 } catch (error) {
                   console.error("Error disabling Pancake pages:", error);
-                  alert(
-                    "เกิดข้อผิดพลาดในการปิดการใช้งาน Pancake: " +
-                    (error instanceof Error ? error.message : "Unknown error"),
-                  );
+                  toast.warning("เกิดข้อผิดพลาดในการปิดการใช้งาน Pancake: " +
+                                        (error instanceof Error ? error.message : "Unknown error"));
                 } finally {
                   setDisablePancakeLoading(false);
                 }
@@ -984,12 +984,10 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                           // alert(`อัปเดตสถานะเพจ "${p.name}" เรียบร้อยแล้ว`);
                         } catch (error) {
                           console.error("Error updating page status:", error);
-                          alert(
-                            "เกิดข้อผิดพลาดในการอัปเดตสถานะ: " +
-                            (error instanceof Error
-                              ? error.message
-                              : "Unknown error"),
-                          );
+                          toast.warning("เกิดข้อผิดพลาดในการอัปเดตสถานะ: " +
+                                                        (error instanceof Error
+                                                          ? error.message
+                                                          : "Unknown error"));
                         }
                       }}
                       className="sr-only peer"
@@ -1108,15 +1106,15 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                   className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
                   onClick={async () => {
                     if (!newPageName.trim()) {
-                      alert("กรุณากรอกชื่อเพจ");
+                      toast.warning("กรุณากรอกชื่อเพจ");
                       return;
                     }
                     if (!newPagePlatform) {
-                      alert("กรุณาเลือกแพลตฟอร์ม");
+                      toast.warning("กรุณาเลือกแพลตฟอร์ม");
                       return;
                     }
                     if (!currentUser?.companyId) {
-                      alert("ไม่พบข้อมูลบริษัท");
+                      toast.warning("ไม่พบข้อมูลบริษัท");
                       return;
                     }
 
@@ -1155,15 +1153,13 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                       setNewPageUrl("");
                       setAddPageModalOpen(false);
 
-                      alert("เพิ่มเพจสำเร็จ");
+                      toast.success("เพิ่มเพจสำเร็จ");
                     } catch (error) {
                       console.error("Error creating page:", error);
-                      alert(
-                        "เกิดข้อผิดพลาดในการเพิ่มเพจ: " +
-                        (error instanceof Error
-                          ? error.message
-                          : "Unknown error"),
-                      );
+                      toast.warning("เกิดข้อผิดพลาดในการเพิ่มเพจ: " +
+                                                (error instanceof Error
+                                                  ? error.message
+                                                  : "Unknown error"));
                     } finally {
                       setAddPageLoading(false);
                     }
@@ -1231,15 +1227,13 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                       setDeleteModalOpen(false);
                       setPageToDelete(null);
 
-                      alert("ลบเพจสำเร็จ");
+                      toast.success("ลบเพจสำเร็จ");
                     } catch (error) {
                       console.error("Error deleting page:", error);
-                      alert(
-                        "เกิดข้อผิดพลาดในการลบเพจ: " +
-                        (error instanceof Error
-                          ? error.message
-                          : "Unknown error"),
-                      );
+                      toast.warning("เกิดข้อผิดพลาดในการลบเพจ: " +
+                                                (error instanceof Error
+                                                  ? error.message
+                                                  : "Unknown error"));
                     } finally {
                       setDeleteLoading(false);
                     }
@@ -1340,20 +1334,16 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                                 );
 
                                 // Show success message
-                                alert(
-                                  `อัปเดตสถานะเพจ "${p.name}" เรียบร้อยแล้ว`,
-                                );
+                                toast.success(`อัปเดตสถานะเพจ "${p.name}" เรียบร้อยแล้ว`);
                               } catch (error) {
                                 console.error(
                                   "Error updating page status:",
                                   error,
                                 );
-                                alert(
-                                  "เกิดข้อผิดพลาดในการอัปเดตสถานะ: " +
-                                  (error instanceof Error
-                                    ? error.message
-                                    : "Unknown error"),
-                                );
+                                toast.warning("เกิดข้อผิดพลาดในการอัปเดตสถานะ: " +
+                                                                    (error instanceof Error
+                                                                      ? error.message
+                                                                      : "Unknown error"));
                               }
                             }}
                             className="sr-only peer"
@@ -1552,10 +1542,10 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                         }
                         setIsTestResultModalOpen(false);
                         fetchPages();
-                        alert('อัปเดตสถานะเพจเรียบร้อยแล้ว');
+                        toast.success('อัปเดตสถานะเพจเรียบร้อยแล้ว');
                       } catch (error) {
                         console.error('Error applying test result:', error);
-                        alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
+                        toast.warning('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
                       } finally {
                         setIsApplyingTestResult(false);
                       }
@@ -1581,6 +1571,7 @@ const ManagePageButton: React.FC<{
   page: Page;
   onSaved: (updatedPage: Page) => void;
 }> = ({ page, onSaved }) => {
+    const toast = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(page.name);
   const [displayName, setDisplayName] = useState(page.display_name || page.name);
@@ -1614,7 +1605,7 @@ const ManagePageButton: React.FC<{
       setOpen(false);
     } catch (error) {
       console.error("Failed to update page:", error);
-      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+      toast.warning("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
     } finally {
       setSaving(false);
     }
@@ -1698,6 +1689,7 @@ const SellProductTypeInput: React.FC<{
   value: string;
   onChange: (value: string) => void;
 }> = ({ value, onChange }) => {
+    const toast = useToast();
   const [options, setOptions] = useState<string[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
 

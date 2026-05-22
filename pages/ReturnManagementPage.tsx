@@ -37,6 +37,7 @@ import Spinner from "../components/Spinner";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import ExportTypeModal from "../components/ExportTypeModal";
 import { downloadDataFile } from "../utils/exportUtils";
+import { useToast } from "../components/Toast";
 
 interface ReturnManagementPageProps {
   user: User;
@@ -87,6 +88,7 @@ interface VerifiedOrder {
 
 // ─── ReturnImageGallery: Extracted outside to prevent re-mounting on every keystroke ───
 const ReturnImageGallery = ({ subOrderId }: { subOrderId: string }) => {
+    const toast = useToast();
   const [images, setImages] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -118,10 +120,10 @@ const ReturnImageGallery = ({ subOrderId }: { subOrderId: string }) => {
       if (res?.success && res.image) {
         setImages(prev => [res.image, ...prev]);
       } else {
-        alert(res?.message || 'อัปโหลดไม่สำเร็จ');
+        toast.success(res?.message || 'อัปโหลดไม่สำเร็จ');
       }
     } catch {
-      alert('เกิดข้อผิดพลาดในการอัปโหลด');
+      toast.warning('เกิดข้อผิดพลาดในการอัปโหลด');
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -136,7 +138,7 @@ const ReturnImageGallery = ({ subOrderId }: { subOrderId: string }) => {
         setImages(prev => prev.filter(img => img.id !== id));
       }
     } catch {
-      alert('ลบไม่สำเร็จ');
+      toast.success('ลบไม่สำเร็จ');
     }
   };
 
@@ -190,6 +192,7 @@ const ReturnImageGallery = ({ subOrderId }: { subOrderId: string }) => {
 const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
   user,
 }) => {
+    const toast = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"list" | "verify">("list");
@@ -605,7 +608,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   const handleSearchByTracking = async () => {
     if (!searchTracking.trim()) {
-      alert("กรุณาระบุเลขพัสดุ (Tracking No.)");
+      toast.warning("กรุณาระบุเลขพัสดุ (Tracking No.)");
       return;
     }
 
@@ -622,11 +625,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         setManagingOrder(foundOrder);
         setSearchTracking(""); // Clear search after found
       } else {
-        alert("ไม่พบคำสั่งซื้อที่มีเลขพัสดุนี้");
+        toast.warning("ไม่พบคำสั่งซื้อที่มีเลขพัสดุนี้");
       }
     } catch (err) {
       console.error("Search failed", err);
-      alert("เกิดข้อผิดพลาดในการค้นหา");
+      toast.warning("เกิดข้อผิดพลาดในการค้นหา");
     } finally {
       setLoading(false);
     }
@@ -634,7 +637,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
 
   const handleSearchByOrderId = async () => {
     if (!searchOrderId.trim()) {
-      alert("กรุณาระบุเลข Order ID");
+      toast.warning("กรุณาระบุเลข Order ID");
       return;
     }
     setLoading(true);
@@ -648,11 +651,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         setManagingOrder(res.orders[0]);
         setSearchOrderId("");
       } else {
-        alert("ไม่พบคำสั่งซื้อที่มี Order ID นี้");
+        toast.warning("ไม่พบคำสั่งซื้อที่มี Order ID นี้");
       }
     } catch (err) {
       console.error("Search failed", err);
-      alert("เกิดข้อผิดพลาดในการค้นหา");
+      toast.warning("เกิดข้อผิดพลาดในการค้นหา");
     } finally {
       setLoading(false);
     }
@@ -706,9 +709,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       setIsPasteModalOpen(false);
       setPasteContent("");
     } else {
-      alert(
-        "ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบรูปแบบข้อมูล (Tracking Number [Tab] Note)",
-      );
+      toast.warning("ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบรูปแบบข้อมูล (Tracking Number [Tab] Note)");
     }
   };
 
@@ -718,7 +719,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     const actionRows = manageRows;
 
     if (actionRows.length === 0) {
-      alert("กรุณาเลือกรายการ 1 รายการ");
+      toast.warning("กรุณาเลือกรายการ 1 รายการ");
       return;
     }
 
@@ -763,16 +764,16 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       if (res && res.status === "success") {
         // Check if there are errors despite "success" status
         if (res.errors && res.errors.length > 0 && res.updatedCount === 0) {
-          alert("ไม่สามารถอัปเดตได้:\n" + res.errors.join("\n"));
+          toast.warning("ไม่สามารถอัปเดตได้:\n" + res.errors.join("\n"));
         } else if (res.errors && res.errors.length > 0) {
-          alert(`บันทึกสำเร็จ ${res.updatedCount} รายการ\nแต่มีข้อผิดพลาด:\n` + res.errors.join("\n"));
+          toast.success(`บันทึกสำเร็จ ${res.updatedCount} รายการ\nแต่มีข้อผิดพลาด:\n` + res.errors.join("\n"));
           setManagingOrder(null);
           setIsConfirmSaveOpen(false);
           fetchOrders();
           fetchVerifiedOrders();
           fetchReturnStats();
         } else {
-          alert(`บันทึกข้อมูลเรียบร้อย (${res.updatedCount} รายการ)`);
+          toast.success(`บันทึกข้อมูลเรียบร้อย (${res.updatedCount} รายการ)`);
           setManagingOrder(null);
           setIsConfirmSaveOpen(false);
           fetchOrders();
@@ -780,11 +781,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
           fetchReturnStats();
         }
       } else {
-        alert("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
+        toast.warning("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
       }
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาด");
+      toast.warning("เกิดข้อผิดพลาด");
     } finally {
       setLoading(false);
     }
@@ -821,14 +822,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         if (res2.ok && res2.orders.length > 0) {
           setManagingOrder(res2.orders[0]);
         } else {
-          alert("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
+          toast.warning("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
         }
       } else {
-        alert("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
+        toast.warning("ไม่พบข้อมูลคำสั่งซื้อในระบบ");
       }
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดในการดึงข้อมูล");
+      toast.warning("เกิดข้อผิดพลาดในการดึงข้อมูล");
     } finally {
       setLoading(false);
     }
@@ -1138,17 +1139,17 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       setLoading(true);
       const res = await saveReturnOrders(payload, user.id);
       if (res && res.status === "success") {
-        alert(`บันทึกข้อมูลเรียบร้อยแล้ว(${res.message})`);
+        toast.success(`บันทึกข้อมูลเรียบร้อยแล้ว(${res.message})`);
         setMode("list");
         fetchVerifiedOrders(); // Refresh verified list
         fetchReturnStats(); // Refresh tab counts
         fetchOrders(); // Refresh pending list (though we filter logic client side)
       } else {
-        alert("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
+        toast.warning("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
       }
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดในการบันทึก");
+      toast.warning("เกิดข้อผิดพลาดในการบันทึก");
     } finally {
       setLoading(false);
     }
@@ -1272,16 +1273,16 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
     try {
       const res = await revertReturnedOrder(revertOrderId, revertNewStatus);
       if (res && res.status === 'success') {
-        alert(`สำเร็จ: ${res.message}`);
+        toast.success(`สำเร็จ: ${res.message}`);
         setIsRevertModalOpen(false);
         setRevertOrderId("");
         fetchVerifiedOrders();
         fetchReturnStats();
       } else {
-        alert(`ผิดพลาด: ${res?.message || 'Unknown error'}`);
+        toast.warning(`ผิดพลาด: ${res?.message || 'Unknown error'}`);
       }
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      toast.warning(`Error: ${err.message}`);
     } finally {
       setRevertLoading(false);
     }
@@ -1308,16 +1309,16 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       }));
       const res = await saveReturnOrders(payload, user.id);
       if (res && res.status === "success") {
-        alert(`จบเคสสำเร็จ ${res.updatedCount || selected.length} รายการ`);
+        toast.success(`จบเคสสำเร็จ ${res.updatedCount || selected.length} รายการ`);
         setSelectedIds(new Set());
         fetchVerifiedOrders();
         fetchReturnStats();
       } else {
-        alert("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
+        toast.warning("เกิดข้อผิดพลาด: " + (res?.message || "Unknown error"));
       }
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดในการบันทึก");
+      toast.warning("เกิดข้อผิดพลาดในการบันทึก");
     } finally {
       setBulkSaving(false);
     }
@@ -1559,7 +1560,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
       });
       if (res?.success && Array.isArray(res.data)) {
         if (res.data.length === 0) {
-          alert('ไม่พบข้อมูลในช่วงวันที่ที่เลือก');
+          toast.warning('ไม่พบข้อมูลในช่วงวันที่ที่เลือก');
           return;
         }
         const statusMap: Record<string, string> = {
@@ -1622,11 +1623,11 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
         const finalData = [headers, ...rows];
         downloadDataFile(finalData, `return_orders_${dateFrom}_${dateTo}`, type);
       } else {
-        alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
+        toast.warning('เกิดข้อผิดพลาดในการดึงข้อมูล');
       }
     } catch (err) {
       console.error('Export error:', err);
-      alert('เกิดข้อผิดพลาดในการ Export');
+      toast.warning('เกิดข้อผิดพลาดในการ Export');
     } finally {
       setExporting(false);
     }
@@ -2052,14 +2053,14 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({
                 onImport={async (items) => {
                   try {
                     await saveReturnOrders(items, user.id);
-                    alert("Import Successful!");
+                    toast.warning("Import Successful!");
                     setIsBulkImportOpen(false);
 
                     // Refresh lists
                     fetchVerifiedOrders();
                   } catch (err) {
                     console.error(err);
-                    alert("Import failed");
+                    toast.warning("Import failed");
                   }
                 }}
               />

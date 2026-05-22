@@ -7,9 +7,7 @@ import { Order, ModalType } from '../../types';
 import StatCard from '../../components/StatCard';
 import OrderDetailModal from '../../components/OrderDetailModal';
 import TrackingModal from '../../components/TrackingModal';
-
-
-
+import { useToast } from "../../components/Toast";
 
 interface RevenueItem {
     id: string; // Order ID
@@ -28,6 +26,7 @@ interface RevenueItem {
 }
 
 const RevenueRecognitionPage: React.FC = () => {
+    const toast = useToast();
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<RevenueItem[]>([]);
     const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -63,7 +62,7 @@ const RevenueRecognitionPage: React.FC = () => {
             }
         } catch (error) {
             console.error(error);
-            alert('Failed to fetch revenue data');
+            toast.warning('Failed to fetch revenue data');
         } finally {
             setLoading(false);
         }
@@ -81,7 +80,7 @@ const RevenueRecognitionPage: React.FC = () => {
 
     const executeExport = (type: 'csv' | 'xlsx') => {
         if (data.length === 0) {
-            alert("ไม่พบข้อมูลสำหรับส่งออก");
+            toast.warning("ไม่พบข้อมูลสำหรับส่งออก");
             return;
         }
 

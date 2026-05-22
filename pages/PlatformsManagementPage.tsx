@@ -8,7 +8,8 @@ import {
   updatePlatform,
   deletePlatform,
 } from "../services/api";
-import { listRoles } from "../services/roleApi"; // Import listRoles
+import { listRoles } from "../services/roleApi";
+import { useToast } from "../components/Toast";
 
 interface Platform {
   id: number;
@@ -32,6 +33,7 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
   currentUser,
   companies,
 }) => {
+    const toast = useToast();
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -106,7 +108,7 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
       );
     } catch (error) {
       console.error("Error fetching platforms:", error);
-      alert("เกิดข้อผิดพลาดในการดึงข้อมูลแพลตฟอร์ม");
+      toast.warning("เกิดข้อผิดพลาดในการดึงข้อมูลแพลตฟอร์ม");
     } finally {
       setLoading(false);
     }
@@ -160,14 +162,14 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
 
       await fetchPlatforms(selectedCompanyId || undefined);
       setIsAddModalOpen(false);
-      alert("เพิ่มแพลตฟอร์มสำเร็จ");
+      toast.success("เพิ่มแพลตฟอร์มสำเร็จ");
     } catch (error: any) {
       console.error("Failed to create platform:", error);
       const errorMsg =
         error?.data?.message ||
         error?.message ||
         "เกิดข้อผิดพลาดในการเพิ่มแพลตฟอร์ม";
-      alert(errorMsg);
+      toast.warning(errorMsg);
     }
   };
 
@@ -193,14 +195,14 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
       await fetchPlatforms(selectedCompanyId || undefined);
       setIsEditModalOpen(false);
       setEditingPlatform(null);
-      alert("แก้ไขแพลตฟอร์มสำเร็จ");
+      toast.success("แก้ไขแพลตฟอร์มสำเร็จ");
     } catch (error: any) {
       console.error("Failed to update platform:", error);
       const errorMsg =
         error?.data?.message ||
         error?.message ||
         "เกิดข้อผิดพลาดในการแก้ไขแพลตฟอร์ม";
-      alert(errorMsg);
+      toast.warning(errorMsg);
     }
   };
 
@@ -213,14 +215,14 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
       try {
         await deletePlatform(id);
         await fetchPlatforms(selectedCompanyId || undefined);
-        alert("ปิดใช้งานแพลตฟอร์มสำเร็จ");
+        toast.success("ปิดใช้งานแพลตฟอร์มสำเร็จ");
       } catch (error: any) {
         console.error("Failed to delete platform:", error);
         const errorMsg =
           error?.data?.message ||
           error?.message ||
           "เกิดข้อผิดพลาดในการลบแพลตฟอร์ม";
-        alert(errorMsg);
+        toast.warning(errorMsg);
       }
     }
   };
@@ -233,7 +235,7 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
       await fetchPlatforms(selectedCompanyId || undefined);
     } catch (error: any) {
       console.error("Failed to toggle platform active status:", error);
-      alert("เกิดข้อผิดพลาดในการเปลี่ยนสถานะแพลตฟอร์ม");
+      toast.warning("เกิดข้อผิดพลาดในการเปลี่ยนสถานะแพลตฟอร์ม");
     }
   };
 
@@ -446,6 +448,7 @@ const AddPlatformModal: React.FC<{
   existingPlatforms,
   roleOptions,
 }) => {
+    const toast = useToast();
     const [formData, setFormData] = useState({
       name: "",
       displayName: "",
@@ -486,7 +489,7 @@ const AddPlatformModal: React.FC<{
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       if (!formData.name.trim() || !formData.displayName.trim()) {
-        alert("กรุณากรอกชื่อและชื่อแสดงผลของแพลตฟอร์ม");
+        toast.warning("กรุณากรอกชื่อและชื่อแสดงผลของแพลตฟอร์ม");
         return;
       }
 
@@ -496,7 +499,7 @@ const AddPlatformModal: React.FC<{
           (p) => p.name.toLowerCase() === formData.name.toLowerCase(),
         )
       ) {
-        alert("มีชื่อแพลตฟอร์มนี้อยู่แล้ว");
+        toast.warning("มีชื่อแพลตฟอร์มนี้อยู่แล้ว");
         return;
       }
 
@@ -751,6 +754,7 @@ const EditPlatformModal: React.FC<{
   existingPlatforms: Platform[];
   roleOptions: string[];
 }> = ({ platform, onClose, onSave, existingPlatforms, roleOptions }) => {
+    const toast = useToast();
   const [formData, setFormData] = useState({
     name: platform.name,
     displayName: platform.displayName,
@@ -788,7 +792,7 @@ const EditPlatformModal: React.FC<{
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.displayName.trim()) {
-      alert("กรุณากรอกชื่อและชื่อแสดงผลของแพลตฟอร์ม");
+      toast.warning("กรุณากรอกชื่อและชื่อแสดงผลของแพลตฟอร์ม");
       return;
     }
 

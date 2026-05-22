@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ClipboardList, Plus, Trash2, Save, Calendar, FileText, AlertTriangle } from 'lucide-react';
 import { User, Warehouse, Product } from '@/types';
 import { listWarehouses, listProducts, listProductLots, createStockTransaction } from '@/services/api';
+import { useToast } from "../components/Toast";
 
 interface StockAdjustmentPageProps {
     currentUser?: User;
@@ -23,6 +24,7 @@ interface AdjustmentItem {
 }
 
 const StockAdjustmentPage: React.FC<StockAdjustmentPageProps> = ({ currentUser, companyId }) => {
+    const toast = useToast();
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
 
@@ -126,18 +128,18 @@ const StockAdjustmentPage: React.FC<StockAdjustmentPageProps> = ({ currentUser, 
 
     const handleSave = async () => {
         if (items.length === 0) {
-            alert('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
+            toast.warning('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
             return;
         }
 
         // Validate
         for (const item of items) {
             if (!item.productId || !item.warehouseId || !item.quantity || !item.lotId) {
-                alert('กรุณากรอกข้อมูลสินค้า คลังสินค้า Lot และจำนวนให้ครบถ้วน');
+                toast.warning('กรุณากรอกข้อมูลสินค้า คลังสินค้า Lot และจำนวนให้ครบถ้วน');
                 return;
             }
             if (item.type === 'reduce' && item.quantity > item.currentQty) {
-                alert(`สินค้า ${item.productName} Lot ${item.lotNumber} มีจำนวนไม่พอตัดสต็อก (มีเหลือ ${item.currentQty})`);
+                toast.warning(`สินค้า ${item.productName} Lot ${item.lotNumber} มีจำนวนไม่พอตัดสต็อก (มีเหลือ ${item.currentQty})`);
                 return;
             }
         }
@@ -161,14 +163,14 @@ const StockAdjustmentPage: React.FC<StockAdjustmentPageProps> = ({ currentUser, 
 
             const res = await createStockTransaction(payload);
             if (res.success) {
-                alert(`บันทึกปรับปรุงสต็อกสำเร็จ เลขที่เอกสาร: ${res.document_number}`);
+                toast.success(`บันทึกปรับปรุงสต็อกสำเร็จ เลขที่เอกสาร: ${res.document_number}`);
                 setItems([]);
                 setDocNotes('');
             } else {
-                alert('เกิดข้อผิดพลาด: ' + (res.error || 'Unknown error'));
+                toast.warning('เกิดข้อผิดพลาด: ' + (res.error || 'Unknown error'));
             }
         } catch (err: any) {
-            alert('Error: ' + err.message);
+            toast.warning('Error: ' + err.message);
         } finally {
             setSaving(false);
         }

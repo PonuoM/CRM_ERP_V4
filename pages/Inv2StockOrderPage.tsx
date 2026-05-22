@@ -3,6 +3,7 @@ import { Package, Plus, Search, Eye, Trash2, X, Camera, Loader2, Save, ChevronDo
 import { Warehouse, Product, Inv2StockOrder, Inv2StockOrderItem, Inv2SOStatus } from '../types';
 import { inv2ListSO, inv2GetSO, inv2SaveSO, inv2DeleteSO, listWarehouses, listProducts } from '../services/api';
 import ImageLightbox from '../components/common/ImageLightbox';
+import { useToast } from "../components/Toast";
 
 interface Inv2StockOrderPageProps { companyId: number; userId: number; }
 
@@ -27,6 +28,7 @@ const ProductSearch: React.FC<{
     value: number;
     onChange: (id: number) => void;
 }> = ({ products, value, onChange }) => {
+    const toast = useToast();
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
     const ref = useRef<HTMLDivElement>(null);
@@ -90,6 +92,7 @@ const DepartmentComboBox: React.FC<{
     value: string;
     onChange: (val: string) => void;
 }> = ({ value, onChange }) => {
+    const toast = useToast();
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
     const ref = useRef<HTMLDivElement>(null);
@@ -151,6 +154,7 @@ const DepartmentComboBox: React.FC<{
 };
 
 const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, userId }) => {
+    const toast = useToast();
     const [orders, setOrders] = useState<Inv2StockOrder[]>([]);
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
@@ -217,12 +221,12 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
                 setFormItems(res.data.items.length > 0 ? res.data.items : [{ product_id: 0, variant: '', quantity: 0, received_quantity: 0, unit_cost: undefined, notes: '', department: '', delivery_date: '' }]);
                 setShowModal(true);
             }
-        } catch { alert('โหลดข้อมูล SO ไม่สำเร็จ'); }
+        } catch { toast.success('โหลดข้อมูล SO ไม่สำเร็จ'); }
     };
 
     const handleSave = async () => {
         const validItems = formItems.filter(i => i.product_id && i.quantity > 0);
-        if (validItems.length === 0) return alert('เพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
+        if (validItems.length === 0) return toast.warning('เพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
         setSaving(true);
         try {
             await inv2SaveSO({
@@ -242,13 +246,13 @@ const Inv2StockOrderPage: React.FC<Inv2StockOrderPageProps> = ({ companyId, user
                 delivery_location: formDeliveryLocation || null,
             });
             setShowModal(false); loadData();
-        } catch (e: any) { alert('บันทึกไม่สำเร็จ: ' + (e?.message || '')); }
+        } catch (e: any) { toast.success('บันทึกไม่สำเร็จ: ' + (e?.message || '')); }
         setSaving(false);
     };
 
     const handleDelete = async (so: Inv2StockOrder) => {
         if (!confirm(`ลบ SO ${so.so_number}?`)) return;
-        try { await inv2DeleteSO(so.id); loadData(); } catch (e: any) { alert('ลบไม่ได้: ' + (e?.data?.error || e?.message || '')); }
+        try { await inv2DeleteSO(so.id); loadData(); } catch (e: any) { toast.warning('ลบไม่ได้: ' + (e?.data?.error || e?.message || '')); }
     };
 
     const addItem = () => setFormItems([...formItems, { product_id: 0, variant: '', quantity: 0, received_quantity: 0, unit_cost: undefined, notes: '', department: '', delivery_date: formExpectedDate || '' }]);

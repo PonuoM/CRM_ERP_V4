@@ -24,6 +24,7 @@ import { apiFetch, patchOrder } from "../services/api";
 import usePersistentState from "../utils/usePersistentState";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import Modal from "@/components/Modal";
+import { useToast } from "../components/Toast";
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
 const AUTO_MATCH_AMOUNT_DIFF = 1; // THB
@@ -176,6 +177,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
   users,
   openModal,
 }) => {
+    const toast = useToast();
   const apiBase = useMemo(() => resolveApiBasePath(), []);
   const today = useMemo(() => new Date(), []);
   const defaultDate = useMemo(
@@ -942,7 +944,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
 
       // Show success popup
       const successMessage = `บันทึกสำเร็จ!\n\nเอกสาร: ${selectedCodDocument.document_number}\nจับคู่กับ Statement #${selectedStatementCandidate.statement.id}\nเลขที่เอกสาร: ${data.document_no || "-"}`;
-      alert(successMessage);
+      toast.warning(successMessage);
 
       // Reload page to clear old data but stay on Finance Approval page
       const currentUrl = new URL(window.location.href);
@@ -1056,12 +1058,12 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         ),
       );
 
-      alert(`Approve completed for ${selectedIds.length} orders`);
+      toast.warning(`Approve completed for ${selectedIds.length} orders`);
       setSelectedIds([]);
       window.location.reload();
     } catch (error) {
       console.error("Error approving pay after:", error);
-      alert("Unable to approve, please try again");
+      toast.warning("Unable to approve, please try again");
     }
   };
 

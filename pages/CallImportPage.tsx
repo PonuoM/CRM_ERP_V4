@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
+import { useToast } from "../components/Toast";
 
 interface CallImportPageProps {
     currentUser: { id: number; companyId: number };
@@ -91,6 +92,7 @@ interface ReportSummary {
 }
 
 const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
+    const toast = useToast();
     const apiBase = resolveApiBasePath();
 
     // ── State ──
@@ -182,7 +184,7 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
     // ── File handlers ──
     const handleFile = useCallback((file: File) => {
         if (!file.name.endsWith(".csv")) {
-            alert("กรุณาเลือกไฟล์ CSV เท่านั้น");
+            toast.warning("กรุณาเลือกไฟล์ CSV เท่านั้น");
             return;
         }
         setSelectedFile(file);
@@ -228,10 +230,10 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
                     setDuplicatePhones(data.duplicatePhones);
                 }
             } else {
-                alert("ตรวจสอบไม่สำเร็จ: " + data.error);
+                toast.success("ตรวจสอบไม่สำเร็จ: " + data.error);
             }
         } catch (err) {
-            alert("เกิดข้อผิดพลาดในการตรวจสอบ");
+            toast.warning("เกิดข้อผิดพลาดในการตรวจสอบ");
         } finally {
             setIsChecking(false);
         }
@@ -262,10 +264,10 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
                     duplicateRows: data.duplicateRows,
                 });
             } else {
-                alert("Import ไม่สำเร็จ: " + data.error);
+                toast.success("Import ไม่สำเร็จ: " + data.error);
             }
         } catch (err) {
-            alert("เกิดข้อผิดพลาดในการ Import");
+            toast.warning("เกิดข้อผิดพลาดในการ Import");
         } finally {
             setIsImporting(false);
         }
@@ -304,10 +306,10 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
             if (data.success) {
                 fetchBatches(batchPage);
             } else {
-                alert("ลบไม่สำเร็จ: " + data.error);
+                toast.success("ลบไม่สำเร็จ: " + data.error);
             }
         } catch (err) {
-            alert("เกิดข้อผิดพลาดในการลบ");
+            toast.warning("เกิดข้อผิดพลาดในการลบ");
         }
     };
 
@@ -407,13 +409,13 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
                     hasMore = data.hasMore === true;
                     page++;
                 } else {
-                    alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
+                    toast.warning('เกิดข้อผิดพลาดในการดึงข้อมูล');
                     return;
                 }
             }
 
             if (allData.length === 0) {
-                alert('ไม่พบข้อมูลตามเงื่อนไขที่กำหนด');
+                toast.warning('ไม่พบข้อมูลตามเงื่อนไขที่กำหนด');
                 return;
             }
 
@@ -460,7 +462,7 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
             URL.revokeObjectURL(url2);
         } catch (err) {
             console.error('Export error:', err);
-            alert('เกิดข้อผิดพลาดในการ Export');
+            toast.warning('เกิดข้อผิดพลาดในการ Export');
         } finally {
             setIsExporting(false);
         }

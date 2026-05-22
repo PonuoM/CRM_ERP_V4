@@ -17,6 +17,7 @@ import LineChart from "@/components/LineChart";
 import PieChart from "@/components/PieChart";
 import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { useToast } from "../components/Toast";
 
 interface CallsDashboardProps {
   calls?: CallHistory[];
@@ -385,6 +386,7 @@ const CustomDatePicker: React.FC<{
   minDate?: string;
   disabled?: boolean;
 }> = ({ value, onChange, batches, placeholder, minDate, disabled = false }) => {
+    const toast = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
@@ -580,6 +582,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   calls = [],
   user,
 }) => {
+    const toast = useToast();
   const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [month, setMonth] = useState<string>(() =>
     String(new Date().getMonth() + 1).padStart(2, "0"),
@@ -811,7 +814,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   // Function to handle update button click
   const handleUpdateClick = async () => {
     if (!startDate || !endDate) {
-      alert("กรุณาเลือกช่วงวันที่");
+      toast.warning("กรุณาเลือกช่วงวันที่");
       return;
     }
 
@@ -825,10 +828,10 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         setAccessToken(result.token || "");
         setShowModal(true);
       } else {
-        alert("ไม่สามารถดึงข้อมูลได้: " + result.error);
+        toast.warning("ไม่สามารถดึงข้อมูลได้: " + result.error);
       }
     } catch (error) {
-      alert("เกิดข้อผิดพลาดในการดึงข้อมูล: " + error.message);
+      toast.warning("เกิดข้อผิดพลาดในการดึงข้อมูล: " + error.message);
     } finally {
       setIsLoading(false);
     }
@@ -850,7 +853,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       );
 
       if (!batchResult.success) {
-        alert("ไม่สามารถบันทึกข้อมูล Batch: " + batchResult.error);
+        toast.warning("ไม่สามารถบันทึกข้อมูล Batch: " + batchResult.error);
         setIsSaving(false);
         return;
       }
@@ -951,7 +954,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
           const logResult = await saveLogToDatabase(logs, batchId, currentCompanyId);
 
           if (!logResult.success) {
-            alert("ไม่สามารถบันทึกข้อมูล Log: " + logResult.error);
+            toast.warning("ไม่สามารถบันทึกข้อมูล Log: " + logResult.error);
             setIsSaving(false);
             return;
           }
@@ -1004,10 +1007,10 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         }
       }
 
-      alert("บันทึกข้อมูลสำเร็จ");
+      toast.success("บันทึกข้อมูลสำเร็จ");
       setShowModal(false);
     } catch (error) {
-      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล: " + error.message);
+      toast.warning("เกิดข้อผิดพลาดในการบันทึกข้อมูล: " + error.message);
     } finally {
       setIsSaving(false);
     }
@@ -1090,14 +1093,14 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
       const data = await response.json();
       if (data.success) {
-        alert("ลบข้อมูลสำเร็จ");
+        toast.success("ลบข้อมูลสำเร็จ");
         fetchBatches();
       } else {
-        alert("ไม่สามารถลบข้อมูลได้: " + data.error);
+        toast.warning("ไม่สามารถลบข้อมูลได้: " + data.error);
       }
     } catch (error) {
       console.error("Error deleting batch:", error);
-      alert("เกิดข้อผิดพลาดในการลบข้อมูล: " + error.message);
+      toast.warning("เกิดข้อผิดพลาดในการลบข้อมูล: " + error.message);
     }
   };
 
@@ -1124,7 +1127,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   // Function to save batch (create or update)
   const saveBatch = async () => {
     if (!batchStartDate || !batchEndDate || batchAmount <= 0) {
-      alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+      toast.warning("กรุณากรอกข้อมูลให้ครบถ้วน");
       return;
     }
 
@@ -1156,15 +1159,15 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
       const data = await response.json();
       if (data.success) {
-        alert(isEditingBatch ? "อัปเดตข้อมูลสำเร็จ" : "สร้างข้อมูลสำเร็จ");
+        toast.success(isEditingBatch ? "อัปเดตข้อมูลสำเร็จ" : "สร้างข้อมูลสำเร็จ");
         setShowBatchModal(false);
         fetchBatches();
       } else {
-        alert("ไม่สามารถบันทึกข้อมูลได้: " + data.error);
+        toast.warning("ไม่สามารถบันทึกข้อมูลได้: " + data.error);
       }
     } catch (error) {
       console.error("Error saving batch:", error);
-      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล: " + error.message);
+      toast.warning("เกิดข้อผิดพลาดในการบันทึกข้อมูล: " + error.message);
     }
   };
 
@@ -1193,7 +1196,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
     // You can add additional logic here after successful login
     // For example, store the token, update state, etc.
-    alert("เข้าสู่ระบบ Onecall สำเร็จ");
+    toast.success("เข้าสู่ระบบ Onecall สำเร็จ");
   };
 
   return (

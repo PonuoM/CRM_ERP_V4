@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "../../services/api";
 import { Upload, FileText, CheckCircle, XCircle, Link as LinkIcon, Download, List } from "lucide-react";
+import { useToast } from "../../components/Toast";
 
 interface InvoicesProps {
   companyId: number;
@@ -9,6 +10,7 @@ interface InvoicesProps {
 }
 
 export default function MarketplaceInvoices({ companyId, currentUser, activeStores }: InvoicesProps) {
+    const toast = useToast();
   const [activeTab, setActiveTab] = useState<'list' | 'import'>('list');
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -62,7 +64,7 @@ export default function MarketplaceInvoices({ companyId, currentUser, activeStor
 
   const handleUpload = async () => {
     if (!form.platform || !form.month_year) {
-      alert("กรุณาระบุเดือนปีและแพลตฟอร์ม");
+      toast.warning("กรุณาระบุเดือนปีและแพลตฟอร์ม");
       return;
     }
     setUploading(true);

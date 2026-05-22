@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from '../../types';
 import { Settings, Save, RefreshCw, AlertCircle, Users, CheckCircle, Tag, Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
+import { useToast } from "../../components/Toast";
 
 interface CommissionSettingsPageProps {
   currentUser: User;
@@ -88,6 +89,7 @@ const ROLES = [
 ];
 
 export default function CommissionSettingsPage({ currentUser }: CommissionSettingsPageProps) {
+    const toast = useToast();
   const [activeRole, setActiveRole] = useState<number>(7);
   const [config, setConfig] = useState<CommissionConfig>(JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
   const [isLoading, setIsLoading] = useState(false);
@@ -128,12 +130,12 @@ export default function CommissionSettingsPage({ currentUser }: CommissionSettin
         })
       });
       if (res.ok) {
-        alert('บันทึกการตั้งค่าตอมมิชชันสำเร็จ');
+        toast.success('บันทึกการตั้งค่าตอมมิชชันสำเร็จ');
       } else {
-        alert('เกิดข้อผิดพลาด: ' + res.error);
+        toast.warning('เกิดข้อผิดพลาด: ' + res.error);
       }
     } catch (e: any) {
-      alert('เกิดข้อผิดพลาด: ' + e.message);
+      toast.warning('เกิดข้อผิดพลาด: ' + e.message);
     }
     setIsSaving(false);
   };

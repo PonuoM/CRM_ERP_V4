@@ -3,6 +3,7 @@ import { Product, User, Company, UserRole, Warehouse } from '../types';
 import { PlusCircle, Edit, Trash2, Package, Eye, Plus, ToggleLeft, ToggleRight } from 'lucide-react';
 import { listProductLots, listProducts, getProductTotalStock, listWarehouses, updateProduct, updateProductLot, apiFetch } from '@/services/api';
 import LotManagementModal from '../components/LotManagementModal';
+import { useToast } from "../components/Toast";
 
 interface ProductManagementPageProps {
   products: Product[];
@@ -12,6 +13,7 @@ interface ProductManagementPageProps {
 }
 
 const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products, openModal, currentUser, allCompanies }) => {
+    const toast = useToast();
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [companyFilter, setCompanyFilter] = useState<string>('');
   const [shopFilter, setShopFilter] = useState<string>('');
@@ -40,13 +42,13 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
           setDuplicateSkus(json.duplicates);
           setShowDuplicateModal(true);
         } else {
-          alert('ไม่พบ SKU ซ้ำในระบบ');
+          toast.warning('ไม่พบ SKU ซ้ำในระบบ');
         }
       } else {
-        alert('Error: ' + json.error);
+        toast.warning('Error: ' + json.error);
       }
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      toast.warning('Error: ' + e.message);
     } finally {
       setCheckingDuplicates(false);
     }
@@ -117,7 +119,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
   const handleDelete = (product: Product) => {
     // Prevent deletion of system reserved products
     if (product.sku?.startsWith('UNKNOWN-PRODUCT-COMPANY')) {
-      alert('ไม่สามารถลบสินค้านี้ได้ (System Reserved)');
+      toast.warning('ไม่สามารถลบสินค้านี้ได้ (System Reserved)');
       return;
     }
 
@@ -160,7 +162,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
         error instanceof Error
           ? error.message
           : (error as any)?.message ?? '';
-      alert('เกิดข้อผิดพลาดในการอัปเดตสถานะสินค้า: ' + errorMessage);
+      toast.warning('เกิดข้อผิดพลาดในการอัปเดตสถานะสินค้า: ' + errorMessage);
     }
   };
 

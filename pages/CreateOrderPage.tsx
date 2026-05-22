@@ -70,6 +70,8 @@ import ProductSelectorModal from "../components/ProductSelectorModal";
 import resolveApiBasePath from "../utils/apiBasePath";
 
 // ════════════════════════════════════════════════════════════════════════════
+import { useToast } from "../components/Toast";
+
 // [B] TYPES & INTERFACES (TransferSlipUpload, UpsellSlip, CreateOrderPageProps, etc.)
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -1085,7 +1087,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           const qMax = quotaMaxMap.get(item.productId);
           if (qMax !== undefined && Number(value) > qMax) {
             cappedValue = qMax;
-            alert(`โควตาคงเหลือสูงสุด ${qMax} ชิ้น สำหรับสินค้านี้`);
+            toast.warning(`โควตาคงเหลือสูงสุด ${qMax} ชิ้น สำหรับสินค้านี้`);
           }
         }
 
@@ -1417,11 +1419,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const isAllowed = ALLOWED_FILE_TYPES.includes(file.type);
       const isSizeOk = file.size <= MAX_FILE_SIZE;
       if (!isAllowed) {
-        alert(
+        toast.warning(
           `ไม่สามารถแนบไฟล์ "${file.name}" ได้ (รองรับ: JPG, PNG, GIF, WebP เท่านั้น)`,
         );
       } else if (!isSizeOk) {
-        alert(`ไม่สามารถแนบไฟล์ "${file.name}" ได้ เนื่องจากขนาดไฟล์เกิน 10MB`);
+        toast.warning(`ไม่สามารถแนบไฟล์ "${file.name}" ได้ เนื่องจากขนาดไฟล์เกิน 10MB`);
       }
       return isAllowed && isSizeOk;
     });
@@ -1865,7 +1867,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const isValidSize = file.size <= MAX_FILE_SIZE;
 
       if (!isAllowedType) {
-        alert(
+        toast.warning(
           `ไม่สามารถแนบไฟล์ "${file.name}" ได้ เนื่องจากไม่รองรับประเภทไฟล์นี้ (รองรับ: JPG, PNG, GIF, WebP เท่านั้น)`,
         );
 
@@ -1873,7 +1875,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       }
 
       if (!isValidSize) {
-        alert(`ไม่สามารถแนบไฟล์ "${file.name}" ได้ เนื่องจากขนาดไฟล์เกิน 10MB`);
+        toast.warning(`ไม่สามารถแนบไฟล์ "${file.name}" ได้ เนื่องจากขนาดไฟล์เกิน 10MB`);
 
         return false;
       }
@@ -1916,7 +1918,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     } catch (error) {
       console.error("Failed to load payment slip:", error);
 
-      alert("Failed to load payment slip file.");
+      toast.warning("Failed to load payment slip file.");
     } finally {
       event.target.value = "";
     }
@@ -3053,14 +3055,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         // Show success message
 
-        alert("ลบที่อยู่เรียบร้อยแล้ว");
+        toast.success("ลบที่อยู่เรียบร้อยแล้ว");
       } else {
-        alert("ไม่สามารถลบที่อยู่ได้: " + (result.message || "เกิดข้อผิดพลาด"));
+        toast.warning("ไม่สามารถลบที่อยู่ได้: " + (result.message || "เกิดข้อผิดพลาด"));
       }
     } catch (error) {
       console.error("Error deleting address:", error);
 
-      alert("เกิดข้อผิดพลาดในการลบที่อยู่");
+      toast.warning("เกิดข้อผิดพลาดในการลบที่อยู่");
     }
   };
 
@@ -3079,7 +3081,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const newPrimaryAddress = addressOptions.find((a) => a.id === addressId);
 
       if (!newPrimaryAddress) {
-        alert("ไม่พบข้อมูลที่อยู่ที่เลือก");
+        toast.warning("ไม่พบข้อมูลที่อยู่ที่เลือก");
 
         return;
       }
@@ -3245,9 +3247,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         // Show success message
 
-        alert("ตั้งค่าที่อยู่หลักเรียบร้อยแล้ว");
+        toast.success("ตั้งค่าที่อยู่หลักเรียบร้อยแล้ว");
       } else {
-        alert(
+        toast.warning(
           "ไม่สามารถตั้งค่าที่อยู่หลักได้: " +
           (result.message || "เกิดข้อผิดพลาด"),
         );
@@ -3255,7 +3257,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     } catch (error) {
       console.error("Error setting primary address:", error);
 
-      alert("เกิดข้อผิดพลาดในการตั้งค่าที่อยู่หลัก");
+      toast.warning("เกิดข้อผิดพลาดในการตั้งค่าที่อยู่หลัก");
     }
   };
 
@@ -4355,7 +4357,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (missingFields.length > 0) {
         highlightField("shippingAddress");
 
-        alert(
+        toast.warning(
           `กรุณากรอกที่อยู่จัดส่งให้ครบถ้วน\nช่องที่ยังไม่ได้กรอก: ${missingFields.join(", ")}`,
         );
         setIsSaving(false);
@@ -4368,7 +4370,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         const cleanedPhone = shippingAddress.phone.replace(/\D/g, "");
         if (cleanedPhone.length < 9 || cleanedPhone.length > 10) {
           highlightField("shippingAddress");
-          alert("รูปแบบเบอร์โทร (ผู้รับ) ไม่ถูกต้อง กรุณากรอกเบอร์โทร 9-10 หลัก\n(หรือปล่อยว่าง หากต้องการให้ระบบใช้เบอร์หลักอัตโนมัติ)");
+          toast.warning("รูปแบบเบอร์โทร (ผู้รับ) ไม่ถูกต้อง กรุณากรอกเบอร์โทร 9-10 หลัก\n(หรือปล่อยว่าง หากต้องการให้ระบบใช้เบอร์หลักอัตโนมัติ)");
           setIsSaving(false);
           return;
         }
@@ -4399,7 +4401,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           !addressValidationResult.valid
         ) {
           highlightField("shippingAddress");
-          alert(
+          toast.warning(
             addressValidationResult.message ||
             "ที่อยู่ไม่สัมพันธ์กัน กรุณาตรวจสอบและระบุที่อยู่อีกครั้ง",
           );
@@ -4407,14 +4409,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         }
       } catch (error) {
         console.error("Error validating address:", error);
-        alert("เกิดข้อผิดพลาดในการตรวจสอบที่อยู่ กรุณาลองใหม่อีกครั้ง");
+        toast.warning("เกิดข้อผิดพลาดในการตรวจสอบที่อยู่ กรุณาลองใหม่อีกครั้ง");
         return;
       }
 
 
       // Validate Customer Status
       if (!customerStatus) {
-        alert("กรุณาเลือกสถานะลูกค้า");
+        toast.warning("กรุณาเลือกสถานะลูกค้า");
         customerStatusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
         customerStatusRef.current?.focus();
         return;
@@ -4423,7 +4425,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (!orderData.deliveryDate) {
         highlightField("deliveryDate");
 
-        alert("กรุณาเลือกวันที่จัดส่ง");
+        toast.warning("กรุณาเลือกวันที่จัดส่ง");
 
         return;
       }
@@ -4447,7 +4449,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         const maxDateStr = `${maxDate.getDate()}/${maxDate.getMonth() + 1}/${maxDate.getFullYear()}`;
 
-        alert(
+        toast.warning(
           `วันที่จัดส่งต้องไม่เกินวันที่ 5 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
         );
 
@@ -4461,7 +4463,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       ) {
         highlightField("items");
 
-        alert("กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ");
+        toast.warning("กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ");
 
         return;
       }
@@ -4517,7 +4519,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
               
               if (hasRate && needed > totalRemaining) {
                 const name = nameMap.get(qpId) ?? `Product #${qpId}`;
-                alert(`โควตาไม่เพียงพอสำหรับ "${name}" — ต้องการ ${needed} แต่คงเหลือ ${totalRemaining}`);
+                toast.warning(`โควตาไม่เพียงพอสำหรับ "${name}" — ต้องการ ${needed} แต่คงเหลือ ${totalRemaining}`);
                 return;
               }
             } catch (calcErr) {
@@ -4532,13 +4534,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       if (!orderData.paymentMethod) {
         highlightField("paymentMethod");
-        alert("กรุณาเลือกวิธีการชำระเงิน");
+        toast.warning("กรุณาเลือกวิธีการชำระเงิน");
         return;
       }
       if (orderData.paymentMethod === PaymentMethod.Transfer) {
         if (transferSlipUploads.length === 0) {
           highlightField("transferSlips");
-          alert("กรุณาอัปโหลดสลิปการโอนอย่างน้อย 1 รูป");
+          toast.warning("กรุณาอัปโหลดสลิปการโอนอย่างน้อย 1 รูป");
           return;
         }
         const slipsMissingMeta = transferSlipUploads.some(
@@ -4549,14 +4551,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             Number(s.amount) <= 0,
         );
         if (slipsMissingMeta) {
-          alert("กรุณาระบุธนาคารและวันเวลาโอนให้ครบทุกสลิป");
+          toast.warning("กรุณาระบุธนาคารและวันเวลาโอนให้ครบทุกสลิป");
           return;
         }
       }
       if (!salesChannel) {
         highlightField("salesChannel");
 
-        alert("กรุณาเลือกช่องทางการสั่งซื้อ");
+        toast.warning("กรุณาเลือกช่องทางการสั่งซื้อ");
 
         return;
       }
@@ -4569,7 +4571,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (shouldHavePage && !salesChannelPageId) {
         highlightField("salesChannelPage");
 
-        alert("กรุณาเลือกเพจของช่องทางการสั่งซื้อ");
+        toast.warning("กรุณาเลือกเพจของช่องทางการสั่งซื้อ");
 
         return;
       }
@@ -4577,7 +4579,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (orderData.paymentMethod === PaymentMethod.COD && !isCodValid) {
         highlightField("cod");
 
-        alert("ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดสุทธิ");
+        toast.warning("ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดสุทธิ");
 
         return;
       }
@@ -4594,7 +4596,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         if (numBoxes > maxBoxes) {
           highlightField("cod");
 
-          alert(
+          toast.warning(
             `จำนวนกล่อง (${numBoxes}) ต้องไม่เกินจำนวนรายการสินค้า (${maxBoxes} รายการ)`,
           );
 
@@ -4621,7 +4623,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           if (!boxesWithItems.has(boxNum)) {
             highlightField("cod");
 
-            alert(
+            toast.warning(
               `กล่องที่ ${boxNum} ไม่มีสินค้า กรุณาเพิ่มสินค้าในกล่องนี้หรือลดจำนวนกล่อง`,
             );
 
@@ -4752,7 +4754,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         if (!newCustomerFirstName.trim() || !newCustomerPhone.trim()) {
           highlightField("newCustomerFirstName");
 
-          alert("กรุณากรอกชื่อและเบอร์โทรศัพท์สำหรับลูกค้าใหม่");
+          toast.warning("กรุณากรอกชื่อและเบอร์โทรศัพท์สำหรับลูกค้าใหม่");
 
           return;
         }
@@ -4760,13 +4762,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         if (newCustomerPhoneError) {
           highlightField("newCustomerPhone");
 
-          alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${newCustomerPhoneError}`);
+          toast.warning(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${newCustomerPhoneError}`);
 
           return;
         }
 
         if (newCustomerBackupPhoneErrors.some((err) => err)) {
-          alert(`เบอร์สำรองไม่ถูกต้อง: ${newCustomerBackupPhoneErrors.find((err) => err)}`);
+          toast.warning(`เบอร์สำรองไม่ถูกต้อง: ${newCustomerBackupPhoneErrors.find((err) => err)}`);
 
           return;
         }
@@ -4810,7 +4812,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         if (!selectedCustomer) {
           highlightField("customerSelector");
 
-          alert("กรุณาเลือกลูกค้า");
+          toast.warning("กรุณาเลือกลูกค้า");
 
           return;
         }
@@ -4820,13 +4822,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         if (editedCustomerPhoneError) {
           highlightField("editedCustomerPhone");
 
-          alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${editedCustomerPhoneError}`);
+          toast.warning(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${editedCustomerPhoneError}`);
 
           return;
         }
 
         if (editedCustomerBackupPhoneErrors.some((err) => err)) {
-          alert(`เบอร์สำรองไม่ถูกต้อง: ${editedCustomerBackupPhoneErrors.find((err) => err)}`);
+          toast.warning(`เบอร์สำรองไม่ถูกต้อง: ${editedCustomerBackupPhoneErrors.find((err) => err)}`);
 
           return;
         }
@@ -4932,10 +4934,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       try {
         savedOrderId = await onSave(payload);
-      } catch (error) {
+      } catch (error: any) {
         console.error("create order failed", error);
 
-        alert("เกิดข้อผิดพลาดในการบันทึกคำสั่งซื้อ กรุณาลองใหม่อีกครั้ง");
+        toast.error("สร้างออเดอร์ไม่สำเร็จ", error?.message || "เกิดข้อผิดพลาดในการบันทึกคำสั่งซื้อ กรุณาลองใหม่อีกครั้ง");
 
         return;
       }
@@ -5071,12 +5073,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           } else {
             console.error("Failed to update customer address:", result.message);
 
-            alert("ไม่สามารถอัพเดตที่อยู่หลักได้: " + result.message);
+            toast.warning("ไม่สามารถอัพเดตที่อยู่หลักได้: " + result.message);
           }
         } catch (error) {
           console.error("Error updating customer address:", error);
 
-          alert("เกิดข้อผิดพลาดในการอัพเดตที่อยู่หลัก");
+          toast.warning("เกิดข้อผิดพลาดในการอัพเดตที่อยู่หลัก");
         }
       }
 
@@ -5135,12 +5137,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
               result.message,
             );
 
-            alert("ไม่สามารถอัพเดตข้อมูลโซเชียลมีเดียได้: " + result.message);
+            toast.warning("ไม่สามารถอัพเดตข้อมูลโซเชียลมีเดียได้: " + result.message);
           }
         } catch (error) {
           console.error("Error updating customer social media:", error);
 
-          alert("เกิดข้อผิดพลาดในการอัพเดตข้อมูลโซเชียลมีเดีย");
+          toast.warning("เกิดข้อผิดพลาดในการอัพเดตข้อมูลโซเชียลมีเดีย");
         }
       }
 
@@ -5184,7 +5186,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             if (!data.success) {
               console.error("Error saving customer address:", data.message);
 
-              alert("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + data.message);
+              toast.warning("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + data.message);
             } else {
               console.log(
                 "Customer address saved successfully with ID:",
@@ -5197,7 +5199,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           .catch((error) => {
             console.error("Error saving customer address:", error);
 
-            alert("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + error.message);
+            toast.warning("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + error.message);
           });
       } else if (
         selectedAddressOption !== "new" &&
@@ -8886,7 +8888,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                               if (selectedDate > maxDate) {
                                 const maxDateStr = `${nextMonth.getDate()}/${nextMonth.getMonth() + 1}/${nextMonth.getFullYear()}`;
-                                alert(
+                                toast.warning(
                                   `วันที่จัดส่งต้องไม่เกินวันที่ 5 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
                                 );
                                 updateOrderData("deliveryDate", maxDate);
@@ -9254,7 +9256,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             const maxBoxes = parentItems.length || 1;
 
                             if (newValue > maxBoxes) {
-                              alert(
+                              toast.warning(
                                 `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (สูงสุด ${maxBoxes} กล่อง)`,
                               );
                               return;
@@ -9545,7 +9547,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     const qMax = quotaMaxMap.get(item.productId ?? 0);
                                     if (qMax !== undefined && nextQty > qMax) {
                                       nextQty = qMax;
-                                      alert(`โควตาคงเหลือสูงสุด ${qMax} ชิ้น สำหรับสินค้านี้`);
+                                      toast.warning(`โควตาคงเหลือสูงสุด ${qMax} ชิ้น สำหรับสินค้านี้`);
                                     }
 
                                     const baseTotal = item.isFreebie ? 0 : (nextQty || 1) * (Number(item.pricePerUnit) || 0);
@@ -9805,7 +9807,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     const qMax = quotaMaxMap.get(item.productId ?? 0);
                                     if (qMax !== undefined && nextQty > qMax) {
                                       nextQty = qMax;
-                                      alert(`โควตาคงเหลือสูงสุด ${qMax} ชิ้น สำหรับสินค้านี้`);
+                                      toast.warning(`โควตาคงเหลือสูงสุด ${qMax} ชิ้น สำหรับสินค้านี้`);
                                     }
 
                                     const baseTotal = item.isFreebie

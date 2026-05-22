@@ -12,6 +12,7 @@ import { downloadDataFile } from '../utils/exportUtils';
 import { mapCustomerFromApi } from '../utils/customerMapper';
 import Spinner from '../components/Spinner';
 import BlockedCustomersModal from '../components/BlockedCustomersModal';
+import { useToast } from "../components/Toast";
 
 interface CustomerDistributionV2Props {
     currentUser?: User | null;
@@ -66,6 +67,7 @@ interface AssignHistory {
 }
 
 const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ currentUser }) => {
+    const toast = useToast();
     // Data
     const [baskets, setBaskets] = useState<BasketConfig[]>([]);
     const [dashboardBaskets, setDashboardBaskets] = useState<BasketConfig[]>([]);
@@ -1189,10 +1191,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 const filename = `distribution_history_${new Date().toISOString().slice(0, 10)}`;
                 downloadDataFile([headers, ...rows], filename, type);
             } else {
-                alert('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
+                toast.warning('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
             }
         } catch (e: any) {
-            alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + e.message);
+            toast.warning('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + e.message);
         } finally {
             setIsExporting(false);
             setIsExportTypeModalOpen(false);

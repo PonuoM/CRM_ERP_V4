@@ -3,6 +3,7 @@ import { Settings, Plus, Search, X, Camera, Loader2, Save, ChevronDown, Eye, Tra
 import { Warehouse, Product } from '../types';
 import { inv2SaveAdjustment, inv2ListMovements, listWarehouses, listProducts, apiFetch } from '../services/api';
 import ImageLightbox from '../components/common/ImageLightbox';
+import { useToast } from "../components/Toast";
 
 interface Inv2AdjustmentPageProps {
     companyId: number;
@@ -29,6 +30,7 @@ const ProductSearch: React.FC<{
     value: number;
     onChange: (id: number) => void;
 }> = ({ products, value, onChange }) => {
+    const toast = useToast();
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
     const ref = useRef<HTMLDivElement>(null);
@@ -115,6 +117,7 @@ function groupByDoc(movements: any[]): AdjustDoc[] {
 }
 
 const Inv2AdjustmentPage: React.FC<Inv2AdjustmentPageProps> = ({ companyId, userId }) => {
+    const toast = useToast();
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [recentAdj, setRecentAdj] = useState<any[]>([]);
@@ -191,13 +194,13 @@ const Inv2AdjustmentPage: React.FC<Inv2AdjustmentPageProps> = ({ companyId, user
     };
 
     const handleSave = async () => {
-        if (!formWarehouse) return alert('เลือกคลังสินค้า');
+        if (!formWarehouse) return toast.warning('เลือกคลังสินค้า');
         const itemsWithWarehouse = formItems.map(i => {
             const { product_name, product_sku, ...rest } = i;
             return { ...rest, warehouse_id: formWarehouse };
         });
         const valid = itemsWithWarehouse.filter(i => i.warehouse_id && i.product_id && i.quantity > 0);
-        if (valid.length === 0) return alert('เพิ่มรายการที่ถูกต้องอย่างน้อย 1 รายการ');
+        if (valid.length === 0) return toast.warning('เพิ่มรายการที่ถูกต้องอย่างน้อย 1 รายการ');
 
         setSaving(true);
         try {
@@ -208,7 +211,7 @@ const Inv2AdjustmentPage: React.FC<Inv2AdjustmentPageProps> = ({ companyId, user
             setShowModal(false);
             loadData();
         } catch (e: any) {
-            alert('บันทึกไม่สำเร็จ: ' + (e?.message || ''));
+            toast.success('บันทึกไม่สำเร็จ: ' + (e?.message || ''));
         }
         setSaving(false);
     };
@@ -225,10 +228,10 @@ const Inv2AdjustmentPage: React.FC<Inv2AdjustmentPageProps> = ({ companyId, user
             if (res?.success) {
                 loadData();
             } else {
-                alert('ลบไม่สำเร็จ: ' + (res?.error || ''));
+                toast.success('ลบไม่สำเร็จ: ' + (res?.error || ''));
             }
         } catch (e: any) {
-            alert('ลบไม่สำเร็จ: ' + (e?.message || ''));
+            toast.success('ลบไม่สำเร็จ: ' + (e?.message || ''));
         }
         setDeleting('');
     };

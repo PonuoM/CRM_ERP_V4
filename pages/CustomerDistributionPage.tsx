@@ -31,6 +31,7 @@ import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers,
 import { calculateCustomerGrade } from "@/utils/customerGrade";
 import { mapCustomerFromApi } from "@/utils/customerMapper";
 import Spinner from "@/components/Spinner";
+import { useToast } from "../components/Toast";
 
 interface CustomerDistributionPageProps {
   allCustomers: Customer[];
@@ -233,6 +234,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   setCustomers,
   currentUser,
 }) => {
+    const toast = useToast();
   // Customer Stats from API
   const [customerStats, setCustomerStats] = useState<{
     totalCustomers: number;
@@ -680,7 +682,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       setShowPreviewModal(true);
     } catch (err) {
       console.error("Failed to fetch preview:", err);
-      alert("เกิดข้อผิดพลาดในการโหลดตัวอย่างข้อมูล");
+      toast.warning("เกิดข้อผิดพลาดในการโหลดตัวอย่างข้อมูล");
     } finally {
       setLoadingPool(false);
     }
@@ -699,7 +701,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   const handleGeneratePreview = () => {
     const count = parseInt(distributionCount, 10);
     if (isNaN(count) || count <= 0) {
-      alert("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
+      toast.warning("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
       return;
     }
 
@@ -715,13 +717,13 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       actualAvailableCount = customerStats?.baskets?.waitingReturn ?? 0;
     }
     if (count > actualAvailableCount) {
-      alert(`จำนวนที่ต้องการแจก(${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก(${actualAvailableCount.toLocaleString()})`);
+      toast.warning(`จำนวนที่ต้องการแจก(${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก(${actualAvailableCount.toLocaleString()})`);
       return;
     }
 
 
     if (selectedAgentIds.length === 0) {
-      alert("กรุณาเลือกพนักงานเป้าหมาย");
+      toast.warning("กรุณาเลือกพนักงานเป้าหมาย");
       return;
     }
 
@@ -750,7 +752,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         const fetchedCustomers = (response?.data || []).map((c: any) => mapCustomerFromApi(c));
 
         if (fetchedCustomers.length === 0) {
-          alert("ไม่พบลูกค้าที่พร้อมแจก กรุณาตรวจสอบอีกครั้ง");
+          toast.warning("ไม่พบลูกค้าที่พร้อมแจก กรุณาตรวจสอบอีกครั้ง");
           setLoadingPool(false);
           return;
         }
@@ -810,7 +812,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         setLoadingPool(false);
       } catch (error) {
         console.error("Failed to fetch preview customers:", error);
-        alert("ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
+        toast.warning("ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
         setLoadingPool(false);
       }
     };
@@ -824,12 +826,12 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     const actualCount = parseInt(distributionCount, 10);
 
     if (isNaN(actualCount) || actualCount <= 0) {
-      alert("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
+      toast.warning("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
       return;
     }
 
     if (selectedAgentIds.length === 0) {
-      alert("กรุณาเลือกพนักงานเป้าหมาย");
+      toast.warning("กรุณาเลือกพนักงานเป้าหมาย");
       return;
     }
 
@@ -872,7 +874,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
           message += `\nข้ามไป: ${skipped.toLocaleString()} รายการ`;
         }
 
-        alert(message);
+        toast.warning(message);
 
         // Reset form
         setDistributionResult({ success: distributed, skipped });
@@ -928,7 +930,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       }
     } catch (error) {
       console.error("Failed to distribute customers", error);
-      alert("ไม่สามารถบันทึกการแจกลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
+      toast.warning("ไม่สามารถบันทึกการแจกลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
       setSavingDistribution(false);
     }
   };
@@ -1244,7 +1246,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     const handleUnblock = async (blockId?: number) => {
       if (!blockId && blockId !== 0) return;
       if (!currentUser?.id) {
-        alert("Missing user info for unblocking");
+        toast.warning("Missing user info for unblocking");
         return;
       }
 
@@ -1260,7 +1262,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         await refreshCustomerStats();
       } catch (error) {
         console.error("Failed to unblock customer:", error);
-        alert("Unblock failed, please try again.");
+        toast.warning("Unblock failed, please try again.");
       } finally {
         setUnblockingIds((prev) => {
           const next = new Set(prev);

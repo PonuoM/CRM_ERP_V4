@@ -3,6 +3,7 @@ import { ArrowDownToLine, Plus, Search, X, Camera, Loader2, Save, ChevronDown, E
 import { Warehouse, Product, Inv2ReceiveDocument } from '../types';
 import { inv2ListReceive, inv2SaveReceive, inv2GetReceiveDoc, inv2DeleteReceive, inv2EditReceive, listWarehouses, listProducts } from '../services/api';
 import ImageLightbox from '../components/common/ImageLightbox';
+import { useToast } from "../components/Toast";
 
 interface Inv2ReceivePageProps { companyId: number; userId: number; }
 
@@ -32,6 +33,7 @@ const ProductSearch: React.FC<{
     value: number;
     onChange: (id: number) => void;
 }> = ({ products, value, onChange }) => {
+    const toast = useToast();
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
     const ref = useRef<HTMLDivElement>(null);
@@ -89,6 +91,7 @@ const ProductSearch: React.FC<{
 };
 
 const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) => {
+    const toast = useToast();
     const [documents, setDocuments] = useState<Inv2ReceiveDocument[]>([]);
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
@@ -177,7 +180,7 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                 })));
                 setShowModal(true);
             } else {
-                alert('โหลดข้อมูลเอกสารล้มเหลว');
+                toast.warning('โหลดข้อมูลเอกสารล้มเหลว');
             }
         } catch (e) { console.error(e); }
         setLoading(false);
@@ -190,9 +193,9 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
     const removeItem = (idx: number) => setFormItems(formItems.filter((_, i) => i !== idx));
 
     const handleSave = async () => {
-        if (!formWarehouse) return alert('เลือกคลังสินค้า');
+        if (!formWarehouse) return toast.warning('เลือกคลังสินค้า');
         const validItems = formItems.filter(i => i.product_id && i.quantity > 0);
-        if (validItems.length === 0) return alert('เพิ่มรายการอย่างน้อย 1 รายการ');
+        if (validItems.length === 0) return toast.warning('เพิ่มรายการอย่างน้อย 1 รายการ');
         setSaving(true);
         try {
             const autoLot = 'LOT-' + formReceiveDate.replace(/-/g, '');
@@ -214,7 +217,7 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
                 await inv2SaveReceive(payload);
             }
             setShowModal(false); loadData();
-        } catch (e: any) { alert('บันทึกไม่สำเร็จ: ' + (e?.message || '')); }
+        } catch (e: any) { toast.success('บันทึกไม่สำเร็จ: ' + (e?.message || '')); }
         setSaving(false);
     };
 
@@ -249,13 +252,13 @@ const Inv2ReceivePage: React.FC<Inv2ReceivePageProps> = ({ companyId, userId }) 
         try {
             const res = await inv2DeleteReceive(docId);
             if (res?.success) {
-                alert(`ลบสำเร็จ — หักคืน ${res.reversed_quantity} หน่วย`);
+                toast.success(`ลบสำเร็จ — หักคืน ${res.reversed_quantity} หน่วย`);
                 if (showDetailModal) setShowDetailModal(false);
                 loadData();
             } else {
-                alert('ลบไม่สำเร็จ: ' + (res?.error || ''));
+                toast.success('ลบไม่สำเร็จ: ' + (res?.error || ''));
             }
-        } catch (e: any) { alert('เกิดข้อผิดพลาด: ' + (e?.message || '')); }
+        } catch (e: any) { toast.warning('เกิดข้อผิดพลาด: ' + (e?.message || '')); }
         setDeletingDocId(null);
     };
 

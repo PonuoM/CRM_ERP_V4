@@ -8,6 +8,7 @@ import APP_BASE_PATH from '../appBasePath';
 import MarketplaceDashboard from "./Marketplace/MarketplaceDashboard";
 import MarketplaceSalesData from "./Marketplace/MarketplaceSalesData";
 import MarketplaceInvoices from "./Marketplace/MarketplaceInvoices";
+import { useToast } from "../components/Toast";
 
 interface MarketplacePageProps {
     currentUser: any;
@@ -28,6 +29,7 @@ interface Store {
 const PLATFORMS = ["Shopee", "Lazada", "TikTok Shop", "LINE MyShop", "Facebook Shop", "อื่นๆ"];
 
 const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) => {
+    const toast = useToast();
     // Internal Tab State (Synced with Sidebar View initially, but allows internal navigation)
     const [activeTab, setActiveTab] = useState<string>("dashboard");
 
@@ -93,7 +95,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
     // ==================== SETTINGS VIEW ====================
     const handleSaveStore = async () => {
         if (!storeForm.name || !storeForm.platform) {
-            alert("กรุณากรอกชื่อร้านค้าและแพลตฟอร์ม");
+            toast.warning("กรุณากรอกชื่อร้านค้าและแพลตฟอร์ม");
             return;
         }
         try {
@@ -111,9 +113,9 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                 setEditingStoreId(null);
                 loadStores();
             } else {
-                alert(json.error || "Error saving store");
+                toast.warning(json.error || "Error saving store");
             }
-        } catch (e) { alert("Error saving store"); }
+        } catch (e) { toast.warning("Error saving store"); }
     };
 
     const handleToggleStoreActive = async (store: Store) => {
@@ -134,8 +136,8 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
                 }),
             });
             if (json && json.success) loadStores();
-            else alert(json?.error || "Error");
-        } catch (e: any) { alert(e?.message || "Error toggling store"); }
+            else toast.warning(json?.error || "Error");
+        } catch (e: any) { toast.warning(e?.message || "Error toggling store"); }
     };
 
     const activeStores = useMemo(() => stores.filter(s => s.active), [stores]);
@@ -458,8 +460,8 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ currentUser, view }) 
             if (json && json.success) {
                 if (viewBatchId === batch.id) { setViewBatchId(null); setBatchOrders([]); setBatchSummary(null); }
                 loadImportBatches();
-            } else { alert(json.error || 'Error'); }
-        } catch (e: any) { alert(e?.message || 'Error deleting batch'); }
+            } else { toast.warning(json.error || 'Error'); }
+        } catch (e: any) { toast.warning(e?.message || 'Error deleting batch'); }
     };
 
     useEffect(() => {

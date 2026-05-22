@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { User, UserRole, Company, UserStatus } from '../types';
 import { listRoles, Role } from '../services/roleApi';
 import { PlusCircle, Edit, Trash2 } from 'lucide-react';
+import { useToast } from "../components/Toast";
 
 interface UserManagementPageProps {
   users: User[];
@@ -18,6 +19,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
   currentUser,
   allCompanies,
 }) => {
+    const toast = useToast();
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [companyFilter, setCompanyFilter] = useState<string>("");
   const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
@@ -62,7 +64,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
       await onToggleStatus(user.id, targetStatus);
     } catch (error) {
       console.error('Failed to change user status', error);
-      alert('Unable to update user status. Please try again.');
+      toast.warning('Unable to update user status. Please try again.');
     } finally {
       setStatusUpdatingId(null);
     }

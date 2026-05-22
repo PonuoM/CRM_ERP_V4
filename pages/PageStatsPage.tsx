@@ -10,6 +10,7 @@ import resolveApiBasePath from '@/utils/apiBasePath';
 import { listPages } from '@/services/api';
 import ExportTypeModal from '@/components/ExportTypeModal';
 import { downloadDataFile } from '@/utils/exportUtils';
+import { useToast } from "../components/Toast";
 
 interface PageStatsPageProps {
   orders?: Order[];
@@ -52,6 +53,7 @@ function fmtDate(d: Date) {
 }
 
 const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = [], calls = [] }) => {
+    const toast = useToast();
   const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [rangeDays, setRangeDays] = useState<number | string>(7);
   const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState<boolean>(false);
@@ -501,19 +503,19 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // Export data from API to CSV
   const exportAPIDataToCSV = async (fileType: 'csv' | 'xlsx') => {
     if (!currentUser || selectedPagesForExport.size === 0) {
-      alert('กรุณาเลือกเพจอย่างน้อย 1 เพจ');
+      toast.warning('กรุณาเลือกเพจอย่างน้อย 1 เพจ');
       return;
     }
 
     // Parse date range
     if (!exportDateRange) {
-      alert('กรุณาเลือกช่วงวันที่');
+      toast.warning('กรุณาเลือกช่วงวันที่');
       return;
     }
 
     const [sRaw, eRaw] = exportDateRange.split(' - ');
     if (!sRaw || !eRaw) {
-      alert('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
+      toast.warning('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
       return;
     }
 
@@ -544,7 +546,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       }
 
       if (!accessToken) {
-        alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        toast.warning(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
         return;
       }
 
@@ -695,15 +697,15 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       // Close modal after successful export
       setIsExportModalOpen(false);
       setShowFormatModal(false);
-      alert('ส่งออกข้อมูลเรียบร้อย');
+      toast.success('ส่งออกข้อมูลเรียบร้อย');
     } catch (error) {
       console.error('Error exporting data:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (errorMessage.includes('Server internal error')) {
-        alert('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
+        toast.warning('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
       } else {
-        alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + errorMessage);
+        toast.warning('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + errorMessage);
       }
     } finally {
       setIsExporting(false);
@@ -713,19 +715,19 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // Update data from API to Database
   const updateAPIDataToDatabase = async () => {
     if (!currentUser || pages.length === 0) {
-      alert('ไม่พบข้อมูลเพจ');
+      toast.warning('ไม่พบข้อมูลเพจ');
       return;
     }
 
     // Parse date range
     if (!databaseDateRange) {
-      alert('กรุณาเลือกช่วงวันที่');
+      toast.warning('กรุณาเลือกช่วงวันที่');
       return;
     }
 
     const [sRaw, eRaw] = databaseDateRange.split(' - ');
     if (!sRaw || !eRaw) {
-      alert('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
+      toast.warning('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
       return;
     }
 
@@ -746,7 +748,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     }
 
     if (conflictingDates.length > 0) {
-      alert(`ไม่สามารถอัปเดตข้อมูลในช่วงวันที่ที่เลือกได้ เนื่องจากมีข้อมูลอยู่แล้วในฐานข้อมูล:\n${conflictingDates.join(', ')}`);
+      toast.warning(`ไม่สามารถอัปเดตข้อมูลในช่วงวันที่ที่เลือกได้ เนื่องจากมีข้อมูลอยู่แล้วในฐานข้อมูล:\n${conflictingDates.join(', ')}`);
       return;
     }
 
@@ -772,7 +774,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       }
 
       if (!accessToken) {
-        alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        toast.warning(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
         return;
       }
 
@@ -932,7 +934,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         const result = await response.json();
 
         if (result.success) {
-          alert(`อัปเดตข้อมูลเรียบร้อย: ${result.message}`);
+          toast.success(`อัปเดตข้อมูลเรียบร้อย: ${result.message}`);
           setIsDatabaseModalOpen(false);
         } else {
           throw new Error(result.error || 'Unknown error');
@@ -947,12 +949,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           try {
             const responseText = await response.text();
             console.error('Raw response:', responseText);
-            alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ไม่สามารถแปลคำตอบจากเซิร์ฟเวอร์ได้. ตรวจสอบ console สำหรับข้อมูลเพิ่มเติม');
+            toast.warning('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ไม่สามารถแปลคำตอบจากเซิร์ฟเวอร์ได้. ตรวจสอบ console สำหรับข้อมูลเพิ่มเติม');
           } catch (textError) {
-            alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ' + errorMessage);
+            toast.warning('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ' + errorMessage);
           }
         } else {
-          alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ' + errorMessage);
+          toast.warning('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ' + errorMessage);
         }
       } finally {
         setIsUpdatingDatabase(false);
@@ -1056,7 +1058,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // Delete selected batches
   const deleteSelectedBatches = async () => {
     if (selectedBatches.size === 0) {
-      alert('กรุณาเลือก batch อย่างน้อย 1 รายการ');
+      toast.warning('กรุณาเลือก batch อย่างน้อย 1 รายการ');
       return;
     }
 
@@ -1079,19 +1081,19 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       if (response.ok) {
         const result = await response.json();
         if (result.success) {
-          alert(`ลบข้อมูลสำเร็จ: ${result.message}`);
+          toast.success(`ลบข้อมูลสำเร็จ: ${result.message}`);
           setSelectedBatches(new Set());
           // Refresh the batch records
           fetchExistingDateRanges();
         } else {
-          alert('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
+          toast.warning('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
         }
       } else {
-        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+        toast.warning('เกิดข้อผิดพลาดในการเชื่อมต่อ');
       }
     } catch (error) {
       console.error('Error deleting batches:', error);
-      alert('เกิดข้อผิดพลาดในการลบข้อมูล');
+      toast.warning('เกิดข้อผิดพลาดในการลบข้อมูล');
     } finally {
       setIsDeletingBatches(false);
     }
@@ -1100,7 +1102,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // Fetch page stats from Pages.fm API
   const fetchPageStats = async () => {
     if (!selectedPage || !currentUser) {
-      alert('กรุณาเลือกเพจ');
+      toast.warning('กรุณาเลือกเพจ');
       return;
     }
 
@@ -1308,7 +1310,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         setUsePageStats(true);
 
         if (allStatsData.length === 0) {
-          alert('ไม่สามารถดึงข้อมูลสถิติจากเพจใดๆ ได้');
+          toast.warning('ไม่สามารถดึงข้อมูลสถิติจากเพจใดๆ ได้');
         }
       } else {
         // Fetch data for single page (original logic)
@@ -1381,9 +1383,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
       // Show a user-friendly message for server internal errors
       if (errorMessage.includes('Server internal error')) {
-        alert('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
+        toast.warning('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
       } else {
-        alert('เกิดข้อผิดพลาด: ' + errorMessage);
+        toast.warning('เกิดข้อผิดพลาด: ' + errorMessage);
       }
     } finally {
       setIsSearching(false);

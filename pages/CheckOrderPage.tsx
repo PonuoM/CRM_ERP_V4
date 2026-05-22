@@ -47,6 +47,7 @@ import {
 import OrderDetailModal from '../components/OrderDetailModal';
 import OrderManagementModal from '../components/OrderManagementModal';
 import { patchOrder, getOrder } from '../services/api';
+import { useToast } from "../components/Toast";
 
 interface CheckOrderPageProps {
   currentUser: User;
@@ -97,6 +98,7 @@ const CONFIDENCE_CONFIG = {
 
 // ======== Classification Tab ========
 const ClassificationTab: React.FC<{ currentUser: User; companyId: number }> = ({ currentUser, companyId }) => {
+    const toast = useToast();
   const [cancellationTypes, setCancellationTypes] = useState<CancellationType[]>([]);
   const [allOrders, setAllOrders] = useState<AnalyzedOrder[]>([]);
   const [summary, setSummary] = useState<Summary>({ total_cancelled: 0, classified: 0, unclassified: 0 });
@@ -247,7 +249,7 @@ const ClassificationTab: React.FC<{ currentUser: User; companyId: number }> = ({
   const handleConfirm = async (orderIds?: string[]) => {
     const ids = orderIds || Array.from(checkedOrders);
     if (ids.length === 0) {
-      alert('กรุณาเลือกรายการที่จะยืนยัน');
+      toast.warning('กรุณาเลือกรายการที่จะยืนยัน');
       return;
     }
     const items = ids.map(id => ({
@@ -258,12 +260,12 @@ const ClassificationTab: React.FC<{ currentUser: User; companyId: number }> = ({
     try {
       const res = await confirmCancellation(items, currentUser.id);
       if (res?.status === 'success') {
-        alert(`จัดประเภทสำเร็จ ${res.count} รายการ`);
+        toast.success(`จัดประเภทสำเร็จ ${res.count} รายการ`);
         loadOrders();
       }
     } catch (err) {
       console.error('Failed to confirm:', err);
-      alert('เกิดข้อผิดพลาดในการบันทึก');
+      toast.warning('เกิดข้อผิดพลาดในการบันทึก');
     } finally {
       setSaving(false);
     }
@@ -599,6 +601,7 @@ const ClassificationTab: React.FC<{ currentUser: User; companyId: number }> = ({
 
 // ======== Settings Tab ========
 const SettingsTab: React.FC = () => {
+    const toast = useToast();
   const [types, setTypes] = useState<CancellationType[]>([]);
   const [defaultTypeId, setDefaultTypeIdState] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -629,7 +632,7 @@ const SettingsTab: React.FC = () => {
 
   const handleAdd = async () => {
     if (!addForm.label.trim()) {
-      alert('กรุณาระบุชื่อประเภท');
+      toast.warning('กรุณาระบุชื่อประเภท');
       return;
     }
     setSaving(true);
@@ -645,7 +648,7 @@ const SettingsTab: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to add type:', err);
-      alert('เกิดข้อผิดพลาดในการเพิ่ม');
+      toast.warning('เกิดข้อผิดพลาดในการเพิ่ม');
     } finally {
       setSaving(false);
     }
@@ -669,7 +672,7 @@ const SettingsTab: React.FC = () => {
       loadTypes();
     } catch (err) {
       console.error('Failed to update:', err);
-      alert('เกิดข้อผิดพลาดในการแก้ไข');
+      toast.warning('เกิดข้อผิดพลาดในการแก้ไข');
     } finally {
       setSaving(false);
     }
@@ -680,12 +683,12 @@ const SettingsTab: React.FC = () => {
     try {
       const res = await manageCancellationTypes('DELETE', { id: type.id });
       if (res?.status === 'success') {
-        alert(res.message);
+        toast.warning(res.message);
         loadTypes();
       }
     } catch (err) {
       console.error('Failed to delete:', err);
-      alert('เกิดข้อผิดพลาดในการลบ');
+      toast.warning('เกิดข้อผิดพลาดในการลบ');
     }
   };
 
@@ -707,7 +710,7 @@ const SettingsTab: React.FC = () => {
       setDefaultTypeIdState(typeId);
     } catch (err) {
       console.error('Failed to set default:', err);
-      alert('เกิดข้อผิดพลาดในการตั้งค่า');
+      toast.warning('เกิดข้อผิดพลาดในการตั้งค่า');
     }
   };
 
@@ -930,6 +933,7 @@ const SettingsTab: React.FC = () => {
 
 // ======== Promo Check Tab ========
 const PromoCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ currentUser, companyId }) => {
+    const toast = useToast();
   const [data, setData] = useState<any[]>([]);
   const [summary, setSummary] = useState<{ total: number; mismatch: number }>({ total: 0, mismatch: 0 });
   const [loading, setLoading] = useState(true);
@@ -1454,6 +1458,7 @@ const PromoCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ cur
 
 // ======== Creator Check Tab ========
 const CreatorCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ currentUser, companyId }) => {
+    const toast = useToast();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState({ total: 0, flagged: 0 });
@@ -1728,6 +1733,7 @@ interface CODCheckSummary {
 }
 
 const CODFileCheckTab: React.FC<{ companyId: number }> = ({ companyId }) => {
+    const toast = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [parsedItems, setParsedItems] = useState<{ tracking_number: string; cod_amount: number }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1948,6 +1954,7 @@ const CODFileCheckTab: React.FC<{ companyId: number }> = ({ companyId }) => {
 
 // ======== Main Page ========
 const CheckOrderPage: React.FC<CheckOrderPageProps> = ({ currentUser }) => {
+    const toast = useToast();
   const [activeMainTab, setActiveMainTab] = useState<'classification' | 'promo-check' | 'creator-check' | 'settings' | 'cod-check'>('classification');
 
   // Company selector state (Super Admin only)
