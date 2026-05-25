@@ -7283,7 +7283,10 @@ function ensure_cod_schema(PDO $pdo): void
                                    WHERE table_schema = '$dbName' AND table_name = 'cod_records'")
             ->fetchAll(PDO::FETCH_ASSOC);
         foreach ($columnRows as $col) {
-            $columns[strtolower($col['column_name'])] = $col;
+            $cName = $col['column_name'] ?? $col['COLUMN_NAME'] ?? '';
+            if ($cName !== '') {
+                $columns[strtolower($cName)] = $col;
+            }
         }
     } catch (Throwable $e) { /* ignore */
     }
@@ -7554,86 +7557,138 @@ function handle_order_slips(PDO $pdo, ?string $id): void
             if (!$id) {
                 json_response(['error' => 'ID_REQUIRED'], 400);
             }
-            $st = $pdo->prepare('SELECT url, order_id FROM order_slips WHERE id=?');
-            $st->execute([$id]);
-            $row = $st->fetch();
-            if (!$row) {
-                json_response(['error' => 'NOT_FOUND'], 404);
-            }
-            $url = $row['url'];
-            $orderId = $row['order_id']; // Capture orderId for post-delete check
+            
+            // เริ่มต้น Transaction (จุด A)
+            $pdo->beginTransaction();
+            
+            try {
+                $st = $pdo->prepare('SELECT url, order_id FROM order_slips WHERE id=?');
+                $st->execute([$id]);
+                $row = $st->fetch();
+                if (!$row) {
+                    $pdo->rollBack();
+                    json_response(['error' => 'NOT_FOUND'], 404);
+                }
+                $url = $row['url'];
+                $orderId = $row['order_id']; // Capture orderId for post-delete check
 
-            if ($url) {
-                $prefix = 'api/uploads/slips/';
-                if (strpos($url, $prefix) === 0) {
-                    $fs = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'slips' . DIRECTORY_SEPARATOR . substr($url, strlen($prefix));
-                    if (file_exists($fs)) {
-                        @unlink($fs);
+                if ($url) {
+                    $prefix = 'api/uploads/slips/';
+                    if (strpos($url, $prefix) === 0) {
+                        $fs = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'slips' . DIRECTORY_SEPARATOR . substr($url, strlen($prefix));
+                        if (file_exists($fs)) {
+                            @unlink($fs);
+                        }
                     }
                 }
-            }
-            $pdo->prepare('DELETE FROM order_slips WHERE id=?')->execute([$id]);
+                
+                // ลบสลิป
+                $pdo->prepare('DELETE FROM order_slips WHERE id=?')->execute([$id]);
 
-            /**
-             * [MODIFIED] Logic per request:
-             * - ถ้าลบสลิปสุดท้าย (no slips remaining) = ไม่มีหลักฐานการจ่าย
-             *   → amount_paid = 0, payment_status = 'Unpaid'
-             *   → order_status: ถ้าเคย PreApproved/Delivered/Confirmed + มี tracking → Shipping
-             * - ถ้ายังมีสลิปอื่นเหลือ → recalc amount_paid จาก slips ที่เหลือเท่านั้น (ไม่ใช้ debt fallback)
-             *
-             * NOTE: debt_collection records ไม่แตะ (จะคงไว้สำหรับ workflow แยก)
-             */
-            if ($orderId) {
-                try {
-                    set_audit_context($pdo, 'index/slip_delete');
-                    $checkOrdStmt = $pdo->prepare("SELECT payment_method, total_amount, order_status FROM orders WHERE id = ?");
+                if ($orderId) {
+                    // ดึงข้อมูลผู้ใช้เพื่อใช้เขียน log
+                    $authUser = get_authenticated_user($pdo);
+                    $userId = $authUser ? (int) $authUser['id'] : null;
+
+                    set_audit_context($pdo, 'index/slip_delete', $userId);
+
+                    $checkOrdStmt = $pdo->prepare("SELECT total_amount, amount_paid, payment_status, order_status FROM orders WHERE id = ?");
                     $checkOrdStmt->execute([$orderId]);
                     $orderRow = $checkOrdStmt->fetch(PDO::FETCH_ASSOC);
-                    $orderTotal = (float) ($orderRow['total_amount'] ?? 0);
-                    $currentOrderStatus = (string) ($orderRow['order_status'] ?? '');
 
-                    // นับสลิปที่เหลือ
-                    $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
-                    $countSlipStmt->execute([$orderId]);
-                    $remainingSlips = (int) $countSlipStmt->fetchColumn();
+                    if ($orderRow) {
+                        $orderTotal = (float) ($orderRow['total_amount'] ?? 0);
+                        $oldAmountPaid = $orderRow['amount_paid'] !== null ? (float) $orderRow['amount_paid'] : 0.0;
+                        $oldPaymentStatus = (string) ($orderRow['payment_status'] ?? '');
+                        $oldOrderStatus = (string) ($orderRow['order_status'] ?? '');
 
-                    if ($remainingSlips === 0) {
-                        // ลบสลิปสุดท้าย → revert เต็มชุด (ไม่มีหลักฐานจ่าย)
-                        $newAmountPaid = 0;
-                        $newPaymentStatus = 'Unpaid';
+                        // นับสลิปที่เหลือ
+                        $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
+                        $countSlipStmt->execute([$orderId]);
+                        $remainingSlips = (int) $countSlipStmt->fetchColumn();
 
-                        // ตัดสินใจ order_status ตาม fulfillment state
-                        $newOrderStatus = $currentOrderStatus;
-                        if (in_array($currentOrderStatus, ['PreApproved', 'Delivered', 'Confirmed'], true)) {
-                            // ใช้ทั้ง parent_order_id และ order_id เพราะตาราง order_tracking_numbers ใช้ field ต่างกันตามชนิด order
-                            $trackStmt = $pdo->prepare("SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
-                            $trackStmt->execute([$orderId, $orderId]);
-                            $hasTracking = (int) $trackStmt->fetchColumn();
-                            if ($hasTracking > 0) {
-                                $newOrderStatus = 'Shipping';
+                        // หายอดเงิน COD จาก cod_records
+                        $codSumStmt = $pdo->prepare("
+                            SELECT COALESCE(SUM(cr.cod_amount), 0) 
+                            FROM cod_records cr
+                            WHERE cr.order_id = ? OR cr.order_id LIKE ?
+                        ");
+                        $codSumStmt->execute([$orderId, $orderId . '-%']);
+                        $codTotal = (float) $codSumStmt->fetchColumn();
+
+                        // recalc amount_paid จาก slips ที่เหลือ + cod_amount
+                        $slipSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_slips WHERE order_id = ?");
+                        $slipSumStmt->execute([$orderId]);
+                        $remainingSlipTotal = (float) $slipSumStmt->fetchColumn();
+
+                        $newAmountPaid = min($orderTotal, $remainingSlipTotal + $codTotal);
+                        $newPaymentStatus = $oldPaymentStatus;
+                        $newOrderStatus = $oldOrderStatus;
+
+                        $threshold = $orderTotal * 0.95;
+                        if ($newAmountPaid <= 0) {
+                            $newPaymentStatus = 'Unpaid';
+                            if (in_array($oldOrderStatus, ['PreApproved', 'Delivered', 'Confirmed'], true)) {
+                                $trackStmt = $pdo->prepare("SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
+                                $trackStmt->execute([$orderId, $orderId]);
+                                $hasTracking = (int) $trackStmt->fetchColumn();
+                                if ($hasTracking > 0) {
+                                    $newOrderStatus = 'Shipping';
+                                }
+                            }
+                        } elseif ($newAmountPaid >= $threshold) {
+                            // Keep current statuses
+                            $newPaymentStatus = $oldPaymentStatus;
+                            $newOrderStatus = $oldOrderStatus;
+                        } else {
+                            // Below 95% — revert to Unpaid + Shipping
+                            $newPaymentStatus = 'Unpaid';
+                            if (in_array($oldOrderStatus, ['PreApproved', 'Delivered', 'Confirmed'], true)) {
+                                $trackStmt = $pdo->prepare("SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
+                                $trackStmt->execute([$orderId, $orderId]);
+                                $hasTracking = (int) $trackStmt->fetchColumn();
+                                if ($hasTracking > 0) {
+                                    $newOrderStatus = 'Shipping';
+                                }
                             }
                         }
 
+                        // ทำการอัปเดตคำสั่งซื้อ
                         $updStmt = $pdo->prepare("
                             UPDATE orders
                             SET amount_paid = ?, payment_status = ?, order_status = ?
                             WHERE id = ?
                         ");
                         $updStmt->execute([$newAmountPaid, $newPaymentStatus, $newOrderStatus, $orderId]);
-                    } else {
-                        // ยังมีสลิปอื่นเหลือ → recalc amount_paid จาก slips ที่เหลือ
-                        $slipSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_slips WHERE order_id = ?");
-                        $slipSumStmt->execute([$orderId]);
-                        $remainingSlipTotal = (float) $slipSumStmt->fetchColumn();
 
-                        $recalcPaid = min($orderTotal, $remainingSlipTotal);
-                        $pdo->prepare("UPDATE orders SET amount_paid = ? WHERE id = ?")->execute([$recalcPaid, $orderId]);
+                        // บันทึกประวัติการเปลี่ยนแปลงลงตาราง order_audit_log (จุด B)
+                        $logStmt = $pdo->prepare("
+                            INSERT INTO order_audit_log (order_id, field_name, old_value, new_value, api_source, changed_by, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, NOW())
+                        ");
+
+                        if (abs($oldAmountPaid - $newAmountPaid) > 0.005) {
+                            $logStmt->execute([$orderId, 'amount_paid', (string)$oldAmountPaid, (string)$newAmountPaid, 'index/slip_delete', $userId]);
+                        }
+                        if ($oldPaymentStatus !== $newPaymentStatus) {
+                            $logStmt->execute([$orderId, 'payment_status', $oldPaymentStatus, $newPaymentStatus, 'index/slip_delete', $userId]);
+                        }
+                        if ($oldOrderStatus !== $newOrderStatus) {
+                            $logStmt->execute([$orderId, 'order_status', $oldOrderStatus, $newOrderStatus, 'index/slip_delete', $userId]);
+                        }
                     }
-                } catch (Throwable $e) {
-                    error_log("Error recalculating after slip delete: " . $e->getMessage());
                 }
+                
+                $pdo->commit();
+                json_response(['ok' => true]);
+                
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                error_log("Error recalculating after slip delete: " . $e->getMessage());
+                json_response(['error' => 'DELETE_FAILED', 'message' => $e->getMessage()], 500);
             }
-            json_response(['ok' => true]);
             break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
@@ -8584,7 +8639,9 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
             // Delete cod_records first, then cod_document
             try {
                 $pdo->beginTransaction();
-                set_audit_context($pdo, 'index/cod_document_delete');
+                $authUser = get_authenticated_user($pdo);
+                $userId = $authUser ? (int) $authUser['id'] : null;
+                set_audit_context($pdo, 'index/cod_document_delete', $userId);
 
                 // Get affected order IDs and tracking numbers before deleting records
                 $affectedOrdersStmt = $pdo->prepare('SELECT DISTINCT order_id FROM cod_records WHERE document_id = ?');
@@ -8662,11 +8719,14 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
                     $remainingSlip = (float) $slipSumStmt->fetchColumn();
 
                     // Get order info
-                    $orderInfoStmt = $pdo->prepare("SELECT total_amount, payment_status, order_status FROM orders WHERE id = ?");
+                    $orderInfoStmt = $pdo->prepare("SELECT total_amount, amount_paid, payment_status, order_status FROM orders WHERE id = ?");
                     $orderInfoStmt->execute([$affOid]);
                     $orderInfo = $orderInfoStmt->fetch(PDO::FETCH_ASSOC);
                     if (!$orderInfo) continue;
                     $orderTotal = (float) $orderInfo['total_amount'];
+                    $oldAmountPaid = $orderInfo['amount_paid'] !== null ? (float) $orderInfo['amount_paid'] : 0.0;
+                    $oldPaymentStatus = (string) ($orderInfo['payment_status'] ?? '');
+                    $oldOrderStatus = (string) ($orderInfo['order_status'] ?? '');
 
                     // Use the greater of COD records vs reconcile logs, plus slips
                     $bestCodAmount = max($remainingCod, $remainingRecon);
@@ -8689,6 +8749,22 @@ function handle_cod_documents(PDO $pdo, ?string $id): void
 
                     $pdo->prepare("UPDATE orders SET amount_paid = ?, payment_status = ?, order_status = ? WHERE id = ?")
                         ->execute([$recalcPaid, $newPaymentStatus, $newOrderStatus, $affOid]);
+
+                    // บันทึกประวัติการเปลี่ยนแปลงลงตาราง order_audit_log (จุด B)
+                    $logStmt = $pdo->prepare("
+                        INSERT INTO order_audit_log (order_id, field_name, old_value, new_value, api_source, changed_by, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, NOW())
+                    ");
+
+                    if (abs($oldAmountPaid - $recalcPaid) > 0.005) {
+                        $logStmt->execute([$affOid, 'amount_paid', (string)$oldAmountPaid, (string)$recalcPaid, 'index/cod_document_delete', $userId]);
+                    }
+                    if ($oldPaymentStatus !== $newPaymentStatus) {
+                        $logStmt->execute([$affOid, 'payment_status', $oldPaymentStatus, $newPaymentStatus, 'index/cod_document_delete', $userId]);
+                    }
+                    if ($oldOrderStatus !== $newOrderStatus) {
+                        $logStmt->execute([$affOid, 'order_status', $oldOrderStatus, $newOrderStatus, 'index/cod_document_delete', $userId]);
+                    }
                 }
 
                 $pdo->commit();
