@@ -1,12 +1,7 @@
 <?php
 /**
- * Export Commission Orders as CSV
- * GET ?company_id=&status=pending|calculated|incomplete|all&start_date=&end_date=
- * Template mirrors ReportsPage detailed order export + commission columns
- * 
- * Uses 2-phase approach for performance:
- * Phase 1: Simple main query (orders + items + products + customers + users + commission)
- * Phase 2: Batch-fetch supplementary data (tracking, slips, COD dates, airport) by order IDs
+ * Export Orders Raw as CSV
+ * Streamlined export bypassing JS memory limits.
  */
 require_once __DIR__ . "/../config.php";
 require_once __DIR__ . "/../Services/OrderExportService.php";
@@ -19,6 +14,7 @@ try {
     $status = $_GET['status'] ?? 'all';
     $start_date = $_GET['start_date'] ?? null;
     $end_date = $_GET['end_date'] ?? null;
+    $selectedDepartments = $_GET['departments'] ?? 'all';
 
     $where = "WHERE 1=1";
     $params = [];
@@ -28,37 +24,40 @@ try {
         $params[] = $company_id;
     }
 
-    // Filter sub-orders and exclude Returned/Cancelled/BadDebt for unstamped orders
-    $where .= " AND o.id NOT REGEXP '-[0-9]+$'";
-    $where .= " AND (cso.order_id IS NOT NULL OR o.order_status IS NULL OR o.order_status NOT IN ('Returned', 'Cancelled', 'BadDebt'))";
+    // Include sub-orders depending on what's expected, orders-raw usually includes them
+    // so we don't filter out "-%" like we do in commission.
 
     if ($start_date) {
         $where .= " AND o.order_date >= ?";
-        $params[] = $start_date;
+        $params[] = $start_date . ' 00:00:00';
     }
     if ($end_date) {
         $where .= " AND o.order_date <= ?";
         $params[] = $end_date . ' 23:59:59';
     }
 
-    // Status filter
-    switch ($status) {
-        case 'calculated':
-            $where .= " AND cso.order_id IS NOT NULL";
-            break;
-        case 'pending':
-            $where .= " AND cso.order_id IS NULL AND o.payment_status = 'Approved'";
-            break;
-        case 'incomplete':
-            $where .= " AND cso.order_id IS NULL AND (o.payment_status != 'Approved' OR o.payment_status IS NULL)";
-            break;
+    if ($selectedDepartments !== 'all') {
+        $deptArray = array_filter(explode(',', $selectedDepartments));
+        if (!empty($deptArray)) {
+            $placeholders = implode(',', array_fill(0, count($deptArray), '?'));
+            $where .= " AND (u.role IN ($placeholders) OR o.sales_channel IN ($placeholders))";
+            foreach ($deptArray as $dept) {
+                $params[] = $dept;
+            }
+        }
     }
 
-    $includeStampCols = in_array($status, ['calculated', 'all']);
+    if ($status !== 'all') {
+        if ($status === 'Returned') {
+            $where .= " AND o.order_status = 'Returned'";
+        } elseif ($status === 'Pending') {
+            $where .= " AND o.order_status = 'Pending'";
+        } else {
+            $where .= " AND o.order_status = ?";
+            $params[] = $status;
+        }
+    }
 
-    // ============================================================
-    // Phase 1: Main query — lightweight JOINs only
-    // ============================================================
     $sql = "
         SELECT
             o.id as order_id,
@@ -105,11 +104,6 @@ try {
             iu.first_name as item_creator_first_name,
             iu.last_name as item_creator_last_name,
             iu.role as item_creator_role,
-            cso.commission_amount as stamp_commission,
-            cso.user_id as stamp_user_id,
-            cso.stamped_at as stamp_date,
-            cso.note as stamp_note,
-            csb.name as stamp_batch_name,
             pg.name as page_name,
             parent_oi.product_name as parent_product_name
         FROM orders o
@@ -118,17 +112,6 @@ try {
         LEFT JOIN customers c ON c.customer_id = o.customer_id
         LEFT JOIN users u ON u.id = o.creator_id
         LEFT JOIN users iu ON iu.id = oi.creator_id
-        LEFT JOIN (
-            SELECT order_id, 
-                   GROUP_CONCAT(DISTINCT commission_amount) as commission_amount,
-                   GROUP_CONCAT(DISTINCT user_id) as user_id,
-                   MIN(stamped_at) as stamped_at,
-                   GROUP_CONCAT(DISTINCT note SEPARATOR '; ') as note,
-                   MIN(batch_id) as batch_id
-            FROM commission_stamp_orders
-            GROUP BY order_id
-        ) cso ON cso.order_id = o.id
-        LEFT JOIN commission_stamp_batches csb ON csb.id = cso.batch_id
         LEFT JOIN pages pg ON pg.id = o.sales_channel_page_id
         LEFT JOIN order_items parent_oi ON parent_oi.id = oi.parent_item_id
         $where
@@ -139,10 +122,6 @@ try {
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // ============================================================
-    // Phase 2: Batch-fetch supplementary data by order IDs
-    // ============================================================
-    // CRITICAL: array_values() re-indexes keys — PDO requires 0-indexed for positional '?'
     $orderIds = array_values(array_unique(array_column($rows, 'order_id')));
 
     $lookups = [
@@ -157,7 +136,6 @@ try {
         $chunkSize = 500;
         $chunks = array_chunk($orderIds, $chunkSize);
 
-        // 2a: Tracking numbers
         try {
             foreach ($chunks as $chunk) {
                 $ph = implode(',', array_fill(0, count($chunk), '?'));
@@ -171,9 +149,8 @@ try {
                     $lookups['tracking'][$r['parent_order_id']] = $r['tracking_numbers'];
                 }
             }
-        } catch (Throwable $e) { error_log('Commission export tracking: ' . $e->getMessage()); }
+        } catch (Throwable $e) {}
 
-        // 2b: Slip count + transfer date
         try {
             foreach ($chunks as $chunk) {
                 $ph = implode(',', array_fill(0, count($chunk), '?'));
@@ -188,9 +165,8 @@ try {
                     $lookups['slips'][$r['order_id']] = $r;
                 }
             }
-        } catch (Throwable $e) { error_log('Commission export slips: ' . $e->getMessage()); }
+        } catch (Throwable $e) {}
 
-        // 2c: COD payment dates
         try {
             foreach ($chunks as $chunk) {
                 $ph = implode(',', array_fill(0, count($chunk), '?'));
@@ -205,11 +181,9 @@ try {
                     $lookups['cod'][$r['clean_order_id']] = $r['cod_payment_date'];
                 }
             }
-        } catch (Throwable $e) { error_log('Commission export COD: ' . $e->getMessage()); }
+        } catch (Throwable $e) {}
 
-        // 2d: Airport delivery (via tracking numbers → google_sheet_shipping)
         try {
-            // Build tracking → order map
             $trackingOrderMap = [];
             foreach ($chunks as $chunk) {
                 $ph = implode(',', array_fill(0, count($chunk), '?'));
@@ -258,9 +232,8 @@ try {
                     }
                 }
             }
-        } catch (Throwable $e) { error_log('Commission export airport: ' . $e->getMessage()); }
+        } catch (Throwable $e) {}
 
-        // 2e: Order boxes return_status (for Returned orders)
         try {
             $returnedIds = array_values(array_unique(array_filter(array_map(function($r) {
                 return ($r['order_status'] ?? '') === 'Returned' ? $r['order_id'] : null;
@@ -276,18 +249,11 @@ try {
                     }
                 }
             }
-        } catch (Throwable $e) { error_log('Commission export boxes: ' . $e->getMessage()); }
+        } catch (Throwable $e) {}
     }
 
-    // ============================================================
-    // Phase 2.5: Calculate creator totals per order
-    // ============================================================
     $creatorTotals = OrderExportService::calculateCreatorTotals($rows);
-
-    // ============================================================
-    // Phase 3: Output CSV
-    // ============================================================
-    $headers = OrderExportService::getCsvHeaders(true, $includeStampCols);
+    $headers = OrderExportService::getCsvHeaders(false, false);
 
     $format = $_GET['format'] ?? 'csv';
 
@@ -297,15 +263,14 @@ try {
         $seenCreators = [];
         $seenOrders = [];
         foreach ($rows as $row) {
-            $jsonRows[] = OrderExportService::formatOrderCsvRow($row, $lookups, $creatorTotals, $seenCreators, $seenOrders, true, $includeStampCols);
+            $jsonRows[] = OrderExportService::formatOrderCsvRow($row, $lookups, $creatorTotals, $seenCreators, $seenOrders, false, false);
         }
         echo json_encode(['ok' => true, 'data' => $jsonRows]);
         exit;
     }
 
     header('Content-Type: text/csv; charset=utf-8');
-    $statusLabel = $status === 'all' ? 'all' : $status;
-    $filename = "commission_orders_{$statusLabel}_" . date('Y-m-d') . ".csv";
+    $filename = "orders_raw_" . date('Y-m-d') . ".csv";
     header("Content-Disposition: attachment; filename=\"$filename\"");
 
     $output = fopen('php://output', 'w');
@@ -315,7 +280,7 @@ try {
     $seenCreators = [];
     $seenOrders = [];
     foreach ($rows as $row) {
-        fputcsv($output, OrderExportService::formatOrderCsvRow($row, $lookups, $creatorTotals, $seenCreators, $seenOrders, true, $includeStampCols));
+        fputcsv($output, OrderExportService::formatOrderCsvRow($row, $lookups, $creatorTotals, $seenCreators, $seenOrders, false, false));
     }
 
     fclose($output);
