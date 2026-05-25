@@ -2731,6 +2731,7 @@ const App: React.FC = () => {
       if (updatedOrder.shippingAddress) {
         payload.recipient_first_name = updatedOrder.shippingAddress.recipientFirstName ?? "";
         payload.recipient_last_name = updatedOrder.shippingAddress.recipientLastName ?? "";
+        payload.recipient_phone = updatedOrder.shippingAddress.recipientPhone ?? "";
         payload.street = updatedOrder.shippingAddress.street ?? "";
         payload.subdistrict = updatedOrder.shippingAddress.subdistrict ?? "";
         payload.district = updatedOrder.shippingAddress.district ?? "";

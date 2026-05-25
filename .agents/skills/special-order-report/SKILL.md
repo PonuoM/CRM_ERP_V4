@@ -131,7 +131,7 @@ $db_pass = 'k7VbQhjaLJdUcPbtBbEb';
 $db_name = 'primacom_mini_erp';
 
 // 2. การตั้งค่า Audio Search API
-$audio_api_url = "http://voicecall.prima49.com/api_search_audio.php";
+$audio_api_url = "https://voicecall.prima49.com/api_search_audio.php";
 $audio_token   = "voicecall_secret_token_2026"; // Token สำหรับดึงไฟล์เสียง
 
 // 3. ชื่อไฟล์ผลลัพธ์ (CSV Output)
@@ -141,6 +141,10 @@ $output_filename = __DIR__ . '/returned_cancelled_orders_may2026_comp1.csv';
 // ฟังก์ชันสำหรับดึงลิงก์ไฟล์เสียงที่สอดคล้องกับออเดอร์
 function fetchRelevantAudioLinks($phone, $orderDate, $cancelDate, $returnDate, $apiUrl, $token) {
     $cleanPhone = preg_replace('/[^0-9\+]/', '', $phone);
+    // แปลงเบอร์โดยการตัดเลข 0 นำหน้าออกเพื่อให้ตรงกับระบบตู้สาขา
+    if (strpos($cleanPhone, '0') === 0) {
+        $cleanPhone = substr($cleanPhone, 1);
+    }
     if(empty($cleanPhone)) return '-';
 
     $requestUrl = $apiUrl . "?phone=" . urlencode($cleanPhone);
@@ -148,6 +152,9 @@ function fetchRelevantAudioLinks($phone, $orderDate, $cancelDate, $returnDate, $
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $requestUrl);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer " . $token]);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $response = curl_exec($ch);

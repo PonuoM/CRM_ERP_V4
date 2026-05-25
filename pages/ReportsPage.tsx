@@ -1045,8 +1045,44 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       };
 
       if (order.items && order.items.length > 0) {
-        // มี items - แสดงแต่ละรายการ
+        // Calculate creator totals for the order
+        const creatorTotals: Record<string, number> = {};
+        const seenCreators = new Set<string>();
+
         order.items.forEach(item => {
+          const cid = String(item.creatorId ?? order.creatorId ?? '');
+          const isPromoParent = !!(item as any).isPromotionParent;
+          const isPromoChild = !!(item as any).parentItemId;
+          const qty = item.quantity || 0;
+          const netTotal = (item as any).netTotal || 0;
+          const retailPrice = item.pricePerUnit || 0;
+
+          let itTotal: number;
+          if (isPromoParent) {
+            itTotal = 0;
+          } else if (isPromoChild) {
+            itTotal = netTotal;
+          } else if (item.isFreebie) {
+            itTotal = 0;
+          } else {
+            const calculatedTotal = (retailPrice * qty) - (item.discount || 0);
+            itTotal = calculatedTotal > 0 ? calculatedTotal : netTotal;
+          }
+
+          if (!item.isFreebie && !isPromoParent) {
+            creatorTotals[cid] = (creatorTotals[cid] || 0) + itTotal;
+          }
+        });
+
+        // มี items - แสดงแต่ละรายการ
+        order.items.forEach((item, index) => {
+          const cid = String(item.creatorId ?? order.creatorId ?? '');
+          let displayCreatorTotal: number | string = '-';
+          if (!seenCreators.has(cid)) {
+            seenCreators.add(cid);
+            displayCreatorTotal = creatorTotals[cid] || 0;
+          }
+
           // Promotion handling: parent row shows 0, child rows show promo price_override amounts
           const isPromoParent = !!(item as any).isPromotionParent;
           const isPromoChild = !!(item as any).parentItemId;
@@ -1144,7 +1180,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'ยอดรวมรายการ': (item.isFreebie || isPromoParent) ? 0 : `฿${itemTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'ค่าจัดส่ง (ต่อบิล)': `฿${(order.shippingCost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'ส่วนลดท้ายบิล': `฿${(order.billDiscount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            'ยอดรวมทั้งบิล': `฿${(order.totalAmount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            'ยอดรวมทั้งบิล': displayCreatorTotal === '-' ? '-' : `฿${(displayCreatorTotal as number).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'หมายเลขกล่อง': String(item.boxNumber || 1),
             'หมายเลขติดตาม': getTrackingNumber(),
             'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
@@ -1531,7 +1567,45 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
             const items = Array.isArray(order.items) && order.items.length > 0 ? order.items : [{}];
 
+            // Calculate creator totals for the order
+            const creatorTotals: Record<string, number> = {};
+            const seenCreators = new Set<string>();
+
+            items.forEach((item: any) => {
+              const cid = String(item.creator_id ?? order.creator_id ?? '');
+              const isPromoParent = !!item.is_promotion_parent;
+              const isPromoChild = !!item.parent_item_id;
+              const isClaimOrGift = order.payment_status === 'Claim' || order.payment_status === 'Gift';
+              const originalPrice = Number(item.price_per_unit) || 0;
+              const originalDiscount = Number(item.discount) || 0;
+              const qty = Number(item.quantity) || 0;
+              const netTotal = Number(item.net_total) || 0;
+
+              let itTotal: number;
+              if (isPromoParent) {
+                itTotal = 0;
+              } else if (isPromoChild) {
+                itTotal = netTotal;
+              } else if (isClaimOrGift) {
+                itTotal = 0;
+              } else {
+                const calculatedTotal = (qty * originalPrice) - originalDiscount;
+                itTotal = calculatedTotal > 0 ? calculatedTotal : netTotal;
+              }
+
+              if (!item.is_freebie && !isPromoParent) {
+                creatorTotals[cid] = (creatorTotals[cid] || 0) + itTotal;
+              }
+            });
+
             items.forEach((item: any, itemIndex: number) => {
+              const cid = String(item.creator_id ?? order.creator_id ?? '');
+              let displayCreatorTotal: number | string = '-';
+              if (!seenCreators.has(cid)) {
+                seenCreators.add(cid);
+                displayCreatorTotal = creatorTotals[cid] || 0;
+              }
+
               // Show order-level fields only on first item row
               const isFirstItem = itemIndex === 0;
 
@@ -1696,7 +1770,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 'ยอดรวมรายการ': (item.is_freebie || isPromoParent) ? 0 : itemTotal,
                 'ค่าจัดส่ง (ต่อบิล)': isFirstItem ? (Number(order.shipping_cost) || 0) : 0,
                 'ส่วนลดท้ายบิล': isFirstItem ? (Number(order.bill_discount) || 0) : 0,
-                'ยอดรวมทั้งบิล': isFirstItem ? (Number(order.total_amount) || 0) : 0,
+                'ยอดรวมทั้งบิล': displayCreatorTotal,
                 'หมายเลขกล่อง': String(item.box_number || 1),
                 'หมายเลขติดตาม': getTrackingForBox(order, item.box_number),
                 'วันที่จัดส่ง Airport': order.airport_delivery_date ? new Date(order.airport_delivery_date).toLocaleDateString('th-TH-u-ca-gregory') : '-',
