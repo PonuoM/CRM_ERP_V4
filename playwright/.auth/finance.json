@@ -1,0 +1,14 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:5173",
+      "localStorage": [
+        {
+          "name": "user",
+          "value": "{\"id\":3,\"username\":\"finance_user\",\"role\":\"finance\",\"firstName\":\"Finance\",\"lastName\":\"User\",\"companyId\":1,\"token\":\"fake-token\"}"
+        }
+      ]
+    }
+  ]
+}

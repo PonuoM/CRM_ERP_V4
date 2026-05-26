@@ -31,7 +31,7 @@ const AUTO_MATCH_AMOUNT_DIFF = 1; // THB
 const AUTO_MATCH_TIME_SEC = 180; // 3 minutes
 const CANDIDATE_TIME_SEC = 1800; // 30 minutes window for suggestions
 const CANDIDATE_AMOUNT_DIFF = 500; // THB tolerance for suggestions
-const SHOW_APPROVE_SLIP = false;
+const SHOW_APPROVE_SLIP = true;
 const SHOW_APPROVE_PAYAFTER = false;
 
 interface FinanceApprovalPageProps {

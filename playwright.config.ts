@@ -8,12 +8,12 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:5174',
     trace: 'on-first-retry',
     // ทำให้เห็นหน้าต่าง Browser จริงเด้งขึ้นมา และหน่วงเวลาแต่ละ Action ให้มองทัน
-    headless: false,
+    headless: true,
     launchOptions: {
-      slowMo: 1000, // หน่วงเวลา 1 วินาทีต่อการคลิก/พิมพ์ (ปรับลดได้ถ้าช้าไป)
+      // slowMo: 1000,
     },
     // Inject the header so our PHP backend uses the test database
     extraHTTPHeaders: {
@@ -25,13 +25,13 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      dependencies: ['setup'],
+      // dependencies: ['setup'],
     },
   ],
   // Run your local dev server before starting the tests
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5173',
+    url: 'http://localhost:5174',
     reuseExistingServer: !process.env.CI,
   },
 });

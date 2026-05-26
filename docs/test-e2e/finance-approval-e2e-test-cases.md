@@ -11,7 +11,7 @@
   - สร้าง Order ที่มีสถานะชำระเงินเป็น `PreApproved` และช่องทางเป็น `Transfer`
   - เตรียม Statement Logs จำลองที่มีทั้งยอด/เวลาตรงเป๊ะ และยอด/เวลาคลาดเคลื่อน
 - **Data (COD):**
-  - สร้าง Order ที่ส่งแบบ `PayAfter` (เก็บปลายทาง)
+  - สร้าง Order ที่ส่งแบบ `COD` (เก็บปลายทาง)
   - เตรียม `cod_documents` สถานะ `pending` หรือ `unmatched` ที่เชื่อมกับออเดอร์
   - เตรียม Statement Logs จำลองสำหรับใช้ตรวจสอบเก็บปลายทาง
 
@@ -50,7 +50,7 @@
 
 ---
 
-### Tab 2: เก็บปลายทาง (Pay After / COD)
+### Tab 2: เก็บปลายทาง (COD)
 
 #### TC2.1: View COD Document Details
 - **Action:** 
