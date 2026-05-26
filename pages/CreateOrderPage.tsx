@@ -65,6 +65,7 @@ import ImageLightbox from "../components/common/ImageLightbox";
 import { formatThaiDateTime, toThaiIsoString } from "../utils/datetime";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { th } from "date-fns/locale";
 import ProductSelectorModal from "../components/ProductSelectorModal";
 
 import resolveApiBasePath from "../utils/apiBasePath";
@@ -1895,7 +1896,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const defaultTransferDate =
         transferDate && transferDate.trim() !== ""
           ? transferDate
-          : new Date().toISOString().slice(0, 16);
+          : undefined;
       const uploads = await Promise.all(
         imageFiles.map(async (file: File) => {
           const dataUrl = await readFileAsDataUrl(file);
@@ -6418,11 +6419,17 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               <label className="block text-xs text-gray-600 mb-1">
                                 วันที่โอน
                               </label>
-                              <input
-                                type="datetime-local"
-                                value={slip.transferDate || ""}
-                                onChange={(e) => {
-                                  const value = e.target.value || "";
+                              <DatePicker
+                                selected={slip.transferDate ? new Date(slip.transferDate) : null}
+                                onChange={(date: Date | null) => {
+                                  const value = date ? (() => {
+                                    const year = date.getFullYear();
+                                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                                    const day = String(date.getDate()).padStart(2, '0');
+                                    const hours = String(date.getHours()).padStart(2, '0');
+                                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                                    return `${year}-${month}-${day}T${hours}:${minutes}`;
+                                  })() : "";
                                   setUpsellSlips((prev) =>
                                     prev.map((s) =>
                                       (s.id && slip.id && s.id === slip.id) ||
@@ -6432,7 +6439,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     ),
                                   );
                                 }}
-                                className="w-full border rounded px-2 py-1 text-xs bg-white"
+                                showTimeSelect
+                                timeFormat="HH:mm"
+                                timeIntervals={1}
+                                dateFormat="dd/MM/yyyy HH:mm"
+                                locale={th}
+                                portalId="root"
+                                placeholderText="เลือกวันที่และเวลา"
+                                className="w-full border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                             </div>
                             <div>
@@ -9110,22 +9124,36 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   <label className="block text-gray-600 mb-1">
                                     เวลาที่รับโอน
                                   </label>
-                                  <input
-                                    type="datetime-local"
-                                    value={slip.transferDate || ""}
-                                    onChange={(e) =>
+                                  <DatePicker
+                                    selected={slip.transferDate ? new Date(slip.transferDate) : null}
+                                    onChange={(date: Date | null) => {
+                                      const value = date ? (() => {
+                                        const year = date.getFullYear();
+                                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                                        const day = String(date.getDate()).padStart(2, '0');
+                                        const hours = String(date.getHours()).padStart(2, '0');
+                                        const minutes = String(date.getMinutes()).padStart(2, '0');
+                                        return `${year}-${month}-${day}T${hours}:${minutes}`;
+                                      })() : "";
                                       setTransferSlipUploads((prev) =>
                                         prev.map((s) =>
                                           s.id === slip.id
                                             ? {
                                               ...s,
-                                              transferDate: e.target.value,
+                                              transferDate: value,
                                             }
                                             : s,
                                         ),
-                                      )
-                                    }
-                                    className="w-full border rounded px-2 py-1 text-sm"
+                                      );
+                                    }}
+                                    showTimeSelect
+                                    timeFormat="HH:mm"
+                                    timeIntervals={1}
+                                    dateFormat="dd/MM/yyyy HH:mm"
+                                    locale={th}
+                                    portalId="root"
+                                    placeholderText="เลือกวันที่และเวลา"
+                                    className="w-full border rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                   />
                                 </div>
                                 <div>
