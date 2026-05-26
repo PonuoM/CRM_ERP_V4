@@ -35,6 +35,7 @@ Usage in `App.tsx`: permission is determined by the active page context (e.g., `
   - Backend รองรับ: `png`, `jpeg`, `jpg`, `gif`, `webp`, `bmp`, `svg` (ทั้ง data URL และ raw base64)
 - **Verification**: `isSlipLocked` and `canVerifySlip` logic prevents modification of verified slips unless authorized. Use checkboxes to toggle "Verified" status.
 - **Lightbox**: Click on a slip to view it in full size.
+- **Mismatch Reason**: แสดงสาเหตุยอดขาด/เกินของสลิป (ถ้ามี) ด้านใต้ปุ่มเลือกธนาคาร (อ้างอิงจาก `mismatch_reason` หรือ `mismatchReason` ในข้อมูล API)
 
 ### 3. COD & Box Management
 - **Boxes**: Supports splitting order into multiple boxes. Each box has tracking number, COD amount, collection status, and return status.

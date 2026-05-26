@@ -1457,6 +1457,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
             amount: Number(s.amount),
             bankAccountId: Number(s.bank_account_id ?? s.bankAccountId),
             transferDate: s.transfer_date ?? s.transferDate,
+            mismatch_reason: s.mismatch_reason ?? s.mismatchReason,
           })));
         }
       } catch (e) {

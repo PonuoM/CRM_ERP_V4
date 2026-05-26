@@ -611,6 +611,11 @@ export interface OrderSlip {
   createdAt?: string;
   uploadedBy?: number;
   uploadedByName?: string;
+  amount?: number;
+  bankAccountId?: number;
+  transferDate?: string;
+  mismatch_reason?: string;
+  mismatchReason?: string;
 }
 
 export interface Order {

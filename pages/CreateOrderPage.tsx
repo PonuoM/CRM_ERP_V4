@@ -4770,6 +4770,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           bankAccountId: slip.bankAccountId,
           transferDate: slip.transferDate,
           amount: slip.amount,
+          mismatchReason: slip.mismatchReason,
         }));
       }
 
