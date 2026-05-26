@@ -5091,6 +5091,36 @@ function handle_orders(PDO $pdo, ?string $id): void
                 if ($hasShippingProvider) {
                     $values[] = $shippingProvider;
                 }
+                $slipUrl = $in['slipUrl'] ?? null;
+                if ($slipUrl === '') $slipUrl = null;
+                // Handle base64 slip URL using the robust logic
+                if (is_string($slipUrl) && strpos($slipUrl, 'data:image') === 0) {
+                    try {
+                        if (preg_match('/^data:(image\/(png|jpeg|jpg|gif|webp|bmp|svg\+xml));base64,(.*)$/is', $slipUrl, $m)) {
+                            $ext = $m[2];
+                            if ($ext === 'jpeg') $ext = 'jpg';
+                            if ($ext === 'svg+xml') $ext = 'svg';
+                            $data = base64_decode($m[3]);
+                            if ($data !== false) {
+                                $dir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'slips';
+                                if (!is_dir($dir)) {
+                                    @mkdir($dir, 0775, true);
+                                }
+                                $fname = 'slip_' . preg_replace('/[^A-Za-z0-9_-]+/', '', $mainOrderId) . '_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 6) . '.' . $ext;
+                                $path = $dir . DIRECTORY_SEPARATOR . $fname;
+                                if (file_put_contents($path, $data) !== false) {
+                                    $slipUrl = 'api/uploads/slips/' . $fname;
+                                }
+                            }
+                        }
+                    } catch (Throwable $e) { /* ignore and leave slipUrl as-is */ }
+                    
+                    // Prevent huge base64 strings from crashing the DB insert
+                    if (is_string($slipUrl) && strlen($slipUrl) > 1000 && strpos($slipUrl, 'data:image') === 0) {
+                        $slipUrl = null;
+                    }
+                }
+
                 $values = array_merge($values, [
                     $in['shippingCost'] ?? 0,
                     $in['billDiscount'] ?? 0,
@@ -5558,15 +5588,17 @@ function handle_orders(PDO $pdo, ?string $id): void
             // If slipUrl is a data URL image, persist to file and store path
             if (is_string($slipUrl) && strpos($slipUrl, 'data:image') === 0) {
                 try {
-                    if (preg_match('/^data:(image\/(png|jpeg|jpg|gif));base64,(.*)$/', $slipUrl, $m)) {
-                        $ext = $m[2] === 'jpeg' ? 'jpg' : $m[2];
+                    if (preg_match('/^data:(image\/(png|jpeg|jpg|gif|webp|bmp|svg\+xml));base64,(.*)$/is', $slipUrl, $m)) {
+                        $ext = $m[2];
+                        if ($ext === 'jpeg') $ext = 'jpg';
+                        if ($ext === 'svg+xml') $ext = 'svg';
                         $data = base64_decode($m[3]);
                         if ($data !== false) {
                             $dir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'slips';
                             if (!is_dir($dir)) {
                                 @mkdir($dir, 0775, true);
                             }
-                            $fname = 'slip_' . preg_replace('/[^A-Za-z0-9_-]+/', '', $id) . '_' . date('Ymd_His') . '.' . $ext;
+                            $fname = 'slip_' . preg_replace('/[^A-Za-z0-9_-]+/', '', $id) . '_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 6) . '.' . $ext;
                             $path = $dir . DIRECTORY_SEPARATOR . $fname;
                             if (file_put_contents($path, $data) !== false) {
                                 // Store web-accessible path
@@ -5575,6 +5607,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                         }
                     }
                 } catch (Throwable $e) { /* ignore and leave slipUrl as-is */
+                }
+                // Prevent huge base64 strings from crashing the DB update
+                if (is_string($slipUrl) && strlen($slipUrl) > 1000 && strpos($slipUrl, 'data:image') === 0) {
+                    $slipUrl = null;
                 }
             }
 
