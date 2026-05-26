@@ -5730,15 +5730,15 @@ const App: React.FC = () => {
       case "A+":
       case "A_PLUS":
       case "A-PLUS":
-        return CustomerGrade.A;
+        return "A";
       case "A":
-        return CustomerGrade.A;
+        return "A";
       case "B":
-        return CustomerGrade.B;
+        return "B";
       case "C":
-        return CustomerGrade.C;
+        return "C";
       case "D":
-        return CustomerGrade.D;
+        return "D";
       default:
         return undefined;
     }

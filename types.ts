@@ -337,13 +337,23 @@ export enum CustomerBehavioralStatus {
   Frozen = "Frozen",
 }
 
-export enum CustomerGrade {
-  D = "D",
-  C = "C",
-  B = "B",
-  A = "A",
-  APlus = "A+",
+export type CustomerGrade = string;
+
+export interface CustomerGradeConfig {
+  id?: number;
+  grade_name: string;
+  min_order_amount: number;
+  color_theme: string;
 }
+
+export interface CustomerGradeSettings {
+  calc_mode: 'all' | 'order_date' | 'delivery_date';
+  time_range_type: 'fixed' | 'relative';
+  fixed_start_date: string | null;
+  fixed_end_date: string | null;
+  relative_days: number;
+}
+
 
 export interface Address {
   recipientFirstName?: string;

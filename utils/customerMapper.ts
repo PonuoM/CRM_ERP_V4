@@ -68,7 +68,17 @@ export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]>
             CustomerLifecycleStatus.New,
         behavioralStatus:
             (r.behavioral_status ?? "Cold") as CustomerBehavioralStatus,
-        grade: calculateCustomerGrade(totalPurchases),
+        grade: (() => {
+            const apiGrade = r.grade;
+            if (apiGrade) {
+                const gradeStr = String(apiGrade).trim().toUpperCase();
+                if (gradeStr === "A+" || gradeStr === "A_PLUS" || gradeStr === "A-PLUS") {
+                    return "A+";
+                }
+                return gradeStr;
+            }
+            return calculateCustomerGrade(totalPurchases);
+        })(),
         tags: (Array.isArray(r.tags) ? r.tags : []) || tagsByCustomer[resolvedId] || [],
         assignmentHistory: [],
         totalPurchases,

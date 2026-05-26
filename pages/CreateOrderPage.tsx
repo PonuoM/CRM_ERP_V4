@@ -4804,7 +4804,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           behavioralStatus: CustomerBehavioralStatus.Warm,
 
-          grade: CustomerGrade.D,
+          grade: "D",
         };
       } else {
         if (!selectedCustomer) {
