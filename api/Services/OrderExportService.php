@@ -102,7 +102,7 @@ class OrderExportService {
             'หมายเลขกล่อง', 'หมายเลขติดตาม',
             'วันที่จัดส่ง Airport', 'สถานะจาก Airport',
             'สถานะออเดอร์', 'สถานะการชำระเงิน',
-            'สถานะสลิป', 'วันที่รับเงิน', 'ตะกร้าขาย'
+            'สถานะสลิป', 'วันที่รับเงิน', 'ตะกร้าขาย', 'สาเหตุเงินขาด'
         ];
         
         if ($includeCommissionCols) {
@@ -195,6 +195,7 @@ class OrderExportService {
         }
     
         $codPaymentDate = $lookups['cod'][$orderId] ?? null;
+        $codShortageReason = $lookups['cod_shortage'][$orderId] ?? '-';
         $paymentReceivedDate = $slipTransferDate ?? $codPaymentDate ?? null;
     
         $airportData = $lookups['airport'][$orderId] ?? null;
@@ -262,6 +263,7 @@ class OrderExportService {
             $slipStatus,
             $paymentReceivedDate ? date('d/m/Y', strtotime($paymentReceivedDate)) : '-',
             $row['basket_key_at_sale'] ?? '-',
+            $codShortageReason ?: '-',
         ];
     
         if ($includeCommissionCols) {

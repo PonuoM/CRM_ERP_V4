@@ -171,7 +171,8 @@ try {
             foreach ($chunks as $chunk) {
                 $ph = implode(',', array_fill(0, count($chunk), '?'));
                 $cStmt = $pdo->prepare("SELECT REGEXP_REPLACE(cr.order_id, '-[0-9]+\$', '') as clean_order_id,
-                        MIN(cd.document_datetime) as cod_payment_date
+                        MIN(cd.document_datetime) as cod_payment_date,
+                        MAX(cd.shortage_reason) as cod_shortage_reason
                      FROM cod_records cr
                      INNER JOIN cod_documents cd ON cr.document_id = cd.id
                      WHERE REGEXP_REPLACE(cr.order_id, '-[0-9]+\$', '') IN ($ph)
@@ -179,6 +180,7 @@ try {
                 $cStmt->execute($chunk);
                 foreach ($cStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                     $lookups['cod'][$r['clean_order_id']] = $r['cod_payment_date'];
+                    $lookups['cod_shortage'][$r['clean_order_id']] = $r['cod_shortage_reason'];
                 }
             }
         } catch (Throwable $e) {}

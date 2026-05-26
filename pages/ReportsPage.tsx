@@ -1189,7 +1189,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'สถานะการชำระเงิน': getPaymentComparisonStatus(),
             'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
             'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
-            'ตะกร้าขาย': (item as any).basketKeyAtSale || '-'
+            'ตะกร้าขาย': (item as any).basketKeyAtSale || '-',
+            'สาเหตุเงินขาด': '-'
           });
         });
       } else {
@@ -1234,7 +1235,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'สถานะการชำระเงิน': getPaymentComparisonStatus(),
           'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
           'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
-          'ตะกร้าขาย': '-'
+          'ตะกร้าขาย': '-',
+          'สาเหตุเงินขาด': '-'
         });
       }
     });
