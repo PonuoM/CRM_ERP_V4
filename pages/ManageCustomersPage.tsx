@@ -6,6 +6,7 @@ import { mapCustomerFromApi } from '@/utils/customerMapper';
 import Spinner from '@/components/Spinner';
 import { onDataSync, DATA_SYNC_EVENTS } from '@/utils/dataSync';
 import MergeCustomersModal from '@/components/MergeCustomersModal';
+import CustomerGradeManager from '@/components/ManageGrades/CustomerGradeManager';
 
 type OrdersFilterValue = 'all' | 'yes' | 'no';
 type DateRangeFilter = { start: string; end: string };
@@ -41,6 +42,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'customers' | 'grades'>('customers');
 
   // API Stats State
   const [apiCustomerStats, setApiCustomerStats] = useState<any>(null);
@@ -228,9 +230,40 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">ข้อมูลลูกค้า</h1>
-        <p className="text-gray-600">ดูข้อมูลลูกค้าทั้งหมดในบริษัทและข้อมูล DO Dashboard</p>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">จัดการลูกค้า</h1>
+        <p className="text-gray-600 mb-6">ดูข้อมูลลูกค้าทั้งหมดในบริษัทและการตั้งค่าที่เกี่ยวข้อง</p>
+
+        {/* Navigation Tabs */}
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('customers')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'customers'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              รายชื่อลูกค้า
+            </button>
+            <button
+              onClick={() => setActiveTab('grades')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'grades'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              ตั้งค่าระดับลูกค้า (Grade)
+            </button>
+          </nav>
+        </div>
       </div>
+
+      {activeTab === 'grades' ? (
+        <CustomerGradeManager />
+      ) : (
+        <>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
@@ -1028,6 +1061,8 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
           setRefreshTrigger((prev) => prev + 1);
         }}
       />
+      </>
+      )}
     </div>
   );
 };

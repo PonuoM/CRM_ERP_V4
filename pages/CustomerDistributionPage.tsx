@@ -63,11 +63,11 @@ const DateFilterButton: React.FC<{
 );
 
 const gradeOrder = [
-  CustomerGrade.APlus,
-  CustomerGrade.A,
-  CustomerGrade.B,
-  CustomerGrade.C,
-  CustomerGrade.D,
+  "A+",
+  "A",
+  "B",
+  "C",
+  "D",
 ];
 
 const toLifecycleStatus = (
@@ -195,12 +195,12 @@ const normalizeApiCustomer = (api: any): Customer => {
         // Normalize grade from API (handle "A+", "A", "B", "C", "D")
         const gradeStr = String(apiGrade).trim().toUpperCase();
         if (gradeStr === "A+" || gradeStr === "A_PLUS" || gradeStr === "A-PLUS") {
-          return CustomerGrade.APlus;
+          return "A+";
         }
-        if (gradeStr === "A") return CustomerGrade.A;
-        if (gradeStr === "B") return CustomerGrade.B;
-        if (gradeStr === "C") return CustomerGrade.C;
-        if (gradeStr === "D") return CustomerGrade.D;
+        if (gradeStr === "A") return "A";
+        if (gradeStr === "B") return "B";
+        if (gradeStr === "C") return "C";
+        if (gradeStr === "D") return "D";
       }
       // Fallback: calculate from total_purchases if grade not provided
       return calculateCustomerGrade(Number(api?.total_purchases ?? 0));
@@ -420,7 +420,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       (acc, customer) => {
         const grade = customer.grade;
         // Normalize APlus to A for display purposes
-        const normalizedGrade = grade === CustomerGrade.APlus ? CustomerGrade.A : grade;
+        const normalizedGrade = grade === "A+" ? "A" : grade;
         acc[normalizedGrade] = (acc[normalizedGrade] || 0) + 1;
         return acc;
       },
@@ -429,10 +429,10 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
     return {
       total: agentCustomers.length,
-      [CustomerGrade.A]: (gradeCounts[CustomerGrade.A] || 0) + (gradeCounts[CustomerGrade.APlus] || 0),
-      [CustomerGrade.B]: gradeCounts[CustomerGrade.B] || 0,
-      [CustomerGrade.C]: gradeCounts[CustomerGrade.C] || 0,
-      [CustomerGrade.D]: gradeCounts[CustomerGrade.D] || 0,
+      ["A"]: (gradeCounts["A"] || 0) + (gradeCounts["A+"] || 0),
+      ["B"]: gradeCounts["B"] || 0,
+      ["C"]: gradeCounts["C"] || 0,
+      ["D"]: gradeCounts["D"] || 0,
     };
   };
 
@@ -525,16 +525,16 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     switch (activeTab) {
       case "average":
         if (excludeGradeA) {
-          customers = customers.filter((c) => c.grade !== CustomerGrade.A);
+          customers = customers.filter((c) => c.grade !== "A");
         }
         break;
       case "gradeA":
-        customers = customers.filter((c) => c.grade === CustomerGrade.A);
+        customers = customers.filter((c) => c.grade === "A");
         break;
       case "backlog":
         // แจกย้อนหลัง - สามารถเพิ่ม logic พิเศษได้ที่นี่
         if (excludeGradeA) {
-          customers = customers.filter((c) => c.grade !== CustomerGrade.A);
+          customers = customers.filter((c) => c.grade !== "A");
         }
         break;
     }

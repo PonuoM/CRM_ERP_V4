@@ -1,0 +1,1 @@
+ALTER TABLE `marketplace_sales_orders` ADD COLUMN `cancel_reason` VARCHAR(500) DEFAULT NULL AFTER `status`;

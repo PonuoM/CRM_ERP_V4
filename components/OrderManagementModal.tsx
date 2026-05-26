@@ -258,6 +258,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     isImmediate?: boolean;
   } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditingAddressOnly, setIsEditingAddressOnly] = useState(false);
+  const [isSavingAddressOnly, setIsSavingAddressOnly] = useState(false);
 
   // Cancellation type states
   const [cancellationTypes, setCancellationTypes] = useState<{ id: number; label: string; description: string }[]>([]);
@@ -2977,9 +2979,63 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 <div className="flex items-start gap-3">
                   <MapPin className="text-gray-400 flex-shrink-0" size={18} />
                   <div className="flex-1 w-full overflow-hidden">
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">สถานที่จัดส่ง (Shipping)</div>
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">สถานที่จัดส่ง (Shipping)</div>
+                      
+                      {!showInputs && (
+                        <div className="flex items-center gap-2">
+                          {isEditingAddressOnly && (
+                            <button
+                              onClick={async () => {
+                                setIsSavingAddressOnly(true);
+                                try {
+                                  const payload = {
+                                    recipient_first_name: currentOrder.shippingAddress?.recipientFirstName ?? "",
+                                    recipient_last_name: currentOrder.shippingAddress?.recipientLastName ?? "",
+                                    recipient_phone: currentOrder.shippingAddress?.recipientPhone ?? "",
+                                    street: currentOrder.shippingAddress?.street ?? "",
+                                    subdistrict: currentOrder.shippingAddress?.subdistrict ?? "",
+                                    district: currentOrder.shippingAddress?.district ?? "",
+                                    province: currentOrder.shippingAddress?.province ?? "",
+                                    postal_code: currentOrder.shippingAddress?.postalCode ?? ""
+                                  };
+                                  await patchOrder(currentOrder.id, payload);
+                                  onSave({ ...currentOrder });
+                                  setIsEditingAddressOnly(false);
+                                } catch (e) {
+                                  console.error(e);
+                                  alert("Failed to save address");
+                                } finally {
+                                  setIsSavingAddressOnly(false);
+                                }
+                              }}
+                              disabled={isSavingAddressOnly}
+                              className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 transition-colors flex items-center gap-1"
+                            >
+                              <Save size={12} />
+                              {isSavingAddressOnly ? "กำลังบันทึก..." : "บันทึกที่อยู่"}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              if (isEditingAddressOnly) {
+                                // Revert address changes
+                                setCurrentOrder(prev => ({
+                                  ...prev,
+                                  shippingAddress: order.shippingAddress
+                                }));
+                              }
+                              setIsEditingAddressOnly(!isEditingAddressOnly);
+                            }}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${isEditingAddressOnly ? "bg-red-100 text-red-700 hover:bg-red-200" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+                          >
+                            {isEditingAddressOnly ? "ยกเลิก" : "แก้ไขที่อยู่"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
-                    {showInputs ? (
+                    {(showInputs || isEditingAddressOnly) ? (
                   <div className="space-y-2">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       <input
@@ -2987,13 +3043,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         value={
                           currentOrder.shippingAddress?.recipientFirstName || ""
                         }
-                        disabled={isLocked}
+                        disabled={isLocked && !isEditingAddressOnly}
                         onChange={(e) =>
                           updateShippingAddress({
                             recipientFirstName: e.target.value,
                           })
                         }
-                        className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        className={`w-full p-2 text-sm border rounded ${(isLocked && !isEditingAddressOnly) ? "bg-gray-100 cursor-not-allowed" : ""}`}
                       />
 
                       <input
@@ -3001,34 +3057,34 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         value={
                           currentOrder.shippingAddress?.recipientLastName || ""
                         }
-                        disabled={isLocked}
+                        disabled={isLocked && !isEditingAddressOnly}
                         onChange={(e) =>
                           updateShippingAddress({
                             recipientLastName: e.target.value,
                           })
                         }
-                        className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        className={`w-full p-2 text-sm border rounded ${(isLocked && !isEditingAddressOnly) ? "bg-gray-100 cursor-not-allowed" : ""}`}
                       />
                     </div>
 
                     <input
                       placeholder="เบอร์โทรผู้รับ"
                       value={currentOrder.shippingAddress?.recipientPhone || ""}
-                      disabled={isLocked}
+                      disabled={isLocked && !isEditingAddressOnly}
                       onChange={(e) =>
                         updateShippingAddress({ recipientPhone: e.target.value })
                       }
-                      className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                      className={`w-full p-2 text-sm border rounded ${(isLocked && !isEditingAddressOnly) ? "bg-gray-100 cursor-not-allowed" : ""}`}
                     />
 
                     <input
                       placeholder="ที่อยู่ (บ้านเลขที่ ซอย ถนน)"
                       value={currentOrder.shippingAddress?.street || ""}
-                      disabled={isLocked}
+                      disabled={isLocked && !isEditingAddressOnly}
                       onChange={(e) =>
                         updateShippingAddress({ street: e.target.value })
                       }
-                      className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                      className={`w-full p-2 text-sm border rounded ${(isLocked && !isEditingAddressOnly) ? "bg-gray-100 cursor-not-allowed" : ""}`}
                     />
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -3040,7 +3096,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             currentOrder.shippingAddress?.province ||
                             ""
                           }
-                          disabled={isLocked}
+                          disabled={isLocked && !isEditingAddressOnly}
                           onChange={(e) => {
                             const val = e.target.value;
 
@@ -3063,8 +3119,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               });
                             }
                           }}
-                          onFocus={() => !isLocked && setShowProvinceDropdown(true)}
-                          className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                          onFocus={() => (!isLocked || isEditingAddressOnly) && setShowProvinceDropdown(true)}
+                          className={`w-full p-2 text-sm border rounded ${(isLocked && !isEditingAddressOnly) ? "bg-gray-100 cursor-not-allowed" : ""}`}
                         />
 
                         {showProvinceDropdown && (
@@ -3121,9 +3177,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               });
                             }
                           }}
-                          onFocus={() => !isLocked && setShowDistrictDropdown(true)}
-                          disabled={!selectedProvince || isLocked}
-                          className={`w-full p-2 text-sm border rounded disabled:bg-gray-100 ${isLocked ? "cursor-not-allowed" : ""}`}
+                          onFocus={() => (!isLocked || isEditingAddressOnly) && setShowDistrictDropdown(true)}
+                          disabled={!selectedProvince || (isLocked && !isEditingAddressOnly)}
+                          className={`w-full p-2 text-sm border rounded disabled:bg-gray-100 ${(isLocked && !isEditingAddressOnly) ? "cursor-not-allowed" : ""}`}
                         />
 
                         {showDistrictDropdown && selectedProvince && (
@@ -3179,9 +3235,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               });
                             }
                           }}
-                          onFocus={() => !isLocked && setShowSubDistrictDropdown(true)}
-                          disabled={!selectedDistrict || isLocked}
-                          className={`w-full p-2 text-sm border rounded disabled:bg-gray-100 ${isLocked ? "cursor-not-allowed" : ""}`}
+                          onFocus={() => (!isLocked || isEditingAddressOnly) && setShowSubDistrictDropdown(true)}
+                          disabled={!selectedDistrict || (isLocked && !isEditingAddressOnly)}
+                          className={`w-full p-2 text-sm border rounded disabled:bg-gray-100 ${(isLocked && !isEditingAddressOnly) ? "cursor-not-allowed" : ""}`}
                         />
 
                         {showSubDistrictDropdown && selectedDistrict && (

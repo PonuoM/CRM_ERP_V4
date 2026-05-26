@@ -30,7 +30,7 @@ erDiagram
    * `id`: เลขที่ออเดอร์ (Primary Key)
    * `order_date`: วันที่สั่งซื้อ
    * `customer_id`: รหัสลูกค้า
-   * `total_amount`: ยอดรวมคำสั่งซื้อ
+   * `total_amount`: ยอดรวมคำสั่งซื้อ (หากสถานะเป็น Returned จะดึงจากยอด `cod_amount` ในตาราง `order_boxes` แทน)
    * `payment_method`: ช่องทางการชำระเงิน
    * `order_status`: สถานะคำสั่งซื้อ (เช่น 'Returned', 'Cancelled')
    * `company_id`: รหัสบริษัท (เช่น 1)
@@ -76,7 +76,10 @@ SELECT
     c.first_name AS customer_first_name,
     c.last_name AS customer_last_name,
     c.phone AS customer_phone,
-    o.total_amount,
+    IF(o.order_status = 'Returned', 
+        COALESCE((SELECT SUM(ob.cod_amount) FROM order_boxes ob WHERE ob.order_id = o.id), 0), 
+        o.total_amount
+    ) AS total_amount,
     o.payment_method,
     o.order_status,
     ct.label AS cancel_type,
@@ -96,7 +99,13 @@ WHERE o.order_date >= '2026-05-01 00:00:00'
   AND o.order_date <= '2026-05-31 23:59:59'
   AND o.company_id = 1
   AND u.role_id IN (6, 7)
-  AND o.order_status IN ('Returned', 'Cancelled')
+  AND (
+      o.order_status IN ('Returned', 'Cancelled')
+      OR EXISTS (
+          SELECT 1 FROM order_boxes ob2 
+          WHERE ob2.order_id = o.id AND ob2.return_status IS NOT NULL
+      )
+  )
 ORDER BY o.order_date DESC;
 ```
 
@@ -105,28 +114,93 @@ ORDER BY o.order_date DESC;
 ## 💻 สคริปต์ PHP สำหรับการส่งออกไฟล์ CSV (`export_csv.php`)
 
 สคริปต์ต่อไปนี้ใช้สำหรับรันผ่าน localhost เพื่อดึงข้อมูลจากเซิร์ฟเวอร์หลักและสร้างไฟล์ CSV โดยมีระบบป้องกันปัญหาเปิดไฟล์ค้าง (File Lock) และรองรับภาษาไทยในโปรแกรม Excel (UTF-8 with BOM)
+นอกจากนี้ยังมีการทำงานร่วมกับ **Audio Search API** (`api_search_audio.php`) เพื่อดึงลิงก์ไฟล์เสียงการโทรที่เกี่ยวข้องกับออเดอร์นั้นๆ (เช่น สายโทรในช่วงวันสั่งซื้อ, สายโทรในช่วงวันยกเลิก/ตีกลับ) มาแนบในรายงานอัตโนมัติ
 
 ```php
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// กำหนดการเชื่อมต่อ Database บนเซิร์ฟเวอร์หลัก
-$host = '202.183.192.218';
-$user = 'primacom_agent';
-$pass = 'k7VbQhjaLJdUcPbtBbEb';
-$db   = 'primacom_mini_erp';
+// ==========================================
+// ⚙️ การตั้งค่าระบบ (Environment Configuration)
+// ==========================================
+// 1. การตั้งค่าเชื่อมต่อฐานข้อมูลหลัก (Database)
+$db_host = '202.183.192.218';
+$db_user = 'primacom_agent';
+$db_pass = 'k7VbQhjaLJdUcPbtBbEb';
+$db_name = 'primacom_mini_erp';
 
-$conn = new mysqli($host, $user, $pass, $db);
+// 2. การตั้งค่า Audio Search API
+$audio_api_url = "https://voicecall.prima49.com/api_search_audio.php";
+$audio_token   = "voicecall_secret_token_2026"; // Token สำหรับดึงไฟล์เสียง
+
+// 3. ชื่อไฟล์ผลลัพธ์ (CSV Output)
+$output_filename = __DIR__ . '/returned_cancelled_orders_may2026_comp1.csv';
+// ==========================================
+
+// ฟังก์ชันสำหรับดึงลิงก์ไฟล์เสียงที่สอดคล้องกับออเดอร์
+function fetchRelevantAudioLinks($phone, $orderDate, $cancelDate, $returnDate, $apiUrl, $token) {
+    $cleanPhone = preg_replace('/[^0-9\+]/', '', $phone);
+    // แปลงเบอร์โดยการตัดเลข 0 นำหน้าออกเพื่อให้ตรงกับระบบตู้สาขา
+    if (strpos($cleanPhone, '0') === 0) {
+        $cleanPhone = substr($cleanPhone, 1);
+    }
+    if(empty($cleanPhone)) return '-';
+
+    $requestUrl = $apiUrl . "?phone=" . urlencode($cleanPhone);
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $requestUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer " . $token]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    if(!$response) return '-';
+
+    $data = json_decode($response, true);
+    if(!$data || empty($data['success']) || empty($data['data'])) {
+        return '-';
+    }
+
+    $links = [];
+    // แปลงวันที่เป็น Timestamp เพื่อให้เปรียบเทียบง่าย
+    $orderTs = strtotime(substr($orderDate, 0, 10));
+    $cancelTs = !empty($cancelDate) && $cancelDate !== '-' ? strtotime(substr($cancelDate, 0, 10)) : 0;
+    $returnTs = !empty($returnDate) && $returnDate !== '-' ? strtotime(substr($returnDate, 0, 10)) : 0;
+
+    foreach($data['data'] as $call) {
+        $callTs = strtotime($call['date']);
+        $isRelevant = false;
+
+        // เช็คว่าไฟล์เสียงอยู่ในช่วง -1 ถึง +2 วัน ของวันสร้างออเดอร์ หรือ วันยกเลิก/ตีกลับ หรือไม่
+        if($orderTs && $callTs >= ($orderTs - 86400) && $callTs <= ($orderTs + 172800)) $isRelevant = true;
+        if($cancelTs && $callTs >= ($cancelTs - 86400) && $callTs <= ($cancelTs + 172800)) $isRelevant = true;
+        if($returnTs && $callTs >= ($returnTs - 86400) && $callTs <= ($returnTs + 172800)) $isRelevant = true;
+
+        if($isRelevant && !empty($call['link'])) {
+            $links[] = $call['link'];
+        }
+    }
+
+    // หากพบหลายไฟล์จะนำลิงก์มาต่อกันด้วยคอมม่าและขึ้นบรรทัดใหม่ในเซลล์
+    return empty($links) ? '-' : implode(", \n", $links);
+}
+
+// เริ่มต้นการเชื่อมต่อฐานข้อมูล
+$conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
 $conn->set_charset("utf8mb4");
 
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-// กำหนดชื่อไฟล์ปลายทาง
-$filename = __DIR__ . '/returned_cancelled_orders_may2026_comp1.csv';
-$fp = fopen($filename, 'w');
+// สร้างไฟล์ปลายทาง
+$fp = fopen($output_filename, 'w');
 
 if (!$fp) {
     die("ไม่สามารถสร้างไฟล์ CSV ได้ เนื่องจากไฟล์กำลังถูกเปิดใช้งานหรือติด Permission Lock");
@@ -148,7 +222,8 @@ $headers = [
     'Cancel Type (รูปแบบยกเลิก)',
     'Cancel Reason (หมายเหตุยกเลิก)',
     'Cancel Date/Time (เวลายกเลิก)',
-    'Return Date/Time (เวลาตีกลับ)'
+    'Return Date/Time (เวลาตีกลับ)',
+    'Audio Links (ไฟล์เสียง)'
 ];
 fputcsv($fp, $headers);
 
@@ -160,7 +235,10 @@ $sql = "
         o.customer_id,
         CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
         c.phone AS customer_phone,
-        o.total_amount,
+        IF(o.order_status = 'Returned', 
+            COALESCE((SELECT SUM(ob.cod_amount) FROM order_boxes ob WHERE ob.order_id = o.id), 0), 
+            o.total_amount
+        ) AS total_amount,
         o.payment_method,
         o.order_status,
         ct.label AS cancel_type,
@@ -180,7 +258,13 @@ $sql = "
       AND o.order_date <= '2026-05-31 23:59:59'
       AND o.company_id = 1
       AND u.role_id IN (6, 7)
-      AND o.order_status IN ('Returned', 'Cancelled')
+      AND (
+          o.order_status IN ('Returned', 'Cancelled')
+          OR EXISTS (
+              SELECT 1 FROM order_boxes ob2 
+              WHERE ob2.order_id = o.id AND ob2.return_status IS NOT NULL
+          )
+      )
     ORDER BY o.order_date DESC
 ";
 
@@ -189,6 +273,16 @@ $count = 0;
 
 if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
+        
+        $audioLinks = fetchRelevantAudioLinks(
+            $row['customer_phone'], 
+            $row['order_date'], 
+            $row['cancelled_at'] ?? '-', 
+            $row['returned_at'] ?? '-', 
+            $audio_api_url,
+            $audio_token
+        );
+
         fputcsv($fp, [
             $row['order_id'],
             $row['order_date'],
@@ -201,7 +295,8 @@ if ($result && $result->num_rows > 0) {
             $row['cancel_type'] ?? '-',
             $row['cancel_notes'] ?? '-',
             $row['cancelled_at'] ?? '-',
-            $row['returned_at'] ?? '-'
+            $row['returned_at'] ?? '-',
+            $audioLinks
         ]);
         $count++;
     }
@@ -211,7 +306,7 @@ fclose($fp);
 $conn->close();
 
 echo "สร้างรายงานเรียบร้อยแล้ว! จำนวนทั้งหมด: " . $count . " รายการ\n";
-echo "บันทึกไฟล์ที่: " . $filename . "\n";
+echo "บันทึกไฟล์ที่: " . $output_filename . "\n";
 ?>
 ```
 

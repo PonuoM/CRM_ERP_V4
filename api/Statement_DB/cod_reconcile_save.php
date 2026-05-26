@@ -158,6 +158,7 @@ $companyId = isset($payload["company_id"]) ? (int) $payload["company_id"] : 0;
 $userId = isset($payload["user_id"]) ? (int) $payload["user_id"] : 0;
 $codDocumentId = isset($payload["cod_document_id"]) ? (int) $payload["cod_document_id"] : 0;
 $statementLogId = isset($payload["statement_log_id"]) ? (int) $payload["statement_log_id"] : 0;
+$shortageReason = isset($payload["shortage_reason"]) ? trim($payload["shortage_reason"]) : "";
 $pdo = null;
 
 if ($companyId <= 0 || $userId <= 0 || $codDocumentId <= 0 || $statementLogId <= 0) {
@@ -241,6 +242,12 @@ try {
   ]);
   if ((int) $existsStmt->fetchColumn() > 0) {
     throw new RuntimeException("Statement log {$statementLogId} already reconciled");
+  }
+
+  // VALIDATION: Shortage Reason Check
+  $amountDiff = abs((float) $codDoc["total_input_amount"] - (float) $stmtInfo["amount"]);
+  if ($amountDiff >= 0.01 && empty($shortageReason)) {
+    throw new RuntimeException("ยอดเงินไม่ตรงกัน (ส่วนต่าง " . number_format($amountDiff, 2) . " บาท) กรุณาระบุสาเหตุที่เงินขาด/เกิน");
   }
 
   // 3. Get ALL COD records for this document (including forced records without order_id)
@@ -549,6 +556,7 @@ try {
       status = 'verified',
       verified_by = :userId,
       verified_at = :verifiedAt,
+      shortage_reason = :shortageReason,
       updated_at = NOW()
     WHERE id = :docId
   ");
@@ -556,6 +564,7 @@ try {
     ":statementId" => $statementLogId,
     ":userId" => $userId,
     ":verifiedAt" => $verifiedAt,
+    ":shortageReason" => $shortageReason !== '' ? $shortageReason : null,
     ":docId" => $codDocumentId,
   ]);
 

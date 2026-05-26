@@ -2731,6 +2731,7 @@ const App: React.FC = () => {
       if (updatedOrder.shippingAddress) {
         payload.recipient_first_name = updatedOrder.shippingAddress.recipientFirstName ?? "";
         payload.recipient_last_name = updatedOrder.shippingAddress.recipientLastName ?? "";
+        payload.recipient_phone = updatedOrder.shippingAddress.recipientPhone ?? "";
         payload.street = updatedOrder.shippingAddress.street ?? "";
         payload.subdistrict = updatedOrder.shippingAddress.subdistrict ?? "";
         payload.district = updatedOrder.shippingAddress.district ?? "";
@@ -5728,15 +5729,15 @@ const App: React.FC = () => {
       case "A+":
       case "A_PLUS":
       case "A-PLUS":
-        return CustomerGrade.A;
+        return "A";
       case "A":
-        return CustomerGrade.A;
+        return "A";
       case "B":
-        return CustomerGrade.B;
+        return "B";
       case "C":
-        return CustomerGrade.C;
+        return "C";
       case "D":
-        return CustomerGrade.D;
+        return "D";
       default:
         return undefined;
     }

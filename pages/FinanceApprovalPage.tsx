@@ -265,6 +265,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
   const [savingCod, setSavingCod] = useState(false);
   const [codDocumentOrders, setCodDocumentOrders] = useState<CodRecord[]>([]);
   const [selectedCodDocId, setSelectedCodDocId] = useState<string>("");
+  const [codShortageReason, setCodShortageReason] = useState("");
   const [selectedCodDocument, setSelectedCodDocument] =
     useState<CodDocument | null>(null);
   const [statementCandidates, setStatementCandidates] = useState<
@@ -920,6 +921,11 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
     if (!selectedCodDocument || !selectedStatementCandidate) {
       return;
     }
+    const diff = Math.abs(selectedCodDocument.total_input_amount - selectedStatementCandidate.statement.amount);
+    if (diff >= 0.01 && !codShortageReason.trim()) {
+      alert(`ยอดเงินไม่ตรงกัน (ส่วนต่าง ${formatCurrency(diff)})\nกรุณาระบุสาเหตุที่ช่องด้านล่างก่อนกดจับคู่`);
+      return;
+    }
     setSavingCod(true);
     setCodStatusMessage(null);
     try {
@@ -932,6 +938,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
             user_id: user.id,
             cod_document_id: selectedCodDocument.id,
             statement_log_id: selectedStatementCandidate.statement.id,
+            shortage_reason: codShortageReason.trim(),
           }),
         },
       );
@@ -1720,6 +1727,21 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                           : "แนะนำ"}
                     </span>
                   </div>
+                  {selectedStatementCandidate.amountDiff >= 0.01 && (
+                    <div className="mt-3 bg-orange-50 p-2 rounded border border-orange-200">
+                      <label className="block text-xs font-semibold text-orange-800 mb-1">
+                        ยอดเงินไม่ตรงกัน กรุณาระบุสาเหตุ <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={codShortageReason}
+                        onChange={(e) => setCodShortageReason(e.target.value)}
+                        placeholder="เช่น ขนส่งหักค่าธรรมเนียม, ยอดขาด 1 บาท"
+                        className="w-full px-2 py-1 text-sm border border-orange-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500"
+                        required
+                      />
+                    </div>
+                  )}
                 </div>
               ) : statementCandidates.length === 0 ? (
                 <p className="text-xs text-gray-500">

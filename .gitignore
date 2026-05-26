@@ -45,6 +45,7 @@ Desktop.ini
 # SQL backups
 *.sql
 !api/Database/*.sql
+!api/migrations/*.sql
 
 # PHP vendor (composer)
 vendor/

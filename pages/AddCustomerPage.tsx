@@ -93,7 +93,7 @@ const AddCustomerPage: React.FC<AddCustomerPageProps> = ({ onSave, onCancel, com
       dateAssigned: '',
       ownershipExpires: '',
       behavioralStatus: CustomerBehavioralStatus.Warm,
-      grade: CustomerGrade.D,
+      grade: "D",
     };
     onSave(customerData, andCreateOrder);
   };

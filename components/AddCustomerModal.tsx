@@ -92,7 +92,7 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({ onSave, onClose, co
       dateAssigned: '',
       ownershipExpires: '',
       behavioralStatus: CustomerBehavioralStatus.Warm,
-      grade: CustomerGrade.D,
+      grade: "D",
     };
     onSave(customerData, andCreateOrder);
   };

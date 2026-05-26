@@ -37,7 +37,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
   let url = `${base}${path}`;
 
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('User_DB/') || path.startsWith('cron/') || path.startsWith('Database/') || path.startsWith('Marketplace/') || path.startsWith('Quota/') || path.startsWith('Commission/') || path.startsWith('Reports/') || path.startsWith('get_blocked_customers.php') || path.startsWith('customer_addresses.php') || path.startsWith('customer_stats_audit.php')) {
+  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('User_DB/') || path.startsWith('cron/') || path.startsWith('Database/') || path.startsWith('Marketplace/') || path.startsWith('Quota/') || path.startsWith('Commission/') || path.startsWith('Reports/') || path.startsWith('Customers/') || path.startsWith('get_blocked_customers.php') || path.startsWith('customer_addresses.php') || path.startsWith('customer_stats_audit.php')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -2696,3 +2696,23 @@ export async function deleteCustomerAddress(addressId: string | number): Promise
   });
 }
 
+// ========== Customer Grades API ==========
+
+export async function getCustomerGradesConfig(): Promise<any> {
+  return apiFetch(`Customers/get_grades_config.php`, {
+    method: 'GET',
+  });
+}
+
+export async function saveCustomerGradesConfig(grades: any[], settings?: any): Promise<any> {
+  return apiFetch(`Customers/save_grades_config.php`, {
+    method: 'POST',
+    body: JSON.stringify({ grades, settings }),
+  });
+}
+
+export async function recalculateAllCustomerGrades(): Promise<any> {
+  return apiFetch(`Customers/recalculate_all_grades.php`, {
+    method: 'POST',
+  });
+}

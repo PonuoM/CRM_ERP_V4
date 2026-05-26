@@ -819,7 +819,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     if (deferredQuickFilter === "uncontacted") return !hasCalled;
                     if (deferredQuickFilter === "contacted") return hasCalled;
                     if (deferredQuickFilter === "highGrade") {
-                        return c.grade === CustomerGrade.APlus || c.grade === CustomerGrade.A || c.grade === CustomerGrade.B;
+                        return c.grade === "A+" || c.grade === "A" || c.grade === "B";
                     }
                     return true;
                 });
@@ -990,7 +990,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 if (deferredQuickFilter === "uncontacted") return !hasCalled;
                 if (deferredQuickFilter === "contacted") return hasCalled;
                 if (deferredQuickFilter === "highGrade") {
-                    return c.grade === CustomerGrade.APlus || c.grade === CustomerGrade.A || c.grade === CustomerGrade.B;
+                    return c.grade === "A+" || c.grade === "A" || c.grade === "B";
                 }
                 return true;
             });

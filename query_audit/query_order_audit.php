@@ -106,13 +106,13 @@ try {
     ]);
 
     if ($downloadResp['info']['http_code'] !== 200 || empty($downloadResp['body'])) {
-        throw new Exception('Failed to download audio file from OneCall. HTTP Code: ' . $downloadResp['info']['http_code']);
+        throw new Exception('Failed to download audio file from OneCall. HTTP Code: ' . $downloadResp['info']['http_code'] . ' Body Length: ' . strlen($downloadResp['body']));
     }
 
     $audioData = base64_encode($downloadResp['body']);
 
     // Call Gemini API to transcribe and analyze the audio
-    $geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" . $geminiApiKey;
+    $geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" . $geminiApiKey;
     $payload = [
         'contents' => [
             [
