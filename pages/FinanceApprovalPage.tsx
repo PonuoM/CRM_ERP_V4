@@ -264,6 +264,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
   const [codDocumentOrders, setCodDocumentOrders] = useState<CodRecord[]>([]);
   const [selectedCodDocId, setSelectedCodDocId] = useState<string>("");
   const [codShortageReason, setCodShortageReason] = useState("");
+  const [shortageReasonError, setShortageReasonError] = useState<string | null>(null);
   const [selectedCodDocument, setSelectedCodDocument] =
     useState<CodDocument | null>(null);
   const [statementCandidates, setStatementCandidates] = useState<
@@ -921,9 +922,10 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
     }
     const diff = Math.abs(selectedCodDocument.total_input_amount - selectedStatementCandidate.statement.amount);
     if (diff >= 0.01 && !codShortageReason.trim()) {
-      alert(`ยอดเงินไม่ตรงกัน (ส่วนต่าง ${formatCurrency(diff)})\nกรุณาระบุสาเหตุที่ช่องด้านล่างก่อนกดจับคู่`);
+      setShortageReasonError("กรุณาระบุสาเหตุก่อนกดบันทึก");
       return;
     }
+    setShortageReasonError(null);
     setSavingCod(true);
     setCodStatusMessage(null);
     try {
@@ -1733,11 +1735,17 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                       <input
                         type="text"
                         value={codShortageReason}
-                        onChange={(e) => setCodShortageReason(e.target.value)}
+                        onChange={(e) => {
+                          setCodShortageReason(e.target.value);
+                          if (shortageReasonError) setShortageReasonError(null);
+                        }}
                         placeholder="เช่น ขนส่งหักค่าธรรมเนียม, ยอดขาด 1 บาท"
-                        className="w-full px-2 py-1 text-sm border border-orange-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500"
+                        className={`w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-1 ${shortageReasonError ? 'border-red-500 focus:ring-red-500 bg-red-50' : 'border-orange-300 focus:ring-orange-500'}`}
                         required
                       />
+                      {shortageReasonError && (
+                        <p className="mt-1 text-xs text-red-500 font-medium">{shortageReasonError}</p>
+                      )}
                     </div>
                   )}
                 </div>
