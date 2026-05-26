@@ -749,7 +749,7 @@ function handle_auth(PDO $pdo, ?string $id): void
         }
 
         // Check if user status is active
-        $stmt = $pdo->prepare('SELECT id, username, password, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status FROM users WHERE username=? LIMIT 1');
+        $stmt = $pdo->prepare('SELECT id, username, password, first_name, last_name, email, phone, role, role_id, company_id, team_id, supervisor_id, status FROM users WHERE username=? LIMIT 1');
         $stmt->execute([$username]);
         $u = $stmt->fetch();
         if (!$u)
@@ -830,7 +830,7 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
     switch (method()) {
         case 'GET':
             if ($id) {
-                $stmt = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
+                $stmt = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, role_id, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
                 $stmt->execute([$id]);
                 $row = $stmt->fetch();
                 if ($row) {
@@ -845,7 +845,7 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
             } else {
                 $companyId = $_GET['companyId'] ?? null;
                 $status = $_GET['status'] ?? null;
-                $sql = 'SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.phone, u.role, u.company_id, u.team_id, u.supervisor_id, u.status, u.created_at, u.updated_at, u.last_login, u.login_count, r.is_system FROM users u LEFT JOIN roles r ON u.role = r.name';
+                $sql = 'SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, u.created_at, u.updated_at, u.last_login, u.login_count, r.is_system FROM users u LEFT JOIN roles r ON u.role = r.name';
                 $params = [];
                 $conditions = [];
 
@@ -913,7 +913,7 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
                     $stmt->execute([$username, $password, $first, $last, $email, $phone, $role, $companyId, $teamId, $supervisorId, $status]);
                 }
                 $newId = (int) $pdo->lastInsertId();
-                $get = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
+                $get = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, role_id, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
                 $get->execute([$newId]);
                 json_response($get->fetch(), 201);
             } catch (Throwable $e) {
@@ -975,7 +975,7 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
                 $sql = 'UPDATE users SET ' . implode(', ', $fields) . ' WHERE id = ?';
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
-                $get = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
+                $get = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, role_id, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
                 $get->execute([$id]);
                 $row = $get->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
@@ -7162,6 +7162,14 @@ function ensure_order_slips_table(PDO $pdo): void
             // Column may already exist, ignore
         }
     }
+    if (!in_array('mismatch_reason', $columns)) {
+        try {
+            $pdo->exec('ALTER TABLE order_slips ADD COLUMN mismatch_reason VARCHAR(255) NULL AFTER transfer_date');
+            $columns[] = 'mismatch_reason';
+        } catch (Exception $e) {
+            // Column may already exist, ignore
+        }
+    }
     if (!in_array('upload_by', $columns)) {
         try {
             $pdo->exec('ALTER TABLE order_slips ADD COLUMN upload_by INT NULL AFTER url');
@@ -7402,7 +7410,7 @@ function handle_order_slips(PDO $pdo, ?string $id): void
             if (!$orderId) {
                 json_response(['error' => 'ORDER_ID_REQUIRED'], 400);
             }
-            $st = $pdo->prepare('SELECT id, url, created_at, upload_by, upload_by_name, amount, bank_account_id, transfer_date FROM order_slips WHERE order_id=? ORDER BY id DESC');
+            $st = $pdo->prepare('SELECT id, url, created_at, upload_by, upload_by_name, amount, bank_account_id, transfer_date, mismatch_reason FROM order_slips WHERE order_id=? ORDER BY id DESC');
             $st->execute([$orderId]);
             json_response($st->fetchAll());
             break;
@@ -7415,6 +7423,7 @@ function handle_order_slips(PDO $pdo, ?string $id): void
             $amount = isset($in['amount']) && $in['amount'] !== '' ? (float) $in['amount'] : null;
             $uploadedBy = $in['uploadedBy'] ?? $in['uploadBy'] ?? $in['upload_by'] ?? null;
             $uploadedByName = $in['uploadedByName'] ?? $in['uploadByName'] ?? $in['upload_by_name'] ?? null;
+            $mismatchReason = $in['mismatchReason'] ?? $in['mismatch_reason'] ?? null;
 
             if ($orderId === '' || $content === '') {
                 json_response(['error' => 'INVALID_INPUT'], 400);
@@ -7525,6 +7534,11 @@ function handle_order_slips(PDO $pdo, ?string $id): void
             if (in_array('upload_by_name', $existingColumns) && $uploadedByName !== null && $uploadedByName !== '') {
                 $columns[] = 'upload_by_name';
                 $values[] = $uploadedByName;
+                $placeholders[] = '?';
+            }
+            if (in_array('mismatch_reason', $existingColumns) && $mismatchReason !== null && $mismatchReason !== '') {
+                $columns[] = 'mismatch_reason';
+                $values[] = $mismatchReason;
                 $placeholders[] = '?';
             }
 
@@ -8274,7 +8288,7 @@ function get_order(PDO $pdo, string $id): ?array
 
     // Include slips from main order and all sub orders
     try {
-        $sl = $pdo->prepare("SELECT id, order_id, url, created_at, amount, bank_account_id, transfer_date, upload_by, upload_by_name FROM order_slips WHERE order_id IN ($placeholders) ORDER BY id DESC");
+        $sl = $pdo->prepare("SELECT id, order_id, url, created_at, amount, bank_account_id, transfer_date, upload_by, upload_by_name, mismatch_reason FROM order_slips WHERE order_id IN ($placeholders) ORDER BY id DESC");
         $sl->execute($allOrderIds);
         $o['slips'] = $sl->fetchAll();
     } catch (Throwable $e) { /* ignore if table not present */

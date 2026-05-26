@@ -3987,46 +3987,53 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                             const showDisabledInput = permission === 'seller' && currentOrder.paymentStatus !== PaymentStatus.PendingVerification;
 
                                             return (
-                                              <select
-                                                value={slip.bankAccountId || ""}
-                                                disabled={showDisabledInput}
-                                                onChange={async (e) => {
-                                                  if (!canEdit) return;
-                                                  const nextBankId =
-                                                    e.target.value === ""
-                                                      ? undefined
-                                                      : Number(e.target.value);
-                                                  setSlips((prev) =>
-                                                    prev.map((s) =>
-                                                      s.id === slip.id
-                                                        ? {
-                                                          ...s,
-                                                          bankAccountId: nextBankId,
-                                                        }
-                                                        : s,
-                                                    ),
-                                                  );
-                                                  try {
-                                                    await updateOrderSlip(slip.id, {
-                                                      bankAccountId: nextBankId,
-                                                      companyId: currentOrder.companyId,
-                                                    });
-                                                  } catch (error) {
-                                                    console.error(
-                                                      "Failed to update slip bank account:",
-                                                      error,
+                                              <div className="flex flex-col gap-1">
+                                                <select
+                                                  value={slip.bankAccountId || ""}
+                                                  disabled={showDisabledInput}
+                                                  onChange={async (e) => {
+                                                    if (!canEdit) return;
+                                                    const nextBankId =
+                                                      e.target.value === ""
+                                                        ? undefined
+                                                        : Number(e.target.value);
+                                                    setSlips((prev) =>
+                                                      prev.map((s) =>
+                                                        s.id === slip.id
+                                                          ? {
+                                                            ...s,
+                                                            bankAccountId: nextBankId,
+                                                          }
+                                                          : s,
+                                                      ),
                                                     );
-                                                  }
-                                                }}
-                                                className={`w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${showDisabledInput ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                                              >
-                                                <option value="">เลือกธนาคาร</option>
-                                                {bankAccounts.map((ba) => (
-                                                  <option key={ba.id} value={ba.id}>
-                                                    {ba.bank} {ba.bank_number}
-                                                  </option>
-                                                ))}
-                                              </select>
+                                                    try {
+                                                      await updateOrderSlip(slip.id, {
+                                                        bankAccountId: nextBankId,
+                                                        companyId: currentOrder.companyId,
+                                                      });
+                                                    } catch (error) {
+                                                      console.error(
+                                                        "Failed to update slip bank account:",
+                                                        error,
+                                                      );
+                                                    }
+                                                  }}
+                                                  className={`w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${showDisabledInput ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                                >
+                                                  <option value="">เลือกธนาคาร</option>
+                                                  {bankAccounts.map((ba) => (
+                                                    <option key={ba.id} value={ba.id}>
+                                                      {ba.bank} {ba.bank_number}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                                {(slip as any).mismatch_reason && (
+                                                  <div className="text-xs text-red-600 font-medium">
+                                                    สาเหตุ: {(slip as any).mismatch_reason}
+                                                  </div>
+                                                )}
+                                              </div>
                                             );
                                           })()}
                                         </td>

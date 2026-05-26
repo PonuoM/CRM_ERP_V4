@@ -48,6 +48,7 @@ import {
   CustomerGrade,
   Warehouse,
   User,
+  UserRole,
 } from "../types";
 
 import { useRef, useCallback } from "react";
@@ -97,6 +98,7 @@ interface TransferSlipUpload {
   bankAccountId?: number | null;
   transferDate?: string;
   amount?: number | null;
+  mismatchReason?: string;
 }
 
 interface UpsellSlip {
@@ -107,6 +109,7 @@ interface UpsellSlip {
   createdAt?: string;
   amount?: number | null;
   transferDate?: string | null;
+  mismatchReason?: string;
 }
 
 const SHIPPING_PROVIDERS = [
@@ -1755,21 +1758,39 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           return;
         }
-        await Promise.all(
-          upsellSlips.map((slip) => {
-            if (slip.id) {
-              return updateOrderSlip({
-                id: slip.id,
-                amount:
-                  typeof slip.amount === "number" ? slip.amount : undefined,
+      }
+
+      const totalUpsellSlipAmount = upsellSlips.reduce(
+        (sum, slip) => sum + (Number(slip.amount) || 0),
+        0
+      );
+      if (
+        upsellSlips.length > 0 &&
+        Math.abs(totalUpsellSlipAmount - upsellNewItemsTotal) > 0.01
+      ) {
+        const hasMismatchReason = upsellSlips.some((s) => s.mismatchReason && s.mismatchReason.trim() !== "");
+        if (!hasMismatchReason) {
+          setUpsellError("ยอดโอนไม่ตรงกับยอดเพิ่มใหม่ กรุณาระบุสาเหตุที่สลิปอย่างน้อย 1 รูป");
+          return;
+        }
+      }
+
+      await Promise.all(
+        upsellSlips.map((slip) => {
+          if (slip.id) {
+            return updateOrderSlip(
+              slip.id,
+              {
+                amount: typeof slip.amount === "number" ? slip.amount : undefined,
                 transferDate: slip.transferDate ?? undefined,
                 updatedBy: currentUser.id,
-              });
-            }
-            return Promise.resolve();
-          }),
-        );
-      }
+                mismatch_reason: slip.mismatchReason,
+              }
+            );
+          }
+          return Promise.resolve();
+        })
+      );
 
       const itemsToAdd = upsellItems.map((item) => ({
         id: item.id, // temp ID for parent-child linking in backend
@@ -4199,6 +4220,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setNewCustomerPhoneError("กรุณากรอกเบอร์โทรศัพท์");
     } else if (value.length < 9 || value.length > 10) {
       setNewCustomerPhoneError("เบอร์โทรต้องมี 9 หรือ 10 หลัก");
+    } else if (value[0] !== "0") {
+      setNewCustomerPhoneError("เบอร์โทรต้องขึ้นต้นด้วย 0");
     } else {
       setNewCustomerPhoneError("");
     }
@@ -4217,6 +4240,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     if (value.length < 9 || value.length > 10) {
       setError("เบอร์โทรต้องมี 9 หรือ 10 หลัก");
+    } else if (value[0] !== "0") {
+      setError("เบอร์โทรต้องขึ้นต้นด้วย 0");
     } else {
       setError("");
     }
@@ -4271,8 +4296,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     if (value.length === 0) {
       setEditedCustomerPhoneError("");
-    } else if (value.length !== 10) {
-      setEditedCustomerPhoneError("เบอร์โทรต้องมี 10 หลัก");
+    } else if (value.length < 9 || value.length > 10) {
+      setEditedCustomerPhoneError("เบอร์โทรต้องมี 9 หรือ 10 หลัก");
     } else if (value[0] !== "0") {
       setEditedCustomerPhoneError("เบอร์โทรต้องขึ้นต้นด้วย 0");
     } else {
@@ -4552,6 +4577,20 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         if (slipsMissingMeta) {
           alert("กรุณาระบุธนาคารและวันเวลาโอนให้ครบทุกสลิป");
           return;
+        }
+        
+        const totalSlipAmount = transferSlipUploads.reduce(
+          (sum, slip) => sum + (Number(slip.amount) || 0),
+          0
+        );
+        if (Math.abs(totalSlipAmount - totalAmount) > 0.01) {
+          const hasMismatchReason = transferSlipUploads.some((s) => s.mismatchReason && s.mismatchReason.trim() !== "");
+          if (!hasMismatchReason) {
+            highlightField("transferSlips");
+            alert("ยอดโอนไม่ตรงกับยอดคำสั่งซื้อ กรุณาระบุสาเหตุที่สลิปอย่างน้อย 1 รูป");
+            setIsSaving(false);
+            return;
+          }
         }
       }
       if (!salesChannel) {
@@ -6396,6 +6435,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       {upsellSlipError}
                     </div>
                   )}
+                  {upsellSlips.length > 0 && Math.abs(upsellSlips.reduce((s, x) => s + (Number(x.amount)||0), 0) - upsellNewItemsTotal) > 0.01 && (
+                    <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md mb-4">
+                      <strong>แจ้งเตือน:</strong> ยอดโอนรวม ({upsellSlips.reduce((s, x) => s + (Number(x.amount)||0), 0).toFixed(2)} บาท) ไม่ตรงกับยอดเพิ่มใหม่ ({upsellNewItemsTotal.toFixed(2)} บาท) <br/>
+                      กรุณาระบุ "สาเหตุยอดไม่ตรงบิล" ในสลิปอย่างน้อย 1 รูป
+                    </div>
+                  )}
                   {upsellSlips.length > 0 ? (
                     <div className="flex flex-wrap gap-4">
                       {upsellSlips.map((slip) => (
@@ -7334,7 +7379,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     {!selectedCustomer &&
                       searchTerm &&
                       searchResults.length === 0 &&
-                      !isCreatingNewCustomer && (
+                      !isCreatingNewCustomer && 
+                      currentUser.role !== UserRole.Telesale && 
+                      currentUser.role !== UserRole.Supervisor && (
                         <button
                           onClick={() => {
                             startCreatingNewCustomer();
@@ -9068,6 +9115,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         แนบสลิปโอนเงินได้หลายภาพตามต้องการ
                         (ระบุธนาคาร/เวลาโอนต่อสลิป)
                       </p>
+                      {transferSlipUploads.length > 0 && Math.abs(transferSlipUploads.reduce((s, x) => s + (Number(x.amount)||0), 0) - totalAmount) > 0.01 && (
+                        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">
+                          <strong>แจ้งเตือน:</strong> ยอดโอนรวม ({transferSlipUploads.reduce((s, x) => s + (Number(x.amount)||0), 0).toFixed(2)} บาท) ไม่ตรงกับยอดคำสั่งซื้อ ({totalAmount.toFixed(2)} บาท) <br/>
+                          กรุณาระบุ "สาเหตุยอดไม่ตรงบิล" ในสลิปอย่างน้อย 1 รูป
+                        </div>
+                      )}
                       {transferSlipUploads.length > 0 && (
                         <div className="flex flex-wrap gap-4">
                           {transferSlipUploads.map((slip) => (
@@ -9186,6 +9239,28 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     className="w-full border rounded px-2 py-1 text-sm"
                                   />
                                 </div>
+                                {Math.abs(transferSlipUploads.reduce((s, x) => s + (Number(x.amount)||0), 0) - totalAmount) > 0.01 && (
+                                  <div>
+                                    <label className="block text-red-600 font-medium mb-1 mt-2">
+                                      สาเหตุยอดไม่ตรงบิล
+                                    </label>
+                                    <input
+                                      type="text"
+                                      placeholder="เช่น โอนเกิน 2 บิล"
+                                      value={slip.mismatchReason || ""}
+                                      onChange={(e) => {
+                                        setTransferSlipUploads((prev) =>
+                                          prev.map((s) =>
+                                            s.id === slip.id
+                                              ? { ...s, mismatchReason: e.target.value }
+                                              : s,
+                                          ),
+                                        );
+                                      }}
+                                      className="w-full border border-red-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
+                                    />
+                                  </div>
+                                )}
                               </div>
                             </div>
                           ))}
