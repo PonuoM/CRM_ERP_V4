@@ -1841,7 +1841,7 @@ export async function updateOrderSlip(
     url?: string;
     updatedBy?: number;
     companyId?: number;
-    mismatch_reason?: string;
+    mismatchReason?: string;
   }
 ) {
   const legacyBase =
@@ -1865,7 +1865,7 @@ export async function updateOrderSlip(
       url: payload.url,
       updated_by: payload.updatedBy,
       company_id: payload.companyId,
-      mismatch_reason: payload.mismatch_reason,
+      mismatch_reason: payload.mismatchReason,
     }),
   });
 
