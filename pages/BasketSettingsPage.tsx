@@ -37,6 +37,7 @@ interface BasketConfig {
     extend_days_sales_amount_threshold?: number | null;
     extend_days_sales_reward?: number | null;
     max_extend_appointments?: number | null;
+    advance_transfer_days?: number | null;
 }
 
 interface ReturnConfig {
@@ -1912,74 +1913,70 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                             </div>
 
                                             {/* Dynamic Retention Rules */}
-                                            {editingBasket.fail_after_days ? (
-                                                <>
-                                                    <div className="grid grid-cols-3 gap-4 mb-3 pt-3 border-t border-red-200">
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">บวกเวลาเพิ่ม (วัน) ต่อ 1 นัดหมาย</label>
-                                                            <input
-                                                                type="number"
-                                                                value={editingBasket.extend_days_per_appointment ?? ''}
-                                                                onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_per_appointment: e.target.value ? parseInt(e.target.value) : 0 })}
-                                                                className="w-full border rounded-lg p-2"
-                                                                placeholder="0 = ปิดใช้งาน"
-                                                            />
+                                            <div className="grid grid-cols-3 gap-4 mb-3 pt-3 border-t border-red-200">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">บวกเวลาเพิ่ม (วัน) ต่อ 1 นัดหมาย</label>
+                                                    <input
+                                                        type="number"
+                                                        value={editingBasket.extend_days_per_appointment ?? ''}
+                                                        onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_per_appointment: e.target.value ? parseInt(e.target.value) : 0 })}
+                                                        className="w-full border rounded-lg p-2"
+                                                        placeholder="0 = ปิดใช้งาน"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนนัดหมายสูงสุดที่ให้ผล</label>
+                                                    <input
+                                                        type="number"
+                                                        value={editingBasket.max_extend_appointments ?? ''}
+                                                        onChange={(e) => setEditingBasket({ ...editingBasket, max_extend_appointments: e.target.value ? parseInt(e.target.value) : null })}
+                                                        className="w-full border rounded-lg p-2"
+                                                        placeholder="ว่าง หรือ 0 = ไม่จำกัด"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">เพดานเวลาสูงสุดรวม (วัน)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={editingBasket.max_total_days ?? ''}
+                                                        onChange={(e) => setEditingBasket({ ...editingBasket, max_total_days: e.target.value ? parseInt(e.target.value) : null })}
+                                                        className="w-full border rounded-lg p-2"
+                                                        placeholder="เช่น 90"
+                                                    />
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-4 mb-3">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">ยอดขายขั้นต่ำที่ได้ต่ออายุ (บาท)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={editingBasket.extend_days_sales_amount_threshold ?? ''}
+                                                        onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_sales_amount_threshold: e.target.value ? parseFloat(e.target.value) : null })}
+                                                        className="w-full border rounded-lg p-2"
+                                                        placeholder="เช่น 50000"
+                                                    />
+                                                    <div className="group relative mt-1.5 inline-block">
+                                                        <div className="flex items-center gap-1 text-xs text-blue-500 cursor-help">
+                                                            <AlertCircle className="w-3.5 h-3.5" />
+                                                            <span>เงื่อนไขการคำนวณยอดขาย</span>
                                                         </div>
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนนัดหมายสูงสุดที่ให้ผล</label>
-                                                            <input
-                                                                type="number"
-                                                                value={editingBasket.max_extend_appointments ?? ''}
-                                                                onChange={(e) => setEditingBasket({ ...editingBasket, max_extend_appointments: e.target.value ? parseInt(e.target.value) : null })}
-                                                                className="w-full border rounded-lg p-2"
-                                                                placeholder="ว่าง หรือ 0 = ไม่จำกัด"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">เพดานเวลาสูงสุดรวม (วัน)</label>
-                                                            <input
-                                                                type="number"
-                                                                value={editingBasket.max_total_days ?? ''}
-                                                                onChange={(e) => setEditingBasket({ ...editingBasket, max_total_days: e.target.value ? parseInt(e.target.value) : null })}
-                                                                className="w-full border rounded-lg p-2"
-                                                                placeholder="เช่น 90"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    <div className="grid grid-cols-2 gap-4 mb-3">
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">ยอดขายขั้นต่ำที่ได้ต่ออายุ (บาท)</label>
-                                                            <input
-                                                                type="number"
-                                                                value={editingBasket.extend_days_sales_amount_threshold ?? ''}
-                                                                onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_sales_amount_threshold: e.target.value ? parseFloat(e.target.value) : null })}
-                                                                className="w-full border rounded-lg p-2"
-                                                                placeholder="เช่น 50000"
-                                                            />
-                                                            <div className="group relative mt-1.5 inline-block">
-                                                                <div className="flex items-center gap-1 text-xs text-blue-500 cursor-help">
-                                                                    <AlertCircle className="w-3.5 h-3.5" />
-                                                                    <span>เงื่อนไขการคำนวณยอดขาย</span>
-                                                                </div>
-                                                                <div className="absolute left-0 top-full mt-1 hidden group-hover:block w-72 bg-gray-800 text-white text-xs p-2.5 rounded shadow-xl z-50">
-                                                                    การคำนวณจะใช้ยอดขายจาก <b>บิลเดียวที่สูงที่สุด (MAX)</b> ที่มีสถานะ Picking, Shipping, Delivered โดยบิลนั้นจะต้องถูกสร้างหลังจากวันที่ลูกค้าเข้าตะกร้านี้ (หรือย้อนหลังไม่เกิน 40 วัน) จะไม่มีการนำบิลย่อยมาสะสมรวมกัน
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนวันที่ต่ออายุจากยอดขาย (วัน)</label>
-                                                            <input
-                                                                type="number"
-                                                                value={editingBasket.extend_days_sales_reward ?? ''}
-                                                                onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_sales_reward: e.target.value ? parseInt(e.target.value) : null })}
-                                                                className="w-full border rounded-lg p-2"
-                                                                placeholder="เช่น 30"
-                                                            />
+                                                        <div className="absolute left-0 top-full mt-1 hidden group-hover:block w-72 bg-gray-800 text-white text-xs p-2.5 rounded shadow-xl z-50">
+                                                            การคำนวณจะใช้ยอดขายจาก <b>บิลเดียวที่สูงที่สุด (MAX)</b> ที่มีสถานะ Picking, Shipping, Delivered โดยบิลนั้นจะต้องถูกสร้างหลังจากวันที่ลูกค้าเข้าตะกร้านี้ (หรือย้อนหลังไม่เกิน 40 วัน) จะไม่มีการนำบิลย่อยมาสะสมรวมกัน
                                                         </div>
                                                     </div>
-                                                </>
-                                            ) : null}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนวันที่ต่ออายุจากยอดขาย (วัน)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={editingBasket.extend_days_sales_reward ?? ''}
+                                                        onChange={(e) => setEditingBasket({ ...editingBasket, extend_days_sales_reward: e.target.value ? parseInt(e.target.value) : null })}
+                                                        className="w-full border rounded-lg p-2"
+                                                        placeholder="เช่น 30"
+                                                    />
+                                                </div>
+                                            </div>
 
                                             {/* Loop-specific fields */}
                                             {Boolean(editingBasket.has_loop) && (
@@ -2013,7 +2010,7 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
 
                                             {/* Re-Evaluate Checkbox */}
                                             <div className="mt-2 pt-2 border-t border-red-200">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 mb-2">
                                                     <input
                                                         type="checkbox"
                                                         id="on_fail_reevaluate"
@@ -2026,8 +2023,28 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                     </label>
                                                 </div>
                                                 {Boolean(editingBasket.on_fail_reevaluate) && (
+                                                    <div className="mb-3">
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                            ดึงลูกค้าไปถังถัดไปล่วงหน้า (วัน)
+                                                        </label>
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="number"
+                                                                value={editingBasket.advance_transfer_days ?? ''}
+                                                                onChange={(e) => setEditingBasket({ ...editingBasket, advance_transfer_days: e.target.value ? parseInt(e.target.value) : 0 })}
+                                                                className="w-32 border rounded-lg p-2 text-sm"
+                                                                placeholder="0 = ไม่ดึงล่วงหน้า"
+                                                                min="0"
+                                                            />
+                                                            <span className="text-xs text-gray-500">
+                                                                ดึงชื่อไปถังถัดไปก่อนที่ Timeout ปกติจะหมด (Advance Transfer)
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {Boolean(editingBasket.on_fail_reevaluate) && (
                                                     <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
-                                                        <strong>หมายเหตุ:</strong> ระบบจะคำนวณถังเป้าหมายโดยอัตโนมัติจาก "วันนับจาก Order ล่าสุด"<br />
+                                                        <strong>หมายเหตุ:</strong> ระบบจะคำนวณถังเป้าหมายโดยอัตโนมัติจาก "วันนับจาก Order ล่าสุด" + "วันดึงล่วงหน้า"<br />
                                                         • &lt;180 วัน → กลับถังแจกเดิม<br />
                                                         • 180-365 วัน → ถังกลาง 6-12 เดือน<br />
                                                         • 366-1095 วัน → ถังกลาง 1-3 ปี<br />

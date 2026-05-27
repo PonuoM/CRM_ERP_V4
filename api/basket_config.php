@@ -114,8 +114,8 @@ try {
                  days_since_registered, target_page, display_order, is_active, company_id,
                  on_sale_basket_key, fail_after_days, on_fail_basket_key, on_fail_reevaluate, has_loop,
                  max_distribution_count, hold_days_before_redistribute, linked_basket_key, on_max_dist_basket_key, blocked_target_baskets,
-                 extend_days_per_appointment, max_total_days, extend_days_sales_amount_threshold, extend_days_sales_reward, max_extend_appointments)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 extend_days_per_appointment, max_total_days, extend_days_sales_amount_threshold, extend_days_sales_reward, max_extend_appointments, advance_transfer_days)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             $params = [
@@ -145,7 +145,8 @@ try {
                 $input['max_total_days'] ?? null,
                 $input['extend_days_sales_amount_threshold'] ?? null,
                 $input['extend_days_sales_reward'] ?? null,
-                $input['max_extend_appointments'] ?? null
+                $input['max_extend_appointments'] ?? null,
+                $input['advance_transfer_days'] ?? 0
             ];
 
             foreach ($params as &$p) {
@@ -198,7 +199,8 @@ try {
                 'max_total_days',
                 'extend_days_sales_amount_threshold',
                 'extend_days_sales_reward',
-                'max_extend_appointments'
+                'max_extend_appointments',
+                'advance_transfer_days'
             ];
 
             foreach ($allowedFields as $field) {
