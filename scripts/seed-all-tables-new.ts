@@ -1,9 +1,3 @@
-
-<file_path>
-C:\AppServ\www\CRM_ERP_V4\scripts\seed-all-tables-new.ts
-</file_path>
-
-<content>
 #!/usr/bin/env node
 
 /**
@@ -559,5 +553,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-</content>
-</file_path>

@@ -32,6 +32,7 @@ import {
   SalesImportRow,
   CustomerImportRow,
   ImportResultSummary,
+  SlipUploadPayload,
 } from "./types";
 // Mock data removed - using real database only
 import {
@@ -3136,7 +3137,7 @@ const App: React.FC = () => {
       phone?: string;
       backupPhone?: string | null;
     };
-    slipUploads?: string[];
+    slipUploads?: (string | SlipUploadPayload)[];
     bankAccountId?: number;
     transferDate?: string;
   }): Promise<string | undefined> => {
@@ -3151,7 +3152,7 @@ const App: React.FC = () => {
     } = payload;
     const slipUploadsArray = Array.isArray(slipUploads)
       ? slipUploads
-        .map((entry: any) => {
+        .map((entry) => {
           if (typeof entry === "string") {
             return {
               dataUrl: entry,

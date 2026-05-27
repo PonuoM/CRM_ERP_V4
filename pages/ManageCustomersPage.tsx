@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { User, Customer, Order, ModalType } from '@/types';
 import CustomerTable from '@/components/CustomerTable';
-import { getCustomerStats, getOrderStats, listCustomers } from '@/services/api';
+import { getCustomerStats, getOrderStats, listCustomers, createCustomer } from '@/services/api';
 import { mapCustomerFromApi } from '@/utils/customerMapper';
 import Spinner from '@/components/Spinner';
 import { onDataSync, DATA_SYNC_EVENTS } from '@/utils/dataSync';
 import MergeCustomersModal from '@/components/MergeCustomersModal';
 import CustomerGradeManager from '@/components/ManageGrades/CustomerGradeManager';
+import AddCustomerSimpleModal from '@/components/AddCustomerSimpleModal';
 
 type OrdersFilterValue = 'all' | 'yes' | 'no';
 type DateRangeFilter = { start: string; end: string };
@@ -123,6 +124,8 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   const [apDateAssigned, setApDateAssigned] = useState<DateRangeFilter>({ start: '', end: '' });
   const [apOwnership, setApOwnership] = useState<DateRangeFilter>({ start: '', end: '' });
   const advRef = useRef<HTMLDivElement | null>(null);
+
+  const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
 
   // Helper: resolve user name by id (handles null/unknown)
   const resolveUserName = (userId: number | null) => {
@@ -424,8 +427,17 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             )}
             <div className="flex-1" />
             <button
+              onClick={() => setIsAddCustomerModalOpen(true)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-green-50 text-green-700 hover:bg-green-100 ml-auto mr-2"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              เพิ่มลูกค้าใหม่
+            </button>
+            <button
               onClick={() => setIsMergeModalOpen(true)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-purple-50 text-purple-700 hover:bg-purple-100 ml-auto"
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-purple-50 text-purple-700 hover:bg-purple-100"
               title="รวมประวัติการสั่งซื้อสำหรับลูกค้าที่ซ้ำซ้อน"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1060,6 +1072,13 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
           // Trigger a silent table refresh so the newly merged orders count reflects immediately
           setRefreshTrigger((prev) => prev + 1);
         }}
+      />
+
+      <AddCustomerSimpleModal
+        isOpen={isAddCustomerModalOpen}
+        onClose={() => setIsAddCustomerModalOpen(false)}
+        onSuccess={() => setRefreshTrigger(prev => prev + 1)}
+        companyId={currentUser.companyId}
       />
       </>
       )}

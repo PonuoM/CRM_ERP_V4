@@ -170,6 +170,7 @@ foreach ($companies as $companyId) {
         if ($maxTotalDays <= 0) $maxTotalDays = 9999;
         $salesThreshold = (float)($config['extend_days_sales_amount_threshold'] ?? 0);
         $salesRewardDays = (int)($config['extend_days_sales_reward'] ?? 0);
+        $advanceDays = (int)($config['advance_transfer_days'] ?? 0);
         
         echo "=== [$basketName] ID:$basketId ===\n";
         
@@ -284,17 +285,19 @@ foreach ($companies as $companyId) {
             $matchedBy = 'on_fail';
             
             if ($reevaluate) {
-                // ใช้ days_since_order หาถังจาก config
+                // ใช้ days_since_order + advanceDays หาถังจาก config
                 $targetBasketKey = null;
+                $effectiveDaysSinceOrder = $daysSinceOrder + $advanceDays;
+                
                 foreach ($distributionBaskets as $db) {
                     // Skip blocked baskets (Lane Isolation)
                     if (in_array($db['id'], $blockedTargets)) {
                         continue;
                     }
-                    if ($daysSinceOrder >= $db['min_days'] && $daysSinceOrder <= $db['max_days']) {
+                    if ($effectiveDaysSinceOrder >= $db['min_days'] && $effectiveDaysSinceOrder <= $db['max_days']) {
                         $targetBasketKey = $db['basket_key'];
                         $maxDisplay = $db['max_days'] === PHP_INT_MAX ? '∞' : $db['max_days'];
-                        $matchedBy = "re-eval({$db['min_days']}-{$maxDisplay}d)";
+                        $matchedBy = "re-eval({$db['min_days']}-{$maxDisplay}d" . ($advanceDays > 0 ? ",adv:+{$advanceDays}d" : "") . ")";
                         break;
                     }
                 }
@@ -307,11 +310,11 @@ foreach ($companies as $companyId) {
                     foreach ($distributionBaskets as $db) {
                         if (in_array($db['id'], $blockedTargets)) continue;
                         
-                        // Distance = how far daysSinceOrder is from this basket's range
-                        if ($daysSinceOrder < $db['min_days']) {
-                            $dist = $db['min_days'] - $daysSinceOrder;
-                        } elseif ($daysSinceOrder > $db['max_days']) {
-                            $dist = $daysSinceOrder - $db['max_days'];
+                        // Distance = how far effectiveDaysSinceOrder is from this basket's range
+                        if ($effectiveDaysSinceOrder < $db['min_days']) {
+                            $dist = $db['min_days'] - $effectiveDaysSinceOrder;
+                        } elseif ($effectiveDaysSinceOrder > $db['max_days']) {
+                            $dist = $effectiveDaysSinceOrder - $db['max_days'];
                         } else {
                             $dist = 0; // Perfect match (should have matched above)
                         }

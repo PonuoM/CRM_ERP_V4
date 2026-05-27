@@ -605,6 +605,14 @@ export interface TrackingEntry {
   boxNumber?: number | null;
 }
 
+export interface SlipUploadPayload {
+  dataUrl: string;
+  bankAccountId?: number;
+  transferDate?: string;
+  amount?: number;
+  mismatchReason?: string;
+}
+
 export interface OrderSlip {
   id: number;
   url: string;
@@ -614,7 +622,6 @@ export interface OrderSlip {
   amount?: number;
   bankAccountId?: number;
   transferDate?: string;
-  mismatch_reason?: string;
   mismatchReason?: string;
 }
 

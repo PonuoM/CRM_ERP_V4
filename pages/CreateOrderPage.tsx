@@ -49,6 +49,7 @@ import {
   Warehouse,
   User,
   UserRole,
+  SlipUploadPayload,
 } from "../types";
 
 import { useRef, useCallback } from "react";
@@ -254,7 +255,7 @@ interface CreateOrderPageProps {
 
     updateCustomerSocials?: boolean;
 
-    slipUploads?: string[];
+    slipUploads?: (string | SlipUploadPayload)[];
   }) => Promise<string | undefined>;
 
   onCancel: () => void;
@@ -1786,7 +1787,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 amount: typeof slip.amount === "number" ? slip.amount : undefined,
                 transferDate: slip.transferDate ?? undefined,
                 updatedBy: currentUser.id,
-                mismatch_reason: slip.mismatchReason,
+                mismatchReason: slip.mismatchReason,
               }
             );
           }
@@ -4767,7 +4768,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const payload: Parameters<typeof onSave>[0] = { order: finalOrderData };
 
       if (transferSlipUploads.length > 0) {
-        (payload as any).slipUploads = transferSlipUploads.map((slip) => ({
+        payload.slipUploads = transferSlipUploads.map((slip) => ({
           dataUrl: slip.dataUrl,
           bankAccountId: slip.bankAccountId,
           transferDate: slip.transferDate,
@@ -4780,14 +4781,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (orderData.paymentMethod === PaymentMethod.Transfer) {
         const firstSlip = transferSlipUploads[0];
         if (firstSlip?.bankAccountId) {
-          (payload as any).bankAccountId = firstSlip.bankAccountId;
+          payload.bankAccountId = firstSlip.bankAccountId;
         } else if (selectedBankAccountId) {
-          (payload as any).bankAccountId = selectedBankAccountId;
+          payload.bankAccountId = selectedBankAccountId;
         }
         if (firstSlip?.transferDate) {
-          (payload as any).transferDate = firstSlip.transferDate;
+          payload.transferDate = firstSlip.transferDate;
         } else if (transferDate) {
-          (payload as any).transferDate = transferDate;
+          payload.transferDate = transferDate;
         }
       }
 
