@@ -174,7 +174,8 @@ try {
             o.payment_status,
             CONCAT(COALESCE(u_item.first_name, u_order.first_name,''), ' ', COALESCE(u_item.last_name, u_order.last_name,'')) AS seller_name,
             COALESCE(oi.creator_id, o.creator_id) AS seller_id,
-            o.id AS order_id
+            o.id AS order_id,
+            tn.tracking_numbers
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -182,6 +183,12 @@ try {
         LEFT JOIN users u_item ON oi.creator_id = u_item.id
         LEFT JOIN users u_order ON o.creator_id = u_order.id
         LEFT JOIN basket_config bc ON oi.basket_key_at_sale = bc.id
+        LEFT JOIN (
+            SELECT parent_order_id, GROUP_CONCAT(DISTINCT tracking_number ORDER BY box_number, tracking_number SEPARATOR ', ') AS tracking_numbers
+            FROM order_tracking_numbers
+            WHERE tracking_number IS NOT NULL AND tracking_number <> ''
+            GROUP BY parent_order_id
+        ) tn ON tn.parent_order_id = o.id
         $whereClause
         ORDER BY o.order_date ASC, o.id ASC, oi.id ASC
         LIMIT ? OFFSET ?

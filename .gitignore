@@ -54,6 +54,27 @@ vendor/
 *.bak
 *.tmp
 
+# Temporary/investigation files (any extension, any subfolder)
+tmp_*.php
+tmp_*.js
+tmp_*.cjs
+tmp_*.py
+tmp_*.json
+tmp_*.tsv
+tmp_*.csv
+tmp_*.xlsx
+tmp_*.zip
+tmp_*.html
+tmp_*.md
+tmp_*/
+
+# Personal notes / meeting summaries (should not be in repo)
+meeting_*.md
+notes_*.md
+
+# Claude Code local settings (per-user, contains personal permissions)
+.claude/settings.local.json
+
 # Debug, test & investigation scripts (non-production)
 check_*.php
 check_*.js

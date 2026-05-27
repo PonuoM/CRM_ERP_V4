@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { createPortal } from "react-dom";
 import { User } from "../types";
 import { apiFetch } from "../services/api";
-import { Download, ChevronLeft, ChevronRight, Search, FileSpreadsheet, Loader2, X, ChevronDown, Check, ArrowUpDown } from "lucide-react";
+import { Download, ChevronLeft, ChevronRight, Search, FileSpreadsheet, Loader2, X, ChevronDown, Check, ArrowUpDown, Copy, Package } from "lucide-react";
 import ExportTypeModal from "../components/ExportTypeModal";
 import { downloadDataFile } from "../utils/exportUtils";
 
@@ -34,6 +34,7 @@ interface SheetRow {
     seller_name: string;
     seller_id: number;
     order_id: string;
+    tracking_numbers: string | null;
 }
 
 interface Seller {
@@ -352,6 +353,8 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const [openFilter, setOpenFilter] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
     const [allDataLoaded, setAllDataLoaded] = useState(false);
+    const [trackingPopup, setTrackingPopup] = useState<{ trackings: string[]; orderNumber: string } | null>(null);
+    const [copiedTracking, setCopiedTracking] = useState<string | null>(null);
 
     const onChangeFilter = useCallback((key: string, selected: Set<string> | null) => {
         setColFilters(prev => {
@@ -405,6 +408,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             net_total: [...new Set(rows.map(r => r.is_freebie ? '0' : formatMoney(r.net_total)))].sort(),
             delivery_date: [...new Set(rows.map(r => formatDate(r.delivery_date)))].sort(),
             order_status: [...new Set(rows.map(r => getStatusThai(r.order_status)))].sort(),
+            tracking_numbers: getUnique(r => r.tracking_numbers),
         };
     }, [rows]);
 
@@ -426,6 +430,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
         net_total: r => r.is_freebie ? '0' : formatMoney(r.net_total),
         delivery_date: r => formatDate(r.delivery_date),
         order_status: r => getStatusThai(r.order_status),
+        tracking_numbers: r => r.tracking_numbers || '-',
     }), []);
 
     // Client-side filtering of loaded rows
@@ -534,7 +539,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
         const headers = [
             "วันที่สั่ง", "เลขออเดอร์", "ผู้ขาย", "ประเภทลูกค้า", "ตะกร้าขาย",
             "ช่องทาง", "การชำระ", "ชื่อลูกค้า", "เบอร์โทร", "จังหวัด",
-            "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "ยอดรวม (net)", "วันจัดส่ง", "สถานะ"
+            "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "ยอดรวม (net)", "วันจัดส่ง", "สถานะ", "เลขพัสดุ"
         ];
         const dataRows = exportRows.map(r => [
             formatDate(r.order_date), r.order_number, r.seller_name.trim(),
@@ -543,6 +548,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             r.customer_name.trim(), r.customer_phone || "-", r.province || "-",
             r.product_sku || "-", r.product_name || "-",
             r.quantity, r.is_freebie ? 0 : r.net_total, formatDate(r.delivery_date), getStatusThai(r.order_status),
+            r.tracking_numbers || "-",
         ]);
         const finalData = [headers, ...dataRows];
         downloadDataFile(finalData, `sales_sheet_${year}_${String(month).padStart(2, "0")}`, type);
@@ -551,8 +557,8 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
 
     // Column definitions for the filter headers
     const columns = useMemo(() => [
-        { key: 'order_date', label: 'วันที่สั่ง', width: 'w-[70px]', align: 'left' as const },
-        { key: 'order_number', label: 'เลขออเดอร์', width: 'w-[110px]', align: 'left' as const },
+        { key: 'order_date', label: 'วันที่สั่ง', width: 'w-[55px]', align: 'left' as const },
+        { key: 'order_number', label: 'เลขออเดอร์', width: 'w-[90px]', align: 'left' as const },
         { key: 'seller_name', label: 'ผู้ขาย', width: 'w-[90px]', align: 'left' as const },
         { key: 'customer_type', label: 'ประเภท', width: 'w-[55px]', align: 'left' as const },
         { key: 'basket', label: 'ตะกร้า', width: 'w-[70px]', align: 'left' as const },
@@ -562,11 +568,12 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
         { key: 'customer_phone', label: 'เบอร์โทร', width: 'w-[85px]', align: 'left' as const },
         { key: 'province', label: 'จังหวัด', width: 'w-[70px]', align: 'left' as const },
         { key: 'product_sku', label: 'รหัส', width: 'w-[65px]', align: 'left' as const },
-        { key: 'product_name', label: 'ชื่อสินค้า', width: '', align: 'left' as const },
-        { key: 'quantity', label: 'จำนวน', width: 'w-[50px]', align: 'right' as const },
+        { key: 'product_name', label: 'ชื่อสินค้า', width: 'w-[240px]', align: 'left' as const },
+        { key: 'quantity', label: 'จำนวน', width: 'w-[40px]', align: 'right' as const },
         { key: 'net_total', label: 'ยอดรวม', width: 'w-[75px]', align: 'right' as const },
-        { key: 'delivery_date', label: 'วันส่ง', width: 'w-[65px]', align: 'left' as const },
+        { key: 'delivery_date', label: 'วันส่ง', width: 'w-[55px]', align: 'left' as const },
         { key: 'order_status', label: 'สถานะ', width: 'w-[70px]', align: 'left' as const },
+        { key: 'tracking_numbers', label: 'เลขพัสดุ', width: 'w-[130px]', align: 'left' as const },
     ], []);
 
     return (
@@ -714,7 +721,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                     }`}
                                             >
                                                 <td className="px-1.5 py-1 text-gray-600 border-r border-gray-100 text-[10px] whitespace-nowrap">{formatDate(row.order_date)}</td>
-                                                <td className="px-1.5 py-1 text-blue-600 font-medium border-r border-gray-100 text-[10px] truncate whitespace-nowrap max-w-[110px]" title={row.order_number}>{row.order_number}</td>
+                                                <td className="px-1.5 py-1 text-blue-600 font-medium border-r border-gray-100 text-[10px] truncate whitespace-nowrap max-w-[90px]" title={row.order_number}>{row.order_number}</td>
                                                 <td className="px-1.5 py-1 text-gray-700 border-r border-gray-100 text-[10px] truncate whitespace-nowrap max-w-[90px]" title={row.seller_name.trim()}>{row.seller_name.trim() || "-"}</td>
                                                 <td className="px-1.5 py-1 text-center border-r border-gray-100 whitespace-nowrap">
                                                     {row.customer_type ? (
@@ -731,7 +738,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                 <td className="px-1.5 py-1 text-gray-600 border-r border-gray-100 text-[10px] whitespace-nowrap">{row.customer_phone || "-"}</td>
                                                 <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[80px]" title={row.province || ""}>{row.province || "-"}</td>
                                                 <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 text-[10px] font-mono whitespace-nowrap">{row.product_sku || "-"}</td>
-                                                <td className="px-1.5 py-1 text-gray-700 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[140px]" title={row.product_name}>
+                                                <td className="px-1.5 py-1 text-gray-700 border-r border-gray-100 truncate whitespace-nowrap text-[10px] max-w-[240px]" title={row.product_name}>
                                                     {row.is_freebie ? <span className="text-orange-500 mr-0.5">🎁</span> : null}
                                                     {row.product_name || "-"}
                                                 </td>
@@ -742,16 +749,33 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                     </span>
                                                 </td>
                                                 <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 text-[10px] whitespace-nowrap">{formatDate(row.delivery_date)}</td>
-                                                <td className="px-1.5 py-1 text-center whitespace-nowrap">
+                                                <td className="px-1.5 py-1 text-center whitespace-nowrap border-r border-gray-100">
                                                     <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium ${getStatusColor(row.order_status)}`}>
                                                         {getStatusThai(row.order_status)}
                                                     </span>
+                                                </td>
+                                                <td className="px-1.5 py-1 text-[10px] whitespace-nowrap max-w-[130px]">
+                                                    {row.tracking_numbers ? (() => {
+                                                        const list = row.tracking_numbers.split(',').map(s => s.trim()).filter(Boolean);
+                                                        return (
+                                                            <button
+                                                                onClick={() => setTrackingPopup({ trackings: list, orderNumber: row.order_number })}
+                                                                className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline font-mono truncate max-w-full text-left"
+                                                                title={`${list.length} เลข — คลิกเพื่อดูและคัดลอก`}
+                                                            >
+                                                                <Package className="w-3 h-3 flex-shrink-0" />
+                                                                <span className="truncate">{list[0]}{list.length > 1 ? ` +${list.length - 1}` : ''}</span>
+                                                            </button>
+                                                        );
+                                                    })() : (
+                                                        <span className="text-gray-400">-</span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
                                         {sortedRows.length === 0 && (
                                             <tr>
-                                                <td colSpan={16} className="px-4 py-10 text-center text-gray-400 text-sm">
+                                                <td colSpan={17} className="px-4 py-10 text-center text-gray-400 text-sm">
                                                     {hasActiveFilters ? 'ไม่พบข้อมูลตามตัวกรองที่เลือก' : 'ไม่พบข้อมูลสำหรับเดือนที่เลือก'}
                                                 </td>
                                             </tr>
@@ -831,6 +855,75 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                 onClose={() => setIsExportModalOpen(false)}
                 onConfirm={handleExport}
             />
+
+            {/* Tracking Numbers Popup */}
+            {trackingPopup && createPortal(
+                <div
+                    className="fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center p-4"
+                    onClick={() => setTrackingPopup(null)}
+                >
+                    <div
+                        className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                            <div className="flex items-center gap-2">
+                                <Package className="w-4 h-4 text-blue-600" />
+                                <div>
+                                    <h3 className="font-semibold text-gray-800 text-sm">เลขพัสดุ</h3>
+                                    <p className="text-xs text-gray-500">ออเดอร์ {trackingPopup.orderNumber} • {trackingPopup.trackings.length} เลข</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setTrackingPopup(null)}
+                                className="p-1 rounded hover:bg-gray-200 text-gray-500"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <div className="p-3 space-y-2 max-h-[60vh] overflow-y-auto">
+                            {trackingPopup.trackings.map((t, i) => {
+                                const isCopied = copiedTracking === t;
+                                return (
+                                    <div
+                                        key={i}
+                                        className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200"
+                                    >
+                                        <span className="text-xs text-gray-400 font-medium w-5">{i + 1}.</span>
+                                        <span className="font-mono text-sm text-gray-800 flex-1 break-all">{t}</span>
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(t).then(() => {
+                                                    setCopiedTracking(t);
+                                                    setTimeout(() => setCopiedTracking(curr => curr === t ? null : curr), 1500);
+                                                });
+                                            }}
+                                            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                                                isCopied
+                                                    ? 'bg-green-500 text-white'
+                                                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700'
+                                            }`}
+                                        >
+                                            {isCopied ? (
+                                                <>
+                                                    <Check className="w-3 h-3" />
+                                                    คัดลอกแล้ว
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Copy className="w-3 h-3" />
+                                                    คัดลอก
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 };

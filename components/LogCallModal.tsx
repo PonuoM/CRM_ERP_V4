@@ -89,6 +89,15 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
       alert(`กรุณากรอกหมายเหตุอย่างน้อย ${notesMinLength} ตัวอักษร เมื่อเลือกสถานะ "${status}"`);
       return;
     }
+    if (nextFollowUpDate) {
+      const followUp = new Date(nextFollowUpDate);
+      const maxDate = new Date();
+      maxDate.setDate(maxDate.getDate() + 30);
+      if (followUp.getTime() > maxDate.getTime()) {
+        alert('ไม่สามารถนัดหมายเกิน 30 วันจากวันปัจจุบันได้');
+        return;
+      }
+    }
 
     const newCallLog: Omit<CallHistory, 'id'> = {
       customerId: customer.id,
@@ -117,6 +126,11 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
   };
 
   const nowForInput = new Date().toISOString().slice(0, 16);
+  const maxFollowUpForInput = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 16);
+  })();
 
   return (
     <Modal title="บันทึกการโทร" onClose={!isSaving ? onClose : () => { }}>
@@ -170,6 +184,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
             <input
               type="datetime-local"
               min={nowForInput}
+              max={maxFollowUpForInput}
               value={nextFollowUpDate}
               onChange={(e) => setNextFollowUpDate(e.target.value)}
               disabled={isSaving}
@@ -180,6 +195,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
             <p className="text-xs text-gray-500 mt-1">
               หมายเหตุ: หากใส่วันที่ ระบบจะสร้างนัดหมายให้อัตโนมัติ
               หากไม่ต้องการสร้างนัดหมาย ไม่ต้องใส่วันที่
+              <span className="block text-amber-600">นัดหมายได้สูงสุด 30 วันจากวันปัจจุบัน</span>
             </p>
           </div>
         </div>
