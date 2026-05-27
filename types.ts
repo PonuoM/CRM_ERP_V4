@@ -33,6 +33,7 @@ export interface User {
   email?: string;
   phone?: string;
   role: UserRole;
+  role_id?: number;
   companyId: number;
   teamId?: number;
   supervisorId?: number;
@@ -610,6 +611,11 @@ export interface OrderSlip {
   createdAt?: string;
   uploadedBy?: number;
   uploadedByName?: string;
+  amount?: number;
+  bankAccountId?: number;
+  transferDate?: string;
+  mismatch_reason?: string;
+  mismatchReason?: string;
 }
 
 export interface Order {

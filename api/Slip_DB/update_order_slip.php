@@ -88,6 +88,11 @@ try {
     $params[] = $data["url"];
   }
 
+  if (isset($data["mismatch_reason"])) {
+    $update_fields[] = "mismatch_reason = ?";
+    $params[] = $data["mismatch_reason"];
+  }
+
   if (isset($data["updated_by"])) {
     // Assuming there isn't an updated_by column yet based on insert script, 
     // but if we wanted to track it we could. 

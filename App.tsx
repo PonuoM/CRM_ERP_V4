@@ -3158,6 +3158,7 @@ const App: React.FC = () => {
               bankAccountId: undefined,
               transferDate: undefined,
               amount: undefined,
+              mismatchReason: undefined,
             };
           }
           return {
@@ -3165,6 +3166,7 @@ const App: React.FC = () => {
             bankAccountId: entry?.bankAccountId,
             transferDate: entry?.transferDate,
             amount: entry?.amount,
+            mismatchReason: entry?.mismatchReason,
           };
         })
         .filter(
@@ -3448,6 +3450,7 @@ const App: React.FC = () => {
                     : bankAccountId,
                 transferDate: slipContent.transferDate ?? transferDate,
                 amount: slipContent.amount,
+                mismatchReason: slipContent.mismatchReason,
                 uploadedBy: currentUser.id,
                 uploadedByName: `${currentUser.firstName} ${currentUser.lastName}`,
               });

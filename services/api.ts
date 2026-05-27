@@ -1205,6 +1205,7 @@ export async function createOrderSlip(
     amount?: number;
     uploadedBy?: number;
     uploadedByName?: string;
+    mismatchReason?: string;
   }
 ) {
   return apiFetch("order_slips", {
@@ -1215,6 +1216,7 @@ export async function createOrderSlip(
       ...(options?.bankAccountId !== undefined && { bankAccountId: options.bankAccountId }),
       ...(options?.transferDate !== undefined && { transferDate: options.transferDate }),
       ...(options?.amount !== undefined && { amount: options.amount }),
+      ...(options?.mismatchReason !== undefined && { mismatchReason: options.mismatchReason }),
       ...(options?.uploadedBy !== undefined && {
         uploadedBy: options.uploadedBy,
         uploadBy: options.uploadedBy,
@@ -1839,6 +1841,7 @@ export async function updateOrderSlip(
     url?: string;
     updatedBy?: number;
     companyId?: number;
+    mismatch_reason?: string;
   }
 ) {
   const legacyBase =
@@ -1862,6 +1865,7 @@ export async function updateOrderSlip(
       url: payload.url,
       updated_by: payload.updatedBy,
       company_id: payload.companyId,
+      mismatch_reason: payload.mismatch_reason,
     }),
   });
 
