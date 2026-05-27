@@ -1410,7 +1410,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const deptParam = selectedDepartments.length > 0 ? selectedDepartments.join(',') : 'all';
         const token = localStorage.getItem('token') || '';
 
-        const url = `${resolveApiBasePath()}Orders/export_orders_raw.php?company_id=${companyParam}&start_date=${startDateStr}&end_date=${endDateStr}&departments=${encodeURIComponent(deptParam)}&format=${type}&token=${token}`;
+        const url = `${resolveApiBasePath()}/Orders/export_orders_raw.php?company_id=${companyParam}&start_date=${startDateStr}&end_date=${endDateStr}&departments=${encodeURIComponent(deptParam)}&format=${type}&token=${token}`;
         window.open(url, '_blank');
       } catch (error) {
         console.error('Failed to export orders:', error);
