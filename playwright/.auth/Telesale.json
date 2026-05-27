@@ -1,0 +1,38 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:5174",
+      "localStorage": [
+        {
+          "name": "rememberedLogin",
+          "value": "{\"username\":\"telesale1\",\"password\":\"telesale123\"}"
+        },
+        {
+          "name": "ui.hideSidebar",
+          "value": "false"
+        },
+        {
+          "name": "checkinPromptSeenDate_1655",
+          "value": "2026-05-27"
+        },
+        {
+          "name": "attendance.session",
+          "value": "null"
+        },
+        {
+          "name": "authToken",
+          "value": "e61da651f0a9825e1c5d9157165562134c454d40adcda0928f1ce662953883ac"
+        },
+        {
+          "name": "ui.activePage",
+          "value": "\"Dashboard\""
+        },
+        {
+          "name": "sessionUser",
+          "value": "{\"id\":1655,\"username\":\"telesale1\",\"first_name\":\"Thida\",\"last_name\":\"Telesale\",\"email\":\"thida.telesale@example.com\",\"phone\":\"0991518420\",\"role\":\"Telesale\",\"role_id\":7,\"company_id\":5,\"team_id\":null,\"supervisor_id\":1680,\"status\":\"active\",\"loginDate\":\"2026-05-27\"}"
+        }
+      ]
+    }
+  ]
+}

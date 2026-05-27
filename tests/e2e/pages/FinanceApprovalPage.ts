@@ -35,7 +35,6 @@ export class FinanceApprovalPage {
 
   async goto() {
     await this.page.goto('/?page=Finance Approval');
-    await this.page.waitForLoadState('networkidle');
   }
 
   // --- Slips Tab Methods ---

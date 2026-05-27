@@ -1,9 +1,9 @@
 import { test as setup, expect } from '@playwright/test';
 
 const users = [
-  { role: 'Telesale', username: 'telesale_user', password: '1234' },
-  { role: 'Backoffice', username: 'backoffice_user', password: '1234' },
-  { role: 'Admin Control', username: 'finance_user', password: '1234' }
+  { role: 'Telesale', username: 'telesale1', password: 'telesale123' },
+  { role: 'Backoffice', username: 'admin', password: 'Kapoala02' },
+  { role: 'Admin Control', username: 'admin', password: 'Kapoala02' }
 ];
 
 for (const user of users) {

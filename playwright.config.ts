@@ -9,7 +9,8 @@ export default defineConfig({
   reporter: 'html',
   use: {
     baseURL: 'http://localhost:5174',
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
     // ทำให้เห็นหน้าต่าง Browser จริงเด้งขึ้นมา และหน่วงเวลาแต่ละ Action ให้มองทัน
     headless: true,
     launchOptions: {
