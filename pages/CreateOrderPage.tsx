@@ -49,7 +49,6 @@ import {
   Warehouse,
   User,
   UserRole,
-  Address,
   SlipUploadPayload,
 } from "../types";
 

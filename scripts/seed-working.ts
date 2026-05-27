@@ -1,8 +1,3 @@
-
-Let me try a different approach to create the file:
-<tool_call>terminal
-<arg_key>command</arg_key>
-<arg_value>cat > C:\AppServ\www\CRM_ERP_V4\scripts\seed-working.ts << 'EOF'
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -37,7 +32,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-EOF</arg_value>
-<arg_key>cd</arg_key>
-<arg_value>CRM_ERP_V4</arg_value>
-</tool_call>

@@ -1,13 +1,3 @@
-
-<file_path>
-C:\AppServ\www\CRM_ERP_V4\scripts\seed-simple.ts
-</file_path>
-
-<edit_description>
-Write entire seed-simple.ts file
-</edit_description>
-
-<content>
 #!/usr/bin/env node
 
 /**
@@ -566,5 +556,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-</content>
-</file_path>

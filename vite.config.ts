@@ -64,6 +64,23 @@ export default defineConfig(({ command, mode }) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       }
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'lucide-react', 'apexcharts', 'react-apexcharts', 'date-fns', 'dexie'],
+            pages: [
+              './pages/ManageCustomersPage',
+              './pages/CreateOrderPage',
+              './pages/TelesaleDashboard',
+              './pages/TelesaleDashboardV2',
+              './pages/TelesaleOrdersPage',
+              './pages/AdminDashboard',
+            ]
+          }
+        }
+      }
     }
   };
 });
