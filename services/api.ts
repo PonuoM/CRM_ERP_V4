@@ -844,6 +844,32 @@ export async function createCustomer(payload: any) {
   });
 }
 
+export interface DuplicateCustomerMatch {
+  customer_id: number | string;
+  customer_ref_id?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  backup_phone?: string | null;
+  assigned_to?: number | null;
+  assigned_to_name?: string | null;
+  lifecycle_status?: string | null;
+  current_basket_key?: string | null;
+  ownership_expires?: string | null;
+  matched_field?: 'phone' | 'backup_phone' | null;
+}
+
+export async function checkCustomerDuplicate(params: {
+  phone: string;
+  companyId: number;
+}): Promise<{ matches: DuplicateCustomerMatch[] }> {
+  const qs = new URLSearchParams();
+  qs.set('action', 'check_duplicate');
+  qs.set('phone', params.phone);
+  qs.set('companyId', String(params.companyId));
+  return apiFetch(`customers?${qs.toString()}`) as Promise<{ matches: DuplicateCustomerMatch[] }>;
+}
+
 // Helper to generate boxes based on items and payment method
 function enrichOrderWithBoxes(payload: any) {
   if (payload.items && Array.isArray(payload.items)) {
