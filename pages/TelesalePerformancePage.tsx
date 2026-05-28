@@ -666,15 +666,15 @@ export default function TelesalePerformancePage() {
                                 <SortableHeader label="ขายปุ๋ย/ออเดอร์" field="aovFertilizer" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="เฉลี่ย/บิล สินค้าปุ๋ย" />
                                 <SortableHeader label="ขายชีวภัณฑ์/ออเดอร์" field="aovBio" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="เฉลี่ย/บิล สินค้าชีวภัณฑ์" />
                                 {/* ลูกค้าใหม่ */}
-                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap bg-gray-100 border-l-2 border-gray-300" colSpan={3}>
+                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap bg-gray-100 border-l-2 border-gray-300" colSpan={4}>
                                     ลูกค้าใหม่
                                 </th>
                                 {/* ลูกค้าเก่า */}
-                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap bg-gray-100 border-l-2 border-gray-300" colSpan={3}>
+                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap bg-gray-100 border-l-2 border-gray-300" colSpan={4}>
                                     ลูกค้าเก่า
                                 </th>
                                 {/* ลูกค้าขุด */}
-                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap bg-gray-100 border-l-2 border-gray-300" colSpan={3}>
+                                <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap bg-gray-100 border-l-2 border-gray-300" colSpan={4}>
                                     ลูกค้าขุด
                                 </th>
                                 {/* Upsell */}
@@ -708,14 +708,17 @@ export default function TelesalePerformancePage() {
                                 {/* ลูกค้าใหม่ sub-headers */}
                                 <th className="px-1 py-1 text-center text-gray-500 bg-gray-100 border-l-2 border-gray-300">จำนวน</th>
                                 <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">ออเดอร์</th>
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">บาท</th>
                                 <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">%</th>
                                 {/* ลูกค้าเก่า sub-headers */}
                                 <th className="px-1 py-1 text-center text-gray-500 bg-gray-100 border-l-2 border-gray-300">จำนวน</th>
                                 <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">ออเดอร์</th>
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">บาท</th>
                                 <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">%</th>
                                 {/* ลูกค้าขุด sub-headers */}
                                 <th className="px-1 py-1 text-center text-gray-500 bg-gray-100 border-l-2 border-gray-300">จำนวน</th>
                                 <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">ออเดอร์</th>
+                                <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">บาท</th>
                                 <th className="px-1 py-1 text-center text-gray-500 bg-gray-100">%</th>
                                 {/* Upsell sub-headers */}
                                 <th className="px-1 py-1 text-center text-blue-600 bg-blue-50 border-l-2 border-gray-300">ออเดอร์</th>
@@ -754,6 +757,7 @@ export default function TelesalePerformancePage() {
                                     {/* ลูกค้าใหม่ */}
                                     <td className="px-2 py-2 text-center border-l-2 border-gray-200">{formatNumber(ts.metrics.newCustCount)}</td>
                                     <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.newCustOrders)}</td>
+                                    <td className="px-2 py-2 text-right text-xs">{ts.metrics.newCustSales > 0 ? formatMoney(ts.metrics.newCustSales) : '-'}</td>
                                     <td className="px-2 py-2 text-center">
                                         <span className={`text-xs ${ts.metrics.newCustRate > 0 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
                                             {ts.metrics.newCustRate}%
@@ -762,6 +766,7 @@ export default function TelesalePerformancePage() {
                                     {/* ลูกค้าเก่า */}
                                     <td className="px-2 py-2 text-center border-l-2 border-gray-200">{formatNumber(ts.metrics.coreCustCount)}</td>
                                     <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.coreCustOrders)}</td>
+                                    <td className="px-2 py-2 text-right text-xs">{ts.metrics.coreCustSales > 0 ? formatMoney(ts.metrics.coreCustSales) : '-'}</td>
                                     <td className="px-2 py-2 text-center">
                                         <span className={`text-xs ${ts.metrics.coreCustRate > 0 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
                                             {ts.metrics.coreCustRate}%
@@ -770,6 +775,7 @@ export default function TelesalePerformancePage() {
                                     {/* ลูกค้าขุด */}
                                     <td className="px-2 py-2 text-center border-l-2 border-gray-200">{formatNumber(ts.metrics.revivalCustCount)}</td>
                                     <td className="px-2 py-2 text-center">{formatNumber(ts.metrics.revivalCustOrders)}</td>
+                                    <td className="px-2 py-2 text-right text-xs">{ts.metrics.revivalCustSales > 0 ? formatMoney(ts.metrics.revivalCustSales) : '-'}</td>
                                     <td className="px-2 py-2 text-center">
                                         <span className={`text-xs ${ts.metrics.revivalCustRate > 0 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
                                             {ts.metrics.revivalCustRate}%

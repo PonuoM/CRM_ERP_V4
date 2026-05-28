@@ -385,6 +385,24 @@ const CustomerRow = React.memo(({
                     </div>
                 </div>
             </td>
+            <td className="px-2 py-3 text-center">
+                {customer.grade ? (
+                    <span
+                        className={`inline-flex items-center justify-center min-w-[26px] px-1.5 py-0.5 rounded text-xs font-bold ${
+                            customer.grade === "A+" ? "bg-emerald-100 text-emerald-700" :
+                            customer.grade === "A" ? "bg-green-100 text-green-700" :
+                            customer.grade === "B" ? "bg-blue-100 text-blue-700" :
+                            customer.grade === "C" ? "bg-yellow-100 text-yellow-700" :
+                            customer.grade === "D" ? "bg-orange-100 text-orange-700" :
+                            "bg-gray-100 text-gray-600"
+                        }`}
+                    >
+                        {customer.grade}
+                    </span>
+                ) : (
+                    <span className="text-xs text-gray-400">-</span>
+                )}
+            </td>
             <td className="px-4 py-3">
                 <StatusDisplay
                     hasLastCall={callCount > 0}
@@ -508,6 +526,11 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         []
     );
     const deferredSelectedTagIds = useDeferredValue(selectedTagIds);
+    const [selectedGrades, setSelectedGrades] = usePersistentState<string[]>(
+        `telesale_v2_grades_${user.id}`,
+        []
+    );
+    const deferredSelectedGrades = useDeferredValue(selectedGrades);
     const [searchTerm, setSearchTerm] = useState("");
     const [activeSearchTerm, setActiveSearchTerm] = useState(""); // Only updates on Enter/button click
     const [isPending, startTransition] = useTransition();
@@ -566,12 +589,13 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     const [sortByBirthday, setSortByBirthday] = useState(false);
 
     // Check if any filters are active (including search)
-    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || filterByAppointment || filterByOverdueAppointment || hideContactedDays !== null || activeSearchTerm || sortByBirthday;
+    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || selectedGrades.length > 0 || filterByAppointment || filterByOverdueAppointment || hideContactedDays !== null || activeSearchTerm || sortByBirthday;
 
     // Clear all filters (including search)
     const clearAllFilters = () => {
         setSelectedRegions([]);
         setSelectedTagIds([]);
+        setSelectedGrades([]);
         setFilterByAppointment(false);
         setFilterByOverdueAppointment(false);
         setHideContactedDays(null);
@@ -583,7 +607,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // Reset page when filter/basket changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeBasketKey, selectedRegions, searchTerm, quickFilter, filterByAppointment, filterByOverdueAppointment, hideContactedDays]);
+    }, [activeBasketKey, selectedRegions, selectedGrades, searchTerm, quickFilter, filterByAppointment, filterByOverdueAppointment, hideContactedDays]);
 
     // Optimize Call History Lookup - Only include calls by CURRENT USER after date_assigned
     // caller field stores full name: "firstName lastName"
@@ -812,6 +836,11 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 );
             }
 
+            // Apply Grade Filter
+            if (deferredSelectedGrades.length > 0) {
+                filtered = filtered.filter(c => deferredSelectedGrades.includes(c.grade));
+            }
+
             // Apply Quick Filter
             if (deferredQuickFilter && deferredQuickFilter !== "all") {
                 filtered = filtered.filter(c => {
@@ -895,7 +924,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return matches;
-    }, [basketGroups, activeSearchTerm, filterByAppointment, filterByOverdueAppointment, hideContactedDays, deferredSelectedRegions, deferredSelectedTagIds, deferredQuickFilter, lastCallMap, appointmentInfoMap, sortByBirthday]);
+    }, [basketGroups, activeSearchTerm, filterByAppointment, filterByOverdueAppointment, hideContactedDays, deferredSelectedRegions, deferredSelectedTagIds, deferredSelectedGrades, deferredQuickFilter, lastCallMap, appointmentInfoMap, sortByBirthday]);
 
     // Count total overdue appointments for display (ONLY for current user's customers)
     const overdueAppointmentCount = useMemo(() => {
@@ -980,6 +1009,11 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             customers = customers.filter(c =>
                 c.tags?.some(t => deferredSelectedTagIds.includes(t.id))
             );
+        }
+
+        // Apply Grade Filter
+        if (deferredSelectedGrades.length > 0) {
+            customers = customers.filter(c => deferredSelectedGrades.includes(c.grade));
         }
 
         // Apply Quick Filter (use deferred value to prevent UI blocking)
@@ -1139,7 +1173,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return customers;
-    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, filterByAppointment, filterByOverdueAppointment, appointmentInfoMap, hideContactedDays, sortByBirthday]);
+    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, deferredSelectedGrades, filterByAppointment, filterByOverdueAppointment, appointmentInfoMap, hideContactedDays, sortByBirthday]);
 
     // Manual sync - just refresh to get fresh data from API via App.tsx
     const handleManualSync = () => {
@@ -1366,7 +1400,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                             <span className="font-medium">ตั้งค่าขั้นสูง</span>
                             {hasActiveFilters && (
                                 <span className="bg-purple-600 text-white text-xs px-2 py-0.5 rounded-full">
-                                    {selectedRegions.length + selectedTagIds.length}
+                                    {selectedRegions.length + selectedTagIds.length + selectedGrades.length}
                                 </span>
                             )}
                             <ChevronDown size={16} className={`transition-transform ${isAdvancedSettingsOpen ? 'rotate-180' : ''}`} />
@@ -1394,6 +1428,32 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                                             selected={selectedTagIds}
                                             onSelect={(id) => handleFilterSelect(setSelectedTagIds, selectedTagIds, id)}
                                         />
+                                    </div>
+
+                                    {/* Grade Filter */}
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 mb-2 block">กรองตามเกรด</label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {(["A+", "A", "B", "C", "D"] as const).map((g) => {
+                                                const active = selectedGrades.includes(g);
+                                                const colorMap: Record<string, string> = {
+                                                    "A+": active ? "bg-emerald-500 text-white border-emerald-500" : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100",
+                                                    "A": active ? "bg-green-500 text-white border-green-500" : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100",
+                                                    "B": active ? "bg-blue-500 text-white border-blue-500" : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100",
+                                                    "C": active ? "bg-yellow-500 text-white border-yellow-500" : "bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100",
+                                                    "D": active ? "bg-orange-500 text-white border-orange-500" : "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100",
+                                                };
+                                                return (
+                                                    <button
+                                                        key={g}
+                                                        onClick={() => handleFilterSelect(setSelectedGrades, selectedGrades, g)}
+                                                        className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors ${colorMap[g]}`}
+                                                    >
+                                                        {g}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
 
                                     {/* Sort */}
@@ -1460,6 +1520,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                             <thead className="bg-gray-50">
                                 <tr>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ลูกค้า</th>
+                                    <th className="px-2 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-12">เกรด</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">สถานะ</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">เบอร์โทร</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">จังหวัด</th>

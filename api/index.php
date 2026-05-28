@@ -1612,6 +1612,93 @@ function handle_customers(PDO $pdo, ?string $id): void
                     }
                     log_perf("handle_customers:counts:END", $t_start);
                     json_response(['counts' => $counts]);
+                } elseif (isset($_GET['action']) && $_GET['action'] === 'check_duplicate') {
+                    // Pre-save duplicate check for AddCustomerSimpleModal.
+                    // Matches input phone against customers.phone AND customers.backup_phone
+                    // using last-9-digit substring match (covers 10-digit "0XXXXXXXXX",
+                    // 9-digit "XXXXXXXXX", and backup_phone lists with any separator).
+                    $phoneIn = trim((string)($_GET['phone'] ?? ''));
+                    $companyId = $_GET['companyId'] ?? null;
+
+                    if ($phoneIn === '' || !$companyId) {
+                        json_response(['matches' => []]);
+                    }
+
+                    // Normalize: digits-only, strip leading zeros → last 9 digits expected for Thai mobile
+                    $digits = preg_replace('/\D/', '', $phoneIn);
+                    $core = ltrim($digits, '0');
+                    if (strlen($core) < 9) {
+                        // Not enough digits to safely match — avoid false positives like matching every customer
+                        json_response(['matches' => []]);
+                    }
+                    // Use only the last 9 digits to ignore any country-code prefix like "66"
+                    $needle = substr($core, -9);
+                    $pattern = '%' . $needle . '%';
+
+                    try {
+                        $sql = "
+                            SELECT
+                                c.customer_id,
+                                c.customer_ref_id,
+                                c.first_name,
+                                c.last_name,
+                                c.phone,
+                                c.backup_phone,
+                                c.assigned_to,
+                                c.lifecycle_status,
+                                c.current_basket_key,
+                                c.ownership_expires,
+                                u.first_name AS assigned_first_name,
+                                u.last_name  AS assigned_last_name
+                            FROM customers c
+                            LEFT JOIN users u ON u.id = c.assigned_to
+                            WHERE c.company_id = ?
+                              AND (c.phone LIKE ? OR c.backup_phone LIKE ?)
+                            ORDER BY (c.assigned_to IS NULL) ASC, c.customer_id DESC
+                            LIMIT 10
+                        ";
+                        $stmt = $pdo->prepare($sql);
+                        $stmt->execute([$companyId, $pattern, $pattern]);
+                        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                        $matches = [];
+                        foreach ($rows as $r) {
+                            $assignedName = null;
+                            if (!empty($r['assigned_to'])) {
+                                $fn = trim((string)($r['assigned_first_name'] ?? ''));
+                                $ln = trim((string)($r['assigned_last_name'] ?? ''));
+                                $assignedName = trim($fn . ' ' . $ln);
+                                if ($assignedName === '') {
+                                    $assignedName = null;
+                                }
+                            }
+                            // Determine which field matched (helps the UI explain why)
+                            $matchedField = null;
+                            if (!empty($r['phone']) && strpos(preg_replace('/\D/', '', (string)$r['phone']), $needle) !== false) {
+                                $matchedField = 'phone';
+                            } elseif (!empty($r['backup_phone']) && strpos(preg_replace('/\D/', '', (string)$r['backup_phone']), $needle) !== false) {
+                                $matchedField = 'backup_phone';
+                            }
+                            $matches[] = [
+                                'customer_id'        => $r['customer_id'],
+                                'customer_ref_id'    => $r['customer_ref_id'],
+                                'first_name'         => $r['first_name'],
+                                'last_name'          => $r['last_name'],
+                                'phone'              => $r['phone'],
+                                'backup_phone'       => $r['backup_phone'],
+                                'assigned_to'        => $r['assigned_to'] !== null ? (int)$r['assigned_to'] : null,
+                                'assigned_to_name'   => $assignedName,
+                                'lifecycle_status'   => $r['lifecycle_status'],
+                                'current_basket_key' => $r['current_basket_key'],
+                                'ownership_expires'  => $r['ownership_expires'],
+                                'matched_field'      => $matchedField,
+                            ];
+                        }
+                        json_response(['matches' => $matches]);
+                    } catch (Throwable $e) {
+                        error_log('check_duplicate error: ' . $e->getMessage());
+                        json_response(['matches' => [], 'error' => 'QUERY_FAILED'], 500);
+                    }
                 } else {
                     $t_list_start = microtime(true);
                     log_perf("handle_customers:list:START");

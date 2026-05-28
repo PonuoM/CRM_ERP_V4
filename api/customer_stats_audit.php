@@ -36,8 +36,8 @@ $token = $matches[1];
 $stmt = $pdo->prepare('SELECT u.id, u.role FROM user_tokens ut JOIN users u ON u.id = ut.user_id WHERE ut.token = ? AND ut.expires_at > NOW()');
 $stmt->execute([$token]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$user || !in_array($user['role'], ['Super Admin', 'Admin'])) {
-    echo json_encode(['error' => 'UNAUTHORIZED', 'message' => 'Admin required'], JSON_UNESCAPED_UNICODE);
+if (!$user) {
+    echo json_encode(['error' => 'UNAUTHORIZED', 'message' => 'Not authenticated'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

@@ -19,6 +19,13 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ customer, onSave, o
       alert('กรุณากรอกหัวข้อและวันที่นัดหมาย');
       return;
     }
+    const apptDate = new Date(date);
+    const maxDate = new Date();
+    maxDate.setDate(maxDate.getDate() + 30);
+    if (apptDate.getTime() > maxDate.getTime()) {
+      alert('ไม่สามารถนัดหมายเกิน 30 วันจากวันปัจจุบันได้');
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -36,6 +43,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ customer, onSave, o
   };
 
   const nowForInput = new Date().toISOString().slice(0, 16);
+  const maxForInput = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 16);
+  })();
 
   return (
     <Modal title={`สร้างนัดหมายสำหรับ: ${customer.firstName} ${customer.lastName}`} onClose={!isSaving ? onClose : () => { }}>
@@ -57,12 +69,14 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ customer, onSave, o
           <input
             type="datetime-local"
             min={nowForInput}
+            max={maxForInput}
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:text-gray-500"
             style={{ colorScheme: 'light' }}
             disabled={isSaving}
           />
+          <p className="text-xs text-amber-600 mt-1">นัดหมายได้สูงสุด 30 วันจากวันปัจจุบัน</p>
         </div>
         <div>
           <label className="block text-gray-700 font-medium mb-1">หมายเหตุ (ถ้ามี)</label>
