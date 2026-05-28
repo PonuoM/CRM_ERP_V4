@@ -12,12 +12,24 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../Services/CustomerStatsHelper.php';
 
-// ป้องกันไม่ให้เรียกผ่าน Web Browser โดยตรง (เว้นแต่จะใส่ Token หรือผ่าน CLI)
-if (php_sapi_name() !== 'cli') {
-    die("This script can only be run from the command line.");
-}
+header('Content-Type: text/plain; charset=utf-8');
 
-$isDryRun = in_array('--dry-run', $argv);
+$SECRET_KEY = 'grade_recalc_2026_secret';
+$isCli = (php_sapi_name() === 'cli');
+$isDryRun = false;
+
+// ตรวจสอบสิทธิ์การเข้าถึง (CLI ไม่ต้องใช้ Key, ถ้าเรียกผ่าน Web ต้องมี Key)
+if ($isCli) {
+    global $argv;
+    $isDryRun = in_array('--dry-run', $argv ?? []);
+} else {
+    $inputKey = $_GET['key'] ?? '';
+    if ($inputKey !== $SECRET_KEY) {
+        http_response_code(403);
+        die("Access Denied. Invalid key.\n");
+    }
+    $isDryRun = (isset($_GET['dryrun']) && $_GET['dryrun'] == '1');
+}
 
 $pdo = db_connect();
 
