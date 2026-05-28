@@ -10,10 +10,6 @@ if (!$user) {
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Not authenticated'], 401);
 }
 
-// Ensure user has admin role (optional, based on system design, but grades are usually system-wide configs)
-if (!in_array(strtolower($user['role'] ?? ''), ['admin', 'superadmin', 'manager'])) {
-    json_response(['error' => 'FORBIDDEN', 'message' => 'Insufficient permissions'], 403);
-}
 
 $companyId = (int)$user['company_id'];
 $input = json_input();
