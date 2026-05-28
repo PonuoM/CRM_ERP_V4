@@ -17,41 +17,66 @@ if (php_sapi_name() !== 'cli') {
     die("This script can only be run from the command line.");
 }
 
+$isDryRun = in_array('--dry-run', $argv);
+
 $pdo = db_connect();
 
 echo "Starting Full Grade Recalculation...\n";
+if ($isDryRun) {
+    echo ">> MODE: DRY RUN (No data will be changed) <<\n";
+}
 echo "====================================\n";
 
 try {
-    // 1. ดึง Customer ทั้งหมดในระบบ (หรือจะแบ่ง Batch ก็ได้ ถ้าระบบใหญ่มาก)
-    $stmt = $pdo->query("SELECT customer_id, company_id, first_name, last_name, grade FROM customers");
+    // 1. ดึง Customer ทั้งหมดในระบบ
+    $stmt = $pdo->query("
+        SELECT c.customer_id, c.company_id, c.first_name, c.last_name, c.grade,
+               COALESCE((SELECT SUM(total_amount) FROM orders WHERE customer_id = c.customer_id AND order_status != 'Cancelled'), 0) as actual_total
+        FROM customers c
+    ");
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $total = count($customers);
     echo "Found $total customers to process.\n\n";
 
     $updatedCount = 0;
+    $changedCount = 0;
     
     foreach ($customers as $index => $customer) {
         $cid = (int)$customer['customer_id'];
         $companyId = (int)$customer['company_id'];
         $oldGrade = $customer['grade'];
+        $actualTotal = (float)$customer['actual_total'];
         
-        // ฟังก์ชันนี้จะจัดการคำนวณยอดตาม Time Range และอัปเดต Grade ลง DB ให้เรียบร้อย
-        recalculate_customer_stats_safe($pdo, $cid);
-        
-        // ถ้าต้องการดูว่าเกรดเปลี่ยนไปเป็นอะไร (ตัวแปรอาจจะไม่ถูกส่งกลับมาจากฟังก์ชัน แต่เราตรวจได้)
-        // หรือจะพิมพ์ Progress ออกมาเฉยๆ ก็ได้
-        if (($index + 1) % 100 === 0) {
-            echo "Processed " . ($index + 1) . " / $total customers...\n";
+        if ($isDryRun) {
+            // จำลองการคำนวณโดยไม่เซฟลง DB
+            $gradeTotal = calculate_grade_purchases_amount($pdo, $cid, $companyId, $actualTotal);
+            $newGrade = calculate_customer_grade($pdo, $gradeTotal, $companyId);
+            
+            if ($oldGrade !== $newGrade) {
+                echo "[DRY-RUN] ID:$cid ({$customer['first_name']} {$customer['last_name']}) | Grade: $oldGrade -> $newGrade | CalcTotal: $gradeTotal\n";
+                $changedCount++;
+            }
+        } else {
+            // โหมดปกติ อัปเดตจริง
+            recalculate_customer_stats_safe($pdo, $cid);
+            
+            // เช็คว่าต้องนับ Progress ไหม
+            if (($index + 1) % 100 === 0) {
+                echo "Processed " . ($index + 1) . " / $total customers...\n";
+            }
+            $updatedCount++;
         }
-        
-        $updatedCount++;
     }
 
     echo "====================================\n";
-    echo "Recalculation Complete!\n";
-    echo "Successfully updated $updatedCount customers.\n";
+    if ($isDryRun) {
+        echo "Dry Run Complete!\n";
+        echo "Found $changedCount customers whose grades would change.\n";
+    } else {
+        echo "Recalculation Complete!\n";
+        echo "Successfully updated $updatedCount customers.\n";
+    }
 
 } catch (Exception $e) {
     echo "ERROR: " . $e->getMessage() . "\n";

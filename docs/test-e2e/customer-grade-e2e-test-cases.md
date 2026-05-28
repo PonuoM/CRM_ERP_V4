@@ -68,3 +68,9 @@
 - **When** รันคำสั่ง CLI `php api/cron/recalculate_all_grades.php`
 - **Then** สคริปต์ต้องทำงานสำเร็จและแสดงผลการประมวลผล (เช่น `Successfully updated X customers.`)
 - **And** เมื่อ Query ฐานข้อมูลลูกค้า D ใน `primacom_mini_erp_test` เกรดจะต้องถูกปรับลดลงจาก `VIP` เป็นเกรดที่ถูกต้องตามยอดขาย 30 วันย้อนหลัง (เช่น `D`) ทันที
+
+**[TC-CRON-02] การจำลองการทำงานด้วยโหมด Dry Run (`--dry-run`)**
+- **Given** มีลูกค้า E ที่มีการตั้งค่าเกรดที่ควรจะเปลี่ยนไปจากเดิม
+- **When** รันคำสั่ง CLI `php api/cron/recalculate_all_grades.php --dry-run`
+- **Then** สคริปต์ต้องแสดงผลลัพธ์ว่าลูกค้าคนไหนจะเปลี่ยนเกรดบ้าง เช่น `[DRY-RUN] ID:XX | Grade: A -> VIP`
+- **And** เมื่อ Query ฐานข้อมูลลูกค้า E ใน `primacom_mini_erp_test` เกรดจะต้อง **ไม่ถูกเปลี่ยนแปลง** (ไม่มีการเขียนลง Database จริง)
