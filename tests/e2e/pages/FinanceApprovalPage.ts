@@ -53,6 +53,16 @@ export class FinanceApprovalPage {
     return this.page.locator('tr').filter({ hasText: timeText }).filter({ hasText: amountText }).first();
   }
 
+  async uncheckAllSlips() {
+    const checkboxes = this.page.locator('tbody input[type="checkbox"]');
+    const count = await checkboxes.count();
+    for (let i = 0; i < count; i++) {
+       if (await checkboxes.nth(i).isChecked()) {
+           await checkboxes.nth(i).uncheck();
+       }
+    }
+  }
+
   async checkSlipRow(timeText: string, amountText: string) {
     const row = await this.getStatementRow(timeText, amountText);
     const checkbox = row.locator('input[type="checkbox"]');

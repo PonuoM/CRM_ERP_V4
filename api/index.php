@@ -7291,7 +7291,8 @@ function ensure_cod_schema(PDO $pdo): void
                                       WHERE table_schema = '$dbName' AND table_name = 'cod_documents'")
             ->fetchAll(PDO::FETCH_ASSOC);
         foreach ($docColumnRows as $col) {
-            $docColumns[strtolower($col['column_name'])] = $col;
+            $cName = $col['column_name'] ?? $col['COLUMN_NAME'] ?? '';
+            $docColumns[strtolower($cName)] = $col;
         }
     } catch (Throwable $e) { /* ignore */
     }
@@ -7317,6 +7318,12 @@ function ensure_cod_schema(PDO $pdo): void
     if (!isset($docColumns['verified_at'])) {
         try {
             $pdo->exec("ALTER TABLE cod_documents ADD COLUMN verified_at DATETIME NULL AFTER verified_by");
+        } catch (Throwable $e) { /* ignore */
+        }
+    }
+    if (!isset($docColumns['shortage_reason'])) {
+        try {
+            $pdo->exec("ALTER TABLE cod_documents ADD COLUMN shortage_reason VARCHAR(255) NULL AFTER verified_at");
         } catch (Throwable $e) { /* ignore */
         }
     }
@@ -7412,8 +7419,10 @@ function ensure_cod_schema(PDO $pdo): void
     // status should accept new values; relax to VARCHAR
     try {
         $statusCol = $columns['status'] ?? null;
-        $isVarchar = $statusCol && strtolower($statusCol['data_type']) === 'varchar';
-        $supportsMatched = $statusCol && isset($statusCol['column_type']) && stripos($statusCol['column_type'], 'matched') !== false;
+        $dType = $statusCol['data_type'] ?? $statusCol['DATA_TYPE'] ?? '';
+        $cType = $statusCol['column_type'] ?? $statusCol['COLUMN_TYPE'] ?? '';
+        $isVarchar = $statusCol && strtolower($dType) === 'varchar';
+        $supportsMatched = $statusCol && $cType && stripos($cType, 'matched') !== false;
         if (!$isVarchar || !$supportsMatched) {
             $pdo->exec("ALTER TABLE cod_records MODIFY status VARCHAR(32) NOT NULL DEFAULT 'pending'");
         }

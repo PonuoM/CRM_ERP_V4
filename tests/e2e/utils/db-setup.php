@@ -94,4 +94,91 @@ if ($action === 'wipe') {
     $stmt->execute([$customerId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     echo json_encode($row);
+} elseif ($action === 'seed_finance') {
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
+    $pdo->exec("TRUNCATE TABLE statement_reconcile_logs;");
+    $pdo->exec("TRUNCATE TABLE statement_reconcile_batches;");
+    $pdo->exec("TRUNCATE TABLE cod_records;");
+    $pdo->exec("TRUNCATE TABLE cod_documents;");
+    $pdo->exec("TRUNCATE TABLE statement_logs;");
+    $pdo->exec("TRUNCATE TABLE statement_batchs;");
+    $pdo->exec("TRUNCATE TABLE orders;");
+
+    $pdo->exec("
+        INSERT IGNORE INTO companies (id, name, created_at, updated_at) VALUES 
+        (1, 'Test Company 1', NOW(), NOW())
+    ");
+    $pdo->exec("
+        INSERT IGNORE INTO users (id, company_id, username, password, role, first_name, last_name, status, created_at, updated_at) VALUES
+        (1, 1, 'admin', '\$2y\$10\$wL/H73v0z5A6P15s/L.0I.Lq8h1TIn2qZ/pQ5vYd9d/B9qY5Z8U5W', 'Admin Control', 'System', 'Admin', 'active', NOW(), NOW()),
+        (2, 1, 'finance', '\$2y\$10\$wL/H73v0z5A6P15s/L.0I.Lq8h1TIn2qZ/pQ5vYd9d/B9qY5Z8U5W', 'Finance', 'Finance', 'User', 'active', NOW(), NOW())
+    ");
+    $pdo->exec("
+        REPLACE INTO user_tokens (id, user_id, token, expires_at, created_at) VALUES
+        (1, 1, 'test_admin_token_123', DATE_ADD(NOW(), INTERVAL 1 DAY), NOW()),
+        (2, 2, 'test_finance_token_123', DATE_ADD(NOW(), INTERVAL 1 DAY), NOW())
+    ");
+    $pdo->exec("
+        INSERT IGNORE INTO bank_account (id, company_id, bank, bank_number, is_active, created_at, updated_at) VALUES
+        (1, 1, 'KBANK', '1234567890', 1, NOW(), NOW())
+    ");
+    $pdo->exec("
+        INSERT IGNORE INTO customers (customer_id, company_id, first_name, last_name, phone) VALUES
+        (1, 1, 'Customer', 'Finance', '0899999999')
+    ");
+
+    $pdo->exec("
+        INSERT IGNORE INTO orders (id, company_id, creator_id, customer_id, order_status, total_amount, payment_method, payment_status, order_date, transfer_date, bank_account_id) VALUES
+        ('ORD-MATCH-1', 1, 2, 1, 'Pending', 1000.00, 'Transfer', 'PreApproved', '2023-10-27 10:00:00', '2023-10-27 10:00:00', 1),
+        ('ORD-MATCH-2', 1, 2, 1, 'Pending', 1500.00, 'Transfer', 'PreApproved', '2023-10-27 11:00:00', '2023-10-27 11:00:00', 1),
+        ('ORD-MATCH-3', 1, 2, 1, 'Pending', 1200.00, 'Transfer', 'PreApproved', '2023-10-27 12:00:00', '2023-10-27 12:00:00', 1),
+        ('ORD-MATCH-4', 1, 2, 1, 'Pending', 1200.00, 'Transfer', 'PreApproved', '2023-10-27 12:00:00', '2023-10-27 12:00:00', 1),
+        ('ORD-COD-1', 1, 2, 1, 'Confirmed', 3000.00, 'COD', 'PendingVerification', '2023-10-29 10:00:00', NULL, NULL),
+        ('ORD-COD-2', 1, 2, 1, 'Confirmed', 2000.00, 'COD', 'PendingVerification', '2023-10-29 11:00:00', NULL, NULL)
+    ");
+
+    $pdo->exec("
+        INSERT IGNORE INTO statement_batchs (id, company_id, user_id, row_count, transfer_min, transfer_max, created_at) VALUES
+        (1, 1, 2, 3, '2023-10-27 00:00:00', '2023-10-27 23:59:59', '2023-10-27 23:59:59'),
+        (2, 1, 2, 2, '2023-10-29 00:00:00', '2023-10-29 23:59:59', '2023-10-29 23:59:59')
+    ");
+
+    $pdo->exec("
+        INSERT IGNORE INTO statement_logs (id, batch_id, transfer_at, amount, bank_account_id) VALUES
+        (1, 1, '2023-10-27 10:00:00', 1000.00, 1),
+        (2, 1, '2023-10-27 11:05:00', 1500.00, 1),
+        (3, 1, '2023-10-27 12:00:00', 1200.00, 1),
+        (4, 2, '2023-10-29 10:00:00', 2980.00, 1),
+        (5, 2, '2023-10-29 11:00:00', 2000.00, 1)
+    ");
+
+    $pdo->exec("
+        INSERT IGNORE INTO cod_documents (id, document_number, document_datetime, bank_account_id, company_id, total_input_amount, total_order_amount, status, created_by) VALUES
+        (201, 'COD-DOC-001', '2023-10-29 10:00:00', 1, 1, 3000.00, 3000.00, 'pending', 2),
+        (202, 'COD-DOC-002', '2023-10-29 11:00:00', 1, 1, 2000.00, 2000.00, 'pending', 2)
+    ");
+
+    $pdo->exec("
+        INSERT IGNORE INTO cod_records (document_id, order_id, cod_amount, tracking_number) VALUES
+        (201, 'ORD-COD-1-1', 3000.00, 'TRACK001'),
+        (202, 'ORD-COD-2-1', 2000.00, 'TRACK002')
+    ");
+
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
+    echo "Seeded finance successfully\n";
+} elseif ($action === 'get_order_payment_status') {
+    $orderId = $argv[2] ?? '';
+    $stmt = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmt->execute([$orderId]);
+    echo $stmt->fetchColumn();
+} elseif ($action === 'get_cod_document_info') {
+    $docId = $argv[2] ?? '';
+    $stmt = $pdo->prepare("SELECT status, matched_statement_log_id, shortage_reason FROM cod_documents WHERE id = ?");
+    $stmt->execute([$docId]);
+    echo json_encode($stmt->fetch(PDO::FETCH_ASSOC));
+} elseif ($action === 'get_statement_matched_order') {
+    $logId = $argv[2] ?? '';
+    $stmt = $pdo->prepare("SELECT order_id FROM statement_reconcile_logs WHERE statement_log_id = ?");
+    $stmt->execute([$logId]);
+    echo $stmt->fetchColumn();
 }

@@ -953,12 +953,14 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
 
       // Show success popup
       const successMessage = `บันทึกสำเร็จ!\n\nเอกสาร: ${selectedCodDocument.document_number}\nจับคู่กับ Statement #${selectedStatementCandidate.statement.id}\nเลขที่เอกสาร: ${data.document_no || "-"}`;
-      toast.warning(successMessage);
+      toast.success(successMessage);
 
-      // Reload page to clear old data but stay on Finance Approval page
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set("page", "Finance Approval");
-      window.location.href = currentUrl.toString();
+      // Reload page to clear old data but stay on Finance Approval page (delay for toast)
+      setTimeout(() => {
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set("page", "Finance Approval");
+        window.location.href = currentUrl.toString();
+      }, 1500);
     } catch (err: any) {
       console.error("Error saving COD reconciliation:", err);
       setCodStatusMessage({
