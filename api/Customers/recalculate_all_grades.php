@@ -28,7 +28,8 @@ if (php_sapi_name() === 'cli') {
     $companyId = (int)$user['company_id'];
     
     // Ensure only authorized roles can trigger this manually
-    if (!in_array($user['role'], ['Super Admin', 'Admin Page'])) {
+    $allowed_roles = ['admin', 'superadmin', 'manager', 'super admin', 'admin control'];
+    if (!in_array(strtolower($user['role'] ?? ''), $allowed_roles)) {
         json_response(['error' => 'FORBIDDEN', 'message' => 'No permission'], 403);
     }
 }

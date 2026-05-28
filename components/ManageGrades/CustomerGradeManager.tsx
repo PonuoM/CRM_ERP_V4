@@ -22,8 +22,8 @@ const CustomerGradeManager: React.FC = () => {
     fetchGrades();
   }, []);
 
-  const fetchGrades = async () => {
-    setLoading(true);
+  const fetchGrades = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await getCustomerGradesConfig();
       if (res?.status === 'success') {
@@ -35,7 +35,7 @@ const CustomerGradeManager: React.FC = () => {
     } catch (err) {
       setMessage({ text: 'ดึงข้อมูลเกรดไม่สำเร็จ', type: 'error' });
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -91,7 +91,8 @@ const CustomerGradeManager: React.FC = () => {
       const res = await saveCustomerGradesConfig(sortedGrades, settings);
       if (res?.status === 'success') {
         setMessage({ text: 'บันทึกข้อมูลเรียบร้อย', type: 'success' });
-        await fetchGrades(); // Refresh IDs
+        // Don't await fetchGrades() here, it causes the UI to blink "loading" and hides the toast
+        fetchGrades(true);
       } else {
         setMessage({ text: res?.message || 'บันทึกข้อมูลไม่สำเร็จ', type: 'error' });
       }
@@ -174,6 +175,7 @@ const CustomerGradeManager: React.FC = () => {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">โหมดการคำนวณ (Calculation Mode)</label>
             <select
+              id="calcModeSelect"
               value={settings.calc_mode}
               onChange={e => setSettings({ ...settings, calc_mode: e.target.value })}
               className="w-full px-3 py-2 border rounded-md focus:ring-indigo-500 focus:border-indigo-500 bg-white"

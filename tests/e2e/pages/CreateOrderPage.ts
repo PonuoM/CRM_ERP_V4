@@ -85,7 +85,7 @@ export class CreateOrderPage {
       await this.page.waitForTimeout(1000); 
     } else {
       // For Full-Stack, if 0867482639 is missing, we just type it in manually
-      const nameInput = this.page.getByPlaceholder(/ชื่อ/).first();
+      const nameInput = this.page.getByPlaceholder(/กรุณากรอกชื่อ/).first();
       await nameInput.fill('ลูกค้าเก่า ทดสอบ');
       const phoneInput = this.page.getByPlaceholder(/เบอร์โทร/).first();
       await phoneInput.fill(phone);
@@ -165,6 +165,7 @@ export class CreateOrderPage {
   async fillRequiredOrderFields() {
     // Select Sales Channel
     const salesChannelSelect = this.page.locator('select').filter({ hasText: /เลือกช่องทางการขาย|Facebook|Line|Tiktok/i }).first();
+    await salesChannelSelect.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     if (await salesChannelSelect.isVisible()) {
        await salesChannelSelect.selectOption({ index: 1 });
        await this.page.waitForTimeout(500);
@@ -180,12 +181,11 @@ export class CreateOrderPage {
        }
     }
 
-    const shippingSelect = this.page.locator('select').filter({ hasText: /เลือกขนส่ง/ }).first();
+    const shippingSelect = this.page.locator('select').filter({ hasText: /เลือกขนส่ง/i }).first();
+    await shippingSelect.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     if (await shippingSelect.isVisible()) {
-       const options = await shippingSelect.locator('option').count();
-       if (options > 1) {
-           await shippingSelect.selectOption({ index: 1 });
-       }
+        await shippingSelect.selectOption({ index: 1 });
+        await this.page.waitForTimeout(500);
     }
   }
 

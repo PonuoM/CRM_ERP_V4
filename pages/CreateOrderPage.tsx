@@ -4371,12 +4371,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         province: "จังหวัด",
         postalCode: "รหัสไปรษณีย์",
       };
-
       const missingFields = Object.entries(shippingAddress)
         .filter(
           ([key, val]) =>
             key !== "recipientLastName" &&
-            key !== "phone" &&
             (val as string).trim() === "",
         )
         .map(([key]) => fieldLabels[key] || key);

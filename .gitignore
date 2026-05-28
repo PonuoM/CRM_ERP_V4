@@ -55,13 +55,18 @@ vendor/
 *.tmp
 
 # Debug, test & investigation scripts (non-production)
-check_*.php
-check_*.js
-check_*.sql
-debug_*.php
-debug_*.js
-debug_*.cjs
-test_*.php
+check*.php
+check*.js
+check*.sql
+debug*.php
+debug*.js
+debug*.cjs
+test*.php
+_*.php
+_*.cjs
+_*.js
+extract.cjs
+read-toast.js
 test_*.json
 test_*.csv
 investigate_*.php
@@ -107,4 +112,5 @@ nul
 # Playwright
 playwright-report/
 test-results/
-
+playwright/.auth/
+trace-extracted/

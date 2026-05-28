@@ -1,4 +1,7 @@
 <?php
+if (function_exists('opcache_reset')) {
+    opcache_reset();
+}
 require_once __DIR__ . '/../config.php';
 cors();
 
@@ -11,12 +14,14 @@ if (!$user) {
 }
 
 // Ensure user has admin role (optional, based on system design, but grades are usually system-wide configs)
-if (!in_array(strtolower($user['role'] ?? ''), ['admin', 'superadmin', 'manager'])) {
+$allowedRoles = ['admin', 'superadmin', 'manager', 'super admin', 'admin control'];
+if (!in_array(strtolower($user['role'] ?? ''), $allowedRoles)) {
     json_response(['error' => 'FORBIDDEN', 'message' => 'Insufficient permissions'], 403);
 }
 
 $companyId = (int)$user['company_id'];
 $input = json_input();
+file_put_contents('C:\laragon\www\CRM_ERP_V4_test_e2e\test-results\grades_debug.txt', date('Y-m-d H:i:s') . " INPUT: " . json_encode($input) . "\n", FILE_APPEND);
 
 if (!isset($input['grades']) || !is_array($input['grades'])) {
     json_response(['error' => 'BAD_REQUEST', 'message' => 'Invalid grades data'], 400);
@@ -40,22 +45,11 @@ try {
     // 2. Delete removed grades
     $idsToDelete = array_diff($existingIds, $incomingIds);
     if (!empty($idsToDelete)) {
-        $placeholders = implode(',', array_fill(0, count($idsToDelete), '?'));
-        $delStmt = $pdo->prepare("DELETE FROM customer_grades_config WHERE company_id = ? AND id IN ($placeholders)");
-        $params = array_merge([$companyId], $idsToDelete);
-        $delStmt->execute($params);
+        $delStmt = $pdo->prepare("DELETE FROM customer_grades_config WHERE company_id = ? AND id = ?");
+        foreach ($idsToDelete as $delId) {
+            $delStmt->execute([$companyId, $delId]);
+        }
     }
-
-    // 3. Update or Insert
-    $insertStmt = $pdo->prepare("
-        INSERT INTO customer_grades_config (company_id, grade_name, min_order_amount, color_theme) 
-        VALUES (?, ?, ?, ?)
-    ");
-    $updateStmt = $pdo->prepare("
-        UPDATE customer_grades_config 
-        SET grade_name = ?, min_order_amount = ?, color_theme = ? 
-        WHERE id = ? AND company_id = ?
-    ");
 
     foreach ($input['grades'] as $grade) {
         $name = trim($grade['grade_name'] ?? '');
@@ -64,12 +58,34 @@ try {
 
         if (empty($name)) continue;
 
-        if (!empty($grade['id'])) {
-            // Update
-            $updateStmt->execute([$name, $min, $color, $grade['id'], $companyId]);
+        $gradeId = !empty($grade['id']) ? (int)$grade['id'] : 0;
+        // Frontend uses Date.now() for temporary IDs, ignore them
+        if ($gradeId > 1000000000) {
+            $gradeId = 0;
+        }
+
+        if ($gradeId > 0) {
+            // Check if exists by ID
+            $check = $pdo->prepare("SELECT id FROM customer_grades_config WHERE id = ? AND company_id = ?");
+            $check->execute([$gradeId, $companyId]);
+            if ($check->fetch()) {
+                $stmt = $pdo->prepare("UPDATE customer_grades_config SET grade_name = ?, min_order_amount = ?, color_theme = ? WHERE id = ? AND company_id = ?");
+                $stmt->execute([$name, $min, $color, $gradeId, $companyId]);
+                continue;
+            }
+        }
+        
+        // Check if exists by name
+        $checkName = $pdo->prepare("SELECT id FROM customer_grades_config WHERE company_id = ? AND grade_name = ?");
+        $checkName->execute([$companyId, $name]);
+        $existing = $checkName->fetch(PDO::FETCH_ASSOC);
+        
+        if ($existing) {
+            $stmt = $pdo->prepare("UPDATE customer_grades_config SET min_order_amount = ?, color_theme = ? WHERE id = ? AND company_id = ?");
+            $stmt->execute([$min, $color, $existing['id'], $companyId]);
         } else {
-            // Insert
-            $insertStmt->execute([$companyId, $name, $min, $color]);
+            $stmt = $pdo->prepare("INSERT INTO customer_grades_config (company_id, grade_name, min_order_amount, color_theme) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$companyId, $name, $min, $color]);
         }
     }
 
@@ -82,17 +98,37 @@ try {
         $fixedEnd = !empty($set['fixed_end_date']) ? $set['fixed_end_date'] : null;
         $relativeDays = isset($set['relative_days']) ? (int)$set['relative_days'] : 365;
 
-        $setStmt = $pdo->prepare("
-            INSERT INTO customer_grades_settings (company_id, calc_mode, time_range_type, fixed_start_date, fixed_end_date, relative_days)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE 
-                calc_mode = VALUES(calc_mode),
-                time_range_type = VALUES(time_range_type),
-                fixed_start_date = VALUES(fixed_start_date),
-                fixed_end_date = VALUES(fixed_end_date),
-                relative_days = VALUES(relative_days)
-        ");
-        $setStmt->execute([$companyId, $calcMode, $timeRangeType, $fixedStart, $fixedEnd, $relativeDays]);
+        $checkStmt = $pdo->prepare("SELECT company_id FROM customer_grades_settings WHERE company_id = ?");
+        $checkStmt->execute([$companyId]);
+        
+        if ($checkStmt->fetch()) {
+            $setStmt = $pdo->prepare("
+                UPDATE customer_grades_settings 
+                SET calc_mode = :calc, time_range_type = :time_type, fixed_start_date = :f_start, fixed_end_date = :f_end, relative_days = :rel
+                WHERE company_id = :comp
+            ");
+            $setStmt->execute([
+                ':calc' => $calcMode,
+                ':time_type' => $timeRangeType,
+                ':f_start' => $fixedStart,
+                ':f_end' => $fixedEnd,
+                ':rel' => $relativeDays,
+                ':comp' => $companyId
+            ]);
+        } else {
+            $setStmt = $pdo->prepare("
+                INSERT INTO customer_grades_settings (company_id, calc_mode, time_range_type, fixed_start_date, fixed_end_date, relative_days)
+                VALUES (:comp, :calc, :time_type, :f_start, :f_end, :rel)
+            ");
+            $setStmt->execute([
+                ':comp' => $companyId,
+                ':calc' => $calcMode,
+                ':time_type' => $timeRangeType,
+                ':f_start' => $fixedStart,
+                ':f_end' => $fixedEnd,
+                ':rel' => $relativeDays
+            ]);
+        }
     }
 
     $pdo->commit();
@@ -101,6 +137,6 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
-    file_put_contents(__DIR__ . '/../logs/grades_error.log', date('Y-m-d H:i:s') . ' ' . $e->getMessage() . "\n", FILE_APPEND);
-    json_response(['status' => 'error', 'message' => 'Failed to save configuration'], 500);
+    file_put_contents('C:\laragon\www\CRM_ERP_V4_test_e2e\test-results\grades_error.txt', date('Y-m-d H:i:s') . ' ' . $e->getMessage() . " on line " . $e->getLine() . "\n", FILE_APPEND);
+    json_response(['status' => 'error', 'message' => 'Failed on line ' . $e->getLine() . ': ' . $e->getMessage()], 500);
 }
