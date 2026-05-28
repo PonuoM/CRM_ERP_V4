@@ -85,7 +85,7 @@ try {
                 phone_telesale,
                 DATE_FORMAT(`timestamp`, '%Y-%m') AS month_key,
                 COUNT(*) AS total_calls,
-                SUM(CASE WHEN duration >= 40 THEN 1 ELSE 0 END) AS connected_calls,
+                SUM(CASE WHEN duration >= 30 THEN 1 ELSE 0 END) AS connected_calls, /* เกณฑ์ได้คุย = 30 วินาที */
                 ROUND(SUM(duration) / 60, 2) AS total_minutes
             FROM onecall_log
             WHERE phone_telesale IN ($phPlaceholders)

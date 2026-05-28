@@ -56,7 +56,7 @@ try {
       COUNT(*) AS total_calls,
       SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS connected_calls,
       SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS missed_calls,
-      SUM(CASE WHEN status = 1 AND TIME_TO_SEC(duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+      SUM(CASE WHEN status = 1 AND TIME_TO_SEC(duration) >= 30 THEN 1 ELSE 0 END) AS talked_calls, /* เกณฑ์ได้คุย = 30 วินาที */
       ROUND(SUM(TIME_TO_SEC(duration)) / 60, 2) AS total_minutes,
       SUM(CASE WHEN rec_type = 1 THEN 1 ELSE 0 END) AS inbound_calls,
       SUM(CASE WHEN rec_type = 2 THEN 1 ELSE 0 END) AS outbound_calls

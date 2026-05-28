@@ -1,7 +1,7 @@
 -- Migration: Monthly call overview per telesale (users + onecall_log + attendance)
 -- Purpose: Provide a per-month summary for Telesale/Supervisor Telesale
 -- Fields: user, role, phone(0-prefix), working_days(sum of attendance_value),
---         total_minutes (onecall_log.duration/60), connected_calls (duration>=40s),
+--         total_minutes (onecall_log.duration/60), connected_calls (duration>=30s — เกณฑ์ "ได้คุย"),
 --         total_calls, minutes_per_workday = total_minutes / working_days
 -- Notes: Joins onecall_log.phone_telesale to users.phone by normalizing both
 --        sides into 0-prefixed local format. Handles inputs starting with 66
@@ -69,7 +69,7 @@ WITH
       uts.id AS user_id,
       DATE_FORMAT(ocl.`timestamp`, '%Y-%m') AS month_key,
       COUNT(*) AS total_calls,
-      SUM(CASE WHEN ocl.duration >= 40 THEN 1 ELSE 0 END) AS connected_calls,
+      SUM(CASE WHEN ocl.duration >= 30 THEN 1 ELSE 0 END) AS connected_calls,  -- เกณฑ์ "ได้คุย" = 30 วินาที
       ROUND(SUM(ocl.duration)/60, 2) AS total_minutes
     FROM onecall_log ocl
     JOIN users_ts uts

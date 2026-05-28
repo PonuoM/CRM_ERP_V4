@@ -36,7 +36,7 @@ try {
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
   $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
   $userIds = isset($_GET["user_ids"]) ? (string)$_GET["user_ids"] : null;
-  $threshold = 40; // seconds
+  $threshold = 30; // seconds — เกณฑ์ "ได้คุย" = 30 วินาที
 
   $userFirstName = null;
   $additionalWhere = "";

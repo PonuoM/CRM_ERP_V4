@@ -259,7 +259,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     return ordersInRange.filter(o => (typeof o.salesChannelPageId !== 'undefined' && o.salesChannelPageId === selectedPageId) || (pageName && o.salesChannel === pageName));
   }, [ordersInRange, selectedPageId, allPages]);
 
-  const talkedCalls = useMemo(() => callsInRange.filter(c => (c.duration ?? 0) >= 40).length, [callsInRange]);
+  // เกณฑ์ "สายที่ได้คุย": duration >= 30 วินาที
+  const talkedCalls = useMemo(() => callsInRange.filter(c => (c.duration ?? 0) >= 30).length, [callsInRange]);
   const totalCalls = callsInRange.length;
   const talkRate = totalCalls > 0 ? (talkedCalls / totalCalls) * 100 : 0;
 
@@ -281,7 +282,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
   const rows = useMemo(() => days.map(day => {
     const dayCalls = callsInRange.filter(c => c.date.slice(0, 10) === day);
-    const talked = dayCalls.filter(c => (c.duration ?? 0) >= 40).length;
+    // เกณฑ์ "สายที่ได้คุย": duration >= 30 วินาที
+    const talked = dayCalls.filter(c => (c.duration ?? 0) >= 30).length;
     const dayOrders = ordersInRangeForTable.filter(o => o.orderDate.slice(0, 10) === day);
     const dayOrdersNew = dayOrders.filter(o => {
       const cu = customerById[o.customerId];
@@ -354,7 +356,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       const key = c.caller || 'ไม่ระบุ';
       const a = add(key);
       const isNew = (() => { const cu = customerById[c.customerId]; return !!(cu?.dateRegistered && inRange(cu.dateRegistered)); })();
-      a.totalInteract += 1; if (isNew) a.newInteract += 1; else a.oldInteract += 1; if ((c.duration ?? 0) >= 40) a.talked += 1;
+      // เกณฑ์ "สายที่ได้คุย": duration >= 30 วินาที
+      a.totalInteract += 1; if (isNew) a.newInteract += 1; else a.oldInteract += 1; if ((c.duration ?? 0) >= 30) a.talked += 1;
     }
     // Orders by creatorId mapped to user name (page-filtered)
     for (const o of ordersInRangeForTable) {
@@ -1473,7 +1476,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                     <StatCard title="ข้อมูลเข้าทั้งหมด" value={String(totalCalls)} subtext="รวมทุกช่องทาง" icon={Activity} />
                     <StatCard title="การติดต่อใหม่" value={String(sum.newInteract)} subtext="ลูกค้าใหม่" icon={UsersIcon} />
                     <StatCard title="การติดต่อเดิม" value={String(sum.oldInteract)} subtext="ลูกค้าเก่า" icon={UsersIcon} />
-                    <StatCard title="ได้คุย (>=40s)" value={String(talkedCalls)} subtext={`${talkRate.toFixed(1)}% ของทั้งหมด`} icon={Phone} />
+                    <StatCard title="ได้คุย (>=30s)" value={String(talkedCalls)} subtext={`${talkRate.toFixed(1)}% ของทั้งหมด`} icon={Phone} />
                   </div>
                 </>
               )}

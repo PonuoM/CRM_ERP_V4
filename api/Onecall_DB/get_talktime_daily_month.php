@@ -71,7 +71,7 @@ try {
             SUM(CASE WHEN HOUR(cl.start_time) < 14 THEN 1 ELSE 0 END) AS morning_calls,
             SUM(CASE WHEN HOUR(cl.start_time) >= 14 THEN 1 ELSE 0 END) AS afternoon_calls,
             SUM(CASE WHEN cl.status = 1 THEN 1 ELSE 0 END) AS connected_calls,
-            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 THEN 1 ELSE 0 END) AS talked_calls, /* เกณฑ์ได้คุย = 30 วินาที */
             SUM(CASE WHEN cl.status = 0 THEN 1 ELSE 0 END) AS missed_calls,
             ROUND(COALESCE(SUM(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS total_minutes,
             ROUND(COALESCE(AVG(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS avg_minutes

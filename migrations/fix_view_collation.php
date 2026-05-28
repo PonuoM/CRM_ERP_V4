@@ -53,7 +53,7 @@ try {
           uts.id AS user_id,
           CAST(DATE_FORMAT(ocl.timestamp, '%Y-%m') AS CHAR CHARACTER SET utf8mb4) COLLATE {$targetCollation} AS month_key,
           COUNT(*) AS total_calls,
-          SUM(CASE WHEN ocl.duration >= 40 THEN 1 ELSE 0 END) AS connected_calls,
+          SUM(CASE WHEN ocl.duration >= 30 THEN 1 ELSE 0 END) AS connected_calls, -- เกณฑ์ได้คุย = 30 วินาที
           ROUND(SUM(ocl.duration)/60, 2) AS total_minutes
         FROM onecall_log ocl
         JOIN users_ts uts
