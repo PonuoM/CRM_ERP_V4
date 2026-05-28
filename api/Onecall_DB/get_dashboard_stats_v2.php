@@ -53,7 +53,7 @@ try {
     COUNT(*) AS totalCalls,
     SUM(CASE WHEN cil.status = 1 THEN 1 ELSE 0 END) AS answeredCalls,
     SUM(CASE WHEN cil.status = 0 THEN 1 ELSE 0 END) AS missedCalls,
-    SUM(CASE WHEN cil.status = 1 AND TIME_TO_SEC(cil.duration) >= 40 THEN 1 ELSE 0 END) AS talkedCalls,
+    SUM(CASE WHEN cil.status = 1 AND TIME_TO_SEC(cil.duration) >= 30 THEN 1 ELSE 0 END) AS talkedCalls, /* เกณฑ์ได้คุย = 30 วินาที */
     ROUND(SUM(TIME_TO_SEC(cil.duration)) / 60, 2) AS totalMinutes,
     SUM(CASE WHEN cil.rec_type = 1 THEN 1 ELSE 0 END) AS inboundCalls,
     SUM(CASE WHEN cil.rec_type = 2 THEN 1 ELSE 0 END) AS outboundCalls,

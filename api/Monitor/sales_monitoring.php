@@ -119,7 +119,7 @@ try {
     $sqlCalls = "
         SELECT cl.matched_user_id AS uid,
                COUNT(*) AS calls_total,
-               SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+               SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 THEN 1 ELSE 0 END) AS talked_calls, /* เกณฑ์ได้คุย = 30 วินาที */
                ROUND(COALESCE(SUM(TIME_TO_SEC(cl.duration)), 0) / 60, 1) AS total_min,
                ROUND(COALESCE(AVG(NULLIF(TIME_TO_SEC(cl.duration), 0)), 0) / 60, 2) AS avg_min
         FROM call_import_logs cl

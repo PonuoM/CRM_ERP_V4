@@ -10,7 +10,7 @@
  *     ('distribute','redistribute','manual') and assigned_to_new in team
  *     and created_at within period
  *   - Called: call_history joined to caller name (manual log) — count distinct
- *     customer_id where status='รับสาย' or duration>=40
+ *     customer_id where status='รับสาย' or duration>=30   // เกณฑ์ "ได้คุย" = 30 วินาที
  *   - Closed: orders/order_items where creator_id in team within period
  *
  * Auth: Supervisor sees team, Admin/CEO sees company, Telesale sees self only.
@@ -104,7 +104,7 @@ try {
         FROM users u
         LEFT JOIN call_history ch ON ch.caller = CONCAT(u.first_name, ' ', IFNULL(u.last_name, ''))
                                  AND ch.date >= ? AND ch.date < ?
-                                 AND (ch.status = 'รับสาย' OR ch.duration >= 40)
+                                 AND (ch.status = 'รับสาย' OR ch.duration >= 30) /* เกณฑ์ได้คุย = 30 วินาที */
         WHERE u.id IN ($idsIn)
         GROUP BY u.id
     ";

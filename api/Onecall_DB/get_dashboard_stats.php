@@ -135,9 +135,9 @@ try {
   $stmt->execute($params);
   $totalCalls = $stmt->fetch(PDO::FETCH_ASSOC)["total_calls"];
 
-  // Calculate answered calls (duration >= 40 seconds = connected/talked)
+  // Calculate answered calls (duration >= 30 seconds = connected/talked) — เกณฑ์ "ได้คุย" = 30 วินาที
   $stmt = $pdo->prepare(
-    "SELECT COUNT(*) as answered_calls FROM onecall_log $whereClause AND duration >= 40"
+    "SELECT COUNT(*) as answered_calls FROM onecall_log $whereClause AND duration >= 30"
   );
   $stmt->execute($params);
   $answeredCalls = $stmt->fetch(PDO::FETCH_ASSOC)["answered_calls"];
@@ -158,7 +158,7 @@ try {
     $phIn = implode(',', array_fill(0, count($phones), '?'));
     $perPersonSql = "SELECT phone_telesale,
         SUM(duration) / 60.0 AS person_minutes,
-        SUM(CASE WHEN duration >= 40 THEN 1 ELSE 0 END) AS person_answered
+        SUM(CASE WHEN duration >= 30 THEN 1 ELSE 0 END) AS person_answered /* เกณฑ์ได้คุย = 30 วินาที */
       FROM onecall_log
       WHERE MONTH(timestamp) = ? AND YEAR(timestamp) = ?
         AND phone_telesale IN ($phIn)

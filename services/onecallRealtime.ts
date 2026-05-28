@@ -198,7 +198,8 @@ export const aggregateOneCallByUsers = (
         const hour = ts.getHours();
         const dur = parseInt(String(rec.duration), 10) || 0;
         const connected = dur > 0;
-        const talked = dur >= 40;
+        // เกณฑ์ "สายที่ได้คุย": duration >= 30 วินาที
+        const talked = dur >= 30;
 
         // Match to a user via phone
         const candidates: string[] = [];

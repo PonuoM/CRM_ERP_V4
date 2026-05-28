@@ -14,7 +14,7 @@
  *   - Admin/CEO: everyone in their company
  *
  * Definition of "talked call" matches telesale_performance.php:
- *   status = 1 AND TIME_TO_SEC(duration) >= 40
+ *   status = 1 AND TIME_TO_SEC(duration) >= 30   // เกณฑ์ "ได้คุย" = 30 วินาที
  */
 
 require_once __DIR__ . '/../config.php';
@@ -104,14 +104,14 @@ try {
             cl.matched_user_id AS user_id,
             COUNT(*) AS total_calls,
             SUM(CASE WHEN cl.status = 1 THEN 1 ELSE 0 END) AS connected_calls,
-            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 /* เกณฑ์ได้คุย = 30 วินาที */ THEN 1 ELSE 0 END) AS talked_calls,
             ROUND(COALESCE(SUM(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS total_minutes,
             SUM(CASE WHEN HOUR(cl.start_time) BETWEEN 0 AND 12 THEN 1 ELSE 0 END) AS morning_calls,
             SUM(CASE WHEN HOUR(cl.start_time) >= 13 THEN 1 ELSE 0 END) AS afternoon_calls,
             SUM(CASE WHEN HOUR(cl.start_time) BETWEEN 0 AND 12
-                      AND cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS morning_talked,
+                      AND cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 /* เกณฑ์ได้คุย = 30 วินาที */ THEN 1 ELSE 0 END) AS morning_talked,
             SUM(CASE WHEN HOUR(cl.start_time) >= 13
-                      AND cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS afternoon_talked
+                      AND cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 /* เกณฑ์ได้คุย = 30 วินาที */ THEN 1 ELSE 0 END) AS afternoon_talked
         FROM call_import_logs cl
         WHERE cl.call_date = ?
           AND cl.matched_user_id IN ($userIdsIn)
@@ -128,7 +128,7 @@ try {
         SELECT
             HOUR(cl.start_time) AS hr,
             COUNT(*) AS total_calls,
-            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls
+            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 /* เกณฑ์ได้คุย = 30 วินาที */ THEN 1 ELSE 0 END) AS talked_calls
         FROM call_import_logs cl
         WHERE cl.call_date = ?
           AND cl.matched_user_id IN ($userIdsIn)
