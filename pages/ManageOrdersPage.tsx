@@ -1753,6 +1753,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           )}
         </button>
         <button
+          data-testid="tab-waiting-verify-slip"
           onClick={() => setActiveTab('waitingVerifySlip')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'waitingVerifySlip'
             ? 'border-b-2 border-blue-600 text-blue-600'
