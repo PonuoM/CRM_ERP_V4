@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { execSync } from 'child_process';
 import { wipeCustomerGradeTestData, seedBasicCustomersAndOrders, getCustomerGrade, getCustomerInfo } from '../../utils/db-utils';
 import { CustomerGradePage } from '../../pages/CustomerGradePage';
 import { CreateOrderPage } from '../../pages/CreateOrderPage';
@@ -246,6 +247,85 @@ test.describe('Customer Grade E2E Tests', () => {
       // It should be empty or default, NOT "A-Grade"
       const hasAGrade = co2Grades.some(g => g.grade_name === 'A-Grade');
       expect(hasAGrade).toBeFalsy();
+    });
+  });
+  test.describe('5. Cron Job', () => {
+    test('TC-CRON-01: Auto-update grades via Cron Script', async ({ page }) => {
+      // First, we set up a condition where customer 1 should be downgraded
+      const gradePage = new CustomerGradePage(page);
+      await gradePage.goto();
+      
+      // Set to relative 30 days
+      await gradePage.calcModeSelect.selectOption('delivery_date');
+      await gradePage.relativeRadio.check();
+      await page.locator('input[type="number"]').last().fill('30');
+      
+      while (await page.locator('tbody tr button[title="ลบ"]').count() > 0) {
+        await page.locator('tbody tr button[title="ลบ"]').first().click();
+      }
+      
+      // Customer 1 has order from today (created in Real-time test) of 150k + older orders.
+      // Wait, in previous tests we added order for Customer 1. 
+      // Let's set high threshold so they fall back to normal.
+      await gradePage.addGradeBtn.click();
+      await gradePage.setGradeData(0, 'Normal', 0, 'bg-gray-100 text-gray-800');
+      await gradePage.addGradeBtn.click();
+      await gradePage.setGradeData(1, 'Mega VIP', 9999999, 'bg-red-100 text-red-800');
+      await gradePage.saveAndExpectSuccess();
+      
+      // Let's manually set Customer 1's grade to 'Old VIP' in DB to simulate old data
+      execSync('php tests/e2e/utils/db-setup.php set_customer_grade 1 "Old VIP"');
+      
+      let preCustomer = await getCustomerInfo(1);
+      expect(preCustomer.grade).toBe('Old VIP');
+
+      // Execute Cron Script
+      let output = '';
+      await test.step('Run CLI command: php api/cron/recalculate_all_grades.php', async () => {
+        output = execSync('php api/cron/recalculate_all_grades.php').toString();
+        test.info().annotations.push({ type: 'CLI Output', description: output });
+      });
+
+      // Verify output
+      expect(output).toContain('Successfully updated');
+
+      // Verify DB
+      const postCustomer = await getCustomerInfo(1);
+      test.info().annotations.push({
+        type: 'Condition Context',
+        description: `ลูกค้า: ${postCustomer.first_name} ${postCustomer.last_name}\nยอดซื้อสะสม (30วัน): ${Number(postCustomer.total_amount).toLocaleString()} บาท\nเกรดปัจจุบัน: ${postCustomer.grade}`
+      });
+
+      await test.step(`[Assert] เกรดของลูกค้า ID 1 ต้องถูกปรับลดลงจาก 'Old VIP' เพราะไม่ถึง 9,999,999 บาท`, async () => {
+        expect(postCustomer.grade).not.toBe('Old VIP');
+        expect(postCustomer.grade).toBe('Normal'); // Default fallback
+      });
+    });
+
+    test('TC-CRON-02: Dry Run Mode', async () => {
+      // Manually set Customer 1's grade to 'Fake Grade' in DB to guarantee a change
+      execSync('php tests/e2e/utils/db-setup.php set_customer_grade 1 "Fake Grade"');
+      
+      let preCustomer = await getCustomerInfo(1);
+      expect(preCustomer.grade).toBe('Fake Grade');
+
+      // Execute Cron Script in Dry Run mode
+      let output = '';
+      await test.step('Run CLI command: php api/cron/recalculate_all_grades.php --dry-run', async () => {
+        output = execSync('php api/cron/recalculate_all_grades.php --dry-run').toString();
+        test.info().annotations.push({ type: 'CLI Output', description: output });
+      });
+
+      // Verify output
+      expect(output).toContain('[DRY-RUN]');
+      expect(output).toContain('Fake Grade ->');
+      expect(output).toContain('Dry Run Complete!');
+
+      // Verify DB remains unchanged
+      const postCustomer = await getCustomerInfo(1);
+      await test.step(`[Assert] เกรดของลูกค้า ID 1 ต้องไม่ถูกเปลี่ยนแปลง (ยังคงเป็น 'Fake Grade')`, async () => {
+        expect(postCustomer.grade).toBe('Fake Grade');
+      });
     });
   });
 });
