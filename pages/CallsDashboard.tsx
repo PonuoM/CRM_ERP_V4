@@ -774,7 +774,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
     }
   };
 
-  // Fetch talked vs not-talked summary (duration >= 40 is talked)
+  // Fetch talked vs not-talked summary (duration >= 30 is talked)
   const fetchTalkSummary = async () => {
     try {
       const userParam = selectedUserId
@@ -1480,7 +1480,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
             title="ได้คุย vs ไม่ได้คุย"
             data={[
               {
-                label: "ได้คุย (>=40s)",
+                label: "ได้คุย (>=30s)",
                 value: talkSummary.talked,
                 color: "#34D399",
               },

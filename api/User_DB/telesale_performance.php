@@ -142,7 +142,7 @@ try {
             u.phone AS telesale_phone,
             COUNT(cl.id) AS total_calls,
             SUM(CASE WHEN cl.status = 1 THEN 1 ELSE 0 END) AS connected_calls,
-            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 THEN 1 ELSE 0 END) AS talked_calls, /* เกณฑ์ได้คุย = 30 วินาที */
             SUM(CASE WHEN cl.status = 0 THEN 1 ELSE 0 END) AS missed_calls,
             SUM(CASE WHEN cl.rec_type = 1 THEN 1 ELSE 0 END) AS inbound_calls,
             SUM(CASE WHEN cl.rec_type = 2 THEN 1 ELSE 0 END) AS outbound_calls,

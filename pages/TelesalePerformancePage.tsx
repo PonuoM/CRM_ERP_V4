@@ -695,7 +695,7 @@ export default function TelesalePerformancePage() {
                                 <th className="px-2 py-2 text-center text-gray-600 font-medium whitespace-nowrap border-l-2 border-gray-300">สาย</th>
                                 <SortableHeader label="นาที" field="totalMinutes" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="เวลาโทรรวม (นาที)" />
                                 <SortableHeader label="รับสาย" field="connectedCalls" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="สายที่รับ (status=1)" />
-                                <SortableHeader label="ได้คุย" field="talkedCalls" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="สายที่คุยได้ ≥40 วินาที (status=1 + duration≥40s)" />
+                                <SortableHeader label="ได้คุย" field="talkedCalls" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="สายที่คุยได้ ≥30 วินาที (status=1 + duration≥30s)" />
                                 <SortableHeader label="ไม่ได้รับ" field="missedCalls" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="สายที่ไม่ได้รับ" />
                                 <SortableHeader label="%รับ" field="answerRate" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="อัตราการรับสาย = รับสาย ÷ สาย × 100" />
                                 <SortableHeader label="วันงาน" field="workingDays" currentField={sortField} direction={sortDirection} onClick={handleSort} tooltip="วันที่ทำงาน" />
@@ -909,7 +909,7 @@ export default function TelesalePerformancePage() {
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>สายที่โทร<br /><span className="text-xs text-gray-500 font-normal">ทั้งหมด</span></th>
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>นาทีที่โทร<br /><span className="text-xs text-gray-500 font-normal">ทั้งหมด</span></th>
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>รับสาย</th>
-                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap cursor-help" rowSpan={2} title="นับเฉพาะสายที่รับแล้วคุยได้ตั้งแต่ 40 วินาทีขึ้นไป">ได้คุย<br /><span className="text-xs text-gray-500 font-normal">(≥40 วินาที)</span></th>
+                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap cursor-help" rowSpan={2} title="นับเฉพาะสายที่รับแล้วคุยได้ตั้งแต่ 30 วินาทีขึ้นไป">ได้คุย<br /><span className="text-xs text-gray-500 font-normal">(≥30 วินาที)</span></th>
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>ไม่ได้รับ</th>
                                     <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>%รับ</th>
                                     {/* ลูกค้าใหม่ Group */}

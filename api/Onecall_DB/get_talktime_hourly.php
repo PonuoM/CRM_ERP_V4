@@ -85,7 +85,7 @@ try {
   $sql = "SELECT 
             HOUR(cl.start_time) AS hour,
             COUNT(*) AS total_calls,
-            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 /* เกณฑ์ได้คุย = 30 วินาที */ THEN 1 ELSE 0 END) AS talked_calls,
             ROUND(COALESCE(SUM(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS total_minutes,
             ROUND(COALESCE(AVG(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS avg_minutes
           FROM call_import_logs cl
@@ -138,10 +138,10 @@ try {
   // Get daily summary stats with company filtering
   $summarySQL = "SELECT 
                   COUNT(*) AS total_calls,
-                  SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN 1 ELSE 0 END) AS talked_calls,
+                  SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 /* เกณฑ์ได้คุย = 30 วินาที */ THEN 1 ELSE 0 END) AS talked_calls,
                   ROUND(COALESCE(SUM(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS total_minutes,
                   ROUND(COALESCE(AVG(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS avg_minutes,
-                  ROUND(COALESCE(AVG(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 40 THEN TIME_TO_SEC(cl.duration) ELSE NULL END), 0) / 60, 2) AS avg_talk_minutes
+                  ROUND(COALESCE(AVG(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 /* เกณฑ์ได้คุย = 30 วินาที */ THEN TIME_TO_SEC(cl.duration) ELSE NULL END), 0) / 60, 2) AS avg_talk_minutes
                 FROM call_import_logs cl
                 $joinUsers
                 $where";

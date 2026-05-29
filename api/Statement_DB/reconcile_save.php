@@ -98,6 +98,11 @@ function ensure_reconcile_tables(PDO $pdo): void
   try {
     $pdo->exec("ALTER TABLE statement_reconcile_logs ADD COLUMN confirmed_by INT DEFAULT NULL AFTER created_by");
   } catch (PDOException $e) { /* Column already exists */ }
+
+  // Migration: Add mismatch_reason for tracking shortage/overage
+  try {
+    $pdo->exec("ALTER TABLE statement_reconcile_logs ADD COLUMN mismatch_reason VARCHAR(255) DEFAULT NULL AFTER note");
+  } catch (PDOException $e) { /* Column already exists */ }
 }
 
 function normalize_date(string $value, bool $endOfDay = false): string
@@ -227,9 +232,9 @@ try {
 
   $insertLogStmt = $pdo->prepare("
     INSERT INTO statement_reconcile_logs
-      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched, created_by, note, confirmed_payment_method)
+      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched, created_by, note, mismatch_reason, confirmed_payment_method)
     VALUES
-      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :reconcileType, :autoMatched, :createdBy, :note, :paymentMethod)
+      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :reconcileType, :autoMatched, :createdBy, :note, :mismatchReason, :paymentMethod)
   ");
 
   $orderUpdateStmt = $pdo->prepare("
@@ -274,6 +279,7 @@ try {
     file_put_contents(__DIR__ . "/debug_reconcile.txt", "Process Item: StmtId=$statementId, Type=$reconcileType, Amount=$statementAmount\n", FILE_APPEND);
 
     $note = isset($item["note"]) ? trim($item["note"]) : null;
+    $mismatchReason = isset($item["mismatch_reason"]) ? trim($item["mismatch_reason"]) : null;
 
     if ($reconcileType === "Suspense" || $reconcileType === "Deposit") {
       // For Suspense/Deposit, orderId can be empty/null
@@ -401,7 +407,7 @@ try {
       // UPDATE existing log record
       $updateLogStmt = $pdo->prepare("
             UPDATE statement_reconcile_logs 
-            SET batch_id = :batchId, order_id = :orderId, confirmed_amount = :confirmedAmount, reconcile_type = :reconcileType, auto_matched = :autoMatched, note = :note, confirmed_payment_method = :paymentMethod
+            SET batch_id = :batchId, order_id = :orderId, confirmed_amount = :confirmedAmount, reconcile_type = :reconcileType, auto_matched = :autoMatched, note = :note, mismatch_reason = :mismatchReason, confirmed_payment_method = :paymentMethod
             WHERE id = :id
         ");
       $updateLogStmt->execute([
@@ -411,6 +417,7 @@ try {
         ":reconcileType" => $reconcileType,
         ":autoMatched" => $autoMatched,
         ":note" => $note,
+        ":mismatchReason" => $mismatchReason,
         ":paymentMethod" => $order ? ($order['payment_method'] ?? null) : null,
         ":id" => $existingLog['id']
       ]);
@@ -431,6 +438,7 @@ try {
           ":autoMatched" => $autoMatched,
           ":createdBy" => $userId,
           ":note" => $note,
+          ":mismatchReason" => $mismatchReason,
           ":paymentMethod" => $order ? ($order['payment_method'] ?? null) : null,
         ]);
         $saved += 1;

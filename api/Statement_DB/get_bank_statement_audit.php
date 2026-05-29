@@ -62,6 +62,7 @@ try {
               'confirmed_action', srl.confirmed_action,
               'reconcile_type', srl.reconcile_type,
               'note', srl.note,
+              'mismatch_reason', srl.mismatch_reason,
               'confirmed_payment_method', srl.confirmed_payment_method,
               'created_by', srl.created_by,
               'created_by_name', IFNULL(CONCAT(u_creator.first_name, ' ', u_creator.last_name), NULL),
@@ -223,6 +224,7 @@ try {
     $orderIds = [];
     $reconcileTypes = [];
     $notes = [];
+    $mismatchReasons = [];
     $confirmedAts = [];
     $confirmedActions = [];
 
@@ -238,6 +240,9 @@ try {
       }
       if (!empty($item['note'])) {
         $notes[] = $item['note'];
+      }
+      if (!empty($item['mismatch_reason'])) {
+        $mismatchReasons[] = $item['mismatch_reason'];
       }
       if (!empty($item['confirmed_at'])) {
         $confirmedAts[] = $item['confirmed_at'];
@@ -546,6 +551,7 @@ try {
       'confirmed_action' => !empty($confirmedActions) ? implode(', ', array_unique($confirmedActions)) : null,
       'reconcile_type' => $primaryType,
       'note' => !empty($notes) ? implode(', ', array_unique($notes)) : null,
+      'mismatch_reason' => !empty($mismatchReasons) ? implode(', ', array_unique($mismatchReasons)) : null,
       'transfer_at' => $row['transfer_at'],
       'statement_amount' => $row['statement_amount'],
       'channel' => $row['channel'],

@@ -3417,7 +3417,7 @@ const App: React.FC = () => {
             const newActivity: Activity = {
               id: Date.now() + Math.random(),
               customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-              timestamp: toThaiIsoString(new Date()),
+              timestamp: new Date().toISOString(),
               type: ActivityType.OrderCreated,
               description: `สร้างคำสั่งซื้อ ${createdOrderId} สำหรับลูกค้า "${customer.firstName} ${customer.lastName}"`,
               actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -4059,7 +4059,7 @@ const App: React.FC = () => {
       }
     }
 
-    const dateAssigned = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const dateAssigned = toThaiIsoString(new Date()).slice(0, 19).replace('T', ' ');
     let customer = customers.find((c) => c.id === customerId);
     // Fallback: Check viewingCustomerData if not found in main list
     if (
@@ -4228,7 +4228,7 @@ const App: React.FC = () => {
       ) return;
     }
 
-    const dateAssigned = new Date().toISOString();
+    const dateAssigned = toThaiIsoString(new Date());
 
     // 1. Update assignment in DB
     try {

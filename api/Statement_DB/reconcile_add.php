@@ -20,6 +20,7 @@ $orderId = isset($payload["order_id"]) ? trim($payload["order_id"]) : "";
 $confirmedAmount = isset($payload["confirmed_amount"]) ? (float) $payload["confirmed_amount"] : null;
 $startDateRaw = $payload["start_date"] ?? null;
 $endDateRaw = $payload["end_date"] ?? null;
+$mismatchReason = isset($payload["mismatch_reason"]) ? trim($payload["mismatch_reason"]) : null;
 
 if ($companyId <= 0 || $userId <= 0 || $bankAccountId <= 0 || $statementId <= 0 || $orderId === "") {
     echo json_encode(["ok" => false, "error" => "Missing required fields: company_id, user_id, bank_account_id, statement_id, order_id"], JSON_UNESCAPED_UNICODE);
@@ -118,9 +119,9 @@ try {
     // 5. INSERT new reconcile log (no replace)
     $insertStmt = $pdo->prepare("
     INSERT INTO statement_reconcile_logs
-      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched, created_by, note, confirmed_payment_method)
+      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched, created_by, note, mismatch_reason, confirmed_payment_method)
     VALUES
-      (:batchId, :stmtId, :orderId, :stmtAmount, :confirmedAmount, 'Order', 0, :createdBy, NULL, :paymentMethod)
+      (:batchId, :stmtId, :orderId, :stmtAmount, :confirmedAmount, 'Order', 0, :createdBy, NULL, :mismatchReason, :paymentMethod)
   ");
     $insertStmt->execute([
         ":batchId" => $batchId,
@@ -129,6 +130,7 @@ try {
         ":stmtAmount" => $statementAmount,
         ":confirmedAmount" => $confirmedAmount,
         ":createdBy" => $userId,
+        ":mismatchReason" => $mismatchReason,
         ":paymentMethod" => $order['payment_method'] ?? null,
     ]);
     $reconcileLogId = (int) $pdo->lastInsertId();

@@ -2766,6 +2766,23 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     return codTotal.toFixed(2) === totalAmount.toFixed(2) && totalAmount > 0;
   }, [orderData.paymentMethod, totalAmount, codTotal]);
 
+  // Auto-fill COD amount for single box when COD is selected
+  useEffect(() => {
+    if (orderData.paymentMethod === PaymentMethod.COD && numBoxes === 1) {
+      const currentCod = orderData.boxes?.[0]?.codAmount || 0;
+      if (currentCod !== totalAmount && totalAmount > 0) {
+        updateOrderData("boxes", [
+          {
+            boxNumber: 1,
+            codAmount: totalAmount,
+            weight: orderData.boxes?.[0]?.weight || 0,
+            trackingNumber: orderData.boxes?.[0]?.trackingNumber || "",
+          }
+        ]);
+      }
+    }
+  }, [orderData.paymentMethod, numBoxes, totalAmount]);
+
   const codRemaining = useMemo(() => {
     const totalRounded = Number(totalAmount.toFixed(2));
 
@@ -6605,6 +6622,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                 {upsellItems.length > 0 && (
                   <div className="space-y-3">
+                    <button
+                      data-testid="btn-split-cod"
+                      onClick={divideCodEqually}
+                      className="text-sm text-blue-600 font-medium hover:underline mb-4"
+                    >
+                      แบ่งยอด COD เท่าๆ กันทุกกล่อง
+                    </button>
                     {upsellItems
 
                       .filter((item) => !item.parentItemId)
@@ -6942,6 +6966,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     </div>
 
                     <button
+                      data-testid="btn-split-cod"
                       onClick={divideUpsellCodEqually}
                       className="text-sm text-blue-600 font-medium hover:underline mb-4"
                     >
@@ -9745,6 +9770,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   })()}
 
                   <button
+                    data-testid="btn-add-product"
                     onClick={() => openProductSelector("products")}
                     className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-blue-600 font-medium hover:border-blue-400 hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
                   >
@@ -10220,6 +10246,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       <tr>
                         <td colSpan={11} className="px-3 py-2 text-center">
                           <button
+                            data-testid="btn-add-product"
                             onClick={() => openProductSelector("products")}
                             className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-center w-full"
                           >
@@ -10256,6 +10283,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             (selectedCustomer || isCreatingNewCustomer) && (
               <div className="mt-8 flex flex-col md:flex-row justify-end gap-3 pb-8 md:pb-6">
                 <button
+                  data-testid="btn-save-order"
                   onClick={handleSave}
                   disabled={
                     isSaving ||
@@ -10325,7 +10353,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
               {createdOrderId && (
                 <p className="mt-1 text-sm text-[#4e7397]">
-                  หมายเลขคำสั่งซื้อ {createdOrderId}
+                  หมายเลขคำสั่งซื้อ <span data-testid="generated-order-ref">{createdOrderId}</span>
                 </p>
               )}
 

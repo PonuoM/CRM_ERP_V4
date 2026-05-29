@@ -206,7 +206,8 @@ const processRecordingsToHourly = (recordings: any[]) => {
 
         hourlyMap[hour].total++;
         hourlyMap[hour].totalSeconds += duration;
-        if (duration >= 40) {
+        // เกณฑ์ "สายที่ได้คุย": duration >= 30 วินาที
+        if (duration >= 30) {
             hourlyMap[hour].talked++;
         }
     });
@@ -225,12 +226,13 @@ const processRecordingsToHourly = (recordings: any[]) => {
 };
 
 // Calculate summary statistics
+// เกณฑ์ "สายที่ได้คุย": duration >= 30 วินาที
 const calculateSummary = (recordings: any[]) => {
     const totalCalls = recordings.length;
-    const talkedCalls = recordings.filter((r: any) => (parseInt(r.duration) || 0) >= 40).length;
+    const talkedCalls = recordings.filter((r: any) => (parseInt(r.duration) || 0) >= 30).length;
     const totalSeconds = recordings.reduce((sum: number, r: any) => sum + (parseInt(r.duration) || 0), 0);
     const talkedSeconds = recordings
-        .filter((r: any) => (parseInt(r.duration) || 0) >= 40)
+        .filter((r: any) => (parseInt(r.duration) || 0) >= 30)
         .reduce((sum: number, r: any) => sum + (parseInt(r.duration) || 0), 0);
 
     // Calculate idle time (gaps between calls)
@@ -797,9 +799,10 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                 <TalkTimeStatCard
                     title="จำนวนสายที่ได้คุย"
                     value={summary?.talked_calls || 0}
-                    subtitle="(สาย)"
+                    subtitle="(สาย, ≥30วิ)"
                     icon={<PhoneIncoming className="w-5 h-5" />}
                     color="green"
+                    tooltip="นับเฉพาะสายที่คุยตั้งแต่ 30 วินาทีขึ้นไป"
                 />
                 <TalkTimeStatCard
                     title="ระยะเวลาการสนทนา"
@@ -814,6 +817,7 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                     subtitle="(นาที)"
                     icon={<Timer className="w-5 h-5" />}
                     color="purple"
+                    tooltip="ค่าเฉลี่ยจากเฉพาะสายที่ได้คุย (≥30 วินาที)"
                 />
                 <TalkTimeStatCard
                     title="เวลาพักระหว่างสาย"
@@ -826,25 +830,29 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                 <TalkTimeStatCard
                     title="สายที่ไม่ได้คุย"
                     value={(summary?.total_calls || 0) - (summary?.talked_calls || 0)}
-                    subtitle="(สาย)"
+                    subtitle="(สาย, <30วิ)"
                     icon={<PhoneOff className="w-5 h-5" />}
                     color="red"
+                    tooltip="สายที่ไม่ได้รับ หรือรับแล้วคุยน้อยกว่า 30 วินาที"
                 />
             </div>
 
             {/* Hourly Chart */}
             <div className="bg-white rounded-xl shadow-sm border p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">สถิติรายชั่วโมง</h2>
+                <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+                    <h2 className="text-lg font-semibold text-gray-900">สถิติรายชั่วโมง</h2>
+                    <p className="text-xs text-gray-400">💡 เกณฑ์ "ได้คุย" = สายที่คุยตั้งแต่ <strong className="text-gray-600">30 วินาที</strong> ขึ้นไป</p>
+                </div>
 
                 {/* Legend */}
                 <div className="flex items-center gap-6 mb-4 text-sm">
                     <div className="flex items-center gap-2">
                         <div className="w-4 h-4 bg-green-500 rounded"></div>
-                        <span>สายที่ได้คุย</span>
+                        <span>สายที่ได้คุย <span className="text-xs text-gray-400">(≥30วิ)</span></span>
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="w-4 h-4 bg-red-500 rounded"></div>
-                        <span>สายที่ไม่ได้คุย</span>
+                        <span>สายที่ไม่ได้คุย <span className="text-xs text-gray-400">(&lt;30วิ)</span></span>
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="w-4 h-4 bg-amber-100 rounded"></div>
@@ -946,7 +954,7 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                                 <th colSpan={3} className="px-5 py-2 font-semibold text-center text-gray-900 border-b border-r bg-gray-100/60">สาย</th>
                                 <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-orange-600 align-middle" title="เวลาทั้งหมดของทุกสายที่โทร">นาที</th>
                                 <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-emerald-600 align-middle">รับสาย</th>
-                                <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-blue-600 align-middle" title="รับสายและคุยตั้งแต่ 40 วินาทีขึ้นไป">ได้คุย <span className="text-xs text-gray-500 font-normal ml-1">(≥40วิ)</span></th>
+                                <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-blue-600 align-middle" title="รับสายและคุยตั้งแต่ 30 วินาทีขึ้นไป">ได้คุย <span className="text-xs text-gray-500 font-normal ml-1">(≥30วิ)</span></th>
                                 <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-red-500 align-middle">ไม่ได้รับ</th>
                                 <th rowSpan={2} className="px-5 py-3 font-semibold text-center text-gray-900 align-middle">% รับสาย</th>
                             </tr>
