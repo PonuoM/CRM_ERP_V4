@@ -4183,6 +4183,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                                 // สลิปยังไม่ถูกตรวจสอบ - แสดง checkbox
                                                 <input
                                                   type="checkbox"
+                                                  data-testid="checkbox-verify-slip"
                                                   checked={isChecked}
                                                   disabled={!isComplete || isLocked}
                                                   onChange={(e) => {
@@ -4344,6 +4345,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                               return (
                                 <button
+                                  data-testid="btn-confirm-slip"
                                   onClick={handleAcceptSlip}
                                   disabled={isConfirmed || !canConfirm || isLocked}
                                   className={`group relative inline-flex items-center justify-center px-8 py-3 border-2 border-white/20 overflow-hidden rounded-xl text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2
