@@ -9831,15 +9831,16 @@ function handle_activities(PDO $pdo, ?string $id): void
             break;
         case 'POST':
             $in = json_input();
+            $serverTime = date('Y-m-d H:i:s');
             $stmt = $pdo->prepare('INSERT INTO activities (customer_id, timestamp, type, description, actor_name) VALUES (?,?,?,?,?)');
             $stmt->execute([
                 $in['customerId'] ?? null,
-                $in['timestamp'] ?? date('c'),
+                $serverTime,
                 $in['type'] ?? '',
                 $in['description'] ?? '',
                 $in['actorName'] ?? ''
             ]);
-            json_response(['id' => $pdo->lastInsertId()]);
+            json_response(['id' => $pdo->lastInsertId(), 'timestamp' => $serverTime]);
             break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);

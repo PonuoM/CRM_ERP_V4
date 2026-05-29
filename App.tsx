@@ -2651,7 +2651,7 @@ const App: React.FC = () => {
       activitiesToAdd.push({
         id: Date.now() + Math.random(),
         customerId: String(customerIdForActivity),
-        timestamp: toThaiIsoString(new Date()),
+        timestamp: new Date().toISOString(),
         type: ActivityType.OrderStatusChanged,
         description: `อัปเดตสถานะคำสั่งซื้อ ${updatedOrder.id} จาก '${originalOrder.orderStatus}' เป็น '${updatedOrder.orderStatus}'`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -2679,7 +2679,7 @@ const App: React.FC = () => {
       activitiesToAdd.push({
         id: Date.now() + Math.random() + 1,
         customerId: String(customerIdForActivity),
-        timestamp: toThaiIsoString(new Date()),
+        timestamp: new Date().toISOString(),
         type: ActivityType.PaymentVerified, // consistent with legacy type
         description: `ยืนยันการชำระเงินสาหรับคำสั่งซื้อ ${updatedOrder.id}`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -2832,7 +2832,7 @@ const App: React.FC = () => {
         activitiesToAdd.push({
           id: Date.now() + Math.random(),
           customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-          timestamp: toThaiIsoString(new Date()),
+          timestamp: new Date().toISOString(),
           type: ActivityType.OrderCancelled,
           description: `ยกเลิกออเดอร์ ${orderId}`,
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -2892,7 +2892,7 @@ const App: React.FC = () => {
             activitiesToAdd.push({
               id: Date.now() + Math.random(),
               customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-              timestamp: toThaiIsoString(new Date()),
+              timestamp: new Date().toISOString(),
               type: ActivityType.OrderStatusChanged,
               description: `อัปเดตคำสั่งซื้อ ${o.id} เปลี่ยนจาก '${OrderStatus.Pending}' เป็น '${OrderStatus.Picking}'`,
               actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -3015,7 +3015,7 @@ const App: React.FC = () => {
                 activitiesToAdd.push({
                   id: Date.now() + Math.random(),
                   customerId: String(customerIdForActivity),
-                  timestamp: toThaiIsoString(new Date()),
+                  timestamp: new Date().toISOString(),
                   type: ActivityType.TrackingAdded,
                   description: `เพิ่ม Tracking ${update.trackingNumber} (กล่อง ${update.boxNumber}) สำหรับคำสั่งซื้อ ${orderId}`,
                   actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -3051,7 +3051,7 @@ const App: React.FC = () => {
                 activitiesToAdd.push({
                   id: Date.now() + Math.random(),
                   customerId: String(customerIdForActivity),
-                  timestamp: toThaiIsoString(new Date()),
+                  timestamp: new Date().toISOString(),
                   type: ActivityType.OrderStatusChanged,
                   description: `อัปเดตสถานะคำสั่งซื้อ ${orderId} จาก '${(orderToUpdate as Order).orderStatus}' เป็น '${newOrderState.orderStatus}'`,
                   actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -3417,7 +3417,7 @@ const App: React.FC = () => {
             const newActivity: Activity = {
               id: Date.now() + Math.random(),
               customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-              timestamp: toThaiIsoString(new Date()),
+              timestamp: new Date().toISOString(),
               type: ActivityType.OrderCreated,
               description: `สร้างคำสั่งซื้อ ${createdOrderId} สำหรับลูกค้า "${customer.firstName} ${customer.lastName}"`,
               actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -3936,7 +3936,7 @@ const App: React.FC = () => {
         activitiesToAdd.push({
           id: Date.now() + Math.random(),
           customerId: String(customerIdForActivity), // เก็บเป็น string ใน state แต่ส่ง INT ไป API
-          timestamp: toThaiIsoString(new Date()),
+          timestamp: new Date().toISOString(),
           type: ActivityType.StatusChange,
           description: `เปลี่ยนสถานะลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" จาก '${originalCustomer.lifecycleStatus}' เป็น '${updatedCustomer.lifecycleStatus}'`,
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -3948,7 +3948,7 @@ const App: React.FC = () => {
         activitiesToAdd.push({
           id: Date.now() + Math.random(),
           customerId: String(customerIdForActivity),
-          timestamp: toThaiIsoString(new Date()),
+          timestamp: new Date().toISOString(),
           type: ActivityType.StatusChange,
           description: `เปลี่ยนสถานะพฤติกรรมลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" จาก '${originalCustomer.behavioralStatus}' เป็น '${updatedCustomer.behavioralStatus}'`,
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -3960,7 +3960,7 @@ const App: React.FC = () => {
         activitiesToAdd.push({
           id: Date.now() + Math.random(),
           customerId: String(customerIdForActivity),
-          timestamp: toThaiIsoString(new Date()),
+          timestamp: new Date().toISOString(),
           type: ActivityType.GradeChange,
           description: `เปลี่ยนเกรดลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" จาก '${originalCustomer.grade}' เป็น '${resolvedGrade}'`,
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -3977,7 +3977,7 @@ const App: React.FC = () => {
         activitiesToAdd.push({
           id: Date.now() + Math.random(),
           customerId: String(customerIdForActivity),
-          timestamp: toThaiIsoString(new Date()),
+          timestamp: new Date().toISOString(),
           type: ActivityType.Assignment,
           description: `เปลี่ยนผู้ดูแลลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" จาก '${oldOwnerName}' เป็น '${newOwnerName}'`,
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -4099,7 +4099,7 @@ const App: React.FC = () => {
       const newActivity: Activity = {
         id: newActivityId,
         customerId: String(customer.pk || customer.id),
-        timestamp: toThaiIsoString(new Date()),
+        timestamp: new Date().toISOString(),
         type: ActivityType.StatusChange,
         description: `เปลี่ยนผู้ดูแลจาก "${companyUsers.find(u => u.id === customer!.assignedTo)?.firstName || '-'}" เป็น "${targetUser ? targetUser.firstName : 'ไม่ระบุ'}"`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`
@@ -4850,7 +4850,7 @@ const App: React.FC = () => {
         const newActivity: Activity = {
           id: Date.now(),
           customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-          timestamp: toThaiIsoString(new Date()),
+          timestamp: new Date().toISOString(),
           type: ActivityType.CallLogged,
           description: `บันทึกการโทร: ${callLogData.result}`,
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -5153,7 +5153,7 @@ const App: React.FC = () => {
       const newActivity: Activity = {
         id: Date.now() + Math.random(),
         customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-        timestamp: toThaiIsoString(new Date()),
+        timestamp: new Date().toISOString(),
         type: ActivityType.AppointmentSet,
         description: `นัดหมาย: ${appointmentData.title}`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
