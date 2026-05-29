@@ -287,6 +287,7 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders: propsOrders
           </button>
 
           <button
+            data-testid="btn-confirm-tracking"
             onClick={handleImport}
             disabled={!isVerified || validCount === 0 || validating}
             className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${!isVerified || validCount === 0 || validating
@@ -349,6 +350,7 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders: propsOrders
                   <td className="px-6 py-2 whitespace-nowrap">
                     <input
                       type="text"
+                      data-testid={`input-tracking-${index}`}
                       value={row.trackingNumber}
                       onChange={(e) => handleInputChange(index, 'trackingNumber', e.target.value)}
                       placeholder="Tracking No."

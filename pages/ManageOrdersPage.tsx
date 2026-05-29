@@ -1596,6 +1596,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         <div className="flex items-center space-x-2">
           {activeTab !== 'waitingVerifySlip' && (
             <button
+              data-testid="btn-export-data"
               onClick={openTemplateModal}
               disabled={selectedIds.length === 0}
               className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1643,7 +1644,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       {/* ตัวกรองขั้นสูง toggle and panel */}
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-4" ref={advRef}>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowAdvancedFilters(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
+          <button data-testid="btn-advanced-filter" onClick={() => setShowAdvancedFilters(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
             <Filter size={14} />
             ตัวกรองขั้นสูง
             {advancedCount > 0 ? (
@@ -1660,7 +1661,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           )}
         </div>
         {showAdvancedFilters && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div data-testid="advanced-filter-panel" className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">ชื่อลูกค้า</label>
               <input value={fCustomerName} onChange={e => setFCustomerName(e.target.value)} className="w-full p-2 border rounded" placeholder="ชื่อหรือนามสกุล" />
@@ -1767,6 +1768,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           )}
         </button>
         <button
+          data-testid="tab-pending-fetch"
           onClick={() => setActiveTab('waitingExport')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'waitingExport'
             ? 'border-b-2 border-yellow-600 text-yellow-600'
@@ -1927,7 +1929,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         {renderPagination(true)}
 
         {loading ? (
-          <div className="flex justify-center items-center h-96">
+          <div data-testid="loading-overlay" className="flex justify-center items-center h-96">
             <Spinner />
           </div>
         ) : (
