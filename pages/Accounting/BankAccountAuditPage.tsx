@@ -25,6 +25,7 @@ interface AuditLog {
     confirmed_at?: string | null;
     confirmed_action?: string | null;
     note?: string | null;
+    mismatch_reason?: string | null;
     // COD document info
     cod_document_id?: number | null;
     cod_document_number?: string | null;
@@ -88,6 +89,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         log: AuditLog;
         orderId: string;
         orderAmount: number;
+        mismatchReason: string;
+        mismatchReasonError: string;
     } | null>(null);
 
     // State for COD document detail modal
@@ -214,6 +217,21 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     // Add additional order to an already-matched statement
     const handleAddOrder = async (log: AuditLog, orderId: string, orderAmount: number) => {
+        const currentTotal = (log.matched_orders || []).reduce((sum, m) => sum + m.confirmed_amount, 0);
+        const newTotal = currentTotal + orderAmount;
+        const diff = Math.abs(log.statement_amount - newTotal);
+        let mismatchReason = '';
+
+        if (diff > 0.01) {
+            const reason = window.prompt(`ยอดรวมไม่ตรงกัน (ส่วนต่าง ${formatCurrency(diff)})\nกรุณาระบุเหตุผล:`);
+            if (reason === null) return; // Cancelled
+            if (!reason.trim()) {
+                alert('กรุณาระบุเหตุผลเมื่อยอดเงินไม่ตรงกัน');
+                return;
+            }
+            mismatchReason = reason.trim();
+        }
+
         try {
             const res = await apiFetch('Statement_DB/reconcile_add.php', {
                 method: 'POST',
@@ -224,6 +242,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     statement_id: log.id,
                     order_id: orderId,
                     confirmed_amount: orderAmount,
+                    mismatch_reason: mismatchReason || null,
                     start_date: startDate,
                     end_date: endDate,
                 })
@@ -326,12 +345,19 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     const handleConfirmMatch = async (log: AuditLog, suggestedOrderId: string, knownOrderAmount?: number) => {
         const orderAmt = knownOrderAmount || (log as any).suggested_order_amount || log.order_amount || log.statement_amount;
-        setConfirmMatchPending({ log, orderId: suggestedOrderId, orderAmount: orderAmt });
+        setConfirmMatchPending({ log, orderId: suggestedOrderId, orderAmount: orderAmt, mismatchReason: '', mismatchReasonError: '' });
     };
 
     const executeConfirmMatch = async () => {
         if (!confirmMatchPending) return;
-        const { log, orderId: suggestedOrderId, orderAmount: orderAmt } = confirmMatchPending;
+        const { log, orderId: suggestedOrderId, orderAmount: orderAmt, mismatchReason } = confirmMatchPending;
+
+        const diff = Math.abs(log.statement_amount - orderAmt);
+        if (diff > 0.01 && !mismatchReason.trim()) {
+            setConfirmMatchPending({ ...confirmMatchPending, mismatchReasonError: 'กรุณาระบุเหตุผลที่ยอดเงินไม่ตรงกัน' });
+            return;
+        }
+
         setConfirmMatchPending(null);
 
         try {
@@ -346,7 +372,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     items: [{
                         statement_id: log.id,
                         order_id: suggestedOrderId,
-                        confirmed_amount: orderAmt
+                        confirmed_amount: orderAmt,
+                        mismatch_reason: mismatchReason.trim() || null
                     }]
                 })
             });
@@ -712,7 +739,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         const headers = [
             "ID", "Bank Account", "Statement Date/Time", "Statement Amount", "Channel",
             "Description", "Order ID", "Order Amount", "Payment Method", "Status",
-            "Confirmed At", "Note"
+            "Confirmed At", "Note", "Mismatch Reason"
         ];
 
         const rows = logs.map(log => [
@@ -733,7 +760,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                 log.status === 'Deposit' ? 'มัดจำรับ' :
                                     log.status,
             log.confirmed_at ? formatDate(log.confirmed_at) : '',
-            log.note || ''
+            log.note || '',
+            log.mismatch_reason || ''
         ]);
 
         downloadDataFile([headers, ...rows], `bank_audit_${startDate}_${endDate}`, type);
@@ -1120,7 +1148,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
                                                 {/* Status */}
                                                 <td className="px-4 py-3 text-center">
-                                                    <div className="flex flex-col gap-1 items-center" title={log.note || ''}>
+                                                    <div className="flex flex-col gap-1 items-center" title={[log.note, log.mismatch_reason].filter(Boolean).join('\n') || undefined}>
                                                         {log.status !== 'Unmatched' && (
                                                             <span className={`${getStatusColor(log.status)} shadow-sm cursor-help`}>
                                                                 {log.status === 'Exact' ? 'พอดี' :
@@ -1480,6 +1508,12 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                         <p className="font-medium text-gray-600">{r.note}</p>
                                                     </div>
                                                 )}
+                                                {r.mismatch_reason && (
+                                                    <div className="col-span-2 md:col-span-3">
+                                                        <span className="text-gray-400 text-xs text-red-500">เหตุผลยอดไม่ตรง</span>
+                                                        <p className="font-medium text-red-600">{r.mismatch_reason}</p>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -1526,6 +1560,28 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                     <span className="font-medium text-green-700">฿{confirmMatchPending.orderAmount.toLocaleString()}</span>
                                 </div>
                             </div>
+                            
+                            {Math.abs(confirmMatchPending.log.statement_amount - confirmMatchPending.orderAmount) > 0.01 && (
+                                <div className="mt-4">
+                                    <label className="block text-sm font-medium text-red-600 mb-1">
+                                        ยอดเงินไม่ตรงกัน กรุณาระบุเหตุผล <span className="text-red-500">*</span>
+                                    </label>
+                                    <textarea
+                                        value={confirmMatchPending.mismatchReason}
+                                        onChange={(e) => setConfirmMatchPending({
+                                            ...confirmMatchPending,
+                                            mismatchReason: e.target.value,
+                                            mismatchReasonError: ''
+                                        })}
+                                        className={`w-full p-2 border rounded-md text-sm ${confirmMatchPending.mismatchReasonError ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'}`}
+                                        rows={2}
+                                        placeholder="เช่น ลูกค้าโอนขาด, หักค่าธรรมเนียม, ฯลฯ"
+                                    />
+                                    {confirmMatchPending.mismatchReasonError && (
+                                        <p className="text-red-500 text-xs mt-1">{confirmMatchPending.mismatchReasonError}</p>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3 rounded-b-xl">
                             <button
