@@ -747,18 +747,18 @@ function handleConfirmQuota(PDO $conn, array $data) {
     // Delete existing auto_confirmed for this rate+user (re-confirm overwrites)
     $conn->prepare("
         UPDATE quota_allocations SET deleted_at = NOW()
-        WHERE quota_product_id = :qpId AND user_id = :uid AND source = 'auto_confirmed' AND source_detail = :rsId AND deleted_at IS NULL
-    ")->execute([':qpId' => $quotaProductId, ':uid' => $userId, ':rsId' => (string)$rateScheduleId]);
+        WHERE user_id = :uid AND source = 'auto_confirmed' AND source_detail = :rsId AND deleted_at IS NULL
+    ")->execute([':uid' => $userId, ':rsId' => (string)$rateScheduleId]);
 
-    // Insert confirmed allocation
+    // Insert confirmed allocation (Shared Pool: quota_product_id = NULL)
     $conn->prepare("
-        INSERT INTO quota_allocations (quota_product_id, user_id, company_id, quantity, source, source_detail, allocated_by, period_start, period_end)
-        VALUES (:qpId, :uid, :cid, :qty, 'auto_confirmed', :rsId, :ab, :ps, :pe)
+        INSERT INTO quota_allocations (quota_product_id, user_id, company_id, quantity, sales_at_allocation, source, source_detail, allocated_by, period_start, period_end)
+        VALUES (NULL, :uid, :cid, :qty, :sales, 'auto_confirmed', :rsId, :ab, :ps, :pe)
     ")->execute([
-        ':qpId' => $quotaProductId,
         ':uid' => $userId,
         ':cid' => $companyId,
         ':qty' => $autoQuota,
+        ':sales' => $totalSales,
         ':rsId' => (string)$rateScheduleId,
         ':ab' => $confirmedBy,
         ':ps' => $calcStart,
@@ -907,7 +907,7 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
             $stmtConf = $conn->prepare("
                 SELECT COALESCE(SUM(quantity), 0) AS confirmed_total
                 FROM quota_allocations
-                WHERE quota_product_id = :qpId AND user_id = :uid AND source = 'auto_confirmed'
+                WHERE (quota_product_id = :qpId OR quota_product_id IS NULL) AND user_id = :uid AND source = 'auto_confirmed'
                 AND source_detail = :rsId AND deleted_at IS NULL
             ");
             $stmtConf->execute([':qpId' => $quotaProductId, ':uid' => $userId, ':rsId' => (string)$latestRate['id']]);
@@ -971,31 +971,42 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
     }
     } // end else (latestRate exists)
 
-    // Admin-added quota
+    // Find all products sharing this rate schedule
+    $scopeIds = [$quotaProductId]; // fallback
+    if (!empty($latestRate['id'])) {
+        $stmtScopeIds = $conn->prepare("SELECT quota_product_id FROM quota_rate_scope WHERE rate_schedule_id = :rsId");
+        $stmtScopeIds->execute([':rsId' => $latestRate['id']]);
+        $fetchedIds = $stmtScopeIds->fetchAll(PDO::FETCH_COLUMN);
+        if (!empty($fetchedIds)) {
+            $scopeIds = array_map('intval', $fetchedIds);
+        }
+    }
+    $inScopeIds = implode(',', $scopeIds);
+
+    // Admin-added quota (Shared across scope)
     $adminQuery = "
         SELECT COALESCE(SUM(quantity), 0) AS admin_total FROM quota_allocations
-        WHERE quota_product_id = :qpId AND user_id = :userId AND source = 'admin' AND deleted_at IS NULL
+        WHERE (quota_product_id IN ($inScopeIds) OR (quota_product_id IS NULL AND source_detail = :rsId))
+        AND user_id = :userId AND source = 'admin' AND deleted_at IS NULL
         AND (valid_from IS NULL OR valid_from <= CURDATE())
         AND (valid_until IS NULL OR valid_until >= CURDATE())
     ";
-    $adminParams = [':qpId' => $quotaProductId, ':userId' => $userId];
+    $adminParams = [':userId' => $userId, ':rsId' => (string)($latestRate['id'] ?? 0)];
     if ($quotaMode === 'reset') {
         $adminQuery .= " AND period_start = :ps AND period_end = :pe";
         $adminParams[':ps'] = $periodStart;
         $adminParams[':pe'] = $periodEnd;
     }
-    $adminQuota = floatval($conn->prepare($adminQuery)->execute($adminParams) ? $conn->prepare($adminQuery) : 0);
-    // Re-run properly
     $stmtAdmin = $conn->prepare($adminQuery);
     $stmtAdmin->execute($adminParams);
     $adminQuota = floatval($stmtAdmin->fetch()['admin_total']);
 
-    // Usage
+    // Usage (Shared across scope)
     $usageQuery = "
         SELECT COALESCE(SUM(quantity_used), 0) AS total_used FROM quota_usage
-        WHERE quota_product_id = :qpId AND user_id = :userId AND deleted_at IS NULL
+        WHERE quota_product_id IN ($inScopeIds) AND user_id = :userId AND deleted_at IS NULL
     ";
-    $usageParams = [':qpId' => $quotaProductId, ':userId' => $userId];
+    $usageParams = [':userId' => $userId];
     if ($quotaMode === 'reset') {
         $usageQuery .= " AND period_start = :ps AND period_end = :pe";
         $usageParams[':ps'] = $periodStart;
@@ -1345,29 +1356,20 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
         $periodEnd = $calcEnd;
 
         if ($calcStart && $calcEnd) {
-            // Sum sales across all scope products with per-product rates
-            $totalPending = 0;
-            foreach ($scopeProducts as $sp) {
-                $qpId = intval($sp['quota_product_id']);
-                $spRate = floatval($sp['sales_per_quota'] ?? 0) ?: $headerSalesPerQuota;
-                $sales = _calcSalesInPeriod($conn, $userId, $qpId, $dateCol, $calcStart, $calcEnd);
-                $totalSales += $sales;
-                $totalPending += ($spRate > 0) ? floor($sales / $spRate) : 0;
-            }
-            $pendingAutoQuota = $totalPending;
+            $firstQpId = intval($scopeProducts[0]['quota_product_id']);
+            $totalSales = _calcSalesInPeriod($conn, $userId, $firstQpId, $dateCol, $calcStart, $calcEnd);
+            $pendingAutoQuota = ($headerSalesPerQuota > 0) ? floor($totalSales / $headerSalesPerQuota) : 0;
         } else {
             $pendingAutoQuota = 0;
         }
 
         $requireConfirm = intval($rate['require_confirm'] ?? 1);
         if ($requireConfirm) {
-            // Check confirmed allocations across all scope products
-            $in = implode(',', array_map('intval', $scopeProductIds));
             $stmtConf = $conn->prepare("
                 SELECT COALESCE(SUM(quantity), 0) AS confirmed_total,
                        MAX(sales_at_allocation) AS sales_at_allocation
                 FROM quota_allocations
-                WHERE quota_product_id IN ($in) AND user_id = :uid AND source = 'auto_confirmed'
+                WHERE user_id = :uid AND source = 'auto_confirmed'
                 AND source_detail = :rsId AND deleted_at IS NULL
             ");
             $stmtConf->execute([':uid' => $userId, ':rsId' => (string)$rate['id']]);
@@ -1423,25 +1425,20 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
                 $periodEnd = (clone $ps)->modify("+{$intervalDays} days")->format('Y-m-d');
             }
         }
-        // Sum across scope products
-        foreach ($scopeProducts as $sp) {
-            $qpId = intval($sp['quota_product_id']);
-            $spRate = floatval($sp['sales_per_quota'] ?? 0) ?: $headerSalesPerQuota;
-            $sales = _calcSalesInPeriod($conn, $userId, $qpId, $dateCol, $periodStart, $periodEnd);
-            $totalSales += $sales;
-            $autoQuota += ($spRate > 0) ? floor($sales / $spRate) : 0;
+        if (!empty($scopeProducts)) {
+            $firstQpId = intval($scopeProducts[0]['quota_product_id']);
+            $totalSales = _calcSalesInPeriod($conn, $userId, $firstQpId, $dateCol, $periodStart, $periodEnd);
+            $autoQuota = ($headerSalesPerQuota > 0) ? floor($totalSales / $headerSalesPerQuota) : 0;
         }
 
     } elseif ($quotaMode === 'cumulative') {
         // ====== CUMULATIVE MODE (backward compat) ======
         $periodStart = $rate['effective_date'];
         $periodEnd = date('Y-m-d');
-        foreach ($scopeProducts as $sp) {
-            $qpId = intval($sp['quota_product_id']);
-            $spRate = floatval($sp['sales_per_quota'] ?? 0) ?: $headerSalesPerQuota;
-            $sales = _calcSalesInPeriod($conn, $userId, $qpId, $dateCol, $periodStart, $periodEnd);
-            $totalSales += $sales;
-            $autoQuota += ($spRate > 0) ? floor($sales / $spRate) : 0;
+        if (!empty($scopeProducts)) {
+            $firstQpId = intval($scopeProducts[0]['quota_product_id']);
+            $totalSales = _calcSalesInPeriod($conn, $userId, $firstQpId, $dateCol, $periodStart, $periodEnd);
+            $autoQuota = ($headerSalesPerQuota > 0) ? floor($totalSales / $headerSalesPerQuota) : 0;
         }
     }
 
@@ -1553,49 +1550,31 @@ function handleBulkConfirmQuota(PDO $conn, array $data) {
         $uid = intval($uid);
         if (!$uid) continue;
 
-        // Calculate sales across scope products with per-product rates
-        $totalSales = 0;
-        $totalAutoQuota = 0;
-        foreach ($scopeProducts as $sp) {
-            $qpId = intval($sp['quota_product_id']);
-            $spRate = floatval($sp['sales_per_quota'] ?? 0) ?: $headerSalesPerQuota;
-            $sales = _calcSalesInPeriod($conn, $uid, $qpId, $dateCol, $calcStart, $calcEnd);
-            $totalSales += $sales;
-            $totalAutoQuota += ($spRate > 0) ? floor($sales / $spRate) : 0;
-        }
+        // Calculate sales ONCE for the rate schedule (Shared Pool)
+        $firstQpId = intval($scopeProducts[0]['quota_product_id']);
+        $totalSales = _calcSalesInPeriod($conn, $uid, $firstQpId, $dateCol, $calcStart, $calcEnd);
+        $totalAutoQuota = ($headerSalesPerQuota > 0) ? floor($totalSales / $headerSalesPerQuota) : 0;
 
-        // Delete + re-insert per scope product
-        foreach ($scopeProductIds as $qpId) {
-            $qpId = intval($qpId);
-            // Delete existing
-            $conn->prepare("
-                UPDATE quota_allocations SET deleted_at = NOW()
-                WHERE quota_product_id = :qpId AND user_id = :uid AND source = 'auto_confirmed' AND source_detail = :rsId AND deleted_at IS NULL
-            ")->execute([':qpId' => $qpId, ':uid' => $uid, ':rsId' => (string)$rateScheduleId]);
-        }
+        // Delete existing shared allocations for this rate
+        $conn->prepare("
+            UPDATE quota_allocations SET deleted_at = NOW()
+            WHERE user_id = :uid AND source = 'auto_confirmed' AND source_detail = :rsId AND deleted_at IS NULL
+        ")->execute([':uid' => $uid, ':rsId' => (string)$rateScheduleId]);
 
-        // Insert per scope product with pro-rata quota
-        foreach ($scopeProducts as $sp) {
-            $qpId = intval($sp['quota_product_id']);
-            $spRate = floatval($sp['sales_per_quota'] ?? 0) ?: $headerSalesPerQuota;
-            $sales = _calcSalesInPeriod($conn, $uid, $qpId, $dateCol, $calcStart, $calcEnd);
-            $prodQuota = ($spRate > 0) ? floor($sales / $spRate) : 0;
-
-            $conn->prepare("
-                INSERT INTO quota_allocations (quota_product_id, user_id, company_id, quantity, sales_at_allocation, source, source_detail, allocated_by, period_start, period_end)
-                VALUES (:qpId, :uid, :cid, :qty, :sales, 'auto_confirmed', :rsId, :ab, :ps, :pe)
-            ")->execute([
-                ':qpId' => $qpId,
-                ':uid' => $uid,
-                ':cid' => $companyId,
-                ':qty' => $prodQuota,
-                ':sales' => $sales,
-                ':rsId' => (string)$rateScheduleId,
-                ':ab' => $confirmedBy,
-                ':ps' => $calcStart,
-                ':pe' => $calcEnd,
-            ]);
-        }
+        // Insert 1 shared allocation per rate (quota_product_id = NULL)
+        $conn->prepare("
+            INSERT INTO quota_allocations (quota_product_id, user_id, company_id, quantity, sales_at_allocation, source, source_detail, allocated_by, period_start, period_end)
+            VALUES (NULL, :uid, :cid, :qty, :sales, 'auto_confirmed', :rsId, :ab, :ps, :pe)
+        ")->execute([
+            ':uid' => $uid,
+            ':cid' => $companyId,
+            ':qty' => $totalAutoQuota,
+            ':sales' => $totalSales,
+            ':rsId' => (string)$rateScheduleId,
+            ':ab' => $confirmedBy,
+            ':ps' => $calcStart,
+            ':pe' => $calcEnd,
+        ]);
 
         $results[] = ['userId' => $uid, 'confirmedQuota' => $totalAutoQuota, 'totalSales' => $totalSales];
     }
