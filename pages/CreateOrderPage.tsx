@@ -4541,31 +4541,37 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           // Check remaining for each quota product
           const details = await getUserQuotaDetail({ companyId: currentUser.companyId, userId: currentUser.id, rateScheduleId: 'all' });
-          
+
+          // Simulate quota deduction for shared quotas
+          const simulatedRates = details.map(d => ({
+            rateScheduleId: d.rateScheduleId,
+            remaining: Number(d.remaining ?? 0),
+            scopeIds: d.scopeIds || [],
+            isExpired: d.isExpired
+          }));
+
           for (const [qpId, needed] of neededMap.entries()) {
             if (needed <= 0) continue;
-            try {
-              let totalRemaining = 0;
-              let hasRate = false;
-              
-              const applicableRates = details.filter(d => 
-                  d.scopeIds && 
-                  d.scopeIds.includes(qpId) &&
-                  !d.isExpired
-              );
-              
-              for (const rate of applicableRates) {
-                  hasRate = true;
-                  totalRemaining += Number(rate.remaining ?? 0);
-              }
-              
-              if (hasRate && needed > totalRemaining) {
-                const name = nameMap.get(qpId) ?? `Product #${qpId}`;
-                alert(`โควตาไม่เพียงพอสำหรับ "${name}" — ต้องการ ${needed} แต่คงเหลือ ${totalRemaining}`);
-                return;
-              }
-            } catch (calcErr) {
-              console.warn('[Quota] Failed to check quota for product', qpId, calcErr);
+            let remainingNeeded = needed;
+
+            const applicableRates = simulatedRates.filter(r => 
+                r.scopeIds.includes(qpId) && !r.isExpired
+            );
+
+            // Deduct from applicable rates
+            for (const rate of applicableRates) {
+                if (remainingNeeded <= 0) break;
+                if (rate.remaining > 0) {
+                    const deduct = Math.min(rate.remaining, remainingNeeded);
+                    rate.remaining -= deduct;
+                    remainingNeeded -= deduct;
+                }
+            }
+
+            if (remainingNeeded > 0) {
+              const name = nameMap.get(qpId) ?? `Product #${qpId}`;
+              alert(`โควตาไม่เพียงพอสำหรับ "${name}" — ขาดอีก ${remainingNeeded} ชิ้น (ต้องการทั้งหมด ${needed})\\n(หมายเหตุ: อาจมีสินค้าอื่นใช้โควตากองกลางนี้ไปแล้ว)`);
+              return;
             }
           }
         }
