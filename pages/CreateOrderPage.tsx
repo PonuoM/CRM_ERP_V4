@@ -569,6 +569,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [newCustomerPhoneError, setNewCustomerPhoneError] = useState("");
 
+  const [shippingPhoneError, setShippingPhoneError] = useState("");
+
   const [newCustomerBackupPhoneErrors, setNewCustomerBackupPhoneErrors] = useState<string[]>([""]);
 
   const [editedCustomerFirstName, setEditedCustomerFirstName] = useState(
@@ -4236,8 +4238,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     if (value.length === 0) {
       setNewCustomerPhoneError("กรุณากรอกเบอร์โทรศัพท์");
-    } else if (value.length < 9 || value.length > 10) {
-      setNewCustomerPhoneError("เบอร์โทรต้องมี 9 หรือ 10 หลัก");
+    } else if (value.length !== 10) {
+      setNewCustomerPhoneError("เบอร์โทรต้องมี 10 หลัก");
     } else if (value[0] !== "0") {
       setNewCustomerPhoneError("เบอร์โทรต้องขึ้นต้นด้วย 0");
     } else {
@@ -4256,8 +4258,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       return;
     }
 
-    if (value.length < 9 || value.length > 10) {
-      setError("เบอร์โทรต้องมี 9 หรือ 10 หลัก");
+    if (value.length !== 10) {
+      setError("เบอร์โทรต้องมี 10 หลัก");
     } else if (value[0] !== "0") {
       setError("เบอร์โทรต้องขึ้นต้นด้วย 0");
     } else {
@@ -4314,8 +4316,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     if (value.length === 0) {
       setEditedCustomerPhoneError("");
-    } else if (value.length < 9 || value.length > 10) {
-      setEditedCustomerPhoneError("เบอร์โทรต้องมี 9 หรือ 10 หลัก");
+    } else if (value.length !== 10) {
+      setEditedCustomerPhoneError("เบอร์โทรต้องมี 10 หลัก");
     } else if (value[0] !== "0") {
       setEditedCustomerPhoneError("เบอร์โทรต้องขึ้นต้นด้วย 0");
     } else {
@@ -4410,9 +4412,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       // If shippingAddress.phone is empty, it will be automatically filled with selectedCustomer.phone or newCustomerPhone during payload creation
       if (shippingAddress.phone && shippingAddress.phone.trim() !== "") {
         const cleanedPhone = shippingAddress.phone.replace(/\D/g, "");
-        if (cleanedPhone.length < 9 || cleanedPhone.length > 10) {
+        if (cleanedPhone.length !== 10 || cleanedPhone[0] !== "0") {
           highlightField("shippingAddress");
-          alert("รูปแบบเบอร์โทร (ผู้รับ) ไม่ถูกต้อง กรุณากรอกเบอร์โทร 9-10 หลัก\n(หรือปล่อยว่าง หากต้องการให้ระบบใช้เบอร์หลักอัตโนมัติ)");
+          alert("รูปแบบเบอร์โทร (ผู้รับ) ไม่ถูกต้อง กรุณากรอกเบอร์โทร 10 หลัก และขึ้นต้นด้วย 0\n(หรือปล่อยว่าง หากต้องการให้ระบบใช้เบอร์หลักอัตโนมัติ)");
           setIsSaving(false);
           return;
         }
@@ -8227,7 +8229,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           เบอร์โทร (ผู้รับ)
                         </label>
 
-                        <div className="relative flex items-center">
+                        <div className="relative flex flex-col">
                           <input
                             type="text"
                             name="phone"
@@ -8238,16 +8240,32 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 ...prev,
                                 phone: numericValue,
                               }));
+
+                              if (numericValue.length > 0) {
+                                if (numericValue.length !== 10) {
+                                  setShippingPhoneError("เบอร์โทรต้องมี 10 หลัก");
+                                } else if (numericValue[0] !== "0") {
+                                  setShippingPhoneError("เบอร์โทรต้องขึ้นต้นด้วย 0");
+                                } else {
+                                  setShippingPhoneError("");
+                                }
+                              } else {
+                                setShippingPhoneError("");
+                              }
+
                               clearValidationErrorFor("shippingAddress");
                               if (selectedAddressOption === "profile") {
                                 setProfileAddressModified(true);
                               }
                             }}
-                            className={commonInputClass}
+                            className={`${commonInputClass} ${shippingPhoneError ? "border-red-500" : ""}`}
                             maxLength={10}
                             inputMode="numeric"
                             placeholder="08X-XXX-XXXX"
                           />
+                          {shippingPhoneError && (
+                            <p className="text-xs text-red-500 mt-1">{shippingPhoneError}</p>
+                          )}
                         </div>
                       </div>
                     </div>

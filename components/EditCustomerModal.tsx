@@ -23,6 +23,7 @@ interface AddressData {
 
 const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave, onClose }) => {
   const [formData, setFormData] = useState<Customer>(customer);
+  const [phoneError, setPhoneError] = useState<string>('');
   const [backupPhoneErrors, setBackupPhoneErrors] = useState<string[]>([]);
   const [backupPhones, setBackupPhones] = useState<string[]>(() => {
     const phones = (customer.backupPhone || '').split(',').map(p => p.trim()).filter(Boolean);
@@ -203,6 +204,25 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handlePrimaryPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/[^0-9]/g, "");
+    if (value.length > 10) return;
+
+    setFormData((prev) => ({ ...prev, phone: value }));
+
+    if (value.length > 0) {
+      if (value.length !== 10) {
+        setPhoneError("เบอร์โทรต้องมี 10 หลัก");
+      } else if (value[0] !== "0") {
+        setPhoneError("เบอร์โทรต้องขึ้นต้นด้วย 0");
+      } else {
+        setPhoneError("");
+      }
+    } else {
+      setPhoneError("");
+    }
+  };
+
   const handleBackupPhoneChange = (index: number, value: string) => {
     const cleanValue = value.replace(/[^0-9]/g, '');
     if (cleanValue.length > 10) return;
@@ -216,8 +236,10 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
 
     const newErrors = [...backupPhoneErrors];
     if (cleanValue.length > 0) {
-      if (cleanValue.length < 9 || cleanValue.length > 10) {
-        newErrors[index] = 'เบอร์สำรองต้องมี 9 หรือ 10 หลัก';
+      if (cleanValue.length !== 10) {
+        newErrors[index] = 'เบอร์สำรองต้องมี 10 หลัก';
+      } else if (cleanValue[0] !== '0') {
+        newErrors[index] = 'เบอร์สำรองต้องขึ้นต้นด้วย 0';
       } else {
         newErrors[index] = '';
       }
@@ -284,6 +306,16 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
+    if (!formData.phone || formData.phone.length !== 10 || formData.phone[0] !== '0') {
+      alert("กรุณากรอกเบอร์โทรศัพท์ 10 หลัก และขึ้นต้นด้วย 0");
+      return;
+    }
+
+    if (backupPhoneErrors.some(err => err !== '')) {
+      alert("กรุณาตรวจสอบรูปแบบเบอร์สำรองให้ถูกต้อง");
+      return;
+    }
+
     setIsSaving(true);
     try {
       await onSave(formData);
@@ -337,10 +369,13 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
             type="text"
             name="phone"
             value={formData.phone}
-            onChange={handleChange}
-            className={commonInputClass}
+            onChange={handlePrimaryPhoneChange}
+            className={`${commonInputClass} ${phoneError ? 'border-red-500' : ''}`}
             disabled={isSaving}
           />
+          {phoneError && (
+            <p className="text-xs text-red-500 mt-1">{phoneError}</p>
+          )}
         </div>
 
         <div>

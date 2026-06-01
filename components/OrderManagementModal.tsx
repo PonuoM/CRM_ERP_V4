@@ -268,6 +268,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const [cancellationError, setCancellationError] = useState<string>('');
   const cancellationRef = useRef<HTMLDivElement>(null);
   const [hasSlipChanges, setHasSlipChanges] = useState(false);
+  const [recipientPhoneError, setRecipientPhoneError] = useState<string>("");
 
   const [provinces, setProvinces] = useState<any[]>([]);
 
@@ -336,6 +337,25 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         ...(patch.postalCode !== undefined && { postal_code: patch.postalCode }),
       };
     });
+  };
+
+  const handleRecipientPhoneChange = (value: string) => {
+    const cleanedValue = value.replace(/[^0-9]/g, "");
+    if (cleanedValue.length > 10) return;
+
+    updateShippingAddress({ recipientPhone: cleanedValue });
+
+    if (cleanedValue.length > 0) {
+      if (cleanedValue.length !== 10) {
+        setRecipientPhoneError("เบอร์โทรต้องมี 10 หลัก");
+      } else if (cleanedValue[0] !== "0") {
+        setRecipientPhoneError("เบอร์โทรต้องขึ้นต้นด้วย 0");
+      } else {
+        setRecipientPhoneError("");
+      }
+    } else {
+      setRecipientPhoneError("");
+    }
   };
 
   const filteredProvinces = useMemo(() => {
@@ -2303,6 +2323,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const handleSave = async () => {
     if (!currentUser) return;
 
+    if (currentOrder.shippingAddress?.recipientPhone) {
+      const cleanedPhone = currentOrder.shippingAddress.recipientPhone.replace(/\D/g, "");
+      if (cleanedPhone.length !== 10 || cleanedPhone[0] !== "0") {
+        alert("รูปแบบเบอร์โทร (ผู้รับ) ไม่ถูกต้อง กรุณากรอกเบอร์โทร 10 หลัก และขึ้นต้นด้วย 0\n(หรือปล่อยว่าง หากต้องการให้ระบบใช้เบอร์หลักอัตโนมัติ)");
+        return;
+      }
+    }
+
     const returnStatusCheck = checkReturnStatusChange(currentOrder.orderStatus, currentOrder.boxes || []);
     
     if (returnStatusCheck.type === 'PROMPT_NEW_STATUS') {
@@ -2988,6 +3016,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           {isEditingAddressOnly && (
                             <button
                               onClick={async () => {
+                                if (currentOrder.shippingAddress?.recipientPhone) {
+                                  const cleanedPhone = currentOrder.shippingAddress.recipientPhone.replace(/\D/g, "");
+                                  if (cleanedPhone.length !== 10 || cleanedPhone[0] !== "0") {
+                                    alert("รูปแบบเบอร์โทร (ผู้รับ) ไม่ถูกต้อง กรุณากรอกเบอร์โทร 10 หลัก และขึ้นต้นด้วย 0\n(หรือปล่อยว่าง หากต้องการให้ระบบใช้เบอร์หลักอัตโนมัติ)");
+                                    return;
+                                  }
+                                }
                                 setIsSavingAddressOnly(true);
                                 try {
                                   const payload = {
@@ -3068,15 +3103,18 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       />
                     </div>
 
-                    <input
-                      placeholder="เบอร์โทรผู้รับ"
-                      value={currentOrder.shippingAddress?.recipientPhone || ""}
-                      disabled={isLocked && !isEditingAddressOnly}
-                      onChange={(e) =>
-                        updateShippingAddress({ recipientPhone: e.target.value })
-                      }
-                      className={`w-full p-2 text-sm border rounded ${(isLocked && !isEditingAddressOnly) ? "bg-gray-100 cursor-not-allowed" : ""}`}
-                    />
+                    <div>
+                      <input
+                        placeholder="เบอร์โทรผู้รับ"
+                        value={currentOrder.shippingAddress?.recipientPhone || ""}
+                        disabled={isLocked && !isEditingAddressOnly}
+                        onChange={(e) => handleRecipientPhoneChange(e.target.value)}
+                        className={`w-full p-2 text-sm border rounded ${(isLocked && !isEditingAddressOnly) ? "bg-gray-100 cursor-not-allowed" : ""} ${recipientPhoneError ? "border-red-500" : ""}`}
+                      />
+                      {recipientPhoneError && (
+                        <p className="text-xs text-red-500 mt-1">{recipientPhoneError}</p>
+                      )}
+                    </div>
 
                     <input
                       placeholder="ที่อยู่ (บ้านเลขที่ ซอย ถนน)"
