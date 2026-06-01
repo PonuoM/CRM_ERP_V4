@@ -17,7 +17,8 @@ try {
   $dateFrom = $_GET["date_from"] ?? $_GET["start_date"] ?? null;
   $dateTo = $_GET["date_to"] ?? $_GET["end_date"] ?? null;
   $pageIds = $_GET["page_ids"] ?? null;
-  $userIds = $_GET["user_ids"] ?? null;
+  $adsUserIds = $_GET["ads_user_ids"] ?? null;
+  $managerUserIds = $_GET["manager_user_ids"] ?? null;
   $companyId = $_GET["company_id"] ?? null;
   $adsGroups = $_GET["ads_groups"] ?? null;
 
@@ -33,8 +34,8 @@ try {
     $logWhere[] = "mal.date <= ?";
     $logParams[] = $dateTo;
   }
-  if ($userIds) {
-    $uIds = array_filter(explode(',', $userIds), 'is_numeric');
+  if ($adsUserIds) {
+    $uIds = array_filter(explode(',', $adsUserIds), 'is_numeric');
     if (!empty($uIds)) {
       $in = str_repeat('?,', count($uIds) - 1) . '?';
       $logWhere[] = "mal.user_id IN ($in)";
@@ -64,6 +65,15 @@ try {
       $logParams = array_merge($logParams, $pIds);
     }
   }
+  // Manager user filter for product ads
+  if ($managerUserIds) {
+    $mIds = array_filter(explode(',', $managerUserIds), 'is_numeric');
+    if (!empty($mIds)) {
+      $in = str_repeat('?,', count($mIds) - 1) . '?';
+      $logWhere[] = "mal.page_id IN (SELECT page_id FROM marketing_user_page WHERE user_id IN ($in))";
+      $logParams = array_merge($logParams, $mIds);
+    }
+  }
 
   $logWhereSql = implode(" AND ", $logWhere);
 
@@ -88,14 +98,16 @@ try {
       $orderParams = array_merge($orderParams, $pIds);
     }
   }
-  if ($userIds) {
-    $uIds = array_filter(explode(',', $userIds), 'is_numeric');
-    if (!empty($uIds)) {
-      $in = str_repeat('?,', count($uIds) - 1) . '?';
-      $orderWhere[] = "o.creator_id IN ($in)";
-      $orderParams = array_merge($orderParams, $uIds);
+  // Manager user filter for orders
+  if ($managerUserIds) {
+    $mIds = array_filter(explode(',', $managerUserIds), 'is_numeric');
+    if (!empty($mIds)) {
+      $in = str_repeat('?,', count($mIds) - 1) . '?';
+      $orderWhere[] = "o.sales_channel_page_id IN (SELECT page_id FROM marketing_user_page WHERE user_id IN ($in))";
+      $orderParams = array_merge($orderParams, $mIds);
     }
   }
+
   // Company filter for orders
   if ($companyId) {
     $orderWhere[] = "o.company_id = ?";
@@ -103,6 +115,22 @@ try {
   }
 
   $orderWhereSql = implode(" AND ", $orderWhere);
+
+  $grpWhere = ["ads_group IS NOT NULL AND ads_group != ''"];
+  $grpParams = [];
+  if ($companyId) {
+    $grpWhere[] = "company_id = ?";
+    $grpParams[] = $companyId;
+  }
+  if ($adsGroups) {
+    $adsGroupArray = array_filter(explode(',', $adsGroups));
+    if (!empty($adsGroupArray)) {
+      $in = implode(',', array_fill(0, count($adsGroupArray), '?'));
+      $grpWhere[] = "ads_group IN ($in)";
+      $grpParams = array_merge($grpParams, $adsGroupArray);
+    }
+  }
+  $grpWhereSql = implode(" AND ", $grpWhere);
 
   // Main Query: use products.ads_group as driving table so all groups always appear
   $query = "
@@ -124,8 +152,7 @@ try {
         COALESCE(sales.cancelled_orders, 0) as cancelled_orders
     FROM (
         SELECT DISTINCT ads_group FROM products
-        WHERE ads_group IS NOT NULL AND ads_group != ''
-        " . ($companyId ? "AND company_id = ?" : "") . "
+        WHERE $grpWhereSql
     ) grp
     LEFT JOIN (
         SELECT 
@@ -175,8 +202,7 @@ try {
     ORDER BY ads_agg.total_ads_cost DESC, sales.total_sales DESC
   ";
 
-  // Merge params: companyId (for products grp), logParams, orderParams, orderParams (returned_boxes)
-  $grpParams = $companyId ? [$companyId] : [];
+  // Merge params: grpParams, logParams, orderParams, orderParams (returned_boxes)
   $allParams = array_merge($grpParams, $logParams, $orderParams, $orderParams);
 
   $stmt = $conn->prepare($query);

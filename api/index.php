@@ -1332,7 +1332,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $cust = $stmt->fetch();
                     if (!$cust)
                         json_response(['error' => 'NOT_FOUND'], 404);
-                    $tags = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                    $tags = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
                     $tags->execute([$id]);
                     $cust['tags'] = $tags->fetchAll();
                     json_response($cust);
@@ -1746,7 +1746,7 @@ function handle_customers(PDO $pdo, ?string $id): void
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
-                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
                             $tagsStmt->execute([$customer['customer_id']]); // Use customer_id
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
@@ -1797,7 +1797,7 @@ function handle_customers(PDO $pdo, ?string $id): void
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
-                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
                             $tagsStmt->execute([$customer['customer_id']]);
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
@@ -2626,7 +2626,7 @@ function handle_customers(PDO $pdo, ?string $id): void
 
                 if ($updatedRow) {
                     // Fetch tags for the updated customer to ensure complete object
-                    $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                    $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
                     $tagsStmt->execute([$updatedRow['customer_id']]);
                     $updatedRow['tags'] = $tagsStmt->fetchAll();
 
@@ -9715,17 +9715,17 @@ function handle_customer_tags(PDO $pdo): void
             try {
                 $customerId = $_GET['customerId'] ?? null;
                 if ($customerId) {
-                    $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.customer_id=? ORDER BY t.name');
+                    $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to) ORDER BY t.name');
                     $stmt->execute([$customerId]);
                     json_response($stmt->fetchAll());
                 } else {
                     // Stream JSON output row-by-row to avoid OOM on large datasets
                     $companyId = $_GET['companyId'] ?? null;
                     if ($companyId) {
-                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id=ct.customer_id WHERE c.company_id=? ORDER BY ct.customer_id, t.name');
+                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id=ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE c.company_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to) ORDER BY ct.customer_id, t.name');
                         $stmt->execute([$companyId]);
                     } else {
-                        $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id ORDER BY ct.customer_id, t.name');
+                        $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE (ut.user_id IS NULL OR ut.user_id = c.assigned_to) ORDER BY ct.customer_id, t.name');
                     }
                     // Stream output to avoid loading everything into memory
                     http_response_code(200);
@@ -10014,7 +10014,7 @@ function handle_do_dashboard(PDO $pdo): void
 
         if ($includeCustomer) {
             // Add tags to customer
-            $tagStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+            $tagStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
             $tagStmt->execute([$customer['id']]);
             $customer['tags'] = $tagStmt->fetchAll();
 

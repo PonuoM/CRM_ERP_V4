@@ -1411,7 +1411,19 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const token = localStorage.getItem('token') || '';
 
         const url = `${resolveApiBasePath()}/Orders/export_orders_raw.php?company_id=${companyParam}&start_date=${startDateStr}&end_date=${endDateStr}&departments=${encodeURIComponent(deptParam)}&format=${type}&token=${token}`;
-        window.open(url, '_blank');
+        
+        if (type === 'xlsx') {
+          setIsExporting(true);
+          const response = await fetch(url.replace(`format=${type}`, 'format=json'));
+          const result = await response.json();
+          if (result.ok && result.data) {
+            downloadDataFile(result.data, `orders_raw_${startDateStr}_${endDateStr}`, 'xlsx');
+          } else {
+            throw new Error(result.error || 'Failed to fetch JSON');
+          }
+        } else {
+          window.open(url, '_blank');
+        }
       } catch (error) {
         console.error('Failed to export orders:', error);
         alert('ไม่สามารถดาวน์โหลดรายงานได้ กรุณาลองใหม่');
