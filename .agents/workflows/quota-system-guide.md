@@ -62,6 +62,9 @@ UNIQUE(`order_id, quota_product_id`)
 PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื่อ rate มี `quota_product_id = NULL`
 `sales_per_quota` DECIMAL(12,2) DEFAULT NULL — ยอดขาย/โควตาเฉพาะสินค้านี้ (NULL = ใช้ค่าจาก rate schedule)
 
+> **Shared Pool (โควตากองกลาง):** หาก 1 Rate ผูกกับหลายสินค้า (หลายแถวใน `quota_rate_scope`) ระบบจะถือว่า Rate นั้นเป็น "กองกลาง" สินค้าทุกตัวที่ผูกจะแชร์ยอดโควตาร่วมกัน (เวลาแจกจะแจกเป็นแถวเดียว `quota_product_id = NULL` ใน allocations)
+> **Independent Quota:** หาก 1 Rate ผูกกับสินค้าแค่ 1 ตัว จะทำหน้าที่เสมือนโควตาเฉพาะของสินค้านั้นๆ
+
 > ทุกตาราง soft delete (`deleted_at`) — ทุก SELECT ต้อง `WHERE deleted_at IS NULL`
 
 ---
@@ -123,14 +126,18 @@ PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื
 ### Global/Scoped (เพิ่มเติม)
 หลังคำนวณ product-specific → ค้นหา global/scoped rate → คำนวณ `globalAutoQuota + globalAdminQuota` → Total = all combined
 
-### Confirm mode
+### Confirm mode & Cumulative Usage (หนี้โควตา)
 - `require_confirm=1` → ดู allocation `source='auto_confirmed'` → autoQuota = confirmedAmount (freeze)
 - `require_confirm=0` → autoQuota = pendingAutoQuota (อัตโนมัติ)
 - `usage_end_date < today` → isExpired, remaining = 0
 - `usage_start_date > today` → isBeforeUsageStart, autoQuota = 0
+- **Cumulative Usage (ยอดใช้งานสะสม):** ในโหมด Confirm ระบบจะดึงยอดการใช้งานสะสมทั้งหมดของสินค้านั้น (All-time Usage) มาคำนวณ หากเดือนที่แล้วพนักงานใช้ทะลุโควตา (Overuse) "ส่วนที่ใช้เกินจะกลายเป็นหนี้โควตา" และจะไปหักลบกับโควตา Rate ใหม่ที่ถูกสร้างขึ้นในเดือนถัดไปทันที
 
 ### Cumulative Segmented
 เปลี่ยน rate → แบ่ง segment แต่ละช่วง ใช้ rate ของตัวเอง → รวม autoQuota ทุก segment | Rate reset ตัดสะสมทิ้ง
+
+### ⚠️ Frontend Quota Deduction Simulation
+ระบบหน้าบ้าน (CreateOrderPage) จะดักจับการหักโควตากองกลางก่อนยิง API โดยการจำลอง (Simulation) หักยอดทีละสินค้า หากพบว่ายอดรวมของทุกสินค้าที่ใช้กองกลางเดียวกันเกินจำนวนสิทธิ์ที่เหลือ จะบล็อคออเดอร์ทันที
 
 ---
 
