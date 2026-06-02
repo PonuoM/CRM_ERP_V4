@@ -9806,7 +9806,7 @@ function handle_customer_tags(PDO $pdo): void
                 $customer = $findStmt->fetch();
 
                 if ($customer) {
-                    $stmt = $pdo->prepare('INSERT INTO customer_tags (customer_id, tag_id) VALUES (?, ?)');
+                    $stmt = $pdo->prepare('INSERT IGNORE INTO customer_tags (customer_id, tag_id) VALUES (?, ?)');
                     $stmt->execute([$customer['customer_id'], $tid]);
                     json_response(['ok' => true]);
                 } else {
