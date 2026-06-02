@@ -1462,6 +1462,54 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
     $adminQuota = floatval($stmtAdmin->fetch()['admin_total']);
 
     // Usage — sum across scope products
+    $in = implode(',', array_map('intval', $scopeProductIds));
+    $carriedDebt = 0;
+
+    if ($quotaMode === 'confirm') {
+        // [NEW] 1. หารายการรอบบิลโควตาทั้งหมดในอดีตที่เกี่ยวกับสินค้านี้ เรียงตามเวลา
+        $stmtRates = $conn->prepare("
+            SELECT rs.id, rs.usage_start_date, rs.usage_end_date
+            FROM quota_rate_schedules rs
+            JOIN quota_rate_scope scope ON scope.rate_schedule_id = rs.id
+            WHERE scope.quota_product_id IN ($in) 
+              AND rs.quota_mode = 'confirm' 
+              AND rs.deleted_at IS NULL
+            GROUP BY rs.id, rs.usage_start_date, rs.usage_end_date
+            ORDER BY rs.usage_start_date ASC
+        ");
+        $stmtRates->execute();
+        $historyRates = $stmtRates->fetchAll(PDO::FETCH_ASSOC);
+
+        // [NEW] 2. Loop คำนวณทีละรอบบิลเพื่อหายอดยกมา (carried debt)
+        foreach ($historyRates as $hr) {
+            if ($hr['id'] == $rate['id']) {
+                break; // ถึงรอบปัจจุบัน ให้หยุด loop
+            }
+
+            // A. หารายรับของรอบบิลนั้นๆ
+            $sConf = $conn->prepare("SELECT COALESCE(SUM(quantity), 0) FROM quota_allocations WHERE user_id = :uid AND source = 'auto_confirmed' AND source_detail = :rsId AND deleted_at IS NULL");
+            $sConf->execute([':uid' => $userId, ':rsId' => (string)$hr['id']]);
+            $histIncome = floatval($sConf->fetchColumn());
+
+            // B. หารายจ่ายของรอบบิลนั้นๆ
+            $sUsage = $conn->prepare("SELECT COALESCE(SUM(quantity_used), 0) FROM quota_usage WHERE user_id = :uid AND quota_product_id IN ($in) AND created_at >= :start AND created_at <= :end AND deleted_at IS NULL");
+            $start = ($hr['usage_start_date'] ?: '1970-01-01') . ' 00:00:00';
+            $end = ($hr['usage_end_date'] ?: '2099-12-31') . ' 23:59:59';
+            $sUsage->execute([':uid' => $userId, ':start' => $start, ':end' => $end]);
+            $histUsage = floatval($sUsage->fetchColumn());
+
+            // C. คำนวณสมดุล (Balance)
+            $balance = $histIncome + $carriedDebt - $histUsage;
+
+            // D. ตัดบวก ทบลบ!
+            if ($balance < 0) {
+                $carriedDebt = $balance; // ติดลบ ยกยอดไป
+            } else {
+                $carriedDebt = 0; // เป็นบวก หมดอายุ
+            }
+        }
+    }
+
     $usageQuery = "
         SELECT COALESCE(SUM(quantity_used), 0) AS total_used
         FROM quota_usage
@@ -1472,10 +1520,26 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
         $usageQuery .= " AND period_start = :ps AND period_end = :pe";
         $usageParams[':ps'] = $periodStart;
         $usageParams[':pe'] = $periodEnd;
+    } elseif ($quotaMode === 'confirm') {
+        if (!empty($rate['usage_start_date'])) {
+            $usageQuery .= " AND created_at >= :usgStart";
+            $usageParams[':usgStart'] = $rate['usage_start_date'] . ' 00:00:00';
+        }
+        if (!empty($rate['usage_end_date'])) {
+            $usageQuery .= " AND created_at <= :usgEnd";
+            $usageParams[':usgEnd'] = $rate['usage_end_date'] . ' 23:59:59';
+        }
     }
+    
     $stmtUsage = $conn->prepare($usageQuery);
     $stmtUsage->execute($usageParams);
-    $totalUsed = floatval($stmtUsage->fetch()['total_used']);
+    $currentPeriodUsage = floatval($stmtUsage->fetch()['total_used']);
+
+    if ($quotaMode === 'confirm') {
+        $totalUsed = $currentPeriodUsage + abs($carriedDebt);
+    } else {
+        $totalUsed = $currentPeriodUsage;
+    }
 
     $totalQuota = $autoQuota + $adminQuota;
     $remaining = $totalQuota - $totalUsed;

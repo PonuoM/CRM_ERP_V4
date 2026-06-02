@@ -1332,8 +1332,8 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $cust = $stmt->fetch();
                     if (!$cust)
                         json_response(['error' => 'NOT_FOUND'], 404);
-                    $tags = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
-                    $tags->execute([$id]);
+                    $tags = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?)');
+                    $tags->execute([$id, $user['id']]);
                     $cust['tags'] = $tags->fetchAll();
                     json_response($cust);
                 } elseif (isset($_GET['action']) && $_GET['action'] === 'count_by_baskets') {
@@ -1746,8 +1746,8 @@ function handle_customers(PDO $pdo, ?string $id): void
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
-                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
-                            $tagsStmt->execute([$customer['customer_id']]); // Use customer_id
+                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?)');
+                            $tagsStmt->execute([$customer['customer_id'], $user['id']]); // Use customer_id
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
 
@@ -1797,8 +1797,8 @@ function handle_customers(PDO $pdo, ?string $id): void
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
-                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
-                            $tagsStmt->execute([$customer['customer_id']]);
+                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?)');
+                            $tagsStmt->execute([$customer['customer_id'], $user['id']]);
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
 
@@ -2236,9 +2236,13 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $tagsSql = "SELECT ct.customer_id, t.* 
                                        FROM tags t 
                                        JOIN customer_tags ct ON ct.tag_id = t.id 
-                                       WHERE ct.customer_id IN ($placeholders)";
+                                       LEFT JOIN user_tags ut ON ut.tag_id = t.id 
+                                       WHERE ct.customer_id IN ($placeholders)
+                                       AND (ut.user_id IS NULL OR ut.user_id = ?)";
                             $tagsStmt = $pdo->prepare($tagsSql);
-                            $tagsStmt->execute($customerIds);
+                            $params = $customerIds;
+                            $params[] = $user['id'];
+                            $tagsStmt->execute($params);
                             $allTags = $tagsStmt->fetchAll(PDO::FETCH_GROUP | PDO::FETCH_ASSOC); // Group by customer_id
 
                             foreach ($customers as &$customer) {
@@ -2626,8 +2630,8 @@ function handle_customers(PDO $pdo, ?string $id): void
 
                 if ($updatedRow) {
                     // Fetch tags for the updated customer to ensure complete object
-                    $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
-                    $tagsStmt->execute([$updatedRow['customer_id']]);
+                    $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?)');
+                    $tagsStmt->execute([$updatedRow['customer_id'], $user['id']]);
                     $updatedRow['tags'] = $tagsStmt->fetchAll();
 
                     json_response($updatedRow);
@@ -6144,8 +6148,26 @@ function handle_orders(PDO $pdo, ?string $id): void
                 if (isset($in['items']) && is_array($in['items'])) {
                     $itemCreatorId = $in['creatorId'] ?? $existingOrder['creator_id'] ?? null;
 
-                    // 1. Clear old allocations and items to prevent duplicates/conflicts
-                    // Delete all items with order_id matching parent_order_id or sub-order IDs (parent_order_id-*)
+                    // 1. Backup old items for Upsell preserving
+                    $oldItemsStmt = $pdo->prepare('SELECT id, creator_id, basket_key_at_sale FROM order_items WHERE parent_order_id = ?');
+                    $oldItemsStmt->execute([$id]);
+                    $oldItemsMap = [];
+                    foreach ($oldItemsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                        $oldItemsMap[$row['id']] = $row;
+                    }
+
+                    // Fetch current customer basket for new upsell items
+                    $currentBasket = null;
+                    if (!empty($existingOrder['customer_id'])) {
+                        $custStmt = $pdo->prepare('SELECT current_basket_key FROM customers WHERE customer_id = ?');
+                        $custStmt->execute([$existingOrder['customer_id']]);
+                        $fetchedBasket = $custStmt->fetchColumn();
+                        if ($fetchedBasket) {
+                            $currentBasket = (string)$fetchedBasket;
+                        }
+                    }
+
+                    // 1.5 Clear old allocations and items to prevent duplicates/conflicts
                     $pdo->prepare('DELETE FROM order_item_allocations WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
                     $pdo->prepare('DELETE FROM order_items WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
 
@@ -6200,6 +6222,14 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $boxNumber = isset($it['boxNumber']) ? (int) $it['boxNumber'] : 1;
                             $orderIdForItem = $getOrderIdForBox($boxNumber);
                             [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
+
+                            $thisCreatorId = $itemCreatorId;
+                            $thisBasketKey = $currentBasket ?? $orderBasketKey;
+                            if (isset($it['id']) && isset($oldItemsMap[$it['id']])) {
+                                $thisCreatorId = $oldItemsMap[$it['id']]['creator_id'];
+                                $thisBasketKey = $oldItemsMap[$it['id']]['basket_key_at_sale'];
+                            }
+
                             $ins->execute([
                                 $orderIdForItem,
                                 $id,
@@ -6214,8 +6244,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $it['promotionId'] ?? null,
                                 null,
                                 1,
-                                $itemCreatorId,
-                                $orderBasketKey,
+                                $thisCreatorId,
+                                $thisBasketKey,
                             ]);
                             $dbId = (int) $pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -6233,6 +6263,14 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $boxNumber = isset($it['boxNumber']) ? (int) $it['boxNumber'] : 1;
                             $orderIdForItem = $getOrderIdForBox($boxNumber);
                             [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
+
+                            $thisCreatorId = $itemCreatorId;
+                            $thisBasketKey = $currentBasket ?? $orderBasketKey;
+                            if (isset($it['id']) && isset($oldItemsMap[$it['id']])) {
+                                $thisCreatorId = $oldItemsMap[$it['id']]['creator_id'];
+                                $thisBasketKey = $oldItemsMap[$it['id']]['basket_key_at_sale'];
+                            }
+
                             $ins->execute([
                                 $orderIdForItem,
                                 $id,
@@ -6247,8 +6285,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $it['promotionId'] ?? null,
                                 null,
                                 0,
-                                $itemCreatorId,
-                                $orderBasketKey,
+                                $thisCreatorId,
+                                $thisBasketKey,
                             ]);
                             $dbId = (int) $pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -6297,6 +6335,14 @@ function handle_orders(PDO $pdo, ?string $id): void
                             if ($overridePrice !== null && !$isFreebie) {
                                 $netTotal = $overridePrice * $parentQty;
                             }
+
+                            $thisCreatorId = $itemCreatorId;
+                            $thisBasketKey = $currentBasket ?? $orderBasketKey;
+                            if (isset($it['id']) && isset($oldItemsMap[$it['id']])) {
+                                $thisCreatorId = $oldItemsMap[$it['id']]['creator_id'];
+                                $thisBasketKey = $oldItemsMap[$it['id']]['basket_key_at_sale'];
+                            }
+
                             $ins->execute([
                                 $orderIdForItem,
                                 $id,
@@ -6311,8 +6357,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $it['promotionId'] ?? null,
                                 $resolved,
                                 0,
-                                $itemCreatorId,
-                                $orderBasketKey,
+                                $thisCreatorId,
+                                $thisBasketKey,
                             ]);
                             $dbId = (int) $pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -9562,29 +9608,25 @@ function handle_tags(PDO $pdo, ?string $id): void
             }
 
             // Check for existing tag with the same name/type
-            $existingStmt = $pdo->prepare('SELECT id FROM tags WHERE name = ? AND type = ? LIMIT 1');
-            $existingStmt->execute([$name, $tagType]);
+            if ($tagType === 'USER' && $userId) {
+                // Check ONLY if THIS user already owns a tag with this name
+                $existingStmt = $pdo->prepare('
+                    SELECT t.id 
+                    FROM tags t 
+                    JOIN user_tags ut ON ut.tag_id = t.id 
+                    WHERE t.name = ? AND t.type = ? AND ut.user_id = ? 
+                    LIMIT 1
+                ');
+                $existingStmt->execute([$name, $tagType, $userId]);
+            } else {
+                // For SYSTEM tags, check globally
+                $existingStmt = $pdo->prepare('SELECT id FROM tags WHERE name = ? AND type = ? LIMIT 1');
+                $existingStmt->execute([$name, $tagType]);
+            }
             $existingId = (int) $existingStmt->fetchColumn();
 
             if ($existingId) {
-                // If USER tag, ensure link exists
-                if ($tagType === 'USER' && $userId) {
-                    $linkCheck = $pdo->prepare('SELECT 1 FROM user_tags WHERE user_id = ? AND tag_id = ?');
-                    $linkCheck->execute([$userId, $existingId]);
-                    if (!$linkCheck->fetchColumn()) {
-                        // Re-check quota before linking
-                        $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags ut JOIN tags t ON t.id = ut.tag_id WHERE ut.user_id = ? AND t.type = \'USER\'');
-                        $countStmt->execute([$userId]);
-                        $tagCount = (int) $countStmt->fetchColumn();
-                        if ($tagCount >= 10) {
-                            json_response(['error' => 'TAG_LIMIT_REACHED', 'message' => 'User has reached the maximum limit of 10 tags'], 400);
-                            return;
-                        }
-
-                        $linkStmt = $pdo->prepare('INSERT INTO user_tags (user_id, tag_id) VALUES (?, ?)');
-                        $linkStmt->execute([$userId, $existingId]);
-                    }
-                }
+                // If found, it already belongs to this user (or is a SYSTEM tag)
                 json_response(['id' => $existingId, 'existing' => true]);
                 break;
             }
@@ -9710,22 +9752,29 @@ function handle_tags(PDO $pdo, ?string $id): void
 
 function handle_customer_tags(PDO $pdo): void
 {
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $authUserId = $user['id'];
+
     switch (method()) {
         case 'GET':
             try {
                 $customerId = $_GET['customerId'] ?? null;
                 if ($customerId) {
-                    $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to) ORDER BY t.name');
-                    $stmt->execute([$customerId]);
+                    $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY t.name');
+                    $stmt->execute([$customerId, $authUserId]);
                     json_response($stmt->fetchAll());
                 } else {
                     // Stream JSON output row-by-row to avoid OOM on large datasets
                     $companyId = $_GET['companyId'] ?? null;
                     if ($companyId) {
-                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id=ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE c.company_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to) ORDER BY ct.customer_id, t.name');
-                        $stmt->execute([$companyId]);
+                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id=ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE c.company_id=? AND (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY ct.customer_id, t.name');
+                        $stmt->execute([$companyId, $authUserId]);
                     } else {
-                        $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE (ut.user_id IS NULL OR ut.user_id = c.assigned_to) ORDER BY ct.customer_id, t.name');
+                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY ct.customer_id, t.name');
+                        $stmt->execute([$authUserId]);
                     }
                     // Stream output to avoid loading everything into memory
                     http_response_code(200);
@@ -10014,8 +10063,8 @@ function handle_do_dashboard(PDO $pdo): void
 
         if ($includeCustomer) {
             // Add tags to customer
-            $tagStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id JOIN customers c ON c.customer_id = ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = c.assigned_to)');
-            $tagStmt->execute([$customer['id']]);
+            $tagStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?)');
+            $tagStmt->execute([$customer['id'], $userId]);
             $customer['tags'] = $tagStmt->fetchAll();
 
             $doCustomers[] = $customer;

@@ -126,12 +126,14 @@ PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื
 ### Global/Scoped (เพิ่มเติม)
 หลังคำนวณ product-specific → ค้นหา global/scoped rate → คำนวณ `globalAutoQuota + globalAdminQuota` → Total = all combined
 
-### Confirm mode & Cumulative Usage (หนี้โควตา)
+### Confirm mode & Cumulative Usage (หนี้โควตา / หนี้ยกมา)
 - `require_confirm=1` → ดู allocation `source='auto_confirmed'` → autoQuota = confirmedAmount (freeze)
 - `require_confirm=0` → autoQuota = pendingAutoQuota (อัตโนมัติ)
 - `usage_end_date < today` → isExpired, remaining = 0
 - `usage_start_date > today` → isBeforeUsageStart, autoQuota = 0
-- **Cumulative Usage (ยอดใช้งานสะสม):** ในโหมด Confirm ระบบจะดึงยอดการใช้งานสะสมทั้งหมดของสินค้านั้น (All-time Usage) มาคำนวณ หากเดือนที่แล้วพนักงานใช้ทะลุโควตา (Overuse) "ส่วนที่ใช้เกินจะกลายเป็นหนี้โควตา" และจะไปหักลบกับโควตา Rate ใหม่ที่ถูกสร้างขึ้นในเดือนถัดไปทันที
+- **นโยบาย "ตัดบวก ทบลบ" (Expire Positive, Carry Forward Negative):** ในโหมด Confirm ระบบจะทำการคำนวณทีละรอบบิล (Period-by-period) ตามลำดับเวลา เพื่อหา "ยอดยกมา (Carried Debt)"
+  - **หากรอบบิลก่อนหน้าใช้ไม่หมด (Balance เป็นบวก):** โควตาที่เหลือจะหมดอายุ และตัดทิ้งไป (`carriedDebt = 0`)
+  - **หากรอบบิลก่อนหน้าใช้เกินโควตา (Balance เป็นลบ):** ส่วนที่ใช้เกินจะกลายเป็นหนี้โควตา และถูกนำไปบวกทบเป็นยอดการใช้งาน (Usage) ของรอบบิลปัจจุบัน เพื่อหักลบโควตารอบใหม่ทันที (`carriedDebt = balance`)
 
 ### Cumulative Segmented
 เปลี่ยน rate → แบ่ง segment แต่ละช่วง ใช้ rate ของตัวเอง → รวม autoQuota ทุก segment | Rate reset ตัดสะสมทิ้ง
