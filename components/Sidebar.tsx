@@ -268,6 +268,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Export Template Settings", icon: FileSpreadsheet, key: "nav.export_template_settings" },
         { label: "Search", icon: Search, key: "nav.search" },
         { label: "ตรวจสอบคำสั่งซื้อ", icon: ClipboardList, key: "nav.cancellation_management" },
+        { label: "Quota Settings", icon: Package, key: "data.quota_settings" },
       ]
     },
     {
@@ -352,7 +353,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       children: [
         { label: "Users", icon: Users, key: "data.users" },
         { label: "Products", icon: Package, key: "data.products" },
-        { label: "Quota Settings", icon: Package, key: "data.quota_settings" },
         { label: "Pages", icon: Share2, key: "data.pages" },
         { label: "Platforms", icon: Share2, key: "data.platforms" },
         { label: "Bank Accounts", icon: Database, key: "data.bank_accounts" },
