@@ -232,20 +232,13 @@ function handleListAllocations(PDO $conn) {
         LEFT JOIN users u ON u.id = qa.user_id
         LEFT JOIN users ab ON ab.id = qa.allocated_by
         LEFT JOIN quota_products qp ON qp.id = qa.quota_product_id
-        LEFT JOIN quota_rate_schedules qrs ON qrs.id = qa.source_detail AND qa.source = 'auto_confirmed'
+        LEFT JOIN quota_rate_schedules qrs ON qrs.id = qa.rate_schedule_id
         $whereClause
         ORDER BY qa.created_at DESC
         LIMIT 200
     ");
     $stmt->execute($params);
     $allocations = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // [Clean up source_detail for UI]
-    foreach ($allocations as &$alloc) {
-        if ($alloc['source'] === 'transfer' && preg_match('/^RS:\d+\|/', $alloc['source_detail'])) {
-            $alloc['source_detail'] = preg_replace('/^RS:\d+\|/', '', $alloc['source_detail']);
-        }
-    }
 
     json_response(['success' => true, 'data' => $allocations]);
 }
@@ -757,19 +750,19 @@ function handleConfirmQuota(PDO $conn, array $data) {
     // Delete existing auto_confirmed for this rate+user (re-confirm overwrites)
     $conn->prepare("
         UPDATE quota_allocations SET deleted_at = NOW()
-        WHERE user_id = :uid AND source = 'auto_confirmed' AND source_detail = :rsId AND deleted_at IS NULL
-    ")->execute([':uid' => $userId, ':rsId' => (string)$rateScheduleId]);
+        WHERE user_id = :uid AND source = 'auto_confirmed' AND rate_schedule_id = :rsId AND deleted_at IS NULL
+    ")->execute([':uid' => $userId, ':rsId' => $rateScheduleId]);
 
     // Insert confirmed allocation (Shared Pool: quota_product_id = NULL)
     $conn->prepare("
-        INSERT INTO quota_allocations (quota_product_id, user_id, company_id, quantity, sales_at_allocation, source, source_detail, allocated_by, period_start, period_end)
-        VALUES (NULL, :uid, :cid, :qty, :sales, 'auto_confirmed', :rsId, :ab, :ps, :pe)
+        INSERT INTO quota_allocations (quota_product_id, rate_schedule_id, user_id, company_id, quantity, sales_at_allocation, source, source_detail, allocated_by, period_start, period_end)
+        VALUES (NULL, :rsId, :uid, :cid, :qty, :sales, 'auto_confirmed', NULL, :ab, :ps, :pe)
     ")->execute([
+        ':rsId' => $rateScheduleId,
         ':uid' => $userId,
         ':cid' => $companyId,
         ':qty' => $autoQuota,
         ':sales' => $totalSales,
-        ':rsId' => (string)$rateScheduleId,
         ':ab' => $confirmedBy,
         ':ps' => $calcStart,
         ':pe' => $calcEnd,
@@ -800,13 +793,15 @@ function handleAllocate(PDO $conn, array $data) {
     }
 
     $stmt = $conn->prepare("
-        INSERT INTO quota_allocations 
-            (quota_product_id, user_id, company_id, quantity, source, source_detail, allocated_by, period_start, period_end, valid_from, valid_until)
-        VALUES 
-            (:qpId, :userId, :companyId, :qty, :source, :detail, :allocBy, :ps, :pe, :vf, :vu)
-    ");
+            INSERT INTO quota_allocations 
+                (quota_product_id, rate_schedule_id, user_id, company_id, quantity, source, source_detail, allocated_by, period_start, period_end, valid_from, valid_until)
+            VALUES 
+                (:qpId, :rsId, :userId, :companyId, :qty, :source, :detail, :allocBy, :ps, :pe, :vf, :vu)
+        ");
+
     $stmt->execute([
         ':qpId' => $quotaProductId ?: null,
+        ':rsId' => null, // Admin manual allocation is not currently tied to rate schedule from UI
         ':userId' => $userId,
         ':companyId' => $companyId,
         ':qty' => $quantity,
@@ -876,9 +871,9 @@ function handleTransferQuota(PDO $conn, array $data) {
 
         $stmt = $conn->prepare("
             INSERT INTO quota_allocations 
-                (quota_product_id, user_id, company_id, quantity, source, source_detail, allocated_by)
+                (quota_product_id, rate_schedule_id, user_id, company_id, quantity, source, source_detail, allocated_by)
             VALUES 
-                (:qpId, :userId, :companyId, :qty, 'transfer', :detail, :allocBy)
+                (:qpId, :rsId, :userId, :companyId, :qty, 'transfer', :detail, :allocBy)
         ");
 
         $remainingToTransfer = $quantity;
@@ -896,20 +891,22 @@ function handleTransferQuota(PDO $conn, array $data) {
             // Deduct from Source (Use Shared Pool: NULL)
             $stmt->execute([
                 ':qpId' => null,
+                ':rsId' => $rId,
                 ':userId' => $fromUserId,
                 ':companyId' => $companyId,
                 ':qty' => -$transferAmount,
-                ':detail' => "RS:" . $rId . "|" . $sDetailDeduct,
+                ':detail' => $sDetailDeduct,
                 ':allocBy' => $allocatedBy,
             ]);
 
             // Add to Target (Use Shared Pool: NULL)
             $stmt->execute([
                 ':qpId' => null,
+                ':rsId' => $rId,
                 ':userId' => $toUserId,
                 ':companyId' => $companyId,
                 ':qty' => $transferAmount,
-                ':detail' => "RS:" . $rId . "|" . $sDetailAdd,
+                ':detail' => $sDetailAdd,
                 ':allocBy' => $allocatedBy,
             ]);
         }
@@ -1018,7 +1015,7 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
                 SELECT COALESCE(SUM(quantity), 0) AS confirmed_total
                 FROM quota_allocations
                 WHERE (quota_product_id = :qpId OR quota_product_id IS NULL) AND user_id = :uid AND source = 'auto_confirmed'
-                AND source_detail = :rsId AND deleted_at IS NULL
+                AND rate_schedule_id = :rsId AND deleted_at IS NULL
             ");
             $stmtConf->execute([':qpId' => $quotaProductId, ':uid' => $userId, ':rsId' => (string)$latestRate['id']]);
             $confirmedQuota = floatval($stmtConf->fetch()['confirmed_total']);
@@ -1096,7 +1093,7 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
     // Admin-added quota (Shared across scope)
     $adminQuery = "
         SELECT COALESCE(SUM(quantity), 0) AS admin_total FROM quota_allocations
-        WHERE (quota_product_id IN ($inScopeIds) OR (quota_product_id IS NULL AND source_detail = :rsId))
+        WHERE (quota_product_id IN ($inScopeIds) OR (quota_product_id IS NULL AND rate_schedule_id = :rsId))
         AND user_id = :userId AND source IN ('admin', 'transfer') AND deleted_at IS NULL
         AND (valid_from IS NULL OR valid_from <= CURDATE())
         AND (valid_until IS NULL OR valid_until >= CURDATE())
@@ -1494,7 +1491,7 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
                        MAX(sales_at_allocation) AS sales_at_allocation
                 FROM quota_allocations
                 WHERE user_id = :uid AND source = 'auto_confirmed'
-                AND source_detail = :rsId AND deleted_at IS NULL
+                AND rate_schedule_id = :rsId AND deleted_at IS NULL
             ");
             $stmtConf->execute([':uid' => $userId, ':rsId' => (string)$rate['id']]);
             $confRow = $stmtConf->fetch(PDO::FETCH_ASSOC);
@@ -1571,7 +1568,7 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
     $adminQuery = "
         SELECT COALESCE(SUM(quantity), 0) AS admin_total
         FROM quota_allocations
-        WHERE (quota_product_id IN ($in) OR (quota_product_id IS NULL AND source_detail LIKE CONCAT('RS:', :rsId, '|%')))
+        WHERE (quota_product_id IN ($in) OR (quota_product_id IS NULL AND rate_schedule_id = :rsId))
         AND user_id = :userId AND source IN ('admin', 'transfer') AND deleted_at IS NULL
         AND (valid_from IS NULL OR valid_from <= CURDATE())
         AND (valid_until IS NULL OR valid_until >= CURDATE())
@@ -1612,7 +1609,7 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
             }
 
             // A. หารายรับของรอบบิลนั้นๆ
-            $sConf = $conn->prepare("SELECT COALESCE(SUM(quantity), 0) FROM quota_allocations WHERE user_id = :uid AND source = 'auto_confirmed' AND source_detail = :rsId AND deleted_at IS NULL");
+            $sConf = $conn->prepare("SELECT COALESCE(SUM(quantity), 0) FROM quota_allocations WHERE user_id = :uid AND source = 'auto_confirmed' AND rate_schedule_id = :rsId AND deleted_at IS NULL");
             $sConf->execute([':uid' => $userId, ':rsId' => (string)$hr['id']]);
             $histIncome = floatval($sConf->fetchColumn());
 
@@ -1747,19 +1744,19 @@ function handleBulkConfirmQuota(PDO $conn, array $data) {
         // Delete existing shared allocations for this rate
         $conn->prepare("
             UPDATE quota_allocations SET deleted_at = NOW()
-            WHERE user_id = :uid AND source = 'auto_confirmed' AND source_detail = :rsId AND deleted_at IS NULL
+            WHERE user_id = :uid AND source = 'auto_confirmed' AND rate_schedule_id = :rsId AND deleted_at IS NULL
         ")->execute([':uid' => $uid, ':rsId' => (string)$rateScheduleId]);
 
         // Insert 1 shared allocation per rate (quota_product_id = NULL)
         $conn->prepare("
-            INSERT INTO quota_allocations (quota_product_id, user_id, company_id, quantity, sales_at_allocation, source, source_detail, allocated_by, period_start, period_end)
-            VALUES (NULL, :uid, :cid, :qty, :sales, 'auto_confirmed', :rsId, :ab, :ps, :pe)
+            INSERT INTO quota_allocations (quota_product_id, rate_schedule_id, user_id, company_id, quantity, sales_at_allocation, source, source_detail, allocated_by, period_start, period_end)
+            VALUES (NULL, :rsId, :uid, :cid, :qty, :sales, 'auto_confirmed', NULL, :ab, :ps, :pe)
         ")->execute([
+            ':rsId' => $rateScheduleId,
             ':uid' => $uid,
             ':cid' => $companyId,
             ':qty' => $totalAutoQuota,
             ':sales' => $totalSales,
-            ':rsId' => (string)$rateScheduleId,
             ':ab' => $confirmedBy,
             ':ps' => $calcStart,
             ':pe' => $calcEnd,
@@ -1864,7 +1861,7 @@ function handlePendingCounts(PDO $conn) {
             $stmtConf = $conn->prepare("
                 SELECT COUNT(*) FROM quota_allocations
                 WHERE user_id = :uid AND source = 'auto_confirmed'
-                AND source_detail = :rsId AND deleted_at IS NULL
+                AND rate_schedule_id = :rsId AND deleted_at IS NULL
             ");
             $stmtConf->execute([':uid' => $uid, ':rsId' => (string)$rateId]);
             if ($stmtConf->fetchColumn() > 0) continue;
