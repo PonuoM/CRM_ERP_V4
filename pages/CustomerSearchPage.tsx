@@ -327,14 +327,21 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                 <li
                   key={customer.id}
                   onClick={() => handleSelectCustomer(customer)}
-                  className="p-3 hover:bg-blue-50 rounded-lg cursor-pointer border"
+                  className="p-3 hover:bg-blue-50 rounded-lg cursor-pointer border flex justify-between items-center"
                 >
-                  <p className="font-bold text-blue-700" style={{ color: "#000000" }}>
-                    {`${customer.firstName} ${customer.lastName}`}
-                  </p>
-                  <p className="text-sm text-gray-600" style={{ color: "#000000" }}>
-                    {customer.phone}
-                  </p>
+                  <div>
+                    <p className="font-bold text-blue-700" style={{ color: "#000000" }}>
+                      {`${customer.firstName} ${customer.lastName}`}
+                    </p>
+                    <p className="text-sm text-gray-600" style={{ color: "#000000" }}>
+                      {customer.phone}
+                    </p>
+                  </div>
+                  {customer.basket_name && (
+                    <div className="text-sm px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-medium">
+                      {customer.basket_name}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -383,12 +390,18 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
             </div>
 
             {/* Additional Info */}
-            <div className="bg-white p-6 rounded-2xl shadow-lg mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-6 rounded-2xl shadow-lg mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
               <p className="text-gray-700 md:col-span-1">
                 <strong className="font-medium text-gray-800">
                   ผู้ดูแลปัจจุบัน:
                 </strong>{" "}
                 {customerDetails.assignedManager}
+              </p>
+              <p className="text-gray-700 flex items-center">
+                <strong className="font-medium text-gray-800 mr-2">
+                  ตะกร้า:
+                </strong>{" "}
+                {customerDetails.basket_name || "ไม่มี"}
               </p>
               <p className="text-gray-700 flex items-center">
                 <Facebook size={16} className="text-blue-600 mr-2" />{" "}

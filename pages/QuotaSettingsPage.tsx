@@ -9,7 +9,7 @@ import type { Product, User, QuotaProduct, QuotaRateSchedule, QuotaAllocation, Q
 import {
   listQuotaProducts, createQuotaProduct, createQuotaProductWithNew, updateQuotaProduct,
   listRateSchedules, createRateSchedule, updateRateSchedule, deleteRateSchedule, getActiveRate,
-  getQuotaSummary, allocateQuota, listQuotaAllocations, confirmQuota,
+  getQuotaSummary, allocateQuota, transferQuota, listQuotaAllocations, confirmQuota,
   getSummaryByRate, bulkConfirmQuota, getUserQuotaDetail, getPendingCounts,
 } from '../services/quotaApi';
 import type { UserQuotaDetailItem } from '../services/quotaApi';
@@ -100,7 +100,18 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const [breakdownData, setBreakdownData] = useState<UserQuotaDetailItem[]>([]);
   const [breakdownLoading, setBreakdownLoading] = useState(false);
 
+  // Transfer modal
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferSource, setTransferSource] = useState<QuotaSummary | null>(null);
+  const [transferTargetId, setTransferTargetId] = useState<number | ''>('');
+  const [transferQuantity, setTransferQuantity] = useState('');
+  const [transferNote, setTransferNote] = useState('');
+
   const companyId = currentUser.companyId;
+  const isTelesale = currentUser.role_id === 7 || currentUser.role === 'Telesale';
+  const isSupervisor = currentUser.role_id === 6 || currentUser.role === 'Supervisor Telesale';
+  const isViewOnlyRole = isTelesale;
+  const isRestrictedRole = isTelesale || isSupervisor;
 
   // ============ Load Data ============
   const loadQuotaProducts = useCallback(async () => {
@@ -129,9 +140,14 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   }, [companyId, propProducts]);
 
   useEffect(() => {
-    loadQuotaProducts();
+    if (isRestrictedRole) {
+      setActiveTab('summary');
+    }
+    if (!isRestrictedRole) {
+      loadQuotaProducts();
+    }
     loadAllProducts();
-  }, [loadQuotaProducts, loadAllProducts]);
+  }, [loadQuotaProducts, loadAllProducts, isRestrictedRole]);
 
   // Close rate filter dropdown on outside click
   useEffect(() => {
@@ -474,6 +490,55 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     }
   };
 
+  // -- Transfer --
+  const handleTransfer = async () => {
+    if (!transferSource || !transferTargetId || !transferQuantity) {
+      alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+      return;
+    }
+    const qty = parseFloat(transferQuantity);
+    if (qty <= 0) {
+      alert('จำนวนต้องมากกว่า 0');
+      return;
+    }
+    if (qty > transferSource.remaining) {
+      alert('จำนวนที่โอนต้องไม่เกินโควตาคงเหลือของผู้โอน');
+      return;
+    }
+
+    // For transfer, we don't have a single quotaProductId from the summary. 
+    // Usually quotas are checked per rate. If summaryRateId is 'all', we might not be able to transfer.
+    // Wait, the backend transferQuota requires quotaProductId.
+    // Actually, if we are in 'all' mode, we might not be able to transfer specific quota.
+    // Let's pass null for quotaProductId (global/shared) if in 'all' mode. But it's safer to require a specific rate.
+    if (summaryRateId === 'all') {
+      alert('กรุณาเลือกอัตราโควตาที่ต้องการโอน (ไม่สามารถโอนในหน้า "ทั้งหมด" ได้)');
+      return;
+    }
+
+    // Determine the quotaProductId associated with the current rate.
+    // We can get it from the selected rate schedule if needed, or pass null to just use sourceDetail.
+    // Since we added it to backend as optional: `$quotaProductId ?: null`, we can just send it empty.
+    
+    try {
+      await transferQuota({
+        fromUserId: transferSource.userId,
+        toUserId: Number(transferTargetId),
+        companyId,
+        quantity: qty,
+        sourceDetail: transferNote,
+        allocatedBy: currentUser.id,
+      });
+      setShowTransferModal(false);
+      setTransferTargetId('');
+      setTransferQuantity('');
+      setTransferNote('');
+      loadSummaryByRateId(summaryRateId);
+    } catch (e) {
+      alert('Error: ' + (e as Error).message);
+    }
+  };
+
   // Active products for dropdowns
   const activeQuotaProducts = useMemo(() => quotaProducts.filter(qp => qp.isActive), [quotaProducts]);
 
@@ -506,11 +571,15 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   }, [allProducts, quotaProducts]);
 
   // ============ Tab navigation ============
-  const tabs = [
+  const allTabs = [
     { key: 'products' as const, label: 'สินค้าโควตา', icon: Package },
     { key: 'rates' as const, label: 'อัตราโควตา', icon: Settings },
     { key: 'summary' as const, label: 'สรุปโควตาพนักงาน', icon: Users },
   ];
+
+  const tabs = isRestrictedRole 
+    ? allTabs.filter(t => t.key === 'summary') 
+    : allTabs;
 
   return (
     <>
@@ -1569,7 +1638,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                     <table className="w-full text-sm">
                       <thead className="bg-gradient-to-r from-gray-50 to-emerald-50/30 border-b">
                         <tr>
-                          {isConfirmMode && (() => {
+                          {isConfirmMode && !isViewOnlyRole && (() => {
                             const unconfirmedUsers = rows.filter(s => !s.isConfirmed && !s.isBeforeUsageStart && (s.pendingAutoQuota ?? 0) > 0);
                             const allSelected = unconfirmedUsers.length > 0 && unconfirmedUsers.every(u => selectedUserIds.includes(u.userId));
                             return (
@@ -1613,7 +1682,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
                             return (
                               <tr key={row.userId} className="hover:bg-emerald-50/40 transition-colors even:bg-gray-50/50">
-                                {isConfirmMode && (
+                                {isConfirmMode && !isViewOnlyRole && (
                                   <td className="px-3 py-3 text-center">
                                     {canCheck ? (
                                       <input
@@ -1691,22 +1760,39 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                 </td>
                                 <td className="px-4 py-3 text-center">
                                   <div className="flex items-center justify-center gap-1">
-                                    <button
-                                      onClick={() => {
-                                        setAllocateTarget(row);
-                                        setAllocateQuantity('');
-                                        setAllocateNote('');
-                                        setAllocateValidFrom('');
-                                        setAllocateValidUntil('');
-                                        setAllocateAllProducts(true);
-                                        setAllocateProductIds([]);
-                                        setShowAllocateModal(true);
-                                      }}
-                                      className="text-emerald-500 hover:text-emerald-700 p-1 rounded hover:bg-emerald-50"
-                                      title="เพิ่มโควตา"
-                                    >
-                                      <Gift size={16} />
-                                    </button>
+                                    {!isViewOnlyRole && !isSupervisor && (
+                                      <button
+                                        onClick={() => {
+                                          setAllocateTarget(row);
+                                          setAllocateQuantity('');
+                                          setAllocateNote('');
+                                          setAllocateValidFrom('');
+                                          setAllocateValidUntil('');
+                                          setAllocateAllProducts(true);
+                                          setAllocateProductIds([]);
+                                          setShowAllocateModal(true);
+                                        }}
+                                        className="text-emerald-500 hover:text-emerald-700 p-1 rounded hover:bg-emerald-50"
+                                        title="เพิ่มโควตา (Admin)"
+                                      >
+                                        <Gift size={16} />
+                                      </button>
+                                    )}
+                                    {isSupervisor && (
+                                      <button
+                                        onClick={() => {
+                                          setTransferSource(row);
+                                          setTransferTargetId('');
+                                          setTransferQuantity('');
+                                          setTransferNote('');
+                                          setShowTransferModal(true);
+                                        }}
+                                        className="text-blue-500 hover:text-blue-700 p-1 rounded hover:bg-blue-50"
+                                        title="โอนย้ายโควตา"
+                                      >
+                                        <RefreshCcw size={16} />
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => handleViewHistory(row)}
                                       className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
@@ -1714,7 +1800,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                     >
                                       <Eye size={16} />
                                     </button>
-                                    {row.rateScheduleId && row.requireConfirm === 1 && !row.isBeforeUsageStart && (
+                                    {!isViewOnlyRole && row.rateScheduleId && row.requireConfirm === 1 && !row.isBeforeUsageStart && (
                                       <button
                                         disabled={bulkConfirming}
                                         onClick={async () => {
@@ -1771,6 +1857,82 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
               </>
             );
           })()}
+        </div>
+      )}
+
+      {/* ============ Transfer Modal ============ */}
+      {showTransferModal && transferSource && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-800">โอนย้ายโควตา</h3>
+              <button onClick={() => setShowTransferModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800">
+                <div className="flex justify-between font-semibold mb-1">
+                  <span>ผู้โอน (ต้นทาง):</span>
+                  <span>{transferSource.userName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>โควตาคงเหลือที่โอนได้:</span>
+                  <span className="font-mono text-emerald-600 font-bold">{transferSource.remaining}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ผู้รับ (ปลายทาง) *</label>
+                <select
+                  value={transferTargetId}
+                  onChange={e => setTransferTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">-- เลือกผู้รับโควตา --</option>
+                  {summaryData.filter(u => u.userId !== transferSource.userId).map(u => (
+                    <option key={u.userId} value={u.userId}>{u.userName} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนโควตาที่ต้องการโอน *</label>
+                <input
+                  type="number"
+                  value={transferQuantity}
+                  onChange={e => setTransferQuantity(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  min="1"
+                  max={transferSource.remaining}
+                  placeholder={`ไม่เกิน ${transferSource.remaining}`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ (สาเหตุการโอน)</label>
+                <textarea
+                  value={transferNote}
+                  onChange={e => setTransferNote(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  rows={2}
+                  placeholder="เหตุผลการโอน..."
+                />
+              </div>
+            </div>
+            <div className="p-5 border-t flex justify-end gap-3">
+              <button onClick={() => setShowTransferModal(false)} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleTransfer}
+                disabled={!transferTargetId || !transferQuantity || parseFloat(transferQuantity) <= 0 || parseFloat(transferQuantity) > parseFloat(transferSource.remaining.toString())}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                ยืนยันการโอน
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1933,9 +2095,11 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                             alloc.source === 'admin'
                               ? 'bg-teal-100 text-teal-700'
-                              : 'bg-blue-100 text-blue-700'
+                              : alloc.source === 'transfer'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-blue-100 text-blue-700'
                           }`}>
-                            {alloc.source === 'admin' ? 'Admin' : 'Auto'}
+                            {alloc.source === 'admin' ? 'Admin' : alloc.source === 'transfer' ? 'Transfer' : 'Auto'}
                           </span>
                           <span className="font-medium text-gray-800">+{alloc.quantity}</span>
                           {alloc.productName && <span className="text-sm font-semibold text-gray-500">[{alloc.productName}]</span>}

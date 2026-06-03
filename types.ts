@@ -443,6 +443,7 @@ export interface Customer {
   // Personal info
   birthDate?: string; // วันเกิด (YYYY-MM-DD)
   current_basket_key?: number | string; // basket_config.id ที่ลูกค้าอยู่ปัจจุบัน
+  basket_name?: string; // basket_config.basket_name (joined)
 }
 
 export interface SalesImportRow {

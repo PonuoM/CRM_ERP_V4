@@ -84,6 +84,9 @@ try {
             case 'allocate':
                 handleAllocate($conn, $data);
                 break;
+            case 'transfer_quota':
+                handleTransferQuota($conn, $data);
+                break;
             case 'use_quota':
                 handleUseQuota($conn, $data);
                 break;
@@ -235,7 +238,14 @@ function handleListAllocations(PDO $conn) {
         LIMIT 200
     ");
     $stmt->execute($params);
-    $allocations = $stmt->fetchAll();
+    $allocations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // [Clean up source_detail for UI]
+    foreach ($allocations as &$alloc) {
+        if ($alloc['source'] === 'transfer' && preg_match('/^RS:\d+\|/', $alloc['source_detail'])) {
+            $alloc['source_detail'] = preg_replace('/^RS:\d+\|/', '', $alloc['source_detail']);
+        }
+    }
 
     json_response(['success' => true, 'data' => $allocations]);
 }
@@ -812,6 +822,106 @@ function handleAllocate(PDO $conn, array $data) {
     json_response(['success' => true, 'id' => $conn->lastInsertId()]);
 }
 
+function handleTransferQuota(PDO $conn, array $data) {
+    $quotaProductId = intval($data['quotaProductId'] ?? 0);
+    $fromUserId = intval($data['fromUserId'] ?? 0);
+    $toUserId = intval($data['toUserId'] ?? 0);
+    $companyId = intval($data['companyId'] ?? 0);
+    $quantity = floatval($data['quantity'] ?? 0);
+    $sourceDetail = $data['sourceDetail'] ?? null;
+    $allocatedBy = intval($data['allocatedBy'] ?? 0) ?: null;
+
+    if (!$fromUserId || !$toUserId || !$companyId || $quantity <= 0) {
+        json_response(['error' => 'fromUserId, toUserId, companyId, quantity (>0) required'], 400);
+    }
+
+    try {
+        $conn->beginTransaction();
+
+        // [Validation] ตรวจสอบยอดโควตาคงเหลือของ fromUserId ในบริษัท และจัดสรรยอดโอนตาม quota_product_id
+        $stmtRates = $conn->prepare("
+            SELECT DISTINCT qrs.*, scope.quota_product_id FROM quota_rate_schedules qrs
+            JOIN quota_rate_scope scope ON scope.rate_schedule_id = qrs.id
+            JOIN quota_products qp ON qp.id = scope.quota_product_id AND qp.company_id = :companyId AND qp.deleted_at IS NULL
+            WHERE qrs.deleted_at IS NULL
+        ");
+        $stmtRates->execute([':companyId' => $companyId]);
+        $ratesForCompany = $stmtRates->fetchAll(PDO::FETCH_ASSOC);
+
+        $uniqueRates = [];
+        $seen = [];
+        foreach ($ratesForCompany as $rate) {
+            $key = $rate['id'];
+            if (!isset($seen[$key])) {
+                $uniqueRates[] = $rate;
+                $seen[$key] = true;
+            }
+        }
+
+        $availablePerRate = [];
+        $totalRemaining = 0;
+        foreach ($uniqueRates as $rate) {
+            $calc = calculateQuotaByRate($conn, $rate, $fromUserId, $companyId);
+            $rId = $rate['id'];
+            if (!isset($availablePerRate[$rId])) {
+                $availablePerRate[$rId] = 0;
+            }
+            $availablePerRate[$rId] += $calc['remaining'];
+            $totalRemaining += $calc['remaining'];
+        }
+
+        if ($totalRemaining < $quantity) {
+            throw new Exception("ยอดโควตาคงเหลือไม่เพียงพอ (โอนได้สูงสุด $totalRemaining แต้ม)");
+        }
+
+        $stmt = $conn->prepare("
+            INSERT INTO quota_allocations 
+                (quota_product_id, user_id, company_id, quantity, source, source_detail, allocated_by)
+            VALUES 
+                (:qpId, :userId, :companyId, :qty, 'transfer', :detail, :allocBy)
+        ");
+
+        $remainingToTransfer = $quantity;
+
+        foreach ($availablePerRate as $rId => $avail) {
+            if ($remainingToTransfer <= 0) break;
+            if ($avail <= 0) continue;
+
+            $transferAmount = min($avail, $remainingToTransfer);
+            $remainingToTransfer -= $transferAmount;
+
+            $sDetailDeduct = $sourceDetail ? "โอนให้ ID $toUserId: $sourceDetail" : "โอนให้ ID $toUserId";
+            $sDetailAdd = $sourceDetail ? "รับโอนจาก ID $fromUserId: $sourceDetail" : "รับโอนจาก ID $fromUserId";
+
+            // Deduct from Source (Use Shared Pool: NULL)
+            $stmt->execute([
+                ':qpId' => null,
+                ':userId' => $fromUserId,
+                ':companyId' => $companyId,
+                ':qty' => -$transferAmount,
+                ':detail' => "RS:" . $rId . "|" . $sDetailDeduct,
+                ':allocBy' => $allocatedBy,
+            ]);
+
+            // Add to Target (Use Shared Pool: NULL)
+            $stmt->execute([
+                ':qpId' => null,
+                ':userId' => $toUserId,
+                ':companyId' => $companyId,
+                ':qty' => $transferAmount,
+                ':detail' => "RS:" . $rId . "|" . $sDetailAdd,
+                ':allocBy' => $allocatedBy,
+            ]);
+        }
+
+        $conn->commit();
+        json_response(['success' => true]);
+    } catch (Exception $e) {
+        $conn->rollBack();
+        json_response(['error' => 'Transfer failed: ' . $e->getMessage()], 500);
+    }
+}
+
 function handleUseQuota(PDO $conn, array $data) {
     $quotaProductId = intval($data['quotaProductId'] ?? 0);
     $userId = intval($data['userId'] ?? 0);
@@ -987,7 +1097,7 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
     $adminQuery = "
         SELECT COALESCE(SUM(quantity), 0) AS admin_total FROM quota_allocations
         WHERE (quota_product_id IN ($inScopeIds) OR (quota_product_id IS NULL AND source_detail = :rsId))
-        AND user_id = :userId AND source = 'admin' AND deleted_at IS NULL
+        AND user_id = :userId AND source IN ('admin', 'transfer') AND deleted_at IS NULL
         AND (valid_from IS NULL OR valid_from <= CURDATE())
         AND (valid_until IS NULL OR valid_until >= CURDATE())
     ";
@@ -1084,15 +1194,29 @@ function handleSummaryByRate(PDO $conn) {
         json_response(['error' => 'companyId required'], 400);
     }
 
-    // Get all active users
+    // Get active users based on role
+    $authUser = get_authenticated_user($conn);
+    $authUserId = intval($authUser['id'] ?? 0);
+    $authRole = $authUser['role'] ?? '';
+
+    $whereClause = "company_id = :companyId AND status = 'active' AND role IN ('Telesale', 'Supervisor Telesale', 'Admin Page')";
+    $params = [':companyId' => $companyId];
+
+    if ($authRole === 'Telesale') {
+        $whereClause .= " AND id = :authUserId";
+        $params[':authUserId'] = $authUserId;
+    } elseif ($authRole === 'Supervisor Telesale') {
+        $whereClause .= " AND :authUserId IN (id, supervisor_id)";
+        $params[':authUserId'] = $authUserId;
+    }
+
     $stmtUsers = $conn->prepare("
         SELECT id, first_name, last_name, role
         FROM users
-        WHERE company_id = :companyId AND status = 'active'
-        AND role IN ('Telesale', 'Supervisor Telesale', 'Admin Page')
+        WHERE $whereClause
         ORDER BY first_name ASC
     ");
-    $stmtUsers->execute([':companyId' => $companyId]);
+    $stmtUsers->execute($params);
     $users = $stmtUsers->fetchAll();
 
     if ($rateParam === 'all') {
@@ -1447,11 +1571,12 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
     $adminQuery = "
         SELECT COALESCE(SUM(quantity), 0) AS admin_total
         FROM quota_allocations
-        WHERE quota_product_id IN ($in) AND user_id = :userId AND source = 'admin' AND deleted_at IS NULL
+        WHERE (quota_product_id IN ($in) OR (quota_product_id IS NULL AND source_detail LIKE CONCAT('RS:', :rsId, '|%')))
+        AND user_id = :userId AND source IN ('admin', 'transfer') AND deleted_at IS NULL
         AND (valid_from IS NULL OR valid_from <= CURDATE())
         AND (valid_until IS NULL OR valid_until >= CURDATE())
     ";
-    $adminParams = [':userId' => $userId];
+    $adminParams = [':userId' => $userId, ':rsId' => $rate['id']];
     if ($quotaMode === 'reset') {
         $adminQuery .= " AND period_start = :ps AND period_end = :pe";
         $adminParams[':ps'] = $periodStart;
@@ -1687,13 +1812,27 @@ function handlePendingCounts(PDO $conn) {
     $stmtRates->execute([':companyId' => $companyId]);
     $relevant = $stmtRates->fetchAll(PDO::FETCH_ASSOC);
 
-    // Get active users
+    // Get active users based on role
+    $authUser = get_authenticated_user($conn);
+    $authUserId = intval($authUser['id'] ?? 0);
+    $authRole = $authUser['role'] ?? '';
+
+    $whereClause = "company_id = :companyId AND status = 'active' AND role IN ('Telesale', 'Supervisor Telesale', 'Admin Page')";
+    $params = [':companyId' => $companyId];
+
+    if ($authRole === 'Telesale') {
+        $whereClause .= " AND id = :authUserId";
+        $params[':authUserId'] = $authUserId;
+    } elseif ($authRole === 'Supervisor Telesale') {
+        $whereClause .= " AND :authUserId IN (id, supervisor_id)";
+        $params[':authUserId'] = $authUserId;
+    }
+
     $stmtUsers = $conn->prepare("
         SELECT id FROM users
-        WHERE company_id = :companyId AND status = 'active'
-        AND role IN ('Telesale', 'Supervisor Telesale', 'Admin Page')
+        WHERE $whereClause
     ");
-    $stmtUsers->execute([':companyId' => $companyId]);
+    $stmtUsers->execute($params);
     $users = $stmtUsers->fetchAll(PDO::FETCH_COLUMN);
 
     $counts = [];

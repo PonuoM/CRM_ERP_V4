@@ -1321,7 +1321,7 @@ function handle_customers(PDO $pdo, ?string $id): void
         case 'GET':
             try {
                 if ($id) {
-                    $sql = 'SELECT * FROM customers WHERE (customer_id = ? OR customer_ref_id = ?)';
+                    $sql = 'SELECT customers.*, (SELECT basket_name FROM basket_config WHERE id = customers.current_basket_key) AS basket_name FROM customers WHERE (customer_id = ? OR customer_ref_id = ?)';
                     $params = [$id, $id];
                     if (!$isSuperAdmin) {
                         $sql .= ' AND company_id = ?';
@@ -2103,7 +2103,8 @@ function handle_customers(PDO $pdo, ?string $id): void
                             ownership_expires, date_registered, grade, facebook_name, line_id, updated_at,
                             street, subdistrict, district, postal_code, recipient_first_name, recipient_last_name, recipient_phone,
                             backup_phone, email, follow_up_date, total_calls,
-                            is_in_waiting_basket, waiting_basket_start_date, is_blocked";
+                            is_in_waiting_basket, waiting_basket_start_date, is_blocked,
+                            (SELECT basket_name FROM basket_config WHERE id = customers.current_basket_key) AS basket_name";
                         $sql = "SELECT $neededCols FROM customers WHERE $whereSql ORDER BY $orderBy";
 
                         if ($page) {

@@ -97,6 +97,7 @@ export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]>
         lastOrderDate: r.last_order_date ?? r.lastOrderDate ?? undefined,
         // Basket routing field - current_basket_key stores basket_config.id (as string/number)
         current_basket_key: r.current_basket_key ?? undefined,
+        basket_name: r.basket_name ?? undefined,
         // AI Specific Fields (pass through if present)
         ai_priority_score: r.ai_priority_score,
         ai_insight: r.ai_insight,
