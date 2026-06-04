@@ -354,7 +354,7 @@ export default function CancellationDashboardPage({ user }: CancellationDashboar
               </div>
 
               {/* Pie Chart */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col sticky top-6 self-start">
                 <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
                   <h2 className="font-semibold text-gray-800 flex items-center gap-2">
                     <PieChartIcon className="w-5 h-5 text-gray-500" />
