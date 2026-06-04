@@ -9,36 +9,26 @@ try {
     }
 
     $in = json_input();
-    $orderId = $in['orderId'] ?? $in['order_id'] ?? null;
+    $orderIds = $in['orderIds'] ?? [];
     
-    if (!$orderId) {
-        json_response(['error' => 'BAD_REQUEST', 'message' => 'orderId is required'], 400);
+    if (!is_array($orderIds) || empty($orderIds)) {
+        json_response(['error' => 'BAD_REQUEST', 'message' => 'orderIds array is required'], 400);
     }
 
-    // Role check - Only Supervisor or Admin can acknowledge? 
-    // Wait, the prompt says Supervisor Telesale. 
-    // Let's allow Supervisor and SuperAdmin/Admin.
     $role = $user['role'];
     if ($role === 'Telesale') {
         json_response(['error' => 'FORBIDDEN', 'message' => 'Telesales cannot acknowledge orders'], 403);
     }
 
-    // Check if the order cancellation record exists, if not, create it with default or unclassified.
-    // However, the rule is to only acknowledge existing cancellations? 
-    // Wait, if it doesn't exist, we should upsert it. But we don't have cancellation_type_id.
-    // It's safer to just set is_acknowledged=1 where order_id = ?. If it doesn't exist, create an empty one with a default type or NULL (but cancellation_type_id is NOT NULL).
-    // Let's just upsert using a dummy type if necessary? No, `manage_cancellation_types.php` gets default_cancellation_type_id from app_settings.
-    
-    // Fetch default type
+    // Default cancellation type if needed
     $stmtDef = $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key = 'default_cancellation_type_id'");
     $def = $stmtDef->fetchColumn();
     if (!$def) {
         $stmtFallback = $pdo->query("SELECT id FROM cancellation_types WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 1");
         $def = $stmtFallback->fetchColumn();
     }
-    if (!$def) {
-         json_response(['error' => 'INTERNAL_ERROR', 'message' => 'No cancellation types available'], 500);
-    }
+
+    $pdo->beginTransaction();
 
     $sql = "
         INSERT INTO order_cancellations 
@@ -52,10 +42,21 @@ try {
     ";
     
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([$orderId, $def, $user['id'], $user['id']]);
 
-    json_response(['ok' => true]);
+    $successCount = 0;
+
+    foreach ($orderIds as $orderId) {
+        $stmt->execute([$orderId, $def, $user['id'], $user['id']]);
+        $successCount++;
+    }
+
+    $pdo->commit();
+
+    json_response(['ok' => true, 'count' => $successCount]);
 
 } catch (Throwable $e) {
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     json_response(['error' => 'INTERNAL_ERROR', 'message' => $e->getMessage()], 500);
 }

@@ -2762,3 +2762,18 @@ export async function acknowledgeCancellation(orderId: string): Promise<any> {
     body: JSON.stringify({ order_id: orderId }),
   });
 }
+
+export async function getUnacknowledgedCancellations(params?: { dateStart?: string; dateEnd?: string }): Promise<any> {
+  const query = new URLSearchParams();
+  if (params?.dateStart) query.append('dateStart', params.dateStart);
+  if (params?.dateEnd) query.append('dateEnd', params.dateEnd);
+  
+  return apiFetch('Orders/get_unacknowledged_cancellations.php?' + query.toString());
+}
+
+export async function acknowledgeAllCancellations(orderIds: string[]): Promise<any> {
+  return apiFetch('Orders/acknowledge_all_cancellations.php', {
+    method: 'POST',
+    body: JSON.stringify({ orderIds }),
+  });
+}

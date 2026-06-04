@@ -111,15 +111,15 @@ try {
     }
     unset($stat);
 
-    // 3. Get Reasons Breakdown
+    // 3. Get Reasons Breakdown (Combined with unclassified using LEFT JOIN)
     $sqlReasons = "
         SELECT 
-            ct.label,
+            IFNULL(ct.label, 'ยังไม่ระบุเหตุผล') as label,
             COUNT(o.id) as count
         FROM orders o
         JOIN users u ON o.creator_id = u.id
-        JOIN order_cancellations oc ON o.id = oc.order_id
-        JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
+        LEFT JOIN order_cancellations oc ON o.id = oc.order_id
+        LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
         WHERE $whereClause
         GROUP BY ct.id
         ORDER BY count DESC
@@ -129,28 +129,59 @@ try {
     $stmtReasons->execute($params);
     $reasons = $stmtReasons->fetchAll(PDO::FETCH_ASSOC);
 
-    // Get unclassified count
-    $sqlUnclassified = "
-        SELECT COUNT(o.id) as count
+    // 4. Get Timeline Stats (Daily)
+    $sqlTimeline = "
+        SELECT 
+            DATE(o.order_date) as date_val,
+            COUNT(o.id) as cancelled_count,
+            SUM(o.total_amount) as cancelled_value
         FROM orders o
         JOIN users u ON o.creator_id = u.id
-        LEFT JOIN order_cancellations oc ON o.id = oc.order_id
-        WHERE $whereClause AND oc.id IS NULL
+        WHERE $whereClause
+        GROUP BY DATE(o.order_date)
+        ORDER BY DATE(o.order_date) ASC
     ";
-    $stmtUnclassified = $pdo->prepare($sqlUnclassified);
-    $stmtUnclassified->execute($params);
-    $unclassifiedCount = $stmtUnclassified->fetchColumn();
     
-    if ($unclassifiedCount > 0) {
-        $reasons[] = [
-            'label' => 'ยังไม่ระบุเหตุผล',
-            'count' => $unclassifiedCount
-        ];
+    $stmtTimeline = $pdo->prepare($sqlTimeline);
+    $stmtTimeline->execute($params);
+    $dailyStats = $stmtTimeline->fetchAll(PDO::FETCH_ASSOC);
+
+    // Aggregate in PHP for Monthly and Yearly
+    $monthlyMap = [];
+    $yearlyMap = [];
+    
+    foreach ($dailyStats as &$row) {
+        // cast value to float for safety
+        $row['cancelled_value'] = (float)$row['cancelled_value'];
+        
+        $date = $row['date_val']; // YYYY-MM-DD
+        $month = substr($date, 0, 7); // YYYY-MM
+        $year = substr($date, 0, 4); // YYYY
+        
+        // Monthly
+        if (!isset($monthlyMap[$month])) {
+            $monthlyMap[$month] = ['date_val' => $month, 'cancelled_count' => 0, 'cancelled_value' => 0];
+        }
+        $monthlyMap[$month]['cancelled_count'] += $row['cancelled_count'];
+        $monthlyMap[$month]['cancelled_value'] += $row['cancelled_value'];
+        
+        // Yearly
+        if (!isset($yearlyMap[$year])) {
+            $yearlyMap[$year] = ['date_val' => $year, 'cancelled_count' => 0, 'cancelled_value' => 0];
+        }
+        $yearlyMap[$year]['cancelled_count'] += $row['cancelled_count'];
+        $yearlyMap[$year]['cancelled_value'] += $row['cancelled_value'];
     }
+    unset($row);
 
     json_response([
         'salespersonStats' => $salespersonStats,
         'reasonsBreakdown' => $reasons,
+        'timeline' => [
+            'daily' => $dailyStats,
+            'monthly' => array_values($monthlyMap),
+            'yearly' => array_values($yearlyMap)
+        ],
         'ok' => true
     ]);
 
