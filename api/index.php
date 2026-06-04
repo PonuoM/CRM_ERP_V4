@@ -760,8 +760,15 @@ function handle_auth(PDO $pdo, ?string $id): void
             json_response(['ok' => false, 'error' => 'ACCOUNT_INACTIVE', 'message' => 'Your account is not active'], 401);
         }
 
-        // Demo: plaintext password match (replace with hashing in production)
-        if (!hash_equals((string) $u['password'], (string) $password)) {
+        // Support both hashed passwords and plaintext passwords
+        $isValid = false;
+        if (str_starts_with((string) $u['password'], '$2y$')) {
+            $isValid = password_verify((string) $password, (string) $u['password']);
+        } else {
+            $isValid = hash_equals((string) $u['password'], (string) $password);
+        }
+        
+        if (!$isValid) {
             json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS'], 401);
         }
 
@@ -2118,6 +2125,9 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $t_query_start = microtime(true);
                             $stmt->execute($params);
                             $customers = $stmt->fetchAll();
+                            if ($q === '0811111111') {
+                                file_put_contents(__DIR__ . '/test_query.log', "SQL: $sql\nPARAMS: " . json_encode($params) . "\nRESULTS: " . count($customers) . "\n", FILE_APPEND);
+                            }
                             error_log("[customers:list] MAIN_QUERY done rows=" . count($customers) . " memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                             log_perf("handle_customers:list:EXECUTE_QUERY source=$source filter=$filterType count=" . count($customers), $t_query_start);
 

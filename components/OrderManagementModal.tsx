@@ -4342,7 +4342,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               );
                               const canConfirm =
                                 allSlipsComplete && hasCheckedSlips;
-
+                              
                               return (
                                 <button
                                   data-testid="btn-confirm-slip"

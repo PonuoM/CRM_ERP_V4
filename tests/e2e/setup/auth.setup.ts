@@ -1,11 +1,11 @@
 import { test as setup, expect } from '@playwright/test';
+import { wipeCustomerGradeTestData, seedBasicCustomersAndOrders } from '../utils/db-utils';
 
 const users = [
-  { role: 'Telesale', username: 'telesale1', password: 'telesale123' },
-  { role: 'Backoffice', username: 'admin', password: 'Kapoala02' },
-  { role: 'Admin Control', username: 'admin', password: 'Kapoala02' }
+  { role: 'Telesale', fileName: 'telesale.json', username: 'telesale1', password: 'telesale123' },
+  { role: 'Backoffice', fileName: 'backoffice.json', username: 'admin', password: 'Kapoala02' },
+  { role: 'Admin', fileName: 'finance.json', username: 'admin', password: 'Kapoala02' }
 ];
-
 for (const user of users) {
   setup(`authenticate as ${user.role}`, async ({ page }) => {
     await page.goto('/');
@@ -16,7 +16,7 @@ for (const user of users) {
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     // Wait for successful login (nav/sidebar visible)
-    await expect(page.locator('nav, .sidebar').first()).toBeVisible({ timeout: 15000 }).catch(() => { });
+    await expect(page.locator('nav, .sidebar').first()).toBeVisible({ timeout: 15000 });
 
     // Handle Clock In Modal if it appears
     const clockInModalText = page.getByText('เริ่มงานวันนี้ไหม?').first();
@@ -30,7 +30,10 @@ for (const user of users) {
       await acknowledgeBtn.click();
     }
 
+    // Wait a bit for attendance APIs to finish and localStorage to be updated
+    await page.waitForTimeout(3000);
+
     // Save storage state into the designated file
-    await page.context().storageState({ path: `playwright/.auth/${user.role}.json` });
+    await page.context().storageState({ path: `playwright/.auth/${user.fileName}` });
   });
 }

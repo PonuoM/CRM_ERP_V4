@@ -19,6 +19,8 @@ if ($action === 'wipe') {
     $pdo->exec("TRUNCATE TABLE customer_grades_config;");
     $pdo->exec("TRUNCATE TABLE customer_grades_settings;");
     $pdo->exec("TRUNCATE TABLE bank_account;");
+    $pdo->exec("TRUNCATE TABLE users;");
+    $pdo->exec("TRUNCATE TABLE companies;");
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
     echo "Wiped successfully";
 } elseif ($action === 'seed') {
@@ -37,6 +39,11 @@ if ($action === 'wipe') {
         INSERT IGNORE INTO address_geographies (id, name) VALUES (1, 'ภาคกลาง');
     ");
     $pdo->exec("
+        INSERT IGNORE INTO products (id, sku, name, category, report_category, unit, cost, price, stock, company_id, status) VALUES 
+        (1001, 'TEST-SKU-001', 'Test Product A', 'General', 'General', 'Piece', 50, 100, 1000, 1, 'Active')
+        ON DUPLICATE KEY UPDATE status = 'Active', company_id = 1;
+    ");
+    $pdo->exec("
         INSERT IGNORE INTO address_provinces (id, name_th, geography_id) VALUES (1, 'กรุงเทพมหานคร', 1);
     ");
     $pdo->exec("
@@ -47,36 +54,49 @@ if ($action === 'wipe') {
     ");
 
     $pdo->exec("
-        INSERT IGNORE INTO customers (customer_id, customer_ref_id, company_id, first_name, last_name, phone, street, subdistrict, district, province, postal_code, date_assigned, grade, updated_at) VALUES
-        (1, 'C001', 1, 'Customer', 'Fixed', '0811111111', '111/1', 'แขวงคลองเตย', 'เขตคลองเตย', 'กรุงเทพมหานคร', '10110', NOW(), 'Normal', NOW()),
-        (2, 'C002', 1, 'Customer', 'Relative', '0822222222', '222/2', 'แขวงคลองเตย', 'เขตคลองเตย', 'กรุงเทพมหานคร', '10110', NOW(), 'Normal', NOW()),
-        (3, 'C003', 1, 'Customer', 'Realtime', '0833333333', '333/3', 'แขวงคลองเตย', 'เขตคลองเตย', 'กรุงเทพมหานคร', '10110', NOW(), 'Normal', NOW())
+        INSERT IGNORE INTO users (username, company_id, password, role, first_name, last_name, status, created_at, updated_at) VALUES
+        ('admin', 1, '\$2y\$10\$Rkm055tbqQPsxiQkonj.2O9deBVV0R.JdSKKXA3.QkyPVCjtIXBM2', 'Admin Control', 'System', 'Admin', 'active', NOW(), NOW()),
+        ('telesale1', 1, '\$2y\$10\$c8QY3.1Xi6eKReKZMR9fi.SKX7hWO9vxSeHVChc.2DNxfcBppOzrS', 'Telesale', 'Thida', 'Telesale', 'active', NOW(), NOW()),
+        ('admin_co2', 2, '\$2y\$10\$Rkm055tbqQPsxiQkonj.2O9deBVV0R.JdSKKXA3.QkyPVCjtIXBM2', 'Admin Page', 'Admin', 'Co 2', 'active', NOW(), NOW())
     ");
 
-    $pdo->exec("
-        INSERT IGNORE INTO users (id, company_id, username, password, role, first_name, last_name, status, created_at, updated_at) VALUES
-        (1, 1, 'admin', '\$2y\$10\$wL/H73v0z5A6P15s/L.0I.Lq8h1TIn2qZ/pQ5vYd9d/B9qY5Z8U5W', 'Admin Control', 'System', 'Admin', 'active', NOW(), NOW()),
-        (2, 1, 'telesale1', '\$2y\$10\$wL/H73v0z5A6P15s/L.0I.Lq8h1TIn2qZ/pQ5vYd9d/B9qY5Z8U5W', 'Telesale', 'Thida', 'Telesale', 'active', NOW(), NOW()),
-        (3, 2, 'admin_co2', '\$2y\$10\$wL/H73v0z5A6P15s/L.0I.Lq8h1TIn2qZ/pQ5vYd9d/B9qY5Z8U5W', 'Admin Page', 'Admin', 'Co 2', 'active', NOW(), NOW())
-    ");
+    $stmt = $pdo->query("SELECT id, company_id FROM users WHERE username = 'telesale1' LIMIT 1");
+    $tsUser = $stmt->fetch();
+    $tsId = $tsUser['id'] ?? 2;
+    $tsCompany = $tsUser['company_id'] ?? 1;
 
-    $pdo->exec("
+    $stmtAdmin = $pdo->query("SELECT id, company_id FROM users WHERE username = 'admin' LIMIT 1");
+    $adminUser = $stmtAdmin->fetch();
+    $adminId = $adminUser['id'] ?? 1;
+
+    $pdo->prepare("
+        INSERT IGNORE INTO customers (customer_id, customer_ref_id, company_id, first_name, last_name, phone, street, subdistrict, district, province, postal_code, date_assigned, grade, updated_at, assigned_to) VALUES
+        (1, 'C001', ?, 'Customer', 'Fixed', '0811111111', '111/1', 'แขวงคลองเตย', 'เขตคลองเตย', 'กรุงเทพมหานคร', '10110', NOW(), 'Normal', NOW(), ?),
+        (2, 'C002', ?, 'Customer', 'Relative', '0822222222', '222/2', 'แขวงคลองเตย', 'เขตคลองเตย', 'กรุงเทพมหานคร', '10110', NOW(), 'Normal', NOW(), ?),
+        (3, 'C003', ?, 'Customer', 'Realtime', '0833333333', '333/3', 'แขวงคลองเตย', 'เขตคลองเตย', 'กรุงเทพมหานคร', '10110', NOW(), 'Normal', NOW(), ?)
+    ")->execute([
+        $tsCompany, $tsId,
+        $tsCompany, $tsId,
+        $tsCompany, $tsId
+    ]);
+
+    $pdo->prepare("
         INSERT IGNORE INTO user_tokens (id, user_id, token, expires_at, created_at) VALUES
-        (1, 1, 'test_admin_token_123', DATE_ADD(NOW(), INTERVAL 1 DAY), NOW()),
-        (2, 2, 'test_telesale_token_123', DATE_ADD(NOW(), INTERVAL 1 DAY), NOW())
-    ");
+        (1, ?, 'test_admin_token_123', DATE_ADD(NOW(), INTERVAL 1 DAY), NOW()),
+        (2, ?, 'test_telesale_token_123', DATE_ADD(NOW(), INTERVAL 1 DAY), NOW())
+    ")->execute([$adminId, $tsId]);
 
-    $pdo->exec("
+    $pdo->prepare("
         INSERT IGNORE INTO orders (id, company_id, creator_id, customer_id, order_status, total_amount, order_date, delivery_date) VALUES
-        ('101', 1, 2, 1, 'Delivered', 10000, '2025-06-01 10:00:00', '2025-06-01 10:00:00'),
-        ('102', 1, 2, 1, 'Delivered', 20000, '2026-06-01 10:00:00', '2026-06-01 10:00:00')
-    ");
+        ('101', ?, ?, 1, 'Delivered', 10000, '2025-06-01 10:00:00', '2025-06-01 10:00:00'),
+        ('102', ?, ?, 1, 'Delivered', 20000, '2026-06-01 10:00:00', '2026-06-01 10:00:00')
+    ")->execute([$tsCompany, $tsId, $tsCompany, $tsId]);
 
-    $pdo->exec("
+    $pdo->prepare("
         INSERT IGNORE INTO orders (id, company_id, creator_id, customer_id, order_status, total_amount, order_date, delivery_date) VALUES
-        ('201', 1, 2, 2, 'Delivered', 10000, DATE_SUB(NOW(), INTERVAL 10 DAY), DATE_SUB(CURDATE(), INTERVAL 10 DAY)),
-        ('202', 1, 2, 2, 'Delivered', 20000, DATE_SUB(NOW(), INTERVAL 40 DAY), DATE_SUB(CURDATE(), INTERVAL 40 DAY))
-    ");
+        ('201', ?, ?, 2, 'Delivered', 10000, DATE_SUB(NOW(), INTERVAL 10 DAY), DATE_SUB(CURDATE(), INTERVAL 10 DAY)),
+        ('202', ?, ?, 2, 'Delivered', 20000, DATE_SUB(NOW(), INTERVAL 40 DAY), DATE_SUB(CURDATE(), INTERVAL 40 DAY))
+    ")->execute([$tsCompany, $tsId, $tsCompany, $tsId]);
     echo "Seeded successfully";
 } elseif ($action === 'get_grade') {
     $customerId = $argv[2] ?? 0;
@@ -181,4 +201,10 @@ if ($action === 'wipe') {
     $stmt = $pdo->prepare("SELECT order_id FROM statement_reconcile_logs WHERE statement_log_id = ?");
     $stmt->execute([$logId]);
     echo $stmt->fetchColumn();
+} elseif ($action === 'set_customer_grade') {
+    $customerId = $argv[2] ?? '';
+    $grade = $argv[3] ?? '';
+    $stmt = $pdo->prepare("UPDATE customers SET grade = ? WHERE customer_id = ?");
+    $stmt->execute([$grade, $customerId]);
+    echo "Grade updated";
 }

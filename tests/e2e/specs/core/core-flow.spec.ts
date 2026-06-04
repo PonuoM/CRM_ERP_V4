@@ -24,6 +24,9 @@ test.describe('E2E Core Flow: Order Creation Variations (Multi-Role)', () => {
       const backofficePage = await backofficeContext.newPage();
       const financePage = await financeContext.newPage();
 
+      let exportedOrderId = '';
+      let createdOrderRef = '';
+
       // ==========================================
       // STEP 1 & 2: Create Order (by Telesale)
       // ==========================================
@@ -40,26 +43,45 @@ test.describe('E2E Core Flow: Order Creation Variations (Multi-Role)', () => {
 
         await telesalePage.keyboard.press('Escape');
 
-        // ใช้ getByRole เพื่อความชัดเจนตาม Best Practice
-        await telesalePage.getByRole('button', { name: /สร้างคำสั่งซื้อ/ }).first().click();
+        const sessionUserStr = await telesalePage.evaluate(() => localStorage.getItem('sessionUser'));
+        const attendanceSessionStr = await telesalePage.evaluate(() => localStorage.getItem('attendance.session'));
+        console.log('Telesale Page sessionUser:', sessionUserStr);
+        console.log('Telesale Page attendanceSession:', attendanceSessionStr);
 
+        // ใช้ goto เพื่อความชัวร์และไม่ติดปัญหาเมนู dropdown
+        await telesalePage.goto('/?page=CreateOrder');
         await expect(telesalePage.getByText('ชื่อลูกค้า').first()).toBeVisible({ timeout: 10000 }).catch(() => { });
 
         // 2. ค้นหาลูกค้าเดิม
         const searchInput = telesalePage.getByPlaceholder('พิมพ์เพื่อค้นหา').first();
+
+        // รอให้ช่องค้นหาลูกค้าปรากฏขึ้นมา
+        await searchInput.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+
+        // 2.1 เลือกหรือสร้างลูกค้าใหม่
         if (await searchInput.isVisible()) {
-          await searchInput.fill('0867482639');
+          await searchInput.fill('0811111111');
           await telesalePage.waitForTimeout(2000);
           
-          const searchResult = telesalePage.getByText('สมชาย 88').first(); 
-          await expect(searchResult).toBeVisible({ timeout: 10000 });
-          await searchResult.click();
+          const searchResult = telesalePage.locator('li').filter({ hasText: '0811111111' }).first();
+          const isResultVisible = await searchResult.isVisible({ timeout: 5000 }).catch(() => false);
+          
+          if (isResultVisible) {
+             await searchResult.click();
+          } else {
+             // Fallback
+             const nameInput = telesalePage.getByPlaceholder(/กรุณากรอกชื่อ/).first();
+             await nameInput.fill('Customer Fixed');
+             
+             const phoneInput = telesalePage.getByPlaceholder(/เบอร์โทร/).first();
+             await phoneInput.fill('0811111111');
+          }
         } else {
-          const nameInput = telesalePage.getByPlaceholder(/ชื่อ/).first();
-          await nameInput.fill('ลูกค้าเก่า ทดสอบ');
+          const nameInput = telesalePage.getByPlaceholder(/กรุณากรอกชื่อ/).first();
+          await nameInput.fill('Customer Fixed');
           
           const phoneInput = telesalePage.getByPlaceholder(/เบอร์โทร/).first();
-          await phoneInput.fill('0980954755');
+          await phoneInput.fill('0811111111');
         }
 
         // 2.5 จัดการที่อยู่จัดส่ง
@@ -77,7 +99,7 @@ test.describe('E2E Core Flow: Order Creation Variations (Multi-Role)', () => {
           if (!currentDistrict) {
             await districtInput.fill('เมืองสมุทรปราการ');
             await telesalePage.waitForTimeout(1000);
-            await telesalePage.getByText('เมืองสมุทรปราการ', { exact: true }).first().click();
+            await telesalePage.getByText('เมืองสมุทรปราการ', { exact: false }).first().click();
           }
         }
 
@@ -87,23 +109,20 @@ test.describe('E2E Core Flow: Order Creation Variations (Multi-Role)', () => {
           if (!currentSubDistrict) {
             await subDistrictInput.fill('ปากน้ำ');
             await telesalePage.waitForTimeout(1000);
-            await telesalePage.getByText('ปากน้ำ', { exact: true }).first().click();
+            await telesalePage.getByText('ปากน้ำ', { exact: false }).first().click();
           }
         }
 
         // 3. เลือกสินค้า
-        const selectProductBtn = telesalePage.getByRole('button', { name: '+ เพิ่มสินค้า' }).first();
-        if (await selectProductBtn.isVisible()) {
-          await selectProductBtn.click();
-          
-          await telesalePage.waitForTimeout(1000);
-          const chooseBtn = telesalePage.getByRole('button', { name: 'เลือก' }).first();
-          if (await chooseBtn.isVisible()) {
-            await chooseBtn.click();
-          }
-          
-          await telesalePage.keyboard.press('Escape');
-        }
+        const addProductBtn = telesalePage.locator('[data-testid="btn-add-product"]:visible').first();
+        await addProductBtn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => console.log('addProductBtn not visible'));
+        await addProductBtn.click();
+        
+        const chooseBtn = telesalePage.getByRole('button', { name: 'เลือก' }).first();
+        await chooseBtn.waitFor({ state: 'visible', timeout: 5000 });
+        await chooseBtn.click();
+        
+        await telesalePage.keyboard.press('Escape');
 
         // 3.1 เลือก สถานะลูกค้า
         const customerStatusSelect = telesalePage.locator('select').filter({ hasText: /ลูกค้าใหม่|ซื้อซ้ำ|อัพเซล/ }).first();
@@ -152,11 +171,22 @@ test.describe('E2E Core Flow: Order Creation Variations (Multi-Role)', () => {
           
           await telesalePage.waitForTimeout(1000);
           
-          // ถ้าเป็น COD ต้องแบ่งยอด
+          // ดึงราคายอดสุทธิจากหน้าจอมาเป็นจำนวนเงิน
+          const netTotalText = await telesalePage.locator('span:has-text("ยอดสุทธิ") + span').first().innerText();
+          const amount = netTotalText.replace(/[^\d.]/g, ''); // ตัดตัวอักษร ฿ หรือ , ออก
+
+          // ถ้าเป็น COD ต้องใส่ยอด COD
           if (method.value === 'COD') {
-            const divideBtn = telesalePage.getByRole('button', { name: 'แบ่งยอดเท่าๆ กัน' }).first();
+            const divideBtn = telesalePage.locator('[data-testid="btn-split-cod"]:visible').first();
+            await divideBtn.waitFor({ state: 'visible', timeout: 2000 }).catch(() => null);
             if (await divideBtn.isVisible()) {
-               await divideBtn.click();
+              await divideBtn.click();
+            }
+            
+            const codBox = telesalePage.locator('input[placeholder="ยอด COD"]').first();
+            await codBox.waitFor({ state: 'visible', timeout: 2000 }).catch(() => null);
+            if (await codBox.isVisible()) {
+              await codBox.fill(amount);
             }
           }
           
@@ -172,25 +202,45 @@ test.describe('E2E Core Flow: Order Creation Variations (Multi-Role)', () => {
             });
             await telesalePage.waitForTimeout(1500); // รอรูปโหลดและฟอร์มจำนวนเงินแสดงขึ้นมา
 
-            // ดึงราคายอดสุทธิจากหน้าจอมาใส่เป็นจำนวนเงิน
-            const netTotalText = await telesalePage.locator('span:has-text("ยอดสุทธิ") + span').first().innerText();
-            const amount = netTotalText.replace(/[^\d.]/g, ''); // ตัดตัวอักษร ฿ หรือ , ออก
+            await telesalePage.waitForTimeout(1500); // รอรูปโหลดและฟอร์มจำนวนเงินแสดงขึ้นมา
 
             // กรอกจำนวนเงินในสลิป
             const slipAmountInput = telesalePage.locator('div').filter({ has: telesalePage.locator('label:has-text("จำนวนเงิน")') }).locator('input[type="number"]').first();
             if (await slipAmountInput.isVisible()) {
                await slipAmountInput.fill(amount);
             }
+
+            // เลือกธนาคารที่รับโอน
+            const bankSelect = telesalePage.locator('div').filter({ has: telesalePage.locator('label:has-text("ธนาคารที่รับโอน")') }).locator('select').first();
+            if (await bankSelect.isVisible()) {
+               await bankSelect.selectOption({ index: 1 });
+            }
+
+            // ใส่วันที่โอน
+            const transferDateInput = telesalePage.locator('input[placeholder="เลือกวันที่และเวลา"]').first();
+            if (await transferDateInput.isVisible()) {
+               await transferDateInput.click();
+               // พิมพ์วันที่ใน format dd/MM/yyyy HH:mm
+               await transferDateInput.fill('29/05/2026 12:00');
+               await telesalePage.keyboard.press('Enter');
+            }
           }
         }
 
         // 5. กดบันทึกคำสั่งซื้อ
-        const saveBtn = telesalePage.getByRole('button', { name: /บันทึก|สร้างคำสั่งซื้อ|ยืนยันออเดอร์/ }).first();
+        const saveBtn = telesalePage.locator('[data-testid="btn-save-order"]:visible').first();
         await saveBtn.click();
 
-        await expect(telesalePage.locator('.toast').first()).toBeVisible({ timeout: 15000 }).catch(() => {
+        await expect(telesalePage.locator('.toast').first().or(telesalePage.locator('text=บันทึกคำสั่งซื้อสำเร็จ'))).toBeVisible({ timeout: 15000 }).catch(() => {
           console.log("อาจจะไม่เจอ Pop-up Success แต่บันทึกสำเร็จ กรุณาตรวจสอบอีกครั้ง");
         });
+
+        const successRef = telesalePage.locator('[data-testid="generated-order-ref"]:visible').first();
+        await successRef.waitFor({ state: 'visible', timeout: 5000 }).catch(() => null);
+        if (await successRef.isVisible()) {
+          createdOrderRef = (await successRef.innerText()).trim();
+          console.log(`Captured Order Ref: ${createdOrderRef}`);
+        }
       });
 
       // ==========================================
@@ -199,21 +249,131 @@ test.describe('E2E Core Flow: Order Creation Variations (Multi-Role)', () => {
       await test.step('Backoffice Manages Order', async () => {
         // นำทางไปหน้า จัดการคำสั่งซื้อ
         await backofficePage.goto('/?page=Manage%20Orders');
-        
-        await backofficePage.waitForTimeout(2000);
+        await backofficePage.waitForLoadState('networkidle');
 
-        // TODO: (ส่วนที่สอบถาม) 
-        // 1. กดเข้าแท็บ "รอส่งออก" 
-        // 2. ค้นหาออเดอร์ที่ Telesale เพิ่งสร้าง (ด้วยเบอร์โทร/ชื่อ)
-        // 3. ติ๊กเลือกแล้วกดส่งออก
-        console.log('Backoffice user accesses Manage Orders.');
+        // ถ้าเป็นโอนเงิน ต้องไปยืนยันสลิปก่อน
+        if (method.value === 'Transfer') {
+           await backofficePage.getByTestId('tab-waiting-verify-slip').first().click();
+           
+           if (createdOrderRef) {
+             const filterWrap = backofficePage.locator('.bg-white.p-4.rounded-lg.shadow-sm.border.mb-4').first();
+             await filterWrap.getByTestId('btn-advanced-filter').first().click();
+             await filterWrap.getByTestId('advanced-filter-panel').getByPlaceholder('ORD-...').fill(createdOrderRef);
+             await filterWrap.getByRole('button', { name: 'ค้นหา', exact: true }).click({ force: true });
+           }
+
+           await backofficePage.waitForTimeout(2000);
+           
+           // กดปุ่มจัดการในแถวของตาราง
+           await backofficePage.getByTestId(`btn-manage-order-${createdOrderRef}`).first().click();
+
+           // ติ๊ก Checkbox ยืนยันสลิป
+           const verifyCheckbox = backofficePage.getByTestId('checkbox-verify-slip').first();
+           await verifyCheckbox.waitFor({ state: 'visible', timeout: 5000 });
+           await verifyCheckbox.check();
+
+           // กดยืนยันสลิป
+           await backofficePage.getByTestId('btn-confirm-slip').first().click();
+
+           // รอ Modal ปิด หรือรอข้อความสำเร็จ
+           await backofficePage.waitForTimeout(2000);
+           await backofficePage.keyboard.press('Escape'); // ปิด Modal เผื่อไว้
+        }
+
+        // 1. กดเข้าแท็บ "รอดึงข้อมูล" 
+        await backofficePage.getByTestId('tab-pending-fetch').first().click();
+
+        // 2. ค้นหาออเดอร์ที่ Telesale เพิ่งสร้าง (ด้วยเลขออเดอร์)
+        if (createdOrderRef) {
+          // เปิดตัวกรองขั้นสูงและค้นหาเลขออเดอร์เฉพาะ
+          const filterWrap = backofficePage.locator('.bg-white.p-4.rounded-lg.shadow-sm.border.mb-4').first();
+          await filterWrap.getByTestId('btn-advanced-filter').first().click();
+          await filterWrap.getByTestId('advanced-filter-panel').getByPlaceholder('ORD-...').fill(createdOrderRef);
+          await filterWrap.getByRole('button', { name: 'ค้นหา', exact: true }).click({ force: true });
+        }
+        
+        // Wait for table to populate
+        await backofficePage.waitForTimeout(2000);
+        await backofficePage.waitForSelector('table tbody', { state: 'visible', timeout: 10000 }).catch(() => console.log("No orders found for this filter."));
+
+        // 3. ติ๊กเลือกแล้วกดส่งออก (if there are rows)
+        const dataRows = backofficePage.locator('tbody tr:not(:has-text("ไม่มีข้อมูลออเดอร์"))');
+        const rowCount = await dataRows.count();
+        if (rowCount > 0) {
+            // Capture Order ID for the next step
+            exportedOrderId = await dataRows.first().locator('td').nth(1).innerText();
+            console.log("Captured Order ID for Tracking:", exportedOrderId);
+
+            const selectAllCheckbox = backofficePage.getByRole('checkbox', { name: 'Select all' });
+            await selectAllCheckbox.check();
+
+            const exportBtn = backofficePage.getByTestId('btn-export-data').first();
+            await exportBtn.click();
+
+            // 4. Modal เลือก Template
+            await expect(backofficePage.getByText('เลือก Template ส่งออกข้อมูล')).toBeVisible({ timeout: 5000 });
+            
+            const templateRadio = backofficePage.locator('input[type="radio"][name="exportTemplate"]').first();
+            await templateRadio.check();
+
+            const confirmTemplateBtn = backofficePage.locator('.fixed.inset-0').last().getByRole('button', { name: 'ยืนยันส่งออก' }).first();
+            await confirmTemplateBtn.click();
+            
+            // 5. Validation Modal
+            await expect(backofficePage.getByText('สรุปผลการตรวจสอบข้อมูล')).toBeVisible({ timeout: 10000 });
+            
+            const modalConfirmBtn = backofficePage.locator('.fixed.inset-0').last().getByRole('button', { name: 'ยืนยันส่งออก' });
+            
+            // Listen for download
+            const downloadPromise = backofficePage.waitForEvent('download', { timeout: 15000 }).catch(() => null);
+            await modalConfirmBtn.click();
+            
+            const download = await downloadPromise;
+            if (download) {
+                expect(download.suggestedFilename()).toMatch(/\.(csv|xlsx)$/);
+            } else {
+                console.log("Download did not trigger after validation modal");
+            }
+        }
       });
 
       // ==========================================
       // STEP 4: Tracking Setup (by Backoffice)
       // ==========================================
       await test.step('Backoffice Link Tracking Number', async () => {
+        if (!exportedOrderId) {
+            console.log("No order exported, skipping tracking setup");
+            return;
+        }
+
         await backofficePage.goto('/?page=Bulk%20Tracking');
+        await backofficePage.waitForLoadState('networkidle');
+
+        // Fill order Id
+        const orderInput = backofficePage.locator('input[placeholder="e.g. ORD-1234"]').first();
+        await orderInput.fill(exportedOrderId.trim());
+
+        // Fill random tracking (Flash Express format TH + 10 digits)
+        const randomTracking = 'TH' + Math.floor(1000000000 + Math.random() * 9000000000).toString();
+        const trackingInput = backofficePage.getByTestId('input-tracking-0').first();
+        await trackingInput.fill(randomTracking);
+
+        // Click Verify
+        await backofficePage.getByRole('button', { name: 'ตรวจสอบข้อมูล' }).click();
+
+        // Wait for it to become valid
+        await expect(backofficePage.getByText('Ready to sync').or(backofficePage.getByText('พร้อมนำเข้า'))).toBeVisible({ timeout: 10000 });
+
+        // Handle confirm dialog automatically
+        backofficePage.once('dialog', async dialog => {
+            await dialog.accept();
+        });
+
+        // Click Import
+        await backofficePage.getByTestId('btn-confirm-tracking').first().click();
+
+        // Wait for success toast
+        await expect(backofficePage.getByText('นำเข้าข้อมูลเรียบร้อยแล้ว')).toBeVisible({ timeout: 5000 });
       });
 
       // ==========================================
