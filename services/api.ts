@@ -2746,3 +2746,19 @@ export async function recalculateAllCustomerGrades(): Promise<any> {
     method: 'POST',
   });
 }
+
+// ========== Cancellation Dashboard API ==========
+export async function getCancellationDashboardStats(params?: { dateStart?: string; dateEnd?: string }): Promise<any> {
+  const query = new URLSearchParams();
+  if (params?.dateStart) query.append('date_start', params.dateStart);
+  if (params?.dateEnd) query.append('date_end', params.dateEnd);
+  
+  return apiFetch('Orders/cancellation_dashboard_stats.php?' + query.toString());
+}
+
+export async function acknowledgeCancellation(orderId: string): Promise<any> {
+  return apiFetch('Orders/acknowledge_cancellation.php', {
+    method: 'POST',
+    body: JSON.stringify({ order_id: orderId }),
+  });
+}

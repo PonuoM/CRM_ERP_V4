@@ -86,48 +86,85 @@ try {
     $beforeSystemId = $typeMap['ยกเลิกก่อนเข้าระบบ'] ?? $fallbackId1;
     $afterSystemId = $typeMap['ยกเลิกหลังเข้าระบบ'] ?? $fallbackId2;
 
-    // Analyze each cancelled order
-    $results = [];
+    // Prepare related orders in a single query to avoid N+1 problem
+    $customerIds = [];
+    $minDateStr = null;
+    $maxDateStr = null;
     foreach ($cancelledOrders as $order) {
-        // Find related orders from the SAME CUSTOMER within ±7 days
+        $customerIds[] = $order['customer_id'];
+        $ts = strtotime($order['order_date']);
+        if ($minDateStr === null || $ts < strtotime($minDateStr)) $minDateStr = $order['order_date'];
+        if ($maxDateStr === null || $ts > strtotime($maxDateStr)) $maxDateStr = $order['order_date'];
+    }
+
+    $relatedOrdersGrouped = [];
+    if (!empty($customerIds)) {
+        $customerIds = array_unique($customerIds);
+        $inPlaceholders = implode(',', array_fill(0, count($customerIds), '?'));
+        
+        // Calculate date range buffer (+/- 7 days)
+        $minDate = date('Y-m-d 00:00:00', strtotime($minDateStr . ' -7 days'));
+        $maxDate = date('Y-m-d 23:59:59', strtotime($maxDateStr . ' +7 days'));
+        
+        $relatedParams = array_merge([$companyId, $minDate, $maxDate], array_values($customerIds));
+        
+        // Use BETWEEN instead of ABS(DATEDIFF()) for index utilization
         $relatedStmt = $pdo->prepare("
             SELECT 
                 o2.id as order_id,
                 o2.order_date,
                 o2.total_amount,
                 o2.order_status,
+                o2.customer_id,
                 CONCAT(u.first_name, ' ', u.last_name) as creator_name
             FROM orders o2
             LEFT JOIN users u ON u.id = o2.creator_id
-            WHERE o2.customer_id = ?
-            AND o2.company_id = ?
-            AND o2.id != ?
+            WHERE o2.company_id = ?
             AND o2.order_status != 'Cancelled'
-            AND ABS(DATEDIFF(o2.order_date, ?)) <= 7
-            ORDER BY ABS(DATEDIFF(o2.order_date, ?)) ASC
-            LIMIT 5
+            AND o2.order_date BETWEEN ? AND ?
+            AND o2.customer_id IN ($inPlaceholders)
         ");
-        $relatedStmt->execute([
-            $order['customer_id'],
-            $companyId,
-            $order['order_id'],
-            $order['order_date'],
-            $order['order_date']
-        ]);
-        $relatedOrders = $relatedStmt->fetchAll(PDO::FETCH_ASSOC);
+        $relatedStmt->execute($relatedParams);
+        $allRelated = $relatedStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($allRelated as $r) {
+            $relatedOrdersGrouped[$r['customer_id']][] = $r;
+        }
+    }
+
+    // Analyze each cancelled order
+    $results = [];
+    foreach ($cancelledOrders as $order) {
+        $customerRelated = $relatedOrdersGrouped[$order['customer_id']] ?? [];
+        
+        $relatedOrders = [];
+        $orderTs = strtotime($order['order_date']);
+        foreach ($customerRelated as $r) {
+            if ($r['order_id'] === $order['order_id']) continue;
+            
+            $rTs = strtotime($r['order_date']);
+            $diffDays = abs($rTs - $orderTs) / 86400;
+            
+            if ($diffDays <= 7) {
+                $r['diff_days'] = $diffDays;
+                $relatedOrders[] = $r;
+            }
+        }
+        
+        // Sort by closest date
+        usort($relatedOrders, function($a, $b) {
+            return $a['diff_days'] <=> $b['diff_days'];
+        });
+        
+        // Limit to top 5
+        $relatedOrders = array_slice($relatedOrders, 0, 5);
 
         $hasRelated = count($relatedOrders) > 0;
 
         // Determine confidence
         if ($hasRelated) {
-            // Check how close the dates are
-            $closestDiff = PHP_INT_MAX;
-            foreach ($relatedOrders as $rel) {
-                $diff = abs(strtotime($rel['order_date']) - strtotime($order['order_date']));
-                $closestDiff = min($closestDiff, $diff);
-            }
-            $daysDiff = $closestDiff / 86400;
-            $confidence = $daysDiff <= 1 ? 'high' : ($daysDiff <= 3 ? 'medium' : 'low');
+            $closestDaysDiff = $relatedOrders[0]['diff_days'];
+            $confidence = $closestDaysDiff <= 1 ? 'high' : ($closestDaysDiff <= 3 ? 'medium' : 'low');
         } else {
             $confidence = 'medium';
         }

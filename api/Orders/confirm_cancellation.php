@@ -38,26 +38,50 @@ try {
 
     $pdo->beginTransaction();
 
-    $stmt = $pdo->prepare("
-        INSERT INTO order_cancellations (order_id, cancellation_type_id, notes, classified_by)
-        VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-            cancellation_type_id = VALUES(cancellation_type_id),
-            notes = VALUES(notes),
-            classified_by = VALUES(classified_by),
-            classified_at = CURRENT_TIMESTAMP
-    ");
-
     $successCount = 0;
+    $validItems = [];
+
+    // Filter valid items
     foreach ($items as $item) {
         $orderId = $item['order_id'] ?? null;
         $typeId = $item['cancellation_type_id'] ?? null;
-        $notes = $item['notes'] ?? null;
-
+        
         if (!$orderId || !$typeId) continue;
+        
+        $validItems[] = [
+            'order_id' => $orderId,
+            'type_id' => $typeId,
+            'notes' => $item['notes'] ?? null
+        ];
+    }
 
-        $stmt->execute([$orderId, $typeId, $notes, $classifiedBy]);
-        $successCount++;
+    // Batch Insert (500 rows per query to avoid hitting parameter limits)
+    $chunkSize = 500;
+    $chunks = array_chunk($validItems, $chunkSize);
+
+    foreach ($chunks as $chunk) {
+        $placeholders = [];
+        $params = [];
+        
+        foreach ($chunk as $row) {
+            $placeholders[] = '(?, ?, ?, ?)';
+            $params[] = $row['order_id'];
+            $params[] = $row['type_id'];
+            $params[] = $row['notes'];
+            $params[] = $classifiedBy;
+        }
+        
+        $sql = "INSERT INTO order_cancellations (order_id, cancellation_type_id, notes, classified_by) VALUES " . 
+               implode(', ', $placeholders) . "
+               ON DUPLICATE KEY UPDATE
+               cancellation_type_id = VALUES(cancellation_type_id),
+               notes = VALUES(notes),
+               classified_by = VALUES(classified_by),
+               classified_at = CURRENT_TIMESTAMP";
+               
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $successCount += count($chunk);
     }
 
     $pdo->commit();

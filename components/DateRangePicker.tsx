@@ -9,7 +9,8 @@ export interface DateRange {
 
 interface DateRangePickerProps {
   value: DateRange;
-  onApply: (range: DateRange) => void;
+  onApply?: (range: DateRange) => void;
+  onChange?: (range: DateRange) => void;
 }
 
 const isSameDay = (a: Date, b: Date) =>
@@ -18,12 +19,16 @@ const isSameDay = (a: Date, b: Date) =>
 const inBetween = (d: Date, s: Date | null, e: Date | null) =>
   s && e ? d.getTime() >= s.getTime() && d.getTime() <= e.getTime() : false;
 
-const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => {
+const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onChange }) => {
   const [open, setOpen] = useState(false);
   const [rangeTempStart, setRangeTempStart] = useState<Date | null>(null);
   const [rangeTempEnd, setRangeTempEnd] = useState<Date | null>(null);
   const [visibleMonth, setVisibleMonth] = useState<Date>(() => {
-    const d = new Date(value.end || new Date());
+    const d = value.end ? new Date(value.end) : new Date();
+    if (isNaN(d.getTime())) {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+    }
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [alignRight, setAlignRight] = useState(false);
@@ -42,11 +47,17 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
   // Sync temp dates when popover opens
   useEffect(() => {
     if (open) {
-      const s = new Date(value.start);
-      const e = new Date(value.end);
-      setRangeTempStart(new Date(s.getFullYear(), s.getMonth(), s.getDate()));
-      setRangeTempEnd(new Date(e.getFullYear(), e.getMonth(), e.getDate()));
-      setVisibleMonth(new Date(e.getFullYear(), e.getMonth(), 1));
+      const s = value.start ? new Date(value.start) : null;
+      const e = value.end ? new Date(value.end) : null;
+      
+      const safeS = s && !isNaN(s.getTime()) ? s : null;
+      const safeE = e && !isNaN(e.getTime()) ? e : null;
+      
+      setRangeTempStart(safeS ? new Date(safeS.getFullYear(), safeS.getMonth(), safeS.getDate()) : null);
+      setRangeTempEnd(safeE ? new Date(safeE.getFullYear(), safeE.getMonth(), safeE.getDate()) : null);
+      
+      const vMonth = safeE || safeS || new Date();
+      setVisibleMonth(new Date(vMonth.getFullYear(), vMonth.getMonth(), 1));
       // Check if popup would overflow right edge
       if (btnRef.current) {
         const rect = btnRef.current.getBoundingClientRect();
@@ -56,7 +67,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
   }, [open]);
 
   const display = useMemo(
-    () => `${formatThaiDateTime(value.start)}  —  ${formatThaiDateTime(value.end)}`,
+    () => {
+      if (!value.start && !value.end) return 'เลือกช่วงวันที่';
+      const startStr = value.start ? formatThaiDateTime(value.start).split(' ')[0] : '...';
+      const endStr = value.end ? formatThaiDateTime(value.end).split(' ')[0] : '...';
+      return `${startStr}  —  ${endStr}`;
+    },
     [value]
   );
 
@@ -162,7 +178,9 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
       return `${y}-${m}-${day}T${h}:${min}:${sec}`;
     };
 
-    onApply({ start: toLocalISO(s), end: toLocalISO(e) });
+    const newRange = { start: toLocalISO(s), end: toLocalISO(e) };
+    if (onApply) onApply(newRange);
+    if (onChange) onChange(newRange);
     setOpen(false);
   };
 

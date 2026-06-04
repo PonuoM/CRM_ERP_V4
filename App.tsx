@@ -144,6 +144,7 @@ import CompanyManagementPage from "./pages/CompanyManagementPage";
 import WarehouseManagementPage from "./pages/WarehouseManagementPage";
 import ReturnManagementPage from "./pages/ReturnManagementPage";
 import CheckOrderPage from "./pages/CheckOrderPage";
+import CancellationDashboardPage from "./pages/CancellationDashboardPage";
 import CancelConfirmModal from "./components/CancelConfirmModal";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
 import UpsellOrderPage from "./pages/UpsellOrderPage";
@@ -7749,6 +7750,11 @@ const App: React.FC = () => {
       case "ตรวจสอบคำสั่งซื้อ":
       case "nav.cancellation_management":
         return <CheckOrderPage currentUser={currentUser} />;
+
+      case "Cancellation Dashboard":
+      case "แดชบอร์ดยกเลิก":
+      case "nav.cancellation_dashboard":
+        return <CancellationDashboardPage user={currentUser} />;
 
       // PROCESSED: System / Roles
       case "Role Management":

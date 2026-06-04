@@ -172,6 +172,20 @@ export async function allocateQuota(payload: {
   });
 }
 
+export async function transferQuota(payload: {
+  fromUserId: number;
+  toUserId: number;
+  companyId: number;
+  quantity: number;
+  sourceDetail?: string;
+  allocatedBy?: number;
+}): Promise<{ success: boolean; id?: number }> {
+  return apiFetch(QUOTA_API, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'transfer_quota', ...payload }),
+  });
+}
+
 // ============================================================
 // Quota Usage
 // ============================================================

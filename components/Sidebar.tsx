@@ -148,6 +148,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Finance Approval": "ตรวจสอบยอดเงิน",
     "Statement Management": "จัดการ Statement",
     "Orders & Customers": "คำสั่งซื้อและลูกค้า",
+    "Cancellation Dashboard": "แดชบอร์ดยกเลิก",
     "COD Management": "จัดการยอด COD",
     "Order Tab Settings": "ตั้งค่าจัดการคำสั่งซื้อ",
     "Basket Settings": "ตั้งค่าถัง",
@@ -268,6 +269,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Export Template Settings", icon: FileSpreadsheet, key: "nav.export_template_settings" },
         { label: "Search", icon: Search, key: "nav.search" },
         { label: "ตรวจสอบคำสั่งซื้อ", icon: ClipboardList, key: "nav.cancellation_management" },
+        { label: "Cancellation Dashboard", icon: BarChart3, key: "nav.cancellation_dashboard" },
         { label: "Quota Settings", icon: Package, key: "data.quota_settings" },
       ]
     },

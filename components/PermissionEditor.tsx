@@ -45,6 +45,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'nav.search', label: 'เมนู Search (ค้นหาข้อมูล)' },
             { key: 'nav.cancelled_classification', label: 'เมนู จัดประเภทยกเลิก' },
             { key: 'nav.cancellation_settings', label: 'เมนู ตั้งค่าการยกเลิก' },
+            { key: 'nav.cancellation_dashboard', label: 'Cancellation Dashboard (แดชบอร์ดยกเลิก)' },
             { key: 'data.quota_settings', label: 'Quota Settings (ตั้งค่าโควต้าสินค้า)' },
         ]
     },

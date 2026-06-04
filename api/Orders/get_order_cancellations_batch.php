@@ -23,7 +23,7 @@ try {
 
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $stmt = $pdo->prepare("
-        SELECT oc.order_id, oc.cancellation_type_id, oc.notes, ct.label as type_label
+        SELECT oc.order_id, oc.cancellation_type_id, oc.notes, oc.is_acknowledged, ct.label as type_label
         FROM order_cancellations oc
         LEFT JOIN cancellation_types ct ON ct.id = oc.cancellation_type_id
         WHERE oc.order_id IN ($placeholders)
