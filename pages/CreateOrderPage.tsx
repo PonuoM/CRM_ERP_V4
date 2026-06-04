@@ -8417,6 +8417,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               filteredProvinces.map((province) => (
                                 <div
                                   key={province.id}
+                                  data-testid={`option-province-${province.id}`}
                                   className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
                                   onClick={() => {
                                     // If postal code is entered, clear it when changing province
@@ -8576,6 +8577,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               filteredDistricts.map((district) => (
                                 <div
                                   key={district.id}
+                                  data-testid={`option-district-${district.id}`}
                                   className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
                                   onClick={() => {
                                     setSelectedDistrict(district.id);
@@ -8698,6 +8700,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               filteredSubDistricts.map((subDistrict) => (
                                 <div
                                   key={`${subDistrict.id}-${subDistrict.zip_code}`}
+                                  data-testid={`option-subdistrict-${subDistrict.id}`}
                                   className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
                                   onClick={() => {
                                     console.log(

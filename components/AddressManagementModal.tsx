@@ -520,6 +520,7 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
                     {filteredProvinces.map((province) => (
                       <div
                         key={province.id}
+                        data-testid={`option-province-${province.id}`}
                         className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
                         onClick={() => {
                           setSelectedProvince(province.id);
@@ -571,6 +572,7 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
                     {filteredDistricts.map((district) => (
                       <div
                         key={district.id}
+                        data-testid={`option-district-${district.id}`}
                         className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
                         onClick={() => {
                           setSelectedDistrict(district.id);
@@ -622,6 +624,7 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
                     {filteredSubDistricts.map((subDistrict) => (
                       <div
                         key={subDistrict.id}
+                        data-testid={`option-subdistrict-${subDistrict.id}`}
                         className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
                         onClick={() => {
                           setSelectedSubDistrict(subDistrict.id);
