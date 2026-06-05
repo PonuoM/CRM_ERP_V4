@@ -956,195 +956,208 @@ function handleUseQuota(PDO $conn, array $data) {
 // ============================================================
 
 function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
-    // 1. Find the latest rate that includes this product in its scope
-    $stmtRate = $conn->prepare("
+    // หา company_id ของ User เพื่อส่งต่อให้ฟังก์ชันตัวใหม่
+    $stmtCompany = $conn->prepare("SELECT company_id FROM users WHERE id = :userId");
+    $stmtCompany->execute([':userId' => $userId]);
+    $companyId = intval($stmtCompany->fetchColumn());
+
+    // 1. Find all active rates that include this product in their scope
+    $stmtRates = $conn->prepare("
         SELECT qrs.*, scope.sales_per_quota AS scope_sales_per_quota
         FROM quota_rate_schedules qrs
         JOIN quota_rate_scope scope ON scope.rate_schedule_id = qrs.id AND scope.quota_product_id = :qpId
         WHERE qrs.deleted_at IS NULL
-        ORDER BY
-            CASE WHEN qrs.quota_mode = 'confirm' THEN qrs.usage_start_date ELSE qrs.effective_date END DESC
-        LIMIT 1
     ");
-    $stmtRate->execute([':qpId' => $quotaProductId]);
-    $latestRate = $stmtRate->fetch();
+    $stmtRates->execute([':qpId' => $quotaProductId]);
+    $activeRates = $stmtRates->fetchAll(PDO::FETCH_ASSOC);
 
-    if (!$latestRate) {
-        // No rate schedule — but still calculate admin allocations & usage below
-        $salesPerQuota = 0;
-        $quotaMode = 'N/A';
-        $dateCol = 'o.order_date';
-    } else {
+    if (empty($activeRates)) {
+        // --- FALLBACK กรณีไม่มี Rate Schedule เลย ---
+        $stmtAdmin = $conn->prepare("
+            SELECT COALESCE(SUM(quantity), 0) AS admin_total FROM quota_allocations
+            WHERE quota_product_id = :qpId AND user_id = :userId AND source IN ('admin', 'transfer') AND deleted_at IS NULL
+            AND (valid_from IS NULL OR valid_from <= CURDATE())
+            AND (valid_until IS NULL OR valid_until >= CURDATE())
+        ");
+        $stmtAdmin->execute([':qpId' => $quotaProductId, ':userId' => $userId]);
+        $adminQuota = floatval($stmtAdmin->fetch()['admin_total']);
 
-    // Use per-product rate from scope if available, else fallback to rate header
-    $salesPerQuota = floatval($latestRate['scope_sales_per_quota'] ?? 0);
-    if ($salesPerQuota <= 0) {
-        $salesPerQuota = floatval($latestRate['sales_per_quota']);
+        $stmtUsage = $conn->prepare("
+            SELECT COALESCE(SUM(quantity_used), 0) AS total_used FROM quota_usage
+            WHERE quota_product_id = :qpId AND user_id = :userId AND deleted_at IS NULL
+        ");
+        $stmtUsage->execute([':qpId' => $quotaProductId, ':userId' => $userId]);
+        $totalUsed = floatval($stmtUsage->fetch()['total_used']);
+
+        $totalQuota = $adminQuota;
+        $remaining = $totalQuota - $totalUsed;
+
+        return [
+            'autoQuota' => 0,
+            'adminQuota' => $adminQuota,
+            'totalQuota' => $totalQuota,
+            'totalUsed' => $totalUsed,
+            'remaining' => $remaining,
+            'totalSales' => 0,
+            'salesPerQuota' => 0,
+            'quotaMode' => 'N/A',
+            'periodStart' => null,
+            'periodEnd' => null,
+            'pendingAutoQuota' => 0,
+            'isConfirmed' => null,
+            'isExpired' => false,
+            'usageEndDate' => null,
+            'requireConfirm' => null,
+            'isBeforeUsageStart' => false,
+            'rateScheduleId' => null,
+        ];
     }
 
-    $quotaMode = $latestRate['quota_mode'];
-    $dateCol = ($latestRate['order_date_field'] === 'delivery_date') ? 'o.delivery_date' : 'o.order_date';
-    $periodStart = null;
-    $periodEnd = null;
-    $totalSales = 0;
-    $autoQuota = 0;
-    $pendingAutoQuota = null;
-    $isConfirmed = null;
-    $isExpired = false;
-    $isBeforeUsageStart = false;
-
-    if ($quotaMode === 'confirm') {
-        // ====== CONFIRM MODE ======
-        $calcStart = $latestRate['calc_period_start'];
-        $calcEnd = $latestRate['calc_period_end'];
-        $usageStartDate = $latestRate['usage_start_date'] ?? $latestRate['effective_date'];
-
-        $periodStart = $calcStart;
-        $periodEnd = $calcEnd;
-
-        if ($calcStart && $calcEnd) {
-            $totalSales = _calcSalesInPeriod($conn, $userId, $quotaProductId, $dateCol, $calcStart, $calcEnd);
-            $pendingAutoQuota = ($salesPerQuota > 0) ? floor($totalSales / $salesPerQuota) : 0;
-        } else {
-            $pendingAutoQuota = 0;
-        }
-
-        $requireConfirm = intval($latestRate['require_confirm'] ?? 1);
-        if ($requireConfirm) {
-            $stmtConf = $conn->prepare("
-                SELECT COALESCE(SUM(quantity), 0) AS confirmed_total
-                FROM quota_allocations
-                WHERE (quota_product_id = :qpId OR quota_product_id IS NULL) AND user_id = :uid AND source = 'auto_confirmed'
-                AND rate_schedule_id = :rsId AND deleted_at IS NULL
-            ");
-            $stmtConf->execute([':qpId' => $quotaProductId, ':uid' => $userId, ':rsId' => (string)$latestRate['id']]);
-            $confirmedQuota = floatval($stmtConf->fetch()['confirmed_total']);
-            $isConfirmed = $confirmedQuota > 0;
-            $autoQuota = $confirmedQuota;
-        } else {
-            $autoQuota = $pendingAutoQuota;
-        }
-
-        // Check expiry
-        $usageEndDate = $latestRate['usage_end_date'] ?? null;
-        if ($usageEndDate && strlen($usageEndDate) >= 10 && date('Y-m-d') > $usageEndDate) {
-            $isExpired = true;
-        }
-        if ($usageStartDate && date('Y-m-d') < $usageStartDate) {
-            $autoQuota = 0;
-            $isBeforeUsageStart = true;
-        }
-
-    } elseif ($quotaMode === 'reset') {
-        // ====== RESET MODE (backward compat) ======
-        $resetDayOfMonth = $latestRate['reset_day_of_month'] ? intval($latestRate['reset_day_of_month']) : null;
-        if ($resetDayOfMonth) {
-            $now = new DateTime();
-            $cd = intval($now->format('j'));
-            $cy = intval($now->format('Y'));
-            $cm = intval($now->format('n'));
-            if ($cd >= $resetDayOfMonth) {
-                $ps = new DateTime("$cy-$cm-$resetDayOfMonth");
-                $periodStart = $ps->format('Y-m-d');
-                $periodEnd = (clone $ps)->modify('+1 month')->format('Y-m-d');
-            } else {
-                $pe = new DateTime("$cy-$cm-$resetDayOfMonth");
-                $periodStart = (clone $pe)->modify('-1 month')->format('Y-m-d');
-                $periodEnd = $pe->format('Y-m-d');
-            }
-        } else {
-            $intervalDays = intval($latestRate['reset_interval_days']);
-            $anchor = new DateTime($latestRate['reset_anchor_date'] ?: $latestRate['effective_date']);
-            $now = new DateTime();
-            if ($now < $anchor) {
-                $periodStart = $anchor->format('Y-m-d');
-                $periodEnd = (clone $anchor)->modify("+{$intervalDays} days")->format('Y-m-d');
-            } else {
-                $elapsed = floor(intval($anchor->diff($now)->days) / $intervalDays);
-                $ps = (clone $anchor)->modify("+".($elapsed * $intervalDays)." days");
-                $periodStart = $ps->format('Y-m-d');
-                $periodEnd = (clone $ps)->modify("+{$intervalDays} days")->format('Y-m-d');
-            }
-        }
-        $totalSales = _calcSalesInPeriod($conn, $userId, $quotaProductId, $dateCol, $periodStart, $periodEnd);
-        $autoQuota = ($salesPerQuota > 0) ? floor($totalSales / $salesPerQuota) : 0;
-
-    } elseif ($quotaMode === 'cumulative') {
-        // ====== CUMULATIVE MODE (backward compat) ======
-        $periodStart = $latestRate['effective_date'];
-        $periodEnd = date('Y-m-d');
-        $totalSales = _calcSalesInPeriod($conn, $userId, $quotaProductId, $dateCol, $periodStart, $periodEnd);
-        $autoQuota = ($salesPerQuota > 0) ? floor($totalSales / $salesPerQuota) : 0;
-    }
-    } // end else (latestRate exists)
-
-    // Find all products sharing this rate schedule
-    $scopeIds = [$quotaProductId]; // fallback
-    if (!empty($latestRate['id'])) {
-        $stmtScopeIds = $conn->prepare("SELECT quota_product_id FROM quota_rate_scope WHERE rate_schedule_id = :rsId");
-        $stmtScopeIds->execute([':rsId' => $latestRate['id']]);
-        $fetchedIds = $stmtScopeIds->fetchAll(PDO::FETCH_COLUMN);
-        if (!empty($fetchedIds)) {
-            $scopeIds = array_map('intval', $fetchedIds);
-        }
-    }
-    $inScopeIds = implode(',', $scopeIds);
-
-    // Admin-added quota (Shared across scope)
-    $adminQuery = "
-        SELECT COALESCE(SUM(quantity), 0) AS admin_total FROM quota_allocations
-        WHERE (quota_product_id IN ($inScopeIds) OR (quota_product_id IS NULL AND rate_schedule_id = :rsId))
-        AND user_id = :userId AND source IN ('admin', 'transfer') AND deleted_at IS NULL
-        AND (valid_from IS NULL OR valid_from <= CURDATE())
-        AND (valid_until IS NULL OR valid_until >= CURDATE())
-    ";
-    $adminParams = [':userId' => $userId, ':rsId' => (string)($latestRate['id'] ?? 0)];
-    if ($quotaMode === 'reset') {
-        $adminQuery .= " AND period_start = :ps AND period_end = :pe";
-        $adminParams[':ps'] = $periodStart;
-        $adminParams[':pe'] = $periodEnd;
-    }
-    $stmtAdmin = $conn->prepare($adminQuery);
-    $stmtAdmin->execute($adminParams);
-    $adminQuota = floatval($stmtAdmin->fetch()['admin_total']);
-
-    // Usage (Shared across scope)
-    $usageQuery = "
-        SELECT COALESCE(SUM(quantity_used), 0) AS total_used FROM quota_usage
-        WHERE quota_product_id IN ($inScopeIds) AND user_id = :userId AND deleted_at IS NULL
-    ";
-    $usageParams = [':userId' => $userId];
-    if ($quotaMode === 'reset') {
-        $usageQuery .= " AND period_start = :ps AND period_end = :pe";
-        $usageParams[':ps'] = $periodStart;
-        $usageParams[':pe'] = $periodEnd;
-    }
-    $stmtUsage = $conn->prepare($usageQuery);
-    $stmtUsage->execute($usageParams);
-    $totalUsed = floatval($stmtUsage->fetch()['total_used']);
-
-    $totalQuota = $autoQuota + $adminQuota;
-    $remaining = $totalQuota - $totalUsed;
-
-    return [
-        'autoQuota' => $autoQuota,
-        'adminQuota' => $adminQuota,
-        'totalQuota' => $totalQuota,
-        'totalUsed' => $totalUsed,
-        'remaining' => $remaining,
-        'totalSales' => $totalSales,
-        'salesPerQuota' => $salesPerQuota,
-        'quotaMode' => $quotaMode,
-        'periodStart' => $periodStart,
-        'periodEnd' => $periodEnd,
-        'pendingAutoQuota' => $pendingAutoQuota,
-        'isConfirmed' => $isConfirmed,
-        'isExpired' => $isExpired ?? false,
-        'usageEndDate' => $latestRate['usage_end_date'] ?? null,
-        'requireConfirm' => isset($latestRate['require_confirm']) ? intval($latestRate['require_confirm']) : null,
-        'isBeforeUsageStart' => $isBeforeUsageStart,
-        'rateScheduleId' => $latestRate['id'] ?? null,
+    // 2. มีกติกา (Rates) ใช้งาน ให้เตรียมตะกร้า (Buckets) สำหรับ Dynamic Bin Packing
+    $buckets = [];
+    $allScopeProductIds = [];
+    $aggregate = [
+        'autoQuota' => 0,
+        'adminQuota' => 0,
+        'totalQuota' => 0,
+        'pendingAutoQuota' => 0,
     ];
+
+    foreach ($activeRates as $rate) {
+        $rateData = calculateQuotaByRate($conn, $rate, $userId, $companyId);
+        
+        // ถ้าตะกร้านี้หมดอายุ หรือยังไม่ถึงเวลาเริ่มใช้ จะไม่นำมารวมความจุ (Capacity) ในปัจจุบัน
+        if ($rateData['isExpired'] || $rateData['isBeforeUsageStart']) {
+            continue;
+        }
+
+        // ดึงรายการสินค้าทั้งหมดที่อยู่ใน Scope ของตะกร้านี้
+        $stmtScope = $conn->prepare("SELECT quota_product_id FROM quota_rate_scope WHERE rate_schedule_id = :rid");
+        $stmtScope->execute([':rid' => $rate['id']]);
+        $scopeIds = $stmtScope->fetchAll(PDO::FETCH_COLUMN);
+
+        $buckets[] = [
+            'id' => $rate['id'],
+            'rate_name' => $rate['rate_name'],
+            'scope_products' => $scopeIds,
+            // ความจุของตะกร้า = totalQuota ที่คำนวณมา (รวมแอดมิน, ตัดหนี้ในอดีตแล้ว)
+            'capacity' => floatval($rateData['totalQuota']),
+            'end_date' => $rate['usage_end_date'] ?: '2099-12-31',
+            'start_date' => $rate['usage_start_date'] ?: '1970-01-01',
+        ];
+
+        foreach ($scopeIds as $sid) {
+            $allScopeProductIds[$sid] = true;
+        }
+
+        $aggregate['autoQuota'] += $rateData['autoQuota'];
+        $aggregate['adminQuota'] += $rateData['adminQuota'];
+        $aggregate['totalQuota'] += $rateData['totalQuota'];
+        $aggregate['pendingAutoQuota'] += $rateData['pendingAutoQuota'];
+
+        // ใช้ metadata ของ rate แรกที่เจอเป็นตัวตั้งต้นสำหรับส่งให้ UI
+        if (!isset($aggregate['quotaMode'])) {
+            $aggregate['quotaMode'] = $rateData['quotaMode'];
+            $aggregate['periodStart'] = $rateData['periodStart'];
+            $aggregate['periodEnd'] = $rateData['periodEnd'];
+            $aggregate['isConfirmed'] = $rateData['isConfirmed'];
+            $aggregate['requireConfirm'] = $rateData['requireConfirm'];
+        }
+    }
+
+    if (empty($buckets)) {
+        // ทุก Rate ที่เกี่ยวข้องหมดอายุไปหมดแล้ว
+        return [
+            'autoQuota' => 0, 'adminQuota' => 0, 'totalQuota' => 0, 'totalUsed' => 0, 'remaining' => 0,
+            'totalSales' => 0, 'salesPerQuota' => 0, 'quotaMode' => 'N/A', 'periodStart' => null, 'periodEnd' => null,
+            'pendingAutoQuota' => 0, 'isConfirmed' => null, 'isExpired' => true, 'usageEndDate' => null,
+            'requireConfirm' => null, 'isBeforeUsageStart' => false, 'rateScheduleId' => null,
+        ];
+    }
+
+    // 3. ดึงประวัติการใช้ (Raw Usages) ของสินค้าที่เกี่ยวข้องทั้งหมด
+    $inClause = implode(',', array_map('intval', array_keys($allScopeProductIds)));
+    $stmtU = $conn->prepare("
+        SELECT quota_product_id, quantity_used, created_at 
+        FROM quota_usage 
+        WHERE user_id = :uid 
+        AND quota_product_id IN ($inClause) 
+        AND deleted_at IS NULL 
+    ");
+    $stmtU->execute([':uid' => $userId]);
+    $rawUsages = $stmtU->fetchAll(PDO::FETCH_ASSOC);
+
+    // หา minStart, maxEnd สำหรับแสดง totalUsed ของสินค้านี้
+    $minStart = '2099-12-31 00:00:00';
+    $maxEnd = '1970-01-01 23:59:59';
+
+    // 4. จัดเรียงลำดับความสำคัญของตะกร้า (Dynamic Sorting Priority)
+    usort($buckets, function($a, $b) {
+        $countA = count($a['scope_products']);
+        $countB = count($b['scope_products']);
+        if ($countA !== $countB) {
+            return $countA - $countB; // 1. เจาะจงมากที่สุดก่อน (ขอบเขตแคบสุด)
+        }
+        if ($a['end_date'] !== $b['end_date']) {
+            return strtotime($a['end_date']) - strtotime($b['end_date']); // 2. ใกล้หมดอายุที่สุดก่อน
+        }
+        return $a['id'] - $b['id']; // 3. สร้างก่อน
+    });
+
+    // 5. เทของลงตะกร้า (Dynamic Bin Packing)
+    foreach ($buckets as &$bucket) {
+        $bucket['remaining'] = $bucket['capacity'];
+        $bStart = $bucket['start_date'] . ' 00:00:00';
+        $bEnd   = $bucket['end_date'] . ' 23:59:59';
+        
+        if ($bStart < $minStart) $minStart = $bStart;
+        if ($bEnd > $maxEnd) $maxEnd = $bEnd;
+        
+        foreach ($rawUsages as $k => $usage) {
+            // ถ้ายอดใช้นี้ตรงกับสินค้าใน Scope ของตะกร้า
+            if (in_array($usage['quota_product_id'], $bucket['scope_products'])) {
+                // ถ้ายอดใช้นี้เกิดขึ้นในช่วงเวลาที่ตะกร้านี้เปิดให้ใช้งาน
+                if ($usage['created_at'] >= $bStart && $usage['created_at'] <= $bEnd) {
+                    if (floatval($usage['quantity_used']) > 0 && $bucket['remaining'] > 0) {
+                        $deduct = min($bucket['remaining'], floatval($usage['quantity_used']));
+                        $bucket['remaining'] -= $deduct;
+                        $rawUsages[$k]['quantity_used'] -= $deduct; // หักลดยอดที่หาที่ลงได้แล้ว
+                    }
+                }
+            }
+        }
+    }
+
+    // 6. สรุปผลยอดโควตาคงเหลือ "เฉพาะสินค้าที่ถูกเรียกดู (quotaProductId)"
+    $remainingForProduct = 0;
+    foreach ($buckets as $bucket) {
+        if (in_array($quotaProductId, $bucket['scope_products'])) {
+            $remainingForProduct += $bucket['remaining'];
+        }
+    }
+
+    // หา totalUsed ของสินค้านี้จริงๆ (รวมยอดตามช่วงเวลาที่ Rate Active)
+    $stmtUU = $conn->prepare("
+        SELECT COALESCE(SUM(quantity_used), 0) 
+        FROM quota_usage 
+        WHERE user_id = :uid 
+        AND quota_product_id = :qpId 
+        AND created_at >= :start AND created_at <= :end 
+        AND deleted_at IS NULL
+    ");
+    $stmtUU->execute([':uid' => $userId, ':qpId' => $quotaProductId, ':start' => $minStart, ':end' => $maxEnd]);
+    $totalUsedUI = floatval($stmtUU->fetchColumn());
+
+    $aggregate['totalUsed'] = $totalUsedUI;
+    $aggregate['remaining'] = $remainingForProduct;
+    if (!isset($aggregate['isExpired'])) {
+        $aggregate['isExpired'] = false;
+        $aggregate['usageEndDate'] = null;
+        $aggregate['isBeforeUsageStart'] = false;
+        $aggregate['rateScheduleId'] = null;
+    }
+
+    return $aggregate;
 }
 
 /**
