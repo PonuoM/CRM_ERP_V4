@@ -27,7 +27,7 @@ try {
     $pdo = db_connect();
 
     // 1. Find all distinct companies that have JST credentials configured
-    $stmt = $pdo->prepare("SELECT DISTINCT company_id FROM company_settings WHERE setting_key = 'JST_ACCOUNT_ID' AND setting_value != ''");
+    $stmt = $pdo->prepare("SELECT DISTINCT company_id FROM env WHERE `key` = 'JST_ACCOUNT_ID' AND `value` != ''");
     $stmt->execute();
     $companies = $stmt->fetchAll(PDO::FETCH_COLUMN);
 

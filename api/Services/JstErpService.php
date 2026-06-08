@@ -14,10 +14,9 @@ class JstErpService {
         $this->pdo = $pdo;
         $this->companyId = $companyId;
 
-        $stmt = $pdo->prepare('SELECT setting_key, setting_value FROM company_settings WHERE company_id = ? AND setting_key IN ("JST_ACCOUNT_ID", "JST_PASSWORD")');
+        $stmt = $pdo->prepare('SELECT `key` as setting_key, `value` as setting_value FROM env WHERE company_id = ? AND `key` IN ("JST_ACCOUNT_ID", "JST_PASSWORD")');
         $stmt->execute([$companyId]);
         $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-
         $this->accountId = $settings['JST_ACCOUNT_ID'] ?? '';
         $this->password = $settings['JST_PASSWORD'] ?? '';
         
