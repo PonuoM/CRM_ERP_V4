@@ -179,6 +179,34 @@ class JstErpService {
         $itemCount = 0;
 
         try {
+            $this->pdo->beginTransaction();
+            $stmt = $this->pdo->prepare("
+                INSERT INTO jst_inventory 
+                (company_id, sku_id, sku_name, warehouse_name, qty, available_qty, order_lock, pic, updated_at,
+                 defective_qty, in_qty, purchase_qty, return_qty, brand_name, supplier_name,
+                 day_sale_3, day_sale_7, day_sale_15, day_sale_30, day_sale_60, day_sale_90)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                sku_name = VALUES(sku_name),
+                qty = VALUES(qty),
+                available_qty = VALUES(available_qty),
+                order_lock = VALUES(order_lock),
+                pic = VALUES(pic),
+                updated_at = VALUES(updated_at),
+                defective_qty = VALUES(defective_qty),
+                in_qty = VALUES(in_qty),
+                purchase_qty = VALUES(purchase_qty),
+                return_qty = VALUES(return_qty),
+                brand_name = VALUES(brand_name),
+                supplier_name = VALUES(supplier_name),
+                day_sale_3 = VALUES(day_sale_3),
+                day_sale_7 = VALUES(day_sale_7),
+                day_sale_15 = VALUES(day_sale_15),
+                day_sale_30 = VALUES(day_sale_30),
+                day_sale_60 = VALUES(day_sale_60),
+                day_sale_90 = VALUES(day_sale_90)
+            ");
+
             while ($pageIndex <= $maxPages) {
                 $res = $this->fetchInventoryPage($cookies, $pageIndex);
                 
@@ -190,19 +218,6 @@ class JstErpService {
                     $skuId = $item['SkuId'] ?? '';
                     $warehouseName = $item['WarehouseName'] ?? '';
                     if (empty($skuId) || empty($warehouseName)) continue;
-
-                    $stmt = $this->pdo->prepare("
-                        INSERT INTO jst_inventory 
-                        (company_id, sku_id, sku_name, warehouse_name, qty, available_qty, order_lock, pic, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE 
-                        sku_name = VALUES(sku_name),
-                        qty = VALUES(qty),
-                        available_qty = VALUES(available_qty),
-                        order_lock = VALUES(order_lock),
-                        pic = VALUES(pic),
-                        updated_at = VALUES(updated_at)
-                    ");
                     
                     $stmt->execute([
                         $this->companyId,
@@ -213,7 +228,19 @@ class JstErpService {
                         $item['AvailableQty'] ?? 0,
                         $item['OrderLock'] ?? 0,
                         $item['Pic'] ?? '',
-                        $syncTime
+                        $syncTime,
+                        $item['DefectiveQty'] ?? 0,
+                        $item['InQty'] ?? 0,
+                        $item['PurchaseQty'] ?? 0,
+                        $item['ReturnQty'] ?? 0,
+                        $item['BrandName'] ?? '',
+                        $item['SupplierName'] ?? '',
+                        $item['DaySale3'] ?? 0,
+                        $item['DaySale7'] ?? 0,
+                        $item['DaySale15'] ?? 0,
+                        $item['DaySale30'] ?? 0,
+                        $item['DaySale60'] ?? 0,
+                        $item['DaySale90'] ?? 0
                     ]);
                     $itemCount++;
                 }
@@ -235,7 +262,12 @@ class JstErpService {
             $delStmt = $this->pdo->prepare("DELETE FROM jst_inventory WHERE company_id = ? AND updated_at < ?");
             $delStmt->execute([$this->companyId, $syncTime]);
 
+            $this->pdo->commit();
+
         } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
             if ($e->getCode() === 401) {
                 // Token expired, clear cookie and retry ONCE
                 if (file_exists($this->cookieFile)) {
@@ -254,7 +286,17 @@ class JstErpService {
             $this->syncInventoryToDb();
         }
 
-        $stmt = $this->pdo->prepare("SELECT sku_id as skuId, sku_name as skuName, warehouse_name as warehouseName, qty, available_qty as availableQty, order_lock as orderLock, pic, updated_at as updatedAt FROM jst_inventory WHERE company_id = ? ORDER BY warehouse_name ASC, sku_id ASC");
+        $stmt = $this->pdo->prepare("
+            SELECT sku_id as skuId, sku_name as skuName, warehouse_name as warehouseName, 
+                   qty, available_qty as availableQty, order_lock as orderLock, pic, updated_at as updatedAt,
+                   defective_qty as defectiveQty, in_qty as inQty, purchase_qty as purchaseQty, return_qty as returnQty,
+                   brand_name as brandName, supplier_name as supplierName,
+                   day_sale_3 as daySale3, day_sale_7 as daySale7, day_sale_15 as daySale15, 
+                   day_sale_30 as daySale30, day_sale_60 as daySale60, day_sale_90 as daySale90
+            FROM jst_inventory 
+            WHERE company_id = ? 
+            ORDER BY warehouse_name ASC, sku_id ASC
+        ");
         $stmt->execute([$this->companyId]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }

@@ -3,6 +3,8 @@ import { Package, Search, RefreshCw, AlertCircle, Loader2, Settings } from 'luci
 import { fetchJstInventory } from '@/services/api';
 import CompanySettingsPage from './CompanySettingsPage';
 
+import Chart from 'react-apexcharts';
+
 interface InventoryItem {
   skuId: string;
   skuName: string;
@@ -12,6 +14,18 @@ interface InventoryItem {
   orderLock: number;
   pic: string;
   updatedAt: string;
+  defectiveQty: number;
+  inQty: number;
+  purchaseQty: number;
+  returnQty: number;
+  brandName: string;
+  supplierName: string;
+  daySale3: number;
+  daySale7: number;
+  daySale15: number;
+  daySale30: number;
+  daySale60: number;
+  daySale90: number;
 }
 
 export default function InventoryPage() {
@@ -22,6 +36,17 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'inventory' | 'settings'>('inventory');
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleRow = (id: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id);
+    } else {
+      newExpanded.add(id);
+    }
+    setExpandedRows(newExpanded);
+  };
 
   const sessionUserStr = localStorage.getItem("sessionUser");
   const sessionUser = sessionUserStr ? JSON.parse(sessionUserStr) : null;
@@ -207,39 +232,118 @@ export default function InventoryPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredInventory.map((item, index) => (
-                      <tr key={`${item.skuId}-${item.warehouseName}-${index}`} className="hover:bg-slate-50">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            {item.pic ? (
-                              <img src={item.pic} alt={item.skuId} className="w-10 h-10 rounded object-cover border border-slate-200 bg-white" />
-                            ) : (
-                              <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center border border-slate-200">
-                                <Package className="w-5 h-5 text-slate-400" />
+                    {filteredInventory.map((item, index) => {
+                      const rowId = `${item.skuId}-${item.warehouseName}-${index}`;
+                      const isExpanded = expandedRows.has(rowId);
+                      return (
+                        <React.Fragment key={rowId}>
+                          <tr 
+                            onClick={() => toggleRow(rowId)}
+                            className="hover:bg-slate-50 cursor-pointer transition-colors"
+                          >
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-3">
+                                {item.pic ? (
+                                  <img src={item.pic} alt={item.skuId} className="w-10 h-10 rounded object-cover border border-slate-200 bg-white" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center border border-slate-200">
+                                    <Package className="w-5 h-5 text-slate-400" />
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="font-medium text-slate-900">{item.skuId}</div>
+                                  <div className="text-xs text-slate-500 line-clamp-1">{item.skuName}</div>
+                                  {item.brandName && (
+                                    <span className="inline-block mt-1 px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
+                                      {item.brandName}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            )}
-                            <div>
-                              <div className="font-medium text-slate-900">{item.skuId}</div>
-                              <div className="text-xs text-slate-500 line-clamp-1">{item.skuName}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-slate-600">
-                          {item.warehouseName}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <span className="font-medium text-slate-700">{item.qty}</span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <span className={`font-bold ${item.availableQty > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                            {item.availableQty}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <span className="font-medium text-orange-600">{item.orderLock}</span>
-                        </td>
-                      </tr>
-                    ))}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600">
+                              {item.warehouseName}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <span className="font-medium text-slate-700">{item.qty}</span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <span className={`font-bold ${item.availableQty > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {item.availableQty}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <span className="font-medium text-orange-600">{item.orderLock}</span>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={5} className="bg-slate-50 p-4 border-b border-slate-200 shadow-inner">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  {/* Stock Breakdown */}
+                                  <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+                                    <h4 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">รายละเอียดสต็อกเบื้องลึก</h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div>
+                                        <p className="text-xs text-slate-500">พร้อมขาย (Available)</p>
+                                        <p className="text-lg font-bold text-emerald-600">{item.availableQty}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-slate-500">จองแล้ว (Order Locked)</p>
+                                        <p className="text-lg font-bold text-orange-600">{item.orderLock}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-slate-500">ของเสีย/มีตำหนิ (Defective)</p>
+                                        <p className="text-lg font-bold text-red-600">{item.defectiveQty}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-slate-500">ของตีกลับ (Return)</p>
+                                        <p className="text-lg font-bold text-amber-600">{item.returnQty}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-slate-500">กำลังรับเข้า (In Qty)</p>
+                                        <p className="text-lg font-bold text-blue-600">{item.inQty}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-slate-500">กำลังสั่งซื้อ (Purchasing)</p>
+                                        <p className="text-lg font-bold text-indigo-600">{item.purchaseQty}</p>
+                                      </div>
+                                    </div>
+                                    {item.supplierName && (
+                                      <div className="mt-4 pt-3 border-t border-slate-100">
+                                        <p className="text-xs text-slate-500">ซัพพลายเออร์ (Supplier)</p>
+                                        <p className="text-sm font-medium text-slate-800 line-clamp-1">{item.supplierName}</p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Sales Performance Chart */}
+                                  <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+                                    <h4 className="text-sm font-semibold text-slate-800 mb-2 border-b border-slate-100 pb-2">ยอดขายสะสมย้อนหลัง (ชิ้น)</h4>
+                                    <Chart
+                                      options={{
+                                        chart: { type: 'bar', toolbar: { show: false }, height: 200, parentHeightOffset: 0 },
+                                        plotOptions: { bar: { borderRadius: 4, horizontal: false, columnWidth: '50%' } },
+                                        dataLabels: { enabled: true, style: { fontSize: '10px' } },
+                                        xaxis: { categories: ['3 วัน', '7 วัน', '15 วัน', '30 วัน', '60 วัน', '90 วัน'] },
+                                        colors: ['#4f46e5'],
+                                        grid: { strokeDashArray: 4 },
+                                      }}
+                                      series={[{
+                                        name: 'ยอดขายสะสม (ชิ้น)',
+                                        data: [item.daySale3, item.daySale7, item.daySale15, item.daySale30, item.daySale60, item.daySale90]
+                                      }]}
+                                      type="bar"
+                                      height={200}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                     {filteredInventory.length === 0 && (
                       <tr>
                         <td colSpan={5} className="py-8 text-center text-slate-500">
