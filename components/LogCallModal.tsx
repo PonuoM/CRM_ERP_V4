@@ -104,6 +104,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
       date: new Date().toISOString(),
       // FIX: Replaced non-existent 'name' property with 'firstName' and 'lastName' for the user object.
       caller: `${user.firstName} ${user.lastName}`,
+      callerId: user.id,
       status,
       result: callResult,
       duration: parseInt(duration, 10) || 0,

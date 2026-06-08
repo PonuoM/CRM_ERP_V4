@@ -611,7 +611,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
     // Optimize Call History Lookup - Only include calls by CURRENT USER after date_assigned
     // caller field stores full name: "firstName lastName"
-    const currentUserFullName = `${user.firstName} ${user.lastName}`;
+    const currentUserFullName = `${user.firstName} ${user.lastName || ''}`.trim();
 
     const lastCallMap = useMemo(() => {
         const map = new Map<string, CallHistory>();
@@ -638,8 +638,13 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             calls.forEach(call => {
                 if (!call.customerId) return;
                 const customerId = String(call.customerId);
-                const callerId = call.caller ? String(call.caller).trim() : '';
-                if (callerId !== currentUserFullName) return;
+                // Compare by callerId if available, fallback to name matching
+                if (call.callerId != null) {
+                    if (call.callerId !== user.id) return;
+                } else {
+                    const callerStr = call.caller ? String(call.caller).trim() : '';
+                    if (callerStr !== currentUserFullName) return;
+                }
 
                 const callDate = new Date(call.date || Date.now());
                 const existing = map.get(customerId);
@@ -712,8 +717,13 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             calls.forEach(call => {
                 if (!call.customerId) return;
                 const customerId = String(call.customerId);
-                const callerId = call.caller ? String(call.caller).trim() : '';
-                if (callerId !== currentUserFullName) return;
+                // Compare by callerId if available, fallback to name matching
+                if (call.callerId != null) {
+                    if (call.callerId !== user.id) return;
+                } else {
+                    const callerStr = call.caller ? String(call.caller).trim() : '';
+                    if (callerStr !== currentUserFullName) return;
+                }
                 tempMap.set(customerId, (tempMap.get(customerId) || 0) + 1);
             });
             // Use the higher count (customer-attached is authoritative, but call_history might be more recent)
@@ -905,8 +915,12 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     filtered = filtered.filter(c => {
                         const lastCall = lastCallMap.get(String(c.id));
                         if (!lastCall) return true;
-                        const lastCallDate = new Date(lastCall.date);
+                        
+                        // Fix Safari "Invalid Date" for YYYY-MM-DD HH:MM:SS format
+                        const safeDateStr = String(lastCall.date).replace(' ', 'T');
+                        const lastCallDate = new Date(safeDateStr);
                         lastCallDate.setHours(0, 0, 0, 0);
+                        
                         return lastCallDate < cutoffDate;
                     });
                 }
@@ -1102,7 +1116,9 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     const lastCall = lastCallMap.get(String(c.id));
                     if (!lastCall) return true; // No call = show
 
-                    const lastCallDate = new Date(lastCall.date);
+                    // Fix Safari "Invalid Date" for YYYY-MM-DD HH:MM:SS format
+                    const safeDateStr = String(lastCall.date).replace(' ', 'T');
+                    const lastCallDate = new Date(safeDateStr);
                     lastCallDate.setHours(0, 0, 0, 0);
 
                     // Hide if called within the cutoff period

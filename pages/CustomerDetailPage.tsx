@@ -181,6 +181,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     customerId: r.customer_id,
     date: r.date,
     caller: r.caller,
+    callerId: r.caller_id ? Number(r.caller_id) : undefined,
     status: r.status,
     result: r.result,
     cropType: r.crop_type ?? undefined,

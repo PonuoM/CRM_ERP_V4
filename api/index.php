@@ -1144,17 +1144,15 @@ function attach_call_status_to_customers(PDO $pdo, array &$customers): void
         return;
 
     try {
-        // Step 1: Get owner names from users table
+        // Step 1: Get owner names from users table (for legacy fallback)
         $uniqueOwnerIds = array_unique(array_values($ownerUserIds));
-        if (empty($uniqueOwnerIds))
-            return;
+        if (empty($uniqueOwnerIds)) return;
 
         $ownerPlaceholders = implode(',', array_fill(0, count($uniqueOwnerIds), '?'));
         $ownerStmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) as full_name FROM users WHERE id IN ($ownerPlaceholders)");
         $ownerStmt->execute($uniqueOwnerIds);
         $ownerRows = $ownerStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Build owner name lookup: user_id => full_name
         $ownerNameMap = [];
         foreach ($ownerRows as $row) {
             $ownerNameMap[$row['id']] = $row['full_name'];
@@ -1162,41 +1160,52 @@ function attach_call_status_to_customers(PDO $pdo, array &$customers): void
 
         // Step 2: Query call_history for all customers
         $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+        // Group by both caller_id and caller text to support legacy data
         $callSql = "
             SELECT 
                 customer_id,
+                caller_id,
                 caller,
                 MAX(date) as last_call_date,
                 COUNT(*) as call_count,
                 (SELECT result FROM call_history ch2 
                  WHERE ch2.customer_id = call_history.customer_id 
-                   AND ch2.caller = call_history.caller 
+                   AND (ch2.caller_id = call_history.caller_id OR (call_history.caller_id IS NULL AND ch2.caller = call_history.caller))
                  ORDER BY ch2.date DESC LIMIT 1) as last_call_result
             FROM call_history
             WHERE customer_id IN ($placeholders)
-            GROUP BY customer_id, caller
+            GROUP BY customer_id, caller_id, caller
         ";
 
         $callStmt = $pdo->prepare($callSql);
         $callStmt->execute($customerIds);
         $callRows = $callStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Build lookup: customer_id => [caller => {last_call_date, call_count, last_call_result}]
-        $callMap = [];
+        // Build lookups: by ID and by Name
+        $callMapById = [];
+        $callMapByName = [];
         foreach ($callRows as $row) {
             $cid = $row['customer_id'];
-            $caller = $row['caller'];
-            if (!isset($callMap[$cid])) {
-                $callMap[$cid] = [];
+            if ($row['caller_id'] !== null) {
+                $callerIdStr = (string)$row['caller_id'];
+                if (!isset($callMapById[$cid])) $callMapById[$cid] = [];
+                $callMapById[$cid][$callerIdStr] = [
+                    'last_call_date' => $row['last_call_date'],
+                    'call_count' => (int) $row['call_count'],
+                    'last_call_result' => $row['last_call_result']
+                ];
+            } else {
+                $callerName = $row['caller'];
+                if (!isset($callMapByName[$cid])) $callMapByName[$cid] = [];
+                $callMapByName[$cid][$callerName] = [
+                    'last_call_date' => $row['last_call_date'],
+                    'call_count' => (int) $row['call_count'],
+                    'last_call_result' => $row['last_call_result']
+                ];
             }
-            $callMap[$cid][$caller] = [
-                'last_call_date' => $row['last_call_date'],
-                'call_count' => (int) $row['call_count'],
-                'last_call_result' => $row['last_call_result']
-            ];
         }
 
-        // Step 3: Attach to customers (only for matching owner)
+        // Step 2: Attach to customers (only for matching owner)
         foreach ($customers as &$customer) {
             $cid = $customer['customer_id'] ?? $customer['id'] ?? null;
             $ownerId = $customer['assigned_to'] ?? null;
@@ -1209,14 +1218,19 @@ function attach_call_status_to_customers(PDO $pdo, array &$customers): void
             if (!$cid || !$ownerId)
                 continue;
 
-            // Get owner's full name
+            $ownerIdStr = (string)$ownerId;
             $ownerName = $ownerNameMap[$ownerId] ?? null;
-            if (!$ownerName)
-                continue;
 
-            // Check if this owner has any calls for this customer
-            if (isset($callMap[$cid]) && isset($callMap[$cid][$ownerName])) {
-                $callData = $callMap[$cid][$ownerName];
+            // Check if this owner has any calls for this customer by ID first
+            if (isset($callMapById[$cid]) && isset($callMapById[$cid][$ownerIdStr])) {
+                $callData = $callMapById[$cid][$ownerIdStr];
+                $customer['last_call_date_by_owner'] = $callData['last_call_date'];
+                $customer['call_count_by_owner'] = $callData['call_count'];
+                $customer['last_call_result_by_owner'] = $callData['last_call_result'];
+            } 
+            // Fallback to name matching for legacy records that didn't get a caller_id
+            elseif ($ownerName && isset($callMapByName[$cid]) && isset($callMapByName[$cid][$ownerName])) {
+                $callData = $callMapByName[$cid][$ownerName];
                 $customer['last_call_date_by_owner'] = $callData['last_call_date'];
                 $customer['call_count_by_owner'] = $callData['call_count'];
                 $customer['last_call_result_by_owner'] = $callData['last_call_result'];
@@ -8675,11 +8689,12 @@ function handle_calls(PDO $pdo, ?string $id): void
                 $callDate = date('Y-m-d H:i:s');
             }
 
-            $stmt = $pdo->prepare('INSERT INTO call_history (customer_id, date, caller, status, result, crop_type, area_size, notes, duration) VALUES (?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO call_history (customer_id, date, caller, caller_id, status, result, crop_type, area_size, notes, duration) VALUES (?,?,?,?,?,?,?,?,?,?)');
             $stmt->execute([
                 $in['customerId'] ?? null,
                 $callDate,
                 $in['caller'] ?? '',
+                $in['callerId'] ?? null,
                 $in['status'] ?? '',
                 $in['result'] ?? '',
                 $in['cropType'] ?? null,
