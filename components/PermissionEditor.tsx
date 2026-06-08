@@ -169,6 +169,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'data.addresses', label: 'จัดการข้อมูลที่อยู่ (Addresses)' },
             { key: 'data.tags', label: 'จัดการ Tags' },
             { key: 'data.companies', label: 'จัดการ Companies (บริษัท)' },
+            { key: 'data.jst_inventory', label: 'สินค้าคงคลัง JST' },
             { key: 'data.roles', label: 'จัดการ Roles (บทบาทและสิทธิ์)' },
         ]
     },

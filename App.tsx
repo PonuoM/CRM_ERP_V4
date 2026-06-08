@@ -144,9 +144,12 @@ import CompanyManagementPage from "./pages/CompanyManagementPage";
 import WarehouseManagementPage from "./pages/WarehouseManagementPage";
 import ReturnManagementPage from "./pages/ReturnManagementPage";
 import CheckOrderPage from "./pages/CheckOrderPage";
+import InventoryPage from "./pages/InventoryPage";
+import CompanySettingsPage from "./pages/CompanySettingsPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
 import CancelConfirmModal from "./components/CancelConfirmModal";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
+
 import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
 import MarketplacePage from "./pages/MarketplacePage";
@@ -572,6 +575,8 @@ const App: React.FC = () => {
       'COD Management': 'nav.cod_management',
       'Warehouses': 'inventory.warehouses',
       'Warehouse Stock': 'inventory.stock',
+      'JST Inventory': 'data.jst_inventory',
+      'สินค้าคงคลัง JST': 'data.jst_inventory',
       'Slip Upload': 'payment_slip.upload',
       'All Slips': 'payment_slip.all',
       'Reports': 'reports.reports',
@@ -7186,6 +7191,11 @@ const App: React.FC = () => {
 
     // Unified Routing - Switch by Page Name instead of Role
     switch (activePage) {
+      case "settings.company":
+      case "Company Settings":
+      case "ตั้งค่าบริษัท":
+        return <CompanySettingsPage />;
+
       // PROCESSED: Dashboard (Role-Dependent)
       case "Dashboard":
       case "แดชบอร์ด":
@@ -7536,6 +7546,11 @@ const App: React.FC = () => {
       case "Warehouse Stock":
       case "สต็อกคลัง":
         return <WarehouseStockViewPage currentUser={currentUser} />;
+        
+      case "JST Inventory":
+      case "สินค้าคงคลัง JST":
+        return <InventoryPage />;
+        
       case "รับเข้า/ปรับปรุง":
       case "Stock Documents (รับเข้า/ปรับปรุง)":
         return <StockDocumentsPage currentUser={currentUser} />;

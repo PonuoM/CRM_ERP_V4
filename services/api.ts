@@ -96,6 +96,23 @@ export async function login(
   });
 }
 
+// Company Settings APIs
+export async function getCompanySettings(companyId?: number): Promise<Record<string, string>> {
+  const query = companyId ? `?companyId=${companyId}` : "";
+  return apiFetch(`company_settings${query}`);
+}
+
+export async function saveCompanySettings(settings: Record<string, string>, companyId?: number): Promise<{ ok: boolean }> {
+  return apiFetch("company_settings", {
+    method: "POST",
+    body: JSON.stringify({ settings, companyId }),
+  });
+}
+
+export async function fetchJstSyncLogs(): Promise<{ ok: boolean; logs: string[] }> {
+  return apiFetch("jst_inventory_logs");
+}
+
 // Attendance APIs
 export async function listAttendance(params: {
   userId?: number;
@@ -2776,4 +2793,10 @@ export async function acknowledgeAllCancellations(orderIds: string[]): Promise<a
     method: 'POST',
     body: JSON.stringify({ orderIds }),
   });
+}
+
+// ========== JST ERP Integration API ==========
+export async function fetchJstInventory(forceRefresh: boolean = false, companyId?: number): Promise<any> {
+  const query = forceRefresh ? `?force=1${companyId ? `&companyId=${companyId}` : ""}` : (companyId ? `?companyId=${companyId}` : "");
+  return apiFetch(`jst_inventory${query}`);
 }
