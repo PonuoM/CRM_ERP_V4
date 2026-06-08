@@ -590,6 +590,25 @@ try {
             $force = isset($_GET['force']) && $_GET['force'] === '1';
             json_response(['ok' => true, 'data' => $service->getAllInventory($force)]);
             break;
+        case 'jst_inventory_logs':
+            $user = get_authenticated_user($pdo);
+            if (!$user) {
+                json_response(['error' => 'UNAUTHORIZED'], 401);
+            }
+            $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
+            if (!$isSuperAdmin && $user['is_system'] != 1) {
+                 json_response(['error' => 'FORBIDDEN'], 403);
+            }
+            
+            $logFile = __DIR__ . '/../storage/logs/cron_jst_sync_' . date('Y-m') . '.log';
+            if (!file_exists($logFile)) {
+                json_response(['ok' => true, 'logs' => []]);
+            }
+            // Read last 50 lines
+            $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            $lastLines = $lines ? array_slice($lines, -50) : [];
+            json_response(['ok' => true, 'logs' => array_values($lastLines)]);
+            break;
         default:
             json_response(['ok' => false, 'error' => 'NOT_FOUND', 'path' => $parts], 404);
     }

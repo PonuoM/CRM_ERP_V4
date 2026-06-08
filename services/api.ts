@@ -109,6 +109,10 @@ export async function saveCompanySettings(settings: Record<string, string>, comp
   });
 }
 
+export async function fetchJstSyncLogs(): Promise<{ ok: boolean; logs: string[] }> {
+  return apiFetch("jst_inventory_logs");
+}
+
 // Attendance APIs
 export async function listAttendance(params: {
   userId?: number;

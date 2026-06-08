@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { getCompanySettings, saveCompanySettings, listCompanies } from "@/services/api";
+import { getCompanySettings, saveCompanySettings, listCompanies, fetchJstSyncLogs } from "@/services/api";
 import { Company } from "@/types";
-import { Save, AlertCircle, Building2, Eye, EyeOff } from "lucide-react";
+import { Save, AlertCircle, Building2, Eye, EyeOff, TerminalSquare, RefreshCw } from "lucide-react";
 
 export default function CompanySettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -11,6 +11,10 @@ export default function CompanySettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  
+  // Sync Logs
+  const [syncLogs, setSyncLogs] = useState<string[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   
   // UI State for toggling password visibility
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
@@ -44,6 +48,26 @@ export default function CompanySettingsPage() {
       loadSettings(selectedCompanyId);
     }
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      loadLogs();
+    }
+  }, [isSuperAdmin]);
+
+  const loadLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const res = await fetchJstSyncLogs();
+      if (res.ok) {
+        setSyncLogs(res.logs || []);
+      }
+    } catch (err) {
+      console.error("Failed to load logs", err);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
 
   const loadSettings = async (companyId: number) => {
     setIsLoading(true);
@@ -217,6 +241,36 @@ export default function CompanySettingsPage() {
           )}
         </div>
       </div>
+
+      {isSuperAdmin && (
+        <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden mt-8">
+          <div className="p-4 border-b border-slate-700 bg-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TerminalSquare className="w-5 h-5 text-emerald-400" />
+              <h2 className="text-md font-semibold text-white">ระบบบันทึกการทำงานเบื้องหลัง (Cron Logs)</h2>
+            </div>
+            <button
+              onClick={loadLogs}
+              disabled={isLoadingLogs}
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-md transition-colors"
+              title="Refresh Logs"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoadingLogs ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          <div className="p-4 overflow-x-auto">
+            <div className="bg-black/50 p-4 rounded-lg min-h-[200px] max-h-[400px] overflow-y-auto font-mono text-xs text-green-400 whitespace-pre">
+              {syncLogs.length === 0 ? (
+                <div className="text-slate-500 italic">No logs found for the current month.</div>
+              ) : (
+                syncLogs.map((log, idx) => (
+                  <div key={idx} className="mb-1 opacity-90">{log}</div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
