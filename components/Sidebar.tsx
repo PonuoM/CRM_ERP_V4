@@ -130,7 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Company Settings": "ตั้งค่าบริษัท",
     Warehouses: "คลังสินค้า",
     "Warehouse Stock": "สต็อกคลัง",
-    "JST Inventory": "สต็อก JST ERP",
+    "JST Inventory": "สินค้าคงคลัง JST",
     "Lot Tracking": "การติดตามล็อต",
     "Warehouse Allocation": "การจัดสรรคลัง",
     "Call Details": "รายละเอียดการโทร",
@@ -295,7 +295,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       children: [
         { label: "Warehouses", icon: Database, key: "inventory.warehouses" },
         { label: "Warehouse Stock", icon: Database, key: "inventory.stock" },
-        { label: "JST Inventory", icon: Package, key: "inventory.stock" },
         { label: "รับเข้า/ปรับปรุง", icon: ClipboardList, key: "inventory.receive" }, // Reusing key or new one? Let's use inventory.receive as permission proxy or add new one. Using new one is safer.
         { label: "Lot Tracking", icon: FileText, key: "inventory.lot" },
         { label: "Warehouse Allocation", icon: FileText, key: "inventory.allocations" },
@@ -366,7 +365,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Bank Accounts", icon: Database, key: "data.bank_accounts" },
         { label: "Tags", icon: FileText, key: "data.tags" },
         { label: "Companies", icon: Briefcase, key: "data.companies" },
-        { label: "Company Settings", icon: Settings, key: "settings.company" },
+        { label: "JST Inventory", icon: Package, key: "data.jst_inventory" },
         { label: "Role Management", icon: Key, key: "data.roles" },
         { label: "Addresses", icon: MapPin, key: "data.addresses" },
         { label: "Database Management", icon: Database, key: "data.database", allowRule: (u: UserType) => u.role === UserRole.SuperAdmin },

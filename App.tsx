@@ -575,6 +575,8 @@ const App: React.FC = () => {
       'COD Management': 'nav.cod_management',
       'Warehouses': 'inventory.warehouses',
       'Warehouse Stock': 'inventory.stock',
+      'JST Inventory': 'data.jst_inventory',
+      'สินค้าคงคลัง JST': 'data.jst_inventory',
       'Slip Upload': 'payment_slip.upload',
       'All Slips': 'payment_slip.all',
       'Reports': 'reports.reports',
@@ -7543,6 +7545,11 @@ const App: React.FC = () => {
       case "Warehouse Stock":
       case "สต็อกคลัง":
         return <WarehouseStockViewPage currentUser={currentUser} />;
+        
+      case "JST Inventory":
+      case "สินค้าคงคลัง JST":
+        return <InventoryPage />;
+        
       case "รับเข้า/ปรับปรุง":
       case "Stock Documents (รับเข้า/ปรับปรุง)":
         return <StockDocumentsPage currentUser={currentUser} />;

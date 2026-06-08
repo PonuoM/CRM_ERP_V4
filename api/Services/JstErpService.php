@@ -130,11 +130,25 @@ class JstErpService {
 
     private function fetchInventoryPage($cookies, $pageIndex) {
         $payload = [
-            "PageIndex" => $pageIndex,
-            "PageSize" => 100 // Fetch up to 100 items per page to reduce loops
+            "RequestModel" => [
+                "SkuIds" => [],
+                "ItemIds" => [],
+                "WarehouseIds" => [],
+                "LinkWarehouseIds" => [],
+                "LinkCoIds" => [],
+                "ShowZeroType" => "AllNoZero",
+                "BrandNames" => [],
+                "SupplierCodes" => [],
+                "IsWarning" => false,
+                "Keywords" => []
+            ],
+            "DataPage" => [
+                "pageSize" => 100,
+                "pageIndex" => $pageIndex
+            ]
         ];
 
-        $ch = curl_init('https://asia.jsterp.com/wms/Inventory/GetSkuInventorys');
+        $ch = curl_init('https://asia.jsterp.com/wms/Inventory/GetWarehouseSkuInventorys');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
@@ -156,20 +170,14 @@ class JstErpService {
         return json_decode($response, true);
     }
 
-    public function getAllInventory($forceRefresh = false) {
-        // 1. Check Short-lived Cache
-        if (!$forceRefresh && file_exists($this->cacheFile)) {
-            $mtime = filemtime($this->cacheFile);
-            if (time() - $mtime < $this->cacheTtl) {
-                return json_decode(file_get_contents($this->cacheFile), true);
-            }
-        }
-
+    public function syncInventoryToDb() {
         $cookies = $this->getCookies();
-        $allItems = [];
         $pageIndex = 1;
         $maxPages = 20; // Safety limit
         
+        $syncTime = date('Y-m-d H:i:s');
+        $itemCount = 0;
+
         try {
             while ($pageIndex <= $maxPages) {
                 $res = $this->fetchInventoryPage($cookies, $pageIndex);
@@ -178,18 +186,36 @@ class JstErpService {
                     break;
                 }
                 
-                // Map to DTO format for Frontend
                 foreach ($res['Data'] as $item) {
-                    $allItems[] = [
-                        'skuId' => $item['SkuId'] ?? '',
-                        'skuName' => $item['SkuName'] ?? '',
-                        'warehouseName' => $item['WarehouseName'] ?? '',
-                        'qty' => $item['Qty'] ?? 0,
-                        'availableQty' => $item['AvailableQty'] ?? 0,
-                        'orderLock' => $item['OrderLock'] ?? 0,
-                        'pic' => $item['Pic'] ?? '',
-                        'updatedAt' => $item['Modified'] ?? ''
-                    ];
+                    $skuId = $item['SkuId'] ?? '';
+                    $warehouseName = $item['WarehouseName'] ?? '';
+                    if (empty($skuId) || empty($warehouseName)) continue;
+
+                    $stmt = $this->pdo->prepare("
+                        INSERT INTO jst_inventory 
+                        (company_id, sku_id, sku_name, warehouse_name, qty, available_qty, order_lock, pic, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE 
+                        sku_name = VALUES(sku_name),
+                        qty = VALUES(qty),
+                        available_qty = VALUES(available_qty),
+                        order_lock = VALUES(order_lock),
+                        pic = VALUES(pic),
+                        updated_at = VALUES(updated_at)
+                    ");
+                    
+                    $stmt->execute([
+                        $this->companyId,
+                        $skuId,
+                        $item['SkuName'] ?? '',
+                        $warehouseName,
+                        $item['Qty'] ?? 0,
+                        $item['AvailableQty'] ?? 0,
+                        $item['OrderLock'] ?? 0,
+                        $item['Pic'] ?? '',
+                        $syncTime
+                    ]);
+                    $itemCount++;
                 }
 
                 // Check if it's the last page
@@ -204,6 +230,11 @@ class JstErpService {
 
                 $pageIndex++;
             }
+
+            // Cleanup old records that were not in this sync
+            $delStmt = $this->pdo->prepare("DELETE FROM jst_inventory WHERE company_id = ? AND updated_at < ?");
+            $delStmt->execute([$this->companyId, $syncTime]);
+
         } catch (\Exception $e) {
             if ($e->getCode() === 401) {
                 // Token expired, clear cookie and retry ONCE
@@ -211,14 +242,20 @@ class JstErpService {
                     unlink($this->cookieFile);
                 }
                 $cookies = $this->login();
-                return $this->getAllInventory(true);
+                $this->syncInventoryToDb();
+                return;
             }
             throw $e;
         }
+    }
 
-        // 2. Save Cache
-        file_put_contents($this->cacheFile, json_encode($allItems));
-        
-        return $allItems;
+    public function getAllInventory($forceRefresh = false) {
+        if ($forceRefresh) {
+            $this->syncInventoryToDb();
+        }
+
+        $stmt = $this->pdo->prepare("SELECT sku_id as skuId, sku_name as skuName, warehouse_name as warehouseName, qty, available_qty as availableQty, order_lock as orderLock, pic, updated_at as updatedAt FROM jst_inventory WHERE company_id = ? ORDER BY warehouse_name ASC, sku_id ASC");
+        $stmt->execute([$this->companyId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
