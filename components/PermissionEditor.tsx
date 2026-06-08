@@ -169,6 +169,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'data.addresses', label: 'จัดการข้อมูลที่อยู่ (Addresses)' },
             { key: 'data.tags', label: 'จัดการ Tags' },
             { key: 'data.companies', label: 'จัดการ Companies (บริษัท)' },
+            { key: 'settings.company', label: 'ตั้งค่าบริษัท (Company Settings)' },
             { key: 'data.roles', label: 'จัดการ Roles (บทบาทและสิทธิ์)' },
         ]
     },

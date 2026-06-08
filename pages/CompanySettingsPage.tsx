@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getCompanySettings, saveCompanySettings, fetchCompanies } from "@/services/api";
+import { getCompanySettings, saveCompanySettings, listCompanies } from "@/services/api";
 import { Company } from "@/types";
 import { Save, AlertCircle, Building2, Eye, EyeOff } from "lucide-react";
 
@@ -24,7 +24,7 @@ export default function CompanySettingsPage() {
     async function init() {
       try {
         if (isSuperAdmin) {
-          const comps = await fetchCompanies();
+          const comps = await listCompanies();
           setCompanies(comps);
           if (comps.length > 0) {
             setSelectedCompanyId(comps[0].id);

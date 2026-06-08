@@ -36,7 +36,6 @@ import {
   MapPin,
   FileSpreadsheet,
   ArrowDownToLine,
-  Upload,
   History,
   BarChart3,
   ShoppingBag,
