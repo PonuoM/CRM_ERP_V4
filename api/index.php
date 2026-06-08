@@ -106,6 +106,10 @@ if (!in_array($resource, ['', 'health', 'auth', 'uploads', 'version', 'cron'])) 
 
 try {
     switch ($resource) {
+        case 'shopee_loyalty':
+            require_once __DIR__ . '/shopee_loyalty.php';
+            handle_shopee_loyalty($pdo, $id, $action);
+            break;
         case 'auth':
             handle_auth($pdo, $id);
             break;
@@ -12808,6 +12812,44 @@ function handle_sync_tracking($pdo)
         $pdo->rollBack();
         json_response(['error' => 'SYNC_FAILED', 'message' => $e->getMessage()], 500);
     }
+}
+
+function ensure_shopee_loyalty_tables(PDO $pdo): void
+{
+    $pdo->exec('CREATE TABLE IF NOT EXISTS shopee_loyalty_members (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        shopee_username VARCHAR(255) NOT NULL UNIQUE,
+        total_points INT NOT NULL DEFAULT 0,
+        company_id INT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_shopee_loyalty_members_username (shopee_username)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+    $pdo->exec('CREATE TABLE IF NOT EXISTS shopee_loyalty_orders (
+        order_id VARCHAR(128) PRIMARY KEY,
+        shopee_username VARCHAR(255) NOT NULL,
+        order_date DATETIME NOT NULL,
+        total_amount DECIMAL(12,2) NOT NULL,
+        points_earned INT NOT NULL DEFAULT 1,
+        company_id INT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_shopee_loyalty_orders_username (shopee_username)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+    $pdo->exec('CREATE TABLE IF NOT EXISTS loyalty_coupons (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        code VARCHAR(32) NOT NULL UNIQUE,
+        shopee_username VARCHAR(255) NOT NULL,
+        discount_value DECIMAL(10,2) NOT NULL DEFAULT 300.00,
+        min_spend DECIMAL(10,2) NOT NULL DEFAULT 1500.00,
+        status VARCHAR(32) NOT NULL DEFAULT "active",
+        expiry_date DATETIME NOT NULL,
+        company_id INT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        used_at DATETIME NULL,
+        INDEX idx_loyalty_coupons_username (shopee_username)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 }
 
 ?>

@@ -36,6 +36,9 @@ import {
   History,
   BarChart3,
   ShoppingBag,
+  Award,
+  Gift,
+  Target,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -247,6 +250,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Active Promotions", icon: BarChart2, key: "promo.active" },
         { label: "Promotion History", icon: FileText, key: "promo.history" },
         { label: "Create Promotion", icon: FileUp, key: "promo.create" },
+      ]
+    },
+    {
+      label: "Shopee Loyalty",
+      icon: Award,
+      children: [
+        { label: "Shopee Import", icon: Upload, key: "loyalty.import" },
+        { label: "Loyalty Tracker", icon: Gift, key: "loyalty.tracker" },
+        { label: "Loyalty Dashboard", icon: Target, key: "loyalty.dashboard" },
+        { label: "Executive Report", icon: FileText, key: "loyalty.report" },
       ]
     },
     {
