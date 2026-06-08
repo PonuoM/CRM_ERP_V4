@@ -118,6 +118,9 @@ try {
         case 'companies':
             handle_companies($pdo, $id);
             break;
+        case 'company_settings':
+            handle_company_settings($pdo, $id);
+            break;
         case 'roles':
             require_once __DIR__ . '/roles.php';
             handle_roles($pdo, $id, $action);
@@ -573,6 +576,19 @@ try {
             break;
         case 'notifications':
             // handled separately below to support nested actions like settings/get
+            break;
+        case 'jst_inventory':
+            require_once __DIR__ . '/Services/JstErpService.php';
+            $user = get_authenticated_user($pdo);
+            if (!$user) {
+                json_response(['error' => 'UNAUTHORIZED'], 401);
+            }
+            $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
+            $companyId = isset($_GET['companyId']) && $isSuperAdmin ? (int)$_GET['companyId'] : (int)$user['company_id'];
+            
+            $service = new JstErpService($pdo, $companyId);
+            $force = isset($_GET['force']) && $_GET['force'] === '1';
+            json_response(['ok' => true, 'data' => $service->getAllInventory($force)]);
             break;
         default:
             json_response(['ok' => false, 'error' => 'NOT_FOUND', 'path' => $parts], 404);
@@ -7926,20 +7942,6 @@ function handle_serve_slip_file(string $filename): void
     exit;
 }
 
-function ensure_exports_table(PDO $pdo): void
-{
-    $pdo->exec('CREATE TABLE IF NOT EXISTS exports (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        filename VARCHAR(255) NOT NULL,
-        file_path VARCHAR(1024) NOT NULL,
-        orders_count INT NOT NULL,
-        user_id INT NULL,
-        exported_by VARCHAR(128) NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        download_count INT NOT NULL DEFAULT 0,
-        INDEX idx_exports_created_at (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
-}
 
 function cleanup_old_exports(PDO $pdo, string $dir): void
 {
@@ -12757,8 +12759,127 @@ function handle_sync_tracking($pdo)
                 // Logic: ORD-001 -> Box 1, ORD-001-2 -> Box 2
                 $isSub = preg_match('/^(.+)-(\d+)$/', $subOrderId, $matches);
                 if ($isSub) {
-                    // Check if the suffix is actually a box number (numeric)
-                    // In our system, sub_orders are like ORD-123-1, ORD-123-2
+                    $parentOrderId = $matches[1];
+                    $boxNumber = (int) $matches[2];
+                } else {
+                    // No suffix, assume this IS the parent order ID, treating as Box 1
+                    $parentOrderId = $subOrderId;
+                    $boxNumber = 1;
+                }
+            }
+
+            // Always use parentOrderId-boxNumber for consistency with order_boxes sub_order_id
+            $resolvedSubOrderId = "$parentOrderId-$boxNumber";
+
+            // UPSERT LOGIC
+            // Check if tracking record exists for this Parent + Box
+            // Note: We use parent_order_id + box_number as the unique constraint concept for tracking numbers
+            $checkStmt->execute([$parentOrderId, $boxNumber]);
+            $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($existing) {
+                // UPDATE
+                $updateStmt->execute([$trackingNumber, $existing['id']]);
+                $results[] = [
+                    'sub_order_id' => $resolvedSubOrderId,
+                    'parent_order_id' => $parentOrderId,
+                    'box_number' => $boxNumber,
+                    'status' => 'updated'
+                ];
+            } else {
+                // INSERT
+                $insertStmt->execute([$parentOrderId, $resolvedSubOrderId, $boxNumber, $trackingNumber]);
+                $results[] = [
+                    'sub_order_id' => $resolvedSubOrderId,
+                    'parent_order_id' => $parentOrderId,
+                    'box_number' => $boxNumber,
+                    'status' => 'created'
+                ];
+            }
+
+            // 2. Update statuses (and shipping_provider if present)
+            $updateOrderStmt->execute([$shippingProvider, $shippingProvider, $parentOrderId]);
+        }
+
+        $pdo->commit();
+        json_response(['ok' => true, 'results' => $results]);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        json_response(['error' => 'SYNC_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+function handle_company_settings(PDO $pdo, ?string $id)
+{
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+
+    $isSystem = false;
+    $stmt = $pdo->prepare('SELECT is_system FROM roles WHERE name = ? LIMIT 1');
+    $stmt->execute([$user['role']]);
+    $roleInfo = $stmt->fetch();
+    if ($roleInfo && (int)$roleInfo['is_system'] === 1) {
+        $isSystem = true;
+    }
+
+    $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
+
+    if (!$isSuperAdmin && !$isSystem) {
+        json_response(['error' => 'FORBIDDEN', 'message' => 'Not authorized to view settings'], 403);
+    }
+
+    if (method() === 'GET') {
+        // Query param could specify companyId if SuperAdmin
+        $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : (int)$user['company_id'];
+
+        if (!$isSuperAdmin && $companyId !== (int)$user['company_id']) {
+            json_response(['error' => 'FORBIDDEN', 'message' => 'Can only view own company settings'], 403);
+        }
+
+        $stmt = $pdo->prepare('SELECT setting_key, setting_value FROM company_settings WHERE company_id = ?');
+        $stmt->execute([$companyId]);
+        $settings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Convert to key-value array
+        $result = [];
+        foreach ($settings as $row) {
+            $result[$row['setting_key']] = $row['setting_value'];
+        }
+
+        json_response($result);
+    } elseif (method() === 'POST') {
+        $in = json_input();
+        $companyId = isset($in['companyId']) ? (int)$in['companyId'] : (int)$user['company_id'];
+
+        if (!$isSuperAdmin && $companyId !== (int)$user['company_id']) {
+            json_response(['error' => 'FORBIDDEN', 'message' => 'Can only edit own company settings'], 403);
+        }
+
+        $settings = $in['settings'] ?? [];
+        if (!is_array($settings)) {
+            json_response(['error' => 'INVALID_INPUT', 'message' => 'settings must be an object'], 400);
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare('INSERT INTO company_settings (company_id, setting_key, setting_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
+            foreach ($settings as $key => $value) {
+                $stmt->execute([$companyId, $key, (string)$value]);
+            }
+            $pdo->commit();
+            json_response(['ok' => true]);
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            json_response(['error' => 'SAVE_FAILED', 'message' => $e->getMessage()], 500);
+        }
+    } else {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+ ORD-123-2
                     $parentOrderId = $matches[1];
                     $boxNumber = (int) $matches[2];
                 } else {

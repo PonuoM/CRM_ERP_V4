@@ -144,9 +144,12 @@ import CompanyManagementPage from "./pages/CompanyManagementPage";
 import WarehouseManagementPage from "./pages/WarehouseManagementPage";
 import ReturnManagementPage from "./pages/ReturnManagementPage";
 import CheckOrderPage from "./pages/CheckOrderPage";
+import InventoryPage from "./pages/InventoryPage";
+import CompanySettingsPage from "./pages/CompanySettingsPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
 import CancelConfirmModal from "./components/CancelConfirmModal";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
+
 import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
 import MarketplacePage from "./pages/MarketplacePage";
@@ -7185,6 +7188,11 @@ const App: React.FC = () => {
 
     // Unified Routing - Switch by Page Name instead of Role
     switch (activePage) {
+      case "settings.company":
+      case "Company Settings":
+      case "ตั้งค่าบริษัท":
+        return <CompanySettingsPage />;
+
       // PROCESSED: Dashboard (Role-Dependent)
       case "Dashboard":
       case "แดชบอร์ด":
