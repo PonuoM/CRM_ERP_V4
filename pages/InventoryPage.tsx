@@ -281,7 +281,7 @@ export default function InventoryPage() {
                               <td colSpan={5} className="bg-slate-50 p-4 border-b border-slate-200 shadow-inner">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                   {/* Stock Breakdown */}
-                                  <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+                                  <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 min-w-0">
                                     <h4 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">รายละเอียดสต็อกเบื้องลึก</h4>
                                     <div className="grid grid-cols-2 gap-4">
                                       <div>
@@ -318,24 +318,27 @@ export default function InventoryPage() {
                                   </div>
 
                                   {/* Sales Performance Chart */}
-                                  <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+                                  <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 min-w-0 overflow-hidden">
                                     <h4 className="text-sm font-semibold text-slate-800 mb-2 border-b border-slate-100 pb-2">ยอดขายสะสมย้อนหลัง (ชิ้น)</h4>
-                                    <Chart
-                                      options={{
-                                        chart: { type: 'bar', toolbar: { show: false }, height: 200, parentHeightOffset: 0 },
-                                        plotOptions: { bar: { borderRadius: 4, horizontal: false, columnWidth: '50%' } },
-                                        dataLabels: { enabled: true, style: { fontSize: '10px' } },
-                                        xaxis: { categories: ['3 วัน', '7 วัน', '15 วัน', '30 วัน', '60 วัน', '90 วัน'] },
-                                        colors: ['#4f46e5'],
-                                        grid: { strokeDashArray: 4 },
-                                      }}
-                                      series={[{
-                                        name: 'ยอดขายสะสม (ชิ้น)',
-                                        data: [item.daySale3, item.daySale7, item.daySale15, item.daySale30, item.daySale60, item.daySale90]
-                                      }]}
-                                      type="bar"
-                                      height={200}
-                                    />
+                                    <div className="w-full relative">
+                                      <Chart
+                                        options={{
+                                          chart: { type: 'bar', toolbar: { show: false }, height: 200, parentHeightOffset: 0, width: '100%' },
+                                          plotOptions: { bar: { borderRadius: 4, horizontal: false, columnWidth: '50%' } },
+                                          dataLabels: { enabled: true, style: { fontSize: '10px' } },
+                                          xaxis: { categories: ['3 วัน', '7 วัน', '15 วัน', '30 วัน', '60 วัน', '90 วัน'] },
+                                          colors: ['#4f46e5'],
+                                          grid: { strokeDashArray: 4 },
+                                        }}
+                                        series={[{
+                                          name: 'ยอดขายสะสม (ชิ้น)',
+                                          data: [item.daySale3, item.daySale7, item.daySale15, item.daySale30, item.daySale60, item.daySale90]
+                                        }]}
+                                        type="bar"
+                                        height={200}
+                                        width="100%"
+                                      />
+                                    </div>
                                   </div>
                                 </div>
                               </td>
