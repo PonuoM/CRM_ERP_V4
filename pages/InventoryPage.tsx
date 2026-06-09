@@ -29,6 +29,27 @@ interface InventoryItem {
   daySale90: number;
 }
 
+interface GroupedInventoryItem {
+  skuId: string;
+  skuName: string;
+  pic: string;
+  brandName: string;
+  qty: number;
+  availableQty: number;
+  orderLock: number;
+  defectiveQty: number;
+  inQty: number;
+  purchaseQty: number;
+  returnQty: number;
+  daySale3: number;
+  daySale7: number;
+  daySale15: number;
+  daySale30: number;
+  daySale60: number;
+  daySale90: number;
+  warehouses: InventoryItem[];
+}
+
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +57,7 @@ export default function InventoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'inventory' | 'settings'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'inventory_grouped' | 'settings'>('inventory');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: keyof InventoryItem, direction: 'asc' | 'desc' } | null>(null);
@@ -87,7 +108,7 @@ export default function InventoryPage() {
   };
 
   useEffect(() => {
-    if (activeTab === 'inventory') {
+    if (activeTab === 'inventory' || activeTab === 'inventory_grouped') {
       loadInventory(false);
     }
   }, [activeTab]);
@@ -125,29 +146,124 @@ export default function InventoryPage() {
     return result;
   }, [inventory, searchTerm, selectedWarehouse, showLowStockOnly, sortConfig]);
 
+  const groupedInventory = useMemo(() => {
+    const groupMap = new Map<string, GroupedInventoryItem>();
+
+    filteredInventory.forEach((item) => {
+      if (!groupMap.has(item.skuId)) {
+        groupMap.set(item.skuId, {
+          skuId: item.skuId,
+          skuName: item.skuName,
+          pic: item.pic,
+          brandName: item.brandName,
+          qty: 0,
+          availableQty: 0,
+          orderLock: 0,
+          defectiveQty: 0,
+          inQty: 0,
+          purchaseQty: 0,
+          returnQty: 0,
+          daySale3: 0,
+          daySale7: 0,
+          daySale15: 0,
+          daySale30: 0,
+          daySale60: 0,
+          daySale90: 0,
+          warehouses: []
+        });
+      }
+
+      const group = groupMap.get(item.skuId)!;
+      group.qty += item.qty || 0;
+      group.availableQty += item.availableQty || 0;
+      group.orderLock += item.orderLock || 0;
+      group.defectiveQty += item.defectiveQty || 0;
+      group.inQty += item.inQty || 0;
+      group.purchaseQty += item.purchaseQty || 0;
+      group.returnQty += item.returnQty || 0;
+      
+      // Assume sales are the same for the SKU across warehouses in JST ERP? 
+      // JST ERP usually returns total sales per SKU or per Warehouse-SKU?
+      // Typically we sum them up or just take the max if it's already SKU-level. Let's sum them up to be safe if it's per warehouse.
+      group.daySale3 += item.daySale3 || 0;
+      group.daySale7 += item.daySale7 || 0;
+      group.daySale15 += item.daySale15 || 0;
+      group.daySale30 += item.daySale30 || 0;
+      group.daySale60 += item.daySale60 || 0;
+      group.daySale90 += item.daySale90 || 0;
+
+      group.warehouses.push(item);
+    });
+
+    const result = Array.from(groupMap.values());
+    
+    // Use the same sort config
+    if (sortConfig !== null) {
+      result.sort((a, b) => {
+        // @ts-ignore
+        const aVal = a[sortConfig.key];
+        // @ts-ignore
+        const bVal = b[sortConfig.key];
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [filteredInventory, sortConfig]);
+
   const handleExportExcel = () => {
-    if (filteredInventory.length === 0) return;
-    const exportData = filteredInventory.map(item => ({
-      'SKU ID': item.skuId,
-      'ชื่อสินค้า': item.skuName,
-      'คลังสินค้า': item.warehouseName,
-      'ทั้งหมด': item.qty,
-      'พร้อมขาย': item.availableQty,
-      'จองแล้ว': item.orderLock,
-      'ของเสีย/มีตำหนิ': item.defectiveQty,
-      'กำลังรับเข้า': item.inQty,
-      'ของตีกลับ': item.returnQty,
-      'กำลังสั่งซื้อ': item.purchaseQty,
-      'แบรนด์': item.brandName,
-      'ซัพพลายเออร์': item.supplierName,
-      'ยอดขายย้อนหลัง 3 วัน': item.daySale3,
-      'ยอดขายย้อนหลัง 7 วัน': item.daySale7,
-      'ยอดขายย้อนหลัง 15 วัน': item.daySale15,
-      'ยอดขายย้อนหลัง 30 วัน': item.daySale30,
-      'ยอดขายย้อนหลัง 60 วัน': item.daySale60,
-      'ยอดขายย้อนหลัง 90 วัน': item.daySale90,
-      'อัปเดตล่าสุด': new Date(item.updatedAt).toLocaleString('th-TH')
-    }));
+    const dataToExport = activeTab === 'inventory_grouped' ? groupedInventory : filteredInventory;
+    if (dataToExport.length === 0) return;
+
+    const exportData = dataToExport.map(item => {
+      if (activeTab === 'inventory_grouped') {
+        const groupedItem = item as GroupedInventoryItem;
+        return {
+          'SKU ID': groupedItem.skuId,
+          'ชื่อสินค้า': groupedItem.skuName,
+          'รวมทุกคลัง': groupedItem.warehouses.map(w => w.warehouseName).join(', '),
+          'ทั้งหมด': groupedItem.qty,
+          'พร้อมขาย': groupedItem.availableQty,
+          'จองแล้ว': groupedItem.orderLock,
+          'ของเสีย/มีตำหนิ': groupedItem.defectiveQty,
+          'กำลังรับเข้า': groupedItem.inQty,
+          'ของตีกลับ': groupedItem.returnQty,
+          'กำลังสั่งซื้อ': groupedItem.purchaseQty,
+          'แบรนด์': groupedItem.brandName,
+          'ยอดขายย้อนหลัง 3 วัน': groupedItem.daySale3,
+          'ยอดขายย้อนหลัง 7 วัน': groupedItem.daySale7,
+          'ยอดขายย้อนหลัง 15 วัน': groupedItem.daySale15,
+          'ยอดขายย้อนหลัง 30 วัน': groupedItem.daySale30,
+          'ยอดขายย้อนหลัง 60 วัน': groupedItem.daySale60,
+          'ยอดขายย้อนหลัง 90 วัน': groupedItem.daySale90,
+        };
+      } else {
+        const singleItem = item as InventoryItem;
+        return {
+          'SKU ID': singleItem.skuId,
+          'ชื่อสินค้า': singleItem.skuName,
+          'คลังสินค้า': singleItem.warehouseName,
+          'ทั้งหมด': singleItem.qty,
+          'พร้อมขาย': singleItem.availableQty,
+          'จองแล้ว': singleItem.orderLock,
+          'ของเสีย/มีตำหนิ': singleItem.defectiveQty,
+          'กำลังรับเข้า': singleItem.inQty,
+          'ของตีกลับ': singleItem.returnQty,
+          'กำลังสั่งซื้อ': singleItem.purchaseQty,
+          'แบรนด์': singleItem.brandName,
+          'ซัพพลายเออร์': singleItem.supplierName,
+          'ยอดขายย้อนหลัง 3 วัน': singleItem.daySale3,
+          'ยอดขายย้อนหลัง 7 วัน': singleItem.daySale7,
+          'ยอดขายย้อนหลัง 15 วัน': singleItem.daySale15,
+          'ยอดขายย้อนหลัง 30 วัน': singleItem.daySale30,
+          'ยอดขายย้อนหลัง 60 วัน': singleItem.daySale60,
+          'ยอดขายย้อนหลัง 90 วัน': singleItem.daySale90,
+          'อัปเดตล่าสุด': new Date(singleItem.updatedAt).toLocaleString('th-TH')
+        };
+      }
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
@@ -167,11 +283,11 @@ export default function InventoryPage() {
             ข้อมูลสต็อกสินค้าคงคลัง อัปเดตแบบเรียลไทม์จากระบบ JST ERP
           </p>
         </div>
-        {activeTab === 'inventory' && (
+        {activeTab !== 'settings' && (
           <div className="flex gap-2">
             <button
               onClick={handleExportExcel}
-              disabled={filteredInventory.length === 0}
+              disabled={activeTab === 'inventory_grouped' ? groupedInventory.length === 0 : filteredInventory.length === 0}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg font-medium transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
@@ -201,7 +317,18 @@ export default function InventoryPage() {
               }`}
             >
               <Package className="w-4 h-4" />
-              ตารางแสดงจำนวน
+              แยกตามคลัง
+            </button>
+            <button
+              onClick={() => setActiveTab('inventory_grouped')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                activeTab === 'inventory_grouped'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              รวมทุกคลัง
             </button>
             <button
               onClick={() => setActiveTab('settings')}
@@ -308,8 +435,8 @@ export default function InventoryPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredInventory.map((item, index) => {
-                      const rowId = `${item.skuId}-${item.warehouseName}-${index}`;
+                    {activeTab === 'inventory' ? filteredInventory.map((item, index) => {
+                      const rowId = `single-${item.skuId}-${item.warehouseName}-${index}`;
                       const isExpanded = expandedRows.has(rowId);
                       return (
                         <React.Fragment key={rowId}>
@@ -425,8 +552,101 @@ export default function InventoryPage() {
                           )}
                         </React.Fragment>
                       );
-                    })}
-                    {filteredInventory.length === 0 && (
+                    })
+                    : groupedInventory.map((group, index) => {
+                        const rowId = `group-${group.skuId}-${index}`;
+                        const isExpanded = expandedRows.has(rowId);
+                        return (
+                          <React.Fragment key={rowId}>
+                            <tr 
+                              onClick={() => toggleRow(rowId)}
+                              className="hover:bg-slate-50 cursor-pointer transition-colors bg-indigo-50/30"
+                            >
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-3">
+                                  {group.pic ? (
+                                    <img src={group.pic} alt={group.skuId} className="w-10 h-10 rounded object-cover border border-slate-200 bg-white" />
+                                  ) : (
+                                    <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center border border-slate-200">
+                                      <Package className="w-5 h-5 text-slate-400" />
+                                    </div>
+                                  )}
+                                  <div>
+                                    <div className="font-medium text-slate-900">{group.skuId}</div>
+                                    <div className="text-xs text-slate-500 line-clamp-1">{group.skuName}</div>
+                                    {group.brandName && (
+                                      <span className="inline-block mt-1 px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
+                                        {group.brandName}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-sm text-slate-600">
+                                รวมทุกคลัง ({group.warehouses.length})
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <span className="font-medium text-slate-700">{group.qty}</span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <span className={`font-bold ${group.availableQty > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                  {group.availableQty}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <span className="font-medium text-orange-600">{group.orderLock}</span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <span className="font-medium text-indigo-600">{group.daySale7}</span>
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={6} className="bg-slate-50 p-4 border-b border-slate-200 shadow-inner">
+                                  <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                                    <div className="p-3 bg-slate-100 border-b border-slate-200">
+                                      <h4 className="text-sm font-semibold text-slate-800">สถิติแจกแจงตามคลังสินค้า</h4>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-left text-sm border-collapse">
+                                        <thead className="bg-slate-50 border-b border-slate-200">
+                                          <tr>
+                                            <th className="py-2 px-4 font-semibold text-slate-600">คลังสินค้า</th>
+                                            <th className="py-2 px-4 font-semibold text-slate-600 text-right">ทั้งหมด</th>
+                                            <th className="py-2 px-4 font-semibold text-emerald-600 text-right">พร้อมขาย</th>
+                                            <th className="py-2 px-4 font-semibold text-orange-600 text-right">จองแล้ว</th>
+                                            <th className="py-2 px-4 font-semibold text-red-600 text-right">มีตำหนิ</th>
+                                            <th className="py-2 px-4 font-semibold text-amber-600 text-right">ตีกลับ</th>
+                                            <th className="py-2 px-4 font-semibold text-blue-600 text-right">กำลังรับเข้า</th>
+                                            <th className="py-2 px-4 font-semibold text-indigo-600 text-right">กำลังสั่งซื้อ</th>
+                                            <th className="py-2 px-4 font-semibold text-slate-600 text-right">ขาย (7D)</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                          {group.warehouses.map((whItem, wIndex) => (
+                                            <tr key={wIndex} className="hover:bg-slate-50">
+                                              <td className="py-2 px-4 font-medium text-slate-700">{whItem.warehouseName}</td>
+                                              <td className="py-2 px-4 text-right">{whItem.qty}</td>
+                                              <td className="py-2 px-4 text-right font-medium text-emerald-600">{whItem.availableQty}</td>
+                                              <td className="py-2 px-4 text-right text-orange-600">{whItem.orderLock}</td>
+                                              <td className="py-2 px-4 text-right text-red-600">{whItem.defectiveQty}</td>
+                                              <td className="py-2 px-4 text-right text-amber-600">{whItem.returnQty}</td>
+                                              <td className="py-2 px-4 text-right text-blue-600">{whItem.inQty}</td>
+                                              <td className="py-2 px-4 text-right text-indigo-600">{whItem.purchaseQty}</td>
+                                              <td className="py-2 px-4 text-right text-slate-600">{whItem.daySale7}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    {(activeTab === 'inventory' ? filteredInventory : groupedInventory).length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-8 text-center text-slate-500">
                           ไม่พบสินค้าที่ตรงกับการค้นหา
@@ -438,7 +658,7 @@ export default function InventoryPage() {
               )}
             </div>
             <div className="bg-slate-50 p-3 border-t border-slate-200 text-xs text-slate-500 flex justify-between items-center">
-              <span>แสดง {filteredInventory.length} รายการ (จากทั้งหมด {inventory.length} รายการ)</span>
+              <span>แสดง {(activeTab === 'inventory' ? filteredInventory : groupedInventory).length} รายการ (จากทั้งหมด {activeTab === 'inventory' ? inventory.length : new Set(inventory.map(i => i.skuId)).size} รายการ)</span>
               {inventory.length > 0 && (
                 <span>อัปเดตล่าสุด: {new Date(inventory[0]?.updatedAt || Date.now()).toLocaleString('th-TH')}</span>
               )}
