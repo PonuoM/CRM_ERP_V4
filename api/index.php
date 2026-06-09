@@ -2785,7 +2785,7 @@ function handle_products(PDO $pdo, ?string $id): void
                             SELECT sku_id, company_id, SUM(available_qty) as total_available_qty, SUM(order_lock) as total_order_lock
                             FROM jst_inventory
                             GROUP BY sku_id, company_id
-                        ) j ON TRIM(COALESCE(NULLIF(TRIM(p.jst_sku), ''), p.sku)) = TRIM(j.sku_id) AND p.company_id = j.company_id
+                        ) j ON TRIM(COALESCE(NULLIF(TRIM(p.jst_sku), \'\'), p.sku)) = TRIM(j.sku_id) AND p.company_id = j.company_id
                         WHERE (p.deleted_at IS NULL)
                     ';
                 } else {
