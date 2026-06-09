@@ -12873,7 +12873,7 @@ function handle_company_settings(PDO $pdo, ?string $id)
             json_response(['error' => 'FORBIDDEN', 'message' => 'Can only view own company settings'], 403);
         }
 
-        $stmt = $pdo->prepare('SELECT setting_key, setting_value FROM company_settings WHERE company_id = ?');
+        $stmt = $pdo->prepare('SELECT `key` as setting_key, `value` as setting_value FROM env WHERE company_id = ?');
         $stmt->execute([$companyId]);
         $settings = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -12899,7 +12899,7 @@ function handle_company_settings(PDO $pdo, ?string $id)
 
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare('INSERT INTO company_settings (company_id, setting_key, setting_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
+            $stmt = $pdo->prepare('INSERT INTO env (company_id, `key`, `value`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)');
             foreach ($settings as $key => $value) {
                 $stmt->execute([$companyId, $key, (string)$value]);
             }
