@@ -607,6 +607,14 @@ try {
             
             json_response(array_merge(['ok' => true], $result));
             break;
+        case 'jst_sync_info':
+            $syncInfoFile = __DIR__ . '/../storage/logs/jst_last_sync.json';
+            $syncInfo = ['time' => null, 'source' => 'Unknown'];
+            if (file_exists($syncInfoFile)) {
+                $syncInfo = json_decode(file_get_contents($syncInfoFile), true) ?: $syncInfo;
+            }
+            json_response(['ok' => true, 'data' => $syncInfo]);
+            break;
         case 'jst_inventory_logs':
             $user = get_authenticated_user($pdo);
             if (!$user) {
@@ -2767,19 +2775,34 @@ function handle_products(PDO $pdo, ?string $id): void
             } else {
                 $companyId = $_GET['companyId'] ?? null;
                 $include = $_GET['include'] ?? '';
+                $includeJstStock = !empty($_GET['include_jst_stock']);
 
-                $sql = 'SELECT * FROM products WHERE (deleted_at IS NULL)';
+                if ($includeJstStock) {
+                    $sql = '
+                        SELECT p.*, COALESCE(j.total_available_qty, 0) as jst_stock, COALESCE(j.total_order_lock, 0) as jst_lock
+                        FROM products p
+                        LEFT JOIN (
+                            SELECT sku_id, company_id, SUM(available_qty) as total_available_qty, SUM(order_lock) as total_order_lock
+                            FROM jst_inventory
+                            GROUP BY sku_id, company_id
+                        ) j ON p.sku = j.sku_id AND p.company_id = j.company_id
+                        WHERE (p.deleted_at IS NULL)
+                    ';
+                } else {
+                    $sql = 'SELECT p.* FROM products p WHERE (p.deleted_at IS NULL)';
+                }
 
                 if ($include !== 'inactive') {
-                    $sql .= ' AND (status = "Active" OR status IS NULL OR status = "" OR status = "1")';
+                    $sql .= ' AND (p.status = "Active" OR p.status IS NULL OR p.status = "" OR p.status = "1")';
                 }
 
                 $params = [];
                 if ($companyId) {
-                    $sql .= ' AND company_id = ?';
+                    $sql .= ' AND p.company_id = ?';
                     $params[] = $companyId;
                 }
-                $sql .= ' ORDER BY id DESC';
+                $sql .= ' ORDER BY p.id DESC';
+                
                 $stmt = $pdo->prepare($sql);
                 if (!empty($params)) {
                     $stmt->execute($params);

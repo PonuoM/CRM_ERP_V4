@@ -692,6 +692,8 @@ export interface Product {
   companyId: number;
   shop?: string;
   status?: string;
+  jst_stock?: number;
+  jst_lock?: number;
 }
 
 // ========== Product Quota System ==========

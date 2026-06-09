@@ -466,7 +466,7 @@ export async function deleteUser(id: number) {
   });
 }
 
-export async function listProducts(params?: number | { companyId?: number; include?: string }) {
+export async function listProducts(params?: number | { companyId?: number; include?: string; include_jst_stock?: boolean }) {
   const qs = new URLSearchParams();
   let companyId: number | undefined;
 
@@ -474,7 +474,12 @@ export async function listProducts(params?: number | { companyId?: number; inclu
     companyId = params;
   } else if (typeof params === 'object') {
     companyId = params.companyId;
-    if (params.include) qs.set("include", params.include);
+    if (params.include) {
+      qs.append("include", params.include);
+    }
+    if (params.include_jst_stock) {
+      qs.append("include_jst_stock", "1");
+    }
   }
 
   if (companyId) qs.set("companyId", String(companyId));
@@ -2825,4 +2830,8 @@ export async function fetchJstInventory(params: JstInventoryParams = {}): Promis
   if (params.export) queryParams.append('export', 'true');
 
   return apiFetch(`jst_inventory?${queryParams.toString()}`);
+}
+
+export async function getJstSyncInfo() {
+  return apiFetch("jst_sync_info");
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, Promotion, QuotaProduct } from '../types';
 import { listQuotaProducts, getUserQuotaDetail } from '../services/quotaApi';
+import { getJstSyncInfo } from '../services/api';
 
 export interface QuotaInfo {
     productId: number;
@@ -47,6 +48,20 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
     const [loadingQuota, setLoadingQuota] = useState(false);
     // Internal quota map for the quota tab (productId → { remaining, totalQuota })
     const [quotaTabMap, setQuotaTabMap] = useState<Map<number, { remaining: number; totalQuota: number }>>(new Map());
+    const [jstSyncInfo, setJstSyncInfo] = useState<{ time: string | null; source: string } | null>(null);
+
+    // Load JST sync info
+    useEffect(() => {
+        if (isOpen) {
+            getJstSyncInfo()
+                .then((res: any) => {
+                    if (res?.data) {
+                        setJstSyncInfo(res.data);
+                    }
+                })
+                .catch(() => {});
+        }
+    }, [isOpen]);
 
     // Load quota products when modal opens (needed to filter them from normal tab)
     useEffect(() => {
@@ -265,7 +280,7 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                 {/* Content */}
                 <div className="flex flex-col h-[70vh]">
                     {/* Search Input */}
-                    <div className="mb-3">
+                    <div className="mb-3 flex gap-2">
                         <input
                             type="text"
                             placeholder={searchPlaceholder}
@@ -273,6 +288,14 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                             onChange={(e) => onSearchChange(e.target.value)}
                             className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
+                        {tab === 'products' && jstSyncInfo && jstSyncInfo.time && (
+                            <div className="flex-shrink-0 flex items-center bg-blue-50 text-blue-800 text-[11px] px-3 py-1 rounded-md border border-blue-100 whitespace-nowrap" title="เวลาอัปเดตล่าสุดของข้อมูลสต็อก JST">
+                                ⏱️ อัปเดตล่าสุด: {new Date(jstSyncInfo.time).toLocaleString('th-TH')} 
+                                <span className="ml-1 text-blue-500 opacity-80">
+                                    ({jstSyncInfo.source === 'Cron' ? 'อัตโนมัติ' : 'ดึงข้อมูลล่าสุด'})
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Products/Promotions/Quota Table */}
@@ -285,8 +308,9 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                                         <th className="p-2">SKU</th>
                                         <th className="p-2">สินค้า</th>
                                         <th className="p-2">ราคาขาย</th>
+                                        <th className="p-2 text-center">สต็อก JST</th>
                                         {quotaMap && <th className="p-2">โควตา</th>}
-                                        <th className="p-2">เลือก</th>
+                                        <th className="p-2 text-center">เลือก</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -312,6 +336,24 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                                                     <td className="p-2 align-top">{p.sku}</td>
                                                     <td className="p-2 align-top">{p.name}</td>
                                                     <td className="p-2 align-top">{p.price.toFixed(2)}</td>
+                                                    <td className="p-2 align-top text-center">
+                                                        {p.jst_stock !== undefined && p.jst_stock !== null ? (
+                                                            <div className="flex flex-col items-center gap-1">
+                                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                                                    p.jst_stock > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                                                                }`} title="จำนวนพร้อมขายในระบบ JST (รวมทุกคลัง)">
+                                                                    พร้อมขาย: {p.jst_stock}
+                                                                </span>
+                                                                {(p.jst_lock ?? 0) > 0 && (
+                                                                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded" title="จำนวนที่ถูกจองไว้ในระบบ JST">
+                                                                        จอง: {p.jst_lock}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-gray-400" title="ไม่มีรหัสสินค้านี้ในระบบ JST">ไม่พบข้อมูล JST</span>
+                                                        )}
+                                                    </td>
                                                     {quotaMap && (
                                                         <td className="p-2 align-top">
                                                             {renderQuotaBadge(p.id)}

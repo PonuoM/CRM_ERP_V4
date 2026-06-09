@@ -931,7 +931,8 @@ const App: React.FC = () => {
           Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
           listProducts({
             companyId: sessionUser?.company_id,
-            include: activePage === 'Products' ? 'inactive' : undefined
+            include: activePage === 'Products' ? 'inactive' : undefined,
+            include_jst_stock: true
           }),
           listPromotions(sessionUser?.company_id),
           listPages(sessionUser?.company_id, undefined, undefined, true),
