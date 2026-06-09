@@ -169,13 +169,23 @@ class JstErpService {
         return json_decode($response, true);
     }
 
-    public function syncInventoryToDb() {
+    public function syncInventoryToDb($source = 'Manual') {
         $cookies = $this->getCookies();
         $pageIndex = 1;
         $maxPages = 20; // Safety limit
         
         $syncTime = date('Y-m-d H:i:s');
         $itemCount = 0;
+        
+        // Save the latest sync info to a file
+        $syncInfoFile = __DIR__ . '/../../storage/logs/jst_last_sync.json';
+        if (!is_dir(dirname($syncInfoFile))) {
+            mkdir(dirname($syncInfoFile), 0755, true);
+        }
+        file_put_contents($syncInfoFile, json_encode([
+            'time' => $syncTime,
+            'source' => $source
+        ]), LOCK_EX);
 
         try {
             $this->pdo->beginTransaction();

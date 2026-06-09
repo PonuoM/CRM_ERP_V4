@@ -39,7 +39,7 @@ try {
         logCron("Processing Company ID: " . $companyId);
         try {
             $service = new JstErpService($pdo, $companyId);
-            $service->syncInventoryToDb();
+            $service->syncInventoryToDb('Cron');
             logCron("SUCCESS: Synced Company ID: " . $companyId);
         } catch (\Exception $e) {
             logCron("ERROR: Failed for Company ID: " . $companyId . " - " . $e->getMessage());

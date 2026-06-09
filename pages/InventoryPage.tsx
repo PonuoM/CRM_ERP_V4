@@ -41,6 +41,7 @@ export default function InventoryPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncInfo, setSyncInfo] = useState<{time: string | null, source: string}>({time: null, source: 'Unknown'});
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('all');
@@ -103,6 +104,7 @@ export default function InventoryPage() {
         setTotalRecords(res.total);
         setCurrentPage(res.page);
         setLastPage(res.last_page);
+        if (res.sync_info) setSyncInfo(res.sync_info);
       } else {
         throw new Error(res?.message || 'Failed to fetch inventory');
       }
@@ -553,10 +555,16 @@ export default function InventoryPage() {
             </div>
             
             {/* Last Updated Footer */}
-            <div className="bg-slate-50 p-2 border-t border-slate-200 text-xs text-slate-500 text-right">
-              {inventory.length > 0 && inventory[0].updatedAt && (
-                <span>อัปเดตล่าสุด: {new Date(inventory[0].updatedAt).toLocaleString('th-TH')}</span>
-              )}
+            <div className="bg-slate-50 p-2 border-t border-slate-200 text-xs text-slate-500 flex justify-between items-center">
+              <div>
+                {syncInfo.time ? (
+                  <span>ดึงข้อมูลล่าสุด: {new Date(syncInfo.time).toLocaleString('th-TH')} ({syncInfo.source === 'Cron' ? 'อัปเดตอัตโนมัติ' : 'ผู้ใช้งานกดอัปเดต'})</span>
+                ) : (
+                  inventory.length > 0 && inventory[0].updatedAt && (
+                    <span>ดึงข้อมูลล่าสุด: {new Date(inventory[0].updatedAt).toLocaleString('th-TH')}</span>
+                  )
+                )}
+              </div>
             </div>
           </div>
         </>

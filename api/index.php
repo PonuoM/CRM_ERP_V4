@@ -590,12 +590,21 @@ try {
             $force = isset($_GET['force']) && $_GET['force'] === '1';
             if ($force) {
                 try {
-                    $service->syncInventoryToDb();
+                    $service->syncInventoryToDb('Manual');
                 } catch (Exception $e) {
                     json_response(['error' => 'SYNC_FAILED', 'message' => $e->getMessage()], 500);
                 }
             }
             $result = $service->getInventoryPaginated($_GET);
+            
+            // Read sync info
+            $syncInfoFile = __DIR__ . '/../storage/logs/jst_last_sync.json';
+            $syncInfo = ['time' => null, 'source' => 'Unknown'];
+            if (file_exists($syncInfoFile)) {
+                $syncInfo = json_decode(file_get_contents($syncInfoFile), true) ?: $syncInfo;
+            }
+            $result['sync_info'] = $syncInfo;
+            
             json_response(array_merge(['ok' => true], $result));
             break;
         case 'jst_inventory_logs':
