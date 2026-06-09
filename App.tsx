@@ -888,6 +888,9 @@ const App: React.FC = () => {
       status: normalizeProductStatus(
         typeof r.status !== "undefined" ? r.status : r.active,
       ),
+      jst_stock: r.jst_stock !== undefined && r.jst_stock !== null ? Number(r.jst_stock) : undefined,
+      jst_lock: r.jst_lock !== undefined && r.jst_lock !== null ? Number(r.jst_lock) : undefined,
+      jst_sku: r.jst_sku ?? undefined,
     };
   };
 
