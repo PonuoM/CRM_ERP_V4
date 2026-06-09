@@ -2785,7 +2785,7 @@ function handle_products(PDO $pdo, ?string $id): void
                             SELECT sku_id, company_id, SUM(available_qty) as total_available_qty, SUM(order_lock) as total_order_lock
                             FROM jst_inventory
                             GROUP BY sku_id, company_id
-                        ) j ON TRIM(p.sku) = TRIM(j.sku_id) AND p.company_id = j.company_id
+                        ) j ON TRIM(COALESCE(NULLIF(TRIM(p.jst_sku), ''), p.sku)) = TRIM(j.sku_id) AND p.company_id = j.company_id
                         WHERE (p.deleted_at IS NULL)
                     ';
                 } else {
@@ -2814,9 +2814,10 @@ function handle_products(PDO $pdo, ?string $id): void
             break;
         case 'POST':
             $in = json_input();
-            $stmt = $pdo->prepare('INSERT INTO products (sku, name, description, category, unit, cost, price, stock, company_id, shop, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO products (sku, jst_sku, name, description, category, unit, cost, price, stock, company_id, shop, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
             $stmt->execute([
                 $in['sku'] ?? '',
+                $in['jst_sku'] ?? null,
                 $in['name'] ?? '',
                 $in['description'] ?? null,
                 $in['category'] ?? '',
@@ -2847,7 +2848,8 @@ function handle_products(PDO $pdo, ?string $id): void
                 'stock' => 'stock',
                 'status' => 'status',
                 'companyId' => 'company_id',
-                'shop' => 'shop'
+                'shop' => 'shop',
+                'jst_sku' => 'jst_sku'
             ];
             foreach ($map as $inKey => $col) {
                 if (array_key_exists($inKey, $in)) {

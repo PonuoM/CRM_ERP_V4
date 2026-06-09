@@ -168,6 +168,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
     stock: product?.stock.toString() || '0',
     shop: product?.shop || '',
     adsGroup: product?.adsGroup || '',
+    jst_sku: product?.jst_sku || '',
   });
 
   const [formData, setFormData] = useState(getInitialState);
@@ -300,6 +301,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
       companyId,
       shop: formData.shop || undefined,
       adsGroup: formData.adsGroup || undefined,
+      jst_sku: formData.jst_sku || undefined,
       lots: activeTab === 'lots' ? lots : [],
     };
 
@@ -392,6 +394,9 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
                       <div className="space-y-4">
                         <FormField label="รหัสสินค้า (SKU)" required icon={Tag}>
                           <input type="text" name="sku" value={formData.sku} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" placeholder="เช่น PRD-001" />
+                        </FormField>
+                        <FormField label="รหัส JST (ถ้าไม่ตรงกับ SKU ระบบ)" icon={Tag} hint="กรอกเฉพาะกรณีที่ตั้งชื่อ SKU ในระบบไม่ตรงกับใน JST">
+                          <input type="text" name="jst_sku" value={formData.jst_sku} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" placeholder="เช่น JST-PRD-001" />
                         </FormField>
                         <FormField label="ชื่อสินค้า" required icon={Folder}>
                           <input type="text" name="name" value={formData.name} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" placeholder="กรอกชื่อสินค้า" />

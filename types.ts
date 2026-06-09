@@ -681,6 +681,7 @@ export interface Order {
 export interface Product {
   id: number;
   sku: string;
+  jst_sku?: string;
   name: string;
   description?: string;
   category: string;
