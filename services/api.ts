@@ -2796,7 +2796,33 @@ export async function acknowledgeAllCancellations(orderIds: string[]): Promise<a
 }
 
 // ========== JST ERP Integration API ==========
-export async function fetchJstInventory(forceRefresh: boolean = false, companyId?: number): Promise<any> {
-  const query = forceRefresh ? `?force=1${companyId ? `&companyId=${companyId}` : ""}` : (companyId ? `?companyId=${companyId}` : "");
-  return apiFetch(`jst_inventory${query}`);
+export interface JstInventoryParams {
+  forceRefresh?: boolean;
+  companyId?: number;
+  page?: number;
+  limit?: number;
+  search?: string;
+  warehouse?: string;
+  low_stock?: boolean;
+  sort_key?: string;
+  sort_dir?: string;
+  grouped?: boolean;
+  export?: boolean;
+}
+
+export async function fetchJstInventory(params: JstInventoryParams = {}): Promise<any> {
+  const queryParams = new URLSearchParams();
+  if (params.forceRefresh) queryParams.append('force', '1');
+  if (params.companyId) queryParams.append('companyId', params.companyId.toString());
+  if (params.page) queryParams.append('page', params.page.toString());
+  if (params.limit) queryParams.append('limit', params.limit.toString());
+  if (params.search) queryParams.append('search', params.search);
+  if (params.warehouse) queryParams.append('warehouse', params.warehouse);
+  if (params.low_stock) queryParams.append('low_stock', 'true');
+  if (params.sort_key) queryParams.append('sort_key', params.sort_key);
+  if (params.sort_dir) queryParams.append('sort_dir', params.sort_dir);
+  if (params.grouped) queryParams.append('grouped', 'true');
+  if (params.export) queryParams.append('export', 'true');
+
+  return apiFetch(`jst_inventory?${queryParams.toString()}`);
 }

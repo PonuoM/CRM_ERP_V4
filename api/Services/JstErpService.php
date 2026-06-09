@@ -69,7 +69,7 @@ class JstErpService {
         curl_setopt($ch, CURLOPT_HEADER, true);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'Content-Type: application/json;charset=UTF-8',
             'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/148.0.0.0 Safari/537.36'
@@ -104,7 +104,7 @@ class JstErpService {
         file_put_contents($this->cookieFile, json_encode([
             'cookies' => $cookies,
             'expires' => time() + (12 * 3600) // 12 hours expiry
-        ]));
+        ]), LOCK_EX);
 
         return $cookies;
     }
@@ -151,7 +151,7 @@ class JstErpService {
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'Content-Type: application/json;charset=UTF-8',
             'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/148.0.0.0 Safari/537.36',
@@ -179,32 +179,6 @@ class JstErpService {
 
         try {
             $this->pdo->beginTransaction();
-            $stmt = $this->pdo->prepare("
-                INSERT INTO jst_inventory 
-                (company_id, sku_id, sku_name, warehouse_name, qty, available_qty, order_lock, pic, updated_at,
-                 defective_qty, in_qty, purchase_qty, return_qty, brand_name, supplier_name,
-                 day_sale_3, day_sale_7, day_sale_15, day_sale_30, day_sale_60, day_sale_90)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE 
-                sku_name = VALUES(sku_name),
-                qty = VALUES(qty),
-                available_qty = VALUES(available_qty),
-                order_lock = VALUES(order_lock),
-                pic = VALUES(pic),
-                updated_at = VALUES(updated_at),
-                defective_qty = VALUES(defective_qty),
-                in_qty = VALUES(in_qty),
-                purchase_qty = VALUES(purchase_qty),
-                return_qty = VALUES(return_qty),
-                brand_name = VALUES(brand_name),
-                supplier_name = VALUES(supplier_name),
-                day_sale_3 = VALUES(day_sale_3),
-                day_sale_7 = VALUES(day_sale_7),
-                day_sale_15 = VALUES(day_sale_15),
-                day_sale_30 = VALUES(day_sale_30),
-                day_sale_60 = VALUES(day_sale_60),
-                day_sale_90 = VALUES(day_sale_90)
-            ");
 
             while ($pageIndex <= $maxPages) {
                 $res = $this->fetchInventoryPage($cookies, $pageIndex);
@@ -213,12 +187,18 @@ class JstErpService {
                     break;
                 }
                 
+                // Bulk Insert preparation
+                $values = [];
+                $placeholders = [];
+                $validItemsCount = 0;
+                
                 foreach ($res['Data'] as $item) {
                     $skuId = $item['SkuId'] ?? '';
                     $warehouseName = $item['WarehouseName'] ?? '';
                     if (empty($skuId) || empty($warehouseName)) continue;
                     
-                    $stmt->execute([
+                    $placeholders[] = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                    $values = array_merge($values, [
                         $this->companyId,
                         $skuId,
                         $item['SkuName'] ?? '',
@@ -241,7 +221,26 @@ class JstErpService {
                         $item['DaySale60'] ?? 0,
                         $item['DaySale90'] ?? 0
                     ]);
-                    $itemCount++;
+                    $validItemsCount++;
+                }
+
+                if ($validItemsCount > 0) {
+                    $sql = "INSERT INTO jst_inventory 
+                            (company_id, sku_id, sku_name, warehouse_name, qty, available_qty, order_lock, pic, updated_at,
+                             defective_qty, in_qty, purchase_qty, return_qty, brand_name, supplier_name,
+                             day_sale_3, day_sale_7, day_sale_15, day_sale_30, day_sale_60, day_sale_90)
+                            VALUES " . implode(', ', $placeholders) . "
+                            ON DUPLICATE KEY UPDATE 
+                            sku_name = VALUES(sku_name), qty = VALUES(qty), available_qty = VALUES(available_qty),
+                            order_lock = VALUES(order_lock), pic = VALUES(pic), updated_at = VALUES(updated_at),
+                            defective_qty = VALUES(defective_qty), in_qty = VALUES(in_qty), purchase_qty = VALUES(purchase_qty),
+                            return_qty = VALUES(return_qty), brand_name = VALUES(brand_name), supplier_name = VALUES(supplier_name),
+                            day_sale_3 = VALUES(day_sale_3), day_sale_7 = VALUES(day_sale_7), day_sale_15 = VALUES(day_sale_15),
+                            day_sale_30 = VALUES(day_sale_30), day_sale_60 = VALUES(day_sale_60), day_sale_90 = VALUES(day_sale_90)";
+                    
+                    $stmt = $this->pdo->prepare($sql);
+                    $stmt->execute($values);
+                    $itemCount += $validItemsCount;
                 }
 
                 // Check if it's the last page
@@ -280,23 +279,131 @@ class JstErpService {
         }
     }
 
-    public function getAllInventory($forceRefresh = false) {
-        if ($forceRefresh) {
-            $this->syncInventoryToDb();
+    public function getInventoryPaginated($params) {
+        $page = isset($params['page']) ? max(1, (int)$params['page']) : 1;
+        $limit = isset($params['limit']) ? (int)$params['limit'] : 50;
+        $search = $params['search'] ?? '';
+        $warehouse = $params['warehouse'] ?? 'all';
+        $lowStock = !empty($params['low_stock']) && $params['low_stock'] !== 'false';
+        $sortKey = $params['sort_key'] ?? 'sku_id';
+        $sortDir = strtoupper($params['sort_dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
+        $grouped = !empty($params['grouped']) && $params['grouped'] !== 'false';
+        $export = !empty($params['export']) && $params['export'] !== 'false';
+
+        $where = ["company_id = ?"];
+        $bindings = [$this->companyId];
+
+        if ($search !== '') {
+            $where[] = "(sku_id LIKE ? OR sku_name LIKE ?)";
+            $searchLike = "%$search%";
+            $bindings[] = $searchLike;
+            $bindings[] = $searchLike;
         }
 
-        $stmt = $this->pdo->prepare("
-            SELECT sku_id as skuId, sku_name as skuName, warehouse_name as warehouseName, 
-                   qty, available_qty as availableQty, order_lock as orderLock, pic, updated_at as updatedAt,
-                   defective_qty as defectiveQty, in_qty as inQty, purchase_qty as purchaseQty, return_qty as returnQty,
-                   brand_name as brandName, supplier_name as supplierName,
-                   day_sale_3 as daySale3, day_sale_7 as daySale7, day_sale_15 as daySale15, 
-                   day_sale_30 as daySale30, day_sale_60 as daySale60, day_sale_90 as daySale90
-            FROM jst_inventory 
-            WHERE company_id = ? 
-            ORDER BY warehouse_name ASC, sku_id ASC
-        ");
-        $stmt->execute([$this->companyId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($warehouse !== 'all' && !$grouped) {
+            $where[] = "warehouse_name = ?";
+            $bindings[] = $warehouse;
+        }
+
+        if ($lowStock) {
+            $where[] = "available_qty < 10";
+        }
+
+        $whereSql = implode(" AND ", $where);
+        
+        $allowedSortKeys = ['sku_id', 'warehouse_name', 'qty', 'available_qty', 'order_lock', 'day_sale_7'];
+        if (!in_array($sortKey, $allowedSortKeys)) {
+            $sortKey = 'sku_id';
+        }
+
+        if ($grouped) {
+            $countSql = "SELECT COUNT(DISTINCT sku_id) FROM jst_inventory WHERE $whereSql";
+            $stmtCount = $this->pdo->prepare($countSql);
+            $stmtCount->execute($bindings);
+            $total = $stmtCount->fetchColumn();
+
+            $sql = "SELECT sku_id as skuId, MAX(sku_name) as skuName, MAX(brand_name) as brandName, MAX(pic) as pic,
+                           SUM(qty) as qty, SUM(available_qty) as availableQty, SUM(order_lock) as orderLock,
+                           SUM(defective_qty) as defectiveQty, SUM(return_qty) as returnQty, SUM(in_qty) as inQty,
+                           SUM(purchase_qty) as purchaseQty, SUM(day_sale_7) as daySale7, MAX(updated_at) as updatedAt
+                    FROM jst_inventory
+                    WHERE $whereSql
+                    GROUP BY sku_id
+                    ORDER BY $sortKey $sortDir";
+            
+            if (!$export) {
+                $offset = ($page - 1) * $limit;
+                $sql .= " LIMIT $limit OFFSET $offset";
+            }
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($bindings);
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Fetch warehouse breakdowns for these SKUs
+            if (!empty($data)) {
+                $skuIds = array_column($data, 'skuId');
+                $placeholders = str_repeat('?,', count($skuIds) - 1) . '?';
+                
+                $whSql = "SELECT sku_id, warehouse_name as warehouseName, qty, available_qty as availableQty, 
+                                 order_lock as orderLock, defective_qty as defectiveQty, return_qty as returnQty, 
+                                 in_qty as inQty, purchase_qty as purchaseQty, day_sale_7 as daySale7
+                          FROM jst_inventory 
+                          WHERE company_id = ? AND sku_id IN ($placeholders)";
+                
+                $whBindings = array_merge([$this->companyId], $skuIds);
+                
+                if ($warehouse !== 'all') {
+                    $whSql .= " AND warehouse_name = ?";
+                    $whBindings[] = $warehouse;
+                }
+                
+                $whStmt = $this->pdo->prepare($whSql);
+                $whStmt->execute($whBindings);
+                $whData = $whStmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                $whMap = [];
+                foreach ($whData as $row) {
+                    $whMap[$row['sku_id']][] = $row;
+                }
+                
+                foreach ($data as &$item) {
+                    $item['warehouses'] = $whMap[$item['skuId']] ?? [];
+                }
+            }
+
+        } else {
+            $countSql = "SELECT COUNT(*) FROM jst_inventory WHERE $whereSql";
+            $stmtCount = $this->pdo->prepare($countSql);
+            $stmtCount->execute($bindings);
+            $total = $stmtCount->fetchColumn();
+
+            $sql = "SELECT sku_id as skuId, sku_name as skuName, warehouse_name as warehouseName, 
+                           qty, available_qty as availableQty, order_lock as orderLock, pic, updated_at as updatedAt,
+                           defective_qty as defectiveQty, in_qty as inQty, purchase_qty as purchaseQty, return_qty as returnQty,
+                           brand_name as brandName, supplier_name as supplierName,
+                           day_sale_3 as daySale3, day_sale_7 as daySale7, day_sale_15 as daySale15, 
+                           day_sale_30 as daySale30, day_sale_60 as daySale60, day_sale_90 as daySale90
+                    FROM jst_inventory 
+                    WHERE $whereSql
+                    ORDER BY $sortKey $sortDir";
+                    
+            if (!$export) {
+                $offset = ($page - 1) * $limit;
+                $sql .= " LIMIT $limit OFFSET $offset";
+            }
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($bindings);
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        return [
+            'data' => $data,
+            'total' => (int)$total,
+            'page' => $page,
+            'limit' => $limit,
+            'last_page' => ceil($total / $limit)
+        ];
     }
 }

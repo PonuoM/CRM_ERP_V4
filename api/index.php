@@ -588,7 +588,15 @@ try {
             
             $service = new JstErpService($pdo, $companyId);
             $force = isset($_GET['force']) && $_GET['force'] === '1';
-            json_response(['ok' => true, 'data' => $service->getAllInventory($force)]);
+            if ($force) {
+                try {
+                    $service->syncInventoryToDb();
+                } catch (Exception $e) {
+                    json_response(['error' => 'SYNC_FAILED', 'message' => $e->getMessage()], 500);
+                }
+            }
+            $result = $service->getInventoryPaginated($_GET);
+            json_response(array_merge(['ok' => true], $result));
             break;
         case 'jst_inventory_logs':
             $user = get_authenticated_user($pdo);
