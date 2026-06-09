@@ -57,7 +57,7 @@ export default function InventoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'inventory' | 'inventory_grouped' | 'settings'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'inventory_grouped' | 'settings'>('inventory_grouped');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: keyof InventoryItem, direction: 'asc' | 'desc' } | null>(null);
@@ -223,7 +223,7 @@ export default function InventoryPage() {
         return {
           'SKU ID': groupedItem.skuId,
           'ชื่อสินค้า': groupedItem.skuName,
-          'รวมทุกคลัง': groupedItem.warehouses.map(w => w.warehouseName).join(', '),
+          'รายสินค้า': groupedItem.warehouses.map(w => w.warehouseName).join(', '),
           'ทั้งหมด': groupedItem.qty,
           'พร้อมขาย': groupedItem.availableQty,
           'จองแล้ว': groupedItem.orderLock,
@@ -309,6 +309,17 @@ export default function InventoryPage() {
         <div className="border-b border-slate-200">
           <nav className="-mb-px flex space-x-8">
             <button
+              onClick={() => setActiveTab('inventory_grouped')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                activeTab === 'inventory_grouped'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              รายสินค้า
+            </button>
+            <button
               onClick={() => setActiveTab('inventory')}
               className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
                 activeTab === 'inventory'
@@ -318,17 +329,6 @@ export default function InventoryPage() {
             >
               <Package className="w-4 h-4" />
               แยกตามคลัง
-            </button>
-            <button
-              onClick={() => setActiveTab('inventory_grouped')}
-              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                activeTab === 'inventory_grouped'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              รวมทุกคลัง
             </button>
             <button
               onClick={() => setActiveTab('settings')}
@@ -583,7 +583,7 @@ export default function InventoryPage() {
                                 </div>
                               </td>
                               <td className="py-3 px-4 text-sm text-slate-600">
-                                รวมทุกคลัง ({group.warehouses.length})
+                                รายสินค้า ({group.warehouses.length} คลัง)
                               </td>
                               <td className="py-3 px-4 text-right">
                                 <span className="font-medium text-slate-700">{group.qty}</span>
