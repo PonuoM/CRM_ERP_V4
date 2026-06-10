@@ -301,7 +301,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
       companyId,
       shop: formData.shop || undefined,
       adsGroup: formData.adsGroup || undefined,
-      jst_sku: formData.jst_sku || undefined,
+      jst_sku: formData.jst_sku ? formData.jst_sku : null,
       lots: activeTab === 'lots' ? lots : [],
     };
 
