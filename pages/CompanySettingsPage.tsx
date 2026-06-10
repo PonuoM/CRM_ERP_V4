@@ -21,7 +21,7 @@ export default function CompanySettingsPage() {
   const sessionUserStr = localStorage.getItem("sessionUser");
   const sessionUser = sessionUserStr ? JSON.parse(sessionUserStr) : null;
   const isSuperAdmin = sessionUser?.role === "Super Admin" || sessionUser?.role === "Developer";
-  const isSystemUser = sessionUser?.is_system === 1;
+  const isSystemUser = Number(sessionUser?.is_system) === 1;
   const userCompanyId = sessionUser?.company_id;
 
   useEffect(() => {
