@@ -22,6 +22,7 @@ export default function CompanySettingsPage() {
   const sessionUserStr = localStorage.getItem("sessionUser");
   const sessionUser = sessionUserStr ? JSON.parse(sessionUserStr) : null;
   const isSuperAdmin = sessionUser?.role === "Super Admin" || sessionUser?.role === "Developer";
+  const isSystemUser = sessionUser?.is_system === 1;
   const userCompanyId = sessionUser?.company_id;
 
   useEffect(() => {
@@ -50,10 +51,10 @@ export default function CompanySettingsPage() {
   }, [selectedCompanyId]);
 
   useEffect(() => {
-    if (isSuperAdmin) {
+    if (isSuperAdmin || isSystemUser) {
       loadLogs();
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, isSystemUser]);
 
   const loadLogs = async () => {
     setIsLoadingLogs(true);
@@ -242,7 +243,7 @@ export default function CompanySettingsPage() {
         </div>
       </div>
 
-      {isSuperAdmin && (
+      {(isSuperAdmin || isSystemUser) && (
         <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden mt-8">
           <div className="p-4 border-b border-slate-700 bg-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
