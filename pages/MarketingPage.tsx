@@ -1726,6 +1726,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             target.reorder_customer_orders = Number(target.reorder_customer_orders || 0) + Number(noAdsRow.reorder_customer_orders || 0);
             target.new_customer_sales = Number(target.new_customer_sales || 0) + Number(noAdsRow.new_customer_sales || 0);
             target.reorder_customer_sales = Number(target.reorder_customer_sales || 0) + Number(noAdsRow.reorder_customer_sales || 0);
+            target.new_customers = Number(target.new_customers || 0) + Number(noAdsRow.new_customers || 0);
+            target.reorder_customers = Number(target.reorder_customers || 0) + Number(noAdsRow.reorder_customers || 0);
             target.total_customers = Number(target.total_customers || 0) + Number(noAdsRow.total_customers || 0);
             target.returned_sales = Number(target.returned_sales || 0) + Number(noAdsRow.returned_sales || 0);
             target.returned_orders = Number(target.returned_orders || 0) + Number(noAdsRow.returned_orders || 0);
@@ -2060,7 +2062,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         })()
       }));
     } else {
-      headers = ["Page", "Ads Cost", "Impressions", "Reach", "Clicks", "Sales", "Returned Sales", "Cancelled Sales", "New Cust Sales", "Reorder Sales", "Total Cust", "ROAS", "%Ads"];
+      headers = ["Page", "Ads Cost", "Impressions", "Reach", "Clicks", "Sales", "Returned Sales", "Cancelled Sales", "New Cust Sales", "Reorder Sales", "New Cust Count", "Reorder Cust Count", "Total Cust", "ROAS", "%Ads"];
       dataToExport = dashboardData.map(row => ({
         Page: row.page_name,
         "Ads Cost": row.ads_cost,
@@ -2072,7 +2074,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         "Cancelled Sales": row.cancelled_sales || 0,
         "New Cust Sales": row.new_customer_sales,
         "Reorder Sales": row.reorder_customer_sales,
-        "Total Cust": row.total_customers,
+        "New Cust Count": row.new_customers || 0,
+        "Reorder Cust Count": row.reorder_customers || 0,
+        "Total Cust": Number(row.new_customers || 0) + Number(row.reorder_customers || 0),
         "ROAS": Number(row.ads_cost) > 0 ? (Number(row.total_sales) / Number(row.ads_cost)).toFixed(2) : "0.00",
         "%Ads": Number(row.total_sales) > 0 ? ((Number(row.ads_cost) / Number(row.total_sales)) * 100).toFixed(2) + "%" : "0.00%"
       }));
@@ -3159,6 +3163,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               </div>
                             </div>
                           </th>
+                          <th className="px-3 py-2 text-right bg-gray-50">ลูกค้าใหม่ (คน)</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">รีออเดอร์ (คน)</th>
                           <th className="px-3 py-2 text-right bg-gray-50">จำนวนลูกค้า</th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
@@ -3290,7 +3296,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                     {Number(row.reorder_customer_sales || 0).toLocaleString('th-TH')}
                                   </td>
                                   <td className="px-3 py-2 text-right font-medium">{Number(row.clicks || 0).toLocaleString('th-TH')}</td>
-                                  <td className="px-3 py-2 text-right">{Number(row.total_customers || 0).toLocaleString('th-TH')}</td>
+                                  <td className="px-3 py-2 text-right">{Number(row.new_customers || 0).toLocaleString('th-TH')}</td>
+                                  <td className="px-3 py-2 text-right">{Number(row.reorder_customers || 0).toLocaleString('th-TH')}</td>
+                                  <td className="px-3 py-2 text-right">{(Number(row.new_customers || 0) + Number(row.reorder_customers || 0)).toLocaleString('th-TH')}</td>
                                   <td className="px-3 py-2 text-right text-blue-600 font-medium">{roas.toFixed(2)}</td>
                                   <td className="px-3 py-2 text-right">{costPerInbox.toFixed(2)}</td>
                                   <td className="px-3 py-2 text-right relative">
@@ -3345,7 +3353,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                       {summaryRows.reduce((acc: number, row: any) => acc + Number(row.clicks || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right">
-                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_customers || 0), 0).toLocaleString('th-TH')}
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.new_customers || 0), 0).toLocaleString('th-TH')}
+                                    </td>
+                                    <td className="px-3 py-2 text-right">
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.reorder_customers || 0), 0).toLocaleString('th-TH')}
+                                    </td>
+                                    <td className="px-3 py-2 text-right">
+                                      {summaryRows.reduce((acc: number, row: any) => acc + (Number(row.new_customers || 0) + Number(row.reorder_customers || 0)), 0).toLocaleString('th-TH')}
                                     </td>
                                     {(() => {
                                       const totalAds = summaryRows.reduce((acc: number, row: any) => acc + Number(row.ads_cost || 0), 0);
@@ -3419,6 +3433,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           <th className="px-3 py-2 text-right bg-gray-50">ยอดขาย</th>
                           <th className="px-3 py-2 text-right bg-amber-50 text-amber-700">ตีกลับ</th>
                           <th className="px-3 py-2 text-right bg-red-50 text-red-700">ยกเลิก</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">ลูกค้าใหม่ (คน)</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">รีออเดอร์ (คน)</th>
+                          <th className="px-3 py-2 text-right bg-gray-50">จำนวนลูกค้า</th>
                           <th className="px-3 py-2 text-right bg-gray-50">
                             <div className="group relative inline-block cursor-help">
                               %Ads
@@ -3454,6 +3471,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                     <td className="px-3 py-2 text-right">{Number(row.total_sales).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td className="px-3 py-2 text-right text-amber-600">{Number(row.returned_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td className="px-3 py-2 text-right text-red-600">{Number(row.cancelled_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td className="px-3 py-2 text-right">{Number(row.new_customers || 0).toLocaleString('th-TH')}</td>
+                                    <td className="px-3 py-2 text-right">{Number(row.reorder_customers || 0).toLocaleString('th-TH')}</td>
+                                    <td className="px-3 py-2 text-right">{(Number(row.new_customers || 0) + Number(row.reorder_customers || 0)).toLocaleString('th-TH')}</td>
                                     <td className="px-3 py-2 text-right">{pctAds.toFixed(2)}%</td>
                                   </tr>
                                 );
@@ -3475,6 +3495,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 </td>
                                 <td className="px-3 py-2 text-right text-red-600">
                                   {filteredData.reduce((acc, row) => acc + Number(row.cancelled_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  {filteredData.reduce((acc, row) => acc + Number(row.new_customers || 0), 0).toLocaleString('th-TH')}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  {filteredData.reduce((acc, row) => acc + Number(row.reorder_customers || 0), 0).toLocaleString('th-TH')}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  {filteredData.reduce((acc, row) => acc + (Number(row.new_customers || 0) + Number(row.reorder_customers || 0)), 0).toLocaleString('th-TH')}
                                 </td>
                                 <td className="px-3 py-2 text-right">
                                   {(() => {

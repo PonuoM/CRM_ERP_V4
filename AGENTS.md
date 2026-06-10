@@ -1,39 +1,91 @@
-# Repository Guidelines
+# Repository Guidelines & Agentic Work Rules
 
-## Project Structure & Module Organization
-- Entry files live at the root: `index.html`, `index.tsx`, `App.tsx`.
-- Feature code is organized under `components/`, `pages/`, and `data/`; shared types are in `types.ts`.
-- A secondary `src/` mirrors some folders for legacy/experimental code. Prefer root-level folders for new work.
-- Path alias `@` points to the project root (see `tsconfig.json` and `vite.config.ts`). Example: `import Sidebar from '@/components/Sidebar'`.
+**TARGET AUDIENCE:** AI Agents and Human Developers.
+**PURPOSE:** Strict guidelines to ensure code maintainability, performance, and safe execution. Read and follow these rules before starting any task.
 
-## Build, Test, and Development Commands
-- `npm install` — install dependencies.
-- `npm run dev` — start the Vite dev server.
-- `npm run build` — create a production build in `dist/`.
-- `npm run preview` — serve the built app locally.
-- Config: create `.env.local` and set `GEMINI_API_KEY=...` (Vite injects this; see `vite.config.ts`).
+---
 
-## Coding Style & Naming Conventions
-- TypeScript + React functional components; use 2‑space indentation.
-- File names: PascalCase for components/pages (e.g., `CustomerTable.tsx`), camelCase for utilities.
-- Exports: default export for React components; use named exports for helpers/types.
-- Keep types in `types.ts` or colocate if component‑specific. Prefer the `@` alias for absolute imports.
+## 1. 🏗️ PROJECT STRUCTURE
 
-## Testing Guidelines
-- No test runner is configured. Aim for small, testable components.
-- If introducing tests, prefer Vitest + React Testing Library. Name tests `ComponentName.test.tsx` next to the component.
-- Manual QA: run `npm run dev`, exercise changed pages, ensure no console errors, and that `npm run build` passes.
+### Frontend (React + TypeScript + Vite)
+- **`/pages`**: Top-level views (e.g., `InventoryPage.tsx`). One file per major screen.
+- **`/components`**: Reusable UI elements (`Button`, `Table`). Keep them decoupled from heavy business logic.
+- **`/services`**: API fetching logic (e.g., `api.ts`). Keep UI separated from network requests.
+- **`/types.ts`**: Centralized TypeScript interfaces for easy importing.
+- **Path Alias**: `@` points to the project root (see `tsconfig.json` and `vite.config.ts`). Example: `import Sidebar from '@/components/Sidebar'`.
+- A secondary `src/` mirrors some folders for legacy/experimental code. Prefer root-level folders for new work. Do not relocate files unless part of a planned refactor.
 
-## Commit & Pull Request Guidelines
-- Follow Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`. Scope when useful (e.g., `feat(pages): add ReportsPage filters`).
-- PRs: include a clear summary, link related issues, and add screenshots/GIFs for UI changes. Keep PRs focused and small.
+### Backend (PHP + MySQL)
+- **`/api/index.php`**: The main API entry point and router. All frontend requests go here.
+- **`/api/Services/`**: Complex business logic, external API integrations, and data processing.
+- **`/api/migrations/`**: All database schema changes **MUST** be recorded here as `.sql` files.
 
-## Security & Configuration Tips
-- Never commit secrets. `.env.local` is git‑ignored (`*.local`). Rotate `GEMINI_API_KEY` if exposed.
-- This app is a SPA using mock data; avoid coupling to server‑only code in the client.
+---
 
-## Agent‑Specific Instructions
-- Prefer root‑level modules over `src/`. Do not relocate files unless part of a planned refactor.
-- Respect the `@` alias and existing import patterns; keep changes minimal and scoped.
-- **CRITICAL WORKFLOW RULE**: NEVER use the `run_command` (terminal) tool to run scripts (like PHP) or gather information. The terminal pipe freezes on the user's Windows environment. Always use native tools (`view_file`, `grep_search`, `list_dir`) or execute scripts via `read_url_content` pointing to the Localhost (e.g., `http://localhost/CRM_ERP_V4/...`).
+## 2. 💻 CODING CONVENTIONS
 
+### Frontend
+- **Naming**: `PascalCase` for Components/Pages (`CustomerTable.tsx`). `camelCase` for variables/utilities (`loadInventory`).
+- **State Management**: Extract complex logic into Custom Hooks. Use `useMemo` and `useCallback` to prevent unnecessary re-renders.
+- **Styling**: Use **Tailwind CSS**. Avoid custom `.css` files unless absolutely necessary to maintain a unified design system.
+- **Exports**: Default export for React components; use named exports for helpers/types.
+
+### Backend
+- **Security First**: **NEVER** concatenate SQL strings. **ALWAYS** use PDO Prepared Statements (`?` or `:name`) to prevent SQL injection.
+- **Standardized Response**: All API responses MUST follow this exact JSON structure:
+  ```json
+  {
+    "ok": true, // boolean
+    "message": "Success or error description", // string
+    "data": { ... } // object or array (optional)
+  }
+  ```
+- **Error Handling**: Wrap DB operations and external API calls in `try-catch`. Do NOT allow silent failures.
+
+---
+
+## 3. 🚀 PERFORMANCE & OPTIMIZATION
+- **Bulk Database Operations**: If inserting/updating >100 records, you **MUST** use `beginTransaction()` and `commit()` to minimize disk I/O overhead.
+- **Lazy Loading**: Use pagination or virtualization for large frontend datasets. Do not load thousands of rows into the DOM at once.
+- **Caching**: Implement file or memory caching for static or heavy data.
+- **Data Freshness Indicators**: For data updated via Background Workers or Cron, **always display the last updated timestamp and sync source** (e.g., "Updated by Cron" vs "Updated Manually") in the UI to prevent user confusion.
+
+---
+
+## 4. 🌿 GIT & PULL REQUEST WORKFLOW
+- For rules regarding commits and PRs, please refer to the Git Workflow guide. (Use `/git-workflow` or view `.agents/workflows/git-workflow.md`)
+
+---
+
+## 5. 🤖 CRITICAL RULES FOR AI AGENTS
+
+**Rule 1: Terminal Freeze Prevention (Windows Environment) (⭐ CRITICAL)**
+- **NEVER** use the `run_command` (terminal) tool to run scripts (like PHP) or gather information. The terminal pipe freezes on the user's Windows environment.
+- **DO**: Always use native tools (`view_file`, `grep_search`, `list_dir`) or execute scripts via `read_url_content` pointing to the Localhost (e.g., `http://localhost/CRM_ERP_V4/...`).
+
+**Rule 2: Critical Thinking & Best Practice Overrides (⭐ CRITICAL)**
+- **THINK FIRST**: Before writing code, analyze if the user's request is the optimal approach.
+- **OVERRIDE INFERIOR REQUESTS**: If the user asks for something technically flawed (e.g., *"Load all 100,000 users into the table"*), **DO NOT** blindly comply.
+- **COUNTER-PROPOSE**: Stop and suggest the "Best Practice" instead (e.g., *"A better approach is server-side pagination to prevent browser freezing. Here is the plan..."*).
+- **GRILL THE USER**: If requirements are vague, use the `/grill-me` approach to ask targeted questions until all dependencies and constraints are resolved.
+
+**Rule 3: Mandatory Implementation Plans**
+- For **New Systems** or **Significant Architectural Changes**, you **MUST** research, create an `implementation_plan.md`, and await user approval before modifying any code. Prevent cascading bugs by planning first.
+
+**Rule 4: Security & Configuration Tips**
+- **NEVER** hardcode API Keys, tokens, or passwords in the source code. Always read them from Environment Variables (e.g. `.env.local` which is git-ignored). Rotate `GEMINI_API_KEY` if exposed.
+
+**Rule 5: Local Database Credentials (CRITICAL)**
+- **NEVER** use the `primacom_bloguser` database user when running local scripts or executing CLI SQL commands. That user is for the production server.
+- **ALWAYS** use `root` with password `12345678` when connecting to the local database via terminal or custom scripts.
+
+**Rule 6: Code Scoping**
+- Modify only what is necessary. Do not refactor massive parts of the codebase without explicit permission.
+
+**Rule 7: Single-Use Scripts (Scratch Folder)**
+- **NEVER** litter the root directory or `/api` folder with one-off scripts (e.g., test scripts, manual data migration scripts).
+- **ALWAYS** create them in a temporary `/scratch` folder (or the artifact scratch directory), execute them, and **delete them immediately** after use to keep the repository clean.
+
+**Rule 8: Mandatory Migrations (⭐ CRITICAL)**
+- **ALWAYS** create a migration file in `/api/migrations/` (e.g., `001_add_new_column.sql`) whenever you add a column, modify a table, or change the database schema.
+- **NEVER** just run an `ALTER TABLE` command in the terminal without also creating the corresponding `.sql` migration file, as this breaks database versioning for other developers.
