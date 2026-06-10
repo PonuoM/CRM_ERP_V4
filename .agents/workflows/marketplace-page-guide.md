@@ -35,6 +35,9 @@
   - **Auto-create Store:** หากไฟล์ที่นำเข้ามีชื่อร้านค้าที่ยังไม่มีในระบบ Backend จะสร้างร้านใหม่ให้อัตโนมัติและแจ้งเตือนในหน้า UI
   - **Error Handling:** แจ้งเตือนรายการ SKU ที่ไม่รู้จักพร้อมบรรทัดที่เกิดปัญหา
   - **Batch Management:** ดูรายการออเดอร์ในแต่ละ Batch และกดลบ (Rollback) Batch นั้นๆ ได้หากอัปโหลดผิดพลาด
+
+> [!NOTE]
+> ระบบการสะสมแต้มและแจกคูปองของ Shopee (Shopee Loyalty) **ถูกแยกออกไปเป็นหน้าและระบบต่างหาก** กรุณาดูคู่มือเพิ่มเติมที่ `coupon-loyalty-guide.md`
 - **API ที่เกี่ยวข้อง:** 
   - `Marketplace/sales_csv_import.php` (จัดการ CSV)
   - `Marketplace/sales_jst_import.php` (จัดการ JST / XLSX)
