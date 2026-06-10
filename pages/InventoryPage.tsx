@@ -76,7 +76,7 @@ export default function InventoryPage() {
 
   const sessionUserStr = localStorage.getItem("sessionUser");
   const sessionUser = sessionUserStr ? JSON.parse(sessionUserStr) : null;
-  const canViewSettings = sessionUser?.is_system === 1;
+  const canViewSettings = Number(sessionUser?.is_system) === 1;
 
   const loadInventory = async (force: boolean = false) => {
     try {

@@ -816,8 +816,8 @@ function handle_auth(PDO $pdo, ?string $id): void
             json_response(['ok' => false, 'error' => 'MISSING_CREDENTIALS'], 400);
         }
 
-        // Check if user status is active
-        $stmt = $pdo->prepare('SELECT id, username, password, first_name, last_name, email, phone, role, role_id, company_id, team_id, supervisor_id, status FROM users WHERE username=? LIMIT 1');
+        // Check if user status is active and fetch is_system from roles
+        $stmt = $pdo->prepare('SELECT u.id, u.username, u.password, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, r.is_system FROM users u LEFT JOIN roles r ON u.role = r.name WHERE u.username=? LIMIT 1');
         $stmt->execute([$username]);
         $u = $stmt->fetch();
         if (!$u)
