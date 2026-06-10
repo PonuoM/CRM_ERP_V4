@@ -39,9 +39,6 @@ import {
   History,
   BarChart3,
   ShoppingBag,
-  Award,
-  Gift,
-  Target,
 } from "lucide-react";
 
 interface SidebarProps {
