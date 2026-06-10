@@ -2779,7 +2779,7 @@ function handle_products(PDO $pdo, ?string $id): void
 
                 if ($includeJstStock) {
                     $sql = '
-                        SELECT p.*, COALESCE(j.total_available_qty, 0) as jst_stock, COALESCE(j.total_order_lock, 0) as jst_lock
+                        SELECT p.*, j.total_available_qty as jst_stock, j.total_order_lock as jst_lock
                         FROM products p
                         LEFT JOIN (
                             SELECT sku_id, company_id, SUM(available_qty) as total_available_qty, SUM(order_lock) as total_order_lock
