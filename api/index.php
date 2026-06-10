@@ -597,22 +597,30 @@ try {
             }
             $result = $service->getInventoryPaginated($_GET);
             
-            // Read sync info
-            $syncInfoFile = __DIR__ . '/../storage/logs/jst_last_sync.json';
-            $syncInfo = ['time' => null, 'source' => 'Unknown'];
-            if (file_exists($syncInfoFile)) {
-                $syncInfo = json_decode(file_get_contents($syncInfoFile), true) ?: $syncInfo;
-            }
+                // Read sync info from database
+            $envKey = 'JST_LAST_SYNC_INFO_' . $companyId;
+            $stmtEnv = $pdo->prepare("SELECT `value` FROM env WHERE `key` = ?");
+            $stmtEnv->execute([$envKey]);
+            $syncInfoRow = $stmtEnv->fetchColumn();
+            $syncInfo = $syncInfoRow ? json_decode($syncInfoRow, true) : ['time' => null, 'source' => 'Unknown'];
             $result['sync_info'] = $syncInfo;
             
             json_response(array_merge(['ok' => true], $result));
             break;
         case 'jst_sync_info':
-            $syncInfoFile = __DIR__ . '/../storage/logs/jst_last_sync.json';
-            $syncInfo = ['time' => null, 'source' => 'Unknown'];
-            if (file_exists($syncInfoFile)) {
-                $syncInfo = json_decode(file_get_contents($syncInfoFile), true) ?: $syncInfo;
+            $user = get_authenticated_user($pdo);
+            if (!$user) {
+                json_response(['error' => 'UNAUTHORIZED'], 401);
             }
+            $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
+            $companyId = isset($_GET['companyId']) && $isSuperAdmin ? (int)$_GET['companyId'] : (int)$user['company_id'];
+            
+            $envKey = 'JST_LAST_SYNC_INFO_' . $companyId;
+            $stmtEnv = $pdo->prepare("SELECT `value` FROM env WHERE `key` = ?");
+            $stmtEnv->execute([$envKey]);
+            $syncInfoRow = $stmtEnv->fetchColumn();
+            $syncInfo = $syncInfoRow ? json_decode($syncInfoRow, true) : ['time' => null, 'source' => 'Unknown'];
+            
             json_response(['ok' => true, 'data' => $syncInfo]);
             break;
         case 'jst_inventory_logs':
