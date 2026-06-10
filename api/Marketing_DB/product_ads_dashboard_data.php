@@ -145,6 +145,8 @@ try {
         COALESCE(sales.total_orders, 0) as total_orders,
         COALESCE(sales.new_customer_sales, 0) as new_customer_sales,
         COALESCE(sales.reorder_customer_sales, 0) as reorder_customer_sales,
+        COALESCE(sales.new_customers, 0) as new_customers,
+        COALESCE(sales.reorder_customers, 0) as reorder_customers,
         COALESCE(sales.total_customers, 0) as total_customers,
         COALESCE(returned_boxes.returned_sales, 0) as returned_sales,
         COALESCE(returned_boxes.returned_orders, 0) as returned_orders,
@@ -175,6 +177,8 @@ try {
             COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.parent_order_id END) as total_orders,
             SUM(CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as new_customer_sales,
             SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as reorder_customer_sales,
+            COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as new_customers,
+            COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as reorder_customers,
             COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as total_customers,
             SUM(CASE WHEN o.order_status = 'Cancelled' THEN oi.net_total ELSE 0 END) as cancelled_sales,
             COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN oi.parent_order_id END) as cancelled_orders
