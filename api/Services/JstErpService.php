@@ -24,7 +24,8 @@ class JstErpService {
         if (!is_dir($cacheDir)) {
             mkdir($cacheDir, 0777, true);
         }
-        $this->cookieFile = $cacheDir . '/jst_cookies_comp_' . $companyId . '.json';
+        $accountHash = md5($this->accountId);
+        $this->cookieFile = $cacheDir . '/jst_cookies_account_' . $accountHash . '.json';
         $this->cacheFile = $cacheDir . '/jst_inventory_comp_' . $companyId . '.json';
     }
 

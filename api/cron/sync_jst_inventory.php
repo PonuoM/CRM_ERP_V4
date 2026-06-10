@@ -44,6 +44,9 @@ try {
         } catch (\Exception $e) {
             logCron("ERROR: Failed for Company ID: " . $companyId . " - " . $e->getMessage());
         }
+        
+        // Sleep for 2 seconds to prevent rate-limiting from JST ERP when multiple companies sync
+        sleep(2);
     }
 
 } catch (\Exception $e) {
