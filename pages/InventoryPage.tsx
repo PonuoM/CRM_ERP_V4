@@ -239,9 +239,8 @@ export default function InventoryPage() {
         )}
       </div>
 
-      {canViewSettings && (
-        <div className="border-b border-slate-200">
-          <nav className="-mb-px flex space-x-8">
+      <div className="border-b border-slate-200">
+        <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => { setActiveTab('inventory_grouped'); setCurrentPage(1); }}
               className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
@@ -264,6 +263,7 @@ export default function InventoryPage() {
               <Package className="w-4 h-4" />
               แยกตามคลัง
             </button>
+          {canViewSettings && (
             <button
               onClick={() => setActiveTab('settings')}
               className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
@@ -275,9 +275,9 @@ export default function InventoryPage() {
               <Settings className="w-4 h-4" />
               ตั้งค่าบริษัท
             </button>
-          </nav>
-        </div>
-      )}
+          )}
+        </nav>
+      </div>
 
       {activeTab === 'settings' ? (
         <div className="-mx-6">
