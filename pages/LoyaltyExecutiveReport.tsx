@@ -18,8 +18,17 @@ const LoyaltyExecutiveReport: React.FC = () => {
   useEffect(() => {
     const fetchKPI = async () => {
       try {
-        const res = await apiFetch('shopee_loyalty?action=kpi');
-        setData(res);
+        const res = await apiFetch('shopee_loyalty?action=dashboard_stats');
+        if (res.stats) {
+          setData({
+            aov: res.stats.aov,
+            repeatRate: res.stats.repeat_rate,
+            membersWithPoints: res.stats.members_with_points,
+            membersWith10Points: res.stats.members_10_points,
+            totalSales: res.stats.member_sales,
+            totalUsers: res.stats.total_members
+          });
+        }
       } catch (err) {
         console.error('Failed to load KPI for report', err);
       } finally {
