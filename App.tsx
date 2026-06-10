@@ -148,6 +148,10 @@ import InventoryPage from "./pages/InventoryPage";
 import CompanySettingsPage from "./pages/CompanySettingsPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
 import CancelConfirmModal from "./components/CancelConfirmModal";
+import ShopeeLoyaltyImport from "./pages/ShopeeLoyaltyImport";
+import LoyaltyTrackerPage from "./pages/LoyaltyTrackerPage";
+import LoyaltyDashboard from "./pages/LoyaltyDashboard";
+import LoyaltyExecutiveReport from "./pages/LoyaltyExecutiveReport";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
 
 import UpsellOrderPage from "./pages/UpsellOrderPage";
@@ -7377,6 +7381,22 @@ const App: React.FC = () => {
       case "nav.export_template_settings":
       case "ตั้งค่าการส่งออกข้อมูล":
         return <ExportTemplateSettingsPage currentUser={currentUser} />;
+
+      case "Shopee Import":
+      case "loyalty.import":
+        return <ShopeeLoyaltyImport />;
+      
+      case "Loyalty Tracker":
+      case "loyalty.tracker":
+        return <LoyaltyTrackerPage />;
+      
+      case "Loyalty Dashboard":
+      case "loyalty.dashboard":
+        return <LoyaltyDashboard />;
+      
+      case "Executive Report":
+      case "loyalty.report":
+        return <LoyaltyExecutiveReport />;
 
       case "Telesale Performance":
       case "home.telesale_performance":

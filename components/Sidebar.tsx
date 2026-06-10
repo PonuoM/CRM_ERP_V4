@@ -39,6 +39,9 @@ import {
   History,
   BarChart3,
   ShoppingBag,
+  Award,
+  Gift,
+  Target,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -182,6 +185,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Marketplace Sales Import": "นำเข้ายอดขาย",
     "Marketplace Invoices": "สลิป / การเงิน",
     "Marketplace Settings": "ตั้งค่าร้านค้า",
+    "Shopee Import": "นำเข้าข้อมูล Shopee",
+    "Loyalty Tracker": "ตารางข้อมูลลูกค้า",
+    "Loyalty Dashboard": "แดชบอร์ดสะสมแต้ม",
+    "Executive Report": "รายงานผู้บริหาร",
     "Google Sheet Import": "อัพสถานะ Aiport",
     "Product Analysis": "วิเคราะห์ผลิตภัณฑ์",
     "Telesale Performance": "ประสิทธิภาพ Telesale",
@@ -403,6 +410,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Marketplace Sales Import", icon: FileUp, key: "marketplace.sales_import" },
         { label: "Marketplace Invoices", icon: FileText, key: "marketplace.invoices" },
         { label: "Marketplace Settings", icon: Settings, key: "marketplace.settings" },
+        { label: "Shopee Import", icon: Upload, key: "loyalty.import" },
+        { label: "Loyalty Tracker", icon: Gift, key: "loyalty.tracker" },
+        { label: "Loyalty Dashboard", icon: Target, key: "loyalty.dashboard" },
+        { label: "Executive Report", icon: FileText, key: "loyalty.report" },
       ]
     },
   ];

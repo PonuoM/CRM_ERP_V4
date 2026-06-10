@@ -120,6 +120,10 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'marketplace.sales_import', label: 'Marketplace Sales Import (นำเข้ายอดขาย)' },
             { key: 'marketplace.invoices', label: 'Marketplace Invoices (สลิป / การเงิน)' },
             { key: 'marketplace.settings', label: 'Marketplace Settings (ตั้งค่าร้านค้า)' },
+            { key: 'loyalty.import', label: 'Shopee Import (นำเข้าข้อมูล Shopee)' },
+            { key: 'loyalty.tracker', label: 'Loyalty Tracker (ตารางข้อมูลลูกค้า)' },
+            { key: 'loyalty.dashboard', label: 'Loyalty Dashboard (แดชบอร์ดสะสมแต้ม)' },
+            { key: 'loyalty.report', label: 'Executive Report (รายงานผู้บริหาร)' },
         ]
     },
     'Slip Management': {
