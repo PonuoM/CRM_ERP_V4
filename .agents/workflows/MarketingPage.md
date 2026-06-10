@@ -10,6 +10,9 @@ This component implements the Marketing Dashboard and Management interface. It s
     - **Page Mode**: Aggregates data by Facebook Page.
     - **Product Mode**: Aggregates data by Product (SKU).
 - **Metrics**: Ads Cost, Sales, New Customer Sales, Reorder Sales, Impression, Reach, Clicks, ROAS (Return on Ad Spend), %Ads (Ads Cost / Sales).
+- **Customer Metrics Logic**:
+    - `total_customers` displayed in the UI is strictly the sum of `new_customers` and `reorder_customers`. This intentional design hides "Mined Lead" and "Upsell" customers from the Ads dashboard to prevent confusion, as those are typically Telesales conversions, not direct Ad conversions.
+    - The API splits data into "Ads Logged" and "No Ads Logged" (ยังไม่ลงแอด) records. The frontend logic explicitly merges the `new_customers` and `reorder_customers` counts from both subsets to ensure accurate totals.
 - **Filters**: Date Range (Custom, This Week, This Month), Page/Product Filter, User Filter (Admin only).
 - **Export**: CSV export capability for the displayed data.
 
