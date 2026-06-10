@@ -7,13 +7,13 @@ validate_auth($pdo);
 
 $user = get_authenticated_user($pdo);
 $companyId = $user['company_id'];
-$isSuperAdmin = ($user['role'] === 'SuperAdmin');
+$isSuperAdmin = ($user['role'] === 'Super Admin');
 
 $method = $_SERVER['REQUEST_METHOD'];
 
 // Helper to determine target company ID
 function getTargetCompanyId($user, $inputCompanyId = null) {
-    if ($user['role'] === 'SuperAdmin' && $inputCompanyId) {
+    if ($user['role'] === 'Super Admin' && $inputCompanyId) {
         return (int)$inputCompanyId;
     }
     return $user['company_id'];

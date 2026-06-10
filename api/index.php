@@ -1392,7 +1392,7 @@ function handle_customers(PDO $pdo, ?string $id): void
         json_response(['error' => 'UNAUTHORIZED'], 401);
     }
     $authCompanyId = $user['company_id'];
-    $isSuperAdmin = ($user['role'] === 'SuperAdmin');
+    $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
 
     // Enforce company scope for non-SuperAdmins
     if (!$isSuperAdmin) {
@@ -3551,7 +3551,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 // Security: Enforce company_id from authenticated user for non-SuperAdmin
                 $user = get_authenticated_user($pdo);
                 $authCompanyId = $user['company_id'] ?? null;
-                $isSuperAdmin = ($user['role'] ?? '') === 'SuperAdmin';
+                $isSuperAdmin = ($user['role'] ?? '') === 'Super Admin' || ($user['role'] ?? '') === 'Developer';
 
                 if (!$isSuperAdmin && $authCompanyId) {
                     // Override any user-supplied companyId with authenticated user's company
@@ -6968,7 +6968,7 @@ function handle_platforms(PDO $pdo, ?string $id): void
         json_response(['error' => 'UNAUTHORIZED'], 401);
     }
     $userCompanyId = $user['company_id'];
-    $isSuperAdmin = ($user['role'] === 'SuperAdmin');
+    $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
 
     try {
         $companyId = $_GET['companyId'] ?? null;
@@ -10273,7 +10273,7 @@ function handle_companies(PDO $pdo, ?string $id): void
         json_response(['error' => 'UNAUTHORIZED'], 401);
     }
     $companyId = $user['company_id'];
-    $isSuperAdmin = ($user['role'] === 'SuperAdmin');
+    $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
 
     switch (method()) {
         case 'GET':
