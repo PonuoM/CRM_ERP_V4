@@ -51,6 +51,7 @@ function handleDistribute($pdo, $companyId)
 
     // Resolve Target Basket ID
     $targetBasketId = null;
+    $resolvedTargetKey = $targetBasketKey;
     if ($targetBasketKey) {
         $stmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
         $stmt->execute([$targetBasketKey]);
@@ -59,6 +60,7 @@ function handleDistribute($pdo, $companyId)
         // Fallback to linked basket
         if ($sourceBasketKey === 'upsell_dis') {
             $targetBasketId = 51; // Hardcoded for Upsell
+            $resolvedTargetKey = 'upsell';
         } else {
             $stmt = $pdo->prepare("SELECT linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = 1");
             $stmt->execute([$sourceBasketKey]);
@@ -67,6 +69,7 @@ function handleDistribute($pdo, $companyId)
                 $stmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
                 $stmt->execute([$linkedKey]);
                 $targetBasketId = $stmt->fetchColumn();
+                $resolvedTargetKey = $linkedKey;
             }
         }
     }
@@ -138,7 +141,7 @@ function handleDistribute($pdo, $companyId)
             }
 
             // 3. Log with assigned_to_old and assigned_to_new
-            $logStmt->execute([$customerId, $oldBasketKey, $targetBasketId, $oldAssignedTo, $agentId, 'distribute', $triggeredBy, 'Distributed from Distribution V2']);
+            $logStmt->execute([$customerId, $oldBasketKey, $resolvedTargetKey, $oldAssignedTo, $agentId, 'distribute', $triggeredBy, 'Distributed from Distribution V2']);
 
             // 4. Lazy Cleanup (Check Round Completion)
             $countChecksStmt->execute([$customerId]);
@@ -185,20 +188,16 @@ function handleDistribute($pdo, $companyId)
  */
 function handleGetAssignChecks($pdo, $companyId)
 {
-    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
-        echo json_encode(['error' => 'GET required']);
+        echo json_encode(['error' => 'POST required']);
         return;
     }
 
-    $idsParam = $_GET['customer_ids'] ?? '';
-    if (empty($idsParam)) {
-        echo json_encode(['ok' => true, 'conflicts' => new \stdClass()]);
-        return;
-    }
+    $input = json_decode(file_get_contents('php://input'), true);
+    $ids = $input['customer_ids'] ?? [];
 
-    $ids = array_filter(array_map('trim', explode(',', $idsParam)));
-    if (count($ids) === 0) {
+    if (!is_array($ids) || count($ids) === 0) {
         echo json_encode(['ok' => true, 'conflicts' => new \stdClass()]);
         return;
     }

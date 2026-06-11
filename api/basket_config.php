@@ -592,7 +592,7 @@ function handleReclaimCustomers($pdo, $companyId)
     $input = json_decode(file_get_contents('php://input'), true);
     $agentId = $input['agent_id'] ?? null;
     $baskets = $input['baskets'] ?? []; // key => quantity
-    $noAppointmentOnly = $input['no_appointment_only'] ?? false;
+    $reclaimMode = $input['reclaim_mode'] ?? 'all';
 
     if (!$agentId || empty($baskets)) {
         http_response_code(400);
@@ -604,6 +604,7 @@ function handleReclaimCustomers($pdo, $companyId)
     try {
         set_audit_context($pdo, 'basket_config/reclaim');
         $totalReclaimed = 0;
+        $results = [];
 
         // We need to map basket_key string to basket_config.id because current_basket_key stores ID
         // Also fetch linked_basket_key to handle customers that were moved to a linked basket
@@ -653,7 +654,10 @@ function handleReclaimCustomers($pdo, $companyId)
                 AND c.current_basket_key = ?
             ";
             
-            if ($noAppointmentOnly) {
+            if ($reclaimMode === 'called_no_appt') {
+                $selectSql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id) ";
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.date >= CURDATE()) ";
+            } else if ($reclaimMode === 'all_no_appt') {
                 $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.date >= CURDATE()) ";
             }
             
@@ -681,7 +685,13 @@ function handleReclaimCustomers($pdo, $companyId)
             ";
             $updateStmt = $pdo->prepare($updateSql);
             $updateStmt->execute(array_merge([$targetBasketId], $affectedCustomerIds));
-            $totalReclaimed += $updateStmt->rowCount();
+            $reclaimedCount = $updateStmt->rowCount();
+            $totalReclaimed += $reclaimedCount;
+            
+            $results[] = [
+                'basket_key' => $basketKey,
+                'reclaimed' => $reclaimedCount
+            ];
 
             // Log basket transitions for each customer with assigned_to info
             $logStmt = $pdo->prepare("
@@ -698,7 +708,8 @@ function handleReclaimCustomers($pdo, $companyId)
 
         echo json_encode([
             'ok' => true,
-            'reclaimed' => $totalReclaimed
+            'reclaimed' => $totalReclaimed,
+            'results' => $results
         ]);
 
     } catch (Exception $e) {
@@ -721,6 +732,7 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
     }
 
     $agentId = $_GET['agent_id'] ?? null;
+    $reclaimMode = $_GET['reclaim_mode'] ?? 'called_no_appt';
 
     if (!$agentId) {
         http_response_code(400);
@@ -730,19 +742,24 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
 
     try {
         // Find counts per dashboard basket where customer has NO valid appointment
-        $stmt = $pdo->prepare("
+        $sql = "
             SELECT bc.basket_key, COUNT(c.customer_id) as unassigned_count
             FROM customers c
             JOIN basket_config bc ON bc.id = c.current_basket_key AND bc.company_id = 1
             WHERE c.company_id = ? 
             AND c.assigned_to = ?
-            AND NOT EXISTS (
-                SELECT 1 FROM appointments a 
-                WHERE a.customer_id = c.customer_id 
-                AND a.date >= CURDATE()
-            )
-            GROUP BY bc.basket_key
-        ");
+        ";
+        
+        if ($reclaimMode === 'called_no_appt') {
+            $sql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id) ";
+            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.date >= CURDATE()) ";
+        } else if ($reclaimMode === 'all_no_appt') {
+            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.date >= CURDATE()) ";
+        }
+        
+        $sql .= " GROUP BY bc.basket_key";
+
+        $stmt = $pdo->prepare($sql);
         $stmt->execute([$companyId, $agentId]);
         
         $results = [];

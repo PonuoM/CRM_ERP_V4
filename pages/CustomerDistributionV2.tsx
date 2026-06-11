@@ -3,7 +3,7 @@ import { apiFetch } from '../services/api';
 import { User, Customer, UserRole } from '../types';
 import {
     Users, Package, Search, ChevronDown, Check, Loader2, AlertCircle,
-    RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download
+    RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download, ArrowRight
 } from 'lucide-react';
 import UniversalDateRangePicker, { DateRange } from '../components/UniversalDateRangePicker';
 import resolveApiBasePath from '../utils/apiBasePath';
@@ -75,6 +75,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [agents, setAgents] = useState<AgentWithBaskets[]>([]);
     const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
     const [targetBasket, setTargetBasket] = useState<string>('');
+    const [forceDistributeHolding, setForceDistributeHolding] = useState(false);
     const [distributionExportRange, setDistributionExportRange] = useState<DateRange>({ start: '', end: '' });
     const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
@@ -271,6 +272,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // Auto-set target basket for Upsell Distribution
     useEffect(() => {
+        setForceDistributeHolding(false);
         if (activeBasket === 'upsell_dis') {
             // Basket 53 (upsell_dis) targets basket 51 (upsell) on distribution
             // This is handled by backend logic in basket_config.php
@@ -467,11 +469,15 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         try {
             const customerIds = customerPool
                 .map(c => c.customer_id?.toString() || c.id)
-                .slice(0, 5000) // limit
-                .join(',');
-            if (customerIds) {
+                .slice(0, 5000); // limit to 5000
+
+            if (customerIds.length > 0) {
                 const res = await apiFetch(
-                    `Distribution/index.php?action=get_assign_checks&companyId=${currentUser?.companyId}&customer_ids=${encodeURIComponent(customerIds)}`
+                    `Distribution/index.php?action=get_assign_checks&companyId=${currentUser?.companyId}`,
+                    {
+                        method: 'POST',
+                        body: JSON.stringify({ customer_ids: customerIds })
+                    }
                 );
                 if (res?.ok && res.conflicts) {
                     conflictMap = res.conflicts;
@@ -900,14 +906,26 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     // Reclaim Logic
     const [reclaimModalOpen, setReclaimModalOpen] = useState(false);
     const [reclaimingAgent, setReclaimingAgent] = useState<AgentWithBaskets | null>(null);
-    const [reclaimInputs, setReclaimInputs] = useState<Record<string, number>>({});
     const [reclaiming, setReclaiming] = useState(false);
     
-    // Unassigned Reclaim Logic
-    const [showUnassignedPreview, setShowUnassignedPreview] = useState(false);
-    const [unassignedPreviewData, setUnassignedPreviewData] = useState<Record<string, number>>({});
-    const [unassignedTargetBaskets, setUnassignedTargetBaskets] = useState<string[]>([]);
-    const [fetchingUnassigned, setFetchingUnassigned] = useState(false);
+    // Reclaim Preview Data
+    const [reclaimPreviewAllNoAppt, setReclaimPreviewAllNoAppt] = useState<Record<string, number>>({});
+    const [reclaimPreviewCalledNoAppt, setReclaimPreviewCalledNoAppt] = useState<Record<string, number>>({});
+    const [loadingReclaimPreviews, setLoadingReclaimPreviews] = useState(false);
+    
+    // Bulk Result Modal
+    const [bulkResultModal, setBulkResultModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        total: number;
+        results: any[];
+    } | null>(null);
+
+    // Bulk Action State
+    const [selectedBaskets, setSelectedBaskets] = useState<string[]>([]);
+    const [bulkActionType, setBulkActionType] = useState<'transfer' | 'reclaim_all' | 'reclaim_no_appt' | 'reclaim_called_no_appt' | null>(null);
+    const [bulkTargetAgent, setBulkTargetAgent] = useState<number | null>(null);
+    const [bulkLimit, setBulkLimit] = useState<string>('');
 
     // Flexible Transfer Logic
     const [flexTransferModalOpen, setFlexTransferModalOpen] = useState(false);
@@ -1040,121 +1058,174 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
     };
 
-    // Transfer Logic
-    const [transferModalOpen, setTransferModalOpen] = useState(false);
-    const [transferBasketKey, setTransferBasketKey] = useState<string>('');
-    const [transferCount, setTransferCount] = useState<number>(0);
-    const [selectedTransferAgent, setSelectedTransferAgent] = useState<number | null>(null);
     const [transferring, setTransferring] = useState(false);
-
-    const openTransferModal = (basketKey: string, count: number) => {
-        setTransferBasketKey(basketKey);
-        setTransferCount(count);
-        setSelectedTransferAgent(null);
-        setTransferModalOpen(true);
-    };
-
-    const handleExecuteTransfer = async () => {
-        if (!reclaimingAgent || !selectedTransferAgent || transferCount <= 0) return;
-
-        setTransferring(true);
-        try {
-            const result = await apiFetch(
-                `basket_config.php?action=transfer_customers&companyId=${currentUser?.companyId}`,
-                {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        from_agent_id: reclaimingAgent.id,
-                        to_agent_id: selectedTransferAgent,
-                        basket_key: transferBasketKey,
-                        count: transferCount
-                    })
-                }
-            );
-
-            setMessage({ type: 'success', text: `โอนลูกค้าสำเร็จ ${result?.transferred || transferCount} รายชื่อ` });
-            setTransferModalOpen(false);
-            setReclaimModalOpen(false);
-            fetchAgents(); // Refresh agent stats
-            fetchAllBasketCounts(); // Refresh basket pools
-        } catch (error) {
-            console.error('Transfer failed:', error);
-            setMessage({ type: 'error', text: 'โอนลูกค้าไม่สำเร็จ' });
-        } finally {
-            setTransferring(false);
-        }
-    };
 
     const openReclaimModal = (agent: AgentWithBaskets) => {
         setReclaimingAgent(agent);
-        // Initialize inputs with 0
-        const initialInputs: Record<string, number> = {};
-        dashboardBaskets.forEach(b => initialInputs[b.basket_key] = 0);
-        setReclaimInputs(initialInputs);
+        setSelectedBaskets([]); // Reset selection
+        setBulkActionType(null); // Reset action
+        setBulkTargetAgent(null); // Reset target agent
+        setBulkLimit(''); // Reset limit
         setReclaimModalOpen(true);
     };
 
-    const handleReclaimInput = (basketKey: string, val: string, max: number) => {
-        let num = parseInt(val);
-        if (isNaN(num)) num = 0;
-        if (num < 0) num = 0;
-        if (num > max) num = max;
-        setReclaimInputs(prev => ({ ...prev, [basketKey]: num }));
-    };
+    useEffect(() => {
+        const fetchPreviews = async () => {
+            if (reclaimModalOpen && reclaimingAgent?.id) {
+                setLoadingReclaimPreviews(true);
+                try {
+                    const [resAll, resCalled] = await Promise.all([
+                        apiFetch(`basket_config.php?action=preview_reclaim_unassigned&agent_id=${reclaimingAgent.id}&companyId=${currentUser?.companyId}&reclaim_mode=all_no_appt`),
+                        apiFetch(`basket_config.php?action=preview_reclaim_unassigned&agent_id=${reclaimingAgent.id}&companyId=${currentUser?.companyId}&reclaim_mode=called_no_appt`)
+                    ]);
+                    
+                    setReclaimPreviewAllNoAppt(resAll?.counts || {});
+                    setReclaimPreviewCalledNoAppt(resCalled?.counts || {});
+                } catch (e) {
+                    console.error('Failed to fetch reclaim previews', e);
+                } finally {
+                    setLoadingReclaimPreviews(false);
+                }
+            } else {
+                setReclaimPreviewAllNoAppt({});
+                setReclaimPreviewCalledNoAppt({});
+            }
+        };
+        fetchPreviews();
+    }, [reclaimModalOpen, reclaimingAgent?.id, currentUser?.companyId]);
 
-    const handleReclaimAll = (basketKey: string, max: number) => {
-        setReclaimInputs(prev => ({ ...prev, [basketKey]: max }));
-    };
+    const handleExecuteBulkAction = async () => {
+        if (!reclaimingAgent || selectedBaskets.length === 0 || !bulkActionType) return;
 
-    const handleExecuteReclaim = async () => {
-        if (!reclaimingAgent) return;
+        const limitVal = parseInt(bulkLimit, 10);
+        const hasLimit = !isNaN(limitVal) && limitVal > 0;
 
-        // Filter out 0s
+        // Helper to get true available count based on action
+        const getAvailableCount = (key: string) => {
+            const currentHolding = reclaimingAgent.basketCounts?.[key] || 0;
+            if (bulkActionType === 'reclaim_no_appt') return reclaimPreviewAllNoAppt[key] || 0;
+            if (bulkActionType === 'reclaim_called_no_appt') return reclaimPreviewCalledNoAppt[key] || 0;
+            return currentHolding;
+        };
+
+        // Build payload
         const payloadBaskets: Record<string, number> = {};
         let total = 0;
-        Object.entries(reclaimInputs).forEach(([key, val]) => {
-            if (val > 0) {
-                payloadBaskets[key] = val;
-                total += val;
+        
+        selectedBaskets.forEach(key => {
+            const availableCount = getAvailableCount(key);
+            const count = hasLimit ? Math.min(limitVal, availableCount) : availableCount;
+            if (count > 0) {
+                payloadBaskets[key] = count;
+                total += count;
             }
         });
 
         if (total === 0) {
-            setMessage({ type: 'error', text: 'กรุณาระบุจำนวนที่ต้องดึงคืน' });
+            setMessage({ type: 'error', text: 'ไม่พบลูกค้าในตะกร้าที่เลือก หรือจำนวนดึง/โอนไม่ถูกต้อง' });
             return;
         }
 
-        setReclaiming(true);
-        try {
-            const result = await apiFetch(
-                `basket_config.php?action=reclaim_customers&companyId=${currentUser?.companyId}`,
-                {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        agent_id: reclaimingAgent.id,
-                        baskets: payloadBaskets
-                    })
-                }
-            );
+        if (bulkActionType === 'transfer') {
+            if (!bulkTargetAgent) {
+                setMessage({ type: 'error', text: 'กรุณาเลือกพนักงานปลายทางสำหรับการโอน' });
+                return;
+            }
+            
+            // Build transfer payload
+            const transfers = selectedBaskets.map(key => {
+                const availableCount = getAvailableCount(key);
+                const count = hasLimit ? Math.min(limitVal, availableCount) : availableCount;
+                return {
+                    from_agent_id: reclaimingAgent.id,
+                    to_agent_id: bulkTargetAgent,
+                    basket_key: key,
+                    count: count
+                };
+            }).filter(t => t.count > 0);
+            
+            if (transfers.length === 0) return;
 
-            setMessage({ type: 'success', text: `ดึงคืนลูกค้าสำเร็จ ${result?.reclaimed || total} รายชื่อ` });
-            setReclaimModalOpen(false);
-            fetchAgents(); // Refresh agent stats
-            fetchAllBasketCounts(); // Refresh basket pools
-        } catch (error) {
-            console.error('Reclaim failed:', error);
-            setMessage({ type: 'error', text: 'ดึงคืนลูกค้าไม่สำเร็จ' });
-    } finally {
-            setReclaiming(false);
+            setTransferring(true);
+            try {
+                const result = await apiFetch(
+                    `basket_config.php?action=transfer_customers&companyId=${currentUser?.companyId}`,
+                    {
+                        method: 'POST',
+                        body: JSON.stringify({ transfers })
+                    }
+                );
+                if (result?.error) throw new Error(result.error);
+
+                const targetAgentName = agents.find(a => a.id === bulkTargetAgent);
+                setBulkResultModal({
+                    isOpen: true,
+                    title: 'สรุปผลการโอนลูกค้า',
+                    type: 'transfer',
+                    fromAgentName: `${reclaimingAgent.firstName} ${reclaimingAgent.lastName}`,
+                    toName: targetAgentName ? `${targetAgentName.firstName} ${targetAgentName.lastName}` : 'พนักงานปลายทาง',
+                    total: result?.transferred || 0,
+                    results: result?.results || []
+                });
+
+                setReclaimModalOpen(false);
+                fetchAgents();
+                fetchAllBasketCounts();
+            } catch (error: any) {
+                console.error('Transfer failed:', error);
+                setMessage({ type: 'error', text: error.message || 'โอนลูกค้าไม่สำเร็จ' });
+            } finally {
+                setTransferring(false);
+            }
+        } else {
+            // Reclaim
+            let reclaimMode = 'all';
+            if (bulkActionType === 'reclaim_no_appt') reclaimMode = 'all_no_appt';
+            if (bulkActionType === 'reclaim_called_no_appt') reclaimMode = 'called_no_appt';
+            
+            setReclaiming(true);
+            try {
+                const result = await apiFetch(
+                    `basket_config.php?action=reclaim_customers&companyId=${currentUser?.companyId}`,
+                    {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            agent_id: reclaimingAgent.id,
+                            baskets: payloadBaskets,
+                            reclaim_mode: reclaimMode
+                        })
+                    }
+                );
+                if (result?.error) throw new Error(result.error);
+
+                setBulkResultModal({
+                    isOpen: true,
+                    title: 'สรุปผลการดึงคืนลูกค้า',
+                    type: 'reclaim',
+                    fromAgentName: `${reclaimingAgent.firstName} ${reclaimingAgent.lastName}`,
+                    toName: 'ถังกลาง (Pool)',
+                    total: result?.reclaimed || 0,
+                    results: result?.results || []
+                });
+
+                setReclaimModalOpen(false);
+                fetchAgents();
+                fetchAllBasketCounts();
+            } catch (error) {
+                console.error('Reclaim failed:', error);
+                setMessage({ type: 'error', text: 'ดึงคืนลูกค้าไม่สำเร็จ' });
+            } finally {
+                setReclaiming(false);
+            }
         }
     };
 
-    const handlePreviewUnassigned = async (basketKey: string | 'ALL') => {
+    const handlePreviewUnassigned = async (basketKey: string | 'ALL', mode: 'all_no_appt' | 'called_no_appt') => {
         if (!reclaimingAgent) return;
+        setUnassignedReclaimMode(mode);
         setFetchingUnassigned(true);
         try {
-            const basePath = typeof window !== 'undefined' ? resolveApiBasePath() : '/api';
-            const result = await apiFetch(`basket_config.php?action=preview_reclaim_unassigned&agent_id=${reclaimingAgent.id}&companyId=${currentUser?.companyId}`);
+            const result = await apiFetch(`basket_config.php?action=preview_reclaim_unassigned&agent_id=${reclaimingAgent.id}&companyId=${currentUser?.companyId}&reclaim_mode=${mode}`);
             if (result?.ok && result.counts) {
                 setUnassignedPreviewData(result.counts);
                 if (basketKey === 'ALL') {
@@ -1203,7 +1274,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     body: JSON.stringify({
                         agent_id: reclaimingAgent.id,
                         baskets: payloadBaskets,
-                        no_appointment_only: true
+                        reclaim_mode: unassignedReclaimMode
                     })
                 }
             );
@@ -1223,7 +1294,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // Get active basket info
     const activeBasketInfo = baskets.find(b => b.basket_key === activeBasket);
-    const isHoldingBasketActive = activeBasket === 'holding_before_redistribute';
+    const isHoldingBasketActive = activeBasket === 'holding_before_redistribute' && !forceDistributeHolding;
 
     // Handle Export Distribution
     const executeExport = async (type: 'csv' | 'xlsx') => {
@@ -1754,7 +1825,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             </div>
 
             {/* Holding Basket Notice */}
-            {isHoldingBasketActive && (
+            {activeBasket === 'holding_before_redistribute' && !forceDistributeHolding && (
                 <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-6 mb-6 text-center">
                     <div className="text-amber-500 text-5xl mb-3">⏳</div>
                     <h3 className="text-lg font-bold text-amber-800">ถังพักรอแจก</h3>
@@ -1762,7 +1833,16 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         ลูกค้าในถังนี้กำลังอยู่ระหว่างช่วงพัก 30 วัน
                         ก่อนจะถูกย้ายไปถัง "หาคนดูแลใหม่" โดยอัตโนมัติ
                     </p>
-                    <p className="text-amber-600 text-sm mt-1 font-medium">ไม่สามารถแจกลูกค้าจากถังนี้ได้</p>
+                    <p className="text-amber-600 text-sm mt-3 font-medium">ไม่สามารถแจกลูกค้าจากถังนี้ตาม Flow ปกติได้</p>
+                    <button 
+                        onClick={() => {
+                            setForceDistributeHolding(true);
+                            setTargetBasket('waiting_for_match_dash');
+                        }}
+                        className="mt-4 px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium transition-colors shadow-sm"
+                    >
+                        ยืนยันที่จะแจก (แจกไป "รอคนมาจีบให้ติด")
+                    </button>
                 </div>
             )}
 
@@ -2006,234 +2086,216 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             {
                 reclaimModalOpen && reclaimingAgent && (
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-auto shadow-xl">
-                            {showUnassignedPreview ? (
-                                <>
-                                    <h3 className="text-xl font-bold mb-2">ยืนยันดึงคืนลูกค้าไม่มีนัดหมาย</h3>
-                                    <p className="text-sm text-gray-500 mb-6">คุณกำลังจะดึงลูกค้าระยะไม่มีนัดหมาย จาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}</p>
-                                    
-                                    <div className="space-y-4 mb-6">
-                                        <div className="bg-orange-50 text-orange-700 p-4 rounded-lg text-sm border border-orange-100">
-                                            <h4 className="font-bold mb-2 flex items-center gap-2">
-                                                ตรวจสอบข้อมูลก่อนดึงคืน
-                                            </h4>
-                                            <ul className="space-y-1 list-disc list-inside">
-                                                {unassignedTargetBaskets.map(key => {
-                                                    const count = unassignedPreviewData[key] || 0;
-                                                    if (count === 0 || key === 'upsell_dis') return null;
-                                                    const b = dashboardBaskets.find(x => x.basket_key === key);
-                                                    return (
-                                                        <li key={key}>
-                                                            <span className="font-medium">{b?.basket_name || key}</span>: {count} รายการ
-                                                        </li>
-                                                    );
-                                                })}
-                                                {unassignedTargetBaskets.every(key => (unassignedPreviewData[key] || 0) === 0 || key === 'upsell_dis') && (
-                                                    <li className="text-gray-500">ไม่พบลูกค้าที่ไม่มีนัดหมายในตะกร้าที่เลือก</li>
-                                                )}
-                                            </ul>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex justify-end gap-3 pt-4 border-t">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowUnassignedPreview(false)}
-                                            className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
-                                            disabled={reclaiming}
-                                        >
-                                            กลับ
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleExecuteUnassignedReclaim}
-                                            disabled={reclaiming || unassignedTargetBaskets.every(key => (unassignedPreviewData[key] || 0) === 0 || key === 'upsell_dis')}
-                                            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
-                                        >
-                                            {reclaiming ? <Loader2 className="animate-spin" size={16} /> : null}
-                                            ✅ ยืนยันดึงคืน
-                                        </button>
-                                    </div>
-                                </>
-                            ) : fetchingUnassigned ? (
-                                <div className="py-12 flex flex-col items-center justify-center">
-                                    <Loader2 className="w-8 h-8 animate-spin text-orange-500 mb-4" />
-                                    <p className="text-gray-500">กำลังตรวจสอบลูกค้าไม่มีนัดหมาย...</p>
+                        <div className="bg-gray-50 rounded-2xl p-0 w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+                            
+                            {/* Modal Header */}
+                            <div className="px-6 py-4 bg-white border-b flex items-center justify-between shadow-sm z-10">
+                                <div>
+                                    <h3 className="text-xl font-bold text-gray-800">โอน / ดึงคืนลูกค้า (แบบกลุ่ม)</h3>
+                                    <p className="text-sm text-gray-500">จัดการลูกค้าของ {reclaimingAgent.firstName} {reclaimingAgent.lastName}</p>
                                 </div>
-                            ) : (
-                                <>
-                                    <h3 className="text-xl font-bold mb-2">ดึงลูกค้าคืนจาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}</h3>
-                                    <p className="text-sm text-gray-500 mb-6">ระบุจำนวนที่ต้องการดึงคืนจากแต่ละถัง</p>
+                                <button onClick={() => setReclaimModalOpen(false)} className="text-gray-400 hover:bg-gray-100 p-2 rounded-full transition-colors">
+                                    ✕
+                                </button>
+                            </div>
 
-                                    <div className="space-y-4 mb-6">
-                                {dashboardBaskets.map(basket => {
-                                    // Prevent reclaiming from Upsell basket
-                                    if (basket.basket_key === 'upsell_dis') return null;
+                            {/* Modal Body (Scrollable Basket List) */}
+                            <div className="flex-1 overflow-auto p-6 space-y-3">
+                                {/* Select All Bar */}
+                                <div className="flex items-center pb-2 mb-2 border-b">
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={
+                                                dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0).length > 0 &&
+                                                selectedBaskets.length === dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0).length
+                                            }
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setSelectedBaskets(dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0).map(b => b.basket_key));
+                                                } else {
+                                                    setSelectedBaskets([]);
+                                                }
+                                            }}
+                                            className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 transition-colors"
+                                        />
+                                        <span className="font-semibold text-gray-700">เลือกทั้งหมด (เฉพาะตะกร้าที่มีลูกค้า)</span>
+                                    </label>
+                                </div>
 
+                                {dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis').map(basket => {
                                     const currentHolding = reclaimingAgent.basketCounts?.[basket.basket_key] || 0;
                                     const isEmpty = currentHolding === 0;
-
-                                    // Check if this dashboard basket has a linked distribution basket
-                                    // by checking if linked_basket_key exists in basket config
-                                    const hasLinkedDistribution = !!basket.linked_basket_key;
-
-                                    // Reclaim requires linked distribution basket
-                                    const isReclaimDisabled = isEmpty || !hasLinkedDistribution;
-                                    // Transfer only requires non-empty basket (no need for linked distribution)
-                                    const isTransferDisabled = isEmpty;
+                                    const isSelected = selectedBaskets.includes(basket.basket_key);
 
                                     return (
-                                        <div key={basket.basket_key} className={`flex items-center gap-4 ${isEmpty ? 'opacity-50' : ''}`}>
+                                        <label 
+                                            key={basket.basket_key} 
+                                            className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                                                isEmpty 
+                                                    ? 'opacity-50 bg-gray-50 border-transparent cursor-not-allowed' 
+                                                    : isSelected 
+                                                        ? 'bg-blue-50/50 border-blue-500 shadow-sm' 
+                                                        : 'bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-center pt-0.5">
+                                                <input 
+                                                    type="checkbox" 
+                                                    disabled={isEmpty}
+                                                    checked={isSelected}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedBaskets(prev => [...prev, basket.basket_key]);
+                                                        } else {
+                                                            setSelectedBaskets(prev => prev.filter(k => k !== basket.basket_key));
+                                                        }
+                                                    }}
+                                                    className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 transition-colors"
+                                                />
+                                            </div>
                                             <div className="flex-1">
-                                                <div className="flex justify-between mb-1">
-                                                    <label className={`text-sm font-medium ${isEmpty ? 'text-gray-400' : ''}`}>
-                                                        {basket.basket_name}
-                                                        {!hasLinkedDistribution && <span className="text-xs text-gray-400 ml-2">(โอนได้ แต่ดึงคืนไม่ได้)</span>}
-                                                    </label>
-                                                    <span className={`text-xs ${isEmpty ? 'text-gray-400' : 'text-gray-500'}`}>มีอยู่ {currentHolding}</span>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="number"
-                                                        value={reclaimInputs[basket.basket_key] || ''}
-                                                        onChange={(e) => handleReclaimInput(basket.basket_key, e.target.value, currentHolding)}
-                                                        className={`w-full border rounded p-2 text-sm ${isEmpty ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                                                        min={0}
-                                                        max={currentHolding}
-                                                        disabled={isEmpty}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleReclaimAll(basket.basket_key, currentHolding)}
-                                                        className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isReclaimDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200'}`}
-                                                        disabled={isReclaimDisabled}
-                                                    >
-                                                        คืนหมด
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openTransferModal(basket.basket_key, reclaimInputs[basket.basket_key] || currentHolding)}
-                                                        className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isTransferDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}`}
-                                                        disabled={isTransferDisabled}
-                                                    >
-                                                        โอน
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handlePreviewUnassigned(basket.basket_key)}
-                                                        className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isReclaimDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-600 hover:bg-orange-200'}`}
-                                                        disabled={isReclaimDisabled}
-                                                    >
-                                                        ไม่มีนัดหมาย
-                                                    </button>
+                                                <div className="font-semibold text-gray-800">{basket.basket_name}</div>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-right">
+                                                {!isEmpty && (
+                                                    <>
+                                                        <div className="flex flex-col items-end">
+                                                            <div className="text-[10px] text-gray-400 font-medium leading-none mb-1">ไม่มีนัดหมาย</div>
+                                                            <div className={`text-sm font-semibold ${loadingReclaimPreviews ? 'text-gray-300' : 'text-orange-500'}`}>
+                                                                {loadingReclaimPreviews ? '...' : (reclaimPreviewAllNoAppt[basket.basket_key] || 0).toLocaleString()}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-col items-end">
+                                                            <div className="text-[10px] text-gray-400 font-medium leading-none mb-1">โทรแล้วไม่นัด</div>
+                                                            <div className={`text-sm font-semibold ${loadingReclaimPreviews ? 'text-gray-300' : 'text-red-500'}`}>
+                                                                {loadingReclaimPreviews ? '...' : (reclaimPreviewCalledNoAppt[basket.basket_key] || 0).toLocaleString()}
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-[1px] h-8 bg-gray-200 mx-1"></div>
+                                                    </>
+                                                )}
+                                                <div className="flex flex-col items-end min-w-[60px]">
+                                                    <div className="text-[11px] text-gray-500 font-medium leading-none mb-1">มีอยู่ทั้งหมด</div>
+                                                    <div className={`text-xl font-bold leading-none ${isEmpty ? 'text-gray-400' : 'text-blue-600'}`}>
+                                                        {currentHolding.toLocaleString()}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                        </label>
                                     );
                                 })}
 
-                                {/* Empty state if agent has 0 customers */}
                                 {Object.values(reclaimingAgent.basketCounts).every(c => c === 0) && (
-                                    <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-lg">
+                                    <div className="text-center py-12 text-gray-400 bg-white rounded-xl border border-dashed border-gray-300">
                                         พนักงานนี้ไม่มีลูกค้าในถังใดๆ
                                     </div>
                                 )}
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-4 border-t">
-                                <button
-                                    type="button"
-                                    onClick={() => handlePreviewUnassigned('ALL')}
-                                    className="px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 flex items-center gap-2 shadow-sm mr-auto text-sm"
-                                >
-                                    ดึงคืนไม่มีนัดหมายทั้งหมด
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setReclaimModalOpen(false)}
-                                    className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
-                                >
-                                    ยกเลิก
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleExecuteReclaim}
-                                    disabled={reclaiming}
-                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
-                                >
-                                    {reclaiming ? <Loader2 className="animate-spin" size={16} /> : null}
-                                    ยืนยันดึงคืน
-                                </button>
-                            </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                )
-            }
-
-            {/* Transfer Modal */}
-            {
-                transferModalOpen && reclaimingAgent && (
-                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
-                        <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-                            <h3 className="text-xl font-bold mb-2">โอนลูกค้า</h3>
-                            <p className="text-sm text-gray-500 mb-4">
-                                โอนลูกค้า <span className="font-semibold text-blue-600">{transferCount}</span> รายชื่อ
-                                จาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}
-                            </p>
-                            <p className="text-xs text-gray-400 mb-4">
-                                ถัง: {dashboardBaskets.find(b => b.basket_key === transferBasketKey)?.basket_name || transferBasketKey}
-                            </p>
-
-                            <div className="mb-6">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">เลือก Telesale ที่จะโอนให้</label>
-                                <div className="max-h-60 overflow-y-auto border rounded-lg divide-y">
-                                    {agents
-                                        .filter(a => a.id !== reclaimingAgent.id)
-                                        .map(agent => (
-                                            <button
-                                                key={agent.id}
-                                                onClick={() => setSelectedTransferAgent(agent.id)}
-                                                className={`w-full text-left p-3 hover:bg-gray-50 flex items-center justify-between transition-colors ${selectedTransferAgent === agent.id
-                                                    ? 'bg-blue-50 border-l-4 border-blue-500'
-                                                    : ''
-                                                    }`}
+                            {/* Modal Footer / Action Bar (Fixed Bottom) */}
+                            <div className="bg-white border-t px-6 py-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
+                                <div className="flex flex-col gap-4">
+                                    
+                                    {/* Action Config Row */}
+                                    <div className="flex items-start gap-4">
+                                        
+                                        {/* Action Type Dropdown */}
+                                        <div className="flex-1">
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">รูปแบบการกระทำ</label>
+                                            <select
+                                                value={bulkActionType || ''}
+                                                onChange={(e) => setBulkActionType(e.target.value as any)}
+                                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
                                             >
-                                                <span className="font-medium">{agent.firstName} {agent.lastName}</span>
-                                                <span className="text-xs text-gray-400">
-                                                    มี {agent.basketCounts?.[transferBasketKey] || 0} รายชื่อ
-                                                </span>
-                                            </button>
-                                        ))}
-                                </div>
-                                {agents.filter(a => a.id !== reclaimingAgent.id).length === 0 && (
-                                    <div className="text-center py-4 text-gray-400 text-sm">
-                                        ไม่พบ Telesale อื่น
-                                    </div>
-                                )}
-                            </div>
+                                                <option value="">-- เลือกการกระทำ --</option>
+                                                <option value="transfer">➡️ โอนให้ Telesale อื่น</option>
+                                                <option value="reclaim_all">🔄 ดึงคืนทั้งหมด</option>
+                                                <option value="reclaim_no_appt">📅 ดึงเฉพาะไม่มีนัดหมาย</option>
+                                                <option value="reclaim_called_no_appt">📞 ดึงเฉพาะคนที่โทรแล้วไม่นัด</option>
+                                            </select>
+                                        </div>
 
-                            <div className="flex justify-end gap-3 pt-4 border-t">
-                                <button
-                                    onClick={() => setTransferModalOpen(false)}
-                                    className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
-                                >
-                                    ยกเลิก
-                                </button>
-                                <button
-                                    onClick={handleExecuteTransfer}
-                                    disabled={transferring || !selectedTransferAgent}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
-                                >
-                                    {transferring ? <Loader2 className="animate-spin" size={16} /> : null}
-                                    ยืนยันโอน
-                                </button>
+                                        {/* Target Agent (Only for Transfer) */}
+                                        {bulkActionType === 'transfer' && (
+                                            <div className="flex-1 animate-in fade-in slide-in-from-right-4 duration-200">
+                                                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">พนักงานปลายทาง</label>
+                                                <select
+                                                    value={bulkTargetAgent || ''}
+                                                    onChange={(e) => setBulkTargetAgent(Number(e.target.value))}
+                                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
+                                                >
+                                                    <option value="">-- เลือกพนักงาน --</option>
+                                                    {agents.filter(a => a.id !== reclaimingAgent.id && a.role !== 'admin' && a.role !== 'manager').map(agent => (
+                                                        <option key={agent.id} value={agent.id}>
+                                                            {agent.firstName} {agent.lastName}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        {/* Limit Input */}
+                                        <div className="w-32">
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">จำนวน / ถัง</label>
+                                            <input
+                                                type="number"
+                                                placeholder="ทั้งหมด"
+                                                value={bulkLimit}
+                                                onChange={(e) => setBulkLimit(e.target.value)}
+                                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
+                                                min={1}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Execute Row */}
+                                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                                        <div className="text-sm">
+                                            <span className="text-gray-500">เลือกแล้ว: </span>
+                                            <span className="font-bold text-blue-600">{selectedBaskets.length}</span>
+                                            <span className="text-gray-500"> ถัง</span>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => setReclaimModalOpen(false)}
+                                                className="px-5 py-2.5 font-medium border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
+                                            >
+                                                ยกเลิก
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleExecuteBulkAction}
+                                                disabled={
+                                                    selectedBaskets.length === 0 || 
+                                                    !bulkActionType || 
+                                                    (bulkActionType === 'transfer' && !bulkTargetAgent) ||
+                                                    reclaiming || transferring
+                                                }
+                                                className={`px-6 py-2.5 font-medium text-white rounded-lg flex items-center gap-2 shadow-sm transition-all
+                                                    ${bulkActionType === 'transfer' 
+                                                        ? 'bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2' 
+                                                        : 'bg-orange-600 hover:bg-orange-700 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2'} 
+                                                    disabled:opacity-50 disabled:cursor-not-allowed`}
+                                            >
+                                                {(reclaiming || transferring) ? (
+                                                    <Loader2 className="animate-spin w-5 h-5" />
+                                                ) : bulkActionType === 'transfer' ? (
+                                                    'ดำเนินการโอน'
+                                                ) : (
+                                                    'ดำเนินการดึงคืน'
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 )
             }
+
 
             {/* Flexible Transfer Modal */}
             {flexTransferModalOpen && (
@@ -2696,6 +2758,68 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     </div>
                 )
             }
+
+            {/* Bulk Result Modal */}
+            {bulkResultModal && bulkResultModal.isOpen && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+                        <div className="p-6 border-b bg-gray-50 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-green-100 text-green-600 rounded-xl flex items-center justify-center">
+                                    <Check size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-gray-800 text-lg">{bulkResultModal.title}</h3>
+                                    <p className="text-sm text-gray-500">ดำเนินการเสร็จสิ้น</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6 overflow-y-auto flex-1">
+                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 flex flex-col items-center justify-center">
+                                <div className="text-3xl font-black text-blue-700">{bulkResultModal.total.toLocaleString()}</div>
+                                <div className="text-sm text-blue-600/80 font-medium mt-1">รายชื่อทั้งหมด</div>
+                            </div>
+                            
+                            {bulkResultModal.results && bulkResultModal.results.length > 0 && (
+                                <div>
+                                    <h4 className="text-sm font-bold text-gray-700 mb-3">รายละเอียดการทำรายการ</h4>
+                                    <div className="space-y-3">
+                                        {bulkResultModal.results.map((r, i) => {
+                                            const bname = dashboardBaskets.find(b => b.basket_key === r.basket_key)?.basket_name || r.basket_key;
+                                            const val = r.reclaimed || r.transferred || 0;
+                                            return (
+                                                <div key={i} className="flex flex-col p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="text-sm font-bold text-gray-800">ตะกร้า: {bname}</span>
+                                                        <span className="text-sm font-bold text-blue-600">{val.toLocaleString()} รายชื่อ</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-xs text-gray-500 font-medium">
+                                                        <div className="bg-white px-2 py-1.5 border rounded flex-1 truncate shadow-sm">
+                                                            จาก: <span className="font-semibold text-gray-700">{bulkResultModal.fromAgentName}</span>
+                                                        </div>
+                                                        <ArrowRight size={14} className="text-gray-400 shrink-0" />
+                                                        <div className="bg-white px-2 py-1.5 border rounded flex-1 truncate shadow-sm">
+                                                            ไปที่: <span className="font-semibold text-gray-700">{bulkResultModal.toName}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-4 border-t bg-white flex justify-end">
+                            <button 
+                                onClick={() => setBulkResultModal(null)}
+                                className="px-6 py-2 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                                ปิด
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Blocked Customers Modal */}
             <BlockedCustomersModal

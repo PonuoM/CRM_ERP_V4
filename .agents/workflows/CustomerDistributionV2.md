@@ -146,7 +146,7 @@
 
 ### 10.2 Key API Endpoints
 - **GET** `basket_config.php`: ดึงการตั้งค่าถัง
-- **GET** `Distribution/index.php?action=get_assign_checks`: ดึงข้อมูล conflict (ลูกค้าเคยอยู่กับ agent ใดบ้าง) สำหรับ preview
+- **POST** `Distribution/index.php?action=get_assign_checks`: ดึงข้อมูล conflict (ลูกค้าเคยอยู่กับ agent ใดบ้าง) สำหรับ preview
 - **POST** `Distribution/index.php?action=distribute`: Logic การแจกใหม่ + เช็คซ้ำ + บันทึก `customer_assign_check`
 - **POST** `Distribution/reset.php`:
   - `get_candidates`: ดึงรายชื่อสำหรับ Reset (support pagination)
