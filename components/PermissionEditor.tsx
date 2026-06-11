@@ -17,6 +17,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'monitor.daily', label: 'Daily Monitoring (ติดตามรายวัน)' },
             { key: 'monitor.lead_performance', label: 'Lead Performance (อัตราการปิดการขาย)' },
             { key: 'monitor.team_appointments', label: 'Team Appointments (นัดหมายของทีม)' },
+            { key: 'monitor.callstats', label: 'Telesale Call Stats (ติดตามการโทร)' },
         ]
     },
     'Home': {
