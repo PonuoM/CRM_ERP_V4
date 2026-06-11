@@ -13,8 +13,9 @@ import {
     fetchOneCallRecordings,
     aggregateOneCallByUsers,
 } from "@/services/onecallRealtime";
+import DateRangePicker from "@/components/DateRangePicker";
 
-type Period = "today" | "week" | "month" | "all" | "custom";
+type Period = "today" | "week" | "month" | "year" | "all" | "custom";
 type SortKey = "score" | "sales" | "orders" | "calls" | "customers" | "close_rate" | "minutes";
 
 interface StaffStat {
@@ -59,10 +60,11 @@ interface SalesData {
 
 const PERIOD_LABELS: Record<Period, string> = {
     today: "วันนี้",
-    week: "สัปดาห์",
-    month: "เดือน",
+    week: "สัปดาห์นี้",
+    month: "เดือนนี้",
+    year: "ปีนี้",
     all: "ทั้งหมด",
-    custom: "วันที่เลือก",
+    custom: "กำหนดเอง",
 };
 
 const fmtNum = (n: number) => n.toLocaleString("th-TH");
@@ -104,6 +106,10 @@ function periodRangeText(
     }
     if (period === "month") {
         const start = new Date(today.getFullYear(), today.getMonth(), 1);
+        return `${fmt(start)} – ${fmt(today)}`;
+    }
+    if (period === "year") {
+        const start = new Date(today.getFullYear(), 0, 1);
         return `${fmt(start)} – ${fmt(today)}`;
     }
     return "ตั้งแต่เริ่มเก็บข้อมูล";
@@ -189,15 +195,17 @@ const Toolbar: React.FC<{
     canSettings,
     loading,
 }) => {
-    const periods: Period[] = ["today", "week", "month", "all"];
+    const periods: Period[] = ["today", "week", "month", "year", "custom", "all"];
     return (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center gap-2 mb-3">
-            <div className="flex border border-gray-200 rounded-lg overflow-hidden">
+            <div className="flex bg-white/60 backdrop-blur-md p-1.5 rounded-full border border-gray-200 shadow-sm overflow-x-auto">
                 {periods.map((p) => (
                     <button
                         key={p}
                         onClick={() => onPeriod(p)}
-                        className={`px-4 py-1.5 text-xs font-semibold border-r border-gray-200 last:border-r-0 transition-all ${period === p ? "bg-gray-900 text-white" : "bg-transparent text-gray-600 hover:bg-gray-50"
+                        className={`px-5 py-2 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${period === p
+                                ? "bg-gray-900 text-white shadow-md"
+                                : "text-gray-600 hover:text-gray-900 hover:bg-slate-100"
                             }`}
                     >
                         {PERIOD_LABELS[p]}
@@ -205,71 +213,24 @@ const Toolbar: React.FC<{
                 ))}
             </div>
 
-            {/* Custom Calendar Date Picker Range in a single unified box */}
-            <div className={`relative flex items-center justify-between border rounded-lg text-xs font-semibold overflow-hidden transition-all ${
-                period === "custom"
-                    ? "bg-indigo-600 border-indigo-600 text-white"
-                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-            }`}
-            style={{ minWidth: "220px", height: "32px" }}>
-                
-                {/* Left half - Start Date */}
-                <div className="relative flex-1 h-full flex items-center pl-3 pr-1 gap-1.5 cursor-pointer hover:bg-black/5">
-                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">{period === "custom" ? periodRangeText("custom", customStartDate, customStartDate) : "วันเริ่ม"}</span>
-                    <input
-                        type="date"
-                        value={customStartDate}
-                        onChange={(e) => {
-                            const newStart = e.target.value;
-                            onCustomStartDateChange(newStart);
-                            if (customEndDate < newStart) {
-                                onCustomEndDateChange(newStart);
-                            }
-                            onPeriod("custom");
+            {period === "custom" && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                    <DateRangePicker
+                        value={{
+                            start: customStartDate ? `${customStartDate}T00:00:00` : "",
+                            end: customEndDate ? `${customEndDate}T23:59:59` : ""
                         }}
-                        onClick={(e) => {
-                            try {
-                                (e.target as any).showPicker();
-                            } catch (err) {
-                                // Fallback
+                        onApply={(range) => {
+                            if (range.start && range.end) {
+                                const startYMD = range.start.split("T")[0];
+                                const endYMD = range.end.split("T")[0];
+                                onCustomStartDateChange(startYMD);
+                                onCustomEndDateChange(endYMD);
                             }
                         }}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                        style={{ colorScheme: 'light' }}
                     />
                 </div>
-
-                <span className={`flex-shrink-0 px-1 text-[11px] ${period === "custom" ? "text-indigo-200" : "text-gray-400"}`}>ถึง</span>
-
-                {/* Right half - End Date */}
-                <div className="relative flex-1 h-full flex items-center justify-end pl-1 pr-3 gap-1.5 cursor-pointer hover:bg-black/5">
-                    <span className="truncate">{period === "custom" ? periodRangeText("custom", customEndDate, customEndDate) : "วันสิ้นสุด"}</span>
-                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                    <input
-                        type="date"
-                        value={customEndDate}
-                        onChange={(e) => {
-                            const newEnd = e.target.value;
-                            if (newEnd < customStartDate) {
-                                onCustomEndDateChange(customStartDate);
-                            } else {
-                                onCustomEndDateChange(newEnd);
-                            }
-                            onPeriod("custom");
-                        }}
-                        onClick={(e) => {
-                            try {
-                                (e.target as any).showPicker();
-                            } catch (err) {
-                                // Fallback
-                            }
-                        }}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                        style={{ colorScheme: 'light' }}
-                    />
-                </div>
-            </div>
+            )}
 
             <span className="text-[11px] text-gray-400 ml-1">
                 <span className="font-semibold text-gray-600">{PERIOD_LABELS[period]}:</span>{" "}

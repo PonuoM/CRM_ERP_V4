@@ -44,7 +44,7 @@ try {
 
     // Period param
     $period = $_GET['period'] ?? 'week';
-    if (!in_array($period, ['today', 'week', 'month', 'all', 'custom'], true)) $period = 'week';
+    if (!in_array($period, ['today', 'week', 'month', 'year', 'this_year', 'all', 'custom'], true)) $period = 'week';
 
     // Compute period range
     if ($period === 'today') {
@@ -57,6 +57,10 @@ try {
         $today = date('Y-m-d');
     } elseif ($period === 'month') {
         $start = date('Y-m-01') . ' 00:00:00';
+        $end = date('Y-m-d', strtotime('+1 day')) . ' 00:00:00';
+        $today = date('Y-m-d');
+    } elseif ($period === 'year' || $period === 'this_year') {
+        $start = date('Y-01-01') . ' 00:00:00';
         $end = date('Y-m-d', strtotime('+1 day')) . ' 00:00:00';
         $today = date('Y-m-d');
     } elseif ($period === 'custom') {
