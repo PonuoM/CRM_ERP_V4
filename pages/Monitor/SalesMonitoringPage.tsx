@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
+    Calendar,
     RefreshCw,
     Settings as SettingsIcon,
     TrendingUp,
@@ -13,7 +14,7 @@ import {
     aggregateOneCallByUsers,
 } from "@/services/onecallRealtime";
 
-type Period = "today" | "week" | "month" | "all";
+type Period = "today" | "week" | "month" | "all" | "custom";
 type SortKey = "score" | "sales" | "orders" | "calls" | "customers" | "close_rate" | "minutes";
 
 interface StaffStat {
@@ -61,16 +62,39 @@ const PERIOD_LABELS: Record<Period, string> = {
     week: "สัปดาห์",
     month: "เดือน",
     all: "ทั้งหมด",
+    custom: "วันที่เลือก",
 };
 
 const fmtNum = (n: number) => n.toLocaleString("th-TH");
 const fmtMoney = (n: number) => `฿${Math.round(n).toLocaleString("th-TH")}`;
 
-function periodRangeText(period: Period): string {
+function periodRangeText(
+    period: Period,
+    customStartDate?: string,
+    customEndDate?: string
+): string {
     const fmt = (d: Date) =>
         d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
     const today = new Date();
     if (period === "today") return fmt(today);
+    if (period === "custom") {
+        if (customStartDate && customEndDate) {
+            const [sy, sm, sd] = customStartDate.split("-").map(Number);
+            const startD = new Date(sy, sm - 1, sd);
+            if (customStartDate === customEndDate) {
+                return fmt(startD);
+            }
+            const [ey, em, ed] = customEndDate.split("-").map(Number);
+            const endD = new Date(ey, em - 1, ed);
+            return `${fmt(startD)} – ${fmt(endD)}`;
+        }
+        if (customStartDate) {
+            const [year, month, day] = customStartDate.split("-").map(Number);
+            const d = new Date(year, month - 1, day);
+            return fmt(d);
+        }
+        return fmt(today);
+    }
     if (period === "week") {
         const d = today.getDay();
         const off = d === 0 ? -6 : 1 - d;
@@ -141,13 +165,30 @@ const SummaryBar: React.FC<{ data?: SalesData; loading: boolean }> = ({ data, lo
 const Toolbar: React.FC<{
     period: Period;
     onPeriod: (p: Period) => void;
+    customStartDate: string;
+    onCustomStartDateChange: (d: string) => void;
+    customEndDate: string;
+    onCustomEndDateChange: (d: string) => void;
     sort: SortKey;
     onSort: (s: SortKey) => void;
     onRefresh: () => void;
     onSettings: () => void;
     canSettings: boolean;
     loading: boolean;
-}> = ({ period, onPeriod, sort, onSort, onRefresh, onSettings, canSettings, loading }) => {
+}> = ({
+    period,
+    onPeriod,
+    customStartDate,
+    onCustomStartDateChange,
+    customEndDate,
+    onCustomEndDateChange,
+    sort,
+    onSort,
+    onRefresh,
+    onSettings,
+    canSettings,
+    loading,
+}) => {
     const periods: Period[] = ["today", "week", "month", "all"];
     return (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center gap-2 mb-3">
@@ -163,9 +204,76 @@ const Toolbar: React.FC<{
                     </button>
                 ))}
             </div>
+
+            {/* Custom Calendar Date Picker Range in a single unified box */}
+            <div className={`relative flex items-center justify-between border rounded-lg text-xs font-semibold overflow-hidden transition-all ${
+                period === "custom"
+                    ? "bg-indigo-600 border-indigo-600 text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+            style={{ minWidth: "220px", height: "32px" }}>
+                
+                {/* Left half - Start Date */}
+                <div className="relative flex-1 h-full flex items-center pl-3 pr-1 gap-1.5 cursor-pointer hover:bg-black/5">
+                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">{period === "custom" ? periodRangeText("custom", customStartDate, customStartDate) : "วันเริ่ม"}</span>
+                    <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={(e) => {
+                            const newStart = e.target.value;
+                            onCustomStartDateChange(newStart);
+                            if (customEndDate < newStart) {
+                                onCustomEndDateChange(newStart);
+                            }
+                            onPeriod("custom");
+                        }}
+                        onClick={(e) => {
+                            try {
+                                (e.target as any).showPicker();
+                            } catch (err) {
+                                // Fallback
+                            }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        style={{ colorScheme: 'light' }}
+                    />
+                </div>
+
+                <span className={`flex-shrink-0 px-1 text-[11px] ${period === "custom" ? "text-indigo-200" : "text-gray-400"}`}>ถึง</span>
+
+                {/* Right half - End Date */}
+                <div className="relative flex-1 h-full flex items-center justify-end pl-1 pr-3 gap-1.5 cursor-pointer hover:bg-black/5">
+                    <span className="truncate">{period === "custom" ? periodRangeText("custom", customEndDate, customEndDate) : "วันสิ้นสุด"}</span>
+                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                    <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={(e) => {
+                            const newEnd = e.target.value;
+                            if (newEnd < customStartDate) {
+                                onCustomEndDateChange(customStartDate);
+                            } else {
+                                onCustomEndDateChange(newEnd);
+                            }
+                            onPeriod("custom");
+                        }}
+                        onClick={(e) => {
+                            try {
+                                (e.target as any).showPicker();
+                            } catch (err) {
+                                // Fallback
+                            }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        style={{ colorScheme: 'light' }}
+                    />
+                </div>
+            </div>
+
             <span className="text-[11px] text-gray-400 ml-1">
                 <span className="font-semibold text-gray-600">{PERIOD_LABELS[period]}:</span>{" "}
-                {periodRangeText(period)}
+                {periodRangeText(period, customStartDate, customEndDate)}
             </span>
             <select
                 value={sort}
@@ -235,11 +343,11 @@ const StaffCard: React.FC<{
         sc > 0.55 ? "text-green-600" : sc > 0.35 ? "text-amber-600" : "text-red-600";
     const statusLabel = sc > 0.55 ? "ทำดี" : sc > 0.35 ? "พอใช้" : "ต้องดู";
 
-    const ordNow = period === "today" ? s.orders_today : s.orders_period;
-    const saleNow = period === "today" ? s.sales_today : s.sales_period;
+    const ordNow = (period === "today" || period === "custom") ? s.orders_today : s.orders_period;
+    const saleNow = (period === "today" || period === "custom") ? s.sales_today : s.sales_period;
 
     // Minute-target progress (when period = today, compare directly. otherwise scale)
-    const isToday = period === "today";
+    const isToday = period === "today" || period === "custom";
     const minPct = isToday ? Math.round((s.total_min / minuteTarget) * 100) : null;
 
     const initial = (s.first_name || s.username || "?").charAt(0);
@@ -502,6 +610,20 @@ const SettingsModal: React.FC<{
 const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
     const apiBase = useMemo(() => resolveApiBasePath(), []);
     const [period, setPeriod] = useState<Period>("week");
+    const [customStartDate, setCustomStartDate] = useState<string>(() => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    });
+    const [customEndDate, setCustomEndDate] = useState<string>(() => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    });
     const [sort, setSort] = useState<SortKey>("score");
     const [data, setData] = useState<SalesData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -514,8 +636,14 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
         return r.includes("admin") || r.includes("supervisor") || r.includes("ceo");
     }, [user]);
 
+    const isTodayInRange = useMemo(() => {
+        const d = new Date();
+        const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        return period === "today" || (period === "custom" && customStartDate === todayStr && customEndDate === todayStr);
+    }, [period, customStartDate, customEndDate]);
+
     // Overlay realtime OneCall call data onto the DB snapshot (only used when
-    // period = today — call_import_logs catches up overnight).
+    // period = today or today is in range).
     const overlayRealtime = useCallback(async (base: SalesData) => {
         setRefreshingRealtime(true);
         try {
@@ -526,26 +654,20 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
                 if (rt.error) setError(`OneCall realtime: ${rt.error} (แสดงข้อมูลจาก DB)`);
                 return;
             }
-            const users = base.staff.map((s) => ({ user_id: s.user_id, phone: s.phone || "" }));
+            const users = base.staff.map((s) => ({ user_id: s.user_id, phone: s.phone }));
             const agg = aggregateOneCallByUsers(rt.recordings, users);
-
             const overlay = base.staff.map((s) => {
-                const acc = agg.members[s.user_id];
-                if (!acc) {
-                    return { ...s, calls_total: 0, talked_calls: 0, total_min: 0, avg_min: 0,
-                             calls_per_cust: 0 };
-                }
-                const totalMin = Math.round((acc.total_seconds / 60) * 10) / 10;
-                const avgMin = acc.total_calls > 0
-                    ? Math.round((acc.total_seconds / acc.total_calls / 60) * 100) / 100
-                    : 0;
-                const ratio = s.assigned_total > 0
-                    ? Math.round((acc.total_calls / s.assigned_total) * 100) / 100
-                    : 0;
+                const rtMember = agg.members[s.user_id];
+                if (!rtMember) return s;
+                const callsTotal = rtMember.total_calls;
+                const talkedCalls = rtMember.talked_calls;
+                const totalMin = rtMember.total_seconds / 60;
+                const avgMin = talkedCalls > 0 ? totalMin / talkedCalls : 0;
+                const ratio = s.assigned_total > 0 ? callsTotal / s.assigned_total : 0;
                 return {
                     ...s,
-                    calls_total: acc.total_calls,
-                    talked_calls: acc.talked_calls,
+                    calls_total: callsTotal,
+                    talked_calls: talkedCalls,
                     total_min: totalMin,
                     avg_min: avgMin,
                     calls_per_cust: ratio,
@@ -564,8 +686,9 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
         setError(null);
         try {
             const token = localStorage.getItem("authToken");
+            const dateParam = period === "custom" ? `&startDate=${customStartDate}&endDate=${customEndDate}` : "";
             const res = await fetch(
-                `${apiBase}/Monitor/sales_monitoring.php?period=${period}`,
+                `${apiBase}/Monitor/sales_monitoring.php?period=${period}${dateParam}`,
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -579,14 +702,14 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
             setData(baseData);
             setLoading(false);
 
-            if (period === "today") {
+            if (isTodayInRange) {
                 overlayRealtime(baseData);
             }
         } catch (e: any) {
             setError(e?.message || "โหลดข้อมูลไม่สำเร็จ");
             setLoading(false);
         }
-    }, [apiBase, period, overlayRealtime]);
+    }, [apiBase, period, customStartDate, customEndDate, isTodayInRange, overlayRealtime]);
 
     useEffect(() => {
         fetchData();
@@ -631,7 +754,6 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
         return { crm, admin };
     }, [data, sort]);
 
-    // Insights
     const insights = useMemo<InsightItem[]>(() => {
         if (!data || data.staff.length === 0) return [];
         const items: InsightItem[] = [];
@@ -641,7 +763,6 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
         const totalCalls = all.reduce((s, m) => s + m.calls_total, 0);
         const totalMin = all.reduce((s, m) => s + m.total_min, 0);
 
-        // Team summary
         items.push({
             tone: "info",
             text: (
@@ -653,7 +774,6 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
             ),
         });
 
-        // Top sales
         const top = [...all].sort((a, b) => b.sales_period - a.sales_period)[0];
         if (top && top.sales_period > 0) {
             items.push({
@@ -668,8 +788,7 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
             });
         }
 
-        // Minute target check (only for today)
-        if (data.period === "today") {
+        if (data.period === "today" || data.period === "custom") {
             const minTarget = data.targets.daily_minutes;
             const under = all.filter((s) => s.total_min < minTarget * 0.6 && s.calls_total > 0);
             if (under.length > 0) {
@@ -691,7 +810,6 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
             }
         }
 
-        // Best close rate
         const bestClose = [...all]
             .filter((s) => s.assigned_total >= 50)
             .sort((a, b) => b.close_rate - a.close_rate)[0];
@@ -708,7 +826,6 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
             });
         }
 
-        // Idle (no orders this period)
         const idleSales = all.filter((s) => s.orders_period === 0 && s.assigned_total > 50);
         if (idleSales.length > 0) {
             items.push({
@@ -731,21 +848,19 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
         return items;
     }, [data]);
 
-    const minuteTarget = data?.targets.daily_minutes ?? 100;
+    const minuteTarget = data?.targets.daily_minutes || 100;
 
     return (
-        <div className="p-4 sm:p-6 max-w-[1700px] mx-auto">
+        <div className="p-4 max-w-[1600px] mx-auto">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+            <div className="flex items-center justify-between mb-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                        <TrendingUp className="w-6 h-6 text-green-600" />
-                        ติดตามทีมขาย — ภาพรวม Performance
-                        {period === "today" && (
-                            refreshingRealtime ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                    กำลังอัพเดต Realtime...
+                    <h1 className="text-xl font-bold text-gray-950 flex items-center gap-2">
+                        <span>📊</span> ภาพรวมทีมขาย
+                        {isTodayInRange && (
+                            loading || refreshingRealtime ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 animate-pulse">
+                                    กำลังอัปเดตสาย...
                                 </span>
                             ) : (
                                 <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
@@ -765,6 +880,10 @@ const SalesMonitoringPage: React.FC<{ user: User }> = ({ user }) => {
             <Toolbar
                 period={period}
                 onPeriod={setPeriod}
+                customStartDate={customStartDate}
+                onCustomStartDateChange={setCustomStartDate}
+                customEndDate={customEndDate}
+                onCustomEndDateChange={setCustomEndDate}
                 sort={sort}
                 onSort={setSort}
                 onRefresh={fetchData}

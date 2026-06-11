@@ -44,22 +44,43 @@ try {
 
     // Period param
     $period = $_GET['period'] ?? 'week';
-    if (!in_array($period, ['today', 'week', 'month', 'all'], true)) $period = 'week';
+    if (!in_array($period, ['today', 'week', 'month', 'all', 'custom'], true)) $period = 'week';
 
     // Compute period range
     if ($period === 'today') {
         $start = date('Y-m-d') . ' 00:00:00';
+        $end = date('Y-m-d', strtotime('+1 day')) . ' 00:00:00';
+        $today = date('Y-m-d');
     } elseif ($period === 'week') {
         $start = date('Y-m-d', strtotime('monday this week')) . ' 00:00:00';
+        $end = date('Y-m-d', strtotime('+1 day')) . ' 00:00:00';
+        $today = date('Y-m-d');
     } elseif ($period === 'month') {
         $start = date('Y-m-01') . ' 00:00:00';
+        $end = date('Y-m-d', strtotime('+1 day')) . ' 00:00:00';
+        $today = date('Y-m-d');
+    } elseif ($period === 'custom') {
+        $customStartDate = $_GET['startDate'] ?? $_GET['date'] ?? date('Y-m-d');
+        $customEndDate = $_GET['endDate'] ?? $customStartDate;
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $customStartDate)) {
+            $customStartDate = date('Y-m-d');
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $customEndDate)) {
+            $customEndDate = $customStartDate;
+        }
+        if (strtotime($customStartDate) > strtotime($customEndDate)) {
+            $customEndDate = $customStartDate;
+        }
+        $start = $customStartDate . ' 00:00:00';
+        $end = date('Y-m-d', strtotime($customEndDate . ' +1 day')) . ' 00:00:00';
+        $today = ($customStartDate === $customEndDate) ? $customStartDate : date('Y-m-d');
     } else {
         $start = '1970-01-01 00:00:00';
+        $end = date('Y-m-d', strtotime('+1 day')) . ' 00:00:00';
+        $today = date('Y-m-d');
     }
-    $end = date('Y-m-d', strtotime('+1 day')) . ' 00:00:00';
     $startDate = substr($start, 0, 10);
     $endDate   = substr($end, 0, 10);
-    $today     = date('Y-m-d');
 
     // Targets
     $callTarget = (int) (fetch_env($pdo, "MONITOR_DAILY_CALL_TARGET_{$companyId}") ?: 40);
