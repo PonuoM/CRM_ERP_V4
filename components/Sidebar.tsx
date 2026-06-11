@@ -205,6 +205,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Lead Performance": "อัตราการปิดการขาย",
     "Team Appointments": "นัดหมายของทีม",
     "Sales Monitoring": "ภาพรวมทีมขาย",
+    "Telesale Callstats": "ติดตามการโทร",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -218,6 +219,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Sales Monitoring", icon: DollarSign, key: "monitor.sales" },
         { label: "Daily Monitoring", icon: Phone, key: "monitor.daily" },
         { label: "Dashboard Talk Time", icon: Phone, key: "home.talktime_dashboard" },
+        { label: "Telesale Callstats", icon: BarChart3, key: "monitor.callstats" },
         { label: "Lead Performance", icon: BarChart2, key: "monitor.lead_performance" },
         { label: "Team Appointments", icon: Calendar, key: "monitor.team_appointments" },
       ]

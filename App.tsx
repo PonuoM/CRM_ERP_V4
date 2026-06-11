@@ -177,6 +177,7 @@ import BasketSettingsPage from "./pages/BasketSettingsPage";
 import ExportTemplateSettingsPage from "./pages/ExportTemplateSettingsPage";
 import CustomerDistributionV2 from "./pages/CustomerDistributionV2";
 import TelesalePerformancePage from "./pages/TelesalePerformancePage";
+import TelesaleCallstatsPage from "./pages/TelesaleCallstatsPage";
 import AttendanceManagementPage from "./pages/AttendanceManagementPage";
 import AdsInputV2 from "./pages/AdsInputV2";
 import SalesSheetPage from "./pages/SalesSheetPage";
@@ -7402,6 +7403,11 @@ const App: React.FC = () => {
       case "home.telesale_performance":
       case "วิเคราะห์ประสิทธิภาพ Telesale":
         return <TelesalePerformancePage />;
+
+      case "Telesale Callstats":
+      case "monitor.callstats":
+      case "ติดตามการโทร":
+        return <TelesaleCallstatsPage />;
 
       case "Daily Monitoring":
       case "monitor.daily":
