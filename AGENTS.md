@@ -89,3 +89,7 @@
 **Rule 8: Mandatory Migrations (⭐ CRITICAL)**
 - **ALWAYS** create a migration file in `/api/migrations/` (e.g., `001_add_new_column.sql`) whenever you add a column, modify a table, or change the database schema.
 - **NEVER** just run an `ALTER TABLE` command in the terminal without also creating the corresponding `.sql` migration file, as this breaks database versioning for other developers.
+
+**Rule 9: UI Components over Native Alerts**
+- **NEVER** use `window.alert`, `window.confirm`, or `window.prompt` for user interactions.
+- **ALWAYS** use custom UI components like `Modal`, `Toast`, or `Alert` provided by the system or design library to maintain a consistent and professional user experience.
