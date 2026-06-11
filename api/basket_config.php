@@ -61,6 +61,12 @@ try {
         exit;
     }
 
+    // Handle preview unassigned reclaim customers
+    if ($action === 'preview_reclaim_unassigned') {
+        handlePreviewReclaimUnassigned($pdo, $companyId);
+        exit;
+    }
+
     // Handle transfer customers (move from one agent to another)
     if ($action === 'transfer_customers') {
         handleTransferCustomers($pdo, $companyId);
@@ -586,6 +592,7 @@ function handleReclaimCustomers($pdo, $companyId)
     $input = json_decode(file_get_contents('php://input'), true);
     $agentId = $input['agent_id'] ?? null;
     $baskets = $input['baskets'] ?? []; // key => quantity
+    $noAppointmentOnly = $input['no_appointment_only'] ?? false;
 
     if (!$agentId || empty($baskets)) {
         http_response_code(400);
@@ -639,14 +646,22 @@ function handleReclaimCustomers($pdo, $companyId)
             // WHERE current_basket_key = $dashboardBasketId
 
             // First, get the customer IDs that will be affected (for logging)
-            $selectStmt = $pdo->prepare("
-                SELECT customer_id FROM customers 
-                WHERE company_id = ? 
-                AND assigned_to = ?
-                AND current_basket_key = ?
-                LIMIT ?
-            ");
-            $selectStmt->execute([$companyId, $agentId, $dashboardBasketId, $qty]);
+            $selectSql = "
+                SELECT c.customer_id FROM customers c
+                WHERE c.company_id = ? 
+                AND c.assigned_to = ?
+                AND c.current_basket_key = ?
+            ";
+            
+            if ($noAppointmentOnly) {
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.date >= CURDATE()) ";
+            }
+            
+            // Best Practice: Reclaim the oldest unused customers first instead of random ones
+            $selectSql .= " ORDER BY c.updated_at ASC LIMIT " . (int)$qty;
+            
+            $selectStmt = $pdo->prepare($selectSql);
+            $selectStmt->execute([$companyId, $agentId, $dashboardBasketId]);
             $affectedCustomerIds = $selectStmt->fetchAll(PDO::FETCH_COLUMN);
 
             if (empty($affectedCustomerIds)) {
@@ -688,6 +703,61 @@ function handleReclaimCustomers($pdo, $companyId)
 
     } catch (Exception $e) {
         $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => $e->getMessage()]);
+    }
+}
+
+/**
+ * Handle previewing reclaimable customers who have no appointment
+ * GET: ?action=preview_reclaim_unassigned&agent_id=123
+ */
+function handlePreviewReclaimUnassigned($pdo, $companyId)
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        http_response_code(405);
+        echo json_encode(['error' => 'GET required']);
+        return;
+    }
+
+    $agentId = $_GET['agent_id'] ?? null;
+
+    if (!$agentId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'agent_id required']);
+        return;
+    }
+
+    try {
+        // Find counts per dashboard basket where customer has NO valid appointment
+        $stmt = $pdo->prepare("
+            SELECT bc.basket_key, COUNT(c.customer_id) as unassigned_count
+            FROM customers c
+            JOIN basket_config bc ON bc.id = c.current_basket_key AND bc.company_id = 1
+            WHERE c.company_id = ? 
+            AND c.assigned_to = ?
+            AND NOT EXISTS (
+                SELECT 1 FROM appointments a 
+                WHERE a.customer_id = c.customer_id 
+                AND a.date >= CURDATE()
+            )
+            GROUP BY bc.basket_key
+        ");
+        $stmt->execute([$companyId, $agentId]);
+        
+        $results = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $results[$row['basket_key']] = (int)$row['unassigned_count'];
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'message' => 'Success',
+            'data' => null,
+            'counts' => $results // Retaining counts for backward compatibility with frontend code
+        ]);
+
+    } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['error' => $e->getMessage()]);
     }

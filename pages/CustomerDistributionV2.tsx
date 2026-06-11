@@ -902,6 +902,12 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [reclaimingAgent, setReclaimingAgent] = useState<AgentWithBaskets | null>(null);
     const [reclaimInputs, setReclaimInputs] = useState<Record<string, number>>({});
     const [reclaiming, setReclaiming] = useState(false);
+    
+    // Unassigned Reclaim Logic
+    const [showUnassignedPreview, setShowUnassignedPreview] = useState(false);
+    const [unassignedPreviewData, setUnassignedPreviewData] = useState<Record<string, number>>({});
+    const [unassignedTargetBaskets, setUnassignedTargetBaskets] = useState<string[]>([]);
+    const [fetchingUnassigned, setFetchingUnassigned] = useState(false);
 
     // Flexible Transfer Logic
     const [flexTransferModalOpen, setFlexTransferModalOpen] = useState(false);
@@ -1138,6 +1144,78 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         } catch (error) {
             console.error('Reclaim failed:', error);
             setMessage({ type: 'error', text: 'ดึงคืนลูกค้าไม่สำเร็จ' });
+    } finally {
+            setReclaiming(false);
+        }
+    };
+
+    const handlePreviewUnassigned = async (basketKey: string | 'ALL') => {
+        if (!reclaimingAgent) return;
+        setFetchingUnassigned(true);
+        try {
+            const basePath = typeof window !== 'undefined' ? resolveApiBasePath() : '/api';
+            const result = await apiFetch(`basket_config.php?action=preview_reclaim_unassigned&agent_id=${reclaimingAgent.id}&companyId=${currentUser?.companyId}`);
+            if (result?.ok && result.counts) {
+                setUnassignedPreviewData(result.counts);
+                if (basketKey === 'ALL') {
+                    setUnassignedTargetBaskets(dashboardBaskets.map(b => b.basket_key));
+                } else {
+                    setUnassignedTargetBaskets([basketKey]);
+                }
+                setShowUnassignedPreview(true);
+            } else {
+                setMessage({ type: 'error', text: `ไม่สามารถโหลดข้อมูลได้ (Backend): ${JSON.stringify(result)}` });
+            }
+        } catch (error: any) {
+            console.error('Failed to preview unassigned:', error);
+            setMessage({ type: 'error', text: `ข้อผิดพลาดระบบ: ${error?.message || 'Unknown'}` });
+        } finally {
+            setFetchingUnassigned(false);
+        }
+    };
+
+    const handleExecuteUnassignedReclaim = async () => {
+        if (!reclaimingAgent) return;
+
+        // Collect payloads
+        const payloadBaskets: Record<string, number> = {};
+        let total = 0;
+        
+        unassignedTargetBaskets.forEach(key => {
+            const count = unassignedPreviewData[key] || 0;
+            if (count > 0 && key !== 'upsell_dis') {
+                payloadBaskets[key] = count;
+                total += count;
+            }
+        });
+
+        if (total === 0) {
+            setMessage({ type: 'error', text: 'ไม่พบลูกค้าที่ไม่มีนัดหมายในตะกร้าที่เลือก' });
+            return;
+        }
+
+        setReclaiming(true);
+        try {
+            const result = await apiFetch(
+                `basket_config.php?action=reclaim_customers&companyId=${currentUser?.companyId}`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        agent_id: reclaimingAgent.id,
+                        baskets: payloadBaskets,
+                        no_appointment_only: true
+                    })
+                }
+            );
+
+            setMessage({ type: 'success', text: `ดึงคืนไม่มีนัดหมายสำเร็จ ${result?.reclaimed || total} รายชื่อ` });
+            setShowUnassignedPreview(false);
+            setReclaimModalOpen(false);
+            fetchAgents(); // Refresh agent stats
+            fetchAllBasketCounts(); // Refresh basket pools
+        } catch (error) {
+            console.error('Reclaim unassigned failed:', error);
+            setMessage({ type: 'error', text: 'ดึงคืนลูกค้าไม่มีนัดหมายไม่สำเร็จ' });
         } finally {
             setReclaiming(false);
         }
@@ -1929,10 +2007,65 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 reclaimModalOpen && reclaimingAgent && (
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                         <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-auto shadow-xl">
-                            <h3 className="text-xl font-bold mb-2">ดึงลูกค้าคืนจาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}</h3>
-                            <p className="text-sm text-gray-500 mb-6">ระบุจำนวนที่ต้องการดึงคืนจากแต่ละถัง</p>
+                            {showUnassignedPreview ? (
+                                <>
+                                    <h3 className="text-xl font-bold mb-2">ยืนยันดึงคืนลูกค้าไม่มีนัดหมาย</h3>
+                                    <p className="text-sm text-gray-500 mb-6">คุณกำลังจะดึงลูกค้าระยะไม่มีนัดหมาย จาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}</p>
+                                    
+                                    <div className="space-y-4 mb-6">
+                                        <div className="bg-orange-50 text-orange-700 p-4 rounded-lg text-sm border border-orange-100">
+                                            <h4 className="font-bold mb-2 flex items-center gap-2">
+                                                ตรวจสอบข้อมูลก่อนดึงคืน
+                                            </h4>
+                                            <ul className="space-y-1 list-disc list-inside">
+                                                {unassignedTargetBaskets.map(key => {
+                                                    const count = unassignedPreviewData[key] || 0;
+                                                    if (count === 0 || key === 'upsell_dis') return null;
+                                                    const b = dashboardBaskets.find(x => x.basket_key === key);
+                                                    return (
+                                                        <li key={key}>
+                                                            <span className="font-medium">{b?.basket_name || key}</span>: {count} รายการ
+                                                        </li>
+                                                    );
+                                                })}
+                                                {unassignedTargetBaskets.every(key => (unassignedPreviewData[key] || 0) === 0 || key === 'upsell_dis') && (
+                                                    <li className="text-gray-500">ไม่พบลูกค้าที่ไม่มีนัดหมายในตะกร้าที่เลือก</li>
+                                                )}
+                                            </ul>
+                                        </div>
+                                    </div>
 
-                            <div className="space-y-4 mb-6">
+                                    <div className="flex justify-end gap-3 pt-4 border-t">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowUnassignedPreview(false)}
+                                            className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
+                                            disabled={reclaiming}
+                                        >
+                                            กลับ
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleExecuteUnassignedReclaim}
+                                            disabled={reclaiming || unassignedTargetBaskets.every(key => (unassignedPreviewData[key] || 0) === 0 || key === 'upsell_dis')}
+                                            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                        >
+                                            {reclaiming ? <Loader2 className="animate-spin" size={16} /> : null}
+                                            ✅ ยืนยันดึงคืน
+                                        </button>
+                                    </div>
+                                </>
+                            ) : fetchingUnassigned ? (
+                                <div className="py-12 flex flex-col items-center justify-center">
+                                    <Loader2 className="w-8 h-8 animate-spin text-orange-500 mb-4" />
+                                    <p className="text-gray-500">กำลังตรวจสอบลูกค้าไม่มีนัดหมาย...</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <h3 className="text-xl font-bold mb-2">ดึงลูกค้าคืนจาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}</h3>
+                                    <p className="text-sm text-gray-500 mb-6">ระบุจำนวนที่ต้องการดึงคืนจากแต่ละถัง</p>
+
+                                    <div className="space-y-4 mb-6">
                                 {dashboardBaskets.map(basket => {
                                     // Prevent reclaiming from Upsell basket
                                     if (basket.basket_key === 'upsell_dis') return null;
@@ -1970,6 +2103,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                         disabled={isEmpty}
                                                     />
                                                     <button
+                                                        type="button"
                                                         onClick={() => handleReclaimAll(basket.basket_key, currentHolding)}
                                                         className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isReclaimDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200'}`}
                                                         disabled={isReclaimDisabled}
@@ -1977,11 +2111,20 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                         คืนหมด
                                                     </button>
                                                     <button
+                                                        type="button"
                                                         onClick={() => openTransferModal(basket.basket_key, reclaimInputs[basket.basket_key] || currentHolding)}
                                                         className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isTransferDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}`}
                                                         disabled={isTransferDisabled}
                                                     >
                                                         โอน
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handlePreviewUnassigned(basket.basket_key)}
+                                                        className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isReclaimDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-600 hover:bg-orange-200'}`}
+                                                        disabled={isReclaimDisabled}
+                                                    >
+                                                        ไม่มีนัดหมาย
                                                     </button>
                                                 </div>
                                             </div>
@@ -1999,12 +2142,21 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
                             <div className="flex justify-end gap-3 pt-4 border-t">
                                 <button
+                                    type="button"
+                                    onClick={() => handlePreviewUnassigned('ALL')}
+                                    className="px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 flex items-center gap-2 shadow-sm mr-auto text-sm"
+                                >
+                                    ดึงคืนไม่มีนัดหมายทั้งหมด
+                                </button>
+                                <button
+                                    type="button"
                                     onClick={() => setReclaimModalOpen(false)}
                                     className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
                                 >
                                     ยกเลิก
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={handleExecuteReclaim}
                                     disabled={reclaiming}
                                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
@@ -2013,6 +2165,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                     ยืนยันดึงคืน
                                 </button>
                             </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 )
