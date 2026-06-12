@@ -1837,11 +1837,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     <button 
                         onClick={() => {
                             setForceDistributeHolding(true);
-                            setTargetBasket('waiting_for_match_dash');
+                            setTargetBasket('find_new_owner_dash');
                         }}
                         className="mt-4 px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium transition-colors shadow-sm"
                     >
-                        ยืนยันที่จะแจก (แจกไป "รอคนมาจีบให้ติด")
+                        ยืนยันที่จะแจก (แจกไป "หาคนดูแลใหม่")
                     </button>
                 </div>
             )}
