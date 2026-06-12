@@ -61,6 +61,8 @@ WITH Cohort AS (
     SELECT DISTINCT 
         a.customer_id, 
         a.new_value as assigned_to, 
+        a.created_at as assignment_date, -- บันทึกเวลาที่ได้รับมอบหมายเพื่อใช้กรองข้อมูล
+
         -- ใช้ Correlated Subquery หาตะกร้า "ณ ตอนที่โดนแจก" โดยเผื่อเวลาไว้ 5 วินาที
         COALESCE(
             (
@@ -82,3 +84,14 @@ WITH Cohort AS (
 )
 ```
 หลังจากได้ `Cohort` แล้ว จะนำไป `LEFT JOIN` กับ `call_history` และ `appointments` เพื่อหา Conversion ในลำดับต่อไป
+
+> [!WARNING]
+> **สำคัญมาก:** ในการทำ `LEFT JOIN` ทั้งโหมด *Performance* และ *Realtime* ระบบจะดักจับ **ช่วงเวลา (Time Boundary)** ด้วยเสมอ เพื่อป้องกันไม่ให้ประวัติการทำงานในอดีต (ที่พนักงานคนเดียวกันอาจเคยรับผิดชอบลูกค้าคนนี้มาก่อนหน้านั้น) ถูกนำมานับซ้ำในรอบปัจจุบัน
+> 
+> ตัวอย่างเช่น:
+> ```sql
+> LEFT JOIN call_history CH 
+>     ON C.customer_id = CH.customer_id 
+>    AND C.assigned_to = CH.caller_id 
+>    AND CH.date >= C.assignment_date
+> ```
