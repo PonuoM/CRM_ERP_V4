@@ -126,7 +126,7 @@ try {
     // 3. Current Workload (ลูกค้าในมือ) - from customers table directly
     $currentAssignedQuery = "
         WITH CurrentCustomers AS (
-            SELECT customer_id, assigned_to, current_basket_key
+            SELECT customer_id, assigned_to, current_basket_key, date_assigned
             FROM customers
             WHERE assigned_to IN ($userIdsStr) AND company_id = ?
         )
@@ -137,8 +137,10 @@ try {
             COUNT(DISTINCT CH.customer_id) as called_current,
             COUNT(DISTINCT A.customer_id) as appt_current
         FROM CurrentCustomers C
-        LEFT JOIN call_history CH ON C.customer_id = CH.customer_id AND C.assigned_to = CH.caller_id
-        LEFT JOIN appointments A ON C.customer_id = A.customer_id AND C.assigned_to = A.created_by
+        LEFT JOIN call_history CH 
+            ON C.customer_id = CH.customer_id AND C.assigned_to = CH.caller_id AND CH.date >= COALESCE(C.date_assigned, '1970-01-01')
+        LEFT JOIN appointments A 
+            ON C.customer_id = A.customer_id AND C.assigned_to = A.created_by AND A.created_at >= COALESCE(C.date_assigned, '1970-01-01')
         GROUP BY C.assigned_to, C.current_basket_key
     ";
     $stmt = $pdo->prepare($currentAssignedQuery);
@@ -151,6 +153,8 @@ try {
             SELECT DISTINCT 
                 a.customer_id, 
                 a.new_value as assigned_to, 
+                a.created_at as assignment_date,
+
                 COALESCE(
                     (
                         SELECT new_value 
@@ -187,9 +191,9 @@ try {
             COUNT(DISTINCT A.customer_id) as appointments
         FROM Cohort C
         LEFT JOIN call_history CH 
-            ON C.customer_id = CH.customer_id AND C.assigned_to = CH.caller_id
+            ON C.customer_id = CH.customer_id AND C.assigned_to = CH.caller_id AND CH.date >= C.assignment_date
         LEFT JOIN appointments A 
-            ON C.customer_id = A.customer_id AND C.assigned_to = A.created_by
+            ON C.customer_id = A.customer_id AND C.assigned_to = A.created_by AND A.created_at >= C.assignment_date
         GROUP BY C.assigned_to, C.current_basket_key
     ";
     $stmt = $pdo->prepare($cohortQuery);
