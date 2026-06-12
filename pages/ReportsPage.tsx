@@ -1048,8 +1048,15 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         // Calculate creator totals for the order
         const creatorTotals: Record<string, number> = {};
         const seenCreators = new Set<string>();
+        
+        const sortedItems = [...order.items].sort((a, b) => {
+          const cidA = String(a.creatorId ?? order.creatorId ?? '');
+          const cidB = String(b.creatorId ?? order.creatorId ?? '');
+          if (cidA !== cidB) return cidA.localeCompare(cidB);
+          return (a.id || 0) - (b.id || 0);
+        });
 
-        order.items.forEach(item => {
+        sortedItems.forEach(item => {
           const cid = String(item.creatorId ?? order.creatorId ?? '');
           const isPromoParent = !!(item as any).isPromotionParent;
           const isPromoChild = !!(item as any).parentItemId;
@@ -1074,8 +1081,30 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           }
         });
 
+        // Apply proration for shipping cost and bill discount
+        const grossTotal = Object.values(creatorTotals).reduce((sum, val) => sum + val, 0);
+        const shippingCost = order.shippingCost || 0;
+        const billDiscount = order.billDiscount || 0;
+
+        if (shippingCost > 0 || billDiscount > 0) {
+          const creatorIds = Object.keys(creatorTotals);
+          if (grossTotal > 0) {
+            creatorIds.forEach(cid => {
+              const ratio = creatorTotals[cid] / grossTotal;
+              creatorTotals[cid] = creatorTotals[cid] + (shippingCost * ratio) - (billDiscount * ratio);
+            });
+          } else if (creatorIds.length > 0) {
+            const splitShipping = shippingCost / creatorIds.length;
+            const splitDiscount = billDiscount / creatorIds.length;
+            creatorIds.forEach(cid => {
+              creatorTotals[cid] = creatorTotals[cid] + splitShipping - splitDiscount;
+            });
+          }
+        }
+
+
         // มี items - แสดงแต่ละรายการ
-        order.items.forEach((item, index) => {
+        sortedItems.forEach((item, index) => {
           const cid = String(item.creatorId ?? order.creatorId ?? '');
           let displayCreatorTotal: number | string = '-';
           if (!seenCreators.has(cid)) {
@@ -1180,7 +1209,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'ยอดรวมรายการ': (item.isFreebie || isPromoParent) ? 0 : `฿${itemTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'ค่าจัดส่ง (ต่อบิล)': `฿${(order.shippingCost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'ส่วนลดท้ายบิล': `฿${(order.billDiscount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            'ยอดรวมทั้งบิล': displayCreatorTotal === '-' ? '-' : `฿${(displayCreatorTotal as number).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            'ยอดรวมทั้งบิล': index === 0 ? `฿${(order.totalAmount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-',
+            'ยอดรวมรายคน': displayCreatorTotal === '-' ? '-' : `฿${(displayCreatorTotal as number).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'หมายเลขกล่อง': String(item.boxNumber || 1),
             'หมายเลขติดตาม': getTrackingNumber(),
             'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
@@ -1190,7 +1220,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
             'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
             'ตะกร้าขาย': (item as any).basketKeyAtSale || '-',
-            'สาเหตุเงินขาด': '-'
+            'สาเหตุยอดไม่ตรง': '-'
           });
         });
       } else {
@@ -1227,6 +1257,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'ค่าจัดส่ง (ต่อบิล)': `฿${(order.shippingCost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           'ส่วนลดท้ายบิล': `฿${(order.billDiscount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           'ยอดรวมทั้งบิล': `฿${(order.totalAmount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          'ยอดรวมรายคน': `฿${(order.totalAmount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           'หมายเลขกล่อง': '0',
           'หมายเลขติดตาม': getTrackingNumber(),
           'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
@@ -1236,7 +1267,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
           'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
           'ตะกร้าขาย': '-',
-          'สาเหตุเงินขาด': '-'
+          'สาเหตุยอดไม่ตรง': '-'
         });
       }
     });

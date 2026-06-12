@@ -115,7 +115,7 @@ try {
         LEFT JOIN pages pg ON pg.id = o.sales_channel_page_id
         LEFT JOIN order_items parent_oi ON parent_oi.id = oi.parent_item_id
         $where
-        ORDER BY o.order_date DESC, o.id, oi.id
+        ORDER BY o.order_date DESC, o.id, COALESCE(oi.creator_id, o.creator_id), oi.id
     ";
 
     $stmt = $pdo->prepare($sql);

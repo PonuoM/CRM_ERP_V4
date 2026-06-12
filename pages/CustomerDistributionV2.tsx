@@ -909,8 +909,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [reclaiming, setReclaiming] = useState(false);
     
     // Reclaim Preview Data
-    const [reclaimPreviewAllNoAppt, setReclaimPreviewAllNoAppt] = useState<Record<string, number>>({});
+    const [reclaimPreviewNoCallNoAppt, setReclaimPreviewNoCallNoAppt] = useState<Record<string, number>>({});
     const [reclaimPreviewCalledNoAppt, setReclaimPreviewCalledNoAppt] = useState<Record<string, number>>({});
+    const [reclaimPreviewCalledWithAppt, setReclaimPreviewCalledWithAppt] = useState<Record<string, number>>({});
     const [loadingReclaimPreviews, setLoadingReclaimPreviews] = useState(false);
     
     // Bulk Result Modal
@@ -923,7 +924,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // Bulk Action State
     const [selectedBaskets, setSelectedBaskets] = useState<string[]>([]);
-    const [bulkActionType, setBulkActionType] = useState<'transfer' | 'reclaim_all' | 'reclaim_no_appt' | 'reclaim_called_no_appt' | null>(null);
+    const [bulkActionType, setBulkActionType] = useState<'transfer' | 'reclaim_all' | 'reclaim_no_call_no_appt' | 'reclaim_called_no_appt' | 'reclaim_called_with_appt' | null>(null);
     const [bulkTargetAgent, setBulkTargetAgent] = useState<number | null>(null);
     const [bulkLimit, setBulkLimit] = useState<string>('');
 
@@ -1074,21 +1075,22 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             if (reclaimModalOpen && reclaimingAgent?.id) {
                 setLoadingReclaimPreviews(true);
                 try {
-                    const [resAll, resCalled] = await Promise.all([
-                        apiFetch(`basket_config.php?action=preview_reclaim_unassigned&agent_id=${reclaimingAgent.id}&companyId=${currentUser?.companyId}&reclaim_mode=all_no_appt`),
-                        apiFetch(`basket_config.php?action=preview_reclaim_unassigned&agent_id=${reclaimingAgent.id}&companyId=${currentUser?.companyId}&reclaim_mode=called_no_appt`)
-                    ]);
+                    const res = await apiFetch(`basket_config.php?action=preview_reclaim_unassigned&agent_id=${reclaimingAgent.id}&companyId=${currentUser?.companyId}&reclaim_mode=all_categories`);
                     
-                    setReclaimPreviewAllNoAppt(resAll?.counts || {});
-                    setReclaimPreviewCalledNoAppt(resCalled?.counts || {});
+                    if (res?.ok && res.counts) {
+                        setReclaimPreviewNoCallNoAppt(res.counts.no_call_no_appt || {});
+                        setReclaimPreviewCalledNoAppt(res.counts.called_no_appt || {});
+                        setReclaimPreviewCalledWithAppt(res.counts.called_with_appt || {});
+                    }
                 } catch (e) {
                     console.error('Failed to fetch reclaim previews', e);
                 } finally {
                     setLoadingReclaimPreviews(false);
                 }
             } else {
-                setReclaimPreviewAllNoAppt({});
+                setReclaimPreviewNoCallNoAppt({});
                 setReclaimPreviewCalledNoAppt({});
+                setReclaimPreviewCalledWithAppt({});
             }
         };
         fetchPreviews();
@@ -1103,8 +1105,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         // Helper to get true available count based on action
         const getAvailableCount = (key: string) => {
             const currentHolding = reclaimingAgent.basketCounts?.[key] || 0;
-            if (bulkActionType === 'reclaim_no_appt') return reclaimPreviewAllNoAppt[key] || 0;
+            if (bulkActionType === 'reclaim_no_call_no_appt') return reclaimPreviewNoCallNoAppt[key] || 0;
             if (bulkActionType === 'reclaim_called_no_appt') return reclaimPreviewCalledNoAppt[key] || 0;
+            if (bulkActionType === 'reclaim_called_with_appt') return reclaimPreviewCalledWithAppt[key] || 0;
             return currentHolding;
         };
 
@@ -1180,8 +1183,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         } else {
             // Reclaim
             let reclaimMode = 'all';
-            if (bulkActionType === 'reclaim_no_appt') reclaimMode = 'all_no_appt';
+            if (bulkActionType === 'reclaim_no_call_no_appt') reclaimMode = 'no_call_no_appt';
             if (bulkActionType === 'reclaim_called_no_appt') reclaimMode = 'called_no_appt';
+            if (bulkActionType === 'reclaim_called_with_appt') reclaimMode = 'called_with_appt';
             
             setReclaiming(true);
             try {
@@ -2161,15 +2165,21 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                 {!isEmpty && (
                                                     <>
                                                         <div className="flex flex-col items-end">
-                                                            <div className="text-[10px] text-gray-400 font-medium leading-none mb-1">ไม่มีนัดหมาย</div>
+                                                            <div className="text-[10px] text-gray-400 font-medium leading-none mb-1">ไม่มีการโทร</div>
                                                             <div className={`text-sm font-semibold ${loadingReclaimPreviews ? 'text-gray-300' : 'text-orange-500'}`}>
-                                                                {loadingReclaimPreviews ? '...' : (reclaimPreviewAllNoAppt[basket.basket_key] || 0).toLocaleString()}
+                                                                {loadingReclaimPreviews ? '...' : (reclaimPreviewNoCallNoAppt[basket.basket_key] || 0).toLocaleString()}
                                                             </div>
                                                         </div>
                                                         <div className="flex flex-col items-end">
                                                             <div className="text-[10px] text-gray-400 font-medium leading-none mb-1">โทรแล้วไม่นัด</div>
                                                             <div className={`text-sm font-semibold ${loadingReclaimPreviews ? 'text-gray-300' : 'text-red-500'}`}>
                                                                 {loadingReclaimPreviews ? '...' : (reclaimPreviewCalledNoAppt[basket.basket_key] || 0).toLocaleString()}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-col items-end">
+                                                            <div className="text-[10px] text-gray-400 font-medium leading-none mb-1">โทรและนัด</div>
+                                                            <div className={`text-sm font-semibold ${loadingReclaimPreviews ? 'text-gray-300' : 'text-green-600'}`}>
+                                                                {loadingReclaimPreviews ? '...' : (reclaimPreviewCalledWithAppt[basket.basket_key] || 0).toLocaleString()}
                                                             </div>
                                                         </div>
                                                         <div className="w-[1px] h-8 bg-gray-200 mx-1"></div>
@@ -2211,8 +2221,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                 <option value="">-- เลือกการกระทำ --</option>
                                                 <option value="transfer">➡️ โอนให้ Telesale อื่น</option>
                                                 <option value="reclaim_all">🔄 ดึงคืนทั้งหมด</option>
-                                                <option value="reclaim_no_appt">📅 ดึงเฉพาะไม่มีนัดหมาย</option>
-                                                <option value="reclaim_called_no_appt">📞 ดึงเฉพาะคนที่โทรแล้วไม่นัด</option>
+                                                <option value="reclaim_no_call_no_appt">📅 ดึงเฉพาะไม่มีการโทร</option>
+                                                <option value="reclaim_called_no_appt">📞 ดึงเฉพาะโทรแล้วไม่นัด</option>
+                                                <option value="reclaim_called_with_appt">✅ ดึงเฉพาะโทรและนัด</option>
                                             </select>
                                         </div>
 

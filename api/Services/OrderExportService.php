@@ -55,9 +55,19 @@ class OrderExportService {
 
     public static function calculateCreatorTotals(array $rows): array {
         $creatorTotals = [];
+        $orderGross = [];
+        $orderAdjustments = [];
+
         foreach ($rows as $r) {
             $orderId = $r['order_id'];
             $creatorId = $r['item_creator_id'] ?? $r['creator_id'] ?? '';
+            
+            if (!isset($orderAdjustments[$orderId])) {
+                $orderAdjustments[$orderId] = [
+                    'shipping_cost' => (float)($r['shipping_cost'] ?? 0),
+                    'bill_discount' => (float)($r['bill_discount'] ?? 0)
+                ];
+            }
             
             $qty = (int)($r['quantity'] ?? 0);
             $price = (float)($r['price_per_unit'] ?? 0);
@@ -84,8 +94,38 @@ class OrderExportService {
                 if (!isset($creatorTotals[$orderId])) $creatorTotals[$orderId] = [];
                 if (!isset($creatorTotals[$orderId][$creatorId])) $creatorTotals[$orderId][$creatorId] = 0;
                 $creatorTotals[$orderId][$creatorId] += $itTotal;
+                
+                if (!isset($orderGross[$orderId])) $orderGross[$orderId] = 0;
+                $orderGross[$orderId] += $itTotal;
             }
         }
+        
+        // Second pass: apply proration for shipping cost and bill discount
+        foreach ($creatorTotals as $orderId => &$creators) {
+            $gross = $orderGross[$orderId] ?? 0;
+            $shipping = $orderAdjustments[$orderId]['shipping_cost'] ?? 0;
+            $discount = $orderAdjustments[$orderId]['bill_discount'] ?? 0;
+            
+            if ($shipping == 0 && $discount == 0) {
+                continue; // No adjustments needed
+            }
+            
+            if ($gross > 0) {
+                foreach ($creators as $creatorId => &$total) {
+                    $ratio = $total / $gross;
+                    $total = $total + ($shipping * $ratio) - ($discount * $ratio);
+                }
+            } else {
+                // If gross is 0 (e.g. all items free), divide equally
+                $creatorCount = count($creators);
+                if ($creatorCount > 0) {
+                    foreach ($creators as $creatorId => &$total) {
+                        $total = $total + ($shipping / $creatorCount) - ($discount / $creatorCount);
+                    }
+                }
+            }
+        }
+
         return $creatorTotals;
     }
 
@@ -98,11 +138,11 @@ class OrderExportService {
             'รหัสสินค้า/โปร', 'สินค้า', 'ประเภทสินค้า', 'ประเภทสินค้า (รีพอร์ต)',
             'ชื่อโปร',
             'ของแถม', 'จำนวน (ชิ้น)', 'ราคาต่อหน่วย', 'ส่วนลด', 'ยอดรวมรายการ',
-            'ค่าจัดส่ง (ต่อบิล)', 'ส่วนลดท้ายบิล', 'ยอดรวมทั้งบิล',
+            'ค่าจัดส่ง (ต่อบิล)', 'ส่วนลดท้ายบิล', 'ยอดรวมทั้งบิล', 'ยอดรวมรายคน',
             'หมายเลขกล่อง', 'หมายเลขติดตาม',
             'วันที่จัดส่ง Airport', 'สถานะจาก Airport',
             'สถานะออเดอร์', 'สถานะการชำระเงิน',
-            'สถานะสลิป', 'วันที่รับเงิน', 'ตะกร้าขาย', 'สาเหตุเงินขาด'
+            'สถานะสลิป', 'วันที่รับเงิน', 'ตะกร้าขาย', 'สาเหตุยอดไม่ตรง'
         ];
         
         if ($includeCommissionCols) {
@@ -253,6 +293,7 @@ class OrderExportService {
             $itemTotal,
             $isFirstItem ? (float)($row['shipping_cost'] ?? 0) : 0,
             $isFirstItem ? (float)($row['bill_discount'] ?? 0) : 0,
+            $isFirstItem ? (float)($row['total_amount'] ?? 0) : '-',
             $displayCreatorTotal,
             $row['box_number'] ?? 1,
             $trackingNumbers,

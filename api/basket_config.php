@@ -654,11 +654,14 @@ function handleReclaimCustomers($pdo, $companyId)
                 AND c.current_basket_key = ?
             ";
             
-            if ($reclaimMode === 'called_no_appt') {
-                $selectSql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id) ";
-                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.date >= CURDATE()) ";
-            } else if ($reclaimMode === 'all_no_appt') {
-                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.date >= CURDATE()) ";
+            if ($reclaimMode === 'no_call_no_appt') {
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            } else if ($reclaimMode === 'called_no_appt') {
+                $selectSql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            } else if ($reclaimMode === 'called_with_appt') {
+                $selectSql .= " AND EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
             }
             
             // Best Practice: Reclaim the oldest unused customers first instead of random ones
@@ -741,6 +744,52 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
     }
 
     try {
+        if ($reclaimMode === 'all_categories') {
+            // Optimized query: Fetch all 3 categories in a single query
+            $sql = "
+                SELECT bc.basket_key,
+                    SUM(CASE WHEN 
+                        NOT EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) AND 
+                        NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01'))
+                    THEN 1 ELSE 0 END) as count_no_call_no_appt,
+                    SUM(CASE WHEN 
+                        EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) AND 
+                        NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01'))
+                    THEN 1 ELSE 0 END) as count_called_no_appt,
+                    SUM(CASE WHEN 
+                        EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01'))
+                    THEN 1 ELSE 0 END) as count_called_with_appt
+                FROM customers c
+                JOIN basket_config bc ON bc.id = c.current_basket_key AND bc.company_id = 1
+                WHERE c.company_id = ? 
+                AND c.assigned_to = ?
+                GROUP BY bc.basket_key
+            ";
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$companyId, $agentId]);
+            
+            $results = [
+                'no_call_no_appt' => [],
+                'called_no_appt' => [],
+                'called_with_appt' => []
+            ];
+            
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $results['no_call_no_appt'][$row['basket_key']] = (int)$row['count_no_call_no_appt'];
+                $results['called_no_appt'][$row['basket_key']] = (int)$row['count_called_no_appt'];
+                $results['called_with_appt'][$row['basket_key']] = (int)$row['count_called_with_appt'];
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'message' => 'Success',
+                'data' => null,
+                'counts' => $results
+            ]);
+            return;
+        }
+
         // Find counts per dashboard basket where customer has NO valid appointment
         $sql = "
             SELECT bc.basket_key, COUNT(c.customer_id) as unassigned_count
@@ -750,11 +799,14 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
             AND c.assigned_to = ?
         ";
         
-        if ($reclaimMode === 'called_no_appt') {
-            $sql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id) ";
-            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.date >= CURDATE()) ";
-        } else if ($reclaimMode === 'all_no_appt') {
-            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.date >= CURDATE()) ";
+        if ($reclaimMode === 'no_call_no_appt') {
+            $sql .= " AND NOT EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+        } else if ($reclaimMode === 'called_no_appt') {
+            $sql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+        } else if ($reclaimMode === 'called_with_appt') {
+            $sql .= " AND EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
         }
         
         $sql .= " GROUP BY bc.basket_key";
