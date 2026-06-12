@@ -117,6 +117,19 @@ export default function CompanySettingsPage() {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleToggleInventory = (checked: boolean) => {
+    if (!selectedCompanyId) return;
+    const key = `SHOW_JST_INVENTORY_${selectedCompanyId}`;
+    setSettings(prev => ({ ...prev, [key]: checked ? "1" : "0" }));
+  };
+
+  const getShowInventoryValue = () => {
+    if (!selectedCompanyId) return true;
+    const key = `SHOW_JST_INVENTORY_${selectedCompanyId}`;
+    if (settings[key] === undefined) return true; // Default to true if not set
+    return settings[key] === "1" || settings[key] === "true";
+  };
+
 
   if (!sessionUser) return null;
 
@@ -205,6 +218,22 @@ export default function CompanySettingsPage() {
                         onChange={(e) => handleChange("JST_PASSWORD", e.target.value)}
                       />
                     <p className="text-xs text-gray-500 mt-1">Required for RSA encryption login to JST ERP.</p>
+                  </div>
+                  
+                  <div className="pt-4 border-t border-blue-100 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-900">แสดงผลจำนวนสต็อก JST</h4>
+                      <p className="text-xs text-gray-500 mt-0.5">เปิดเพื่อแสดงข้อมูลสต็อกและคอลัมน์ JST ในหน้าเลือกสินค้า</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={getShowInventoryValue()}
+                        onChange={(e) => handleToggleInventory(e.target.checked)}
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
                   </div>
                 </div>
               </div>
