@@ -625,6 +625,21 @@ try {
             $syncInfoRow = $stmtEnv->fetchColumn();
             $syncInfo = $syncInfoRow ? json_decode($syncInfoRow, true) : ['time' => null, 'source' => 'Unknown'];
             
+            // Check if JST inventory should be shown
+            $showEnvKey = 'SHOW_JST_INVENTORY_' . $companyId;
+            $stmtShowEnv = $pdo->prepare("SELECT `value` FROM env WHERE `key` = ?");
+            $stmtShowEnv->execute([$showEnvKey]);
+            $showJstInventoryVal = $stmtShowEnv->fetchColumn();
+            
+            // Default to true if not set (or adjust as needed)
+            // Considering true/false, 1/0
+            $showJstInventory = true;
+            if ($showJstInventoryVal !== false && $showJstInventoryVal !== null) {
+                $valLower = strtolower(trim((string)$showJstInventoryVal));
+                $showJstInventory = ($valLower === '1' || $valLower === 'true');
+            }
+            $syncInfo['show_inventory'] = $showJstInventory;
+            
             json_response(['ok' => true, 'data' => $syncInfo]);
             break;
         case 'jst_inventory_logs':
