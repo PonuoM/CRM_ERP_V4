@@ -905,7 +905,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // Reclaim Logic
     const [reclaimModalOpen, setReclaimModalOpen] = useState(false);
-    const [reclaimingAgent, setReclaimingAgent] = useState<AgentWithBaskets | null>(null);
+    const [reclaimingAgent, setReclaimingAgent] = useState<any | null>(null);
     const [reclaiming, setReclaiming] = useState(false);
     
     // Reclaim Preview Data
@@ -1067,6 +1067,36 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setBulkActionType(null); // Reset action
         setBulkTargetAgent(null); // Reset target agent
         setBulkLimit(''); // Reset limit
+        setReclaimModalOpen(true);
+    };
+
+    const handleOpenBulkActionAllModal = () => {
+        const aggregateCounts: Record<string, number> = {};
+        agents.forEach(agent => {
+            if (agent.basketCounts) {
+                Object.keys(agent.basketCounts).forEach(key => {
+                    aggregateCounts[key] = (aggregateCounts[key] || 0) + agent.basketCounts[key];
+                });
+            }
+        });
+
+        const allAgentFake = {
+            id: 'all',
+            firstName: 'ดึงคืน/โอน',
+            lastName: '(พนักงานทั้งหมด)',
+            basketCounts: aggregateCounts,
+            role: 'all',
+            status: 'active',
+            team_id: 0,
+            avatar_url: null,
+            company_id: currentUser?.companyId || 1
+        };
+        
+        setReclaimingAgent(allAgentFake);
+        setSelectedBaskets([]);
+        setBulkActionType(null);
+        setBulkTargetAgent(null);
+        setBulkLimit('');
         setReclaimModalOpen(true);
     };
 
@@ -1384,6 +1414,13 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     >
                         <Download size={16} />
                         Export
+                    </button>
+                    <button
+                        onClick={handleOpenBulkActionAllModal}
+                        className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
+                    >
+                        <ArrowRightLeft size={16} />
+                        ดึงคืน/โอน (ทั้งหมด)
                     </button>
                     <button
                         onClick={openFlexTransferModal}

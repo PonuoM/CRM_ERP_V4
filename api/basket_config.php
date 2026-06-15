@@ -648,11 +648,19 @@ function handleReclaimCustomers($pdo, $companyId)
 
             // First, get the customer IDs that will be affected (for logging)
             $selectSql = "
-                SELECT c.customer_id FROM customers c
+                SELECT c.customer_id, c.assigned_to FROM customers c
                 WHERE c.company_id = ? 
-                AND c.assigned_to = ?
                 AND c.current_basket_key = ?
             ";
+            
+            $params = [$companyId, $dashboardBasketId];
+            
+            if ($agentId === 'all') {
+                $selectSql .= " AND c.assigned_to IS NOT NULL AND c.assigned_to != 0 ";
+            } else {
+                $selectSql .= " AND c.assigned_to = ? ";
+                $params[] = $agentId;
+            }
             
             if ($reclaimMode === 'no_call_no_appt') {
                 $selectSql .= " AND NOT EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
@@ -668,8 +676,9 @@ function handleReclaimCustomers($pdo, $companyId)
             $selectSql .= " ORDER BY c.updated_at ASC LIMIT " . (int)$qty;
             
             $selectStmt = $pdo->prepare($selectSql);
-            $selectStmt->execute([$companyId, $agentId, $dashboardBasketId]);
-            $affectedCustomerIds = $selectStmt->fetchAll(PDO::FETCH_COLUMN);
+            $selectStmt->execute($params);
+            $affectedCustomers = $selectStmt->fetchAll(PDO::FETCH_ASSOC);
+            $affectedCustomerIds = array_column($affectedCustomers, 'customer_id');
 
             if (empty($affectedCustomerIds)) {
                 continue; // No customers to reclaim
@@ -696,14 +705,27 @@ function handleReclaimCustomers($pdo, $companyId)
                 'reclaimed' => $reclaimedCount
             ];
 
-            // Log basket transitions for each customer with assigned_to info
-            $logStmt = $pdo->prepare("
-                INSERT INTO basket_transition_log 
-                (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) 
-                VALUES (?, ?, ?, ?, NULL, ?, ?, ?, NOW())
-            ");
-            foreach ($affectedCustomerIds as $custId) {
-                $logStmt->execute([$custId, $dashboardBasketId, $targetBasketId, $agentId, 'reclaim', $agentId, 'Reclaimed from Telesale']);
+            // Log basket transitions for each customer with assigned_to info (Bulk Insert)
+            $chunkSize = 1000;
+            $chunks = array_chunk($affectedCustomers, $chunkSize);
+            
+            foreach ($chunks as $chunk) {
+                $logValues = [];
+                $logParams = [];
+                foreach ($chunk as $cust) {
+                    $custId = $cust['customer_id'];
+                    $oldAgent = $cust['assigned_to'];
+                    $triggeredBy = $agentId === 'all' ? $oldAgent : $agentId;
+                    
+                    $logValues[] = "(?, ?, ?, ?, NULL, ?, ?, ?, NOW())";
+                    array_push($logParams, $custId, $dashboardBasketId, $targetBasketId, $oldAgent, 'reclaim', $triggeredBy, 'Reclaimed from Telesale');
+                }
+                
+                $logSql = "INSERT INTO basket_transition_log 
+                    (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) 
+                    VALUES " . implode(', ', $logValues);
+                $logStmt = $pdo->prepare($logSql);
+                $logStmt->execute($logParams);
             }
         }
 
@@ -744,6 +766,14 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
     }
 
     try {
+        $agentCondition = "AND c.assigned_to = ?";
+        $params = [$companyId, $agentId];
+        
+        if ($agentId === 'all') {
+            $agentCondition = "AND c.assigned_to IS NOT NULL AND c.assigned_to != 0";
+            $params = [$companyId];
+        }
+
         if ($reclaimMode === 'all_categories') {
             // Optimized query: Fetch all 3 categories in a single query
             $sql = "
@@ -762,12 +792,12 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
                 FROM customers c
                 JOIN basket_config bc ON bc.id = c.current_basket_key AND bc.company_id = 1
                 WHERE c.company_id = ? 
-                AND c.assigned_to = ?
+                $agentCondition
                 GROUP BY bc.basket_key
             ";
             
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$companyId, $agentId]);
+            $stmt->execute($params);
             
             $results = [
                 'no_call_no_appt' => [],
@@ -796,7 +826,7 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
             FROM customers c
             JOIN basket_config bc ON bc.id = c.current_basket_key AND bc.company_id = 1
             WHERE c.company_id = ? 
-            AND c.assigned_to = ?
+            $agentCondition
         ";
         
         if ($reclaimMode === 'no_call_no_appt') {
@@ -812,7 +842,7 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
         $sql .= " GROUP BY bc.basket_key";
 
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$companyId, $agentId]);
+        $stmt->execute($params);
         
         $results = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -879,14 +909,7 @@ function handleTransferCustomers($pdo, $companyId)
     try {
         set_audit_context($pdo, 'basket_config/transfer');
 
-        $selectStmt = $pdo->prepare("
-            SELECT customer_id, previous_assigned_to 
-            FROM customers 
-            WHERE company_id = ? 
-            AND assigned_to = ?
-            AND current_basket_key = ?
-            LIMIT ?
-        ");
+
 
         $updateStmt = $pdo->prepare("
             UPDATE customers 
@@ -896,11 +919,7 @@ function handleTransferCustomers($pdo, $companyId)
             WHERE customer_id = ? AND company_id = ?
         ");
 
-        $logStmt = $pdo->prepare("
-            INSERT INTO basket_transition_log 
-            (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-        ");
+
 
         $results = [];
         $totalTransferred = 0;
@@ -940,8 +959,27 @@ function handleTransferCustomers($pdo, $companyId)
                 continue;
             }
 
-            // Select customers to transfer
-            $selectStmt->execute([$companyId, $fromAgentId, $basketId, $count]);
+            // Select customers to transfer (Dynamic to support 'all' agents)
+            $selectSql = "
+                SELECT customer_id, previous_assigned_to, assigned_to as current_agent 
+                FROM customers 
+                WHERE company_id = ? 
+                AND current_basket_key = ?
+            ";
+            $selectParams = [$companyId, $basketId];
+
+            if ($fromAgentId === 'all') {
+                $selectSql .= " AND assigned_to IS NOT NULL AND assigned_to != 0 AND assigned_to != ? ";
+                $selectParams[] = $toAgentId; // Don't transfer to self
+            } else {
+                $selectSql .= " AND assigned_to = ? ";
+                $selectParams[] = $fromAgentId;
+            }
+            
+            $selectSql .= " ORDER BY updated_at ASC LIMIT " . (int)$count;
+            
+            $selectStmt = $pdo->prepare($selectSql);
+            $selectStmt->execute($selectParams);
             $customers = $selectStmt->fetchAll(PDO::FETCH_ASSOC);
 
             $transferredCount = 0;
@@ -963,17 +1001,31 @@ function handleTransferCustomers($pdo, $companyId)
 
                 if ($updateStmt->rowCount() > 0) {
                     $transferredCount++;
+                }
+            }
 
-                    $logStmt->execute([
-                        $customerId,
-                        $basketId,
-                        $basketId,
-                        $fromAgentId,
-                        $toAgentId,
-                        'transfer',
-                        $fromAgentId,
-                        "Transferred from agent $fromAgentId to agent $toAgentId"
-                    ]);
+            // Log basket transitions (Bulk Insert)
+            if (!empty($customers)) {
+                $chunkSize = 1000;
+                $chunks = array_chunk($customers, $chunkSize);
+                
+                foreach ($chunks as $chunk) {
+                    $logValues = [];
+                    $logParams = [];
+                    foreach ($chunk as $cust) {
+                        $custId = $cust['customer_id'];
+                        $oldAgent = $cust['current_agent'];
+                        $triggeredBy = $fromAgentId === 'all' ? $oldAgent : $fromAgentId;
+                        
+                        $logValues[] = "(?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                        array_push($logParams, $custId, $basketKey, $basketKey, $oldAgent, $toAgentId, 'transfer', $triggeredBy, "Transferred from agent $oldAgent to agent $toAgentId");
+                    }
+                    
+                    $logSql = "INSERT INTO basket_transition_log 
+                        (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) 
+                        VALUES " . implode(', ', $logValues);
+                    $bulkLogStmt = $pdo->prepare($logSql);
+                    $bulkLogStmt->execute($logParams);
                 }
             }
 
