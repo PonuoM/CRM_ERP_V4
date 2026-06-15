@@ -641,6 +641,7 @@ export interface Order {
   items: LineItem[];
   shippingCost: number;
   billDiscount: number;
+  couponDiscount?: number;
   totalAmount: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;

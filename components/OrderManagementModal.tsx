@@ -2392,6 +2392,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         currentOrder.billDiscount,
         effectiveBoxes
       ).totalAmount;
+      const payableAmount = Math.max(0, orderTotal - Number(currentOrder.couponDiscount || 0));
 
       // [PREVENTION] AwaitingVerification requires Amount Paid > 0
       if (currentOrder.orderStatus === OrderStatus.AwaitingVerification) {
@@ -2413,10 +2414,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         return;
       }
 
-      if (Math.abs(codTotal - orderTotal) > 0.1) {
+      if (Math.abs(codTotal - payableAmount) > 0.1) {
         // Floating point tolerance
         alert(
-          `ไม่สามารถบันทึกได้: ยอดเก็บเงินปลายทางรวม (${codTotal.toLocaleString()}) ไม่ตรงกับยอดรวมออเดอร์ (${orderTotal.toLocaleString()})\nกรุณาแก้ไขยอดเก็บเงินในแต่ละกล่องให้ถูกต้อง`,
+          `ไม่สามารถบันทึกได้: ยอดเก็บเงินปลายทางรวม (${codTotal.toLocaleString()}) ไม่ตรงกับยอดที่ต้องชำระ (${payableAmount.toLocaleString()})\nกรุณาแก้ไขยอดเก็บเงินในแต่ละกล่องให้ถูกต้อง`,
         );
         return;
       }
@@ -2679,14 +2680,16 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       rawItemsSubtotal,
       rawItemsDiscount,
       rawTotalAmount,
-      returnedAmount
+      returnedAmount,
+      payableAmount: Math.max(0, totalAmount - Number(currentOrder.couponDiscount || 0)),
+      rawPayableAmount: Math.max(0, rawTotalAmount - Number(currentOrder.couponDiscount || 0))
     };
-  }, [currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount, currentOrder.boxes]);
+  }, [currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount, currentOrder.boxes, currentOrder.couponDiscount]);
 
   const remainingBalance = useMemo(() => {
     const paid = currentOrder.amountPaid || 0;
-    return (calculatedTotals.totalAmount || 0) - paid;
-  }, [calculatedTotals.totalAmount, currentOrder.amountPaid]);
+    return (calculatedTotals.payableAmount || 0) - paid;
+  }, [calculatedTotals.payableAmount, currentOrder.amountPaid]);
 
   const derivedAmountStatus = useMemo(() => {
     const diff = remainingBalance;
@@ -3911,14 +3914,45 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       colSpan={5}
                       className="px-3 py-2 text-sm font-bold text-gray-800"
                     >
-                      ยอดสุทธิ
+                      ยอดสุทธิ (KPI)
                     </td>
 
                     <td
                       colSpan={showInputs ? 3 : 2}
-                      className="px-3 py-2 text-right text-base font-bold text-gray-900"
+                      className="px-3 py-2 text-right text-sm font-bold text-gray-600"
                     >
                       ฿{calculatedTotals.rawTotalAmount.toLocaleString()}
+                    </td>
+                  </tr>
+
+                  {Number(currentOrder.couponDiscount || 0) > 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-2 text-xs text-gray-600">
+                        คูปองส่วนลด
+                      </td>
+
+                      <td
+                        colSpan={showInputs ? 3 : 2}
+                        className="px-3 py-2 text-right text-xs text-red-600"
+                      >
+                        -฿{Number(currentOrder.couponDiscount).toLocaleString()}
+                      </td>
+                    </tr>
+                  )}
+
+                  <tr className="border-t-2">
+                    <td
+                      colSpan={5}
+                      className="px-3 py-2 text-sm font-bold text-gray-800"
+                    >
+                      ยอดที่ต้องชำระ
+                    </td>
+
+                    <td
+                      colSpan={showInputs ? 3 : 2}
+                      className="px-3 py-2 text-right text-base font-bold text-green-700"
+                    >
+                      ฿{calculatedTotals.rawPayableAmount.toLocaleString()}
                     </td>
                   </tr>
                 </tfoot>

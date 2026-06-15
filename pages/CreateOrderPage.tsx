@@ -332,6 +332,9 @@ const OrderSummary: React.FC<{
     [subTotal, orderData.shippingCost, billDiscountAmount],
   );
 
+  const couponDiscount = Number(orderData.couponDiscount || 0);
+  const payableAmount = Math.max(0, totalAmount - couponDiscount);
+
   return (
     <div className="bg-white border border-gray-300 rounded-lg p-4 sticky top-6">
       <h3 className="font-semibold text-base mb-3 pb-2 border-b text-[#0e141b]">
@@ -386,10 +389,31 @@ const OrderSummary: React.FC<{
           </div>
         </div>
 
-        <div className="flex justify-between font-bold text-base border-t pt-3 mt-3">
-          <span className="text-[#0e141b]">ยอดสุทธิ</span>
+        <div className="flex justify-between items-center text-[#4e7397]">
+          <span>คูปองส่วนลด</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={orderData.couponDiscount || 0}
+              onChange={(e) =>
+                onUpdateOrder("couponDiscount", Number(e.target.value))
+              }
+              onFocus={(e) => e.target.select()}
+              className="w-24 p-1 text-right border border-gray-300 rounded text-sm text-red-600 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
 
-          <span className="text-green-600">฿{totalAmount.toFixed(2)}</span>
+        <div className="flex justify-between font-bold text-base border-t pt-3 mt-3">
+          <span className="text-[#0e141b]">ยอดสุทธิ (KPI)</span>
+
+          <span className="text-[#4e7397]">฿{totalAmount.toFixed(2)}</span>
+        </div>
+
+        <div className="flex justify-between font-bold text-lg pt-1">
+          <span className="text-[#0e141b]">ยอดที่ต้องชำระ</span>
+
+          <span className="text-green-600">฿{payableAmount.toFixed(2)}</span>
         </div>
       </div>
 
@@ -2192,6 +2216,23 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     [subTotal, orderData.shippingCost, billDiscountAmount],
   );
 
+  const couponDiscount = useMemo(
+    () => Number(orderData.couponDiscount || 0),
+    [orderData.couponDiscount]
+  );
+
+  const payableAmount = useMemo(
+    () => Math.max(0, totalAmount - couponDiscount),
+    [totalAmount, couponDiscount]
+  );
+
+  useEffect(() => {
+    // If payable amount is 0, auto-switch to DiscountCoupon to bypass statement checking
+    if (payableAmount === 0 && orderData.paymentMethod !== PaymentMethod.DiscountCoupon) {
+      updateOrderData("paymentMethod", PaymentMethod.DiscountCoupon);
+    }
+  }, [payableAmount, orderData.paymentMethod]);
+
   // Fetch bank accounts on mount
 
   useEffect(() => {
@@ -2763,33 +2804,33 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const isCodValid = useMemo(() => {
     if (orderData.paymentMethod !== PaymentMethod.COD) return true;
 
-    return codTotal.toFixed(2) === totalAmount.toFixed(2) && totalAmount > 0;
-  }, [orderData.paymentMethod, totalAmount, codTotal]);
+    return codTotal.toFixed(2) === payableAmount.toFixed(2) && payableAmount >= 0;
+  }, [orderData.paymentMethod, payableAmount, codTotal]);
 
   // Auto-fill COD amount for single box when COD is selected
   useEffect(() => {
     if (orderData.paymentMethod === PaymentMethod.COD && numBoxes === 1) {
       const currentCod = orderData.boxes?.[0]?.codAmount || 0;
-      if (currentCod !== totalAmount && totalAmount > 0) {
+      if (currentCod !== payableAmount && payableAmount >= 0) {
         updateOrderData("boxes", [
           {
             boxNumber: 1,
-            codAmount: totalAmount,
+            codAmount: payableAmount,
             weight: orderData.boxes?.[0]?.weight || 0,
             trackingNumber: orderData.boxes?.[0]?.trackingNumber || "",
           }
         ]);
       }
     }
-  }, [orderData.paymentMethod, numBoxes, totalAmount]);
+  }, [orderData.paymentMethod, numBoxes, payableAmount]);
 
   const codRemaining = useMemo(() => {
-    const totalRounded = Number(totalAmount.toFixed(2));
+    const payableRounded = Number(payableAmount.toFixed(2));
 
     const codRounded = Number(codTotal.toFixed(2));
 
-    return Number((totalRounded - codRounded).toFixed(2));
-  }, [totalAmount, codTotal]);
+    return Number((payableRounded - codRounded).toFixed(2));
+  }, [payableAmount, codTotal]);
 
   // Search results handled by useEffect above
 
@@ -4609,7 +4650,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           (sum, slip) => sum + (Number(slip.amount) || 0),
           0
         );
-        if (Math.abs(totalSlipAmount - totalAmount) > 0.01) {
+        if (Math.abs(totalSlipAmount - payableAmount) > 0.01) {
           const hasMismatchReason = transferSlipUploads.some((s) => s.mismatchReason && s.mismatchReason.trim() !== "");
           if (!hasMismatchReason) {
             highlightField("transferSlips");
@@ -4643,7 +4684,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (orderData.paymentMethod === PaymentMethod.COD && !isCodValid) {
         highlightField("cod");
 
-        alert("ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดสุทธิ");
+        alert("ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดที่ต้องชำระ (Payable Amount)");
 
         return;
       }
