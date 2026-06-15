@@ -771,27 +771,28 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             { width: 10 }, // A
             { width: 25 }, // B
             { width: 22 }, // C
-            { width: 25 }, // D
-            { width: 20 }, // E
-            { width: 4 },  // F (spacer)
-            { width: 25 }, // G
-            { width: 4 },  // H (spacer)
-            { width: 25 }, // I
-            { width: 4 },  // J (spacer)
-            { width: 25 }, // K
-            { width: 20 }  // L
+            { width: 20 }, // D (Call Time)
+            { width: 25 }, // E
+            { width: 20 }, // F
+            { width: 4 },  // G (spacer)
+            { width: 25 }, // H
+            { width: 4 },  // I (spacer)
+            { width: 25 }, // J
+            { width: 4 },  // K (spacer)
+            { width: 25 }, // L
+            { width: 20 }  // M
         ];
 
         // Row 1: Titles
-        const row1 = worksheet.addRow(["ตารางหลัก", "", "", "", "", "", "เข้าเกณฑ์", "", "ไม่เข้าเกณฑ์", "", "พนักงาน/รายชื่อ", ""]);
+        const row1 = worksheet.addRow(["ตารางหลัก", "", "", "", "", "", "", "เข้าเกณฑ์", "", "ไม่เข้าเกณฑ์", "", "พนักงาน/รายชื่อ", ""]);
         row1.font = { bold: true };
         row1.alignment = { horizontal: 'center' };
-        worksheet.mergeCells('A1:E1');
-        worksheet.mergeCells('K1:L1');
+        worksheet.mergeCells('A1:F1');
+        worksheet.mergeCells('L1:M1');
 
         // Row 2: Headers
         const row2 = worksheet.addRow([
-            "Agent ID", "ชื่อพนักงาน", "ตำแหน่ง", "สถานะ", "จำนวนที่ได้รับรายชื่อ", "", 
+            "Agent ID", "ชื่อพนักงาน", "ตำแหน่ง", "เวลาโทร", "สถานะ", "จำนวนที่ได้รับรายชื่อ", "", 
             "ชื่อพนักงาน", "", "ชื่อพนักงาน", "", "ชื่อพนักงาน", "จำนวนที่ได้รับรายชื่อ"
         ]);
 
@@ -800,7 +801,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         const borderThin = { style: 'thin' };
         const allBorders = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
 
-        const styledCols = [1, 2, 3, 4, 5, 7, 9, 11, 12]; // 1-based index
+        const styledCols = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13]; // 1-based index
         styledCols.forEach(col => {
             const cell = row2.getCell(col);
             cell.fill = headerFills as any;
@@ -811,7 +812,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         // Rows 3..N
         for (let i = 0; i < maxRows; i++) {
             const a = targetAgents[i];
-            let col1 = "", col2 = "", col3 = "", col4 = "", col5: number | string = "";
+            let col1 = "", col2 = "", col3 = "", col4 = "", col5 = "", col6: number | string = "";
             if (a) {
                 const stat = summaryStats.agentStats[a.id];
                 const received = stat ? stat.success : 0;
@@ -825,41 +826,51 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         status = 'หลุดเกณฑ์';
                     }
                 }
+                
+                let timeStr = "-";
+                if (a.callMinutes !== undefined) {
+                    const totalSecs = Math.round(a.callMinutes * 60);
+                    const m = Math.floor(totalSecs / 60);
+                    const s = totalSecs % 60;
+                    timeStr = `${m} นาที ${s} วินาที`;
+                }
+
                 col1 = a.id.toString();
                 col2 = `${a.firstName} ${a.lastName}`;
                 col3 = a.role === UserRole.Supervisor ? 'Supervisor Telesale' : (a.role === UserRole.Telesale ? 'Telesale' : (a.role || '-'));
-                col4 = status;
-                col5 = received;
+                col4 = timeStr;
+                col5 = status;
+                col6 = received;
             }
 
             const p = passedAgents[i];
-            const col7 = p ? `${p.firstName} ${p.lastName}` : "";
+            const col8 = p ? `${p.firstName} ${p.lastName}` : "";
 
             const f = failedAgents[i];
-            const col9 = f ? `${f.firstName} ${f.lastName}` : "";
+            const col10 = f ? `${f.firstName} ${f.lastName}` : "";
 
             const r = receivedAgents[i];
-            let col11 = "", col12: number | string = "";
+            let col12 = "", col13: number | string = "";
             if (r) {
                 const stat = summaryStats.agentStats[r.id];
-                col11 = `${r.firstName} ${r.lastName}`;
-                col12 = stat ? stat.success : 0;
+                col12 = `${r.firstName} ${r.lastName}`;
+                col13 = stat ? stat.success : 0;
             }
 
-            const row = worksheet.addRow([col1, col2, col3, col4, col5, "", col7, "", col9, "", col11, col12]);
+            const row = worksheet.addRow([col1, col2, col3, col4, col5, col6, "", col8, "", col10, "", col12, col13]);
             
             // Add borders to cells with data
             if (a) {
-                [1, 2, 3, 4, 5].forEach(c => row.getCell(c).border = allBorders as any);
+                [1, 2, 3, 4, 5, 6].forEach(c => row.getCell(c).border = allBorders as any);
             }
             if (p) {
-                row.getCell(7).border = allBorders as any;
+                row.getCell(8).border = allBorders as any;
             }
             if (f) {
-                row.getCell(9).border = allBorders as any;
+                row.getCell(10).border = allBorders as any;
             }
             if (r) {
-                [11, 12].forEach(c => row.getCell(c).border = allBorders as any);
+                [12, 13].forEach(c => row.getCell(c).border = allBorders as any);
             }
         }
 
