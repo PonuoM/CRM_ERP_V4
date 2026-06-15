@@ -2227,11 +2227,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   );
 
   useEffect(() => {
-    // If payable amount is 0 BUT totalAmount is > 0 (meaning coupon fully covered it),
-    // auto-switch to DiscountCoupon to bypass statement checking.
-    // We don't want to auto-switch when the order is completely empty (totalAmount === 0).
-    if (totalAmount > 0 && payableAmount === 0 && orderData.paymentMethod !== PaymentMethod.DiscountCoupon) {
-      updateOrderData("paymentMethod", PaymentMethod.DiscountCoupon);
+    if (totalAmount > 0 && payableAmount === 0) {
+      if (orderData.paymentMethod !== PaymentMethod.DiscountCoupon) {
+        updateOrderData("paymentMethod", PaymentMethod.DiscountCoupon);
+      }
+    } else if (orderData.paymentMethod === PaymentMethod.DiscountCoupon) {
+      // Reset payment method if it was DiscountCoupon but payableAmount is no longer 0
+      updateOrderData("paymentMethod", undefined);
     }
   }, [payableAmount, totalAmount, orderData.paymentMethod]);
 
@@ -9192,7 +9194,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             : undefined,
                         )
                       }
-                      className={commonInputClass}
+                      disabled={orderData.paymentMethod === PaymentMethod.DiscountCoupon}
+                      className={`${commonInputClass} ${orderData.paymentMethod === PaymentMethod.DiscountCoupon ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                     >
                       <option value="">เลือกวิธีการชำระเงิน</option>
                       <option value={PaymentMethod.Transfer}>โอนเงิน</option>
@@ -9204,7 +9207,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </option>
                       <option value={PaymentMethod.Claim}>ส่งเคลม</option>
                       <option value={PaymentMethod.FreeGift}>ส่งของแถม</option>
-                      <option value={PaymentMethod.DiscountCoupon}>คูปองส่วนลด</option>
+                      {orderData.paymentMethod === PaymentMethod.DiscountCoupon && (
+                        <option value={PaymentMethod.DiscountCoupon}>คูปองส่วนลด (อัตโนมัติ)</option>
+                      )}
                     </select>
                   </div>
 
