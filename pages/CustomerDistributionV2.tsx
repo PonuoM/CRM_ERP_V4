@@ -3,7 +3,8 @@ import { apiFetch } from '../services/api';
 import { User, Customer, UserRole } from '../types';
 import {
     Users, Package, Search, ChevronDown, Check, Loader2, AlertCircle,
-    RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download, ArrowRight, Filter
+    RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download, ArrowRight, Filter,
+    Zap, Scale, TrendingUp, Minus
 } from 'lucide-react';
 import UniversalDateRangePicker, { DateRange } from '../components/UniversalDateRangePicker';
 import resolveApiBasePath from '../utils/apiBasePath';
@@ -100,6 +101,12 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     );
     const [callThresholdMinutes, setCallThresholdMinutes] = useState<string>('100');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
+
+    // Distribution Modes State
+    type DistributionMode = 'equal' | 'load_balance' | 'performance';
+    const [distributionMode, setDistributionMode] = useState<DistributionMode>('equal');
+    const [distributeRemainder, setDistributeRemainder] = useState(false);
+    const [agentQuotas, setAgentQuotas] = useState<Record<number, string>>({});
 
     // Manual Reset State
     const [resetModalOpen, setResetModalOpen] = useState(false);
@@ -459,6 +466,99 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const availableCount = basketCounts[activeBasket] || 0;
     const totalInAllBaskets = Object.values(basketCounts).reduce((a, b) => a + b, 0);
 
+    // Auto-calculate quotas when mode, total, or agents change
+    useEffect(() => {
+        if (selectedAgents.length === 0) {
+            setAgentQuotas({});
+            return;
+        }
+
+        const total = parseInt(totalToDistribute) || 0;
+        if (total <= 0) {
+            const zeros: Record<number, string> = {};
+            selectedAgents.forEach(id => zeros[id] = '0');
+            setAgentQuotas(zeros);
+            return;
+        }
+
+        const newQuotas: Record<number, number> = {};
+        selectedAgents.forEach(id => newQuotas[id] = 0);
+        let remainder = total;
+
+        if (distributionMode === 'equal') {
+            const base = Math.floor(total / selectedAgents.length);
+            selectedAgents.forEach(id => newQuotas[id] = base);
+            remainder = total - (base * selectedAgents.length);
+
+            if (distributeRemainder && remainder > 0) {
+                for (let i = 0; i < selectedAgents.length && remainder > 0; i++) {
+                    newQuotas[selectedAgents[i]]++;
+                    remainder--;
+                }
+            }
+        } else if (distributionMode === 'load_balance') {
+            const currentLoads: Record<number, number> = {};
+            selectedAgents.forEach(id => {
+                currentLoads[id] = agents.find(ag => ag.id === id)?.totalCustomers || 0;
+            });
+
+            for (let i = 0; i < total; i++) {
+                let minLoad = Infinity;
+                let minAgentId = selectedAgents[0];
+                for (const id of selectedAgents) {
+                    if (currentLoads[id] < minLoad) {
+                        minLoad = currentLoads[id];
+                        minAgentId = id;
+                    }
+                }
+                newQuotas[minAgentId]++;
+                currentLoads[minAgentId]++;
+            }
+        } else if (distributionMode === 'performance') {
+            const stats: Record<number, number> = {};
+            let totalCallMinutes = 0;
+            selectedAgents.forEach(id => {
+                const mins = agents.find(ag => ag.id === id)?.callMinutes || 0;
+                stats[id] = mins > 0 ? mins : 0;
+                totalCallMinutes += stats[id];
+            });
+
+            if (totalCallMinutes === 0) {
+                // Fallback to equal
+                const base = Math.floor(total / selectedAgents.length);
+                selectedAgents.forEach(id => newQuotas[id] = base);
+                remainder = total - (base * selectedAgents.length);
+                if (distributeRemainder && remainder > 0) {
+                    for (let i = 0; i < selectedAgents.length && remainder > 0; i++) {
+                        newQuotas[selectedAgents[i]]++;
+                        remainder--;
+                    }
+                }
+            } else {
+                selectedAgents.forEach(id => {
+                    const share = Math.floor((stats[id] / totalCallMinutes) * total);
+                    newQuotas[id] = share;
+                    remainder -= share;
+                });
+
+                if (remainder > 0) {
+                    const sortedAgents = [...selectedAgents].sort((a, b) => stats[b] - stats[a]);
+                    for (let i = 0; i < selectedAgents.length && remainder > 0; i++) {
+                        newQuotas[sortedAgents[i]]++;
+                        remainder--;
+                    }
+                }
+            }
+        }
+
+        const quotasStr: Record<number, string> = {};
+        for (const id in newQuotas) {
+            quotasStr[id] = newQuotas[id].toString();
+        }
+        setAgentQuotas(quotasStr);
+
+    }, [distributionMode, distributeRemainder, totalToDistribute, selectedAgents.length]);
+
     // Toggle agent selection
     const toggleAgent = (agentId: number) => {
         setSelectedAgents(prev =>
@@ -495,11 +595,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             return;
         }
 
-        // Calculate per-person count from total
         const total = parseInt(totalToDistribute) || 0;
-        const perPerson = selectedAgents.length > 0 ? Math.floor(total / selectedAgents.length) : 0;
-        if (perPerson <= 0) {
-            setMessage({ type: 'error', text: 'จำนวนไม่เพียงพอสำหรับแจกให้พนักงานที่เลือก' });
+        const totalQuotas = selectedAgents.reduce((sum, id) => sum + (parseInt(agentQuotas[id]) || 0), 0);
+        
+        if (totalQuotas <= 0 || totalQuotas > availableCount) {
+            setMessage({ type: 'error', text: 'จำนวนรายชื่อรวมที่จัดสรรไม่ถูกต้อง หรือเกินจำนวนที่มี' });
             return;
         }
 
@@ -564,7 +664,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         const quota: Record<number, number> = {};
         const assigned: Record<number, Customer[]> = {};
         selectedAgents.forEach(id => {
-            quota[id] = perPerson;
+            quota[id] = parseInt(agentQuotas[id]) || 0;
             assigned[id] = [];
         });
         const usedCustomers = new Set<string>();
@@ -2073,6 +2173,69 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         </div>
                     </div>
 
+                    {/* Distribution Modes */}
+                    <div className="mb-4">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">เลือกนโยบายการแจก (Distribution Mode)</label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                            {/* Equal Mode */}
+                            <div 
+                                onClick={() => setDistributionMode('equal')}
+                                className={`border rounded-xl p-4 cursor-pointer transition-all ${distributionMode === 'equal' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
+                            >
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Scale className={distributionMode === 'equal' ? 'text-blue-600' : 'text-gray-500'} size={20} />
+                                    <span className="font-semibold text-gray-800">Equal (เท่ากันทุกคน)</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mb-2">ทำยังไง: นำรายชื่อหารจำนวนคนตรงๆ ทุกคนได้เท่ากัน</p>
+                                <div className="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full w-fit font-medium">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> ไม่ Reward คนเก่ง
+                                </div>
+                            </div>
+                            
+                            {/* Load Balance Mode */}
+                            <div 
+                                onClick={() => setDistributionMode('load_balance')}
+                                className={`border rounded-xl p-4 cursor-pointer transition-all ${distributionMode === 'load_balance' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
+                            >
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Zap className={distributionMode === 'load_balance' ? 'text-blue-600' : 'text-gray-500'} size={20} />
+                                    <span className="font-semibold text-gray-800">Load Balance</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mb-2">ทำยังไง: ดูยอดลูกค้าปัจจุบัน ใครถือน้อยจะได้เยอะเพื่อบาลานซ์</p>
+                                <div className="flex items-center gap-1 text-[10px] bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full w-fit font-medium">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-500"></div> เติมพอร์ตให้คนขาด
+                                </div>
+                            </div>
+
+                            {/* Performance Mode */}
+                            <div 
+                                onClick={() => setDistributionMode('performance')}
+                                className={`border rounded-xl p-4 cursor-pointer transition-all ${distributionMode === 'performance' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
+                            >
+                                <div className="flex items-center gap-2 mb-2">
+                                    <TrendingUp className={distributionMode === 'performance' ? 'text-blue-600' : 'text-gray-500'} size={20} />
+                                    <span className="font-semibold text-gray-800">Performance (ความขยัน)</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mb-2">ทำยังไง: อิงยอด 'เวลาโทร' คนโทรเยอะจะได้สัดส่วนลูกค้าเยอะ</p>
+                                <div className="flex items-center gap-1 text-[10px] bg-red-100 text-red-700 px-2 py-1 rounded-full w-fit font-medium">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div> Reward คนขยัน
+                                </div>
+                            </div>
+                        </div>
+
+                        {distributionMode === 'equal' && (
+                            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer w-fit">
+                                <input 
+                                    type="checkbox" 
+                                    checked={distributeRemainder}
+                                    onChange={(e) => setDistributeRemainder(e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>กระจายเศษรายชื่อที่หารไม่ลงตัวให้พนักงาน (คนแรกๆ จะได้ +1)</span>
+                            </label>
+                        )}
+                    </div>
+
                     {loadingAgents ? (
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -2091,6 +2254,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                             />
                                         </th>
                                         <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
+                                        <th className="p-3 text-center font-medium text-gray-600 w-40">โควตารายชื่อ</th>
                                         <th className="p-3 text-center font-medium text-gray-600">เวลาโทร (สายรับ)</th>
                                         <th className="p-3 text-center font-medium text-gray-600">Action</th>
                                         <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
@@ -2104,16 +2268,17 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                 <tbody>
                                     {agents.map(agent => {
                                         const isInactive = !agent.isActive;
+                                        const isSelected = selectedAgents.includes(agent.id);
                                         return (
                                             <tr
                                                 key={agent.id}
-                                                className={`border-t ${isInactive ? 'opacity-60 bg-gray-50' : ''} hover:bg-gray-50 cursor-pointer ${selectedAgents.includes(agent.id) ? 'bg-blue-50' : ''}`}
+                                                className={`border-t ${isInactive ? 'opacity-60 bg-gray-50' : ''} hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`}
                                                 onClick={() => toggleAgent(agent.id)}
                                             >
                                                 <td className="p-3">
                                                     <input
                                                         type="checkbox"
-                                                        checked={selectedAgents.includes(agent.id)}
+                                                        checked={isSelected}
                                                         onChange={() => toggleAgent(agent.id)}
                                                         onClick={(e) => e.stopPropagation()}
                                                         className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -2125,6 +2290,33 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                         <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
                                                             {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
                                                         </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                                                    {isSelected ? (
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <button 
+                                                                onClick={() => setAgentQuotas(p => ({...p, [agent.id]: String(Math.max(0, (parseInt(p[agent.id]) || 0) - 1))}))}
+                                                                className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 text-gray-600"
+                                                            >
+                                                                <Minus size={14} />
+                                                            </button>
+                                                            <input 
+                                                                type="number"
+                                                                min="0"
+                                                                value={agentQuotas[agent.id] ?? '0'}
+                                                                onChange={(e) => setAgentQuotas(p => ({...p, [agent.id]: e.target.value}))}
+                                                                className="w-14 h-7 text-center border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                            />
+                                                            <button 
+                                                                onClick={() => setAgentQuotas(p => ({...p, [agent.id]: String((parseInt(p[agent.id]) || 0) + 1)}))}
+                                                                className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 text-gray-600"
+                                                            >
+                                                                <Plus size={14} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-center text-gray-400">-</div>
                                                     )}
                                                 </td>
                                                 <td className="p-3 text-center">
@@ -2779,19 +2971,55 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-auto">
                             <h3 className="text-xl font-bold mb-4">Preview การแจกงาน</h3>
 
+                            {/* Summary Dashboard */}
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
+                                    <div>
+                                        <div className="text-blue-600 font-semibold text-2xl">{preview.filter(p => p.customers.length > 0).length} คน</div>
+                                        <div className="text-sm text-blue-800">พนักงานที่ได้รับการแจก</div>
+                                    </div>
+                                    <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center text-blue-600">
+                                        <Check size={20} />
+                                    </div>
+                                </div>
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+                                    <div>
+                                        <div className="text-gray-600 font-semibold text-2xl">{preview.filter(p => p.customers.length === 0).length} คน</div>
+                                        <div className="text-sm text-gray-500">พนักงานที่ไม่ได้การแจก (ได้ 0 คน)</div>
+                                    </div>
+                                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500">
+                                        <Minus size={20} />
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="space-y-4 mb-6">
-                                {preview.map(item => (
-                                    <div key={item.agentId} className="border rounded-xl p-4">
+                                {preview.filter(item => item.customers.length > 0).map(item => (
+                                    <div key={item.agentId} className="border border-blue-200 bg-blue-50/30 rounded-xl p-4">
                                         <div className="flex items-center justify-between mb-2">
-                                            <span className="font-medium">{item.agentName}</span>
-                                            <span className="text-blue-600 font-semibold">{item.customers.length} รายชื่อ</span>
+                                            <span className="font-semibold text-blue-900">{item.agentName}</span>
+                                            <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-bold">{item.customers.length} รายชื่อ</span>
                                         </div>
-                                        <div className="text-sm text-gray-500">
+                                        <div className="text-sm text-gray-600">
                                             {item.customers.slice(0, 5).map(c => `${c.firstName} ${c.lastName}`).join(', ')}
-                                            {item.customers.length > 5 && ` และอีก ${item.customers.length - 5} คน`}
+                                            {item.customers.length > 5 && <span className="text-gray-400"> และอีก {item.customers.length - 5} คน</span>}
                                         </div>
                                     </div>
                                 ))}
+
+                                {/* Agents who received 0 */}
+                                {preview.filter(item => item.customers.length === 0).length > 0 && (
+                                    <>
+                                        <h4 className="text-sm font-semibold text-gray-500 mt-6 mb-2">พนักงานที่ไม่ได้รับการแจกรายชื่อในรอบนี้:</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {preview.filter(item => item.customers.length === 0).map(item => (
+                                                <div key={item.agentId} className="border border-gray-200 bg-gray-50 text-gray-500 px-3 py-1.5 rounded-lg text-sm flex items-center gap-2">
+                                                    {item.agentName} <span className="bg-gray-200 text-gray-500 text-xs px-1.5 py-0.5 rounded">0</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
                             </div>
 
                             <div className="flex justify-between items-center pt-4 border-t">
