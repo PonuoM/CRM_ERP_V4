@@ -28,6 +28,7 @@
     "apexcharts": "^5.3.5",
     "date-fns": "^4.3.0",
     "dexie": "^4.2.1",
+    "exceljs": "^4.4.0",
     "lucide-react": "^0.544.0",
     "react": "^19.1.1",
     "react-apexcharts": "^1.8.0",

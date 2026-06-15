@@ -13,6 +13,7 @@ import { downloadDataFile } from '../utils/exportUtils';
 import { mapCustomerFromApi } from '../utils/customerMapper';
 import Spinner from '../components/Spinner';
 import BlockedCustomersModal from '../components/BlockedCustomersModal';
+import ExcelJS from 'exceljs';
 
 interface CustomerDistributionV2Props {
     currentUser?: User | null;
@@ -40,6 +41,7 @@ interface AgentWithBaskets extends User {
     basketCounts: Record<string, number>;
     totalCustomers: number;
     isActive: boolean;
+    roleId?: number;
     callMinutes?: number;
 }
 
@@ -107,6 +109,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [distributionMode, setDistributionMode] = useState<DistributionMode>('equal');
     const [distributeRemainder, setDistributeRemainder] = useState(false);
     const [agentQuotas, setAgentQuotas] = useState<Record<number, string>>({});
+    const [previewConflictMap, setPreviewConflictMap] = useState<Record<string, number[]>>({});
+    const [previewCustomerPool, setPreviewCustomerPool] = useState<Customer[]>([]);
+    const [previewWarning, setPreviewWarning] = useState<string>('');
 
     // Manual Reset State
     const [resetModalOpen, setResetModalOpen] = useState(false);
@@ -339,6 +344,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     status: u.status || 'active',
                     isActive: (u.status || 'active') === 'active',
                     role: u.role,
+                    roleId: u.role_id || u.roleId || (u.role === UserRole.Supervisor ? 7 : 6), // Fallback if missing
                     companyId: u.companyId || u.company_id,
                     username: u.username,
                     customTags: u.customTags || [],
@@ -585,7 +591,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     // Generate preview with Conflict-Aware Smart Allocation
     // Fetches real conflict data from customer_assign_check, then uses
     // Most-Constrained-First + greedy agent selection to minimize duplicates
-    const handleGeneratePreview = async () => {
+    const handlePreparePreview = async () => {
         if (selectedAgents.length === 0) {
             setMessage({ type: 'error', text: 'กรุณาเลือกพนักงานอย่างน้อย 1 คน' });
             return;
@@ -596,10 +602,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
 
         const total = parseInt(totalToDistribute) || 0;
-        const totalQuotas = selectedAgents.reduce((sum, id) => sum + (parseInt(agentQuotas[id]) || 0), 0);
         
-        if (totalQuotas <= 0 || totalQuotas > availableCount) {
-            setMessage({ type: 'error', text: 'จำนวนรายชื่อรวมที่จัดสรรไม่ถูกต้อง หรือเกินจำนวนที่มี' });
+        if (total <= 0) {
+            setMessage({ type: 'error', text: 'กรุณาระบุจำนวนรายชื่อรวมที่ต้องการแจก' });
             return;
         }
 
@@ -630,11 +635,19 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             console.warn('[Distribution] Failed to fetch conflict data, falling back to previous_assigned_to', e);
         }
 
+        setPreviewConflictMap(conflictMap);
+        setPreviewCustomerPool(customerPool);
+        setShowPreview(true);
+    };
+
+    // Auto-generate preview when quotas or modal state changes
+    useEffect(() => {
+        if (!showPreview || previewCustomerPool.length === 0) return;
+
         // Helper: get conflict agents for a customer (merge backend + local data)
         const getConflictAgents = (customer: Customer): number[] => {
             const cid = customer.customer_id?.toString() || customer.id;
-            const backendConflicts = conflictMap[cid] || [];
-            // Also check previous_assigned_to from customer data as fallback
+            const backendConflicts = previewConflictMap[cid] || [];
             const prev = customer.previous_assigned_to;
             let localConflicts: number[] = [];
             if (prev) {
@@ -643,16 +656,15 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     try { localConflicts = JSON.parse(prev) || []; } catch { /* ignore */ }
                 }
             }
-            // Merge and deduplicate
             return [...new Set([...backendConflicts, ...localConflicts])];
         };
 
         // ═══════════════════════════════════════════
         // 2. Sort customers: Most Constrained First
-        //    (ลูกค้าที่เคยอยู่กับ agent หลายคน → จัดก่อน)
         // ═══════════════════════════════════════════
         const selectedSet = new Set(selectedAgents);
-        customerPool.sort((a, b) => {
+        const pool = [...previewCustomerPool];
+        pool.sort((a, b) => {
             const conflictsA = getConflictAgents(a).filter(id => selectedSet.has(id)).length;
             const conflictsB = getConflictAgents(b).filter(id => selectedSet.has(id)).length;
             return conflictsB - conflictsA; // more conflicts first
@@ -670,14 +682,13 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         const usedCustomers = new Set<string>();
 
         // Pass 1: Assign without conflicts
-        for (const customer of customerPool) {
+        for (const customer of pool) {
             const cid = customer.customer_id?.toString() || customer.id;
             if (usedCustomers.has(cid)) continue;
 
             const conflicts = getConflictAgents(customer);
             const conflictSet = new Set(conflicts);
 
-            // Find best agent: no conflict + fewest assignments so far + has quota
             const bestAgent = selectedAgents
                 .filter(id => quota[id] > 0 && !conflictSet.has(id))
                 .sort((a, b) => assigned[a].length - assigned[b].length)[0];
@@ -688,18 +699,16 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 usedCustomers.add(cid);
             }
 
-            // Stop early if all quotas filled
             if (selectedAgents.every(id => quota[id] <= 0)) break;
         }
 
         // Pass 2: Fallback — fill remaining quotas (allow conflicts)
-        for (const customer of customerPool) {
+        for (const customer of pool) {
             if (selectedAgents.every(id => quota[id] <= 0)) break;
 
             const cid = customer.customer_id?.toString() || customer.id;
             if (usedCustomers.has(cid)) continue;
 
-            // Find agent with most remaining quota
             const fallbackAgent = selectedAgents
                 .filter(id => quota[id] > 0)
                 .sort((a, b) => quota[b] - quota[a])[0];
@@ -723,18 +732,147 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             };
         });
 
-        // Check shortfall
-        const shortfall = previewData.filter(p => p.customers.length < perPerson);
+        setPreview(previewData);
+        
+        const shortfall = previewData.filter(p => p.customers.length < (parseInt(agentQuotas[p.agentId]) || 0));
         if (shortfall.length > 0) {
-            const names = shortfall.map(p => `${p.agentName} (${p.customers.length}/${perPerson})`).join(', ');
-            setMessage({
-                type: 'error',
-                text: `⚠️ บางพนักงานได้ลูกค้าน้อยกว่าที่กำหนดเนื่องจากมีลูกค้าซ้ำ: ${names}`
-            });
+            const names = shortfall.map(p => `${p.agentName} (${p.customers.length}/${parseInt(agentQuotas[p.agentId]) || 0})`).join(', ');
+            setPreviewWarning(`⚠️ ได้รับลูกค้าน้อยกว่าโควตาที่ตั้งไว้ (อาจเพราะจำนวนรายชื่อมีจำกัด หรือติดเงื่อนไขรายชื่อซ้ำ): ${names}`);
+        } else {
+            setPreviewWarning('');
+        }
+    }, [agentQuotas, previewCustomerPool, previewConflictMap, showPreview, selectedAgents, agents]);
+
+
+
+    const handleExportSummary = async () => {
+        // Prepare list of all active Telesales/Supervisors
+        let targetAgents = agents.filter(a => a.isActive);
+
+        // Sort by roleId (6 then 7), then agent id asc
+        targetAgents.sort((a, b) => {
+            const rA = a.roleId || 99;
+            const rB = b.roleId || 99;
+            if (rA !== rB) return rA - rB;
+            return a.id - b.id;
+        });
+
+        const passedAgents = targetAgents.filter(a => selectedAgents.includes(a.id));
+        const failedAgents = targetAgents.filter(a => !selectedAgents.includes(a.id));
+        const receivedAgents = targetAgents.filter(a => (summaryStats.agentStats[a.id]?.success || 0) > 0);
+
+        const maxRows = Math.max(targetAgents.length, passedAgents.length, failedAgents.length, receivedAgents.length);
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Summary');
+
+        // Column widths
+        worksheet.columns = [
+            { width: 10 }, // A
+            { width: 25 }, // B
+            { width: 22 }, // C
+            { width: 25 }, // D
+            { width: 20 }, // E
+            { width: 4 },  // F (spacer)
+            { width: 25 }, // G
+            { width: 4 },  // H (spacer)
+            { width: 25 }, // I
+            { width: 4 },  // J (spacer)
+            { width: 25 }, // K
+            { width: 20 }  // L
+        ];
+
+        // Row 1: Titles
+        const row1 = worksheet.addRow(["ตารางหลัก", "", "", "", "", "", "เข้าเกณฑ์", "", "ไม่เข้าเกณฑ์", "", "พนักงาน/รายชื่อ", ""]);
+        row1.font = { bold: true };
+        row1.alignment = { horizontal: 'center' };
+        worksheet.mergeCells('A1:E1');
+        worksheet.mergeCells('K1:L1');
+
+        // Row 2: Headers
+        const row2 = worksheet.addRow([
+            "Agent ID", "ชื่อพนักงาน", "ตำแหน่ง", "สถานะ", "จำนวนที่ได้รับรายชื่อ", "", 
+            "ชื่อพนักงาน", "", "ชื่อพนักงาน", "", "ชื่อพนักงาน", "จำนวนที่ได้รับรายชื่อ"
+        ]);
+
+        const headerFills = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+        const headerFont = { color: { argb: 'FFFFFFFF' }, bold: true };
+        const borderThin = { style: 'thin' };
+        const allBorders = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
+
+        const styledCols = [1, 2, 3, 4, 5, 7, 9, 11, 12]; // 1-based index
+        styledCols.forEach(col => {
+            const cell = row2.getCell(col);
+            cell.fill = headerFills as any;
+            cell.font = headerFont;
+            cell.border = allBorders as any;
+        });
+
+        // Rows 3..N
+        for (let i = 0; i < maxRows; i++) {
+            const a = targetAgents[i];
+            let col1 = "", col2 = "", col3 = "", col4 = "", col5: number | string = "";
+            if (a) {
+                const stat = summaryStats.agentStats[a.id];
+                const received = stat ? stat.success : 0;
+                let status = '';
+                if (received > 0) {
+                    status = 'ได้รับรายชื่อ';
+                } else {
+                    if (selectedAgents.includes(a.id)) {
+                        status = 'เข้าเกณฑ์แต่รายชื่อไม่พอ';
+                    } else {
+                        status = 'หลุดเกณฑ์';
+                    }
+                }
+                col1 = a.id.toString();
+                col2 = `${a.firstName} ${a.lastName}`;
+                col3 = a.role === UserRole.Supervisor ? 'Supervisor Telesale' : (a.role === UserRole.Telesale ? 'Telesale' : (a.role || '-'));
+                col4 = status;
+                col5 = received;
+            }
+
+            const p = passedAgents[i];
+            const col7 = p ? `${p.firstName} ${p.lastName}` : "";
+
+            const f = failedAgents[i];
+            const col9 = f ? `${f.firstName} ${f.lastName}` : "";
+
+            const r = receivedAgents[i];
+            let col11 = "", col12: number | string = "";
+            if (r) {
+                const stat = summaryStats.agentStats[r.id];
+                col11 = `${r.firstName} ${r.lastName}`;
+                col12 = stat ? stat.success : 0;
+            }
+
+            const row = worksheet.addRow([col1, col2, col3, col4, col5, "", col7, "", col9, "", col11, col12]);
+            
+            // Add borders to cells with data
+            if (a) {
+                [1, 2, 3, 4, 5].forEach(c => row.getCell(c).border = allBorders as any);
+            }
+            if (p) {
+                row.getCell(7).border = allBorders as any;
+            }
+            if (f) {
+                row.getCell(9).border = allBorders as any;
+            }
+            if (r) {
+                [11, 12].forEach(c => row.getCell(c).border = allBorders as any);
+            }
         }
 
-        setPreview(previewData);
-        setShowPreview(true);
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `Distribution_Summary_${new Date().toISOString().split('T')[0]}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
     // Close Summary Modal & Cleanup
@@ -765,14 +903,14 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             const skipCount = summaryStats.totalFailed;
 
             // Identify needy agents
-            const expectedPerAgent = selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0;
             const needyAgents: number[] = [];
 
             selectedAgents.forEach(agentId => {
                 const currentSuccess = summaryStats.agentStats[agentId]?.success || 0;
-                if (currentSuccess < expectedPerAgent) {
+                const expected = parseInt(agentQuotas[agentId]) || 0;
+                if (currentSuccess < expected) {
                     // Add agent to list multiple times for each missing slot
-                    for (let i = 0; i < (expectedPerAgent - currentSuccess); i++) {
+                    for (let i = 0; i < (expected - currentSuccess); i++) {
                         needyAgents.push(agentId);
                     }
                 }
@@ -1926,23 +2064,32 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             </div>
 
                             {/* Footer */}
-                            <div className="p-6 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+                            <div className="p-6 border-t bg-gray-50 flex justify-between gap-3 rounded-b-xl">
                                 <button
-                                    onClick={closeSummaryModal}
-                                    className="px-6 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+                                    onClick={handleExportSummary}
+                                    className="px-6 py-2 border border-green-600 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 font-bold transition-colors flex items-center gap-2"
                                 >
-                                    ปิด (เสร็จสิ้น)
+                                    <Download size={18} />
+                                    Export เป็น Excel
                                 </button>
-                                {summaryStats.missingTotal > 0 && (
+                                <div className="flex gap-3">
                                     <button
-                                        onClick={handleDistributeMore}
-                                        disabled={distributing}
-                                        className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-bold flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50"
+                                        onClick={closeSummaryModal}
+                                        className="px-6 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
                                     >
-                                        {distributing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
-                                        แจกเพิ่มส่วนที่ขาด
+                                        ปิด (เสร็จสิ้น)
                                     </button>
-                                )}
+                                    {summaryStats.missingTotal > 0 && (
+                                        <button
+                                            onClick={handleDistributeMore}
+                                            disabled={distributing}
+                                            className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-bold flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50"
+                                        >
+                                            {distributing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
+                                            แจกเพิ่มส่วนที่ขาด
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2097,7 +2244,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                 type="number"
                                 value={totalToDistribute}
                                 onChange={(e) => setTotalToDistribute(e.target.value)}
-                                max={availableCount}
                                 min={1}
                                 className="w-32 border rounded-lg p-2 text-center"
                                 placeholder="จำนวนรวม"
@@ -2108,8 +2254,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                 </span>
                             )}
                             <button
-                                onClick={handleGeneratePreview}
-                                disabled={selectedAgents.length === 0 || availableCount === 0 || !totalToDistribute || parseInt(totalToDistribute) <= 0 || parseInt(totalToDistribute) > availableCount}
+                                onClick={handlePreparePreview}
+                                disabled={selectedAgents.length === 0 || availableCount === 0 || !totalToDistribute || parseInt(totalToDistribute) <= 0}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                             >
                                 <Eye size={16} />
@@ -2173,68 +2319,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         </div>
                     </div>
 
-                    {/* Distribution Modes */}
-                    <div className="mb-4">
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">เลือกนโยบายการแจก (Distribution Mode)</label>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                            {/* Equal Mode */}
-                            <div 
-                                onClick={() => setDistributionMode('equal')}
-                                className={`border rounded-xl p-4 cursor-pointer transition-all ${distributionMode === 'equal' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
-                            >
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Scale className={distributionMode === 'equal' ? 'text-blue-600' : 'text-gray-500'} size={20} />
-                                    <span className="font-semibold text-gray-800">Equal (เท่ากันทุกคน)</span>
-                                </div>
-                                <p className="text-xs text-gray-500 mb-2">ทำยังไง: นำรายชื่อหารจำนวนคนตรงๆ ทุกคนได้เท่ากัน</p>
-                                <div className="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full w-fit font-medium">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> ไม่ Reward คนเก่ง
-                                </div>
-                            </div>
-                            
-                            {/* Load Balance Mode */}
-                            <div 
-                                onClick={() => setDistributionMode('load_balance')}
-                                className={`border rounded-xl p-4 cursor-pointer transition-all ${distributionMode === 'load_balance' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
-                            >
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Zap className={distributionMode === 'load_balance' ? 'text-blue-600' : 'text-gray-500'} size={20} />
-                                    <span className="font-semibold text-gray-800">Load Balance</span>
-                                </div>
-                                <p className="text-xs text-gray-500 mb-2">ทำยังไง: ดูยอดลูกค้าปัจจุบัน ใครถือน้อยจะได้เยอะเพื่อบาลานซ์</p>
-                                <div className="flex items-center gap-1 text-[10px] bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full w-fit font-medium">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-500"></div> เติมพอร์ตให้คนขาด
-                                </div>
-                            </div>
 
-                            {/* Performance Mode */}
-                            <div 
-                                onClick={() => setDistributionMode('performance')}
-                                className={`border rounded-xl p-4 cursor-pointer transition-all ${distributionMode === 'performance' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
-                            >
-                                <div className="flex items-center gap-2 mb-2">
-                                    <TrendingUp className={distributionMode === 'performance' ? 'text-blue-600' : 'text-gray-500'} size={20} />
-                                    <span className="font-semibold text-gray-800">Performance (ความขยัน)</span>
-                                </div>
-                                <p className="text-xs text-gray-500 mb-2">ทำยังไง: อิงยอด 'เวลาโทร' คนโทรเยอะจะได้สัดส่วนลูกค้าเยอะ</p>
-                                <div className="flex items-center gap-1 text-[10px] bg-red-100 text-red-700 px-2 py-1 rounded-full w-fit font-medium">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div> Reward คนขยัน
-                                </div>
-                            </div>
-                        </div>
-
-                        {distributionMode === 'equal' && (
-                            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer w-fit">
-                                <input 
-                                    type="checkbox" 
-                                    checked={distributeRemainder}
-                                    onChange={(e) => setDistributeRemainder(e.target.checked)}
-                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <span>กระจายเศษรายชื่อที่หารไม่ลงตัวให้พนักงาน (คนแรกๆ จะได้ +1)</span>
-                            </label>
-                        )}
-                    </div>
 
                     {loadingAgents ? (
                         <div className="flex items-center justify-center py-12">
@@ -2254,7 +2339,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                             />
                                         </th>
                                         <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
-                                        <th className="p-3 text-center font-medium text-gray-600 w-40">โควตารายชื่อ</th>
                                         <th className="p-3 text-center font-medium text-gray-600">เวลาโทร (สายรับ)</th>
                                         <th className="p-3 text-center font-medium text-gray-600">Action</th>
                                         <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
@@ -2290,33 +2374,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                         <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
                                                             {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
                                                         </span>
-                                                    )}
-                                                </td>
-                                                <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                                                    {isSelected ? (
-                                                        <div className="flex items-center justify-center gap-2">
-                                                            <button 
-                                                                onClick={() => setAgentQuotas(p => ({...p, [agent.id]: String(Math.max(0, (parseInt(p[agent.id]) || 0) - 1))}))}
-                                                                className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 text-gray-600"
-                                                            >
-                                                                <Minus size={14} />
-                                                            </button>
-                                                            <input 
-                                                                type="number"
-                                                                min="0"
-                                                                value={agentQuotas[agent.id] ?? '0'}
-                                                                onChange={(e) => setAgentQuotas(p => ({...p, [agent.id]: e.target.value}))}
-                                                                className="w-14 h-7 text-center border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-                                                            />
-                                                            <button 
-                                                                onClick={() => setAgentQuotas(p => ({...p, [agent.id]: String((parseInt(p[agent.id]) || 0) + 1)}))}
-                                                                className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 text-gray-600"
-                                                            >
-                                                                <Plus size={14} />
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="text-center text-gray-400">-</div>
                                                     )}
                                                 </td>
                                                 <td className="p-3 text-center">
@@ -2970,6 +3027,66 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                         <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-auto">
                             <h3 className="text-xl font-bold mb-4">Preview การแจกงาน</h3>
+
+                            {/* Distribution Modes */}
+                            <div className="mb-4">
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">เลือกนโยบายการแจก (Distribution Mode)</label>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                                    {/* Equal Mode */}
+                                    <div 
+                                        onClick={() => setDistributionMode('equal')}
+                                        className={`border rounded-xl p-3 cursor-pointer transition-all ${distributionMode === 'equal' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
+                                    >
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Scale className={distributionMode === 'equal' ? 'text-blue-600' : 'text-gray-500'} size={18} />
+                                            <span className="font-semibold text-sm text-gray-800">Equal (เท่ากันทุกคน)</span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mb-2 leading-tight">ทำยังไง: นำรายชื่อหารจำนวนคนตรงๆ ทุกคนได้เท่ากัน</p>
+                                    </div>
+                                    
+                                    {/* Load Balance Mode */}
+                                    <div 
+                                        onClick={() => setDistributionMode('load_balance')}
+                                        className={`border rounded-xl p-3 cursor-pointer transition-all ${distributionMode === 'load_balance' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
+                                    >
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Zap className={distributionMode === 'load_balance' ? 'text-blue-600' : 'text-gray-500'} size={18} />
+                                            <span className="font-semibold text-sm text-gray-800">Load Balance</span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mb-2 leading-tight">ทำยังไง: ดูยอดลูกค้าปัจจุบัน ใครถือน้อยจะได้เยอะเพื่อบาลานซ์</p>
+                                    </div>
+
+                                    {/* Performance Mode */}
+                                    <div 
+                                        onClick={() => setDistributionMode('performance')}
+                                        className={`border rounded-xl p-3 cursor-pointer transition-all ${distributionMode === 'performance' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
+                                    >
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <TrendingUp className={distributionMode === 'performance' ? 'text-blue-600' : 'text-gray-500'} size={18} />
+                                            <span className="font-semibold text-sm text-gray-800">Performance (ความขยัน)</span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mb-2 leading-tight">ทำยังไง: อิงยอด 'เวลาโทร' คนโทรเยอะจะได้สัดส่วนลูกค้าเยอะ</p>
+                                    </div>
+                                </div>
+
+                                {distributionMode === 'equal' && (
+                                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer w-fit">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={distributeRemainder}
+                                            onChange={(e) => setDistributeRemainder(e.target.checked)}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span>กระจายเศษรายชื่อที่หารไม่ลงตัวให้พนักงาน (คนแรกๆ จะได้ +1)</span>
+                                    </label>
+                                )}
+                            </div>
+
+                            {previewWarning && (
+                                <div className="mb-6 p-4 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl text-sm">
+                                    {previewWarning}
+                                </div>
+                            )}
 
                             {/* Summary Dashboard */}
                             <div className="grid grid-cols-2 gap-4 mb-6">
