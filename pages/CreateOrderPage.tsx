@@ -2227,11 +2227,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   );
 
   useEffect(() => {
-    // If payable amount is 0, auto-switch to DiscountCoupon to bypass statement checking
-    if (payableAmount === 0 && orderData.paymentMethod !== PaymentMethod.DiscountCoupon) {
+    // If payable amount is 0 BUT totalAmount is > 0 (meaning coupon fully covered it),
+    // auto-switch to DiscountCoupon to bypass statement checking.
+    // We don't want to auto-switch when the order is completely empty (totalAmount === 0).
+    if (totalAmount > 0 && payableAmount === 0 && orderData.paymentMethod !== PaymentMethod.DiscountCoupon) {
       updateOrderData("paymentMethod", PaymentMethod.DiscountCoupon);
     }
-  }, [payableAmount, orderData.paymentMethod]);
+  }, [payableAmount, totalAmount, orderData.paymentMethod]);
 
   // Fetch bank accounts on mount
 
@@ -4626,6 +4628,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (!orderData.paymentMethod) {
         highlightField("paymentMethod");
         alert("กรุณาเลือกวิธีการชำระเงิน");
+        return;
+      }
+      if (orderData.paymentMethod === PaymentMethod.DiscountCoupon && payableAmount > 0) {
+        highlightField("paymentMethod");
+        alert("ไม่สามารถใช้วิธีการชำระเงิน 'คูปองส่วนลด' ได้เนื่องจากยังมียอดที่ต้องชำระเหลืออยู่ กรุณาเลือกวิธีชำระเงินอื่น (เช่น โอนเงิน หรือ ปลายทาง)");
         return;
       }
       if (orderData.paymentMethod === PaymentMethod.Transfer) {
