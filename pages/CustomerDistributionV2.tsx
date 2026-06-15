@@ -3,7 +3,7 @@ import { apiFetch } from '../services/api';
 import { User, Customer, UserRole } from '../types';
 import {
     Users, Package, Search, ChevronDown, Check, Loader2, AlertCircle,
-    RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download, ArrowRight
+    RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download, ArrowRight, Filter
 } from 'lucide-react';
 import UniversalDateRangePicker, { DateRange } from '../components/UniversalDateRangePicker';
 import resolveApiBasePath from '../utils/apiBasePath';
@@ -39,6 +39,7 @@ interface AgentWithBaskets extends User {
     basketCounts: Record<string, number>;
     totalCustomers: number;
     isActive: boolean;
+    callMinutes?: number;
 }
 
 interface ResetCandidate {
@@ -89,6 +90,16 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [preview, setPreview] = useState<DistributionPreview[]>([]);
     const [showPreview, setShowPreview] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+
+    // Call Threshold Filter State
+    const [callFilterStartDate, setCallFilterStartDate] = useState<string>(
+        new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]
+    );
+    const [callFilterEndDate, setCallFilterEndDate] = useState<string>(
+        new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]
+    );
+    const [callThresholdMinutes, setCallThresholdMinutes] = useState<string>('100');
+    const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
 
     // Manual Reset State
     const [resetModalOpen, setResetModalOpen] = useState(false);
@@ -362,6 +373,38 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             setLoadingAgents(false);
         }
     }, [currentUser?.companyId]);
+
+    // Fetch call minutes dynamically
+    const fetchCallMinutes = useCallback(async () => {
+        if (!agents || agents.length === 0) return;
+        
+        setLoadingCallMinutes(true);
+        try {
+            const agentIds = agents.map(a => a.id).join(',');
+            const response = await apiFetch(
+                `customers?action=get_call_minutes&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}`
+            );
+            
+            if (response?.agents) {
+                setAgents(prev => prev.map(agent => ({
+                    ...agent,
+                    callMinutes: response.agents[agent.id] || 0
+                })));
+            }
+        } catch (error) {
+            console.error('Failed to fetch call minutes:', error);
+        } finally {
+            setLoadingCallMinutes(false);
+        }
+    }, [agents.length, callFilterStartDate, callFilterEndDate, currentUser?.companyId]);
+
+    // Effect to trigger fetchCallMinutes when dates change or agents are loaded
+    useEffect(() => {
+        if (agents.length > 0) {
+            fetchCallMinutes();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [callFilterStartDate, callFilterEndDate, agents.length]);
 
     // Fetch customers for active basket
     const fetchCustomers = useCallback(async () => {
@@ -1975,6 +2018,61 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         </div>
                     </div>
 
+                    {/* Call Threshold Filter */}
+                    <div className="mb-4 bg-orange-50 border border-orange-100 rounded-lg p-4 flex flex-wrap items-end gap-4 shadow-sm">
+                        <div>
+                            <label className="block text-xs font-semibold text-orange-800 mb-1">กรองเวลาโทรตั้งแต่วันที่</label>
+                            <input
+                                type="date"
+                                value={callFilterStartDate}
+                                onChange={(e) => setCallFilterStartDate(e.target.value)}
+                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-orange-800 mb-1">ถึงวันที่</label>
+                            <input
+                                type="date"
+                                value={callFilterEndDate}
+                                onChange={(e) => setCallFilterEndDate(e.target.value)}
+                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-orange-800 mb-1">เกณฑ์เวลาโทร (นาที)</label>
+                            <input
+                                type="number"
+                                value={callThresholdMinutes}
+                                onChange={(e) => setCallThresholdMinutes(e.target.value)}
+                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 w-24 text-center"
+                                min={0}
+                            />
+                        </div>
+                        <div className="flex-1">
+                            <button
+                                onClick={() => {
+                                    const threshold = parseInt(callThresholdMinutes) || 0;
+                                    const activeIds = activeAgents.map(a => a.id);
+                                    
+                                    // Start with currently selected inactive agents (preserve them)
+                                    const inactiveSelected = selectedAgents.filter(id => !activeIds.includes(id));
+                                    
+                                    // Find eligible active agents
+                                    const eligibleIds = activeAgents
+                                        .filter(a => (a.callMinutes || 0) >= threshold)
+                                        .map(a => a.id);
+                                        
+                                    setSelectedAgents([...inactiveSelected, ...eligibleIds]);
+                                }}
+                                disabled={loadingCallMinutes || agents.length === 0}
+                                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 text-sm font-medium flex items-center gap-2"
+                            >
+                                {loadingCallMinutes ? <Loader2 size={16} className="animate-spin" /> : <Filter size={16} />}
+                                เลือกพนักงานที่โทรเกินเกณฑ์
+                            </button>
+                        </div>
+                    </div>
+
                     {loadingAgents ? (
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -1993,6 +2091,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                             />
                                         </th>
                                         <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
+                                        <th className="p-3 text-center font-medium text-gray-600">เวลาโทร (สายรับ)</th>
                                         <th className="p-3 text-center font-medium text-gray-600">Action</th>
                                         <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
                                         {dashboardBaskets.map(basket => (
@@ -2025,6 +2124,15 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                     {isInactive && (
                                                         <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
                                                             {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                    {loadingCallMinutes ? (
+                                                        <span className="text-gray-300 text-xs">...</span>
+                                                    ) : (
+                                                        <span className={`font-semibold ${agent.callMinutes && agent.callMinutes >= parseInt(callThresholdMinutes) ? 'text-green-600' : 'text-gray-500'}`}>
+                                                            {agent.callMinutes !== undefined ? `${Math.floor(agent.callMinutes)} นาที` : '-'}
                                                         </span>
                                                     )}
                                                 </td>

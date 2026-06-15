@@ -1437,6 +1437,53 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $tags->execute([$id, $user['id']]);
                     $cust['tags'] = $tags->fetchAll();
                     json_response($cust);
+                } elseif (isset($_GET['action']) && $_GET['action'] === 'get_call_minutes') {
+                    // Get total answered call minutes for specified agents within a date range
+                    $companyId = $_GET['companyId'] ?? null;
+                    $assignedToParam = $_GET['assignedTo'] ?? null;
+                    $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-1 day'));
+                    $endDate = $_GET['end_date'] ?? date('Y-m-d', strtotime('-1 day'));
+
+                    if (!$companyId || !$assignedToParam) {
+                        json_response(['error' => 'companyId and assignedTo required'], 400);
+                    }
+
+                    $agentIds = array_filter(array_map('trim', explode(',', $assignedToParam)));
+
+                    if (empty($agentIds)) {
+                        json_response(['agents' => []]);
+                    }
+
+                    $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
+                    
+                    $sql = "
+                        SELECT matched_user_id, SUM(TIME_TO_SEC(duration)) / 60 as total_minutes 
+                        FROM call_import_logs 
+                        WHERE call_date >= ? AND call_date <= ? 
+                          AND status = 1 
+                          AND matched_user_id IN ($placeholders)
+                        GROUP BY matched_user_id
+                    ";
+
+                    $params = array_merge([$startDate, $endDate], $agentIds);
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    $agentsData = [];
+                    foreach ($agentIds as $aId) {
+                        $agentsData[$aId] = 0;
+                    }
+
+                    foreach ($rows as $row) {
+                        $aId = (string) $row['matched_user_id'];
+                        if (isset($agentsData[$aId])) {
+                            $agentsData[$aId] = (float) $row['total_minutes'];
+                        }
+                    }
+
+                    json_response(['agents' => $agentsData]);
+
                 } elseif (isset($_GET['action']) && $_GET['action'] === 'count_by_baskets') {
                     // Count customers by basket for specific agent(s)
                     // Support comma-separated assignedTo for bulk fetching
