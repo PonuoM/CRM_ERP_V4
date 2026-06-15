@@ -8074,7 +8074,7 @@ function handle_exports(PDO $pdo, ?string $id): void
     if (!is_dir($baseDir)) {
         @mkdir($baseDir, 0775, true);
     }
-    ensure_exports_table($pdo);
+    
     cleanup_old_exports($pdo, $baseDir);
 
 
