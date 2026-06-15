@@ -90,6 +90,11 @@ class BasketRoutingServiceV2
                     error_log("[BasketRoutingV2] Routing to handlePickingOrder");
                     return $this->handlePickingOrder($order, $customer, $triggeredBy);
 
+                case 'Cancelled':
+                case 'Returned':
+                    error_log("[BasketRoutingV2] Routing to handleCancelledOrder");
+                    return $this->handleCancelledOrder($order, $customer, $triggeredBy);
+
                 default:
                     error_log("[BasketRoutingV2] ABORT: Status '$newStatus' not handled");
                     return null;
@@ -322,6 +327,81 @@ class BasketRoutingServiceV2
             null,
             "Admin sold to unassigned customer - sent to new customer distribution"
         );
+    }
+
+    /**
+     * Handle Cancelled/Returned order status
+     * 
+     * Business Rules:
+     * - C1: Basket 51 -> 39 (if came from 39) or 38 (New Customer Pool)
+     * - C2: Basket 53 -> 52 (New Customer Dist)
+     * - Other baskets -> ignored
+     * - Do NOT clear assigned_to
+     */
+    private function handleCancelledOrder(array $order, array $customer, int $triggeredBy): ?array
+    {
+        $currentBasket = (int) ($customer['current_basket_key'] ?? 0);
+        $assignedTo = $customer['assigned_to'] ? (int) $customer['assigned_to'] : null;
+        $statusStr = $order['order_status']; // 'Cancelled' or 'Returned'
+
+        // Prevent ping-pong if there's a newer successful order
+        if ($this->hasNewerOrderAlreadyProcessed($customer['customer_id'], $order['id'], $order['order_date'])) {
+            error_log("[BasketRoutingV2] SKIPPED: Newer order already processed for customer #{$customer['customer_id']}");
+            return [
+                'success' => true,
+                'customer_id' => $customer['customer_id'],
+                'skipped' => true,
+                'reason' => 'Newer order already processed basket routing',
+                'order_id' => $order['id']
+            ];
+        }
+
+        // === BASKET 51 (Upsell Dashboard) ===
+        if ($currentBasket === self::BASKET_UPSELL_DASHBOARD) {
+            $cameFrom39 = $this->getPreviousBasketBefore51($customer['customer_id']);
+            $preserveDate = false;
+
+            if ($cameFrom39) {
+                // Return to 39 without resetting date
+                $target = self::BASKET_PERSONAL_1_2M;
+                $type = 'cancelled_upsell_return_39';
+                $statusMsg = "กลับ 39 (มาจากเดิม)";
+                $preserveDate = true;
+            } else {
+                // Drop to 38 (Pool)
+                $target = self::BASKET_NEW_CUSTOMER;
+                $type = 'cancelled_upsell_to_pool';
+                $statusMsg = "ตกตะกร้า 38";
+            }
+
+            return $this->transitionTo(
+                $customer['customer_id'],
+                $target,
+                $type,
+                $order['id'],
+                $assignedTo,
+                $assignedTo, // Keep the same owner
+                "Order #{$order['id']} $statusStr - $statusMsg",
+                $preserveDate
+            );
+        }
+
+        // === BASKET 53 (Upsell Distribution) ===
+        if ($currentBasket === self::BASKET_UPSELL_DIST) {
+            return $this->transitionTo(
+                $customer['customer_id'],
+                self::BASKET_NEW_CUSTOMER_DIST,
+                'cancelled_dist_to_pool',
+                $order['id'],
+                $assignedTo,
+                $assignedTo, // Keep the same owner
+                "Basket 53 → 52: Order #{$order['id']} $statusStr"
+            );
+        }
+
+        // Ignore for other baskets
+        error_log("[BasketRoutingV2] SKIPPED: $statusStr order for basket $currentBasket requires no action");
+        return null;
     }
 
     // ===========================
