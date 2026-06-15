@@ -373,7 +373,7 @@ export default function InventoryPage() {
                         <div className="flex items-center justify-end gap-1">จองแล้ว {sortConfig?.key === 'order_lock' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3"/> : <ArrowDown className="w-3 h-3"/>) : <ArrowUpDown className="w-3 h-3 text-orange-300"/>}</div>
                       </th>
                       <th onClick={() => handleSort('day_sale_7')} className="py-3 px-4 text-sm font-semibold text-indigo-600 border-b border-slate-200 cursor-pointer hover:bg-indigo-50">
-                        <div className="flex items-center justify-end gap-1" title="ยอดขายสะสมย้อนหลัง 7 วัน">ยอดขาย(7D) {sortConfig?.key === 'day_sale_7' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3"/> : <ArrowDown className="w-3 h-3"/>) : <ArrowUpDown className="w-3 h-3 text-indigo-300"/>}</div>
+                        <div className="flex items-center justify-end gap-1" title="ยอดขายสะสมย้อนหลัง 7 วัน">ยอดขาย(7วัน) {sortConfig?.key === 'day_sale_7' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3"/> : <ArrowDown className="w-3 h-3"/>) : <ArrowUpDown className="w-3 h-3 text-indigo-300"/>}</div>
                       </th>
                     </tr>
                   </thead>
