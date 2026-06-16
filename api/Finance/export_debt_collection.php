@@ -11,6 +11,8 @@ try {
     $pdo = db_connect();
 
     $user = get_authenticated_user($pdo);
+    // Write request details to debug log
+    file_put_contents(__DIR__ . '/debug_export.log', date('Y-m-d H:i:s') . " - REQUEST: " . json_encode($_GET, JSON_UNESCAPED_UNICODE) . " - AUTH USER: " . json_encode($user, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
     if (!$user) {
         json_response(['error' => 'UNAUTHORIZED'], 401);
     }
@@ -76,7 +78,9 @@ try {
                     u.last_name as tracker_last_name,
                     o.customer_received_date,
                     (SELECT COALESCE(SUM(dc2.amount_collected), 0) FROM debt_collection dc2 WHERE dc2.order_id = dc.order_id) as total_collected,
-                    (SELECT MIN(dc3.created_at) FROM debt_collection dc3 WHERE dc3.order_id = dc.order_id) as first_tracking_date
+                    (SELECT MIN(dc3.created_at) FROM debt_collection dc3 WHERE dc3.order_id = dc.order_id) as first_tracking_date,
+                    (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.parent_order_id = dc.order_id AND p.report_category = 'กระสอบเล็ก') as small_bags,
+                    (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.parent_order_id = dc.order_id AND p.report_category = 'กระสอบใหญ่') as big_bags
                 FROM debt_collection dc
                 JOIN orders o ON dc.order_id = o.id
                 LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -128,11 +132,40 @@ try {
             }
         }
 
-        $formatted = array_map(function ($r) use ($statusMap, $orderStatusMap, $paymentStatusMap, $slipsByTracking, $baseUrl) {
+        // Fetch order items to get all report_categories and quantities per order
+        $orderIds = array_unique(array_column($records, 'order_id'));
+        $itemsByOrder = [];
+        if (!empty($orderIds)) {
+            $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+            $itemSql = "SELECT oi.parent_order_id as order_id, 
+                               COALESCE(p.report_category, p.category, 'อื่นๆ') as category,
+                               SUM(oi.quantity) as total_qty
+                        FROM order_items oi
+                        JOIN products p ON oi.product_id = p.id
+                        WHERE oi.parent_order_id IN ($placeholders)
+                        AND oi.is_freebie = 0
+                        GROUP BY oi.parent_order_id, COALESCE(p.report_category, p.category, 'อื่นๆ')";
+            $itemStmt = $pdo->prepare($itemSql);
+            $itemStmt->execute(array_values($orderIds));
+            $allItems = $itemStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($allItems as $item) {
+                $cat = $item['category'] ? trim($item['category']) : 'อื่นๆ';
+                $itemsByOrder[$item['order_id']][] = [
+                    'category' => $cat,
+                    'quantity' => (float) $item['total_qty']
+                ];
+            }
+        }
+
+        $formatted = array_map(function ($r) use ($statusMap, $orderStatusMap, $paymentStatusMap, $slipsByTracking, $itemsByOrder, $baseUrl) {
             $slips = $slipsByTracking[$r['tracking_id']] ?? [];
+            $items = $itemsByOrder[$r['order_id']] ?? [];
             return [
                 'trackingId' => $r['tracking_id'],
                 'orderId' => $r['order_id'],
+                'smallBags' => (int) $r['small_bags'],
+                'bigBags' => (int) $r['big_bags'],
+                'items' => $items,
                 'customerName' => trim($r['customer_first_name'] . ' ' . $r['customer_last_name']),
                 'customerPhone' => $r['customer_phone'],
                 'orderDate' => $r['order_date'],
@@ -166,6 +199,7 @@ try {
             ];
         }, $records);
 
+        file_put_contents(__DIR__ . '/debug_export.log', date('Y-m-d H:i:s') . " - SUCCESS: Returned " . count($formatted) . " records\n", FILE_APPEND);
         json_response([
             'ok' => true,
             'type' => 'history',
@@ -176,10 +210,12 @@ try {
     } else {
         // ===== Export: ข้อมูลออเดอร์ (เดิม - redirect ไป get_debt_collection_orders) =====
         // ใช้ logic เดิมจาก get_debt_collection_orders.php
+        file_put_contents(__DIR__ . '/debug_export.log', date('Y-m-d H:i:s') . " - ERROR: Invalid type parameter\n", FILE_APPEND);
         json_response(['ok' => false, 'error' => 'Use get_debt_collection_orders.php for order export'], 400);
     }
 
 } catch (Exception $e) {
+    file_put_contents(__DIR__ . '/debug_export.log', date('Y-m-d H:i:s') . " - EXCEPTION: " . $e->getMessage() . "\n", FILE_APPEND);
     error_log("Export Debt Collection Error: " . $e->getMessage());
     json_response(['ok' => false, 'error' => $e->getMessage()], 500);
 }

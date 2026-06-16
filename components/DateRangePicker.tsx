@@ -11,6 +11,7 @@ interface DateRangePickerProps {
   value: DateRange;
   onApply?: (range: DateRange) => void;
   onChange?: (range: DateRange) => void;
+  placeholder?: string;
 }
 
 const isSameDay = (a: Date, b: Date) =>
@@ -19,7 +20,7 @@ const isSameDay = (a: Date, b: Date) =>
 const inBetween = (d: Date, s: Date | null, e: Date | null) =>
   s && e ? d.getTime() >= s.getTime() && d.getTime() <= e.getTime() : false;
 
-const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onChange }) => {
+const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onChange, placeholder = 'ทั้งหมด' }) => {
   const [open, setOpen] = useState(false);
   const [rangeTempStart, setRangeTempStart] = useState<Date | null>(null);
   const [rangeTempEnd, setRangeTempEnd] = useState<Date | null>(null);
@@ -68,12 +69,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onCha
 
   const display = useMemo(
     () => {
-      if (!value.start && !value.end) return 'เลือกช่วงวันที่';
+      if (!value.start && !value.end) return placeholder;
       const startStr = value.start ? formatThaiDateTime(value.start).split(' ')[0] : '...';
       const endStr = value.end ? formatThaiDateTime(value.end).split(' ')[0] : '...';
       return `${startStr}  —  ${endStr}`;
     },
-    [value]
+    [value, placeholder]
   );
 
   // Preset helpers
@@ -162,6 +163,14 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onCha
   };
 
   const handleApply = () => {
+    if (rangeTempStart === null && rangeTempEnd === null) {
+      const newRange = { start: '', end: '' };
+      if (onApply) onApply(newRange);
+      if (onChange) onChange(newRange);
+      setOpen(false);
+      return;
+    }
+
     const s = rangeTempStart ? new Date(rangeTempStart) : new Date(value.start);
     const e = rangeTempEnd ? new Date(rangeTempEnd) : (rangeTempStart ? new Date(rangeTempStart) : new Date(value.end));
     s.setHours(0, 0, 0, 0);
@@ -200,6 +209,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onCha
           {/* Preset Buttons */}
           <div className="flex flex-wrap gap-1.5 mb-4">
             {[
+              { label: 'ทั้งหมด', fn: () => { setRangeTempStart(null); setRangeTempEnd(null); } },
               { label: 'วันนี้', fn: () => applyPreset(1) },
               { label: 'เมื่อวาน', fn: () => applyPreset(2) },
               { label: '7 วัน', fn: () => applyPreset(7) },
@@ -241,12 +251,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onCha
             <div className="text-xs text-gray-500 flex items-center gap-3">
               <span>
                 <span className="text-gray-400">เริ่ม:</span>{' '}
-                <span className="font-medium text-gray-700">{rangeTempStart ? rangeTempStart.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span>
+                <span className="font-medium text-gray-700">{rangeTempStart ? rangeTempStart.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : 'ทั้งหมด'}</span>
               </span>
               <span className="text-gray-300">→</span>
               <span>
                 <span className="text-gray-400">สิ้นสุด:</span>{' '}
-                <span className="font-medium text-gray-700">{rangeTempEnd ? rangeTempEnd.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span>
+                <span className="font-medium text-gray-700">{rangeTempEnd ? rangeTempEnd.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : 'ทั้งหมด'}</span>
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -258,7 +268,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onCha
               </button>
               <button
                 className="px-4 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors shadow-sm"
-                disabled={!rangeTempStart && !rangeTempEnd}
+                disabled={rangeTempStart !== null && rangeTempEnd === null}
                 onClick={handleApply}
               >
                 ตกลง
