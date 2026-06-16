@@ -5379,11 +5379,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   const divideCodEqually = () => {
-    if (numBoxes <= 0 || totalAmount <= 0) return;
+    if (numBoxes <= 0 || payableAmount <= 0) return;
 
     clearValidationErrorFor("cod");
 
-    const amountPerBox = totalAmount / numBoxes;
+    const amountPerBox = payableAmount / numBoxes;
 
     const newBoxes = Array.from({ length: numBoxes }, (_, i) => ({
       boxNumber: i + 1,
@@ -5402,7 +5402,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
 
     newBoxes[numBoxes - 1].codAmount = parseFloat(
-      (totalAmount - distributedAmount).toFixed(2),
+      (payableAmount - distributedAmount).toFixed(2),
     );
 
     updateOrderData("boxes", newBoxes);
@@ -9222,9 +9222,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         แนบสลิปโอนเงินได้หลายภาพตามต้องการ
                         (ระบุธนาคาร/เวลาโอนต่อสลิป)
                       </p>
-                      {transferSlipUploads.length > 0 && Math.abs(transferSlipUploads.reduce((s, x) => s + (Number(x.amount)||0), 0) - totalAmount) > 0.01 && (
+                      {transferSlipUploads.length > 0 && Math.abs(transferSlipUploads.reduce((s, x) => s + (Number(x.amount)||0), 0) - payableAmount) > 0.01 && (
                         <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">
-                          <strong>แจ้งเตือน:</strong> ยอดโอนรวม ({transferSlipUploads.reduce((s, x) => s + (Number(x.amount)||0), 0).toFixed(2)} บาท) ไม่ตรงกับยอดคำสั่งซื้อ ({totalAmount.toFixed(2)} บาท) <br/>
+                          <strong>แจ้งเตือน:</strong> ยอดโอนรวม ({transferSlipUploads.reduce((s, x) => s + (Number(x.amount)||0), 0).toFixed(2)} บาท) ไม่ตรงกับยอดคำสั่งซื้อ ({payableAmount.toFixed(2)} บาท) <br/>
                           กรุณาระบุ "สาเหตุยอดไม่ตรงบิล" ในสลิปอย่างน้อย 1 รูป
                         </div>
                       )}
@@ -9346,7 +9346,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     className="w-full border rounded px-2 py-1 text-sm"
                                   />
                                 </div>
-                                {Math.abs(transferSlipUploads.reduce((s, x) => s + (Number(x.amount)||0), 0) - totalAmount) > 0.01 && (
+                                {Math.abs(transferSlipUploads.reduce((s, x) => s + (Number(x.amount)||0), 0) - payableAmount) > 0.01 && (
                                   <div>
                                     <label className="block text-red-600 font-medium mb-1 mt-2">
                                       สาเหตุยอดไม่ตรงบิล
