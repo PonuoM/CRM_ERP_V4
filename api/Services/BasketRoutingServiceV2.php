@@ -196,6 +196,20 @@ class BasketRoutingServiceV2
         $creatorRole = $this->getUserRole($order['creator_id']);
         $isTelesale = in_array($creatorRole, self::TELESALE_ROLES);
 
+        // ===== DUPLICATE PROCESSING CHECK =====
+        // If this specific order has already triggered a picking/shipping transition,
+        // skip routing to prevent ping-pong transitions (e.g. from Picking -> Shipping)
+        if ($this->hasOrderAlreadyProcessedRouting($order['id'])) {
+            error_log("[BasketRoutingV2] SKIPPED: Order #{$order['id']} already processed picking routing");
+            return [
+                'success' => true,
+                'customer_id' => $customer['customer_id'],
+                'skipped' => true,
+                'reason' => 'Order already processed picking basket routing',
+                'order_id' => $order['id']
+            ];
+        }
+
         // ===== RACE CONDITION CHECK =====
         // If there's a NEWER order for the same customer that already Picking/Shipping/Closed,
         // skip routing for this older order to prevent "ping-pong" basket changes
@@ -510,6 +524,29 @@ class BasketRoutingServiceV2
 
         if ($count > 0) {
             error_log("[BasketRoutingV2] hasNewerOrderAlreadyProcessed: Found $count newer orders for customer $customerId");
+        }
+
+        return $count > 0;
+    }
+
+    /**
+     * Check if this specific order has already triggered a picking/shipping basket routing transition
+     * 
+     * @param string $orderId The order ID
+     * @return bool True if a picking transition already exists for this order
+     */
+    private function hasOrderAlreadyProcessedRouting(string $orderId): bool
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT COUNT(*) FROM basket_transition_log 
+            WHERE order_id = ? 
+              AND (transition_type LIKE 'picking_%' OR transition_type = '')
+        ");
+        $stmt->execute([$orderId]);
+        $count = (int) $stmt->fetchColumn();
+
+        if ($count > 0) {
+            error_log("[BasketRoutingV2] hasOrderAlreadyProcessedRouting: Order $orderId already processed in transition log");
         }
 
         return $count > 0;
