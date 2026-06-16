@@ -1437,6 +1437,53 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $tags->execute([$id, $user['id']]);
                     $cust['tags'] = $tags->fetchAll();
                     json_response($cust);
+                } elseif (isset($_GET['action']) && $_GET['action'] === 'get_call_minutes') {
+                    // Get total answered call minutes for specified agents within a date range
+                    $companyId = $_GET['companyId'] ?? null;
+                    $assignedToParam = $_GET['assignedTo'] ?? null;
+                    $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-1 day'));
+                    $endDate = $_GET['end_date'] ?? date('Y-m-d', strtotime('-1 day'));
+
+                    if (!$companyId || !$assignedToParam) {
+                        json_response(['error' => 'companyId and assignedTo required'], 400);
+                    }
+
+                    $agentIds = array_filter(array_map('trim', explode(',', $assignedToParam)));
+
+                    if (empty($agentIds)) {
+                        json_response(['agents' => []]);
+                    }
+
+                    $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
+                    
+                    $sql = "
+                        SELECT matched_user_id, SUM(TIME_TO_SEC(duration)) / 60 as total_minutes 
+                        FROM call_import_logs 
+                        WHERE call_date >= ? AND call_date <= ? 
+                          AND status = 1 
+                          AND matched_user_id IN ($placeholders)
+                        GROUP BY matched_user_id
+                    ";
+
+                    $params = array_merge([$startDate, $endDate], $agentIds);
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    $agentsData = [];
+                    foreach ($agentIds as $aId) {
+                        $agentsData[$aId] = 0;
+                    }
+
+                    foreach ($rows as $row) {
+                        $aId = (string) $row['matched_user_id'];
+                        if (isset($agentsData[$aId])) {
+                            $agentsData[$aId] = (float) $row['total_minutes'];
+                        }
+                    }
+
+                    json_response(['agents' => $agentsData]);
+
                 } elseif (isset($_GET['action']) && $_GET['action'] === 'count_by_baskets') {
                     // Count customers by basket for specific agent(s)
                     // Support comma-separated assignedTo for bulk fetching
@@ -3997,7 +4044,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                         }
                         $itemOrderId = $item['order_id'];
                         // Check if this is a sub order (ends with -number)
-                        if (preg_match('/^(.+)-(\d+)$/', $itemOrderId, $matches)) {
+                        if (substr_count($itemOrderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $itemOrderId, $matches)) {
                             $mainOrderId = $matches[1]; // Extract main order ID
                             // Map sub order items to main order
                             if (in_array($mainOrderId, $orderIds)) {
@@ -4050,7 +4097,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                     foreach ($slips as $slip) {
                         $slipOrderId = $slip['order_id'];
                         // Check if this is a sub order (ends with -number)
-                        if (preg_match('/^(.+)-(\d+)$/', $slipOrderId, $matches)) {
+                        if (substr_count($slipOrderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $slipOrderId, $matches)) {
                             $mainOrderId = $matches[1]; // Extract main order ID
                             // Map sub order slips to main order
                             if (in_array($mainOrderId, $orderIds)) {
@@ -4255,7 +4302,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $pdo->beginTransaction();
 
                 // Resolve main order ID (remove -1, -2 suffix if present)
-                $isSubOrder = preg_match('/^(.+)-(\d+)$/', $id, $matches);
+                $isSubOrder = substr_count($id, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $id, $matches);
                 $mainOrderId = $isSubOrder ? $matches[1] : $id;
 
                 if ($isSubOrder) {
@@ -5157,7 +5204,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 // Get main order ID and validate it doesn't have sub order suffix
                 $mainOrderId = $in['id'];
                 // Ensure main order ID doesn't have sub order suffix (e.g., -1, -2)
-                if (preg_match('/^(.+)-(\d+)$/', $mainOrderId, $matches)) {
+                if (substr_count($mainOrderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $mainOrderId, $matches)) {
                     // If main order ID has suffix, use the base ID instead
                     $mainOrderId = $matches[1];
                     error_log("Warning: Main order ID had sub order suffix, using base ID: {$mainOrderId}");
@@ -8416,7 +8463,7 @@ function get_order(PDO $pdo, string $id): ?array
 {
     // Select all columns including bank_account_id and transfer_date
     // Check if this is a main order (not a sub order)
-    $isSubOrder = preg_match('/^(.+)-(\d+)$/', $id, $matches);
+    $isSubOrder = substr_count($id, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $id, $matches);
     $mainOrderId = $isSubOrder ? $matches[1] : $id;
 
     // Always fetch main order record (not sub order)
@@ -12780,7 +12827,7 @@ function handle_validate_tracking_bulk($pdo)
                 $res['boxNumber'] = $boxInfo['box_number'];
             } else {
                 // FALLBACK: Try parsing ORD-xxx-1 format
-                if (preg_match('/^(.+)-(\d+)$/', $orderId, $matches)) {
+                if (substr_count($orderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $orderId, $matches)) {
                     $potentialParentId = $matches[1];
                     $potentialBox = (int) $matches[2];
 
@@ -12866,7 +12913,7 @@ function handle_sync_tracking($pdo)
             } else {
                 // Second Priority: Parse from sub_order_id suffix (fallback)
                 // Logic: ORD-001 -> Box 1, ORD-001-2 -> Box 2
-                $isSub = preg_match('/^(.+)-(\d+)$/', $subOrderId, $matches);
+                $isSub = substr_count($subOrderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $subOrderId, $matches);
                 if ($isSub) {
                     $parentOrderId = $matches[1];
                     $boxNumber = (int) $matches[2];
