@@ -4475,11 +4475,13 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 }
                             }
                         } else if ($hasLegacyTracking) {
-                            // Old format: ['tn1', 'tn2', ...]
-                            $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, tracking_number, box_number) VALUES (?, ?, ?, 1)");
+                            // Old format: ['tn1', 'tn2', ...] - Fallback gracefully
+                            $boxCounter = 1;
+                            $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, tracking_number, box_number) VALUES (?, ?, ?, ?)");
                             foreach ($data['trackingNumbers'] as $trackNum) {
                                 if (trim($trackNum)) {
-                                    $trackStmt->execute([$id, "$id-1", trim($trackNum)]);
+                                    $trackStmt->execute([$id, "$id-$boxCounter", trim($trackNum), $boxCounter]);
+                                    $boxCounter++;
                                 }
                             }
                         }

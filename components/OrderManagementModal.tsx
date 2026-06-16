@@ -2545,12 +2545,26 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       });
     })() : boxes;
 
+    const trackingObjects = finalBoxes
+      .filter((b: any) => !!b.trackingNumber)
+      .flatMap((b: any) => 
+        String(b.trackingNumber)
+          .split(",")
+          .map(t => t.trim())
+          .filter(Boolean)
+          .map(t => ({
+            trackingNumber: t,
+            boxNumber: b.boxNumber,
+          }))
+      );
+
     const updatedOrder = {
       ...currentOrder,
       orderStatus: finalOrderStatus,
       totalAmount: calculatedTotals.totalAmount,
       updatedBy: currentUser.id,
       boxes: finalBoxes, // Add generated boxes array
+      trackingObjects: trackingObjects.length > 0 ? trackingObjects : undefined,
     };
 
     // Save cancellation classification if order is being cancelled
@@ -4691,10 +4705,72 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               <div className="flex flex-col leading-tight">
                                 <span>กล่อง {box.boxNumber}</span>
 
-                                {box.trackingNumber ? (
-                                  <span className="text-[11px] text-gray-500">
-                                    Tracking: {box.trackingNumber}
-                                  </span>
+                                {showInputs && !isLocked && permission === "manager" ? (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {(() => {
+                                      const trackingArray = String(box.trackingNumber || "")
+                                        .split(",")
+                                        .map(t => t.trim())
+                                        .filter(Boolean);
+                                        
+                                      return (
+                                        <>
+                                          {trackingArray.map((t, i) => (
+                                            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800">
+                                              {t}
+                                              <button
+                                                type="button"
+                                                className="ml-1 text-blue-600 hover:text-blue-900 focus:outline-none flex-shrink-0"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  const newArray = trackingArray.filter((_, idx) => idx !== i);
+                                                  handleBoxTrackingChange(box.boxNumber, newArray.join(", "));
+                                                }}
+                                              >
+                                                <X size={10} />
+                                              </button>
+                                            </span>
+                                          ))}
+                                          <input
+                                            type="text"
+                                            placeholder={trackingArray.length === 0 ? "ใส่ Tracking (กด Enter)" : "+ เพิ่ม"}
+                                            className="flex-1 min-w-[80px] text-[11px] border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-300 bg-white"
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter' || e.key === ',') {
+                                                e.preventDefault();
+                                                const val = e.currentTarget.value.trim().replace(/,/g, '');
+                                                if (val && !trackingArray.includes(val)) {
+                                                  handleBoxTrackingChange(box.boxNumber, [...trackingArray, val].join(", "));
+                                                  e.currentTarget.value = '';
+                                                } else if (val) {
+                                                  e.currentTarget.value = '';
+                                                }
+                                              }
+                                            }}
+                                            onBlur={(e) => {
+                                              const val = e.currentTarget.value.trim().replace(/,/g, '');
+                                              if (val && !trackingArray.includes(val)) {
+                                                handleBoxTrackingChange(box.boxNumber, [...trackingArray, val].join(", "));
+                                                e.currentTarget.value = '';
+                                              }
+                                            }}
+                                          />
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                ) : box.trackingNumber ? (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {String(box.trackingNumber)
+                                      .split(",")
+                                      .map(t => t.trim())
+                                      .filter(Boolean)
+                                      .map((t, i) => (
+                                        <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                                          {t}
+                                        </span>
+                                      ))}
+                                  </div>
                                 ) : null}
                               </div>
                             </td>
@@ -4963,27 +5039,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
-                  เลข Tracking (คั่นด้วย ,)
-                </label>
 
-                <input
-                  type="text"
-                  value={currentOrder.trackingNumbers.join(", ")}
-                  onChange={(e) => {
-                    const parts = e.target.value
-                      .split(",")
-                      .map((t) => t.trim())
-                      .filter(Boolean);
-                    const deduped = Array.from(new Set(parts));
-                    handleFieldChange("trackingNumbers", deduped);
-                  }}
-                  disabled={isLocked || permission === 'seller'}
-                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${isLocked || permission === 'seller' ? "bg-gray-100 cursor-not-allowed" : ""}`}
-                  placeholder="TH123, TH456"
-                />
-              </div>
             </div>
 
               {/* Cancellation section — full width below, visible when status is Cancelled */}
