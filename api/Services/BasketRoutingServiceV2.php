@@ -300,16 +300,16 @@ class BasketRoutingServiceV2
                 );
             }
 
-            // Rule P5: Admin ขาย + มี owner → ยกผลประโยชน์ให้ Telesale กลับไปดูแลต่อที่ตะกร้า 39 (ไม่ใช่ 51)
-            if ($currentBasket !== self::BASKET_PERSONAL_1_2M) {
+            // Rule P5: Admin ขาย + มี owner → 51 (ถ้ายังไม่อยู่ 51)
+            if ($currentBasket !== self::BASKET_UPSELL_DASHBOARD) {
                 return $this->transitionTo(
                     $customer['customer_id'],
-                    self::BASKET_PERSONAL_1_2M,
-                    'picking_admin_own',
+                    self::BASKET_UPSELL_DASHBOARD,
+                    'picking_admin_to_upsell',
                     $order['id'],
                     $assignedTo,
                     $assignedTo,
-                    "Admin sold to owned customer #{$assignedTo} - moved to personal basket for follow-up"
+                    "Admin sold but customer has owner #{$assignedTo} - sent to upsell for follow-up"
                 );
             }
             return null;
