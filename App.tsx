@@ -181,6 +181,8 @@ import TelesaleCallstatsPage from "./pages/TelesaleCallstatsPage";
 import AttendanceManagementPage from "./pages/AttendanceManagementPage";
 import AdsInputV2 from "./pages/AdsInputV2";
 import SalesSheetPage from "./pages/SalesSheetPage";
+import TelesaleCallReportPage from "./pages/TelesaleCallReportPage";
+import TelesaleCampaignComparePage from "./pages/TelesaleCampaignComparePage";
 import { db } from "./db/db";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
@@ -596,6 +598,8 @@ const App: React.FC = () => {
       'Accounting Report': 'accounting.report',
       'จัดการตีกลับ': 'nav.return_management',
       'Sales Sheet': 'home.sales_sheet',
+      'Telesale Call Report': 'calls.telesale_report',
+      'Telesale Campaign Compare': 'monitor.campaign_compare',
       'Commission Stamp': 'finance-commission-stamp',
     };
 
@@ -6624,6 +6628,12 @@ const App: React.FC = () => {
     }
     if (activePage === "Sales Sheet") {
       return <SalesSheetPage currentUser={currentUser} />;
+    }
+    if (activePage === "Telesale Call Report") {
+      return <TelesaleCallReportPage currentUser={currentUser} />;
+    }
+    if (activePage === "Telesale Campaign Compare") {
+      return <TelesaleCampaignComparePage currentUser={currentUser} />;
     }
     if (activePage === "Calls Overview") {
       return <CallsDashboard calls={callHistory} user={currentUser} />;
