@@ -27,6 +27,44 @@ function log_perf($msg, $startTime = null)
     }
     // error_log("[PERF] " . $msg); // Uncomment to enable perf logging
 }
+
+/**
+ * Resolves an arbitrary string into a valid parent order ID and box number.
+ * Fixes Foreign Key issues caused by naive regex matching on order IDs that contain hyphens.
+ *
+ * @param PDO $pdo
+ * @param string $id The input string (e.g., 'ORD-20240101-001', 'ORD-001-1', '260616-1')
+ * @return array ['is_sub' => bool, 'main_id' => string, 'box_number' => int, 'found' => bool]
+ */
+function resolve_main_order_id(PDO $pdo, string $id): array {
+    // 1. Exact match for a parent order ID
+    $stmt = $pdo->prepare("SELECT id FROM orders WHERE id = ? LIMIT 1");
+    $stmt->execute([$id]);
+    if ($stmt->fetch()) {
+        return ['is_sub' => false, 'main_id' => $id, 'box_number' => 1, 'found' => true];
+    }
+    
+    // 2. Check if it's a sub_order_id in order_boxes
+    $boxStmt = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
+    $boxStmt->execute([$id]);
+    if ($boxInfo = $boxStmt->fetch(PDO::FETCH_ASSOC)) {
+        return ['is_sub' => true, 'main_id' => $boxInfo['order_id'], 'box_number' => (int)$boxInfo['box_number'], 'found' => true];
+    }
+    
+    // 3. Fallback: Parse suffix ONLY IF the stripped prefix exists as a parent order
+    if (preg_match('/^(.+)-(\d+)$/', $id, $matches)) {
+        $potentialParent = $matches[1];
+        $boxNum = (int)$matches[2];
+        
+        $stmt->execute([$potentialParent]);
+        if ($stmt->fetch()) {
+            return ['is_sub' => true, 'main_id' => $potentialParent, 'box_number' => $boxNum, 'found' => true];
+        }
+    }
+    
+    // 4. Default fallback
+    return ['is_sub' => false, 'main_id' => $id, 'box_number' => 1, 'found' => false];
+}
 function route_path(): array
 {
     $uri = $_SERVER['REQUEST_URI'] ?? '/';
@@ -4043,9 +4081,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                             $item['sku'] = $item['promotion_sku'];
                         }
                         $itemOrderId = $item['order_id'];
-                        // Check if this is a sub order (ends with -number)
-                        if (substr_count($itemOrderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $itemOrderId, $matches)) {
-                            $mainOrderId = $matches[1]; // Extract main order ID
+                        // Check if this is a sub order
+                        $resolved = resolve_main_order_id($pdo, $itemOrderId);
+                        if ($resolved['is_sub']) {
+                            $mainOrderId = $resolved['main_id']; // Extract main order ID
                             // Map sub order items to main order
                             if (in_array($mainOrderId, $orderIds)) {
                                 $itemsMap[$mainOrderId][] = $item;
@@ -4096,9 +4135,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                     // Map slips to main order IDs (similar to items)
                     foreach ($slips as $slip) {
                         $slipOrderId = $slip['order_id'];
-                        // Check if this is a sub order (ends with -number)
-                        if (substr_count($slipOrderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $slipOrderId, $matches)) {
-                            $mainOrderId = $matches[1]; // Extract main order ID
+                        // Check if this is a sub order
+                        $resolved = resolve_main_order_id($pdo, $slipOrderId);
+                        if ($resolved['is_sub']) {
+                            $mainOrderId = $resolved['main_id']; // Extract main order ID
                             // Map sub order slips to main order
                             if (in_array($mainOrderId, $orderIds)) {
                                 $slipsMap[$mainOrderId][] = $slip;
@@ -4302,8 +4342,9 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $pdo->beginTransaction();
 
                 // Resolve main order ID (remove -1, -2 suffix if present)
-                $isSubOrder = substr_count($id, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $id, $matches);
-                $mainOrderId = $isSubOrder ? $matches[1] : $id;
+                $resolved = resolve_main_order_id($pdo, $id);
+                $isSubOrder = $resolved['is_sub'];
+                $mainOrderId = $resolved['main_id'];
 
                 if ($isSubOrder) {
                     error_log("PUT /orders: Detected sub-order ID $id. Redirecting update to main order $mainOrderId");
@@ -5206,9 +5247,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                 // Get main order ID and validate it doesn't have sub order suffix
                 $mainOrderId = $in['id'];
                 // Ensure main order ID doesn't have sub order suffix (e.g., -1, -2)
-                if (substr_count($mainOrderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $mainOrderId, $matches)) {
+                $resolved = resolve_main_order_id($pdo, $mainOrderId);
+                if ($resolved['is_sub']) {
                     // If main order ID has suffix, use the base ID instead
-                    $mainOrderId = $matches[1];
+                    $mainOrderId = $resolved['main_id'];
                     error_log("Warning: Main order ID had sub order suffix, using base ID: {$mainOrderId}");
                 }
                 $in['id'] = $mainOrderId;
@@ -8465,8 +8507,9 @@ function get_order(PDO $pdo, string $id): ?array
 {
     // Select all columns including bank_account_id and transfer_date
     // Check if this is a main order (not a sub order)
-    $isSubOrder = substr_count($id, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $id, $matches);
-    $mainOrderId = $isSubOrder ? $matches[1] : $id;
+    $resolved = resolve_main_order_id($pdo, $id);
+    $isSubOrder = $resolved['is_sub'];
+    $mainOrderId = $resolved['main_id'];
 
     // Always fetch main order record (not sub order)
     $stmt = $pdo->prepare('SELECT o.*, MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action 
@@ -12811,37 +12854,11 @@ function handle_validate_tracking_bulk($pdo)
             continue;
         }
 
-        // 1. Check Order Existence
-        // Try exact match on orders table (Parent ID)
-        $orderLookupInfo->execute([$orderId]);
-        $parentOrder = $orderLookupInfo->fetch(PDO::FETCH_ASSOC);
-
-        if ($parentOrder) {
-            $res['foundOrderId'] = $parentOrder['id'];
-            $res['boxNumber'] = 1;
-        } else {
-            // Try sub-order lookup (order_boxes)
-            $boxLookupInfo->execute([$orderId]);
-            $boxInfo = $boxLookupInfo->fetch(PDO::FETCH_ASSOC);
-
-            if ($boxInfo) {
-                $res['foundOrderId'] = $boxInfo['order_id'];
-                $res['boxNumber'] = $boxInfo['box_number'];
-            } else {
-                // FALLBACK: Try parsing ORD-xxx-1 format
-                if (substr_count($orderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $orderId, $matches)) {
-                    $potentialParentId = $matches[1];
-                    $potentialBox = (int) $matches[2];
-
-                    $orderLookupInfo->execute([$potentialParentId]);
-                    $parentFromParse = $orderLookupInfo->fetch(PDO::FETCH_ASSOC);
-
-                    if ($parentFromParse) {
-                        $res['foundOrderId'] = $parentFromParse['id'];
-                        $res['boxNumber'] = $potentialBox;
-                    }
-                }
-            }
+        // 1. Check Order Existence using robust helper
+        $resolved = resolve_main_order_id($pdo, $orderId);
+        if ($resolved['found']) {
+            $res['foundOrderId'] = $resolved['main_id'];
+            $res['boxNumber'] = $resolved['box_number'];
         }
 
         if (!$res['foundOrderId']) {
@@ -12891,8 +12908,7 @@ function handle_sync_tracking($pdo)
         // and auto-complete to Delivered (payment confirmed + tracking = done)
         $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN payment_status IN ('Approved', 'Paid') THEN payment_status WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') AND payment_status IN ('Approved', 'Paid') THEN 'Delivered' WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
 
-        // Prepare box lookup
-        $boxLookupStmt = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
+        // Box lookup logic is now handled by resolve_main_order_id
 
         $results = [];
 
@@ -12904,27 +12920,10 @@ function handle_sync_tracking($pdo)
             if (!$subOrderId || !$trackingNumber)
                 continue;
 
-            // Resolve parent order ID and box number
-            // First Priority: Lookup from order_boxes
-            $boxLookupStmt->execute([$subOrderId]);
-            $boxInfo = $boxLookupStmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($boxInfo) {
-                $parentOrderId = $boxInfo['order_id'];
-                $boxNumber = (int) $boxInfo['box_number'];
-            } else {
-                // Second Priority: Parse from sub_order_id suffix (fallback)
-                // Logic: ORD-001 -> Box 1, ORD-001-2 -> Box 2
-                $isSub = substr_count($subOrderId, '-') > 1 && preg_match('/^(.+)-(\d+)$/', $subOrderId, $matches);
-                if ($isSub) {
-                    $parentOrderId = $matches[1];
-                    $boxNumber = (int) $matches[2];
-                } else {
-                    // No suffix, assume this IS the parent order ID, treating as Box 1
-                    $parentOrderId = $subOrderId;
-                    $boxNumber = 1;
-                }
-            }
+            // Resolve parent order ID and box number using robust helper
+            $resolved = resolve_main_order_id($pdo, $subOrderId);
+            $parentOrderId = $resolved['main_id'];
+            $boxNumber = $resolved['box_number'];
 
             // Always use parentOrderId-boxNumber for consistency with order_boxes sub_order_id
             $resolvedSubOrderId = "$parentOrderId-$boxNumber";
