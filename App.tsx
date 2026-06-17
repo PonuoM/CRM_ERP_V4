@@ -2997,8 +2997,21 @@ const App: React.FC = () => {
   const handleBulkUpdateTracking = async (
     updates: { orderId: string; trackingNumber: string; boxNumber: number }[],
   ) => {
+    // 1. Prepare bulk sync payload and execute API FIRST
+    const syncPayload = updates.map(u => ({
+      sub_order_id: (u.boxNumber && u.boxNumber > 1) ? `${u.orderId}-${u.boxNumber}` : u.orderId,
+      tracking_number: u.trackingNumber,
+      shipping_provider: detectShippingProvider(u.trackingNumber)
+    }));
+
+    if (syncPayload.length > 0) {
+      // If this throws an error, it will naturally bubble up to the caller (BulkTrackingPage)
+      // preventing the UI from showing a false success message.
+      await apiSyncTrackingNumbers(syncPayload);
+    }
+
+    // 2. If API succeeds, update the local optimistic state
     const activitiesToAdd: Activity[] = [];
-    const patchPromises: Promise<any>[] = [];
 
     // Group updates by orderId to prevent race conditions
     const updatesByOrder = new Map<string, { trackingNumber: string; boxNumber: number }[]>();
@@ -3074,33 +3087,12 @@ const App: React.FC = () => {
               }
             }
             updatedOrdersMap.set(orderId, newOrderState);
-
-            if (true) {
-              const dedupedNumbers = Array.from(
-                new Set(newOrderState.trackingNumbers.filter(Boolean)),
-              );
-
-              // Instead of patching order, we'll collect for bulk sync
-              // But for the global state update, we've already done setOrders above
-              // So we just need to hit the new sync API with the new records
-            }
           }
         }
       });
 
       return Array.from(updatedOrdersMap.values());
     });
-
-    // Prepare bulk sync payload
-    const syncPayload = updates.map(u => ({
-      sub_order_id: (u.boxNumber && u.boxNumber > 1) ? `${u.orderId}-${u.boxNumber}` : u.orderId,
-      tracking_number: u.trackingNumber,
-      shipping_provider: detectShippingProvider(u.trackingNumber)
-    }));
-
-    if (syncPayload.length > 0) {
-      patchPromises.push(apiSyncTrackingNumbers(syncPayload));
-    }
 
     if (activitiesToAdd.length > 0) {
       if (true) {
@@ -3117,14 +3109,6 @@ const App: React.FC = () => {
         });
       }
       setActivities((prev) => [...activitiesToAdd, ...prev]);
-    }
-
-    if (true && patchPromises.length) {
-      try {
-        await Promise.all(patchPromises);
-      } catch (e) {
-        console.error("bulk tracking patch", e);
-      }
     }
   };
 
