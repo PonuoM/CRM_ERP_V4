@@ -233,6 +233,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
             shippingProvider: r.shipping_provider,
             shippingCost: Number(r.shipping_cost || 0),
             billDiscount: Number(r.bill_discount || 0),
+            couponDiscount: Number(r.coupon_discount || 0),
             totalAmount: Number(r.total_amount || 0),
             paymentMethod: r.payment_method,
             paymentStatus: r.payment_status,

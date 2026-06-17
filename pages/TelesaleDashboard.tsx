@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User, Customer, CustomerLifecycleStatus, CustomerBehavioralStatus, ModalType, Tag, CustomerGrade, Appointment, Activity, ActivityType, CallHistory, Order } from '../types';
 import CustomerTable from '../components/CustomerTable';
 import { ListTodo, Users, Search, ChevronDown, Calendar, PlusCircle, Filter, Check, Clock, ShoppingCart, UserPlus, Star, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
@@ -276,6 +276,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
             creatorId: r.creator_id,
             orderDate: r.order_date,
             notes: r.notes,
+            couponDiscount: Number(r.coupon_discount || 0),
             totalAmount: Number(r.total_amount || 0),
             orderStatus: r.order_status,
             paymentStatus: r.payment_status,

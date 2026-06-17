@@ -4354,10 +4354,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-sm text-gray-600">
-                                ยอดออเดอร์ทั้งหมด:
+                                ยอดที่ต้องชำระ:
                               </span>
                               <span className="text-sm font-bold text-gray-900">
-                                ฿{calculatedTotals.totalAmount.toLocaleString()}
+                                ฿{(calculatedTotals.payableAmount || 0).toLocaleString()}
                               </span>
                             </div>
                             <div className="flex justify-between items-center mb-2">
@@ -4392,7 +4392,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                   compareAmount = Number(currentOrder.amountPaid) || 0;
                                 }
 
-                                const diff = compareAmount - calculatedTotals.totalAmount;
+                                const diff = compareAmount - (calculatedTotals.payableAmount || 0);
                                 return (
                                   <span
                                     className={`text-sm font-bold ${diff < 0 ? "text-red-600" : diff > 0 ? "text-blue-600" : "text-green-600"}`}

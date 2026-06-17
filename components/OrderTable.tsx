@@ -345,23 +345,28 @@ const OrderTable: React.FC<OrderTableProps> = ({
   const getCombinedTotalAmount = (order: Order): number => {
     // First compute the actual total from items
     const actualTotal = computeOrderTotal(order);
+    const orderCoupon = order.couponDiscount || (order as any).coupon_discount || 0;
+    const netPayable = Math.max(0, actualTotal - orderCoupon);
+
     const orderAmountPaid = order.amountPaid || 0;
 
-    // If actualTotal already matches amount_paid (within small tolerance),
+    // If netPayable already matches amount_paid (within small tolerance),
     // it means all items are in this order, no need to add upsell orders
-    if (orderAmountPaid > 0 && Math.abs(actualTotal - orderAmountPaid) < 10) {
-      return actualTotal;
+    if (orderAmountPaid > 0 && Math.abs(netPayable - orderAmountPaid) < 10) {
+      return netPayable;
     }
 
-    // Only look for upsell orders if actualTotal doesn't match amount_paid
+    // Only look for upsell orders if netPayable doesn't match amount_paid
     // This means there might be related orders that share the payment
     const relatedOrders = findRelatedUpsellOrders(order);
     const relatedTotal = relatedOrders.reduce((sum, o) => {
-      // Use totalAmount for related orders as well
-      return sum + (o.totalAmount || 0);
+      // Use totalAmount minus couponDiscount for related orders as well
+      const oTotal = o.totalAmount || 0;
+      const oCoupon = o.couponDiscount || (o as any).coupon_discount || 0;
+      return sum + Math.max(0, oTotal - oCoupon);
     }, 0);
 
-    return actualTotal + relatedTotal;
+    return netPayable + relatedTotal;
   };
 
   React.useEffect(() => {

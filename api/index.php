@@ -3653,7 +3653,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                o.street, o.subdistrict, o.district, o.province, o.postal_code, o.recipient_first_name, o.recipient_last_name,
                                o.shipping_provider';
 
-                $selectCols .= ', o.shipping_cost, o.bill_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
+                $selectCols .= ', o.shipping_cost, o.bill_discount, o.coupon_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
