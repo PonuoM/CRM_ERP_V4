@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { User } from "../types";
 import { apiFetch } from "../services/api";
-import { Download, Loader2, BarChart3, ChevronDown, ChevronRight, Users, HelpCircle } from "lucide-react";
+import { Download, Loader2, BarChart3, ChevronDown, ChevronRight, ChevronLeft, Users, HelpCircle } from "lucide-react";
 import ExportTypeModal from "../components/ExportTypeModal";
 import { downloadDataFile } from "../utils/exportUtils";
 
@@ -132,6 +132,29 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
     const labelA = `${THAI_MONTHS_SHORT[monthA - 1]} ${yearA + 543}`;
     const labelB = `${THAI_MONTHS_SHORT[monthB - 1]} ${yearB + 543}`;
 
+    // --- Quick compare presets (set BOTH periods at once). Deltas are months relative to current month.
+    const PRESETS = [
+        { label: "เดือนที่แล้ว → เดือนนี้", a: -1, b: 0 },
+        { label: "2 เดือนก่อน → เดือนที่แล้ว", a: -2, b: -1 },
+        { label: "ปีก่อน → ปีนี้ (เดือนเดียวกัน)", a: -12, b: 0 },
+    ];
+    const pairKey = (am: number, ay: number, bm: number, by: number) => `${ay}-${am}_${by}-${bm}`;
+    const presetPair = (aD: number, bD: number) => {
+        const base = new Date();
+        const a = new Date(base.getFullYear(), base.getMonth() + aD, 1);
+        const b = new Date(base.getFullYear(), base.getMonth() + bD, 1);
+        return { am: a.getMonth() + 1, ay: a.getFullYear(), bm: b.getMonth() + 1, by: b.getFullYear() };
+    };
+    const applyPair = (p: { am: number; ay: number; bm: number; by: number }) => {
+        setMonthA(p.am); setYearA(p.ay); setMonthB(p.bm); setYearB(p.by);
+    };
+    const currentKey = pairKey(monthA, yearA, monthB, yearB);
+    const shiftBoth = (d: number) => {
+        const a = new Date(yearA, monthA - 1 + d, 1);
+        const b = new Date(yearB, monthB - 1 + d, 1);
+        applyPair({ am: a.getMonth() + 1, ay: a.getFullYear(), bm: b.getMonth() + 1, by: b.getFullYear() });
+    };
+
     const handleExport = (type: 'csv' | 'xlsx') => {
         if (!data) return;
         const colNames = COLS.map(c => c.label);
@@ -170,6 +193,26 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 disabled:opacity-40 transition-colors">
                         <Download className="w-3.5 h-3.5" /> ดาวน์โหลด Export
                     </button>
+                </div>
+                {/* Quick compare presets + stepper (change both periods at once) */}
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                    {PRESETS.map((p, i) => {
+                        const pp = presetPair(p.a, p.b);
+                        const active = currentKey === pairKey(pp.am, pp.ay, pp.bm, pp.by);
+                        return (
+                            <button key={i} onClick={() => applyPair(pp)}
+                                className={`px-2.5 py-1 text-xs rounded-md font-medium transition-all border ${active ? "bg-green-600 text-white border-green-600 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
+                                {p.label}
+                            </button>
+                        );
+                    })}
+                    <div className="flex items-center gap-1 ml-1 bg-gray-100 rounded-md px-1 py-0.5">
+                        <button onClick={() => shiftBoth(-1)} title="ถอยทั้งคู่ 1 เดือน"
+                            className="p-1 rounded hover:bg-white text-gray-600"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                        <span className="text-[10px] text-gray-500 px-1 whitespace-nowrap">เลื่อนช่วง</span>
+                        <button onClick={() => shiftBoth(1)} title="เดินหน้าทั้งคู่ 1 เดือน"
+                            className="p-1 rounded hover:bg-white text-gray-600"><ChevronRight className="w-3.5 h-3.5" /></button>
+                    </div>
                 </div>
                 <div className="flex items-center gap-4 flex-wrap text-xs">
                     <div className="flex items-center gap-1">
