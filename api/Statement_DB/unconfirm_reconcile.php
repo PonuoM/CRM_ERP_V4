@@ -80,7 +80,7 @@ try {
 
         // Get order details
         $orderStmt = $pdo->prepare("
-            SELECT id, total_amount, order_status, payment_status
+            SELECT id, total_amount, coupon_discount, order_status, payment_status
             FROM orders
             WHERE id = :id AND company_id = :companyId
         ");
@@ -89,18 +89,20 @@ try {
 
         if ($order) {
             $totalAmount = (float) $order['total_amount'];
+            $couponDiscount = (float) ($order['coupon_discount'] ?? 0);
+            $payableAmount = max(0, $totalAmount - $couponDiscount);
             $currentOrderStatus = $order['order_status'];
             $currentPaymentStatus = $order['payment_status'];
 
             // Smart status revert
-            if ($remainingPaid >= $totalAmount - 0.01) {
+            if ($remainingPaid >= $payableAmount - 0.01) {
                 // Still fully covered → keep status as-is
                 $newOrderStatus = $currentOrderStatus;
                 $newPaymentStatus = $currentPaymentStatus;
             } else {
-                // Revert to PreApproved
-                $newPaymentStatus = 'PreApproved';
-                // Revert from Delivered (เสร็จสิ้น) back to PreApproved (รอบัญชีตรวจสอบ)
+                // Revert to Verified (รอตรวจบัญชีใหม่)
+                $newPaymentStatus = 'Verified';
+                // Revert from Delivered (เสร็จสิ้น) back to Shipping หรืออิงตามความเป็นจริง แต่ปกติกลับไปรอตรวจสลิป
                 $newOrderStatus = ($currentOrderStatus === 'Delivered') ? 'PreApproved' : $currentOrderStatus;
             }
 

@@ -87,12 +87,15 @@ try {
             $remainingPaid = (float) $sumStmt->fetchColumn();
 
             // Cap at 1.5x total_amount to prevent doubling bugs (allows normal overpayments)
-            $orderTotalStmt = $pdo->prepare("SELECT id, total_amount, order_status, payment_status FROM orders WHERE id = :id AND company_id = :cid");
+            $orderTotalStmt = $pdo->prepare("SELECT id, total_amount, coupon_discount, order_status, payment_status FROM orders WHERE id = :id AND company_id = :cid");
             $orderTotalStmt->execute([':id' => $orderId, ':cid' => $companyId]);
             $order = $orderTotalStmt->fetch(PDO::FETCH_ASSOC);
 
             if ($order) {
                 $totalAmount = (float) $order['total_amount'];
+                $couponDiscount = (float) ($order['coupon_discount'] ?? 0);
+                $payableAmount = max(0, $totalAmount - $couponDiscount);
+                
                 if ($totalAmount > 0 && $remainingPaid > $totalAmount * 1.5) {
                     $remainingPaid = $totalAmount;
                 }
@@ -102,7 +105,7 @@ try {
 
                 // Smart status revert: Revert payment_status to 'PreApproved' (รอบัญชีตรวจสอบ)
                 // only if we unconfirm. DO NOT set to Unpaid if money was collected.
-                if ($remainingPaid >= $totalAmount - 0.01) {
+                if ($remainingPaid >= $payableAmount - 0.01) {
                     $newPaymentStatus = $currentPaymentStatus;
                     $newOrderStatus = $currentOrderStatus;
                 } else {

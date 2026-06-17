@@ -71,17 +71,34 @@ try {
             // Get parent order id (remove sub-order suffix like -1, -2)
             $parentOrderId = preg_replace('/-\d+$/', '', $existingOrderId);
 
-            // GUARD: เช็คว่าจ่ายครบยอดหรือยัง ก่อน mark Approved/Delivered
-            // ใช้ slip ที่ confirmed รวม + reconcile log ที่ confirmed รวม เป็นตัวประเมิน amount_paid ที่แท้จริง
-            $totalCheckStmt = $pdo->prepare("SELECT total_amount, amount_paid FROM orders WHERE id = :orderId");
+            // GUARD: เช็คว่าจ่ายครบยอดหรือยัง หรือมีเหตุผลรองรับไหม
+            $totalCheckStmt = $pdo->prepare("SELECT total_amount, amount_paid, coupon_discount FROM orders WHERE id = :orderId");
             $totalCheckStmt->execute([':orderId' => $parentOrderId]);
             $orderRow = $totalCheckStmt->fetch(PDO::FETCH_ASSOC);
             $totalAmount = (float) ($orderRow['total_amount'] ?? 0);
             $amountPaid  = (float) ($orderRow['amount_paid'] ?? 0);
-            $isFullyPaid = $totalAmount > 0 && $amountPaid >= ($totalAmount - 0.01);
+            $couponDiscount = (float) ($orderRow['coupon_discount'] ?? 0);
+            $payableAmount = max(0, $totalAmount - $couponDiscount);
+            $isFullyPaid = $payableAmount > 0 && $amountPaid >= ($payableAmount - 0.01);
 
-            if ($isFullyPaid) {
-                // จ่ายครบ → Approved (+ Delivered ถ้ามี tracking)
+            $slipCheckStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = :orderId AND mismatch_reason IS NOT NULL AND mismatch_reason != ''");
+            $slipCheckStmt->execute([':orderId' => $parentOrderId]);
+            $hasMismatchReason = (int) $slipCheckStmt->fetchColumn() > 0;
+
+            // เช็คว่ามีสลิปใบอื่นที่ยังไม่ได้รับการตรวจไหม (ป้องกันเคสโอนหลายสลิป)
+            $pendingSlipsStmt = $pdo->prepare("
+                SELECT COUNT(*) FROM order_slips os
+                LEFT JOIN statement_reconcile_logs srl ON srl.order_id = os.order_id 
+                   AND srl.confirmed_action = 'Confirmed' 
+                   AND ABS(srl.confirmed_amount - os.amount) < 0.01
+                WHERE os.order_id = :orderId AND srl.id IS NULL
+            ");
+            $pendingSlipsStmt->execute([':orderId' => $parentOrderId]);
+            $hasPendingSlips = (int) $pendingSlipsStmt->fetchColumn() > 0;
+
+
+            if (!$hasPendingSlips && ($isFullyPaid || $hasMismatchReason)) {
+                // จ่ายครบหมดแล้ว หรือ บัญชีจงใจใส่เหตุผลยอมรับยอดขาด -> Approved (ปล่อยโกดังแพ็ค)
                 $trackingCheckStmt = $pdo->prepare(
                     "SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = :orderId1 OR order_id = :orderId2"
                 );
@@ -109,12 +126,12 @@ try {
                 }
                 $updateOrderStmt->execute([':orderId' => $parentOrderId]);
             } else {
-                // ยังจ่ายไม่ครบ → คง payment_status = 'Unpaid' (mental model: "ยังไม่ครบ = ยังไม่จบ")
-                // PreApproved สงวนไว้สำหรับ "จ่ายครบแล้ว รออนุมัติเต็มยอด" เท่านั้น
-                // ไม่แตะ order_status (ค้างที่ Shipping/Picking ฯลฯ ตามจริง)
+                // โอนขาดและไม่มีเหตุผลกำกับ (เช่น แบ่งจ่ายงวดแรก) หรือ ยังมีสลิปใบอื่นรอตรวจ
+                // -> ให้สถานะเป็น 'Verified' (รับรู้ว่าเงินเข้าแล้ว แต่ยังไม่ดึงไปแพ็ค) 
+                // ไม่เตะกลับไปเป็น Unpaid ให้ตกใจอีกต่อไป!
                 $updateOrderStmt = $pdo->prepare("
                     UPDATE orders
-                    SET payment_status = 'Unpaid'
+                    SET payment_status = 'Verified'
                     WHERE id = :orderId
                       AND order_status NOT IN ('Cancelled', 'Returned')
                       AND payment_status NOT IN ('Approved', 'Paid')
