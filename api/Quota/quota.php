@@ -311,7 +311,9 @@ function handleSummary(PDO $conn) {
             OR u.id IN (
                 SELECT DISTINCT qu.user_id
                 FROM quota_usage qu
+                JOIN orders o ON o.id = qu.order_id
                 WHERE qu.quota_product_id = :qpId2 AND qu.deleted_at IS NULL
+                AND o.order_status NOT IN ('Cancelled', 'Returned', 'ตีกลับ', 'ยกเลิก')
             )
         )
         ORDER BY u.first_name ASC
@@ -983,8 +985,11 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
         $adminQuota = floatval($stmtAdmin->fetch()['admin_total']);
 
         $stmtUsage = $conn->prepare("
-            SELECT COALESCE(SUM(quantity_used), 0) AS total_used FROM quota_usage
-            WHERE quota_product_id = :qpId AND user_id = :userId AND deleted_at IS NULL
+            SELECT COALESCE(SUM(qu.quantity_used), 0) AS total_used 
+            FROM quota_usage qu
+            JOIN orders o ON o.id = qu.order_id
+            WHERE qu.quota_product_id = :qpId AND qu.user_id = :userId AND qu.deleted_at IS NULL
+            AND o.order_status NOT IN ('Cancelled', 'Returned', 'ตีกลับ', 'ยกเลิก')
         ");
         $stmtUsage->execute([':qpId' => $quotaProductId, ':userId' => $userId]);
         $totalUsed = floatval($stmtUsage->fetch()['total_used']);
@@ -1078,11 +1083,13 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
     // 3. ดึงประวัติการใช้ (Raw Usages) ของสินค้าที่เกี่ยวข้องทั้งหมด
     $inClause = implode(',', array_map('intval', array_keys($allScopeProductIds)));
     $stmtU = $conn->prepare("
-        SELECT quota_product_id, quantity_used, created_at 
-        FROM quota_usage 
-        WHERE user_id = :uid 
-        AND quota_product_id IN ($inClause) 
-        AND deleted_at IS NULL 
+        SELECT qu.quota_product_id, qu.quantity_used, qu.created_at 
+        FROM quota_usage qu
+        JOIN orders o ON o.id = qu.order_id
+        WHERE qu.user_id = :uid 
+        AND qu.quota_product_id IN ($inClause) 
+        AND qu.deleted_at IS NULL 
+        AND o.order_status NOT IN ('Cancelled', 'Returned', 'ตีกลับ', 'ยกเลิก')
     ");
     $stmtU->execute([':uid' => $userId]);
     $rawUsages = $stmtU->fetchAll(PDO::FETCH_ASSOC);
@@ -1138,12 +1145,14 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
 
     // หา totalUsed ของสินค้านี้จริงๆ (รวมยอดตามช่วงเวลาที่ Rate Active)
     $stmtUU = $conn->prepare("
-        SELECT COALESCE(SUM(quantity_used), 0) 
-        FROM quota_usage 
-        WHERE user_id = :uid 
-        AND quota_product_id = :qpId 
-        AND created_at >= :start AND created_at <= :end 
-        AND deleted_at IS NULL
+        SELECT COALESCE(SUM(qu.quantity_used), 0) 
+        FROM quota_usage qu
+        JOIN orders o ON o.id = qu.order_id
+        WHERE qu.user_id = :uid 
+        AND qu.quota_product_id = :qpId 
+        AND qu.created_at >= :start AND qu.created_at <= :end 
+        AND qu.deleted_at IS NULL
+        AND o.order_status NOT IN ('Cancelled', 'Returned', 'ตีกลับ', 'ยกเลิก')
     ");
     $stmtUU->execute([':uid' => $userId, ':qpId' => $quotaProductId, ':start' => $minStart, ':end' => $maxEnd]);
     $totalUsedUI = floatval($stmtUU->fetchColumn());
@@ -1627,7 +1636,7 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
             $histIncome = floatval($sConf->fetchColumn());
 
             // B. หารายจ่ายของรอบบิลนั้นๆ
-            $sUsage = $conn->prepare("SELECT COALESCE(SUM(quantity_used), 0) FROM quota_usage WHERE user_id = :uid AND quota_product_id IN ($in) AND created_at >= :start AND created_at <= :end AND deleted_at IS NULL");
+            $sUsage = $conn->prepare("SELECT COALESCE(SUM(qu.quantity_used), 0) FROM quota_usage qu JOIN orders o ON o.id = qu.order_id WHERE qu.user_id = :uid AND qu.quota_product_id IN ($in) AND qu.created_at >= :start AND qu.created_at <= :end AND qu.deleted_at IS NULL AND o.order_status NOT IN ('Cancelled', 'Returned', 'ตีกลับ', 'ยกเลิก')");
             $start = ($hr['usage_start_date'] ?: '1970-01-01') . ' 00:00:00';
             $end = ($hr['usage_end_date'] ?: '2099-12-31') . ' 23:59:59';
             $sUsage->execute([':uid' => $userId, ':start' => $start, ':end' => $end]);
@@ -1646,22 +1655,24 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
     }
 
     $usageQuery = "
-        SELECT COALESCE(SUM(quantity_used), 0) AS total_used
-        FROM quota_usage
-        WHERE quota_product_id IN ($in) AND user_id = :userId AND deleted_at IS NULL
+        SELECT COALESCE(SUM(qu.quantity_used), 0) AS total_used
+        FROM quota_usage qu
+        JOIN orders o ON o.id = qu.order_id
+        WHERE qu.quota_product_id IN ($in) AND qu.user_id = :userId AND qu.deleted_at IS NULL
+        AND o.order_status NOT IN ('Cancelled', 'Returned', 'ตีกลับ', 'ยกเลิก')
     ";
     $usageParams = [':userId' => $userId];
     if ($quotaMode === 'reset') {
-        $usageQuery .= " AND period_start = :ps AND period_end = :pe";
+        $usageQuery .= " AND qu.period_start = :ps AND qu.period_end = :pe";
         $usageParams[':ps'] = $periodStart;
         $usageParams[':pe'] = $periodEnd;
     } elseif ($quotaMode === 'confirm') {
         if (!empty($rate['usage_start_date'])) {
-            $usageQuery .= " AND created_at >= :usgStart";
+            $usageQuery .= " AND qu.created_at >= :usgStart";
             $usageParams[':usgStart'] = $rate['usage_start_date'] . ' 00:00:00';
         }
         if (!empty($rate['usage_end_date'])) {
-            $usageQuery .= " AND created_at <= :usgEnd";
+            $usageQuery .= " AND qu.created_at <= :usgEnd";
             $usageParams[':usgEnd'] = $rate['usage_end_date'] . ' 23:59:59';
         }
     }
