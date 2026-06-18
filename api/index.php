@@ -1487,8 +1487,12 @@ function handle_customers(PDO $pdo, ?string $id): void
                     }
 
                     // Enforce Max 3 days constraint for realtime to avoid timeout
-                    $startDateTime = new DateTime($startDateStr);
-                    $endDateTime = new DateTime($endDateStr);
+                    try {
+                        $startDateTime = new DateTime($startDateStr);
+                        $endDateTime = new DateTime($endDateStr);
+                    } catch (Exception $e) {
+                        json_response(['error' => 'Invalid date format. Please provide valid start and end dates.'], 400);
+                    }
                     $diff = $startDateTime->diff($endDateTime);
                     if ($diff->days > 3) {
                         json_response(['error' => 'Realtime fetch allows maximum 3 days range. Please reduce your date range.'], 400);
@@ -1543,12 +1547,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $ch = curl_init($loginUrl);
                     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
                     curl_setopt($ch, CURLOPT_HTTPHEADER, [
                         'Accept: application/json',
                         'Authorization: Basic ' . base64_encode("$username:$password")
                     ]);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
                     $loginRes = curl_exec($ch);
                     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                     curl_close($ch);
@@ -1591,12 +1594,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $recUrl = "https://onecallvoicerecord.dtac.co.th/orktrack/rest/recordings?$params";
                     $ch = curl_init($recUrl);
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 120); // Allow 2 minutes for large datasets
                     curl_setopt($ch, CURLOPT_HTTPHEADER, [
                         'Accept: application/json',
                         'Authorization: ' . $token
                     ]);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
                     $recRes = curl_exec($ch);
                     $httpCodeRec = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                     curl_close($ch);
