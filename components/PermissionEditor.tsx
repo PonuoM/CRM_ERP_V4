@@ -18,6 +18,8 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'monitor.lead_performance', label: 'Lead Performance (อัตราการปิดการขาย)' },
             { key: 'monitor.team_appointments', label: 'Team Appointments (นัดหมายของทีม)' },
             { key: 'monitor.callstats', label: 'Telesale Call Stats (ติดตามการโทร)' },
+            { key: 'calls.telesale_report', label: 'Telesale Call Report (รายงานการโทร Telesale)' },
+            { key: 'monitor.campaign_compare', label: 'Telesale Campaign Compare (แคมเปญรายคน เทียบเดือน)' },
         ]
     },
     'Home': {
