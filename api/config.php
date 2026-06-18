@@ -19,9 +19,9 @@ register_shutdown_function(function () {
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv("DB_HOST") ?: "localhost";
 $DB_PORT = getenv("DB_PORT") ?: "3306";
-$DB_NAME = getenv("DB_NAME") ?: "primacom_mini_erp";
-$DB_USER = getenv("DB_USER") ?: "primacom_bloguser";
-$DB_PASS = getenv("DB_PASS") ?: "pJnL53Wkhju2LaGPytw8";
+$DB_NAME = getenv("DB_NAME") ?: "erp";
+$DB_USER = getenv("DB_USER") ?: "root";
+$DB_PASS = getenv("DB_PASS") ?: "12345678";
 
 
 

@@ -52,12 +52,15 @@ try {
             }
             break;
         case 'products':
+            require_once __DIR__ . '/Controllers/ProductController.php';
             handle_products($pdo, $id);
             break;
         case 'promotions':
+            require_once __DIR__ . '/Controllers/PromotionController.php';
             handle_promotions($pdo, $id);
             break;
         case 'finance_approval_counts':
+            require_once __DIR__ . '/Controllers/PromotionController.php';
             handle_finance_approval_counts($pdo);
             break;
         case 'validate_cod_tracking':
@@ -372,6 +375,7 @@ try {
             handle_platforms($pdo, $id);
             break;
         case 'bank_accounts':
+            require_once __DIR__ . '/Controllers/FinanceController.php';
             handle_bank_accounts($pdo, $id);
             break;
         case 'warehouses':
@@ -406,6 +410,7 @@ try {
             handle_ad_spend($pdo, $id);
             break;
         case 'appointments':
+            require_once __DIR__ . '/Controllers/AppointmentController.php';
             handle_appointments($pdo, $id);
             break;
         case 'call_history':
