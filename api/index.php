@@ -8755,10 +8755,11 @@ function handle_appointments(PDO $pdo, ?string $id): void
 
 function handle_calls(PDO $pdo, ?string $id): void
 {
+    $t_calls_start = microtime(true);
     switch (method()) {
         case 'GET':
             if ($id) {
-                $stmt = $pdo->prepare('SELECT * FROM call_history WHERE id = ?');
+                $stmt = $pdo->prepare('SELECT ch.*, c.first_name AS customer_first_name, c.last_name AS customer_last_name, c.phone AS customer_phone FROM call_history ch LEFT JOIN customers c ON ch.customer_id = c.customer_id WHERE ch.id = ?');
                 $stmt->execute([$id]);
                 $row = $stmt->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
@@ -8767,31 +8768,45 @@ function handle_calls(PDO $pdo, ?string $id): void
                 $companyId = $_GET['companyId'] ?? null;
                 $customerId = $_GET['customerId'] ?? null;
                 $assignedTo = $_GET['assignedTo'] ?? null;
+                $date = $_GET['date'] ?? null;
+                $dateStart = $_GET['dateStart'] ?? null;
+                $dateEnd = $_GET['dateEnd'] ?? null;
                 $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
                 $pageSize = isset($_GET['pageSize']) ? (int) $_GET['pageSize'] : 500;
                 $offset = ($page - 1) * $pageSize;
 
                 // Build Query
-                $sql = "SELECT ch.* FROM call_history ch";
+                $sql = "SELECT ch.*, c.first_name AS customer_first_name, c.last_name AS customer_last_name, c.phone AS customer_phone FROM call_history ch LEFT JOIN customers c ON ch.customer_id = c.customer_id";
                 $params = [];
                 $wheres = [];
 
-                // Join with customers for company scoping or assignedTo filter
-                if ($companyId || $assignedTo) {
-                    $sql .= " JOIN customers c ON ch.customer_id = c.customer_id";
-                    if ($companyId) {
-                        $wheres[] = "c.company_id = ?";
-                        $params[] = $companyId;
-                    }
-                    if ($assignedTo) {
-                        $wheres[] = "c.assigned_to = ?";
-                        $params[] = $assignedTo;
-                    }
+                if ($companyId) {
+                    $wheres[] = "c.company_id = ?";
+                    $params[] = $companyId;
+                }
+                if ($assignedTo) {
+                    $wheres[] = "c.assigned_to = ?";
+                    $params[] = $assignedTo;
                 }
 
                 if ($customerId) {
                     $wheres[] = "ch.customer_id = ?";
                     $params[] = $customerId;
+                }
+
+                if ($date) {
+                    $wheres[] = "DATE(ch.date) = ?";
+                    $params[] = $date;
+                } elseif ($dateStart && $dateEnd) {
+                    $wheres[] = "DATE(ch.date) BETWEEN ? AND ?";
+                    $params[] = $dateStart;
+                    $params[] = $dateEnd;
+                } elseif ($dateStart) {
+                    $wheres[] = "DATE(ch.date) >= ?";
+                    $params[] = $dateStart;
+                } elseif ($dateEnd) {
+                    $wheres[] = "DATE(ch.date) <= ?";
+                    $params[] = $dateEnd;
                 }
 
                 if (!empty($wheres)) {
@@ -11445,44 +11460,6 @@ function handle_attendance(PDO $pdo, ?string $id, ?string $action): void
                             $userMap[$uid]['workDays'] += 0.5;
                         }
                         // <2h = 0, don't add anything
-                    }
-                }
-                if (!empty($rules)) {
-                    // Group rules by tab_key
-                    $tabRules = [];
-                    foreach ($rules as $r) {
-                        $tabRules[$r['tab_key']][] = $r;
-                    }
-
-                    if (isset($tabRules[$manageTab])) {
-                        // Build complex OR logic for the specific tab
-                        // (payment_method = 'A' AND order_status = 'X') OR (payment_method = 'B' AND ...)
-                        $ruleConditions = [];
-                        foreach ($tabRules[$manageTab] as $r) {
-                            $conds = [];
-                            if ($r['payment_method']) {
-                                // Map friendly names to DB values if needed, assumes DB stores 'COD', 'Transfer' etc. directly
-                                $conds[] = "payment_method = " . $pdo->quote($r['payment_method']);
-                            }
-                            if (!empty($r['payment_status'])) {
-                                $conds[] = "payment_status = " . $pdo->quote($r['payment_status']);
-                            }
-                            if ($r['order_status']) {
-                                $conds[] = "order_status = " . $pdo->quote($r['order_status']);
-                            }
-
-                            if (!empty($conds)) {
-                                $ruleConditions[] = "(" . implode(' AND ', $conds) . ")";
-                            }
-                        }
-
-                        if (!empty($ruleConditions)) {
-                            // If we have valid rules, combine them with OR
-                            // e.g. WHERE ... AND ( (rule1) OR (rule2) )
-                            $sql .= " AND (" . implode(' OR ', $ruleConditions) . ")";
-                            // Mark as handled
-                            $handledDynamic = true;
-                        }
                     }
                 }
 

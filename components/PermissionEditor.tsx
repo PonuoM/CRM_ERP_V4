@@ -141,6 +141,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'reports.reports', label: 'Reports Dashboard' },
             { key: 'reports.export_history', label: 'Export History (ประวัติการส่งออก)' },
             { key: 'reports.import_export', label: 'Import Export (นำเข้า/ส่งออก)' },
+            { key: 'reports.random_employee', label: 'Random Employee List (สุ่มรายชื่อพนักงาน)' },
         ]
     },
     'Finance': {

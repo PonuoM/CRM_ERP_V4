@@ -105,6 +105,7 @@ import ProductSalesReportPage from "./pages/ProductSalesReportPage";
 import ProductAnalysisPage from "./pages/ProductAnalysisPage";
 import CustomerDistributionPage from "./pages/CustomerDistributionPage";
 import UserManagementPage from "./pages/UserManagementPage";
+import RandomEmployeePage from "./pages/RandomEmployeePage";
 import ProductManagementPage from "./pages/ProductManagementPage";
 import QuotaSettingsPage from "./pages/QuotaSettingsPage";
 import TelesaleSummaryDashboard from "./pages/TelesaleSummaryDashboard";
@@ -7754,6 +7755,15 @@ const App: React.FC = () => {
       case "Export History":
       case "ประวัติการส่งออก":
         return <ExportHistoryPage />;
+      case "Random Employee List":
+      case "สุ่มรายชื่อพนักงาน":
+        return (
+          <RandomEmployeePage
+            users={users}
+            companies={companies}
+            currentUser={currentUser}
+          />
+        );
       case "Import Export":
       case "Import":
       case "นำเข้า/ส่งออก":

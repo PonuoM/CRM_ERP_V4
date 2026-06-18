@@ -822,13 +822,16 @@ export async function listAppointments(params?: {
 
 
 
-export async function listCallHistory(params?: { customerId?: string; page?: number; pageSize?: number; companyId?: number; assignedTo?: number }) {
+export async function listCallHistory(params?: { customerId?: string; page?: number; pageSize?: number; companyId?: number; assignedTo?: number; date?: string; dateStart?: string; dateEnd?: string }) {
   const qs = new URLSearchParams();
   if (params?.customerId) qs.set("customerId", params.customerId);
   if (params?.page) qs.set("page", String(params.page));
   if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
   if (params?.companyId) qs.set("companyId", String(params.companyId));
   if (params?.assignedTo) qs.set("assignedTo", String(params.assignedTo));
+  if (params?.date) qs.set("date", params.date);
+  if (params?.dateStart) qs.set("dateStart", params.dateStart);
+  if (params?.dateEnd) qs.set("dateEnd", params.dateEnd);
 
   const response = await apiFetch(`call_history${qs.toString() ? `?${qs}` : ""}`);
 

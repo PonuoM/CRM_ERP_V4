@@ -206,6 +206,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Team Appointments": "นัดหมายของทีม",
     "Sales Monitoring": "ภาพรวมทีมขาย",
     "Telesale Callstats": "ติดตามการโทร",
+    "Random Employee List": "สุ่มรายชื่อพนักงาน",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -335,6 +336,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Reports", icon: BarChart2, key: "reports.reports" }, // Or nav.reports
         { label: "Export History", icon: FileUp, key: "reports.export_history" },
         { label: "Import Export", icon: FileUp, key: "reports.import_export" },
+        { label: "Random Employee List", icon: Users, key: "reports.random_employee" },
       ]
     },
     {
