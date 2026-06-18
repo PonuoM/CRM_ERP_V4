@@ -101,6 +101,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [callFilterEndDate, setCallFilterEndDate] = useState<string>(
         new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]
     );
+    const [callDataSource, setCallDataSource] = useState<'db' | 'realtime'>('db');
     const [callThresholdMinutes, setCallThresholdMinutes] = useState<string>('100');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
 
@@ -347,6 +348,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     roleId: u.role_id || u.roleId || (u.role === UserRole.Supervisor ? 7 : 6), // Fallback if missing
                     companyId: u.companyId || u.company_id,
                     username: u.username,
+                    phone: u.phone,
                     customTags: u.customTags || [],
                     basketCounts: {},
                     totalCustomers: 0,
@@ -394,8 +396,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setLoadingCallMinutes(true);
         try {
             const agentIds = agents.map(a => a.id).join(',');
+            const actionEndpoint = callDataSource === 'realtime' ? 'get_realtime_call_minutes' : 'get_call_minutes';
+            
             const response = await apiFetch(
-                `customers?action=get_call_minutes&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}`
+                `customers?action=${actionEndpoint}&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}`
             );
             
             if (response?.agents) {
@@ -403,13 +407,16 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     ...agent,
                     callMinutes: response.agents[agent.id] || 0
                 })));
+            } else if (response?.error) {
+                setMessage({ type: 'error', text: response.error });
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to fetch call minutes:', error);
+            setMessage({ type: 'error', text: `Failed to fetch call minutes: ${error.message}` });
         } finally {
             setLoadingCallMinutes(false);
         }
-    }, [agents.length, callFilterStartDate, callFilterEndDate, currentUser?.companyId]);
+    }, [agents.length, callFilterStartDate, callFilterEndDate, currentUser?.companyId, callDataSource]);
 
     // Effect to trigger fetchCallMinutes when dates change or agents are loaded
     useEffect(() => {
@@ -417,7 +424,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             fetchCallMinutes();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [callFilterStartDate, callFilterEndDate, agents.length]);
+    }, [callFilterStartDate, callFilterEndDate, agents.length, callDataSource]);
 
     // Fetch customers for active basket
     const fetchCustomers = useCallback(async () => {
@@ -2278,11 +2285,51 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     {/* Call Threshold Filter */}
                     <div className="mb-4 bg-orange-50 border border-orange-100 rounded-lg p-4 flex flex-wrap items-end gap-4 shadow-sm">
                         <div>
-                            <label className="block text-xs font-semibold text-orange-800 mb-1">กรองเวลาโทรตั้งแต่วันที่</label>
+                            <label className="block text-xs font-semibold text-orange-800 mb-1">แหล่งข้อมูลเวลาโทร</label>
+                            <select
+                                value={callDataSource}
+                                onChange={(e) => {
+                                    const val = e.target.value as 'db' | 'realtime';
+                                    setCallDataSource(val);
+                                    if (val === 'realtime') {
+                                        // Auto-adjust date range if > 3 days
+                                        const s = new Date(callFilterStartDate);
+                                        const eDate = new Date(callFilterEndDate);
+                                        const diffDays = (eDate.getTime() - s.getTime()) / (1000 * 60 * 60 * 24);
+                                        if (diffDays > 3) {
+                                            const newStart = new Date(eDate);
+                                            newStart.setDate(eDate.getDate() - 3);
+                                            setCallFilterStartDate(newStart.toISOString().split('T')[0]);
+                                            setMessage({ type: 'warning', text: 'ข้อมูลสด (Realtime) ดึงย้อนหลังได้สูงสุด 3 วัน ระบบได้ปรับวันที่อัตโนมัติ' });
+                                        }
+                                    }
+                                }}
+                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 bg-white"
+                            >
+                                <option value="db">ฐานข้อมูล CRM</option>
+                                <option value="realtime">เว็บไฟล์เสียง (Realtime)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-orange-800 mb-1">กรองตั้งแต่วันที่</label>
                             <input
                                 type="date"
                                 value={callFilterStartDate}
-                                onChange={(e) => setCallFilterStartDate(e.target.value)}
+                                onChange={(e) => {
+                                    const newStart = e.target.value;
+                                    if (callDataSource === 'realtime') {
+                                        const s = new Date(newStart);
+                                        const eDate = new Date(callFilterEndDate);
+                                        if ((eDate.getTime() - s.getTime()) / (1000 * 60 * 60 * 24) > 3) {
+                                            setMessage({ type: 'warning', text: 'ข้อมูลสด (Realtime) ดึงย้อนหลังได้สูงสุด 3 วัน' });
+                                            const adjustedStart = new Date(eDate);
+                                            adjustedStart.setDate(eDate.getDate() - 3);
+                                            setCallFilterStartDate(adjustedStart.toISOString().split('T')[0]);
+                                            return;
+                                        }
+                                    }
+                                    setCallFilterStartDate(newStart);
+                                }}
                                 className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
                             />
                         </div>
@@ -2291,7 +2338,21 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             <input
                                 type="date"
                                 value={callFilterEndDate}
-                                onChange={(e) => setCallFilterEndDate(e.target.value)}
+                                onChange={(e) => {
+                                    const newEnd = e.target.value;
+                                    if (callDataSource === 'realtime') {
+                                        const s = new Date(callFilterStartDate);
+                                        const eDate = new Date(newEnd);
+                                        if ((eDate.getTime() - s.getTime()) / (1000 * 60 * 60 * 24) > 3) {
+                                            setMessage({ type: 'warning', text: 'ข้อมูลสด (Realtime) ดึงย้อนหลังได้สูงสุด 3 วัน' });
+                                            const adjustedEnd = new Date(s);
+                                            adjustedEnd.setDate(s.getDate() + 3);
+                                            setCallFilterEndDate(adjustedEnd.toISOString().split('T')[0]);
+                                            return;
+                                        }
+                                    }
+                                    setCallFilterEndDate(newEnd);
+                                }}
                                 className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
                             />
                         </div>

@@ -79,6 +79,37 @@ export interface OneCallFetchResult {
     recordings?: OneCallRecording[];
 }
 
+export const fetchOneCallRecordingsRange = async (startDate: string, endDate: string): Promise<OneCallFetchResult> => {
+    const auth = await authenticateOneCall();
+    if (!auth.success || !auth.token) return { success: false, error: auth.error };
+
+    const params = new URLSearchParams({
+        range: "custom",
+        startdate: formatDateForOneCall(startDate, false),
+        enddate: formatDateForOneCall(endDate, true),
+        sort: "",
+        page: "1",
+        pagesize: "10000",
+        maxresults: "-1",
+        includetags: "true",
+        includemetadata: "true",
+        includeprograms: "true",
+    });
+
+    const url = `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings?${params}`;
+    try {
+        const res = await fetch(url, {
+            method: "GET",
+            headers: { Authorization: auth.token, Accept: "application/json" },
+        });
+        if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+        const data = await res.json();
+        return { success: true, recordings: data.objects || [] };
+    } catch (e: any) {
+        return { success: false, error: e?.message || "Fetch failed" };
+    }
+};
+
 export const fetchOneCallRecordings = async (date: string): Promise<OneCallFetchResult> => {
     const auth = await authenticateOneCall();
     if (!auth.success || !auth.token) return { success: false, error: auth.error };
