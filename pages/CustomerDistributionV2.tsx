@@ -349,6 +349,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     roleId: u.role_id || u.roleId || (u.role === UserRole.Supervisor ? 7 : 6), // Fallback if missing
                     companyId: u.companyId || u.company_id,
                     username: u.username,
+                    phone: u.phone,
                     customTags: u.customTags || [],
                     basketCounts: {},
                     totalCustomers: 0,
