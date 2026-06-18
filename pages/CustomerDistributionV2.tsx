@@ -584,6 +584,18 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         );
     };
 
+    // Memoize available supervisors to prevent recalculation on every render (Best Practice)
+    const availableSupervisors = useMemo(() => {
+        const uniqueIds = Array.from(new Set(agents.map(a => a.supervisorId).filter(id => id))) as number[];
+        return uniqueIds.map(id => {
+            const supervisor = agents.find(a => a.id === id);
+            return {
+                id,
+                name: supervisor ? `${supervisor.firstName} ${supervisor.lastName}` : `Supervisor ID: ${id}`
+            };
+        });
+    }, [agents]);
+
     // Filter agents for display
     const displayAgents = useMemo(() => {
         if (agentSupervisorFilter) {
@@ -2437,16 +2449,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
                         >
                             <option value="">-- ทั้งหมด --</option>
-                            {Array.from(new Set(agents.map(a => a.supervisorId).filter(id => id)))
-                                .map(id => {
-                                    const supervisor = agents.find(a => a.id === id);
-                                    return (
-                                        <option key={id} value={id as number}>
-                                            {supervisor ? `${supervisor.firstName} ${supervisor.lastName}` : `Supervisor ID: ${id}`}
-                                        </option>
-                                    );
-                                })
-                            }
+                            {availableSupervisors.map(sup => (
+                                <option key={sup.id} value={sup.id}>
+                                    {sup.name}
+                                </option>
+                            ))}
                         </select>
                     </div>
 
@@ -2768,16 +2775,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                         className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:ring-blue-500 focus:border-blue-500 bg-white"
                                                     >
                                                         <option value="">-- ทุกทีม --</option>
-                                                        {Array.from(new Set(agents.map(a => a.supervisorId).filter(id => id)))
-                                                            .map(id => {
-                                                                const supervisor = agents.find(a => a.id === id);
-                                                                return (
-                                                                    <option key={id} value={id as number}>
-                                                                        {supervisor ? `ทีม: ${supervisor.firstName} ${supervisor.lastName}` : `ทีม ID: ${id}`}
-                                                                    </option>
-                                                                );
-                                                            })
-                                                        }
+                                                        {availableSupervisors.map(sup => (
+                                                            <option key={sup.id} value={sup.id}>
+                                                                {sup.name.startsWith('Supervisor ID:') ? sup.name.replace('Supervisor ID:', 'ทีม ID:') : `ทีม: ${sup.name}`}
+                                                            </option>
+                                                        ))}
                                                     </select>
                                                 </div>
                                                 <div className="relative border border-gray-300 rounded-lg bg-white max-h-[140px] overflow-y-auto">
