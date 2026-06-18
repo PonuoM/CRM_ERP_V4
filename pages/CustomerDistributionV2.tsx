@@ -1236,6 +1236,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [selectedBaskets, setSelectedBaskets] = useState<string[]>([]);
     const [bulkActionType, setBulkActionType] = useState<'transfer' | 'reclaim_all' | 'reclaim_no_call_no_appt' | 'reclaim_called_no_appt' | 'reclaim_called_with_appt' | null>(null);
     const [bulkTargetAgents, setBulkTargetAgents] = useState<number[]>([]);
+    const [bulkTargetSupervisorFilter, setBulkTargetSupervisorFilter] = useState<number | ''>('');
     const [bulkLimit, setBulkLimit] = useState<string>('');
 
     // Flexible Transfer Logic
@@ -1376,6 +1377,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setSelectedBaskets([]); // Reset selection
         setBulkActionType(null); // Reset action
         setBulkTargetAgents([]); // Reset target agents
+        setBulkTargetSupervisorFilter(''); // Reset supervisor filter
         setBulkLimit(''); // Reset limit
         setReclaimModalOpen(true);
     };
@@ -1406,6 +1408,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setSelectedBaskets([]);
         setBulkActionType(null);
         setBulkTargetAgents([]);
+        setBulkTargetSupervisorFilter('');
         setBulkLimit('');
         setReclaimModalOpen(true);
     };
@@ -2758,6 +2761,25 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                         {bulkActionType === 'transfer' && (
                                             <div className="flex-1 animate-in fade-in slide-in-from-right-4 duration-200">
                                                 <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">พนักงานปลายทาง</label>
+                                                <div className="mb-2">
+                                                    <select
+                                                        value={bulkTargetSupervisorFilter || ''}
+                                                        onChange={(e) => setBulkTargetSupervisorFilter(e.target.value ? Number(e.target.value) : '')}
+                                                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:ring-blue-500 focus:border-blue-500 bg-white"
+                                                    >
+                                                        <option value="">-- ทุกทีม --</option>
+                                                        {Array.from(new Set(agents.map(a => a.supervisorId).filter(id => id)))
+                                                            .map(id => {
+                                                                const supervisor = agents.find(a => a.id === id);
+                                                                return (
+                                                                    <option key={id} value={id as number}>
+                                                                        {supervisor ? `ทีม: ${supervisor.firstName} ${supervisor.lastName}` : `ทีม ID: ${id}`}
+                                                                    </option>
+                                                                );
+                                                            })
+                                                        }
+                                                    </select>
+                                                </div>
                                                 <div className="relative border border-gray-300 rounded-lg bg-white max-h-[140px] overflow-y-auto">
                                                     <div className="sticky top-0 bg-gray-50 border-b border-gray-200 px-3 py-1.5 flex justify-between items-center z-10">
                                                         <span className="text-xs font-medium text-gray-500">เลือกผู้รับโอน</span>
@@ -2766,10 +2788,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                             className="text-xs text-blue-600 hover:underline"
                                                             onClick={() => setBulkTargetAgents([])}
                                                         >
-                                                            ล้าง
+                                                            ล้างการเลือก
                                                         </button>
                                                     </div>
-                                                    {agents.filter(a => a.id !== reclaimingAgent.id && a.role !== 'admin' && a.role !== 'manager').map(agent => {
+                                                    {agents.filter(a => a.id !== reclaimingAgent.id && a.role !== 'admin' && a.role !== 'manager' && (!bulkTargetSupervisorFilter || a.supervisorId === bulkTargetSupervisorFilter)).map(agent => {
                                                         const isSelected = bulkTargetAgents.includes(agent.id);
                                                         return (
                                                             <label key={agent.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm border-b border-gray-50 last:border-0">
@@ -2783,9 +2805,16 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                                             setBulkTargetAgents(prev => prev.filter(id => id !== agent.id));
                                                                         }
                                                                     }}
-                                                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
                                                                 />
-                                                                <span>{agent.firstName} {agent.lastName}</span>
+                                                                <div className="flex flex-col">
+                                                                    <span>{agent.firstName} {agent.lastName}</span>
+                                                                    {agent.supervisorId && !bulkTargetSupervisorFilter && (
+                                                                        <span className="text-[10px] text-gray-400">
+                                                                            [ทีม: {agents.find(a => a.id === agent.supervisorId)?.firstName || 'ไม่ระบุ'}]
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </label>
                                                         );
                                                     })}
