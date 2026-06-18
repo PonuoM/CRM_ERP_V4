@@ -14,7 +14,6 @@ import { mapCustomerFromApi } from '../utils/customerMapper';
 import Spinner from '../components/Spinner';
 import BlockedCustomersModal from '../components/BlockedCustomersModal';
 import ExcelJS from 'exceljs';
-import { fetchOneCallRecordingsRange, aggregateOneCallByUsers } from '../services/onecallRealtime';
 
 interface CustomerDistributionV2Props {
     currentUser?: User | null;
@@ -396,37 +395,20 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         
         setLoadingCallMinutes(true);
         try {
-            if (callDataSource === 'db') {
-                const agentIds = agents.map(a => a.id).join(',');
-                const response = await apiFetch(
-                    `customers?action=get_call_minutes&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}`
-                );
-                
-                if (response?.agents) {
-                    setAgents(prev => prev.map(agent => ({
-                        ...agent,
-                        callMinutes: response.agents[agent.id] || 0
-                    })));
-                } else if (response?.error) {
-                    setMessage({ type: 'error', text: response.error });
-                }
-            } else if (callDataSource === 'realtime') {
-                const rt = await fetchOneCallRecordingsRange(callFilterStartDate, callFilterEndDate);
-                if (rt.success && rt.recordings) {
-                    const usersForAgg = agents.map(a => ({ user_id: a.id, phone: a.phone }));
-                    const agg = aggregateOneCallByUsers(rt.recordings, usersForAgg);
-                    
-                    setAgents(prev => prev.map(agent => {
-                        const memberData = agg.members[agent.id];
-                        const m = memberData?.total_seconds ? Math.round((memberData.total_seconds / 60) * 10) / 10 : 0;
-                        return {
-                            ...agent,
-                            callMinutes: m
-                        };
-                    }));
-                } else {
-                    setMessage({ type: 'error', text: `ไม่สามารถดึงข้อมูลจากเว็บไฟล์เสียงได้: ${rt.error}` });
-                }
+            const agentIds = agents.map(a => a.id).join(',');
+            const actionEndpoint = callDataSource === 'realtime' ? 'get_realtime_call_minutes' : 'get_call_minutes';
+            
+            const response = await apiFetch(
+                `customers?action=${actionEndpoint}&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}`
+            );
+            
+            if (response?.agents) {
+                setAgents(prev => prev.map(agent => ({
+                    ...agent,
+                    callMinutes: response.agents[agent.id] || 0
+                })));
+            } else if (response?.error) {
+                setMessage({ type: 'error', text: response.error });
             }
         } catch (error: any) {
             console.error('Failed to fetch call minutes:', error);

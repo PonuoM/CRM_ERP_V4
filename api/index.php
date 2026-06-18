@@ -1475,6 +1475,167 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $tags->execute([$id, $user['id']]);
                     $cust['tags'] = $tags->fetchAll();
                     json_response($cust);
+                } elseif (isset($_GET['action']) && $_GET['action'] === 'get_realtime_call_minutes') {
+                    // Option 2 (Backend Proxy) for OneCall Realtime Data
+                    $companyId = $_GET['companyId'] ?? null;
+                    $assignedTo = $_GET['assignedTo'] ?? '';
+                    $startDateStr = $_GET['start_date'] ?? null;
+                    $endDateStr = $_GET['end_date'] ?? null;
+
+                    if (!$companyId || !$assignedTo || !$startDateStr || !$endDateStr) {
+                        json_response(['error' => 'Missing parameters'], 400);
+                    }
+
+                    // Enforce Max 3 days constraint for realtime to avoid timeout
+                    $startDateTime = new DateTime($startDateStr);
+                    $endDateTime = new DateTime($endDateStr);
+                    $diff = $startDateTime->diff($endDateTime);
+                    if ($diff->days > 3) {
+                        json_response(['error' => 'Realtime fetch allows maximum 3 days range. Please reduce your date range.'], 400);
+                    }
+
+                    // 1. Get Agent Phones
+                    $agentIds = array_map('intval', explode(',', $assignedTo));
+                    if (empty($agentIds)) {
+                        json_response(['agents' => []]);
+                    }
+                    $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
+                    $stmt = $pdo->prepare("SELECT id, phone FROM users WHERE id IN ($placeholders) AND phone IS NOT NULL AND phone != ''");
+                    $stmt->execute($agentIds);
+                    $agentsDb = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    $phoneToUser = [];
+                    foreach ($agentsDb as $agent) {
+                        $p = preg_replace('/\D/', '', $agent['phone']);
+                        if ($p) {
+                            $variants = [];
+                            if (strpos($p, '66') === 0 && strlen($p) > 2) {
+                                $variants = [$p, '0' . substr($p, 2), '+' . $p];
+                            } elseif (strpos($p, '0') === 0) {
+                                $variants = [$p, '66' . substr($p, 1), '+66' . substr($p, 1)];
+                            } else {
+                                $variants = [$p, '0' . $p, '+66' . $p, '66' . $p];
+                            }
+                            foreach ($variants as $v) {
+                                $phoneToUser[$v] = $agent['id'];
+                            }
+                        }
+                    }
+
+                    // 2. Fetch OneCall Credentials
+                    $stmt = $pdo->prepare("SELECT `key`, `value` FROM `env` WHERE `key` IN (?, ?)");
+                    $stmt->execute(["ONECALL_USERNAME_{$companyId}", "ONECALL_PASSWORD_{$companyId}"]);
+                    $envRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    $username = '';
+                    $password = '';
+                    foreach ($envRows as $row) {
+                        if ($row['key'] === "ONECALL_USERNAME_{$companyId}") $username = trim($row['value'], '"');
+                        if ($row['key'] === "ONECALL_PASSWORD_{$companyId}") $password = trim($row['value'], '"');
+                    }
+                    
+                    if (!$username || !$password) {
+                        json_response(['error' => "Missing OneCall credentials for company $companyId"], 500);
+                    }
+
+                    // 3. Login to OneCall
+                    $loginUrl = 'https://onecallvoicerecord.dtac.co.th/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true';
+                    $ch = curl_init($loginUrl);
+                    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                        'Accept: application/json',
+                        'Authorization: Basic ' . base64_encode("$username:$password")
+                    ]);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+                    $loginRes = curl_exec($ch);
+                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+
+                    if ($httpCode !== 200) {
+                        json_response(['error' => "Failed to authenticate with OneCall API (HTTP $httpCode)", "res" => $loginRes], 500);
+                    }
+                    
+                    $loginData = json_decode($loginRes, true);
+                    $token = $loginData['accesstoken'] ?? null;
+                    if (!$token) {
+                        json_response(['error' => 'No access token received from OneCall API'], 500);
+                    }
+
+                    // 4. Fetch Recordings
+                    $formatDateForOneCall = function($dateStr, $isEnd) {
+                        $d = new DateTime($dateStr, new DateTimeZone('Asia/Bangkok'));
+                        if ($isEnd) {
+                            $d->setTime(23, 59, 59);
+                        } else {
+                            $d->setTime(0, 0, 0);
+                        }
+                        $d->modify('-7 hours'); // Convert to UTC
+                        return $d->format('Ymd_His');
+                    };
+
+                    $params = http_build_query([
+                        'range' => 'custom',
+                        'startdate' => $formatDateForOneCall($startDateStr, false),
+                        'enddate' => $formatDateForOneCall($endDateStr, true),
+                        'sort' => '',
+                        'page' => '1',
+                        'pagesize' => '10000',
+                        'maxresults' => '-1',
+                        'includetags' => 'true',
+                        'includemetadata' => 'true',
+                        'includeprograms' => 'true'
+                    ]);
+
+                    $recUrl = "https://onecallvoicerecord.dtac.co.th/orktrack/rest/recordings?$params";
+                    $ch = curl_init($recUrl);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                        'Accept: application/json',
+                        'Authorization: ' . $token
+                    ]);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+                    $recRes = curl_exec($ch);
+                    $httpCodeRec = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+
+                    if ($httpCodeRec !== 200) {
+                        json_response(['error' => "Failed to fetch recordings from OneCall API (HTTP $httpCodeRec)"], 500);
+                    }
+
+                    $recData = json_decode($recRes, true);
+                    $recordings = $recData['objects'] ?? [];
+
+                    // 5. Aggregate
+                    $agentMinutes = [];
+                    foreach ($agentIds as $id) {
+                        $agentMinutes[$id] = 0;
+                    }
+
+                    foreach ($recordings as $rec) {
+                        $dur = isset($rec['duration']) ? (int)$rec['duration'] : 0;
+                        if ($dur < 30) continue; // Only calls >= 30s count
+
+                        $localP = $rec['localParty'] ?? '';
+                        $remoteP = $rec['remoteParty'] ?? '';
+
+                        $localId = $phoneToUser[$localP] ?? null;
+                        $remoteId = $phoneToUser[$remoteP] ?? null;
+
+                        $matchedId = $localId ?: $remoteId;
+                        if ($matchedId !== null && isset($agentMinutes[$matchedId])) {
+                            $agentMinutes[$matchedId] += $dur;
+                        }
+                    }
+
+                    // Convert to minutes
+                    foreach ($agentMinutes as $id => $seconds) {
+                        $agentMinutes[$id] = round($seconds / 60, 1);
+                    }
+
+                    json_response(['agents' => $agentMinutes]);
                 } elseif (isset($_GET['action']) && $_GET['action'] === 'get_call_minutes') {
                     // Get total answered call minutes for specified agents within a date range
                     $companyId = $_GET['companyId'] ?? null;
