@@ -283,22 +283,21 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
             ) : (
                 <div className="overflow-auto max-h-[500px] border rounded-lg">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
+                        <thead className="bg-gray-50">
                             <tr>
-                                <th className="text-left p-3">
+                                <th className="p-3 text-left">
                                     <input
                                         type="checkbox"
                                         ref={selectAllRef}
                                         checked={selectedAgents.length === filteredAgents.length && filteredAgents.length > 0}
                                         onChange={handleSelectAllClick}
-                                        className="w-4 h-4 rounded text-blue-600"
+                                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                     />
                                 </th>
-                                <th className="text-left p-3 font-semibold">พนักงาน</th>
-                                <th className="text-left p-3 font-semibold">ตำแหน่ง</th>
-                                <th className="text-left p-3 font-semibold">เวลาโทร (ช่วงเวลาที่เลือก)</th>
-                                <th className="text-center p-3 font-semibold">ดึงคืน</th>
-                                <th className="text-center p-3 font-semibold border-x bg-gray-200">ลูกค้าในมือ</th>
+                                <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
+                                <th className="p-3 text-center font-medium text-gray-600">เวลาโทร (สายรับ)</th>
+                                <th className="p-3 text-center font-medium text-gray-600">Action</th>
+                                <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
                                 {dashboardBaskets.map(basket => (
                                     <th key={basket.basket_key} className="text-center p-3 text-xs font-medium text-gray-600 bg-gray-50 whitespace-nowrap">
                                         <div className="truncate max-w-[100px] mx-auto" title={basket.basket_name}>
@@ -322,21 +321,28 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                                 type="checkbox"
                                                 checked={isChecked}
                                                 onChange={() => {}} // handled by tr click
-                                                className="w-4 h-4 rounded text-blue-600"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             />
                                         </td>
-                                        <td className="p-3">
-                                            <div className="font-medium text-gray-800">{agent.firstName} {agent.lastName}</div>
-                                            <div className="text-xs text-gray-500">ID: {agent.id}</div>
+                                        <td className="p-3 font-medium">
+                                            <div>
+                                                {agent.firstName} {agent.lastName}
+                                                {!agent.isActive && (
+                                                    <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
+                                                        {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {agent.supervisorId && (
+                                                <div className="text-xs text-gray-400 font-normal mt-0.5">
+                                                    [ทีม: {agents.find(a => a.id === agent.supervisorId)?.firstName || 'ไม่ระบุ'}]
+                                                </div>
+                                            )}
                                         </td>
-                                        <td className="p-3">
-                                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
-                                                {agent.role}
-                                            </span>
-                                        </td>
-                                        <td className="p-3">
+                                        <td className="p-3 text-center">
                                             {loadingCallMinutes ? (
-                                                <div className="w-16 h-4 bg-gray-200 animate-pulse rounded"></div>
+                                                <span className="text-gray-300 text-xs">...</span>
                                             ) : (
                                                 <span className={`font-semibold ${agent.callMinutes && agent.callMinutes >= parseInt(callThresholdMinutes) ? 'text-green-600' : 'text-gray-500'}`}>
                                                     {agent.callMinutes !== undefined ? `${Math.floor(agent.callMinutes)} นาที` : '-'}
