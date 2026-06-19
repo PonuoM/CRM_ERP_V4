@@ -49,7 +49,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     const selectAllRef = useRef<HTMLInputElement>(null);
 
     const roles = Array.from(new Set(agents.map(a => a.role))).filter(Boolean);
-    const companies = Array.from(new Set(agents.map(a => a.company_id))).filter(Boolean);
+    const companies = Array.from(new Set(agents.map(a => a.companyId))).filter(Boolean);
 
     const fetchCallMinutes = useCallback(async () => {
         if (!agents || agents.length === 0) return;
@@ -88,9 +88,9 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
 
     const filteredAgents = useMemo(() => {
         return agents.filter(agent => {
-            const matchSearch = (agent.first_name + ' ' + agent.last_name).toLowerCase().includes(agentSearch.toLowerCase());
+            const matchSearch = (agent.firstName + ' ' + agent.lastName).toLowerCase().includes(agentSearch.toLowerCase());
             const matchRole = !roleFilter || agent.role === roleFilter;
-            const matchCompany = !companyFilter || agent.company_id === companyFilter;
+            const matchCompany = !companyFilter || agent.companyId === companyFilter;
             
             let matchThreshold = true;
             if (callThresholdMinutes) {
@@ -331,7 +331,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                             />
                                         </td>
                                         <td className="p-3">
-                                            <div className="font-medium text-gray-800">{agent.first_name} {agent.last_name}</div>
+                                            <div className="font-medium text-gray-800">{agent.firstName} {agent.lastName}</div>
                                             <div className="text-xs text-gray-500">ID: {agent.id}</div>
                                         </td>
                                         <td className="p-3">
