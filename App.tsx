@@ -177,7 +177,6 @@ import OrderTabSettingsPage from "./pages/OrderTabSettingsPage";
 import BasketSettingsPage from "./pages/BasketSettingsPage";
 import ExportTemplateSettingsPage from "./pages/ExportTemplateSettingsPage";
 import CustomerDistributionV2 from "./pages/CustomerDistributionV2";
-import CustomerDistributionV3 from "./pages/CustomerDistributionV3";
 import TelesalePerformancePage from "./pages/TelesalePerformancePage";
 import TelesaleCallstatsPage from "./pages/TelesaleCallstatsPage";
 import AttendanceManagementPage from "./pages/AttendanceManagementPage";
@@ -7374,10 +7373,6 @@ const App: React.FC = () => {
       case "แจกงาน V2":
         return <CustomerDistributionV2 currentUser={currentUser} />;
 
-      case "Distribution V3":
-      case "nav.distribution_v3":
-      case "distribution-v3":
-        return <CustomerDistributionV3 currentUser={currentUser} />;
 
       case "Export Template Settings":
       case "nav.export_template_settings":
