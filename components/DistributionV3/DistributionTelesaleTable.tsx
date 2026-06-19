@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Eye, Loader2 } from 'lucide-react';
+import { Eye, Loader2, Filter } from 'lucide-react';
 import { AgentWithBaskets, BasketConfig } from '../../types/distribution';
 import { apiFetch } from '../../services/api';
 
@@ -30,9 +30,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     setMessage,
     currentUser
 }) => {
-    const [agentSearch, setAgentSearch] = useState('');
-    const [roleFilter, setRoleFilter] = useState<string>('');
-    const [companyFilter, setCompanyFilter] = useState<number | ''>('');
+    const [agentSupervisorFilter, setAgentSupervisorFilter] = useState<number | ''>('');
     
     const [callDataSource, setCallDataSource] = useState<'db' | 'realtime'>('db');
     const [callFilterStartDate, setCallFilterStartDate] = useState<string>(() => {
@@ -48,8 +46,16 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
 
     const selectAllRef = useRef<HTMLInputElement>(null);
 
-    const roles = Array.from(new Set(agents.map(a => a.role))).filter(Boolean);
-    const companies = Array.from(new Set(agents.map(a => a.companyId))).filter(Boolean);
+    const availableSupervisors = useMemo(() => {
+        const uniqueIds = Array.from(new Set(agents.map(a => a.supervisorId).filter(id => id))) as number[];
+        return uniqueIds.map(id => {
+            const supervisor = agents.find(a => a.id === id);
+            return {
+                id,
+                name: supervisor ? `${supervisor.firstName} ${supervisor.lastName}` : `Supervisor ID: ${id}`
+            };
+        });
+    }, [agents]);
 
     const fetchCallMinutes = useCallback(async () => {
         if (!agents || agents.length === 0) return;
@@ -87,14 +93,13 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     }, [callFilterStartDate, callFilterEndDate, agents.length, callDataSource]);
 
     const filteredAgents = useMemo(() => {
-        return agents.filter(agent => {
-            const matchSearch = (agent.firstName + ' ' + agent.lastName).toLowerCase().includes(agentSearch.toLowerCase());
-            const matchRole = !roleFilter || agent.role === roleFilter;
-            const matchCompany = !companyFilter || agent.companyId === companyFilter;
-            
-            return matchSearch && matchRole && matchCompany && agent.isActive;
-        });
-    }, [agents, agentSearch, roleFilter, companyFilter]);
+        let displayAgents = agents;
+        if (agentSupervisorFilter) {
+            displayAgents = agents.filter(a => a.supervisorId === agentSupervisorFilter);
+        }
+        // Select all agents (only active ones in current view)
+        return displayAgents.filter(a => a.isActive);
+    }, [agents, agentSupervisorFilter]);
 
     const handleSelectAllClick = () => {
         if (selectedAgents.length === filteredAgents.length) {
@@ -222,53 +227,51 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                     />
                 </div>
                 <div>
-                    <label className="block text-xs font-semibold text-orange-800 mb-1">แสดงพนักงานที่โทรเกิน (นาที)</label>
+                    <label className="block text-xs font-semibold text-orange-800 mb-1">เกณฑ์เวลาโทร (นาที)</label>
                     <input
                         type="number"
                         value={callThresholdMinutes}
                         onChange={(e) => setCallThresholdMinutes(e.target.value)}
-                        className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 w-32"
-                        placeholder="ตย. 100"
+                        className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 w-24 text-center"
+                        min={0}
                     />
                 </div>
-                <div className="flex-1 text-right">
+                <div className="flex-1">
                     <button
-                        onClick={fetchCallMinutes}
-                        className="px-3 py-2 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 text-sm font-medium inline-flex items-center gap-2"
-                        disabled={loadingCallMinutes}
+                        onClick={() => {
+                            const threshold = parseInt(callThresholdMinutes) || 0;
+                            const activeIds = filteredAgents.map(a => a.id);
+                            
+                            const inactiveSelected = selectedAgents.filter(id => !activeIds.includes(id));
+                            
+                            const eligibleIds = filteredAgents
+                                .filter(a => (a.callMinutes || 0) >= threshold)
+                                .map(a => a.id);
+                                
+                            setSelectedAgents([...inactiveSelected, ...eligibleIds]);
+                        }}
+                        disabled={loadingCallMinutes || agents.length === 0}
+                        className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 text-sm font-medium flex items-center gap-2"
                     >
-                        {loadingCallMinutes && <Loader2 size={14} className="animate-spin" />}
-                        โหลดข้อมูลเวลาโทรใหม่
+                        {loadingCallMinutes ? <Loader2 size={16} className="animate-spin" /> : <Filter size={16} />}
+                        เลือกพนักงานที่โทรเกินเกณฑ์
                     </button>
                 </div>
             </div>
 
-            <div className="flex gap-4 mb-4">
-                <input
-                    type="text"
-                    placeholder="ค้นหาชื่อพนักงาน..."
-                    className="border rounded p-2 w-64"
-                    value={agentSearch}
-                    onChange={(e) => setAgentSearch(e.target.value)}
-                />
+            {/* Supervisor Filter */}
+            <div className="flex items-center gap-3 mb-4 px-4 pt-4 border-t border-gray-100">
+                <label className="text-sm font-semibold text-gray-700">กรองตามทีม (Supervisor):</label>
                 <select
-                    value={roleFilter}
-                    onChange={(e) => setRoleFilter(e.target.value)}
-                    className="border rounded p-2"
+                    value={agentSupervisorFilter || ''}
+                    onChange={(e) => setAgentSupervisorFilter(e.target.value ? Number(e.target.value) : '')}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
                 >
-                    <option value="">ทุกตำแหน่ง</option>
-                    {roles.map(role => (
-                        <option key={role} value={role as string}>{role}</option>
-                    ))}
-                </select>
-                <select
-                    value={companyFilter}
-                    onChange={(e) => setCompanyFilter(e.target.value ? parseInt(e.target.value) : '')}
-                    className="border rounded p-2"
-                >
-                    <option value="">ทุกบริษัท</option>
-                    {companies.map(cid => (
-                        <option key={cid} value={cid as number}>Company {cid}</option>
+                    <option value="">-- ทั้งหมด --</option>
+                    {availableSupervisors.map(sup => (
+                        <option key={sup.id} value={sup.id}>
+                            {sup.name}
+                        </option>
                     ))}
                 </select>
             </div>
