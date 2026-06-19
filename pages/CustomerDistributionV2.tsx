@@ -43,6 +43,7 @@ interface AgentWithBaskets extends User {
     isActive: boolean;
     roleId?: number;
     callMinutes?: number;
+    supervisorId?: number;
 }
 
 interface ResetCandidate {
@@ -78,6 +79,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [agents, setAgents] = useState<AgentWithBaskets[]>([]);
     const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
+    const [agentSupervisorFilter, setAgentSupervisorFilter] = useState<number | ''>('');
     const [targetBasket, setTargetBasket] = useState<string>('');
     const [forceDistributeHolding, setForceDistributeHolding] = useState(false);
     const [distributionExportRange, setDistributionExportRange] = useState<DateRange>({ start: '', end: '' });
@@ -346,6 +348,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     isActive: (u.status || 'active') === 'active',
                     role: u.role,
                     roleId: u.role_id || u.roleId || (u.role === UserRole.Supervisor ? 7 : 6), // Fallback if missing
+                    supervisorId: u.supervisor_id || u.supervisorId,
                     companyId: u.companyId || u.company_id,
                     username: u.username,
                     phone: u.phone,
@@ -581,8 +584,28 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         );
     };
 
-    // Select all agents (only active ones)
-    const activeAgents = agents.filter(a => a.isActive);
+    // Memoize available supervisors to prevent recalculation on every render (Best Practice)
+    const availableSupervisors = useMemo(() => {
+        const uniqueIds = Array.from(new Set(agents.map(a => a.supervisorId).filter(id => id))) as number[];
+        return uniqueIds.map(id => {
+            const supervisor = agents.find(a => a.id === id);
+            return {
+                id,
+                name: supervisor ? `${supervisor.firstName} ${supervisor.lastName}` : `Supervisor ID: ${id}`
+            };
+        });
+    }, [agents]);
+
+    // Filter agents for display
+    const displayAgents = useMemo(() => {
+        if (agentSupervisorFilter) {
+            return agents.filter(a => a.supervisorId === agentSupervisorFilter);
+        }
+        return agents;
+    }, [agents, agentSupervisorFilter]);
+
+    // Select all agents (only active ones in current view)
+    const activeAgents = displayAgents.filter(a => a.isActive);
     const selectAllAgents = () => {
         const activeIds = activeAgents.map(a => a.id);
         const allActiveSelected = activeIds.every(id => selectedAgents.includes(id));
@@ -1224,7 +1247,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     // Bulk Action State
     const [selectedBaskets, setSelectedBaskets] = useState<string[]>([]);
     const [bulkActionType, setBulkActionType] = useState<'transfer' | 'reclaim_all' | 'reclaim_no_call_no_appt' | 'reclaim_called_no_appt' | 'reclaim_called_with_appt' | null>(null);
-    const [bulkTargetAgent, setBulkTargetAgent] = useState<number | null>(null);
+    const [bulkTargetAgents, setBulkTargetAgents] = useState<number[]>([]);
+    const [bulkTargetSupervisorFilter, setBulkTargetSupervisorFilter] = useState<number | ''>('');
     const [bulkLimit, setBulkLimit] = useState<string>('');
 
     // Flexible Transfer Logic
@@ -1364,7 +1388,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setReclaimingAgent(agent);
         setSelectedBaskets([]); // Reset selection
         setBulkActionType(null); // Reset action
-        setBulkTargetAgent(null); // Reset target agent
+        setBulkTargetAgents([]); // Reset target agents
+        setBulkTargetSupervisorFilter(''); // Reset supervisor filter
         setBulkLimit(''); // Reset limit
         setReclaimModalOpen(true);
     };
@@ -1394,7 +1419,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setReclaimingAgent(allAgentFake);
         setSelectedBaskets([]);
         setBulkActionType(null);
-        setBulkTargetAgent(null);
+        setBulkTargetAgents([]);
+        setBulkTargetSupervisorFilter('');
         setBulkLimit('');
         setReclaimModalOpen(true);
     };
@@ -1459,22 +1485,37 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
 
         if (bulkActionType === 'transfer') {
-            if (!bulkTargetAgent) {
+            if (bulkTargetAgents.length === 0) {
                 setMessage({ type: 'error', text: 'กรุณาเลือกพนักงานปลายทางสำหรับการโอน' });
                 return;
             }
             
-            // Build transfer payload
-            const transfers = selectedBaskets.map(key => {
+            // Build transfer payload and distribute evenly among target agents
+            const transfers: any[] = [];
+            selectedBaskets.forEach(key => {
                 const availableCount = getAvailableCount(key);
                 const count = hasLimit ? Math.min(limitVal, availableCount) : availableCount;
-                return {
-                    from_agent_id: reclaimingAgent.id,
-                    to_agent_id: bulkTargetAgent,
-                    basket_key: key,
-                    count: count
-                };
-            }).filter(t => t.count > 0);
+                if (count > 0) {
+                    const baseCount = Math.floor(count / bulkTargetAgents.length);
+                    let remainder = count % bulkTargetAgents.length;
+
+                    bulkTargetAgents.forEach(targetId => {
+                        let agentCount = baseCount;
+                        if (remainder > 0) {
+                            agentCount += 1;
+                            remainder -= 1;
+                        }
+                        if (agentCount > 0) {
+                            transfers.push({
+                                from_agent_id: reclaimingAgent.id,
+                                to_agent_id: targetId,
+                                basket_key: key,
+                                count: agentCount
+                            });
+                        }
+                    });
+                }
+            });
             
             if (transfers.length === 0) return;
 
@@ -1489,13 +1530,19 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 );
                 if (result?.error) throw new Error(result.error);
 
-                const targetAgentName = agents.find(a => a.id === bulkTargetAgent);
+                const targetNames = bulkTargetAgents
+                    .map(id => {
+                        const a = agents.find(ag => ag.id === id);
+                        return a ? `${a.firstName} ${a.lastName}` : 'ไม่ทราบชื่อ';
+                    })
+                    .join(', ');
+
                 setBulkResultModal({
                     isOpen: true,
                     title: 'สรุปผลการโอนลูกค้า',
                     type: 'transfer',
                     fromAgentName: `${reclaimingAgent.firstName} ${reclaimingAgent.lastName}`,
-                    toName: targetAgentName ? `${targetAgentName.firstName} ${targetAgentName.lastName}` : 'พนักงานปลายทาง',
+                    toName: targetNames || 'พนักงานปลายทาง',
                     total: result?.transferred || 0,
                     results: result?.results || []
                 });
@@ -2393,6 +2440,23 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
 
 
+                    {/* Supervisor Filter */}
+                    <div className="flex items-center gap-3 mb-4 px-4 pt-4 border-t border-gray-100">
+                        <label className="text-sm font-semibold text-gray-700">กรองตามทีม (Supervisor):</label>
+                        <select
+                            value={agentSupervisorFilter || ''}
+                            onChange={(e) => setAgentSupervisorFilter(e.target.value ? Number(e.target.value) : '')}
+                            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
+                        >
+                            <option value="">-- ทั้งหมด --</option>
+                            {availableSupervisors.map(sup => (
+                                <option key={sup.id} value={sup.id}>
+                                    {sup.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
                     {loadingAgents ? (
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -2422,7 +2486,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {agents.map(agent => {
+                                    {displayAgents.map(agent => {
                                         const isInactive = !agent.isActive;
                                         const isSelected = selectedAgents.includes(agent.id);
                                         return (
@@ -2441,11 +2505,18 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                     />
                                                 </td>
                                                 <td className="p-3 font-medium">
-                                                    {agent.firstName} {agent.lastName}
-                                                    {isInactive && (
-                                                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
-                                                            {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
-                                                        </span>
+                                                    <div>
+                                                        {agent.firstName} {agent.lastName}
+                                                        {isInactive && (
+                                                            <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
+                                                                {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {agent.supervisorId && (
+                                                        <div className="text-xs text-gray-400 font-normal mt-0.5">
+                                                            [ทีม: {agents.find(a => a.id === agent.supervisorId)?.firstName || 'ไม่ระบุ'}]
+                                                        </div>
                                                     )}
                                                 </td>
                                                 <td className="p-3 text-center">
@@ -2697,18 +2768,59 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                         {bulkActionType === 'transfer' && (
                                             <div className="flex-1 animate-in fade-in slide-in-from-right-4 duration-200">
                                                 <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">พนักงานปลายทาง</label>
-                                                <select
-                                                    value={bulkTargetAgent || ''}
-                                                    onChange={(e) => setBulkTargetAgent(Number(e.target.value))}
-                                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
-                                                >
-                                                    <option value="">-- เลือกพนักงาน --</option>
-                                                    {agents.filter(a => a.id !== reclaimingAgent.id && a.role !== 'admin' && a.role !== 'manager').map(agent => (
-                                                        <option key={agent.id} value={agent.id}>
-                                                            {agent.firstName} {agent.lastName}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <div className="mb-2">
+                                                    <select
+                                                        value={bulkTargetSupervisorFilter || ''}
+                                                        onChange={(e) => setBulkTargetSupervisorFilter(e.target.value ? Number(e.target.value) : '')}
+                                                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:ring-blue-500 focus:border-blue-500 bg-white"
+                                                    >
+                                                        <option value="">-- ทุกทีม --</option>
+                                                        {availableSupervisors.map(sup => (
+                                                            <option key={sup.id} value={sup.id}>
+                                                                {sup.name.startsWith('Supervisor ID:') ? sup.name.replace('Supervisor ID:', 'ทีม ID:') : `ทีม: ${sup.name}`}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="relative border border-gray-300 rounded-lg bg-white max-h-[140px] overflow-y-auto">
+                                                    <div className="sticky top-0 bg-gray-50 border-b border-gray-200 px-3 py-1.5 flex justify-between items-center z-10">
+                                                        <span className="text-xs font-medium text-gray-500">เลือกผู้รับโอน</span>
+                                                        <button 
+                                                            type="button" 
+                                                            className="text-xs text-blue-600 hover:underline"
+                                                            onClick={() => setBulkTargetAgents([])}
+                                                        >
+                                                            ล้างการเลือก
+                                                        </button>
+                                                    </div>
+                                                    {agents.filter(a => a.id !== reclaimingAgent.id && a.role !== 'admin' && a.role !== 'manager' && (!bulkTargetSupervisorFilter || a.supervisorId === bulkTargetSupervisorFilter)).map(agent => {
+                                                        const isSelected = bulkTargetAgents.includes(agent.id);
+                                                        return (
+                                                            <label key={agent.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm border-b border-gray-50 last:border-0">
+                                                                <input 
+                                                                    type="checkbox"
+                                                                    checked={isSelected}
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) {
+                                                                            setBulkTargetAgents(prev => [...prev, agent.id]);
+                                                                        } else {
+                                                                            setBulkTargetAgents(prev => prev.filter(id => id !== agent.id));
+                                                                        }
+                                                                    }}
+                                                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
+                                                                />
+                                                                <div className="flex flex-col">
+                                                                    <span>{agent.firstName} {agent.lastName}</span>
+                                                                    {agent.supervisorId && !bulkTargetSupervisorFilter && (
+                                                                        <span className="text-[10px] text-gray-400">
+                                                                            [ทีม: {agents.find(a => a.id === agent.supervisorId)?.firstName || 'ไม่ระบุ'}]
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         )}
 
@@ -2747,7 +2859,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                 disabled={
                                                     selectedBaskets.length === 0 || 
                                                     !bulkActionType || 
-                                                    (bulkActionType === 'transfer' && !bulkTargetAgent) ||
+                                                    (bulkActionType === 'transfer' && bulkTargetAgents.length === 0) ||
                                                     reclaiming || transferring
                                                 }
                                                 className={`px-6 py-2.5 font-medium text-white rounded-lg flex items-center gap-2 shadow-sm transition-all
