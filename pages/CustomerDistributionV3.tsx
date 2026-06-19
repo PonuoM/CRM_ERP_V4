@@ -23,6 +23,11 @@ import ResetModal from '../components/DistributionV3/ResetModal';
 import ReclaimModal from '../components/DistributionV3/ReclaimModal';
 import FlexTransferModal from '../components/DistributionV3/FlexTransferModal';
 import PreviewModal from '../components/DistributionV3/PreviewModal';
+import DistributionStatsCards from '../components/DistributionV3/DistributionStatsCards';
+import DistributionSettingsPanel from '../components/DistributionV3/DistributionSettingsPanel';
+import DistributionTelesaleTable from '../components/DistributionV3/DistributionTelesaleTable';
+import DistributionCustomerPreview from '../components/DistributionV3/DistributionCustomerPreview';
+
 import { 
     BasketConfig, 
     DistributionPreview, 
@@ -1750,394 +1755,64 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
             }
 
             {/* Stats Cards - All Baskets in Grid */}
-            <div className="grid grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
-                {baskets.map(basket => {
-                    const isHolding = basket.basket_key === 'holding_before_redistribute';
-                    const isActive = activeBasket === basket.basket_key;
-                    return (
-                        <button
-                            key={basket.basket_key}
-                            onClick={() => {
-                                if (basket.basket_key === 'block_customer') {
-                                    handleBlockedBasketClick();
-                                    return;
-                                }
-                                setActiveBasket(basket.basket_key);
-                            }}
-                            className={`p-3 rounded-xl shadow-sm border-2 transition-all hover:shadow-md text-left ${isHolding
-                                ? (isActive
-                                    ? 'border-amber-500 bg-amber-50'
-                                    : 'border-amber-200 bg-amber-50/50 hover:border-amber-400')
-                                : (isActive
-                                    ? 'border-blue-500 bg-blue-50'
-                                    : 'border-gray-100 bg-white hover:border-blue-200')
-                                }`}
-                        >
-                            <p className={`text-[11px] font-medium mb-0.5 truncate ${basket.basket_key === 'block_customer' ? 'text-red-600' : isHolding ? 'text-amber-600' : 'text-gray-500'}`}>
-                                {basket.basket_key === 'block_customer' ? '🚫 ' : isHolding ? '⏳ ' : ''}{basket.basket_name}
-                            </p>
-                            <div className={`text-xl font-bold ${isHolding
-                                ? (isActive ? 'text-amber-600' : 'text-amber-700')
-                                : (isActive ? 'text-blue-600' : 'text-gray-900')
-                                }`}>
-                                {basketCounts[basket.basket_key]?.toLocaleString() || 0}
-                            </div>
-                        </button>
-                    );
-                })}
-
-                {/* Total Card */}
-                <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-3 rounded-xl shadow-md text-white">
-                    <p className="text-[11px] font-medium text-green-100 mb-0.5">รวมทั้งหมด</p>
-                    <div className="text-xl font-bold">
-                        {totalInAllBaskets.toLocaleString()}
-                    </div>
-                </div>
-            </div>
-
-            {/* Holding Basket Notice */}
-            {activeBasket === 'holding_before_redistribute' && !forceDistributeHolding && (
-                <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-6 mb-6 text-center">
-                    <div className="text-amber-500 text-5xl mb-3">⏳</div>
-                    <h3 className="text-lg font-bold text-amber-800">ถังพักรอแจก</h3>
-                    <p className="text-amber-700 mt-2">
-                        ลูกค้าในถังนี้กำลังอยู่ระหว่างช่วงพัก 30 วัน
-                        ก่อนจะถูกย้ายไปถัง "หาคนดูแลใหม่" โดยอัตโนมัติ
-                    </p>
-                    <p className="text-amber-600 text-sm mt-3 font-medium">ไม่สามารถแจกลูกค้าจากถังนี้ตาม Flow ปกติได้</p>
-                    <button 
-                        onClick={() => {
-                            setForceDistributeHolding(true);
-                            setTargetBasket('find_new_owner_dash');
-                        }}
-                        className="mt-4 px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium transition-colors shadow-sm"
-                    >
-                        ยืนยันที่จะแจก (แจกไป "หาคนดูแลใหม่")
-                    </button>
-                </div>
-            )}
-
+            <DistributionStatsCards
+                baskets={baskets}
+                basketCounts={basketCounts}
+                activeBasket={activeBasket}
+                setActiveBasket={(key) => {
+                    if (key === 'block_customer') {
+                        handleBlockedBasketClick();
+                    } else {
+                        setActiveBasket(key);
+                    }
+                }}
+                totalInAllBaskets={totalInAllBaskets}
+                handleBlockedBasketClick={handleBlockedBasketClick}
+                forceDistributeHolding={forceDistributeHolding}
+                setForceDistributeHolding={setForceDistributeHolding}
+                setTargetBasket={setTargetBasket}
+            />
             {/* Section 1: Distribution Settings */}
             {!isHoldingBasketActive && (
-                <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-                    <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                        <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                        ตั้งค่าการแจก
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label className="block text-sm text-gray-500 mb-2">สถานะการแจก</label>
-                            <select
-                                value={activeBasket}
-                                onChange={(e) => setActiveBasket(e.target.value)}
-                                className="w-full border rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                                {baskets.map(basket => (
-                                    <option key={basket.basket_key} value={basket.basket_key}>
-                                        {basket.basket_name} ({basketCounts[basket.basket_key] || 0})
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm text-gray-500 mb-2">จำนวนรวมที่ต้องการแจก</label>
-                            <input
-                                type="number"
-                                value={totalToDistribute}
-                                onChange={(e) => setTotalToDistribute(e.target.value)}
-                                className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                min={1}
-                                max={availableCount || 1000}
-                                placeholder={`มี ${availableCount} พร้อมแจก`}
-                            />
-                        </div>
-                        <div className="flex items-end">
-                            <button
-                                onClick={() => { fetchAllBasketCounts(); fetchCustomers(); fetchAgents(); }}
-                                className="px-4 py-2.5 border rounded-lg hover:bg-gray-50 flex items-center gap-2"
-                            >
-                                <RefreshCw size={16} className={loadingCustomers ? 'animate-spin' : ''} />
-                                รีเฟรช
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <DistributionSettingsPanel
+                    baskets={baskets}
+                    basketCounts={basketCounts}
+                    activeBasket={activeBasket}
+                    setActiveBasket={setActiveBasket}
+                    totalToDistribute={totalToDistribute}
+                    setTotalToDistribute={setTotalToDistribute}
+                    availableCount={availableCount}
+                    loadingCustomers={loadingCustomers}
+                    fetchAllBasketCounts={fetchAllBasketCounts}
+                    fetchCustomers={fetchCustomers}
+                    fetchAgents={fetchAgents}
+                />
             )}
-
-
-
-
-
             {/* Section 2: Target Employees - Table Layout */}
             {!isHoldingBasketActive && (
-                <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
-                            <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                            เลือกพนักงานเป้าหมาย
-                        </h3>
-                        <div className="flex items-center gap-4">
-                            <div className="bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg">
-                                <span className="text-blue-700 font-semibold">มีรายชื่อพร้อมแจก: {availableCount.toLocaleString()} รายการ</span>
-                            </div>
-                            <input
-                                type="number"
-                                value={totalToDistribute}
-                                onChange={(e) => setTotalToDistribute(e.target.value)}
-                                min={1}
-                                className="w-32 border rounded-lg p-2 text-center"
-                                placeholder="จำนวนรวม"
-                            />
-                            {selectedAgents.length > 0 && parseInt(totalToDistribute) > 0 && (
-                                <span className="text-sm text-gray-500">
-                                    ≈ {Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length)} / คน
-                                </span>
-                            )}
-                            <button
-                                onClick={handlePreparePreview}
-                                disabled={selectedAgents.length === 0 || availableCount === 0 || !totalToDistribute || parseInt(totalToDistribute) <= 0}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                            >
-                                <Eye size={16} />
-                                ดูตัวอย่างก่อนแจก
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Call Threshold Filter */}
-                    <div className="mb-4 bg-orange-50 border border-orange-100 rounded-lg p-4 flex flex-wrap items-end gap-4 shadow-sm">
-                        <div>
-                            <label className="block text-xs font-semibold text-orange-800 mb-1">แหล่งข้อมูลเวลาโทร</label>
-                            <select
-                                value={callDataSource}
-                                onChange={(e) => {
-                                    const val = e.target.value as 'db' | 'realtime';
-                                    setCallDataSource(val);
-                                    if (val === 'realtime') {
-                                        // Auto-adjust date range if > 3 days
-                                        const s = new Date(callFilterStartDate);
-                                        const eDate = new Date(callFilterEndDate);
-                                        const diffDays = (eDate.getTime() - s.getTime()) / (1000 * 60 * 60 * 24);
-                                        if (diffDays > 3) {
-                                            const newStart = new Date(eDate);
-                                            newStart.setDate(eDate.getDate() - 3);
-                                            setCallFilterStartDate(newStart.toISOString().split('T')[0]);
-                                            setMessage({ type: 'warning', text: 'ข้อมูลสด (Realtime) ดึงย้อนหลังได้สูงสุด 3 วัน ระบบได้ปรับวันที่อัตโนมัติ' });
-                                        }
-                                    }
-                                }}
-                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 bg-white"
-                            >
-                                <option value="db">ฐานข้อมูล CRM</option>
-                                <option value="realtime">เว็บไฟล์เสียง (Realtime)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-orange-800 mb-1">กรองตั้งแต่วันที่</label>
-                            <input
-                                type="date"
-                                value={callFilterStartDate}
-                                onChange={(e) => {
-                                    const newStart = e.target.value;
-                                    if (callDataSource === 'realtime') {
-                                        const s = new Date(newStart);
-                                        const eDate = new Date(callFilterEndDate);
-                                        if ((eDate.getTime() - s.getTime()) / (1000 * 60 * 60 * 24) > 3) {
-                                            setMessage({ type: 'warning', text: 'ข้อมูลสด (Realtime) ดึงย้อนหลังได้สูงสุด 3 วัน' });
-                                            const adjustedStart = new Date(eDate);
-                                            adjustedStart.setDate(eDate.getDate() - 3);
-                                            setCallFilterStartDate(adjustedStart.toISOString().split('T')[0]);
-                                            return;
-                                        }
-                                    }
-                                    setCallFilterStartDate(newStart);
-                                }}
-                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-orange-800 mb-1">ถึงวันที่</label>
-                            <input
-                                type="date"
-                                value={callFilterEndDate}
-                                onChange={(e) => {
-                                    const newEnd = e.target.value;
-                                    if (callDataSource === 'realtime') {
-                                        const s = new Date(callFilterStartDate);
-                                        const eDate = new Date(newEnd);
-                                        if ((eDate.getTime() - s.getTime()) / (1000 * 60 * 60 * 24) > 3) {
-                                            setMessage({ type: 'warning', text: 'ข้อมูลสด (Realtime) ดึงย้อนหลังได้สูงสุด 3 วัน' });
-                                            const adjustedEnd = new Date(s);
-                                            adjustedEnd.setDate(s.getDate() + 3);
-                                            setCallFilterEndDate(adjustedEnd.toISOString().split('T')[0]);
-                                            return;
-                                        }
-                                    }
-                                    setCallFilterEndDate(newEnd);
-                                }}
-                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-orange-800 mb-1">เกณฑ์เวลาโทร (นาที)</label>
-                            <input
-                                type="number"
-                                value={callThresholdMinutes}
-                                onChange={(e) => setCallThresholdMinutes(e.target.value)}
-                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 w-24 text-center"
-                                min={0}
-                            />
-                        </div>
-                        <div className="flex-1">
-                            <button
-                                onClick={() => {
-                                    const threshold = parseInt(callThresholdMinutes) || 0;
-                                    const activeIds = activeAgents.map(a => a.id);
-                                    
-                                    // Start with currently selected inactive agents (preserve them)
-                                    const inactiveSelected = selectedAgents.filter(id => !activeIds.includes(id));
-                                    
-                                    // Find eligible active agents
-                                    const eligibleIds = activeAgents
-                                        .filter(a => (a.callMinutes || 0) >= threshold)
-                                        .map(a => a.id);
-                                        
-                                    setSelectedAgents([...inactiveSelected, ...eligibleIds]);
-                                }}
-                                disabled={loadingCallMinutes || agents.length === 0}
-                                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 text-sm font-medium flex items-center gap-2"
-                            >
-                                {loadingCallMinutes ? <Loader2 size={16} className="animate-spin" /> : <Filter size={16} />}
-                                เลือกพนักงานที่โทรเกินเกณฑ์
-                            </button>
-                        </div>
-                    </div>
-
-
-
-                    {/* Supervisor Filter */}
-                    <div className="flex items-center gap-3 mb-4 px-4 pt-4 border-t border-gray-100">
-                        <label className="text-sm font-semibold text-gray-700">กรองตามทีม (Supervisor):</label>
-                        <select
-                            value={agentSupervisorFilter || ''}
-                            onChange={(e) => setAgentSupervisorFilter(e.target.value ? Number(e.target.value) : '')}
-                            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
-                        >
-                            <option value="">-- ทั้งหมด --</option>
-                            {availableSupervisors.map(sup => (
-                                <option key={sup.id} value={sup.id}>
-                                    {sup.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {loadingAgents ? (
-                        <div className="flex items-center justify-center py-12">
-                            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="p-3 text-left">
-                                            <input
-                                                type="checkbox"
-                                                checked={activeAgents.length > 0 && activeAgents.every(a => selectedAgents.includes(a.id))}
-                                                onChange={selectAllAgents}
-                                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                            />
-                                        </th>
-                                        <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
-                                        <th className="p-3 text-center font-medium text-gray-600">เวลาโทร (สายรับ)</th>
-                                        <th className="p-3 text-center font-medium text-gray-600">Action</th>
-                                        <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
-                                        {dashboardBaskets.map(basket => (
-                                            <th key={basket.basket_key} className="p-3 text-center font-medium text-gray-600 text-xs">
-                                                {basket.basket_name}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {displayAgents.map(agent => {
-                                        const isInactive = !agent.isActive;
-                                        const isSelected = selectedAgents.includes(agent.id);
-                                        return (
-                                            <tr
-                                                key={agent.id}
-                                                className={`border-t ${isInactive ? 'opacity-60 bg-gray-50' : ''} hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`}
-                                                onClick={() => toggleAgent(agent.id)}
-                                            >
-                                                <td className="p-3">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isSelected}
-                                                        onChange={() => toggleAgent(agent.id)}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                    />
-                                                </td>
-                                                <td className="p-3 font-medium">
-                                                    <div>
-                                                        {agent.firstName} {agent.lastName}
-                                                        {isInactive && (
-                                                            <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
-                                                                {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {agent.supervisorId && (
-                                                        <div className="text-xs text-gray-400 font-normal mt-0.5">
-                                                            [ทีม: {agents.find(a => a.id === agent.supervisorId)?.firstName || 'ไม่ระบุ'}]
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td className="p-3 text-center">
-                                                    {loadingCallMinutes ? (
-                                                        <span className="text-gray-300 text-xs">...</span>
-                                                    ) : (
-                                                        <span className={`font-semibold ${agent.callMinutes && agent.callMinutes >= parseInt(callThresholdMinutes) ? 'text-green-600' : 'text-gray-500'}`}>
-                                                            {agent.callMinutes !== undefined ? `${Math.floor(agent.callMinutes)} นาที` : '-'}
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="p-3 text-center">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            openReclaimModal(agent);
-                                                        }}
-                                                        className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 border border-red-200"
-                                                    >
-                                                        ดึงคืน
-                                                    </button>
-                                                </td>
-                                                <td className="p-3 text-center font-semibold text-gray-700">{agent.totalCustomers}</td>
-                                                {dashboardBaskets.map(basket => (
-                                                    <td key={basket.basket_key} className="p-3 text-center text-gray-600 text-sm">
-                                                        {agent.basketCounts?.[basket.basket_key] || 0}
-                                                    </td>
-                                                ))}
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-
-                    <div className="mt-4 text-sm text-gray-500">
-                        เลือกแล้ว {selectedAgents.length} คน | จำนวนรวม: {totalToDistribute || 0} |
-                        <span className="font-semibold text-blue-600">
-                            ≈ {selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0} / คน
-                        </span>
-                    </div>
-                </div>
+                <DistributionTelesaleTable
+                    agents={agents}
+                    setAgents={setAgents}
+                    selectedAgents={selectedAgents}
+                    setSelectedAgents={setSelectedAgents}
+                    totalToDistribute={totalToDistribute}
+                    dashboardBaskets={dashboardBaskets}
+                    availableCount={availableCount}
+                    handlePreparePreview={handlePreparePreview}
+                    openReclaimModal={openReclaimModal}
+                    setMessage={setMessage}
+                    currentUser={currentUser}
+                />
             )}
-
             {/* Customer Preview Table */}
+            <DistributionCustomerPreview
+                activeBasketInfo={activeBasketInfo}
+                availableCount={availableCount}
+                customers={customers}
+                loadingCustomers={loadingCustomers}
+                fetchCustomers={fetchCustomers}
+            />
+{/* Customer Preview Table */}
             <div className="bg-white rounded-lg shadow-sm border p-6">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold text-gray-700">
