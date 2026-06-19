@@ -171,6 +171,7 @@ try {
             JOIN customers c ON a.customer_id = c.customer_id
             WHERE a.field_name = 'assigned_to'
               AND a.new_value IN ($userIdsStr)
+              AND a.api_source LIKE 'distribution%'
               AND c.company_id = ?
     ";
     

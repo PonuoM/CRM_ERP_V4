@@ -104,8 +104,8 @@ try {
         $countQuery = "
             SELECT 
                 COUNT(*) as total_all,
-                SUM(CASE WHEN (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to) > 0 THEN 1 ELSE 0 END) as total_called,
-                SUM(CASE WHEN (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to) > 0 THEN 1 ELSE 0 END) as total_appt
+                SUM(CASE WHEN (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) > 0 THEN 1 ELSE 0 END) as total_called,
+                SUM(CASE WHEN (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) > 0 THEN 1 ELSE 0 END) as total_appt
             FROM customers c
             WHERE c.assigned_to = ? AND c.company_id = ?
               AND (c.current_basket_key = ? OR c.current_basket_key = ?)
@@ -130,17 +130,17 @@ try {
                 c.phone,
                 c.assigned_to,
                 c.current_basket_key,
-                (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to) as call_count,
-                (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to) as appt_count
+                (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) as call_count,
+                (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) as appt_count
             FROM customers c
             WHERE c.assigned_to = ? AND c.company_id = ?
               AND (c.current_basket_key = ? OR c.current_basket_key = ?)
         ";
         
         if ($tab === 'called') {
-            $query .= " AND (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to) > 0";
+            $query .= " AND (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) > 0";
         } elseif ($tab === 'appt') {
-            $query .= " AND (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to) > 0";
+            $query .= " AND (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) > 0";
         }
         
         $query .= " ORDER BY c.customer_id DESC LIMIT ? OFFSET ?";
@@ -162,6 +162,7 @@ try {
                 SELECT DISTINCT 
                     a.customer_id, 
                     a.new_value as assigned_to, 
+                    a.created_at as assignment_date,
                     COALESCE(
                         (
                             SELECT new_value 
@@ -178,6 +179,7 @@ try {
                 JOIN customers c ON a.customer_id = c.customer_id
                 WHERE a.field_name = 'assigned_to'
                   AND a.new_value = ?
+                  AND a.api_source LIKE 'distribution%'
                   AND c.company_id = ?
         ";
         
@@ -193,8 +195,8 @@ try {
         $countQuery = $cohortBaseQuery . "
             SELECT 
                 COUNT(*) as total_all,
-                SUM(CASE WHEN (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to) > 0 THEN 1 ELSE 0 END) as total_called,
-                SUM(CASE WHEN (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to) > 0 THEN 1 ELSE 0 END) as total_appt
+                SUM(CASE WHEN (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) > 0 THEN 1 ELSE 0 END) as total_called,
+                SUM(CASE WHEN (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) > 0 THEN 1 ELSE 0 END) as total_appt
             FROM Cohort co
             WHERE (co.historical_basket_key = ? OR co.historical_basket_key = ?)
         ";
@@ -219,17 +221,17 @@ try {
                 c.phone,
                 co.assigned_to,
                 co.historical_basket_key,
-                (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to) as call_count,
-                (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to) as appt_count
+                (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) as call_count,
+                (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) as appt_count
             FROM Cohort co
             JOIN customers c ON co.customer_id = c.customer_id
             WHERE (co.historical_basket_key = ? OR co.historical_basket_key = ?)
         ";
         
         if ($tab === 'called') {
-            $dataQuery .= " AND (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to) > 0";
+            $dataQuery .= " AND (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) > 0";
         } elseif ($tab === 'appt') {
-            $dataQuery .= " AND (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to) > 0";
+            $dataQuery .= " AND (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) > 0";
         }
         
         $dataQuery .= " ORDER BY co.customer_id DESC LIMIT ? OFFSET ?";
