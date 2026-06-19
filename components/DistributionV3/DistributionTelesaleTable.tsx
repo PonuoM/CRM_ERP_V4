@@ -373,6 +373,13 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                     </table>
                 </div>
             )}
+
+            <div className="mt-4 text-sm text-gray-500">
+                เลือกแล้ว {selectedAgents.length} คน | จำนวนรวม: {totalToDistribute || 0} |
+                <span className="font-semibold text-blue-600">
+                    ≈ {selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0} / คน
+                </span>
+            </div>
         </div>
     );
 };
