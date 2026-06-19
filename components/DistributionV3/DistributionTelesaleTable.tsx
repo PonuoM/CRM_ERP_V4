@@ -92,17 +92,9 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
             const matchRole = !roleFilter || agent.role === roleFilter;
             const matchCompany = !companyFilter || agent.companyId === companyFilter;
             
-            let matchThreshold = true;
-            if (callThresholdMinutes) {
-                const threshold = parseInt(callThresholdMinutes);
-                if (!isNaN(threshold)) {
-                    const agentMinutes = agent.callMinutes || 0;
-                    matchThreshold = agentMinutes >= threshold;
-                }
-            }
-            return matchSearch && matchRole && matchCompany && matchThreshold && agent.isActive;
+            return matchSearch && matchRole && matchCompany && agent.isActive;
         });
-    }, [agents, agentSearch, roleFilter, companyFilter, callThresholdMinutes]);
+    }, [agents, agentSearch, roleFilter, companyFilter]);
 
     const handleSelectAllClick = () => {
         if (selectedAgents.length === filteredAgents.length) {
