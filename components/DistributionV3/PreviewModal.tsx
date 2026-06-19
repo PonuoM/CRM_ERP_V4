@@ -156,7 +156,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
                             ยกเลิก
                         </button>
                         <button
-                            onClick={handleExecuteDistribution}
+                            onClick={() => handleExecuteDistribution()}
                             disabled={distributing}
                             className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
                         >
