@@ -11,18 +11,18 @@ import resolveApiBasePath from '../utils/apiBasePath';
 import ExportTypeModal from '../components/ExportTypeModal';
 import { downloadDataFile } from '../utils/exportUtils';
 import { mapCustomerFromApi } from '../utils/customerMapper';
-import { calculateQuotas } from '../utils/distributionLogic';
 import Spinner from '../components/Spinner';
 import BlockedCustomersModal from '../components/BlockedCustomersModal';
 import ExcelJS from 'exceljs';
+import { calculateQuotas } from '../utils/distributionLogic';
 import ConfirmModal from '../components/DistributionV3/ConfirmModal';
 import HistoryModal from '../components/DistributionV3/HistoryModal';
 import BulkResultModal from '../components/DistributionV3/BulkResultModal';
-
-interface CustomerDistributionV3Props {
-    currentUser?: User | null;
-}
-
+import SummaryModal from '../components/DistributionV3/SummaryModal';
+import ResetModal from '../components/DistributionV3/ResetModal';
+import ReclaimModal from '../components/DistributionV3/ReclaimModal';
+import FlexTransferModal from '../components/DistributionV3/FlexTransferModal';
+import PreviewModal from '../components/DistributionV3/PreviewModal';
 import { 
     BasketConfig, 
     DistributionPreview, 
@@ -31,6 +31,10 @@ import {
     SummaryStats, 
     AssignHistory 
 } from '../types/distribution';
+
+interface CustomerDistributionV3Props {
+    currentUser?: User | null;
+}
 
 const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ currentUser }) => {
     // Data
@@ -41,6 +45,7 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [agents, setAgents] = useState<AgentWithBaskets[]>([]);
     const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
+    const [agentSupervisorFilter, setAgentSupervisorFilter] = useState<number | ''>('');
     const [targetBasket, setTargetBasket] = useState<string>('');
     const [forceDistributeHolding, setForceDistributeHolding] = useState(false);
     const [distributionExportRange, setDistributionExportRange] = useState<DateRange>({ start: '', end: '' });
@@ -309,6 +314,7 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
                     isActive: (u.status || 'active') === 'active',
                     role: u.role,
                     roleId: u.role_id || u.roleId || (u.role === UserRole.Supervisor ? 7 : 6), // Fallback if missing
+                    supervisorId: u.supervisor_id || u.supervisorId,
                     companyId: u.companyId || u.company_id,
                     username: u.username,
                     phone: u.phone,
@@ -444,22 +450,39 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
 
     // Auto-calculate quotas when mode, total, or agents change
     useEffect(() => {
+        if (selectedAgents.length === 0) {
+            setAgentQuotas({});
+            return;
+        }
+
         const total = parseInt(totalToDistribute) || 0;
-        const newQuotasNum = calculateQuotas({
+        
+        // Pass the subset of 'agents' based on 'selectedAgents'
+        // 'agents' is of type AgentWithBaskets[], we map it to AgentData expected by calculateQuotas
+        const mappedAgents = selectedAgents.map(id => {
+            const ag = agents.find(a => a.id === id);
+            return {
+                id,
+                totalCustomers: ag?.totalCustomers || 0,
+                callMinutes: ag?.callMinutes || 0
+            };
+        });
+
+        const newQuotas = calculateQuotas({
             selectedAgents,
-            agents,
+            agents: mappedAgents,
             totalToDistribute: total,
             distributionMode,
             distributeRemainder
         });
 
         const quotasStr: Record<number, string> = {};
-        for (const id in newQuotasNum) {
-            quotasStr[id] = newQuotasNum[id].toString();
+        for (const id in newQuotas) {
+            quotasStr[id] = newQuotas[id].toString();
         }
         setAgentQuotas(quotasStr);
 
-    }, [distributionMode, distributeRemainder, totalToDistribute, selectedAgents.length, agents]);
+    }, [distributionMode, distributeRemainder, totalToDistribute, selectedAgents.length]);
 
     // Toggle agent selection
     const toggleAgent = (agentId: number) => {
@@ -470,8 +493,28 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
         );
     };
 
-    // Select all agents (only active ones)
-    const activeAgents = agents.filter(a => a.isActive);
+    // Memoize available supervisors to prevent recalculation on every render (Best Practice)
+    const availableSupervisors = useMemo(() => {
+        const uniqueIds = Array.from(new Set(agents.map(a => a.supervisorId).filter(id => id))) as number[];
+        return uniqueIds.map(id => {
+            const supervisor = agents.find(a => a.id === id);
+            return {
+                id,
+                name: supervisor ? `${supervisor.firstName} ${supervisor.lastName}` : `Supervisor ID: ${id}`
+            };
+        });
+    }, [agents]);
+
+    // Filter agents for display
+    const displayAgents = useMemo(() => {
+        if (agentSupervisorFilter) {
+            return agents.filter(a => a.supervisorId === agentSupervisorFilter);
+        }
+        return agents;
+    }, [agents, agentSupervisorFilter]);
+
+    // Select all agents (only active ones in current view)
+    const activeAgents = displayAgents.filter(a => a.isActive);
     const selectAllAgents = () => {
         const activeIds = activeAgents.map(a => a.id);
         const allActiveSelected = activeIds.every(id => selectedAgents.includes(id));
@@ -1113,7 +1156,8 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
     // Bulk Action State
     const [selectedBaskets, setSelectedBaskets] = useState<string[]>([]);
     const [bulkActionType, setBulkActionType] = useState<'transfer' | 'reclaim_all' | 'reclaim_no_call_no_appt' | 'reclaim_called_no_appt' | 'reclaim_called_with_appt' | null>(null);
-    const [bulkTargetAgent, setBulkTargetAgent] = useState<number | null>(null);
+    const [bulkTargetAgents, setBulkTargetAgents] = useState<number[]>([]);
+    const [bulkTargetSupervisorFilter, setBulkTargetSupervisorFilter] = useState<number | ''>('');
     const [bulkLimit, setBulkLimit] = useState<string>('');
 
     // Flexible Transfer Logic
@@ -1253,7 +1297,8 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
         setReclaimingAgent(agent);
         setSelectedBaskets([]); // Reset selection
         setBulkActionType(null); // Reset action
-        setBulkTargetAgent(null); // Reset target agent
+        setBulkTargetAgents([]); // Reset target agents
+        setBulkTargetSupervisorFilter(''); // Reset supervisor filter
         setBulkLimit(''); // Reset limit
         setReclaimModalOpen(true);
     };
@@ -1283,7 +1328,8 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
         setReclaimingAgent(allAgentFake);
         setSelectedBaskets([]);
         setBulkActionType(null);
-        setBulkTargetAgent(null);
+        setBulkTargetAgents([]);
+        setBulkTargetSupervisorFilter('');
         setBulkLimit('');
         setReclaimModalOpen(true);
     };
@@ -1348,22 +1394,37 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
         }
 
         if (bulkActionType === 'transfer') {
-            if (!bulkTargetAgent) {
+            if (bulkTargetAgents.length === 0) {
                 setMessage({ type: 'error', text: 'กรุณาเลือกพนักงานปลายทางสำหรับการโอน' });
                 return;
             }
             
-            // Build transfer payload
-            const transfers = selectedBaskets.map(key => {
+            // Build transfer payload and distribute evenly among target agents
+            const transfers: any[] = [];
+            selectedBaskets.forEach(key => {
                 const availableCount = getAvailableCount(key);
                 const count = hasLimit ? Math.min(limitVal, availableCount) : availableCount;
-                return {
-                    from_agent_id: reclaimingAgent.id,
-                    to_agent_id: bulkTargetAgent,
-                    basket_key: key,
-                    count: count
-                };
-            }).filter(t => t.count > 0);
+                if (count > 0) {
+                    const baseCount = Math.floor(count / bulkTargetAgents.length);
+                    let remainder = count % bulkTargetAgents.length;
+
+                    bulkTargetAgents.forEach(targetId => {
+                        let agentCount = baseCount;
+                        if (remainder > 0) {
+                            agentCount += 1;
+                            remainder -= 1;
+                        }
+                        if (agentCount > 0) {
+                            transfers.push({
+                                from_agent_id: reclaimingAgent.id,
+                                to_agent_id: targetId,
+                                basket_key: key,
+                                count: agentCount
+                            });
+                        }
+                    });
+                }
+            });
             
             if (transfers.length === 0) return;
 
@@ -1378,13 +1439,19 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
                 );
                 if (result?.error) throw new Error(result.error);
 
-                const targetAgentName = agents.find(a => a.id === bulkTargetAgent);
+                const targetNames = bulkTargetAgents
+                    .map(id => {
+                        const a = agents.find(ag => ag.id === id);
+                        return a ? `${a.firstName} ${a.lastName}` : 'ไม่ทราบชื่อ';
+                    })
+                    .join(', ');
+
                 setBulkResultModal({
                     isOpen: true,
                     title: 'สรุปผลการโอนลูกค้า',
                     type: 'transfer',
                     fromAgentName: `${reclaimingAgent.firstName} ${reclaimingAgent.lastName}`,
-                    toName: targetAgentName ? `${targetAgentName.firstName} ${targetAgentName.lastName}` : 'พนักงานปลายทาง',
+                    toName: targetNames || 'พนักงานปลายทาง',
                     total: result?.transferred || 0,
                     results: result?.results || []
                 });
@@ -1629,379 +1696,45 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
 
 
             {/* Manual Reset Modal */}
-            {resetModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setResetAgentDropdownOpen(false); }}>
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                        {/* Header */}
-                        <div className="px-6 py-4 border-b flex justify-between items-center bg-gradient-to-r from-orange-50 to-amber-50 rounded-t-2xl">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
-                                    <RefreshCw size={20} className="text-orange-600" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-800">Manual Reset</h3>
-                                    <p className="text-xs text-gray-500">ล้างประวัติการถือครองเพื่อแจกซ้ำได้</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setResetModalOpen(false)}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-white/80 transition-colors"
-                            >✕</button>
-                        </div>
-
-                        {/* Filters - NOT scrollable so dropdown won't be clipped */}
-                        <div className="px-5 pt-5 pb-2">
-                            {/* Step 1: Round selector */}
-                            <div className="bg-gray-50 rounded-xl p-4 mb-4">
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                    เลือกรอบที่ต้องการล้าง
-                                </label>
-                                <div className="flex gap-2">
-                                    <select
-                                        value={resetTargetCount}
-                                        onChange={(e) => setResetTargetCount(e.target.value)}
-                                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none bg-white"
-                                    >
-                                        <option value="">-- เลือกเงื่อนไข --</option>
-                                        {resetOptions.map(opt => (
-                                            <option key={opt.assigned_count} value={opt.assigned_count}>
-                                                รอบที่ {opt.assigned_count} ({opt.customer_count.toLocaleString()} รายชื่อ)
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <button
-                                        onClick={() => handleCheckCandidates()}
-                                        disabled={!resetTargetCount || findingCandidates}
-                                        className="px-5 py-2.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 font-medium text-sm shadow-sm transition-colors"
-                                    >
-                                        {findingCandidates ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                                        ค้นหา
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Step 2: Filters */}
-                            <div className="flex gap-3 items-end">
-                                <div className="flex-1 min-w-0">
-                                    <label className="block text-xs font-medium text-gray-500 mb-1.5">🔍 ค้นหา (ชื่อ/เบอร์/รหัส)</label>
-                                    <input
-                                        type="text"
-                                        value={resetSearchText}
-                                        onChange={(e) => setResetSearchText(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter') handleCheckCandidates(); }}
-                                        placeholder="พิมพ์แล้วกด Enter..."
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
-                                    />
-                                </div>
-                                <div className="flex-1 min-w-0 relative">
-                                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                                        👤 กรองตาม Agent
-                                        {resetAgentFilter.length > 0 && (
-                                            <span className="ml-1 bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full text-[10px] font-bold">{resetAgentFilter.length}</span>
-                                        )}
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={() => setResetAgentDropdownOpen(!resetAgentDropdownOpen)}
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-left bg-white hover:bg-gray-50 flex justify-between items-center transition-colors"
-                                    >
-                                        <span className={resetAgentFilter.length === 0 ? 'text-gray-400' : 'text-gray-800 font-medium'}>
-                                            {resetAgentFilter.length === 0
-                                                ? 'ทุก Agent'
-                                                : `${resetAgentFilter.length} คน · ${resetAgentMode === 'any' ? 'คนใดคนหนึ่ง' : 'ต้องครบทุกคน'}`}
-                                        </span>
-                                        <ChevronDown size={14} className={`text-gray-400 transition-transform ${resetAgentDropdownOpen ? 'rotate-180' : ''}`} />
-                                    </button>
-                                    {resetAgentDropdownOpen && (
-                                        <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-64 flex flex-col overflow-hidden">
-                                            {/* Mode toggle + clear */}
-                                            <div className="p-2.5 border-b bg-gray-50 flex items-center justify-between gap-2">
-                                                <div className="flex bg-white rounded-lg p-0.5 text-xs border shadow-sm">
-                                                    <button
-                                                        onClick={() => setResetAgentMode('any')}
-                                                        className={`px-2.5 py-1 rounded-md transition-all ${resetAgentMode === 'any' ? 'bg-orange-500 text-white font-semibold shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                                    >คนใดคนหนึ่ง</button>
-                                                    <button
-                                                        onClick={() => setResetAgentMode('all')}
-                                                        className={`px-2.5 py-1 rounded-md transition-all ${resetAgentMode === 'all' ? 'bg-orange-500 text-white font-semibold shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                                    >ต้องครบทุกคน</button>
-                                                </div>
-                                                {resetAgentFilter.length > 0 && (
-                                                    <button
-                                                        onClick={() => setResetAgentFilter([])}
-                                                        className="text-xs text-red-500 hover:text-red-700 hover:underline whitespace-nowrap"
-                                                    >ล้างทั้งหมด</button>
-                                                )}
-                                            </div>
-                                            {/* Agent list */}
-                                            <div className="overflow-y-auto flex-1">
-                                                {resetAgentOptions.map(a => (
-                                                    <label key={a.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-orange-50 cursor-pointer text-sm border-b border-gray-50 last:border-0">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={resetAgentFilter.includes(a.id)}
-                                                            onChange={() => {
-                                                                setResetAgentFilter(prev =>
-                                                                    prev.includes(a.id)
-                                                                        ? prev.filter(id => id !== a.id)
-                                                                        : [...prev, a.id]
-                                                                );
-                                                            }}
-                                                            className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                                                        />
-                                                        <span className="truncate">{a.first_name} {a.last_name}</span>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={() => { setResetAgentDropdownOpen(false); handleCheckCandidates(); }}
-                                    disabled={!resetTargetCount || findingCandidates}
-                                    className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium whitespace-nowrap transition-colors shadow-sm"
-                                >
-                                    {findingCandidates ? <Loader2 size={14} className="animate-spin" /> : '🔄'} กรอง
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Scrollable results area */}
-                        <div className="px-5 pb-3 overflow-y-auto flex-1">
-                            {/* Results table */}
-                            {resetCandidates.length > 0 && (
-                                <div>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div className="flex items-center gap-3">
-                                            <h4 className="text-sm font-semibold text-gray-700">
-                                                พบ <span className="text-orange-600 text-base">{resetTotal.toLocaleString()}</span> รายชื่อ
-                                            </h4>
-                                            {(resetSearchText || resetAgentFilter.length > 0) && (
-                                                <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">Filtered</span>
-                                            )}
-                                        </div>
-                                        <button
-                                            onClick={toggleAllResetCandidates}
-                                            className="text-xs text-orange-600 hover:text-orange-800 font-medium hover:underline"
-                                        >
-                                            {allResetSelected ? '☐ ยกเลิกทั้งหมด' : '☑ เลือกทั้งหมด'}
-                                        </button>
-                                    </div>
-
-                                    <div className="border border-gray-200 rounded-xl overflow-hidden">
-                                        <div className="max-h-[350px] overflow-y-auto">
-                                            <table className="w-full text-sm">
-                                                <thead className="bg-gray-50 sticky top-0 z-10">
-                                                    <tr className="border-b border-gray-200">
-                                                        <th className="p-2.5 w-10"></th>
-                                                        <th className="p-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">รหัส</th>
-                                                        <th className="p-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">ชื่อ-นามสกุล</th>
-                                                        <th className="p-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">เบอร์โทร</th>
-                                                        <th className="p-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">เคยแจกให้</th>
-                                                        <th className="p-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide w-16">ครั้ง</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-100">
-                                                    {resetCandidates.map(c => (
-                                                        <tr key={c.id} className={`transition-colors ${c.selected ? 'bg-orange-50/70' : 'hover:bg-gray-50'}`}>
-                                                            <td className="p-2.5 text-center">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={c.selected || false}
-                                                                    onChange={() => toggleResetCandidate(c.id)}
-                                                                    className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                                                                />
-                                                            </td>
-                                                            <td className="p-2.5 text-gray-400 font-mono text-xs">{c.code}</td>
-                                                            <td className="p-2.5 text-gray-800 font-medium">{c.first_name} {c.last_name}</td>
-                                                            <td className="p-2.5 text-gray-500 text-xs font-mono">{c.phone || '-'}</td>
-                                                            <td className="p-2.5">
-                                                                {c.agent_names ? (
-                                                                    <span className="inline-block text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md max-w-[200px] truncate" title={c.agent_names}>
-                                                                        {c.agent_names}
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-gray-300 text-xs">-</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="p-2.5 text-center">
-                                                                <div className="flex items-center justify-center gap-1">
-                                                                    <span className="text-gray-600 font-medium">{c.assigned_count}</span>
-                                                                    <button
-                                                                        onClick={() => handleViewHistory(c)}
-                                                                        className="text-gray-300 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
-                                                                        title="ดูประวัติการแจก"
-                                                                    >
-                                                                        <Eye size={13} />
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Pagination */}
-                            {resetTotalPages > 1 && (
-                                <div className="flex justify-center items-center gap-3 mt-3 py-2">
-                                    <button
-                                        onClick={() => changeResetPage(1)}
-                                        disabled={resetPage === 1 || findingCandidates}
-                                        className="px-2 py-1 rounded-md text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                                    >«</button>
-                                    <button
-                                        onClick={() => changeResetPage(resetPage - 1)}
-                                        disabled={resetPage === 1 || findingCandidates}
-                                        className="px-2 py-1 rounded-md text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                                    >‹ ก่อนหน้า</button>
-                                    <span className="text-sm text-gray-600 bg-gray-50 px-3 py-1 rounded-lg font-mono">
-                                        {resetPage} / {resetTotalPages.toLocaleString()}
-                                    </span>
-                                    <button
-                                        onClick={() => changeResetPage(resetPage + 1)}
-                                        disabled={resetPage === resetTotalPages || findingCandidates}
-                                        className="px-2 py-1 rounded-md text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                                    >ถัดไป ›</button>
-                                    <button
-                                        onClick={() => changeResetPage(resetTotalPages)}
-                                        disabled={resetPage === resetTotalPages || findingCandidates}
-                                        className="px-2 py-1 rounded-md text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                                    >»</button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="px-5 py-3.5 border-t bg-gray-50/80 rounded-b-2xl flex justify-between items-center">
-                            <button
-                                onClick={() => handleManualReset('all')}
-                                disabled={!resetTotal || resetTotal === 0 || resetting}
-                                className="px-4 py-2 text-red-600 hover:bg-red-50 border border-red-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 text-sm transition-colors"
-                            >
-                                {resetting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                                Reset ทั้งหมด <span className="font-mono text-xs">({resetTotal.toLocaleString()})</span>
-                            </button>
-
-                            <div className="flex gap-2 items-center">
-                                <button
-                                    onClick={() => setResetModalOpen(false)}
-                                    className="px-4 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm transition-colors"
-                                >
-                                    ปิด
-                                </button>
-                                <button
-                                    onClick={() => handleManualReset('selected')}
-                                    disabled={resetCandidates.filter(c => c.selected).length === 0 || resetting}
-                                    className="px-5 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm flex items-center gap-1.5 font-medium text-sm transition-colors"
-                                >
-                                    {resetting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                                    Reset ที่เลือก
-                                    <span className="bg-white/20 px-1.5 py-0.5 rounded text-xs font-mono">
-                                        {resetCandidates.filter(c => c.selected).length}
-                                    </span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ResetModal 
+                isOpen={resetModalOpen}
+                onClose={() => setResetModalOpen(false)}
+                resetAgentDropdownOpen={resetAgentDropdownOpen}
+                setResetAgentDropdownOpen={setResetAgentDropdownOpen}
+                resetTargetCount={resetTargetCount}
+                setResetTargetCount={setResetTargetCount}
+                resetOptions={resetOptions}
+                handleCheckCandidates={handleCheckCandidates}
+                findingCandidates={findingCandidates}
+                resetSearchText={resetSearchText}
+                setResetSearchText={setResetSearchText}
+                resetAgentFilter={resetAgentFilter}
+                setResetAgentFilter={setResetAgentFilter}
+                resetAgentMode={resetAgentMode}
+                setResetAgentMode={setResetAgentMode}
+                resetAgentOptions={resetAgentOptions}
+                resetCandidates={resetCandidates}
+                resetTotal={resetTotal}
+                toggleAllResetCandidates={toggleAllResetCandidates}
+                allResetSelected={allResetSelected}
+                toggleResetCandidate={toggleResetCandidate}
+                handleViewHistory={handleViewHistory}
+                resetTotalPages={resetTotalPages}
+                resetPage={resetPage}
+                changeResetPage={changeResetPage}
+                handleManualReset={handleManualReset}
+                resetting={resetting}
+            />
 
             {/* Summary Modal (Distribution Result) */}
-            {
-                summaryModalOpen && (
-                    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-                        <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[80vh] flex flex-col animate-in fade-in duration-200">
-                            {/* Header */}
-                            <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
-                                <h3 className="text-xl font-bold text-gray-800">สรุปผลการแจกงาน</h3>
-                                <button onClick={closeSummaryModal} className="text-gray-500 hover:text-gray-700">✕</button>
-                            </div>
-
-                            {/* Body - Stats Table */}
-                            <div className="p-6 overflow-y-auto flex-1">
-                                {/* Top Summary Cards */}
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-center">
-                                        <div className="text-3xl font-bold text-green-600">{summaryStats.totalSuccess}</div>
-                                        <div className="text-sm text-green-800">แจกสำเร็จ (รายการ)</div>
-                                    </div>
-                                    <div className="bg-red-50 p-4 rounded-lg border border-red-100 text-center">
-                                        <div className="text-3xl font-bold text-red-600">{summaryStats.totalFailed}</div>
-                                        <div className="text-sm text-red-800">แจกไม่สำเร็จ (รายการ)</div>
-                                    </div>
-                                </div>
-
-                                {/* Table */}
-                                <div className="border rounded-lg overflow-hidden">
-                                    <table className="w-full text-sm border-collapse">
-                                        <thead className="bg-gray-100">
-                                            <tr>
-                                                <th className="p-3 text-left font-semibold text-gray-600">พนักงาน</th>
-                                                <th className="p-3 text-center text-green-700 font-semibold">สำเร็จ</th>
-                                                <th className="p-3 text-center text-red-700 font-semibold">ไม่สำเร็จ</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {Object.values(summaryStats.agentStats).map((stat, idx) => (
-                                                <tr key={idx} className="hover:bg-gray-50">
-                                                    <td className="p-3 font-medium text-gray-800">{stat.name}</td>
-                                                    <td className="p-3 text-center text-green-600 font-bold">{stat.success}</td>
-                                                    <td className="p-3 text-center text-red-500 font-medium">{stat.failed > 0 ? stat.failed : '-'}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                {/* Missing Alert */}
-                                {summaryStats.missingTotal > 0 && (
-                                    <div className="mt-6 p-4 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-3">
-                                        <AlertCircle className="text-orange-600 shrink-0 mt-0.5" />
-                                        <div>
-                                            <h4 className="font-bold text-orange-800">ยังแจกไม่ครบตามเป้าหมาย</h4>
-                                            <p className="text-sm text-orange-700">ขาดอีกประมาณ <span className="font-bold">{summaryStats.missingTotal}</span> รายชื่อ</p>
-                                            <p className="text-xs text-orange-600 mt-1">ต้องการค้นหาลูกค้าเพิ่มเติมและแจกต่อหรือไม่?</p>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Footer */}
-                            <div className="p-6 border-t bg-gray-50 flex justify-between gap-3 rounded-b-xl">
-                                <button
-                                    onClick={handleExportSummary}
-                                    className="px-6 py-2 border border-green-600 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 font-bold transition-colors flex items-center gap-2"
-                                >
-                                    <Download size={18} />
-                                    Export เป็น Excel
-                                </button>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={closeSummaryModal}
-                                        className="px-6 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
-                                    >
-                                        ปิด (เสร็จสิ้น)
-                                    </button>
-                                    {summaryStats.missingTotal > 0 && (
-                                        <button
-                                            onClick={handleDistributeMore}
-                                            disabled={distributing}
-                                            className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-bold flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50"
-                                        >
-                                            {distributing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
-                                            แจกเพิ่มส่วนที่ขาด
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            <SummaryModal 
+                isOpen={summaryModalOpen}
+                summaryStats={summaryStats}
+                onClose={closeSummaryModal}
+                onExport={handleExportSummary}
+                onDistributeMore={handleDistributeMore}
+                distributing={distributing}
+            />
             {/* Message */}
             {
                 message && (
@@ -2282,6 +2015,23 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
 
 
 
+                    {/* Supervisor Filter */}
+                    <div className="flex items-center gap-3 mb-4 px-4 pt-4 border-t border-gray-100">
+                        <label className="text-sm font-semibold text-gray-700">กรองตามทีม (Supervisor):</label>
+                        <select
+                            value={agentSupervisorFilter || ''}
+                            onChange={(e) => setAgentSupervisorFilter(e.target.value ? Number(e.target.value) : '')}
+                            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
+                        >
+                            <option value="">-- ทั้งหมด --</option>
+                            {availableSupervisors.map(sup => (
+                                <option key={sup.id} value={sup.id}>
+                                    {sup.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
                     {loadingAgents ? (
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -2311,7 +2061,7 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {agents.map(agent => {
+                                    {displayAgents.map(agent => {
                                         const isInactive = !agent.isActive;
                                         const isSelected = selectedAgents.includes(agent.id);
                                         return (
@@ -2330,11 +2080,18 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
                                                     />
                                                 </td>
                                                 <td className="p-3 font-medium">
-                                                    {agent.firstName} {agent.lastName}
-                                                    {isInactive && (
-                                                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
-                                                            {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
-                                                        </span>
+                                                    <div>
+                                                        {agent.firstName} {agent.lastName}
+                                                        {isInactive && (
+                                                            <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded">
+                                                                {agent.status === 'resigned' ? 'ลาออก' : 'ไม่ใช้งาน'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {agent.supervisorId && (
+                                                        <div className="text-xs text-gray-400 font-normal mt-0.5">
+                                                            [ทีม: {agents.find(a => a.id === agent.supervisorId)?.firstName || 'ไม่ระบุ'}]
+                                                        </div>
                                                     )}
                                                 </td>
                                                 <td className="p-3 text-center">
@@ -2442,710 +2199,92 @@ const CustomerDistributionV3: React.FC<CustomerDistributionV3Props> = ({ current
             </div>
 
             {/* Reclaim Modal */}
-            {
-                reclaimModalOpen && reclaimingAgent && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-gray-50 rounded-2xl p-0 w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
-                            
-                            {/* Modal Header */}
-                            <div className="px-6 py-4 bg-white border-b flex items-center justify-between shadow-sm z-10">
-                                <div>
-                                    <h3 className="text-xl font-bold text-gray-800">โอน / ดึงคืนลูกค้า (แบบกลุ่ม)</h3>
-                                    <p className="text-sm text-gray-500">จัดการลูกค้าของ {reclaimingAgent.firstName} {reclaimingAgent.lastName}</p>
-                                </div>
-                                <button onClick={() => setReclaimModalOpen(false)} className="text-gray-400 hover:bg-gray-100 p-2 rounded-full transition-colors">
-                                    ✕
-                                </button>
-                            </div>
-
-                            {/* Modal Body (Scrollable Basket List) */}
-                            <div className="flex-1 overflow-auto p-6 space-y-3">
-                                {/* Select All Bar */}
-                                <div className="flex items-center pb-2 mb-2 border-b">
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={
-                                                dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0).length > 0 &&
-                                                selectedBaskets.length === dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0).length
-                                            }
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedBaskets(dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0).map(b => b.basket_key));
-                                                } else {
-                                                    setSelectedBaskets([]);
-                                                }
-                                            }}
-                                            className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 transition-colors"
-                                        />
-                                        <span className="font-semibold text-gray-700">เลือกทั้งหมด (เฉพาะตะกร้าที่มีลูกค้า)</span>
-                                    </label>
-                                </div>
-
-                                {dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis').map(basket => {
-                                    const currentHolding = reclaimingAgent.basketCounts?.[basket.basket_key] || 0;
-                                    const isEmpty = currentHolding === 0;
-                                    const isSelected = selectedBaskets.includes(basket.basket_key);
-
-                                    return (
-                                        <label 
-                                            key={basket.basket_key} 
-                                            className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                                                isEmpty 
-                                                    ? 'opacity-50 bg-gray-50 border-transparent cursor-not-allowed' 
-                                                    : isSelected 
-                                                        ? 'bg-blue-50/50 border-blue-500 shadow-sm' 
-                                                        : 'bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm'
-                                            }`}
-                                        >
-                                            <div className="flex items-center justify-center pt-0.5">
-                                                <input 
-                                                    type="checkbox" 
-                                                    disabled={isEmpty}
-                                                    checked={isSelected}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setSelectedBaskets(prev => [...prev, basket.basket_key]);
-                                                        } else {
-                                                            setSelectedBaskets(prev => prev.filter(k => k !== basket.basket_key));
-                                                        }
-                                                    }}
-                                                    className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 transition-colors"
-                                                />
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="font-semibold text-gray-800">{basket.basket_name}</div>
-                                            </div>
-                                            <div className="flex items-center gap-4 text-right">
-                                                {!isEmpty && (
-                                                    <>
-                                                        <div className="flex flex-col items-end">
-                                                            <div className="text-[10px] text-gray-400 font-medium leading-none mb-1">ไม่มีการโทร</div>
-                                                            <div className={`text-sm font-semibold ${loadingReclaimPreviews ? 'text-gray-300' : 'text-orange-500'}`}>
-                                                                {loadingReclaimPreviews ? '...' : (reclaimPreviewNoCallNoAppt[basket.basket_key] || 0).toLocaleString()}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex flex-col items-end">
-                                                            <div className="text-[10px] text-gray-400 font-medium leading-none mb-1">โทรแล้วไม่นัด</div>
-                                                            <div className={`text-sm font-semibold ${loadingReclaimPreviews ? 'text-gray-300' : 'text-red-500'}`}>
-                                                                {loadingReclaimPreviews ? '...' : (reclaimPreviewCalledNoAppt[basket.basket_key] || 0).toLocaleString()}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex flex-col items-end">
-                                                            <div className="text-[10px] text-gray-400 font-medium leading-none mb-1">โทรและนัด</div>
-                                                            <div className={`text-sm font-semibold ${loadingReclaimPreviews ? 'text-gray-300' : 'text-green-600'}`}>
-                                                                {loadingReclaimPreviews ? '...' : (reclaimPreviewCalledWithAppt[basket.basket_key] || 0).toLocaleString()}
-                                                            </div>
-                                                        </div>
-                                                        <div className="w-[1px] h-8 bg-gray-200 mx-1"></div>
-                                                    </>
-                                                )}
-                                                <div className="flex flex-col items-end min-w-[60px]">
-                                                    <div className="text-[11px] text-gray-500 font-medium leading-none mb-1">มีอยู่ทั้งหมด</div>
-                                                    <div className={`text-xl font-bold leading-none ${isEmpty ? 'text-gray-400' : 'text-blue-600'}`}>
-                                                        {currentHolding.toLocaleString()}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </label>
-                                    );
-                                })}
-
-                                {Object.values(reclaimingAgent.basketCounts).every(c => c === 0) && (
-                                    <div className="text-center py-12 text-gray-400 bg-white rounded-xl border border-dashed border-gray-300">
-                                        พนักงานนี้ไม่มีลูกค้าในถังใดๆ
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Modal Footer / Action Bar (Fixed Bottom) */}
-                            <div className="bg-white border-t px-6 py-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
-                                <div className="flex flex-col gap-4">
-                                    
-                                    {/* Action Config Row */}
-                                    <div className="flex items-start gap-4">
-                                        
-                                        {/* Action Type Dropdown */}
-                                        <div className="flex-1">
-                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">รูปแบบการกระทำ</label>
-                                            <select
-                                                value={bulkActionType || ''}
-                                                onChange={(e) => setBulkActionType(e.target.value as any)}
-                                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
-                                            >
-                                                <option value="">-- เลือกการกระทำ --</option>
-                                                <option value="transfer">➡️ โอนให้ Telesale อื่น</option>
-                                                <option value="reclaim_all">🔄 ดึงคืนทั้งหมด</option>
-                                                <option value="reclaim_no_call_no_appt">📅 ดึงเฉพาะไม่มีการโทร</option>
-                                                <option value="reclaim_called_no_appt">📞 ดึงเฉพาะโทรแล้วไม่นัด</option>
-                                                <option value="reclaim_called_with_appt">✅ ดึงเฉพาะโทรและนัด</option>
-                                            </select>
-                                        </div>
-
-                                        {/* Target Agent (Only for Transfer) */}
-                                        {bulkActionType === 'transfer' && (
-                                            <div className="flex-1 animate-in fade-in slide-in-from-right-4 duration-200">
-                                                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">พนักงานปลายทาง</label>
-                                                <select
-                                                    value={bulkTargetAgent || ''}
-                                                    onChange={(e) => setBulkTargetAgent(Number(e.target.value))}
-                                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
-                                                >
-                                                    <option value="">-- เลือกพนักงาน --</option>
-                                                    {agents.filter(a => a.id !== reclaimingAgent.id && a.role !== 'admin' && a.role !== 'manager').map(agent => (
-                                                        <option key={agent.id} value={agent.id}>
-                                                            {agent.firstName} {agent.lastName}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        )}
-
-                                        {/* Limit Input */}
-                                        <div className="w-32">
-                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">จำนวน / ถัง</label>
-                                            <input
-                                                type="number"
-                                                placeholder="ทั้งหมด"
-                                                value={bulkLimit}
-                                                onChange={(e) => setBulkLimit(e.target.value)}
-                                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
-                                                min={1}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Execute Row */}
-                                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                                        <div className="text-sm">
-                                            <span className="text-gray-500">เลือกแล้ว: </span>
-                                            <span className="font-bold text-blue-600">{selectedBaskets.length}</span>
-                                            <span className="text-gray-500"> ถัง</span>
-                                        </div>
-                                        <div className="flex gap-3">
-                                            <button
-                                                type="button"
-                                                onClick={() => setReclaimModalOpen(false)}
-                                                className="px-5 py-2.5 font-medium border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
-                                            >
-                                                ยกเลิก
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={handleExecuteBulkAction}
-                                                disabled={
-                                                    selectedBaskets.length === 0 || 
-                                                    !bulkActionType || 
-                                                    (bulkActionType === 'transfer' && !bulkTargetAgent) ||
-                                                    reclaiming || transferring
-                                                }
-                                                className={`px-6 py-2.5 font-medium text-white rounded-lg flex items-center gap-2 shadow-sm transition-all
-                                                    ${bulkActionType === 'transfer' 
-                                                        ? 'bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2' 
-                                                        : 'bg-orange-600 hover:bg-orange-700 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2'} 
-                                                    disabled:opacity-50 disabled:cursor-not-allowed`}
-                                            >
-                                                {(reclaiming || transferring) ? (
-                                                    <Loader2 className="animate-spin w-5 h-5" />
-                                                ) : bulkActionType === 'transfer' ? (
-                                                    'ดำเนินการโอน'
-                                                ) : (
-                                                    'ดำเนินการดึงคืน'
-                                                )}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            <ReclaimModal 
+                isOpen={reclaimModalOpen}
+                reclaimingAgent={reclaimingAgent}
+                onClose={() => setReclaimModalOpen(false)}
+                dashboardBaskets={dashboardBaskets}
+                selectedBaskets={selectedBaskets}
+                setSelectedBaskets={setSelectedBaskets}
+                loadingReclaimPreviews={loadingReclaimPreviews}
+                reclaimPreviewNoCallNoAppt={reclaimPreviewNoCallNoAppt}
+                reclaimPreviewCalledNoAppt={reclaimPreviewCalledNoAppt}
+                reclaimPreviewCalledWithAppt={reclaimPreviewCalledWithAppt}
+                bulkActionType={bulkActionType}
+                setBulkActionType={setBulkActionType}
+                bulkTargetSupervisorFilter={bulkTargetSupervisorFilter}
+                setBulkTargetSupervisorFilter={setBulkTargetSupervisorFilter}
+                availableSupervisors={availableSupervisors}
+                bulkTargetAgents={bulkTargetAgents}
+                setBulkTargetAgents={setBulkTargetAgents}
+                agents={agents}
+                bulkLimit={bulkLimit}
+                setBulkLimit={setBulkLimit}
+                handleExecuteBulkAction={handleExecuteBulkAction}
+                reclaiming={reclaiming}
+                transferring={transferring}
+            />
 
 
             {/* Flexible Transfer Modal */}
-            {flexTransferModalOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-                        {/* Header */}
-                        <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
-                                    <ArrowRightLeft size={20} />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-800">โอนรายชื่อลูกค้า</h3>
-                                    <p className="text-xs text-gray-500">โอนรายชื่อระหว่าง Telesale</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setFlexTransferModalOpen(false)}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-white transition-colors"
-                            >✕</button>
-                        </div>
-                        
-                        {/* Body */}
-                        <div className="p-6 overflow-y-auto flex-1">
-                            {/* Mode toggle */}
-                            <div className="flex bg-gray-100 p-1 rounded-xl mb-6 shadow-inner">
-                                <button
-                                    onClick={() => setFlexTransferMode('1_to_many')}
-                                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${flexTransferMode === '1_to_many' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    1 คน → โอนให้หลายคน
-                                </button>
-                                <button
-                                    onClick={() => setFlexTransferMode('many_to_1')}
-                                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${flexTransferMode === 'many_to_1' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    หลายคน → โอนรวมให้ 1 คน
-                                </button>
-                            </div>
-
-                            {flexTransferMode === '1_to_many' ? (
-                                <div className="space-y-6">
-                                    {/* Source Agent & Basket */}
-                                    <div className="flex gap-4">
-                                        <div className="flex-1">
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">พนักงานต้นทาง (1 คน)</label>
-                                            <select 
-                                                value={flex1toManySourceAgent || ''} 
-                                                onChange={e => {
-                                                    setFlex1toManySourceAgent(parseInt(e.target.value) || null);
-                                                    setFlex1toManyBasket(''); // reset basket when source changes
-                                                }}
-                                                className="w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                            >
-                                                <option value="">-- เลือกพนักงาน --</option>
-                                                {agents.map(a => (
-                                                    <option key={a.id} value={a.id}>{a.firstName} {a.lastName} ({a.totalCustomers})</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="flex-1">
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">ถังงานที่จะโอน</label>
-                                            <select
-                                                value={flex1toManyBasket}
-                                                onChange={e => setFlex1toManyBasket(e.target.value)}
-                                                disabled={!flex1toManySourceAgent}
-                                                className="w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-50 disabled:text-gray-400"
-                                            >
-                                                <option value="">-- เลือกถังงาน --</option>
-                                                {flex1toManySourceAgent && dashboardBaskets.map(b => {
-                                                    const agent = agents.find(a => a.id === flex1toManySourceAgent);
-                                                    const count = agent?.basketCounts?.[b.basket_key] || 0;
-                                                    if (count === 0) return null;
-                                                    return <option key={b.basket_key} value={b.basket_key}>{b.basket_name} ({count})</option>
-                                                })}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    {/* Availability & Auto Distribute */}
-                                    <div className="flex gap-4">
-                                        {/* Available count info */}
-                                        <div className="flex-1 bg-blue-50 p-3 rounded-lg text-sm text-blue-800 flex flex-col justify-center border border-blue-100">
-                                            <span className="text-xs text-blue-600 mb-1">จำนวนที่โอนได้สูงสุด:</span>
-                                            <span className="font-bold text-lg">
-                                                {flex1toManySourceAgent && flex1toManyBasket ? 
-                                                    (agents.find(a => a.id === flex1toManySourceAgent)?.basketCounts?.[flex1toManyBasket] || 0) 
-                                                    : 0} รายชื่อ
-                                            </span>
-                                        </div>
-
-                                        {/* Total count input & distribute button */}
-                                        <div className="flex-[2_2_0%]">
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                จำนวนที่ต้องการโอนทั้งหมด
-                                            </label>
-                                            <div className="flex gap-2">
-                                                <input 
-                                                    type="number" 
-                                                    min="1"
-                                                    value={flex1toManyTotalTransferCount}
-                                                    onChange={e => setFlex1toManyTotalTransferCount(e.target.value)}
-                                                    placeholder="เช่น 50"
-                                                    className="w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                                    disabled={!flex1toManyBasket}
-                                                />
-                                                <button
-                                                    onClick={handleDistributeEvenly}
-                                                    disabled={!flex1toManyTotalTransferCount || flex1toManyCheckedTargets.length === 0}
-                                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 text-sm font-medium whitespace-nowrap transition-colors"
-                                                >
-                                                    เฉลี่ยให้คนที่เลือก
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Target Agents */}
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="text-sm font-medium text-gray-700">เลือกพนักงานปลายทางที่ต้องการโอนให้</label>
-                                            <div className="text-xs text-blue-600 font-medium">
-                                                เลือกแล้ว {flex1toManyCheckedTargets.length} คน
-                                            </div>
-                                        </div>
-                                        <div className="border rounded-xl max-h-60 overflow-y-auto divide-y bg-gray-50/50">
-                                            {agents.filter(a => a.id !== flex1toManySourceAgent).map(agent => (
-                                                <div key={agent.id} className={`p-3 flex items-center justify-between transition-colors ${flex1toManyCheckedTargets.includes(agent.id) ? 'bg-blue-50/50' : 'hover:bg-gray-100/50'}`}>
-                                                    <div className="flex items-center gap-3">
-                                                        <input 
-                                                            type="checkbox"
-                                                            checked={flex1toManyCheckedTargets.includes(agent.id)}
-                                                            onChange={e => {
-                                                                if (e.target.checked) {
-                                                                    setFlex1toManyCheckedTargets(p => [...p, agent.id]);
-                                                                } else {
-                                                                    setFlex1toManyCheckedTargets(p => p.filter(id => id !== agent.id));
-                                                                    setFlex1toManyTargets(p => {
-                                                                        const newT = { ...p };
-                                                                        delete newT[agent.id];
-                                                                        return newT;
-                                                                    });
-                                                                }
-                                                            }}
-                                                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
-                                                        />
-                                                        <div className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-xs uppercase cursor-default">
-                                                            {agent.firstName.substring(0, 2)}
-                                                        </div>
-                                                        <div className="cursor-pointer" onClick={() => {
-                                                            if (flex1toManyCheckedTargets.includes(agent.id)) {
-                                                                setFlex1toManyCheckedTargets(p => p.filter(id => id !== agent.id));
-                                                                setFlex1toManyTargets(p => {
-                                                                    const newT = { ...p };
-                                                                    delete newT[agent.id];
-                                                                    return newT;
-                                                                });
-                                                            } else {
-                                                                setFlex1toManyCheckedTargets(p => [...p, agent.id]);
-                                                            }
-                                                        }}>
-                                                            <div className="font-semibold text-gray-800 text-sm">{agent.firstName} {agent.lastName}</div>
-                                                            <div className="text-xs text-gray-400">ปัจจุบันมีรวม {agent.totalCustomers} รายการ</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-gray-500">รับเพิ่ม</span>
-                                                        <input 
-                                                            type="number" 
-                                                            min="0"
-                                                            value={flex1toManyTargets[agent.id] || ''}
-                                                            onChange={e => {
-                                                                const val = e.target.value;
-                                                                setFlex1toManyTargets(p => ({ ...p, [agent.id]: val }));
-                                                                if (val && !flex1toManyCheckedTargets.includes(agent.id)) {
-                                                                    setFlex1toManyCheckedTargets(p => [...p, agent.id]);
-                                                                }
-                                                            }}
-                                                            placeholder="0"
-                                                            className="w-20 border rounded-lg px-2 py-1.5 text-center text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <div className="flex justify-between items-center mt-3 text-sm">
-                                            <span className="text-gray-500">โอนรวมทั้งหมด:</span>
-                                            <span className="font-bold text-blue-600 text-base">
-                                                {Object.values(flex1toManyTargets).reduce((sum, val) => sum + (parseInt(val) || 0), 0)} รายชื่อ
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-6">
-                                    {/* Target Agent (Many -> 1) */}
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">พนักงานปลายทาง (1 คน)</label>
-                                        <select 
-                                            value={flexManyto1TargetAgent || ''} 
-                                            onChange={e => setFlexManyto1TargetAgent(parseInt(e.target.value) || null)}
-                                            className="w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                        >
-                                            <option value="">-- เลือกพนักงาน --</option>
-                                            {agents.map(a => (
-                                                <option key={a.id} value={a.id}>{a.firstName} {a.lastName} (ปัจจุบันมี {a.totalCustomers})</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Sources */}
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="block text-sm font-medium text-gray-700">พนักงานต้นทางและถังงาน</label>
-                                            <button 
-                                                onClick={() => setFlexManyto1Sources(p => [...p, { id: Math.random().toString(), agentId: null, basketKey: '', count: '' }])}
-                                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-semibold"
-                                            >
-                                                <Plus size={14} /> เพิ่มต้นทาง
-                                            </button>
-                                        </div>
-                                        
-                                        <div className="space-y-2">
-                                            {flexManyto1Sources.map((src, index) => {
-                                                const agent = src.agentId ? agents.find(a => a.id === src.agentId) : null;
-                                                const maxCount = agent && src.basketKey ? (agent.basketCounts?.[src.basketKey] || 0) : 0;
-                                                
-                                                return (
-                                                    <div key={src.id} className="flex gap-2 items-end border p-3 rounded-lg bg-gray-50 relative group">
-                                                        <div className="flex-1">
-                                                            <label className="block text-xs text-gray-500 mb-1">จากพนักงาน</label>
-                                                            <select 
-                                                                value={src.agentId || ''} 
-                                                                onChange={e => {
-                                                                    const val = parseInt(e.target.value) || null;
-                                                                    setFlexManyto1Sources(p => p.map((item, i) => i === index ? { ...item, agentId: val, basketKey: '' } : item));
-                                                                }}
-                                                                className="w-full border rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                                                            >
-                                                                <option value="">-- พนักงาน --</option>
-                                                                {agents.filter(a => a.id !== flexManyto1TargetAgent).map(a => (
-                                                                    <option key={a.id} value={a.id}>{a.firstName} {a.lastName}</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <label className="block text-xs text-gray-500 mb-1">จากถัง</label>
-                                                            <select 
-                                                                value={src.basketKey} 
-                                                                onChange={e => {
-                                                                    setFlexManyto1Sources(p => p.map((item, i) => i === index ? { ...item, basketKey: e.target.value } : item));
-                                                                }}
-                                                                disabled={!src.agentId}
-                                                                className="w-full border rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-gray-100"
-                                                            >
-                                                                <option value="">-- ถัง --</option>
-                                                                {src.agentId && dashboardBaskets.map(b => {
-                                                                    const count = agent?.basketCounts?.[b.basket_key] || 0;
-                                                                    if (count === 0) return null;
-                                                                    return <option key={b.basket_key} value={b.basket_key}>{b.basket_name} ({count})</option>
-                                                                })}
-                                                            </select>
-                                                        </div>
-                                                        <div className="w-24">
-                                                            <label className="block text-xs text-gray-500 mb-1">จำนวน</label>
-                                                            <input 
-                                                                type="number" 
-                                                                min="0"
-                                                                value={src.count}
-                                                                onChange={e => {
-                                                                    setFlexManyto1Sources(p => p.map((item, i) => i === index ? { ...item, count: e.target.value } : item));
-                                                                }}
-                                                                disabled={!src.basketKey}
-                                                                placeholder={`Max ${maxCount}`}
-                                                                className="w-full border rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-blue-500 text-xs text-center disabled:bg-gray-100"
-                                                            />
-                                                        </div>
-                                                        <button 
-                                                            onClick={() => setFlexManyto1Sources(p => p.filter((_, i) => i !== index))}
-                                                            className="h-8 w-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                                                            disabled={flexManyto1Sources.length === 1}
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        <div className="flex justify-between items-center mt-3 text-sm">
-                                            <span className="text-gray-500">โอนรวมทั้งหมด:</span>
-                                            <span className="font-bold text-blue-600 text-base">
-                                                {flexManyto1Sources.reduce((sum, val) => sum + (parseInt(val.count) || 0), 0)} รายชื่อ
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50">
-                            <button
-                                onClick={() => setFlexTransferModalOpen(false)}
-                                className="px-5 py-2.5 rounded-lg hover:bg-gray-200 text-gray-600 font-medium transition-colors text-sm"
-                            >
-                                ยกเลิก
-                            </button>
-                            <button
-                                onClick={handleExecuteFlexTransfer}
-                                disabled={flexTransferring}
-                                className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium shadow-sm transition-colors text-sm"
-                            >
-                                {flexTransferring ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
-                                ยืนยันโอนรายชื่อ
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <FlexTransferModal 
+                isOpen={flexTransferModalOpen}
+                onClose={() => setFlexTransferModalOpen(false)}
+                flexTransferMode={flexTransferMode}
+                setFlexTransferMode={setFlexTransferMode}
+                flex1toManySourceAgent={flex1toManySourceAgent}
+                setFlex1toManySourceAgent={setFlex1toManySourceAgent}
+                flex1toManyBasket={flex1toManyBasket}
+                setFlex1toManyBasket={setFlex1toManyBasket}
+                flex1toManyTotalTransferCount={flex1toManyTotalTransferCount}
+                setFlex1toManyTotalTransferCount={setFlex1toManyTotalTransferCount}
+                flex1toManyTargets={flex1toManyTargets}
+                setFlex1toManyTargets={setFlex1toManyTargets}
+                flex1toManyCheckedTargets={flex1toManyCheckedTargets}
+                setFlex1toManyCheckedTargets={setFlex1toManyCheckedTargets}
+                flexManyto1TargetAgent={flexManyto1TargetAgent}
+                setFlexManyto1TargetAgent={setFlexManyto1TargetAgent}
+                flexManyto1Sources={flexManyto1Sources}
+                setFlexManyto1Sources={setFlexManyto1Sources}
+                agents={agents}
+                dashboardBaskets={dashboardBaskets}
+                handleDistributeEvenly={handleDistributeEvenly}
+                handleExecuteFlexTransfer={handleExecuteFlexTransfer}
+                flexTransferring={flexTransferring}
+            />
 
             {/* Preview Modal */}
-            {
-                showPreview && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-auto">
-                            <h3 className="text-xl font-bold mb-4">Preview การแจกงาน</h3>
-
-                            {/* Distribution Modes */}
-                            <div className="mb-4">
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">เลือกนโยบายการแจก (Distribution Mode)</label>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                                    {/* Equal Mode */}
-                                    <div 
-                                        onClick={() => setDistributionMode('equal')}
-                                        className={`border rounded-xl p-3 cursor-pointer transition-all ${distributionMode === 'equal' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
-                                    >
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <Scale className={distributionMode === 'equal' ? 'text-blue-600' : 'text-gray-500'} size={18} />
-                                            <span className="font-semibold text-sm text-gray-800">Equal (เท่ากันทุกคน)</span>
-                                        </div>
-                                        <p className="text-xs text-gray-500 mb-2 leading-tight">ทำยังไง: นำรายชื่อหารจำนวนคนตรงๆ ทุกคนได้เท่ากัน</p>
-                                    </div>
-                                    
-                                    {/* Load Balance Mode */}
-                                    <div 
-                                        onClick={() => setDistributionMode('load_balance')}
-                                        className={`border rounded-xl p-3 cursor-pointer transition-all ${distributionMode === 'load_balance' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
-                                    >
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <Zap className={distributionMode === 'load_balance' ? 'text-blue-600' : 'text-gray-500'} size={18} />
-                                            <span className="font-semibold text-sm text-gray-800">Load Balance</span>
-                                        </div>
-                                        <p className="text-xs text-gray-500 mb-2 leading-tight">ทำยังไง: ดูยอดลูกค้าปัจจุบัน ใครถือน้อยจะได้เยอะเพื่อบาลานซ์</p>
-                                    </div>
-
-                                    {/* Performance Mode */}
-                                    <div 
-                                        onClick={() => setDistributionMode('performance')}
-                                        className={`border rounded-xl p-3 cursor-pointer transition-all ${distributionMode === 'performance' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`}
-                                    >
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <TrendingUp className={distributionMode === 'performance' ? 'text-blue-600' : 'text-gray-500'} size={18} />
-                                            <span className="font-semibold text-sm text-gray-800">Performance (ความขยัน)</span>
-                                        </div>
-                                        <p className="text-xs text-gray-500 mb-2 leading-tight">ทำยังไง: อิงยอด 'เวลาโทร' คนโทรเยอะจะได้สัดส่วนลูกค้าเยอะ</p>
-                                    </div>
-                                </div>
-
-                                {distributionMode === 'equal' && (
-                                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer w-fit">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={distributeRemainder}
-                                            onChange={(e) => setDistributeRemainder(e.target.checked)}
-                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                        />
-                                        <span>กระจายเศษรายชื่อที่หารไม่ลงตัวให้พนักงาน (คนแรกๆ จะได้ +1)</span>
-                                    </label>
-                                )}
-                            </div>
-
-                            {previewWarning && (
-                                <div className="mb-6 p-4 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl text-sm">
-                                    {previewWarning}
-                                </div>
-                            )}
-
-                            {/* Summary Dashboard */}
-                            <div className="grid grid-cols-2 gap-4 mb-6">
-                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
-                                    <div>
-                                        <div className="text-blue-600 font-semibold text-2xl">{preview.filter(p => p.customers.length > 0).length} คน</div>
-                                        <div className="text-sm text-blue-800">พนักงานที่ได้รับการแจก</div>
-                                    </div>
-                                    <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center text-blue-600">
-                                        <Check size={20} />
-                                    </div>
-                                </div>
-                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between">
-                                    <div>
-                                        <div className="text-gray-600 font-semibold text-2xl">{preview.filter(p => p.customers.length === 0).length} คน</div>
-                                        <div className="text-sm text-gray-500">พนักงานที่ไม่ได้การแจก (ได้ 0 คน)</div>
-                                    </div>
-                                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500">
-                                        <Minus size={20} />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4 mb-6">
-                                {preview.filter(item => item.customers.length > 0).map(item => (
-                                    <div key={item.agentId} className="border border-blue-200 bg-blue-50/30 rounded-xl p-4">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="font-semibold text-blue-900">{item.agentName}</span>
-                                            <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-bold">{item.customers.length} รายชื่อ</span>
-                                        </div>
-                                        <div className="text-sm text-gray-600">
-                                            {item.customers.slice(0, 5).map(c => `${c.firstName} ${c.lastName}`).join(', ')}
-                                            {item.customers.length > 5 && <span className="text-gray-400"> และอีก {item.customers.length - 5} คน</span>}
-                                        </div>
-                                    </div>
-                                ))}
-
-                                {/* Agents who received 0 */}
-                                {preview.filter(item => item.customers.length === 0).length > 0 && (
-                                    <>
-                                        <h4 className="text-sm font-semibold text-gray-500 mt-6 mb-2">พนักงานที่ไม่ได้รับการแจกรายชื่อในรอบนี้:</h4>
-                                        <div className="flex flex-wrap gap-2">
-                                            {preview.filter(item => item.customers.length === 0).map(item => (
-                                                <div key={item.agentId} className="border border-gray-200 bg-gray-50 text-gray-500 px-3 py-1.5 rounded-lg text-sm flex items-center gap-2">
-                                                    {item.agentName} <span className="bg-gray-200 text-gray-500 text-xs px-1.5 py-0.5 rounded">0</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            <div className="flex justify-between items-center pt-4 border-t">
-                                <div className="text-gray-600">
-                                    รวมทั้งหมด: {preview.reduce((sum, p) => sum + p.customers.length, 0)} รายชื่อ
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={() => setShowPreview(false)}
-                                        className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-                                    >
-                                        ยกเลิก
-                                    </button>
-                                    <button
-                                        onClick={() => handleExecuteDistribution()}
-                                        disabled={distributing}
-                                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-                                    >
-                                        {distributing ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
-                                        ยืนยันแจกงาน
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            <PreviewModal 
+                showPreview={showPreview}
+                setShowPreview={setShowPreview}
+                distributionMode={distributionMode}
+                setDistributionMode={setDistributionMode}
+                distributeRemainder={distributeRemainder}
+                setDistributeRemainder={setDistributeRemainder}
+                previewWarning={previewWarning}
+                preview={preview}
+                distributing={distributing}
+                handleExecuteDistribution={handleExecuteDistribution}
+            />
 
             {/* Confirmation Modal */}
             <ConfirmModal modalState={confirmModal} onClose={closeConfirmModal} />
 
             {/* History Modal */}
             <HistoryModal 
-                isOpen={historyModalOpen} 
-                onClose={() => setHistoryModalOpen(false)} 
-                viewingCustomer={viewingCustomer} 
-                historyLoading={historyLoading} 
-                historyData={historyData} 
+                isOpen={historyModalOpen}
+                onClose={() => setHistoryModalOpen(false)}
+                viewingCustomer={viewingCustomer}
+                historyLoading={historyLoading}
+                historyData={historyData}
             />
 
             {/* Bulk Result Modal */}
-            {bulkResultModal && (
-                <BulkResultModal 
-                    modalState={bulkResultModal} 
-                    dashboardBaskets={dashboardBaskets} 
-                    onClose={() => setBulkResultModal(null)} 
-                />
-            )}
+            <BulkResultModal 
+                modalState={bulkResultModal}
+                onClose={() => setBulkResultModal(null)}
+                dashboardBaskets={dashboardBaskets}
+            />
 
             {/* Blocked Customers Modal */}
             <BlockedCustomersModal

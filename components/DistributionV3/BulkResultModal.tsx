@@ -18,7 +18,7 @@ interface BulkResultModalProps {
 }
 
 const BulkResultModal: React.FC<BulkResultModalProps> = ({ modalState, dashboardBaskets, onClose }) => {
-    if (!modalState.isOpen) return null;
+    if (!modalState || !modalState.isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-4">

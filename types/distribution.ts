@@ -1,4 +1,4 @@
-import { User, Customer } from './index';
+import { User, Customer } from '../types';
 
 export interface BasketConfig {
     id: number;
@@ -24,6 +24,7 @@ export interface AgentWithBaskets extends User {
     isActive: boolean;
     roleId?: number;
     callMinutes?: number;
+    supervisorId?: number;
 }
 
 export interface ResetCandidate {
