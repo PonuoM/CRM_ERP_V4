@@ -12,8 +12,10 @@ interface ReclaimModalProps {
     reclaimPreviewNoCallNoAppt: Record<string, number>;
     reclaimPreviewCalledNoAppt: Record<string, number>;
     reclaimPreviewCalledWithAppt: Record<string, number>;
-    bulkActionType: string | null;
-    setBulkActionType: (val: string | null) => void;
+    bulkActionType: 'transfer' | 'reclaim' | null;
+    setBulkActionType: (val: 'transfer' | 'reclaim' | null) => void;
+    bulkFilterType: 'all' | 'no_call_no_appt' | 'called_no_appt' | 'called_with_appt';
+    setBulkFilterType: (val: 'all' | 'no_call_no_appt' | 'called_no_appt' | 'called_with_appt') => void;
     bulkTargetSupervisorFilter: number | '';
     setBulkTargetSupervisorFilter: (val: number | '') => void;
     availableSupervisors: any[];
@@ -40,6 +42,8 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
     reclaimPreviewCalledWithAppt,
     bulkActionType,
     setBulkActionType,
+    bulkFilterType,
+    setBulkFilterType,
     bulkTargetSupervisorFilter,
     setBulkTargetSupervisorFilter,
     availableSupervisors,
@@ -181,15 +185,30 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                                 <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">รูปแบบการกระทำ</label>
                                 <select
                                     value={bulkActionType || ''}
-                                    onChange={(e) => setBulkActionType(e.target.value)}
+                                    onChange={(e) => {
+                                        const val = e.target.value as 'transfer' | 'reclaim' | '';
+                                        setBulkActionType(val || null);
+                                    }}
                                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
                                 >
                                     <option value="">-- เลือกการกระทำ --</option>
                                     <option value="transfer">➡️ โอนให้ Telesale อื่น</option>
-                                    <option value="reclaim_all">🔄 ดึงคืนทั้งหมด</option>
-                                    <option value="reclaim_no_call_no_appt">📅 ดึงเฉพาะไม่มีการโทร</option>
-                                    <option value="reclaim_called_no_appt">📞 ดึงเฉพาะโทรแล้วไม่นัด</option>
-                                    <option value="reclaim_called_with_appt">✅ ดึงเฉพาะโทรและนัด</option>
+                                    <option value="reclaim">🔄 ดึงคืนเข้าถังกลาง</option>
+                                </select>
+                            </div>
+
+                            {/* Filter Type Dropdown */}
+                            <div className="flex-1">
+                                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">เงื่อนไขรายชื่อ</label>
+                                <select
+                                    value={bulkFilterType}
+                                    onChange={(e) => setBulkFilterType(e.target.value as any)}
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
+                                >
+                                    <option value="all">ดึง/โอน ทั้งหมดในถัง</option>
+                                    <option value="no_call_no_appt">📅 เฉพาะไม่มีการโทร</option>
+                                    <option value="called_no_appt">📞 เฉพาะโทรแล้วไม่นัด</option>
+                                    <option value="called_with_appt">✅ เฉพาะโทรและนัด</option>
                                 </select>
                             </div>
 

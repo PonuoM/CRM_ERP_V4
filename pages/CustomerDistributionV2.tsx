@@ -64,6 +64,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [loadingAgents, setLoadingAgents] = useState(false);
     const [distributing, setDistributing] = useState(false);
     const [totalToDistribute, setTotalToDistribute] = useState<string>('');
+    const [callThresholdMinutes, setCallThresholdMinutes] = useState<string>('100');
+    const [hasCallFilterApplied, setHasCallFilterApplied] = useState<boolean>(false);
     const [preview, setPreview] = useState<DistributionPreview[]>([]);
     const [showPreview, setShowPreview] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
@@ -947,6 +949,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         target_basket_key: targetBasket || undefined,
                         triggered_by: (currentUser as any)?.id,
                         distribution_mode: distributionMode,
+                        min_call_minutes: hasCallFilterApplied ? parseInt(callThresholdMinutes) : null,
                         agent_snapshot: agentSnapshot
                     })
                 }
@@ -1173,7 +1176,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // Bulk Action State
     const [selectedBaskets, setSelectedBaskets] = useState<string[]>([]);
-    const [bulkActionType, setBulkActionType] = useState<'transfer' | 'reclaim_all' | 'reclaim_no_call_no_appt' | 'reclaim_called_no_appt' | 'reclaim_called_with_appt' | null>(null);
+    const [bulkActionType, setBulkActionType] = useState<'transfer' | 'reclaim' | null>(null);
+    const [bulkFilterType, setBulkFilterType] = useState<'all' | 'no_call_no_appt' | 'called_no_appt' | 'called_with_appt'>('all');
     const [bulkTargetAgents, setBulkTargetAgents] = useState<number[]>([]);
     const [bulkTargetSupervisorFilter, setBulkTargetSupervisorFilter] = useState<number | ''>('');
     const [bulkLimit, setBulkLimit] = useState<string>('');
@@ -1387,9 +1391,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         // Helper to get true available count based on action
         const getAvailableCount = (key: string) => {
             const currentHolding = reclaimingAgent.basketCounts?.[key] || 0;
-            if (bulkActionType === 'reclaim_no_call_no_appt') return reclaimPreviewNoCallNoAppt[key] || 0;
-            if (bulkActionType === 'reclaim_called_no_appt') return reclaimPreviewCalledNoAppt[key] || 0;
-            if (bulkActionType === 'reclaim_called_with_appt') return reclaimPreviewCalledWithAppt[key] || 0;
+            if (bulkFilterType === 'no_call_no_appt') return reclaimPreviewNoCallNoAppt[key] || 0;
+            if (bulkFilterType === 'called_no_appt') return reclaimPreviewCalledNoAppt[key] || 0;
+            if (bulkFilterType === 'called_with_appt') return reclaimPreviewCalledWithAppt[key] || 0;
             return currentHolding;
         };
 
@@ -1452,7 +1456,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     `basket_config.php?action=transfer_customers&companyId=${currentUser?.companyId}`,
                     {
                         method: 'POST',
-                        body: JSON.stringify({ transfers })
+                        body: JSON.stringify({ 
+                            transfers,
+                            transfer_mode: bulkFilterType 
+                        })
                     }
                 );
                 if (result?.error) throw new Error(result.error);
@@ -1485,11 +1492,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             }
         } else {
             // Reclaim
-            let reclaimMode = 'all';
-            if (bulkActionType === 'reclaim_no_call_no_appt') reclaimMode = 'no_call_no_appt';
-            if (bulkActionType === 'reclaim_called_no_appt') reclaimMode = 'called_no_appt';
-            if (bulkActionType === 'reclaim_called_with_appt') reclaimMode = 'called_with_appt';
-            
             setReclaiming(true);
             try {
                 const result = await apiFetch(
@@ -1499,7 +1501,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         body: JSON.stringify({
                             agent_id: reclaimingAgent.id,
                             baskets: payloadBaskets,
-                            reclaim_mode: reclaimMode
+                            reclaim_mode: bulkFilterType
                         })
                     }
                 );
@@ -1818,6 +1820,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     totalToDistribute={totalToDistribute}
                     dashboardBaskets={dashboardBaskets}
                     availableCount={availableCount}
+                    callThresholdMinutes={callThresholdMinutes}
+                    setCallThresholdMinutes={setCallThresholdMinutes}
+                    setHasCallFilterApplied={setHasCallFilterApplied}
                     handlePreparePreview={handlePreparePreview}
                     openReclaimModal={openReclaimModal}
                     setMessage={setMessage}
@@ -1844,9 +1849,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 loadingReclaimPreviews={loadingReclaimPreviews}
                 reclaimPreviewNoCallNoAppt={reclaimPreviewNoCallNoAppt}
                 reclaimPreviewCalledNoAppt={reclaimPreviewCalledNoAppt}
-                reclaimPreviewCalledWithAppt={reclaimPreviewCalledWithAppt}
                 bulkActionType={bulkActionType}
                 setBulkActionType={setBulkActionType}
+                bulkFilterType={bulkFilterType}
+                setBulkFilterType={setBulkFilterType}
                 bulkTargetSupervisorFilter={bulkTargetSupervisorFilter}
                 setBulkTargetSupervisorFilter={setBulkTargetSupervisorFilter}
                 availableSupervisors={availableSupervisors}
