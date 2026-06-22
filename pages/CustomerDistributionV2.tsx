@@ -928,6 +928,15 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 }
             }
 
+            // Build Agent Snapshot
+            const agentSnapshot = agents.map(a => ({
+                id: a.id,
+                name: `${a.firstName} ${a.lastName}`,
+                role: a.role,
+                callMinutes: a.callMinutes || 0,
+                isActive: a.isActive
+            }));
+
             const result = await apiFetch(
                 `Distribution/index.php?action=distribute&companyId=${currentUser?.companyId}`,
                 {
@@ -937,7 +946,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         source_basket_key: activeBasket,
                         target_basket_key: targetBasket || undefined,
                         triggered_by: (currentUser as any)?.id,
-                        distribution_mode: distributionMode
+                        distribution_mode: distributionMode,
+                        agent_snapshot: agentSnapshot
                     })
                 }
             );

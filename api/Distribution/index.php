@@ -168,8 +168,10 @@ function handleDistribute($pdo, $companyId)
         // --- Distribution Session Logging ---
         if (count($successDetails) > 0) {
             $distributionMode = $input['distribution_mode'] ?? 'Unknown';
-            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, total_customers, created_at) VALUES (?, ?, ?, ?, NOW())");
-            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, count($successDetails)]);
+            $agentSnapshot = isset($input['agent_snapshot']) ? json_encode($input['agent_snapshot'], JSON_UNESCAPED_UNICODE) : null;
+            
+            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, total_customers, created_at, agent_snapshot) VALUES (?, ?, ?, ?, NOW(), ?)");
+            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, count($successDetails), $agentSnapshot]);
             $sessionId = $pdo->lastInsertId();
 
             $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id) VALUES (?, ?, ?)");
@@ -323,6 +325,7 @@ function handleGetSessions($pdo, $companyId)
         $s['distributed_by_name'] = trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''));
         unset($s['first_name'], $s['last_name']);
         
+        $s['agent_snapshot'] = isset($s['agent_snapshot']) ? json_decode($s['agent_snapshot'], true) : [];
         $s['details'] = isset($groupedDetails[$sid]) ? array_values($groupedDetails[$sid]) : [];
     }
 

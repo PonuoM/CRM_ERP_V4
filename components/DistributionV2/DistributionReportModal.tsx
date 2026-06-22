@@ -21,6 +21,14 @@ interface AgentDetail {
     customers: CustomerDetail[];
 }
 
+interface AgentSnapshot {
+    id: number;
+    name: string;
+    role: string;
+    callMinutes: number;
+    isActive: boolean;
+}
+
 interface DistributionSession {
     id: number;
     company_id: number;
@@ -29,6 +37,7 @@ interface DistributionSession {
     created_at: string;
     distributed_by_name: string;
     details: AgentDetail[];
+    agent_snapshot?: AgentSnapshot[];
 }
 
 const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpen, onClose }) => {
@@ -59,12 +68,174 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
     };
 
+    const formatTime = (minutesDecimal: number) => {
+        const mins = Math.floor(minutesDecimal);
+        const secs = Math.round((minutesDecimal - mins) * 60);
+        return `${mins} นาที ${secs} วินาที`;
+    };
+
     const handleExport = async (session: DistributionSession) => {
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Distribution Report');
+        
+        // ==========================================
+        // SHEET 1: Summary Snapshot
+        // ==========================================
+        const wsSummary = workbook.addWorksheet('Summary Snapshot');
+        
+        // Define Columns for Summary Sheet
+        wsSummary.columns = [
+            { key: 'no', width: 8 },           // A: ลำดับ
+            { key: 'agentId', width: 12 },     // B: Agent ID
+            { key: 'name', width: 25 },        // C: ชื่อพนักงาน
+            { key: 'role', width: 20 },        // D: ตำแหน่ง
+            { key: 'time', width: 20 },        // E: เวลาโทร
+            { key: 'status', width: 15 },      // F: สถานะ
+            { key: 'count', width: 20 },       // G: จำนวนที่ได้รับรายชื่อ
+            { key: 'spacer', width: 5 },       // H: (Spacer)
+            { key: 'met_criteria', width: 25 },// I: เข้าเกณฑ์
+            { key: 'failed_criteria', width: 25} // J: ไม่เข้าเกณฑ์
+        ];
 
-        // Headers
-        worksheet.columns = [
+        // Process Data
+        const snapshot = session.agent_snapshot || [];
+        const detailsMap = new Map<number, number>();
+        session.details.forEach(d => detailsMap.set(d.agent_id, d.customers.length));
+
+        const receivedAgents: any[] = [];
+        const failedAgents: any[] = [];
+
+        snapshot.forEach(agent => {
+            const count = detailsMap.get(agent.id) || 0;
+            if (count > 0) {
+                receivedAgents.push({ ...agent, count });
+            } else {
+                failedAgents.push({ ...agent, count: 0 });
+            }
+        });
+
+        // Top Main Table Header (ตารางหลัก)
+        wsSummary.mergeCells('A1:G1');
+        const mainTitle = wsSummary.getCell('A1');
+        mainTitle.value = 'ตารางหลัก';
+        mainTitle.alignment = { horizontal: 'center', vertical: 'middle' };
+        mainTitle.font = { bold: true };
+
+        // Criteria Headers
+        wsSummary.getCell('I1').value = 'เข้าเกณฑ์';
+        wsSummary.getCell('I1').alignment = { horizontal: 'center' };
+        wsSummary.getCell('J1').value = 'ไม่เข้าเกณฑ์';
+        wsSummary.getCell('J1').alignment = { horizontal: 'center' };
+
+        // Column Headers (Row 2)
+        const headers = ['ลำดับ', 'Agent ID', 'ชื่อพนักงาน', 'ตำแหน่ง', 'เวลาโทร', 'สถานะ', 'จำนวนที่ได้รับรายชื่อ'];
+        headers.forEach((h, i) => {
+            const cell = wsSummary.getCell(2, i + 1);
+            cell.value = h;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+            cell.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+
+        wsSummary.getCell('I2').value = 'ชื่อพนักงาน';
+        wsSummary.getCell('I2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+        wsSummary.getCell('I2').font = { color: { argb: 'FFFFFFFF' }, bold: true };
+        
+        wsSummary.getCell('J2').value = 'ชื่อพนักงาน';
+        wsSummary.getCell('J2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+        wsSummary.getCell('J2').font = { color: { argb: 'FFFFFFFF' }, bold: true };
+
+        // Fill Data Rows
+        let currentRow = 3;
+        const maxDataRows = Math.max(receivedAgents.length + failedAgents.length + 2, Math.max(receivedAgents.length, failedAgents.length) + 5);
+
+        // 1. Fill Received Agents
+        receivedAgents.forEach((agent, idx) => {
+            wsSummary.getCell(`A${currentRow}`).value = idx + 1;
+            wsSummary.getCell(`B${currentRow}`).value = agent.id;
+            wsSummary.getCell(`C${currentRow}`).value = agent.name;
+            wsSummary.getCell(`D${currentRow}`).value = agent.role;
+            wsSummary.getCell(`E${currentRow}`).value = formatTime(agent.callMinutes);
+            wsSummary.getCell(`F${currentRow}`).value = 'ได้รับรายชื่อ';
+            wsSummary.getCell(`G${currentRow}`).value = agent.count;
+            currentRow++;
+        });
+
+        // 2. Add Gap
+        currentRow++;
+
+        // 3. Fill Failed Agents Table Header
+        headers.forEach((h, i) => {
+            const cell = wsSummary.getCell(currentRow, i + 1);
+            cell.value = h;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+            cell.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+        currentRow++;
+
+        // 4. Fill Failed Agents
+        let failedStartIdx = receivedAgents.length + 1;
+        failedAgents.forEach((agent) => {
+            wsSummary.getCell(`A${currentRow}`).value = failedStartIdx++;
+            wsSummary.getCell(`B${currentRow}`).value = agent.id;
+            wsSummary.getCell(`C${currentRow}`).value = agent.name;
+            wsSummary.getCell(`D${currentRow}`).value = agent.role;
+            wsSummary.getCell(`E${currentRow}`).value = formatTime(agent.callMinutes);
+            wsSummary.getCell(`F${currentRow}`).value = 'หลุดเกณฑ์';
+            wsSummary.getCell(`G${currentRow}`).value = 0;
+            currentRow++;
+        });
+
+        // 5. Fill Right Side (Criteria Lists)
+        let criteriaRow = 3;
+        receivedAgents.forEach(agent => {
+            wsSummary.getCell(`I${criteriaRow}`).value = agent.name;
+            criteriaRow++;
+        });
+
+        criteriaRow = 3;
+        failedAgents.forEach(agent => {
+            wsSummary.getCell(`J${criteriaRow}`).value = agent.name;
+            criteriaRow++;
+        });
+
+        // 6. Add Total Distributed Label
+        const totalRow = Math.max(currentRow + 2, criteriaRow + 2);
+        wsSummary.getCell(`I${totalRow}`).value = 'รวมรายชื่อแจกทั้งหมด';
+        wsSummary.getCell(`I${totalRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+        wsSummary.getCell(`I${totalRow}`).font = { color: { argb: 'FFFFFFFF' }, bold: true };
+        
+        wsSummary.getCell(`J${totalRow}`).value = session.total_customers;
+        wsSummary.getCell(`J${totalRow}`).alignment = { horizontal: 'center' };
+        wsSummary.getCell(`J${totalRow}`).border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+
+        // Apply borders to all filled cells in main tables
+        for (let i = 2; i < currentRow; i++) {
+            if (wsSummary.getCell(`A${i}`).value || wsSummary.getCell(`A${i}`).fill?.type) {
+                ['A','B','C','D','E','F','G'].forEach(col => {
+                    wsSummary.getCell(`${col}${i}`).border = {
+                        top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'}
+                    };
+                });
+            }
+        }
+
+        // Apply borders to criteria tables
+        for (let i = 2; i < Math.max(receivedAgents.length + 3, failedAgents.length + 3); i++) {
+            if (wsSummary.getCell(`I${i}`).value || wsSummary.getCell(`I${i}`).fill?.type) {
+                wsSummary.getCell(`I${i}`).border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            }
+            if (wsSummary.getCell(`J${i}`).value || wsSummary.getCell(`J${i}`).fill?.type) {
+                wsSummary.getCell(`J${i}`).border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            }
+        }
+
+        // ==========================================
+        // SHEET 2: Customer Details
+        // ==========================================
+        const wsDetails = workbook.addWorksheet('Customer Details');
+        
+        wsDetails.columns = [
             { header: 'Session ID', key: 'session_id', width: 12 },
             { header: 'วันที่-เวลา', key: 'datetime', width: 20 },
             { header: 'ผู้แจก', key: 'distributed_by', width: 25 },
@@ -75,9 +246,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             { header: 'ชื่อลูกค้า', key: 'customer_name', width: 30 }
         ];
 
-        // Format Header Row
-        worksheet.getRow(1).font = { bold: true };
-        worksheet.getRow(1).fill = {
+        wsDetails.getRow(1).font = { bold: true };
+        wsDetails.getRow(1).fill = {
             type: 'pattern',
             pattern: 'solid',
             fgColor: { argb: 'FFD3D3D3' }
@@ -87,7 +257,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
 
         session.details.forEach(agent => {
             agent.customers.forEach(customer => {
-                worksheet.addRow({
+                wsDetails.addRow({
                     session_id: session.id,
                     datetime: datetime,
                     distributed_by: session.distributed_by_name,
