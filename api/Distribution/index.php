@@ -17,6 +17,8 @@ try {
         handleDistribute($pdo, $companyId);
     } elseif ($action === 'get_assign_checks') {
         handleGetAssignChecks($pdo, $companyId);
+    } elseif ($action === 'get_sessions') {
+        handleGetSessions($pdo, $companyId);
     } else {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid action']);
@@ -78,6 +80,7 @@ function handleDistribute($pdo, $companyId)
 
     set_audit_context($pdo, 'distribution_v2');
     $successIds = [];
+    $successDetails = []; // To hold details for the session log
     $failedIds = [];
     $agentStats = []; // agent_id => count
 
@@ -156,10 +159,25 @@ function handleDistribute($pdo, $companyId)
             }
 
             $successIds[] = $customerId;
+            $successDetails[] = ['customer_id' => $customerId, 'agent_id' => $agentId];
             if (!isset($agentStats[$agentId]))
                 $agentStats[$agentId] = 0;
             $agentStats[$agentId]++;
         }
+
+        // --- Distribution Session Logging ---
+        if (count($successDetails) > 0) {
+            $distributionMode = $input['distribution_mode'] ?? 'Unknown';
+            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, total_customers, created_at) VALUES (?, ?, ?, ?, NOW())");
+            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, count($successDetails)]);
+            $sessionId = $pdo->lastInsertId();
+
+            $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id) VALUES (?, ?, ?)");
+            foreach ($successDetails as $detail) {
+                $detailStmt->execute([$sessionId, $detail['agent_id'], $detail['customer_id']]);
+            }
+        }
+        // ------------------------------------
 
         $pdo->commit();
 
@@ -227,4 +245,86 @@ function handleGetAssignChecks($pdo, $companyId)
         'ok' => true,
         'conflicts' => empty($conflicts) ? new \stdClass() : $conflicts
     ]);
+}
+
+/**
+ * Return distribution sessions history with details
+ * GET ?action=get_sessions&companyId=1
+ */
+function handleGetSessions($pdo, $companyId)
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        http_response_code(405);
+        echo json_encode(['error' => 'GET required']);
+        return;
+    }
+
+    $limit = $_GET['limit'] ?? 50;
+
+    // Fetch sessions
+    $sessionStmt = $pdo->prepare("
+        SELECT ds.*, u.first_name, u.last_name 
+        FROM distribution_sessions ds
+        LEFT JOIN users u ON ds.distributed_by = u.id
+        WHERE ds.company_id = ?
+        ORDER BY ds.created_at DESC
+        LIMIT " . (int)$limit . "
+    ");
+    $sessionStmt->execute([$companyId]);
+    $sessions = $sessionStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($sessions)) {
+        echo json_encode(['ok' => true, 'sessions' => []]);
+        return;
+    }
+
+    $sessionIds = array_column($sessions, 'id');
+    $inClause = implode(',', array_fill(0, count($sessionIds), '?'));
+
+    // Fetch details
+    $detailStmt = $pdo->prepare("
+        SELECT dsd.session_id, dsd.agent_id, u.first_name as agent_first, u.last_name as agent_last,
+               c.customer_id, c.code as customer_code, c.name as customer_name, c.phone as customer_phone
+        FROM distribution_session_details dsd
+        JOIN users u ON dsd.agent_id = u.id
+        JOIN customers c ON dsd.customer_id = c.customer_id
+        WHERE dsd.session_id IN ($inClause)
+    ");
+    $detailStmt->execute($sessionIds);
+    $details = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Group details by session -> agent -> customers
+    $groupedDetails = [];
+    foreach ($details as $d) {
+        $sid = $d['session_id'];
+        $aid = $d['agent_id'];
+        
+        if (!isset($groupedDetails[$sid])) {
+            $groupedDetails[$sid] = [];
+        }
+        if (!isset($groupedDetails[$sid][$aid])) {
+            $groupedDetails[$sid][$aid] = [
+                'agent_id' => $aid,
+                'agent_name' => trim($d['agent_first'] . ' ' . $d['agent_last']),
+                'customers' => []
+            ];
+        }
+        $groupedDetails[$sid][$aid]['customers'][] = [
+            'id' => $d['customer_id'],
+            'code' => $d['customer_code'],
+            'name' => $d['customer_name'],
+            'phone' => $d['customer_phone']
+        ];
+    }
+
+    // Attach to sessions
+    foreach ($sessions as &$s) {
+        $sid = $s['id'];
+        $s['distributed_by_name'] = trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''));
+        unset($s['first_name'], $s['last_name']);
+        
+        $s['details'] = isset($groupedDetails[$sid]) ? array_values($groupedDetails[$sid]) : [];
+    }
+
+    echo json_encode(['ok' => true, 'sessions' => $sessions]);
 }
