@@ -7373,6 +7373,7 @@ const App: React.FC = () => {
       case "แจกงาน V2":
         return <CustomerDistributionV2 currentUser={currentUser} />;
 
+
       case "Export Template Settings":
       case "nav.export_template_settings":
       case "ตั้งค่าการส่งออกข้อมูล":

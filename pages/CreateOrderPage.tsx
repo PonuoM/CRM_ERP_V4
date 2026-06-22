@@ -8309,7 +8309,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               }
                             }}
                             className={`${commonInputClass} ${shippingPhoneError ? "border-red-500" : ""}`}
-                            maxLength={10}
                             inputMode="numeric"
                             placeholder="08X-XXX-XXXX"
                           />

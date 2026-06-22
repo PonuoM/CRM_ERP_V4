@@ -41,6 +41,10 @@ try {
         if (!empty($deptArray)) {
             $placeholders = implode(',', array_fill(0, count($deptArray), '?'));
             $where .= " AND (u.role IN ($placeholders) OR o.sales_channel IN ($placeholders))";
+            // We have TWO sets of placeholders, so we must add the parameters TWICE
+            foreach ($deptArray as $dept) {
+                $params[] = $dept;
+            }
             foreach ($deptArray as $dept) {
                 $params[] = $dept;
             }

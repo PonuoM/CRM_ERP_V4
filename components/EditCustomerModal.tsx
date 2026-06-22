@@ -393,7 +393,6 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
                     onChange={(e) => handleBackupPhoneChange(idx, e.target.value)}
                     className={commonInputClass + (backupPhoneErrors[idx] ? ' border-red-500' : '')}
                     placeholder="0XXXXXXXXX (10 หลัก)"
-                    maxLength={10}
                     disabled={isSaving}
                   />
                   {backupPhones.length > 1 && (
