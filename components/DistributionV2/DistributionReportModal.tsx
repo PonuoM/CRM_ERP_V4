@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Download, History } from 'lucide-react';
 import ExcelJS from 'exceljs';
-import { toast } from 'react-hot-toast';
 
 interface DistributionReportModalProps {
     isOpen: boolean;
     onClose: () => void;
+    setMessage: (msg: { type: 'success' | 'error' | 'warning'; text: string } | null) => void;
 }
 
 interface CustomerDetail {
@@ -40,7 +40,7 @@ interface DistributionSession {
     agent_snapshot?: AgentSnapshot[];
 }
 
-const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpen, onClose }) => {
+const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpen, onClose, setMessage }) => {
     const [loading, setLoading] = useState(false);
     const [sessions, setSessions] = useState<DistributionSession[]>([]);
 
@@ -58,11 +58,11 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             if (data.ok) {
                 setSessions(data.sessions);
             } else {
-                toast.error(data.error || 'Failed to load sessions');
+                setMessage({ type: 'error', text: data.error || 'Failed to load sessions' });
             }
         } catch (error) {
             console.error(error);
-            toast.error('Network error while loading sessions');
+            setMessage({ type: 'error', text: 'Network error while loading sessions' });
         } finally {
             setLoading(false);
         }

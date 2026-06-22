@@ -1947,6 +1947,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             <DistributionReportModal
                 isOpen={isReportModalOpen}
                 onClose={() => setReportModalOpen(false)}
+                setMessage={setMessage}
             />
         </div >
     );
