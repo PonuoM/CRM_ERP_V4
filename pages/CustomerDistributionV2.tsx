@@ -15,18 +15,18 @@ import Spinner from '../components/Spinner';
 import BlockedCustomersModal from '../components/BlockedCustomersModal';
 import ExcelJS from 'exceljs';
 import { calculateQuotas } from '../utils/distributionLogic';
-import ConfirmModal from '../components/DistributionV3/ConfirmModal';
-import HistoryModal from '../components/DistributionV3/HistoryModal';
-import BulkResultModal from '../components/DistributionV3/BulkResultModal';
-import SummaryModal from '../components/DistributionV3/SummaryModal';
-import ResetModal from '../components/DistributionV3/ResetModal';
-import ReclaimModal from '../components/DistributionV3/ReclaimModal';
-import FlexTransferModal from '../components/DistributionV3/FlexTransferModal';
-import PreviewModal from '../components/DistributionV3/PreviewModal';
-import DistributionStatsCards from '../components/DistributionV3/DistributionStatsCards';
-import DistributionSettingsPanel from '../components/DistributionV3/DistributionSettingsPanel';
-import DistributionTelesaleTable from '../components/DistributionV3/DistributionTelesaleTable';
-import DistributionCustomerPreview from '../components/DistributionV3/DistributionCustomerPreview';
+import ConfirmModal from '../components/DistributionV2/ConfirmModal';
+import HistoryModal from '../components/DistributionV2/HistoryModal';
+import BulkResultModal from '../components/DistributionV2/BulkResultModal';
+import SummaryModal from '../components/DistributionV2/SummaryModal';
+import ResetModal from '../components/DistributionV2/ResetModal';
+import ReclaimModal from '../components/DistributionV2/ReclaimModal';
+import FlexTransferModal from '../components/DistributionV2/FlexTransferModal';
+import PreviewModal from '../components/DistributionV2/PreviewModal';
+import DistributionStatsCards from '../components/DistributionV2/DistributionStatsCards';
+import DistributionSettingsPanel from '../components/DistributionV2/DistributionSettingsPanel';
+import DistributionTelesaleTable from '../components/DistributionV2/DistributionTelesaleTable';
+import DistributionCustomerPreview from '../components/DistributionV2/DistributionCustomerPreview';
 
 import { 
     BasketConfig, 
