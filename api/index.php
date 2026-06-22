@@ -4,6 +4,7 @@ require_once __DIR__ . '/Services/ShippingSyncService.php';
 require_once __DIR__ . '/Services/BasketRoutingService.php';
 require_once __DIR__ . '/Quota/quota_record_helper.php';
 require_once __DIR__ . '/Services/CustomerStatsHelper.php';
+require_once __DIR__ . '/Services/CustomerDataHelper.php';
 
 // API Version for debugging deployment issues
 define('API_VERSION', '2026-01-24-0947-BASKET-FIX');
@@ -949,128 +950,7 @@ function handle_auth(PDO $pdo, ?string $id): void
     json_response(['error' => 'NOT_FOUND'], 404);
 }
 
-function attach_call_status_to_customers(PDO $pdo, array &$customers): void
-{
-    if (empty($customers))
-        return;
 
-    // Collect customer info: ID and assigned_to (owner user_id)
-    $customerIds = [];
-    $ownerUserIds = [];
-    foreach ($customers as $c) {
-        $cid = $c['customer_id'] ?? $c['id'] ?? null;
-        $ownerId = $c['assigned_to'] ?? null;
-        if ($cid) {
-            $customerIds[] = $cid;
-            if ($ownerId) {
-                $ownerUserIds[$cid] = $ownerId;
-            }
-        }
-    }
-
-    if (empty($customerIds))
-        return;
-
-    try {
-        // Step 1: Get owner names from users table (for legacy fallback)
-        $uniqueOwnerIds = array_unique(array_values($ownerUserIds));
-        if (empty($uniqueOwnerIds)) return;
-
-        $ownerPlaceholders = implode(',', array_fill(0, count($uniqueOwnerIds), '?'));
-        $ownerStmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) as full_name FROM users WHERE id IN ($ownerPlaceholders)");
-        $ownerStmt->execute($uniqueOwnerIds);
-        $ownerRows = $ownerStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $ownerNameMap = [];
-        foreach ($ownerRows as $row) {
-            $ownerNameMap[$row['id']] = $row['full_name'];
-        }
-
-        // Step 2: Query call_history for all customers
-        $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
-        // Group by both caller_id and caller text to support legacy data
-        $callSql = "
-            SELECT 
-                customer_id,
-                caller_id,
-                caller,
-                MAX(date) as last_call_date,
-                COUNT(*) as call_count,
-                (SELECT result FROM call_history ch2 
-                 WHERE ch2.customer_id = call_history.customer_id 
-                   AND (ch2.caller_id = call_history.caller_id OR (call_history.caller_id IS NULL AND ch2.caller = call_history.caller))
-                 ORDER BY ch2.date DESC LIMIT 1) as last_call_result
-            FROM call_history
-            WHERE customer_id IN ($placeholders)
-            GROUP BY customer_id, caller_id, caller
-        ";
-
-        $callStmt = $pdo->prepare($callSql);
-        $callStmt->execute($customerIds);
-        $callRows = $callStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // Build lookups: by ID and by Name
-        $callMapById = [];
-        $callMapByName = [];
-        foreach ($callRows as $row) {
-            $cid = $row['customer_id'];
-            if ($row['caller_id'] !== null) {
-                $callerIdStr = (string)$row['caller_id'];
-                if (!isset($callMapById[$cid])) $callMapById[$cid] = [];
-                $callMapById[$cid][$callerIdStr] = [
-                    'last_call_date' => $row['last_call_date'],
-                    'call_count' => (int) $row['call_count'],
-                    'last_call_result' => $row['last_call_result']
-                ];
-            } else {
-                $callerName = $row['caller'];
-                if (!isset($callMapByName[$cid])) $callMapByName[$cid] = [];
-                $callMapByName[$cid][$callerName] = [
-                    'last_call_date' => $row['last_call_date'],
-                    'call_count' => (int) $row['call_count'],
-                    'last_call_result' => $row['last_call_result']
-                ];
-            }
-        }
-
-        // Step 2: Attach to customers (only for matching owner)
-        foreach ($customers as &$customer) {
-            $cid = $customer['customer_id'] ?? $customer['id'] ?? null;
-            $ownerId = $customer['assigned_to'] ?? null;
-
-            // Default values
-            $customer['last_call_date_by_owner'] = null;
-            $customer['call_count_by_owner'] = 0;
-            $customer['last_call_result_by_owner'] = null;
-
-            if (!$cid || !$ownerId)
-                continue;
-
-            $ownerIdStr = (string)$ownerId;
-            $ownerName = $ownerNameMap[$ownerId] ?? null;
-
-            // Check if this owner has any calls for this customer by ID first
-            if (isset($callMapById[$cid]) && isset($callMapById[$cid][$ownerIdStr])) {
-                $callData = $callMapById[$cid][$ownerIdStr];
-                $customer['last_call_date_by_owner'] = $callData['last_call_date'];
-                $customer['call_count_by_owner'] = $callData['call_count'];
-                $customer['last_call_result_by_owner'] = $callData['last_call_result'];
-            } 
-            // Fallback to name matching for legacy records that didn't get a caller_id
-            elseif ($ownerName && isset($callMapByName[$cid]) && isset($callMapByName[$cid][$ownerName])) {
-                $callData = $callMapByName[$cid][$ownerName];
-                $customer['last_call_date_by_owner'] = $callData['last_call_date'];
-                $customer['call_count_by_owner'] = $callData['call_count'];
-                $customer['last_call_result_by_owner'] = $callData['last_call_result'];
-            }
-        }
-        unset($customer);
-
-    } catch (Throwable $e) {
-        // If call_history table doesn't exist or error, silently continue
-        error_log("attach_call_status_to_customers error: " . $e->getMessage());
-    }
-}
 
 /**
  * Build dynamic customer search conditions
