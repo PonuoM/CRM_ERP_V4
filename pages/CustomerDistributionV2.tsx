@@ -1943,6 +1943,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 onConfirm={executeExport}
                 isExporting={isExporting}
             />
+
+            <DistributionReportModal
+                isOpen={isReportModalOpen}
+                onClose={() => setReportModalOpen(false)}
+            />
         </div >
     );
 };
