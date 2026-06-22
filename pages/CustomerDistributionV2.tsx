@@ -4,7 +4,7 @@ import { User, Customer, UserRole } from '../types';
 import {
     Users, Package, Search, ChevronDown, Check, Loader2, AlertCircle,
     RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download, ArrowRight, Filter,
-    Zap, Scale, TrendingUp, Minus
+    Zap, Scale, TrendingUp, Minus, History
 } from 'lucide-react';
 import UniversalDateRangePicker, { DateRange } from '../components/UniversalDateRangePicker';
 import resolveApiBasePath from '../utils/apiBasePath';
@@ -27,6 +27,7 @@ import DistributionStatsCards from '../components/DistributionV2/DistributionSta
 import DistributionSettingsPanel from '../components/DistributionV2/DistributionSettingsPanel';
 import DistributionTelesaleTable from '../components/DistributionV2/DistributionTelesaleTable';
 import DistributionCustomerPreview from '../components/DistributionV2/DistributionCustomerPreview';
+import DistributionReportModal from '../components/DistributionV2/DistributionReportModal';
 
 import { 
     BasketConfig, 
@@ -164,6 +165,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // History Modal State
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
+    const [isReportModalOpen, setReportModalOpen] = useState(false);
     const [historyData, setHistoryData] = useState<AssignHistory[]>([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [viewingCustomer, setViewingCustomer] = useState<{ name: string, code: string } | null>(null);
@@ -934,7 +936,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         assignments,
                         source_basket_key: activeBasket,
                         target_basket_key: targetBasket || undefined,
-                        triggered_by: (currentUser as any)?.id
+                        triggered_by: (currentUser as any)?.id,
+                        distribution_mode: distributionMode
                     })
                 }
             );
@@ -1688,6 +1691,13 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     >
                         <ArrowRightLeft size={16} />
                         โอนรายชื่อ
+                    </button>
+                    <button
+                        onClick={() => setReportModalOpen(true)}
+                        className="px-4 py-2 text-sm bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 flex items-center gap-2 font-medium transition-colors"
+                    >
+                        <History size={16} />
+                        ประวัติการแจกงาน
                     </button>
                     <button
                         onClick={() => setResetModalOpen(true)}
