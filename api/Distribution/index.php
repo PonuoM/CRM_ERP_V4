@@ -170,8 +170,8 @@ function handleDistribute($pdo, $companyId)
             $distributionMode = $input['distribution_mode'] ?? 'Unknown';
             $agentSnapshot = isset($input['agent_snapshot']) ? json_encode($input['agent_snapshot'], JSON_UNESCAPED_UNICODE) : null;
             
-            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, total_customers, created_at, agent_snapshot) VALUES (?, ?, ?, ?, NOW(), ?)");
-            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, count($successDetails), $agentSnapshot]);
+            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, total_customers, created_at, agent_snapshot, source_basket) VALUES (?, ?, ?, ?, NOW(), ?, ?)");
+            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, count($successDetails), $agentSnapshot, $sourceBasketKey]);
             $sessionId = $pdo->lastInsertId();
 
             $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id) VALUES (?, ?, ?)");

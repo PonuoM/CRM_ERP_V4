@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Download, History } from 'lucide-react';
+import { Loader2, Download, History, ChevronDown, ChevronUp } from 'lucide-react';
 import ExcelJS from 'exceljs';
 
 interface DistributionReportModalProps {
@@ -33,6 +33,7 @@ interface DistributionSession {
     id: number;
     company_id: number;
     distribution_mode: string;
+    source_basket?: string;
     total_customers: number;
     created_at: string;
     distributed_by_name: string;
@@ -43,6 +44,19 @@ interface DistributionSession {
 const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpen, onClose, setMessage }) => {
     const [loading, setLoading] = useState(false);
     const [sessions, setSessions] = useState<DistributionSession[]>([]);
+    const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
+
+    const toggleExpand = (sessionId: number) => {
+        setExpandedSessions(prev => {
+            const next = new Set(prev);
+            if (next.has(sessionId)) {
+                next.delete(sessionId);
+            } else {
+                next.add(sessionId);
+            }
+            return next;
+        });
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -310,15 +324,22 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {sessions.map(session => (
-                                <div key={session.id} className="bg-white border rounded-lg p-5 shadow-sm">
-                                    <div className="flex flex-wrap items-center justify-between gap-4 mb-4 pb-4 border-b">
-                                        <div>
-                                            <div className="font-bold text-gray-800 flex items-center gap-2">
+                            {sessions.map(session => {
+                                const isExpanded = expandedSessions.has(session.id);
+                                return (
+                                <div key={session.id} className="bg-white border rounded-lg shadow-sm overflow-hidden">
+                                    <div className="p-5 flex flex-wrap items-center justify-between gap-4">
+                                        <div className="flex-1">
+                                            <div className="font-bold text-gray-800 flex items-center gap-2 flex-wrap">
                                                 <span>Session #{session.id}</span>
                                                 <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
                                                     {session.distribution_mode}
                                                 </span>
+                                                {session.source_basket && (
+                                                    <span className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full border border-indigo-200">
+                                                        ตะกร้า: {session.source_basket}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="text-sm text-gray-500 mt-1">
                                                 แจกเมื่อ: {new Date(session.created_at).toLocaleString('th-TH')} • โดย: {session.distributed_by_name || 'ระบบ'}
@@ -336,23 +357,46 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                 <Download className="w-4 h-4" />
                                                 Export Excel
                                             </button>
+                                            <button 
+                                                onClick={() => toggleExpand(session.id)}
+                                                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
+                                            >
+                                                {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                            </button>
                                         </div>
                                     </div>
                                     
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                        {session.details.map((agent) => (
-                                            <div key={agent.agent_id} className="bg-gray-50 rounded border p-3 flex justify-between items-center">
-                                                <span className="text-sm font-medium text-gray-700 truncate mr-2" title={agent.agent_name}>
-                                                    {agent.agent_name}
-                                                </span>
-                                                <span className="text-sm font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                                                    {agent.customers.length} คน
-                                                </span>
+                                    {isExpanded && (
+                                        <div className="border-t bg-gray-50 p-4">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-sm text-left text-gray-600 bg-white rounded-lg overflow-hidden border">
+                                                    <thead className="text-xs text-gray-700 uppercase bg-gray-100 border-b">
+                                                        <tr>
+                                                            <th className="px-4 py-3">Agent Name</th>
+                                                            <th className="px-4 py-3 text-right">จำนวนลูกค้าที่ได้รับ</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {session.details.map((agent, idx) => (
+                                                            <tr key={agent.agent_id} className={`border-b last:border-b-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                                                <td className="px-4 py-2 font-medium text-gray-800">
+                                                                    {agent.agent_name}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-right">
+                                                                    <span className="font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100">
+                                                                        {agent.customers.length} คน
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
                                             </div>
-                                        ))}
-                                    </div>
+                                        </div>
+                                    )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
