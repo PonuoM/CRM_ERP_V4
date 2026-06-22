@@ -368,8 +368,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                     
                                     {isExpanded && (
                                         <div className="border-t bg-gray-50 p-4">
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-sm text-left text-gray-600 bg-white rounded-lg overflow-hidden border">
+                                            <div className="overflow-x-auto flex justify-center">
+                                                <table className="w-full max-w-3xl text-sm text-left text-gray-600 bg-white rounded-lg overflow-hidden border">
                                                     <thead className="text-xs text-gray-700 uppercase bg-gray-100 border-b">
                                                         <tr>
                                                             <th className="px-4 py-3">Agent Name</th>
