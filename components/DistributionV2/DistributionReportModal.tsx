@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Download, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Download, History, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import ExcelJS from 'exceljs';
 
 interface DistributionReportModalProps {
@@ -39,12 +39,30 @@ interface DistributionSession {
     distributed_by_name: string;
     details: AgentDetail[];
     agent_snapshot?: AgentSnapshot[];
+    session_status?: string;
 }
 
 const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpen, onClose, setMessage }) => {
     const [loading, setLoading] = useState(false);
     const [sessions, setSessions] = useState<DistributionSession[]>([]);
     const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
+    
+    // Undo State
+    const [undoTarget, setUndoTarget] = useState<number | null>(null);
+    const [undoMode, setUndoMode] = useState<'safe' | 'force'>('safe');
+    const [isUndoing, setIsUndoing] = useState(false);
+
+    // Cleanup State
+    const [showCleanup, setShowCleanup] = useState(false);
+    const [cleanupMonths, setCleanupMonths] = useState(3);
+    const [cleanupTargetCompany, setCleanupTargetCompany] = useState<string>('current');
+    const [isCleaning, setIsCleaning] = useState(false);
+    
+    // Check if user is system admin
+    const currentUserStr = localStorage.getItem('user');
+    const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+    const isSystemAdmin = currentUser?.is_system == 1;
+    const isSuperAdmin = currentUser?.role?.toLowerCase() === 'super_admin';
 
     const toggleExpand = (sessionId: number) => {
         setExpandedSessions(prev => {
@@ -56,6 +74,68 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             }
             return next;
         });
+    };
+
+    const handleUndo = async () => {
+        if (!undoTarget) return;
+        
+        setIsUndoing(true);
+        try {
+            const currentUserStr = localStorage.getItem('user');
+            const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+            
+            const res = await fetch('/api/Distribution/index.php?action=undo_distribution&companyId=1', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: undoTarget,
+                    mode: undoMode,
+                    triggered_by: currentUser?.id
+                })
+            });
+            const data = await res.json();
+            
+            if (data.ok) {
+                setMessage({ type: 'success', text: `ดึงกลับสำเร็จ ${data.success_count} รายการ (ข้าม ${data.skipped_count} รายการ)` });
+                setUndoTarget(null);
+                fetchSessions(); // Refresh list
+            } else {
+                setMessage({ type: 'error', text: data.error || 'Undo failed' });
+            }
+        } catch (error) {
+            console.error(error);
+            setMessage({ type: 'error', text: 'Network error during undo' });
+        } finally {
+            setIsUndoing(false);
+        }
+    };
+
+    const handleCleanup = async () => {
+        setIsCleaning(true);
+        try {
+            const res = await fetch('/api/Distribution/index.php?action=cleanup_distribution_details', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: currentUser?.id,
+                    target_company_id: cleanupTargetCompany === 'current' ? currentUser?.company_id : cleanupTargetCompany,
+                    months_old: cleanupMonths
+                })
+            });
+            const data = await res.json();
+            
+            if (data.ok) {
+                setMessage({ type: 'success', text: `ลบประวัติสำเร็จ: ${data.message}` });
+                setShowCleanup(false);
+            } else {
+                setMessage({ type: 'error', text: data.error || 'Cleanup failed' });
+            }
+        } catch (error) {
+            console.error(error);
+            setMessage({ type: 'error', text: 'Network error during cleanup' });
+        } finally {
+            setIsCleaning(false);
+        }
     };
 
     useEffect(() => {
@@ -302,6 +382,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     if (!isOpen) return null;
 
     return (
+        <>
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[85vh] flex flex-col animate-in fade-in duration-200">
                 <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
@@ -309,7 +390,17 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         <History className="text-blue-500" />
                         <h3 className="text-xl font-bold text-gray-800">ประวัติการแจกงาน (Distribution Report)</h3>
                     </div>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+                    <div className="flex items-center gap-4">
+                        {isSystemAdmin && (
+                            <button 
+                                onClick={() => setShowCleanup(true)}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded border border-red-200 text-sm font-medium transition-colors"
+                            >
+                                🧹 เคลียร์ประวัติเก่า
+                            </button>
+                        )}
+                        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+                    </div>
                 </div>
 
                 <div className="p-6 overflow-y-auto flex-1 bg-gray-50/50">
@@ -350,6 +441,15 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                 <div className="text-sm text-gray-500">รวมทั้งหมด</div>
                                                 <div className="font-bold text-lg text-green-600">{session.total_customers} <span className="text-sm font-normal text-gray-500">รายการ</span></div>
                                             </div>
+                                            {session.session_status !== 'undo_full' && (
+                                                <button 
+                                                    onClick={() => setUndoTarget(session.id)}
+                                                    className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-sm transition-colors shadow-sm"
+                                                    title="ดึงรายชื่อกลับคืน (Undo)"
+                                                >
+                                                    ↩️ Undo
+                                                </button>
+                                            )}
                                             <button 
                                                 onClick={() => handleExport(session)}
                                                 className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition-colors shadow-sm"
@@ -402,6 +502,145 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                 </div>
             </div>
         </div>
+
+        {/* Undo Confirmation Modal */}
+        {undoTarget && (
+            <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">ยืนยันการดึงข้อมูลกลับ (Undo)</h3>
+                    <p className="text-gray-600 mb-4 text-sm">
+                        ต้องการดึงลูกค้าจากการแจกงานรอบที่ #{undoTarget} กลับคืนหรือไม่?
+                    </p>
+
+                    <div className="space-y-3 mb-6">
+                        <label className={`block border rounded-lg p-3 cursor-pointer transition-all ${undoMode === 'safe' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                            <div className="flex items-start gap-3">
+                                <input 
+                                    type="radio" 
+                                    name="undoMode" 
+                                    value="safe" 
+                                    checked={undoMode === 'safe'}
+                                    onChange={() => setUndoMode('safe')}
+                                    className="mt-1 w-4 h-4 text-blue-600"
+                                />
+                                <div>
+                                    <div className="font-semibold text-gray-800">Safe Mode (ปลอดภัย)</div>
+                                    <div className="text-xs text-gray-500 mt-1">ดึงกลับเฉพาะลูกค้าที่พนักงานยังไม่โทรติดต่อ หากโทรแล้วระบบจะปล่อยผ่าน</div>
+                                </div>
+                            </div>
+                        </label>
+
+                        <label className={`block border rounded-lg p-3 cursor-pointer transition-all ${undoMode === 'force' ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                            <div className="flex items-start gap-3">
+                                <input 
+                                    type="radio" 
+                                    name="undoMode" 
+                                    value="force" 
+                                    checked={undoMode === 'force'}
+                                    onChange={() => setUndoMode('force')}
+                                    className="mt-1 w-4 h-4 text-red-600"
+                                />
+                                <div>
+                                    <div className="font-semibold text-red-700">Force Mode (บังคับ 100%)</div>
+                                    <div className="text-xs text-red-500/80 mt-1">ดึงกลับทั้งหมดทุกรายชื่อแม้พนักงานจะทำงานไปแล้ว ใช้ในกรณีฉุกเฉินเท่านั้น!</div>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div className="flex justify-end gap-3">
+                        <button 
+                            onClick={() => setUndoTarget(null)}
+                            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            disabled={isUndoing}
+                        >
+                            ยกเลิก
+                        </button>
+                        <button 
+                            onClick={handleUndo}
+                            disabled={isUndoing}
+                            className={`px-4 py-2 rounded-lg text-white font-medium flex items-center gap-2 transition-colors ${undoMode === 'force' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} ${isUndoing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            {isUndoing ? <Loader2 className="w-4 h-4 animate-spin" /> : '↩️ '}
+                            ยืนยันดึงกลับ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Cleanup Confirmation Modal */}
+        {showCleanup && (
+            <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-xl">
+                            🧹
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-800">ล้างประวัติการแจกงานเก่า</h3>
+                    </div>
+                    
+                    <p className="text-gray-600 mb-6 text-sm">
+                        เพื่อลดภาระของฐานข้อมูล ระบบจะทำการลบ <b>"รายละเอียดรายชื่อลูกค้า"</b> ที่เกิดจากการแจกงานในอดีต (ตารางสรุปจะยังอยู่)
+                    </p>
+
+                    <div className="space-y-4 mb-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">ลบข้อมูลที่เก่ากว่า:</label>
+                            <select 
+                                value={cleanupMonths}
+                                onChange={(e) => setCleanupMonths(Number(e.target.value))}
+                                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-red-500 focus:ring-red-500 p-2 border"
+                            >
+                                <option value={1}>1 เดือน</option>
+                                <option value={3}>3 เดือน (แนะนำ)</option>
+                                <option value={6}>6 เดือน</option>
+                                <option value={12}>1 ปี</option>
+                            </select>
+                        </div>
+
+                        {isSuperAdmin && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">เลือกบริษัท (Super Admin):</label>
+                                <select 
+                                    value={cleanupTargetCompany}
+                                    onChange={(e) => setCleanupTargetCompany(e.target.value)}
+                                    className="w-full border-gray-300 rounded-lg shadow-sm focus:border-red-500 focus:ring-red-500 p-2 border"
+                                >
+                                    <option value="current">เฉพาะบริษัทปัจจุบัน</option>
+                                    <option value="all">ลบทุกบริษัท (All Companies)</option>
+                                </select>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="bg-red-50 border border-red-100 rounded-lg p-3 mb-6">
+                        <p className="text-xs text-red-600 font-medium text-center">
+                            ⚠️ การดำเนินการนี้ไม่สามารถย้อนกลับได้
+                        </p>
+                    </div>
+
+                    <div className="flex justify-end gap-3">
+                        <button 
+                            onClick={() => setShowCleanup(false)}
+                            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            disabled={isCleaning}
+                        >
+                            ยกเลิก
+                        </button>
+                        <button 
+                            onClick={handleCleanup}
+                            disabled={isCleaning}
+                            className={`px-4 py-2 rounded-lg text-white font-medium flex items-center gap-2 transition-colors bg-red-600 hover:bg-red-700 ${isCleaning ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            {isCleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            ยืนยันการลบข้อมูล
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 };
 

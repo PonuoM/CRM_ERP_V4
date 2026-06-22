@@ -1,3 +1,4 @@
+
 <?php
 // api/Distribution/index.php
 
@@ -19,6 +20,10 @@ try {
         handleGetAssignChecks($pdo, $companyId);
     } elseif ($action === 'get_sessions') {
         handleGetSessions($pdo, $companyId);
+    } elseif ($action === 'undo_distribution') {
+        handleUndoDistribution($pdo, $companyId);
+    } elseif ($action === 'cleanup_distribution_details') {
+        handleCleanupDistributionDetails($pdo, $companyId);
     } else {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid action']);
@@ -97,7 +102,7 @@ function handleDistribute($pdo, $companyId)
     $updateStmt = $pdo->prepare($updateSql);
 
     // Get customer old data Stmt (before update)
-    $getOldStmt = $pdo->prepare("SELECT current_basket_key, assigned_to FROM customers WHERE customer_id = ?");
+    $getOldStmt = $pdo->prepare("SELECT current_basket_key, assigned_to, lifecycle_status FROM customers WHERE customer_id = ?");
 
     // Log Stmt with assigned_to columns (use placeholders for Thai strings)
     $logStmt = $pdo->prepare("INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
@@ -133,6 +138,7 @@ function handleDistribute($pdo, $companyId)
             $oldData = $getOldStmt->fetch(PDO::FETCH_ASSOC);
             $oldBasketKey = $oldData['current_basket_key'] ?? $sourceBasketKey;
             $oldAssignedTo = $oldData['assigned_to'] ?? null;
+            $oldLifecycle = $oldData['lifecycle_status'] ?? null;
 
             // 2. Perform Assignment
             $insertCheckStmt->execute([$customerId, $agentId, $companyId]);
@@ -159,7 +165,13 @@ function handleDistribute($pdo, $companyId)
             }
 
             $successIds[] = $customerId;
-            $successDetails[] = ['customer_id' => $customerId, 'agent_id' => $agentId];
+            $successDetails[] = [
+                'customer_id' => $customerId, 
+                'agent_id' => $agentId,
+                'previous_assigned_to' => $oldAssignedTo,
+                'previous_basket_key' => $oldBasketKey,
+                'previous_lifecycle_status' => $oldLifecycle
+            ];
             if (!isset($agentStats[$agentId]))
                 $agentStats[$agentId] = 0;
             $agentStats[$agentId]++;
@@ -174,9 +186,16 @@ function handleDistribute($pdo, $companyId)
             $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, count($successDetails), $agentSnapshot, $sourceBasketKey]);
             $sessionId = $pdo->lastInsertId();
 
-            $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id) VALUES (?, ?, ?)");
+            $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");
             foreach ($successDetails as $detail) {
-                $detailStmt->execute([$sessionId, $detail['agent_id'], $detail['customer_id']]);
+                $detailStmt->execute([
+                    $sessionId, 
+                    $detail['agent_id'], 
+                    $detail['customer_id'],
+                    $detail['previous_assigned_to'],
+                    $detail['previous_basket_key'],
+                    $detail['previous_lifecycle_status']
+                ]);
             }
         }
         // ------------------------------------
@@ -330,4 +349,212 @@ function handleGetSessions($pdo, $companyId)
     }
 
     echo json_encode(['ok' => true, 'sessions' => $sessions]);
+}
+
+function handleUndoDistribution($pdo, $companyId) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'POST required']);
+        return;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $sessionId = $input['session_id'] ?? null;
+    $mode = $input['mode'] ?? 'safe'; // 'safe' or 'force'
+    $triggeredBy = $input['triggered_by'] ?? null;
+
+    if (!$sessionId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Session ID required']);
+        return;
+    }
+
+    $pdo->beginTransaction();
+
+    try {
+        // 1. Get session info
+        $sessionStmt = $pdo->prepare("SELECT * FROM distribution_sessions WHERE id = ? AND company_id = ?");
+        $sessionStmt->execute([$sessionId, $companyId]);
+        $session = $sessionStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$session) {
+            throw new Exception("Session not found or belongs to another company");
+        }
+
+        if ($session['session_status'] === 'undo_full') {
+            throw new Exception("This session has already been fully undone.");
+        }
+
+        // 2. Get all details
+        $detailStmt = $pdo->prepare("
+            SELECT dsd.*, c.updated_at as customer_updated_at 
+            FROM distribution_session_details dsd
+            JOIN customers c ON dsd.customer_id = c.customer_id
+            WHERE dsd.session_id = ?
+        ");
+        $detailStmt->execute([$sessionId]);
+        $details = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $successIds = [];
+        $skippedIds = [];
+
+        // Statements for rollback
+        $updateCustomerStmt = $pdo->prepare("
+            UPDATE customers 
+            SET assigned_to = ?, current_basket_key = ?, lifecycle_status = ? 
+            WHERE customer_id = ?
+        ");
+        
+        $deleteCheckStmt = $pdo->prepare("
+            DELETE FROM customer_assign_check 
+            WHERE customer_id = ? AND user_id = ? AND company_id = ?
+        ");
+
+        $logStmt = $pdo->prepare("
+            INSERT INTO basket_transition_log 
+            (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) 
+            VALUES (?, ?, ?, ?, ?, 'reclaim', ?, ?, NOW())
+        ");
+
+        foreach ($details as $detail) {
+            $customerId = $detail['customer_id'];
+            $agentId = $detail['agent_id'];
+            $prevAssignedTo = $detail['previous_assigned_to'];
+            $prevBasketKey = $detail['previous_basket_key'];
+            $prevLifecycle = $detail['previous_lifecycle_status'] ?? 'New';
+
+            // Check if untouched (Safe mode)
+            if ($mode === 'safe') {
+                $sessionTime = strtotime($session['created_at']);
+                $customerUpdateTime = strtotime($detail['customer_updated_at']);
+                
+                // If customer was updated more than 10 seconds after distribution, consider it "touched"
+                if ($customerUpdateTime > $sessionTime + 10) {
+                    $skippedIds[] = $customerId;
+                    continue; // Skip this customer
+                }
+            }
+
+            // Perform Rollback
+            $updateCustomerStmt->execute([
+                $prevAssignedTo, 
+                $prevBasketKey, 
+                $prevLifecycle, 
+                $customerId
+            ]);
+
+            // Remove assign check so they can be assigned to this agent again in the future
+            $deleteCheckStmt->execute([$customerId, $agentId, $companyId]);
+
+            // Log the transition (Undo)
+            $logStmt->execute([
+                $customerId, 
+                $session['source_basket'] ?? 'Unknown', 
+                $prevBasketKey, 
+                $agentId, 
+                $prevAssignedTo, 
+                $triggeredBy, 
+                "Undo Distribution Session #{$sessionId} ({$mode} mode)"
+            ]);
+
+            $successIds[] = $customerId;
+        }
+
+        // 3. Update session status
+        $newStatus = (count($skippedIds) === 0 && count($successIds) > 0) ? 'undo_full' : 'undo_partial';
+        if (count($successIds) > 0) {
+            $updateSessionStmt = $pdo->prepare("UPDATE distribution_sessions SET session_status = ? WHERE id = ?");
+            $updateSessionStmt->execute([$newStatus, $sessionId]);
+        }
+
+        $pdo->commit();
+
+        echo json_encode([
+            'ok' => true,
+            'message' => "Undo completed",
+            'success_count' => count($successIds),
+            'skipped_count' => count($skippedIds),
+            'status' => $newStatus
+        ]);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => $e->getMessage()]);
+    }
+}
+
+function handleCleanupDistributionDetails($pdo, $companyId) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'POST required']);
+        return;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $userId = $input['user_id'] ?? null;
+    $targetCompanyId = $input['target_company_id'] ?? null; // Can be 'all' or specific company_id
+    $monthsOld = $input['months_old'] ?? 3;
+
+    if (!$userId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'User ID required']);
+        return;
+    }
+
+    // RBAC Check
+    $userStmt = $pdo->prepare("SELECT is_system, role, company_id FROM users WHERE id = ?");
+    $userStmt->execute([$userId]);
+    $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$user || $user['is_system'] != 1) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Permission denied. Only system admins can cleanup data.']);
+        return;
+    }
+
+    // Determine target company
+    $companiesToClean = [];
+    if (strtolower($user['role']) === 'super_admin') {
+        if ($targetCompanyId === 'all') {
+            // Get all companies
+            $compStmt = $pdo->query("SELECT id FROM company");
+            $companiesToClean = $compStmt->fetchAll(PDO::FETCH_COLUMN);
+        } else if (is_numeric($targetCompanyId)) {
+            $companiesToClean = [(int)$targetCompanyId];
+        } else {
+            // Default to their own if not specified
+            $companiesToClean = [$user['company_id']];
+        }
+    } else {
+        // Normal is_system=1 can only clean their own company
+        $companiesToClean = [$user['company_id']];
+    }
+
+    if (empty($companiesToClean)) {
+        echo json_encode(['ok' => true, 'message' => 'No companies to clean']);
+        return;
+    }
+
+    $inClause = implode(',', array_fill(0, count($companiesToClean), '?'));
+    $dateThreshold = date('Y-m-d H:i:s', strtotime("-{$monthsOld} months"));
+
+    // Find sessions older than threshold for these companies
+    // We only delete DETAILS, we keep the session header
+    $deleteStmt = $pdo->prepare("
+        DELETE dsd FROM distribution_session_details dsd
+        JOIN distribution_sessions ds ON dsd.session_id = ds.id
+        WHERE ds.company_id IN ($inClause) AND ds.created_at < ?
+    ");
+    
+    $params = array_merge($companiesToClean, [$dateThreshold]);
+    $deleteStmt->execute($params);
+    $deletedRows = $deleteStmt->rowCount();
+
+    echo json_encode([
+        'ok' => true,
+        'message' => "Deleted $deletedRows details records older than $monthsOld months.",
+        'deleted_rows' => $deletedRows,
+        'companies_cleaned' => $companiesToClean
+    ]);
 }
