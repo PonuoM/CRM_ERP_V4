@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Download, History, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import ExcelJS from 'exceljs';
+import { apiFetch } from '../../services/api';
 
 interface DistributionReportModalProps {
     isOpen: boolean;
@@ -85,16 +86,14 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             const currentUserStr = localStorage.getItem('user');
             const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
             
-            const res = await fetch('/api/Distribution/index.php?action=undo_distribution&companyId=1', {
+            const data = await apiFetch('Distribution/index.php?action=undo_distribution&companyId=1', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     session_id: undoTarget,
                     mode: undoMode,
                     triggered_by: currentUser?.id
                 })
             });
-            const data = await res.json();
             
             if (data.ok) {
                 setMessage({ type: 'success', text: `ดึงกลับสำเร็จ ${data.success_count} รายการ (ข้าม ${data.skipped_count} รายการ) กำลังรีเฟรช...` });
@@ -114,16 +113,14 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const handleCleanup = async () => {
         setIsCleaning(true);
         try {
-            const res = await fetch('/api/Distribution/index.php?action=cleanup_distribution_details', {
+            const data = await apiFetch('Distribution/index.php?action=cleanup_distribution_details', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     user_id: currentUser?.id,
                     target_company_id: cleanupTargetCompany === 'current' ? currentUser?.company_id : cleanupTargetCompany,
                     months_old: cleanupMonths
                 })
             });
-            const data = await res.json();
             
             if (data.ok) {
                 setMessage({ type: 'success', text: `ลบประวัติสำเร็จ: ${data.message}` });
@@ -148,8 +145,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const fetchSessions = async () => {
         setLoading(true);
         try {
-            const res = await fetch('/api/Distribution/index.php?action=get_sessions&companyId=1');
-            const data = await res.json();
+            const data = await apiFetch('Distribution/index.php?action=get_sessions&companyId=1');
             if (data.ok) {
                 setSessions(data.sessions);
             } else {
