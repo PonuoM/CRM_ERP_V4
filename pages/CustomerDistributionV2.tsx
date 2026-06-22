@@ -78,7 +78,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]
     );
     const [callDataSource, setCallDataSource] = useState<'db' | 'realtime'>('db');
-    const [callThresholdMinutes, setCallThresholdMinutes] = useState<string>('100');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
 
     // Distribution Modes State
@@ -1849,6 +1848,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 loadingReclaimPreviews={loadingReclaimPreviews}
                 reclaimPreviewNoCallNoAppt={reclaimPreviewNoCallNoAppt}
                 reclaimPreviewCalledNoAppt={reclaimPreviewCalledNoAppt}
+                reclaimPreviewCalledWithAppt={reclaimPreviewCalledWithAppt}
                 bulkActionType={bulkActionType}
                 setBulkActionType={setBulkActionType}
                 bulkFilterType={bulkFilterType}

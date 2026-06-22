@@ -180,10 +180,11 @@ function handleDistribute($pdo, $companyId)
         // --- Distribution Session Logging ---
         if (count($successDetails) > 0) {
             $distributionMode = $input['distribution_mode'] ?? 'Unknown';
+            $minCallMinutes = isset($input['min_call_minutes']) ? (int)$input['min_call_minutes'] : null;
             $agentSnapshot = isset($input['agent_snapshot']) ? json_encode($input['agent_snapshot'], JSON_UNESCAPED_UNICODE) : null;
             
-            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, total_customers, created_at, agent_snapshot, source_basket) VALUES (?, ?, ?, ?, NOW(), ?, ?)");
-            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, count($successDetails), $agentSnapshot, $sourceBasketKey]);
+            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)");
+            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey]);
             $sessionId = $pdo->lastInsertId();
 
             $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");

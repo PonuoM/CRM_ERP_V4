@@ -34,6 +34,7 @@ interface DistributionSession {
     company_id: number;
     distribution_mode: string;
     source_basket?: string;
+    min_call_minutes?: number | null;
     total_customers: number;
     created_at: string;
     distributed_by_name: string;
@@ -96,9 +97,9 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             const data = await res.json();
             
             if (data.ok) {
-                setMessage({ type: 'success', text: `ดึงกลับสำเร็จ ${data.success_count} รายการ (ข้าม ${data.skipped_count} รายการ)` });
+                setMessage({ type: 'success', text: `ดึงกลับสำเร็จ ${data.success_count} รายการ (ข้าม ${data.skipped_count} รายการ) กำลังรีเฟรช...` });
                 setUndoTarget(null);
-                fetchSessions(); // Refresh list
+                setTimeout(() => window.location.reload(), 1500); // Refresh the entire page
             } else {
                 setMessage({ type: 'error', text: data.error || 'Undo failed' });
             }
@@ -192,6 +193,9 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
 
         // Process Data
         const snapshot = session.agent_snapshot || [];
+        const isCriteriaApplied = session.min_call_minutes !== null && session.min_call_minutes !== undefined;
+        const failStatusText = isCriteriaApplied ? 'หลุดเกณฑ์' : 'ไม่ได้รับรายชื่อ';
+
         const detailsMap = new Map<number, number>();
         session.details.forEach(d => detailsMap.set(d.agent_id, d.customers.length));
 
@@ -275,7 +279,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             wsSummary.getCell(`C${currentRow}`).value = agent.name;
             wsSummary.getCell(`D${currentRow}`).value = agent.role;
             wsSummary.getCell(`E${currentRow}`).value = formatTime(agent.callMinutes);
-            wsSummary.getCell(`F${currentRow}`).value = 'หลุดเกณฑ์';
+            wsSummary.getCell(`F${currentRow}`).value = failStatusText;
             wsSummary.getCell(`G${currentRow}`).value = 0;
             currentRow++;
         });
@@ -306,6 +310,16 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         wsSummary.getCell(`J${totalRow}`).value = session.total_customers;
         wsSummary.getCell(`J${totalRow}`).alignment = { horizontal: 'center' };
         wsSummary.getCell(`J${totalRow}`).border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+
+        if (isCriteriaApplied) {
+            wsSummary.getCell(`I${totalRow + 2}`).value = 'เกณฑ์เวลาโทรขั้นต่ำ';
+            wsSummary.getCell(`I${totalRow + 2}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+            wsSummary.getCell(`I${totalRow + 2}`).font = { color: { argb: 'FFFFFFFF' }, bold: true };
+            
+            wsSummary.getCell(`J${totalRow + 2}`).value = `${session.min_call_minutes} นาที`;
+            wsSummary.getCell(`J${totalRow + 2}`).alignment = { horizontal: 'center' };
+            wsSummary.getCell(`J${totalRow + 2}`).border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+        }
 
         // Apply borders to all filled cells in main tables
         for (let i = 2; i < currentRow; i++) {
@@ -429,6 +443,11 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                 {session.source_basket && (
                                                     <span className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full border border-indigo-200">
                                                         ตะกร้า: {session.source_basket}
+                                                    </span>
+                                                )}
+                                                {session.min_call_minutes !== null && session.min_call_minutes !== undefined && (
+                                                    <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full border border-orange-200">
+                                                        เกณฑ์: ≥{session.min_call_minutes} นาที
                                                     </span>
                                                 )}
                                             </div>

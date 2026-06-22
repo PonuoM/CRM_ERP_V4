@@ -11,6 +11,9 @@ interface DistributionTelesaleTableProps {
     totalToDistribute: string;
     dashboardBaskets: BasketConfig[];
     availableCount: number;
+    callThresholdMinutes: string;
+    setCallThresholdMinutes: React.Dispatch<React.SetStateAction<string>>;
+    setHasCallFilterApplied: React.Dispatch<React.SetStateAction<boolean>>;
     handlePreparePreview: () => void;
     openReclaimModal: (agent: any) => void;
     setMessage: (msg: any) => void;
@@ -25,23 +28,25 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     totalToDistribute,
     dashboardBaskets,
     availableCount,
+    callThresholdMinutes,
+    setCallThresholdMinutes,
+    setHasCallFilterApplied,
     handlePreparePreview,
     openReclaimModal,
     setMessage,
     currentUser
 }) => {
     const [agentSupervisorFilter, setAgentSupervisorFilter] = useState<number | ''>('');
-    
     const [callDataSource, setCallDataSource] = useState<'db' | 'realtime'>('db');
     const [callFilterStartDate, setCallFilterStartDate] = useState<string>(() => {
         const d = new Date();
+        d.setDate(d.getDate() - 1);
         return d.toISOString().split('T')[0];
     });
     const [callFilterEndDate, setCallFilterEndDate] = useState<string>(() => {
         const d = new Date();
         return d.toISOString().split('T')[0];
     });
-    const [callThresholdMinutes, setCallThresholdMinutes] = useState<string>('100');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
 
     const selectAllRef = useRef<HTMLInputElement>(null);
@@ -200,6 +205,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                 }
                             }
                             setCallFilterStartDate(newStart);
+                            setHasCallFilterApplied(false);
                         }}
                         className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
                     />
@@ -222,6 +228,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                 }
                             }
                             setCallFilterEndDate(newEnd);
+                            setHasCallFilterApplied(false);
                         }}
                         className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
                     />
@@ -231,7 +238,10 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                     <input
                         type="number"
                         value={callThresholdMinutes}
-                        onChange={(e) => setCallThresholdMinutes(e.target.value)}
+                        onChange={(e) => {
+                            setCallThresholdMinutes(e.target.value);
+                            setHasCallFilterApplied(false);
+                        }}
                         className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 w-24 text-center"
                         min={0}
                     />
@@ -249,6 +259,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                 .map(a => a.id);
                                 
                             setSelectedAgents([...inactiveSelected, ...eligibleIds]);
+                            setHasCallFilterApplied(true);
                         }}
                         disabled={loadingCallMinutes || agents.length === 0}
                         className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 text-sm font-medium flex items-center gap-2"
@@ -354,6 +365,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     openReclaimModal(agent);
+                                                    setHasCallFilterApplied(false);
                                                 }}
                                                 className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 border border-red-200"
                                             >
