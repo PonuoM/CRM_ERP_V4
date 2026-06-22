@@ -286,7 +286,7 @@ function handleGetSessions($pdo, $companyId)
     // Fetch details
     $detailStmt = $pdo->prepare("
         SELECT dsd.session_id, dsd.agent_id, u.first_name as agent_first, u.last_name as agent_last,
-               c.customer_id, c.code as customer_code, c.name as customer_name, c.phone as customer_phone
+               c.customer_id, c.customer_ref_id as customer_code, CONCAT(c.first_name, ' ', c.last_name) as customer_name, c.phone as customer_phone
         FROM distribution_session_details dsd
         JOIN users u ON dsd.agent_id = u.id
         JOIN customers c ON dsd.customer_id = c.customer_id
