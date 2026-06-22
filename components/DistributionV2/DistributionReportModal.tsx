@@ -200,7 +200,11 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         });
 
         // 6. Add Total Distributed Label
-        const totalRow = Math.max(currentRow + 2, criteriaRow + 2);
+        // หาว่าตารางเข้าเกณฑ์/ไม่เข้าเกณฑ์ อันไหนยาวกว่ากัน แล้วบวก 2 แถว
+        const maxCriteriaLength = Math.max(receivedAgents.length, failedAgents.length);
+        const maxCriteriaRow = maxCriteriaLength > 0 ? 2 + maxCriteriaLength : 2; // header อยู่บรรทัด 2
+        const totalRow = maxCriteriaRow + 2;
+        
         wsSummary.getCell(`I${totalRow}`).value = 'รวมรายชื่อแจกทั้งหมด';
         wsSummary.getCell(`I${totalRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
         wsSummary.getCell(`I${totalRow}`).font = { color: { argb: 'FFFFFFFF' }, bold: true };
