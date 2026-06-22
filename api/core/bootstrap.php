@@ -5,6 +5,7 @@ require_once __DIR__ . '/../Services/ShippingSyncService.php';
 require_once __DIR__ . '/../Services/BasketRoutingService.php';
 require_once __DIR__ . '/../Quota/quota_record_helper.php';
 require_once __DIR__ . '/../Services/CustomerStatsHelper.php';
+require_once __DIR__ . '/../Services/CustomerDataHelper.php';
 
 // API Version for debugging deployment issues
 define('API_VERSION', '2026-01-24-0947-BASKET-FIX');
