@@ -3010,8 +3010,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                   onChange={(e) => handleFieldChange("notes", e.target.value)}
                   placeholder="ระบุหมายเหตุสำหรับออเดอร์นี้..."
                   rows={2}
-                  disabled={isLocked && permission !== 'manager'}
-                  className={`w-full p-2 text-sm border border-yellow-300 rounded-md shadow-sm bg-yellow-50 text-gray-700 placeholder-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none ${isLocked && permission !== 'manager' ? 'cursor-not-allowed opacity-60' : ''}`}
+                  disabled={!isEditing || (isLocked && permission !== 'manager')}
+                  className={`w-full p-2 text-sm border border-yellow-300 rounded-md shadow-sm bg-yellow-50 text-gray-700 placeholder-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none ${!isEditing || (isLocked && permission !== 'manager') ? 'cursor-not-allowed opacity-60' : ''}`}
                 />
               </div>
             ) : currentOrder.notes ? (
@@ -5031,8 +5031,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       e.target.value as OrderStatus,
                     )
                   }
-                  disabled={isLocked || permission === 'seller'}
-                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${isLocked || permission === 'seller' ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                  disabled={!isEditing || isLocked || permission === 'seller'}
+                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${!isEditing || isLocked || permission === 'seller' ? "bg-gray-100 cursor-not-allowed" : ""}`}
                 >
                   {Object.values(OrderStatus)
 
@@ -5102,8 +5102,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           setSelectedCancellationTypeId(Number(e.target.value));
                           if (Number(e.target.value)) setCancellationError('');
                         }}
-                        disabled={isLocked && permission !== 'manager'}
-                        className={`w-full p-2 border border-orange-300 rounded-md shadow-sm bg-white text-orange-800 font-medium focus:ring-2 focus:ring-orange-400 focus:border-transparent ${isLocked && permission !== 'manager' ? 'cursor-not-allowed opacity-60' : ''} ${cancellationError ? 'border-red-400 ring-2 ring-red-200' : ''}`}
+                        disabled={!isEditing || (isLocked && permission !== 'manager')}
+                        className={`w-full p-2 border border-orange-300 rounded-md shadow-sm bg-white text-orange-800 font-medium focus:ring-2 focus:ring-orange-400 focus:border-transparent ${!isEditing || (isLocked && permission !== 'manager') ? 'cursor-not-allowed opacity-60' : ''} ${cancellationError ? 'border-red-400 ring-2 ring-red-200' : ''}`}
                       >
                         <option value={0}>-- ยังไม่ระบุ --</option>
                         {cancellationTypes.map((ct) => (
@@ -5120,10 +5120,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       <textarea
                         value={cancellationNotes}
                         onChange={(e) => setCancellationNotes(e.target.value)}
-                        disabled={isLocked && permission !== 'manager'}
+                        disabled={!isEditing || (isLocked && permission !== 'manager')}
                         placeholder="ระบุเหตุผล..."
                         rows={1}
-                        className={`w-full p-2 border border-orange-200 rounded-md shadow-sm bg-white text-sm text-gray-700 placeholder-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent resize-none ${isLocked && permission !== 'manager' ? 'cursor-not-allowed opacity-60' : ''}`}
+                        className={`w-full p-2 border border-orange-200 rounded-md shadow-sm bg-white text-sm text-gray-700 placeholder-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent resize-none ${!isEditing || (isLocked && permission !== 'manager') ? 'cursor-not-allowed opacity-60' : ''}`}
                       />
                     </div>
                   </div>
