@@ -65,7 +65,8 @@ class OrderExportService {
             if (!isset($orderAdjustments[$orderId])) {
                 $orderAdjustments[$orderId] = [
                     'shipping_cost' => (float)($r['shipping_cost'] ?? 0),
-                    'bill_discount' => (float)($r['bill_discount'] ?? 0)
+                    'bill_discount' => (float)($r['bill_discount'] ?? 0),
+                    'coupon_discount' => (float)($r['coupon_discount'] ?? 0)
                 ];
             }
             
@@ -100,27 +101,28 @@ class OrderExportService {
             }
         }
         
-        // Second pass: apply proration for shipping cost and bill discount
+        // Second pass: apply proration for shipping cost, bill discount, and coupon discount
         foreach ($creatorTotals as $orderId => &$creators) {
             $gross = $orderGross[$orderId] ?? 0;
             $shipping = $orderAdjustments[$orderId]['shipping_cost'] ?? 0;
             $discount = $orderAdjustments[$orderId]['bill_discount'] ?? 0;
+            $coupon = $orderAdjustments[$orderId]['coupon_discount'] ?? 0;
             
-            if ($shipping == 0 && $discount == 0) {
+            if ($shipping == 0 && $discount == 0 && $coupon == 0) {
                 continue; // No adjustments needed
             }
             
             if ($gross > 0) {
                 foreach ($creators as $creatorId => &$total) {
                     $ratio = $total / $gross;
-                    $total = $total + ($shipping * $ratio) - ($discount * $ratio);
+                    $total = $total + ($shipping * $ratio) - ($discount * $ratio) - ($coupon * $ratio);
                 }
             } else {
                 // If gross is 0 (e.g. all items free), divide equally
                 $creatorCount = count($creators);
                 if ($creatorCount > 0) {
                     foreach ($creators as $creatorId => &$total) {
-                        $total = $total + ($shipping / $creatorCount) - ($discount / $creatorCount);
+                        $total = $total + ($shipping / $creatorCount) - ($discount / $creatorCount) - ($coupon / $creatorCount);
                     }
                 }
             }
