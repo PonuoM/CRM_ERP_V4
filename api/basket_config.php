@@ -880,6 +880,7 @@ function handleTransferCustomers($pdo, $companyId)
     }
 
     $input = json_decode(file_get_contents('php://input'), true);
+    $transferMode = $input['transfer_mode'] ?? 'all';
 
     // Normalize: support both single and batch format
     $transfers = [];
@@ -961,22 +962,32 @@ function handleTransferCustomers($pdo, $companyId)
 
             // Select customers to transfer (Dynamic to support 'all' agents)
             $selectSql = "
-                SELECT customer_id, previous_assigned_to, assigned_to as current_agent 
-                FROM customers 
-                WHERE company_id = ? 
-                AND current_basket_key = ?
+                SELECT c.customer_id, c.previous_assigned_to, c.assigned_to as current_agent 
+                FROM customers c
+                WHERE c.company_id = ? 
+                AND c.current_basket_key = ?
             ";
             $selectParams = [$companyId, $basketId];
 
             if ($fromAgentId === 'all') {
-                $selectSql .= " AND assigned_to IS NOT NULL AND assigned_to != 0 AND assigned_to != ? ";
+                $selectSql .= " AND c.assigned_to IS NOT NULL AND c.assigned_to != 0 AND c.assigned_to != ? ";
                 $selectParams[] = $toAgentId; // Don't transfer to self
             } else {
-                $selectSql .= " AND assigned_to = ? ";
+                $selectSql .= " AND c.assigned_to = ? ";
                 $selectParams[] = $fromAgentId;
             }
             
-            $selectSql .= " ORDER BY updated_at ASC LIMIT " . (int)$count;
+            if ($transferMode === 'no_call_no_appt') {
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            } else if ($transferMode === 'called_no_appt') {
+                $selectSql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            } else if ($transferMode === 'called_with_appt') {
+                $selectSql .= " AND EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            }
+            
+            $selectSql .= " ORDER BY c.updated_at ASC LIMIT " . (int)$count;
             
             $selectStmt = $pdo->prepare($selectSql);
             $selectStmt->execute($selectParams);

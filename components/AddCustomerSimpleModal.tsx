@@ -199,7 +199,7 @@ const AddCustomerSimpleModal: React.FC<AddCustomerSimpleModalProps> = ({
               type="text"
               value={newCustomer.phone}
               onChange={e => {
-                const val = e.target.value.replace(/[^0-9]/g, '');
+                const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 10);
                 setNewCustomer({ ...newCustomer, phone: val });
               }}
               className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 ${
@@ -210,7 +210,6 @@ const AddCustomerSimpleModal: React.FC<AddCustomerSimpleModalProps> = ({
                   : 'border-gray-300 focus:ring-blue-500'
               }`}
               placeholder="เบอร์โทรศัพท์ (10 หลัก)"
-              maxLength={10}
             />
             {renderDupBanner()}
           </div>
