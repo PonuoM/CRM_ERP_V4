@@ -1626,7 +1626,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             </table>
           </div>
 
-          {hasMore && (
+          {hasMore ? (
             <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Download className="w-5 h-5 text-blue-600" />
@@ -1635,7 +1635,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                     แสดงเพียง {maxPreviewRows} รายการแรก จากทั้งหมด {data.length.toLocaleString()} รายการ
                   </p>
                   <p className="text-xs text-blue-700">
-                    กรุณาคลิก "ดาวน์โหลด CSV" เพื่อดูข้อมูลทั้งหมด
+                    กรุณาคลิก "ดาวน์โหลด" เพื่อดูข้อมูลทั้งหมด
                   </p>
                 </div>
               </div>
@@ -1645,6 +1645,16 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               >
                 <Download className="w-4 h-4" />
                 ดาวน์โหลดทั้งหมด
+              </button>
+            </div>
+          ) : (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleExportClick}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <Download className="w-4 h-4" />
+                ดาวน์โหลดรายงาน (Export)
               </button>
             </div>
           )}
