@@ -72,7 +72,13 @@ class OrderExportService {
             // Guard against legacy dirty data double-counting
             $isPromoParent = (bool)($r['is_promotion_parent'] ?? false);
             $isFreebie = (bool)($r['is_freebie'] ?? false);
-            if ($isPromoParent || $isFreebie) {
+            
+            // IF order is Cancelled or Returned, or if Promo/Freebie, netTotal should be 0 
+            // so it matches the behavior of total_amount in the database.
+            $orderStatus = $r['order_status'] ?? '';
+            $isCancelledOrReturned = in_array($orderStatus, ['Cancelled', 'Returned']);
+            
+            if ($isPromoParent || $isFreebie || $isCancelledOrReturned) {
                 $netTotal = 0;
             }
             
