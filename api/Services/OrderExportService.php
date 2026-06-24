@@ -73,12 +73,11 @@ class OrderExportService {
             $isPromoParent = (bool)($r['is_promotion_parent'] ?? false);
             $isFreebie = (bool)($r['is_freebie'] ?? false);
             
-            // IF order is Cancelled or Returned, or if Promo/Freebie, netTotal should be 0 
-            // so it matches the behavior of total_amount in the database.
-            $orderStatus = $r['order_status'] ?? '';
-            $isCancelledOrReturned = in_array($orderStatus, ['Cancelled', 'Returned']);
-            
-            if ($isPromoParent || $isFreebie || $isCancelledOrReturned) {
+            $orderTotalAmount = (float)($r['total_amount'] ?? 0);
+
+            // ถ้า total_amount ของบิลนี้เป็น 0 (เช่น ตีกลับบางออเดอร์, เคลม, ของแถม)
+            // ยอดรวมรายคนก็ต้องเป็น 0 ด้วย เพื่อให้ตัวเลขล้อตามกัน
+            if ($isPromoParent || $isFreebie || $orderTotalAmount == 0) {
                 $netTotal = 0;
             }
             
