@@ -767,11 +767,11 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $currentUser = get_authenticated_user($pdo);
                 $role = $currentUser['role'] ?? '';
                 if ($role !== 'admin' && $role !== 'manager') {
-                    $stmtLock = $pdo->prepare('SELECT created_at, order_date FROM orders WHERE id = ?');
+                    $stmtLock = $pdo->prepare('SELECT order_date FROM orders WHERE id = ?');
                     $stmtLock->execute([$id]);
                     $orderLockData = $stmtLock->fetch();
                     if ($orderLockData) {
-                        $orderDateStr = $orderLockData['order_date'] ?: $orderLockData['created_at'];
+                        $orderDateStr = $orderLockData['order_date'];
                         if ($orderDateStr) {
                             $orderTs = strtotime($orderDateStr);
                             $orderYearMonth = date('Y-m', $orderTs);
