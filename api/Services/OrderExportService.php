@@ -223,6 +223,12 @@ class OrderExportService {
                 $statusText = $returnStatusThai[$returnStatus] ?? $returnStatus;
             }
             $orderStatusDisplay = "ตีกลับ (กล่อง {$boxNumber} : {$statusText})";
+        } elseif ($orderStatus === 'Cancelled') {
+            $cancelReason = $lookups['cancellations'][$orderId] ?? null;
+            $orderStatusDisplay = $statusThai[$orderStatus] ?? $orderStatus ?: '-';
+            if ($cancelReason) {
+                $orderStatusDisplay .= " ({$cancelReason})";
+            }
         } else {
             $orderStatusDisplay = $statusThai[$orderStatus] ?? $orderStatus ?: '-';
         }
