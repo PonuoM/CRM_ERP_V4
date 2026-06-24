@@ -55,77 +55,20 @@ class OrderExportService {
 
     public static function calculateCreatorTotals(array $rows): array {
         $creatorTotals = [];
-        $orderGross = [];
-        $orderAdjustments = [];
 
         foreach ($rows as $r) {
             $orderId = $r['order_id'];
             $creatorId = $r['item_creator_id'] ?? $r['creator_id'] ?? '';
-            
-            if (!isset($orderAdjustments[$orderId])) {
-                $orderAdjustments[$orderId] = [
-                    'shipping_cost' => (float)($r['shipping_cost'] ?? 0),
-                    'bill_discount' => (float)($r['bill_discount'] ?? 0),
-                    'coupon_discount' => (float)($r['coupon_discount'] ?? 0)
-                ];
-            }
-            
-            $qty = (int)($r['quantity'] ?? 0);
-            $price = (float)($r['price_per_unit'] ?? 0);
-            $originalDiscount = (float)($r['discount'] ?? 0);
             $netTotal = (float)($r['net_total'] ?? 0);
             
-            $isPromoParent = (bool)$r['is_promotion_parent'];
-            $isPromoChild = (bool)$r['parent_item_id'];
-            $isClaimOrGift = in_array($r['payment_status'] ?? '', ['Claim', 'Gift']);
-            $isFreebie = (bool)$r['is_freebie'];
-            
-            if ($isPromoParent) {
-                $itTotal = 0;
-            } elseif ($isPromoChild) {
-                $itTotal = $netTotal;
-            } elseif ($isClaimOrGift) {
-                $itTotal = 0;
-            } else {
-                $calculatedTotal = ($qty * $price) - $originalDiscount;
-                $itTotal = $calculatedTotal > 0 ? $calculatedTotal : $netTotal;
+            if (!isset($creatorTotals[$orderId])) {
+                $creatorTotals[$orderId] = [];
             }
-
-            if (!$isFreebie && !$isPromoParent) {
-                if (!isset($creatorTotals[$orderId])) $creatorTotals[$orderId] = [];
-                if (!isset($creatorTotals[$orderId][$creatorId])) $creatorTotals[$orderId][$creatorId] = 0;
-                $creatorTotals[$orderId][$creatorId] += $itTotal;
-                
-                if (!isset($orderGross[$orderId])) $orderGross[$orderId] = 0;
-                $orderGross[$orderId] += $itTotal;
-            }
-        }
-        
-        // Second pass: apply proration for shipping cost, bill discount, and coupon discount
-        foreach ($creatorTotals as $orderId => &$creators) {
-            $gross = $orderGross[$orderId] ?? 0;
-            $shipping = $orderAdjustments[$orderId]['shipping_cost'] ?? 0;
-            $discount = $orderAdjustments[$orderId]['bill_discount'] ?? 0;
-            $coupon = $orderAdjustments[$orderId]['coupon_discount'] ?? 0;
-            
-            if ($shipping == 0 && $discount == 0 && $coupon == 0) {
-                continue; // No adjustments needed
+            if (!isset($creatorTotals[$orderId][$creatorId])) {
+                $creatorTotals[$orderId][$creatorId] = 0;
             }
             
-            if ($gross > 0) {
-                foreach ($creators as $creatorId => &$total) {
-                    $ratio = $total / $gross;
-                    $total = $total + ($shipping * $ratio) - ($discount * $ratio) - ($coupon * $ratio);
-                }
-            } else {
-                // If gross is 0 (e.g. all items free), divide equally
-                $creatorCount = count($creators);
-                if ($creatorCount > 0) {
-                    foreach ($creators as $creatorId => &$total) {
-                        $total = $total + ($shipping / $creatorCount) - ($discount / $creatorCount) - ($coupon / $creatorCount);
-                    }
-                }
-            }
+            $creatorTotals[$orderId][$creatorId] += $netTotal;
         }
 
         return $creatorTotals;
