@@ -218,20 +218,6 @@ class OrderExportService {
     
         $paid = (float)($row['amount_paid'] ?? 0);
         $total = (float)($row['total_amount'] ?? 0);
-        $shipping = (float)($row['shipping_cost'] ?? 0);
-        $billDiscount = (float)($row['bill_discount'] ?? 0);
-        $couponDiscount = (float)($row['coupon_discount'] ?? 0);
-
-        // Force revenue to 0 if cancelled or returned
-        $orderStatus = $row['order_status'] ?? '';
-        if (in_array($orderStatus, ['Cancelled', 'Returned'])) {
-            $itemTotal = 0;
-            $total = 0;
-            $shipping = 0;
-            $billDiscount = 0;
-            $couponDiscount = 0;
-            // $paid is kept as is because they might have paid before cancelling, though often it's 0.
-        }
         $paymentComparison = $total == 0 ? 'ไม่มียอด' : ($paid == 0 ? 'ค้าง' : ($paid == $total ? 'ตรง' : ($paid < $total ? 'ขาด' : 'เกิน')));
     
         $isFirstItem = !isset($seenOrders[$orderId]);
@@ -315,10 +301,10 @@ class OrderExportService {
             $price,
             $discount,
             $itemTotal,
-            $isFirstItem ? $shipping : 0,
-            $isFirstItem ? $billDiscount : 0,
-            $isFirstItem ? $couponDiscount : 0,
-            $isFirstItem ? $total : '-',
+            $isFirstItem ? (float)($row['shipping_cost'] ?? 0) : 0,
+            $isFirstItem ? (float)($row['bill_discount'] ?? 0) : 0,
+            $isFirstItem ? (float)($row['coupon_discount'] ?? 0) : 0,
+            $isFirstItem ? (float)($row['total_amount'] ?? 0) : '-',
             $displayCreatorTotal,
             $row['box_number'] ?? 1,
             $trackingNumbers,
