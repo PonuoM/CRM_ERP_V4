@@ -103,7 +103,7 @@ class OrderExportService {
             'รหัสสินค้า/โปร', 'สินค้า', 'ประเภทสินค้า', 'ประเภทสินค้า (รีพอร์ต)',
             'ชื่อโปร',
             'ของแถม', 'จำนวน (ชิ้น)', 'ราคาต่อหน่วย', 'ส่วนลด', 'ยอดรวมรายการ',
-            'ค่าจัดส่ง (ต่อบิล)', 'ส่วนลดท้ายบิล', 'คูปองส่วนลด', 'ยอดรวมทั้งบิล', 'ยอดรวมรายคน',
+            'ค่าจัดส่ง (ต่อบิล)', 'ส่วนลดท้ายบิล', 'คูปองส่วนลด', 'ยอดรวมเฉพาะสินค้า', 'ยอดรวมทั้งบิล', 'ยอดรวมรายคน',
             'หมายเลขกล่อง', 'หมายเลขติดตาม',
             'วันที่จัดส่ง Airport', 'สถานะจาก Airport',
             'สถานะออเดอร์', 'สถานะการชำระเงิน',
@@ -227,6 +227,16 @@ class OrderExportService {
             $orderStatusDisplay = $statusThai[$orderStatus] ?? $orderStatus ?: '-';
         }
     
+        $totalAmount = (float)($row['total_amount'] ?? 0);
+        $shippingCost = (float)($row['shipping_cost'] ?? 0);
+        $billDiscount = (float)($row['bill_discount'] ?? 0);
+        $couponDiscount = (float)($row['coupon_discount'] ?? 0);
+
+        $subtotalAmount = 0;
+        if ($totalAmount > 0) {
+            $subtotalAmount = $totalAmount - $shippingCost + $billDiscount + $couponDiscount;
+        }
+
         $result = [
             $row['order_date'] ? date('d/m/Y', strtotime($row['order_date'])) : '-',
             $orderId,
@@ -256,10 +266,11 @@ class OrderExportService {
             $price,
             $discount,
             $itemTotal,
-            $isFirstItem ? (float)($row['shipping_cost'] ?? 0) : 0,
-            $isFirstItem ? (float)($row['bill_discount'] ?? 0) : 0,
-            $isFirstItem ? (float)($row['coupon_discount'] ?? 0) : 0,
-            $isFirstItem ? (float)($row['total_amount'] ?? 0) : '-',
+            $isFirstItem ? $shippingCost : 0,
+            $isFirstItem ? $billDiscount : 0,
+            $isFirstItem ? $couponDiscount : 0,
+            $isFirstItem ? $subtotalAmount : '-',
+            $isFirstItem ? $totalAmount : '-',
             $displayCreatorTotal,
             $row['box_number'] ?? 1,
             $trackingNumbers,
