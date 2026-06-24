@@ -59,7 +59,22 @@ class OrderExportService {
         foreach ($rows as $r) {
             $orderId = $r['order_id'];
             $creatorId = $r['item_creator_id'] ?? $r['creator_id'] ?? '';
-            $netTotal = (float)($r['net_total'] ?? 0);
+            
+            // Defensive Fallback (Best Practice matching SQL COALESCE)
+            if (isset($r['net_total']) && $r['net_total'] !== null) {
+                $netTotal = (float)$r['net_total'];
+            } else {
+                $qty = (int)($r['quantity'] ?? 0);
+                $price = (float)($r['price_per_unit'] ?? 0);
+                $netTotal = $qty * $price;
+            }
+            
+            // Guard against legacy dirty data double-counting
+            $isPromoParent = (bool)($r['is_promotion_parent'] ?? false);
+            $isFreebie = (bool)($r['is_freebie'] ?? false);
+            if ($isPromoParent || $isFreebie) {
+                $netTotal = 0;
+            }
             
             if (!isset($creatorTotals[$orderId])) {
                 $creatorTotals[$orderId] = [];
