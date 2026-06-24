@@ -89,6 +89,7 @@ export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]>
         isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
         waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
         isBlocked: Boolean(r.is_blocked ?? false),
+        blockReason: r.block_reason ?? undefined,
         lastCallNote: r.last_call_note ?? undefined,
         last_call_date: r.last_call_date ?? undefined,
         last_call_id: r.last_call_id ?? undefined,
