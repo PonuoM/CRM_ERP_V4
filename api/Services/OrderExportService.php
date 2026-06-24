@@ -234,7 +234,7 @@ class OrderExportService {
 
         $subtotalAmount = 0;
         if ($totalAmount > 0) {
-            $subtotalAmount = $totalAmount - $shippingCost + $billDiscount + $couponDiscount;
+            $subtotalAmount = $totalAmount - $shippingCost + $billDiscount;
         }
 
         $result = [
