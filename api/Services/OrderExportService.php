@@ -57,10 +57,12 @@ class OrderExportService {
         $creatorTotals = [];
         $orderGross = [];
         $orderAdjustments = [];
+        $orderStatuses = [];
 
         foreach ($rows as $r) {
             $orderId = $r['order_id'];
             $creatorId = $r['item_creator_id'] ?? $r['creator_id'] ?? '';
+            $orderStatuses[$orderId] = $r['order_status'] ?? '';
             
             if (!isset($orderAdjustments[$orderId])) {
                 $orderAdjustments[$orderId] = [
@@ -102,6 +104,14 @@ class OrderExportService {
         
         // Second pass: apply proration for shipping cost and bill discount
         foreach ($creatorTotals as $orderId => &$creators) {
+            $status = $orderStatuses[$orderId] ?? '';
+            if (in_array($status, ['Cancelled', 'Returned'])) {
+                foreach ($creators as &$total) {
+                    $total = 0;
+                }
+                continue; // Skip proration for cancelled/returned
+            }
+
             $gross = $orderGross[$orderId] ?? 0;
             $shipping = $orderAdjustments[$orderId]['shipping_cost'] ?? 0;
             $discount = $orderAdjustments[$orderId]['bill_discount'] ?? 0;
