@@ -74,6 +74,7 @@ try {
             o.amount_paid,
             o.shipping_cost,
             o.bill_discount,
+            o.coupon_discount,
             o.street, o.subdistrict, o.district, o.province, o.postal_code,
             o.recipient_first_name, o.recipient_last_name,
             o.customer_type,
