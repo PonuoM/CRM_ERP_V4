@@ -766,7 +766,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                 // --- PAST MONTH LOCK ENFORCEMENT ---
                 $currentUser = get_authenticated_user($pdo);
                 $role = $currentUser['role'] ?? '';
-                if ($role !== 'admin' && $role !== 'manager') {
+                $managerRoles = ['admin', 'manager', 'Super Admin', 'Admin System', 'Admin Control', 'Admin Page', 'Backoffice', 'Sup Backoffice', 'CEO', 'Finance'];
+                if (!in_array($role, $managerRoles)) {
                     $stmtLock = $pdo->prepare('SELECT order_date FROM orders WHERE id = ?');
                     $stmtLock->execute([$id]);
                     $orderLockData = $stmtLock->fetch();
