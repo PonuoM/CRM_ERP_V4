@@ -167,7 +167,7 @@ function get_authenticated_user(PDO $pdo): ?array
   $token = $matches[1];
 
   $stmt = $pdo->prepare('
-      SELECT u.id, u.username, u.role, u.company_id, u.status 
+      SELECT u.id, u.username, u.role, u.company_id, u.status, u.is_system 
       FROM user_tokens ut
       JOIN users u ON u.id = ut.user_id
       WHERE ut.token = ? AND ut.expires_at > NOW()

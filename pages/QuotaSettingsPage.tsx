@@ -56,6 +56,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const [editingRate, setEditingRate] = useState<QuotaRateSchedule | null>(null);
   const [allProductsMode, setAllProductsMode] = useState(false);
   const [allProductsSalesPerQuota, setAllProductsSalesPerQuota] = useState('');
+  const [ratePoolMode, setRatePoolMode] = useState<'shared' | 'independent'>('shared');
 
   // Rate tab filters
   const [rateFilterProducts, setRateFilterProducts] = useState<number[]>([]); // empty = show all
@@ -111,7 +112,8 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const isTelesale = currentUser.role_id === 7 || currentUser.role === 'Telesale';
   const isSupervisor = currentUser.role_id === 6 || currentUser.role === 'Supervisor Telesale';
   const isViewOnlyRole = isTelesale;
-  const isRestrictedRole = isTelesale || isSupervisor;
+  const isSystemAdmin = (currentUser as any)?.is_system === 1 || (currentUser as any)?.is_system === true || (currentUser as any)?.isSystem === true;
+  const isRestrictedRole = (isTelesale || isSupervisor) && !isSystemAdmin;
 
   // ============ Load Data ============
   const loadQuotaProducts = useCallback(async () => {
@@ -397,10 +399,11 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
       }));
 
       if (editingRate) {
+        // Edit mode is ALWAYS shared pool
         await updateRateSchedule({
           id: editingRate.id,
           rateName: rateForm.rateName || undefined,
-          salesPerQuota: scopeRatesPayload[0]?.salesPerQuota || parseFloat(rateForm.salesPerQuota) || 1,
+          salesPerQuota: parseFloat(rateForm.salesPerQuota) || 1,
           effectiveDate: rateForm.calcPeriodStart,
           orderDateField: rateForm.orderDateField,
           calcPeriodStart: rateForm.calcPeriodStart || null,
@@ -408,22 +411,45 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
           usageStartDate: rateForm.usageStartDate || null,
           usageEndDate: rateForm.usageEndDate || null,
           requireConfirm: rateForm.requireConfirm,
-          scopeRates: scopeRatesPayload,
+          scopeRates: scopeRatesPayload.map(sr => ({ ...sr, salesPerQuota: parseFloat(rateForm.salesPerQuota) || 1 })),
         });
       } else {
-        await createRateSchedule({
-          rateName: rateForm.rateName || undefined,
-          salesPerQuota: scopeRatesPayload[0]?.salesPerQuota || parseFloat(rateForm.salesPerQuota) || 1,
-          effectiveDate: rateForm.calcPeriodStart,
-          orderDateField: rateForm.orderDateField,
-          calcPeriodStart: rateForm.calcPeriodStart,
-          calcPeriodEnd: rateForm.calcPeriodEnd,
-          usageStartDate: rateForm.usageStartDate,
-          usageEndDate: rateForm.usageEndDate || undefined,
-          requireConfirm: rateForm.requireConfirm,
-          scopeRates: scopeRatesPayload,
-          createdBy: currentUser.id,
-        });
+        if (ratePoolMode === 'shared') {
+          // Shared pool mode: 1 rate, multiple scopes
+          await createRateSchedule({
+            rateName: rateForm.rateName || undefined,
+            salesPerQuota: parseFloat(rateForm.salesPerQuota) || 1,
+            effectiveDate: rateForm.calcPeriodStart,
+            orderDateField: rateForm.orderDateField,
+            calcPeriodStart: rateForm.calcPeriodStart,
+            calcPeriodEnd: rateForm.calcPeriodEnd,
+            usageStartDate: rateForm.usageStartDate,
+            usageEndDate: rateForm.usageEndDate || undefined,
+            requireConfirm: rateForm.requireConfirm,
+            scopeRates: scopeRatesPayload.map(sr => ({ ...sr, salesPerQuota: parseFloat(rateForm.salesPerQuota) || 1 })),
+            createdBy: currentUser.id,
+          });
+        } else {
+          // Independent mode: N rates, one for each product
+          const promises = scopeRatesPayload.map(sr => {
+             const qp = activeQuotaProducts.find(p => p.id === sr.quotaProductId);
+             const rName = rateForm.rateName ? `${rateForm.rateName} (${qp?.displayName || ''})` : undefined;
+             return createRateSchedule({
+                rateName: rName,
+                salesPerQuota: sr.salesPerQuota,
+                effectiveDate: rateForm.calcPeriodStart,
+                orderDateField: rateForm.orderDateField,
+                calcPeriodStart: rateForm.calcPeriodStart,
+                calcPeriodEnd: rateForm.calcPeriodEnd,
+                usageStartDate: rateForm.usageStartDate,
+                usageEndDate: rateForm.usageEndDate || undefined,
+                requireConfirm: rateForm.requireConfirm,
+                scopeRates: [{ quotaProductId: sr.quotaProductId, salesPerQuota: sr.salesPerQuota }],
+                createdBy: currentUser.id,
+             });
+          });
+          await Promise.all(promises);
+        }
       }
       setShowRateForm(false);
       setEditingRate(null);
@@ -1031,6 +1057,31 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   </button>
                 </div>
                 <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                  {!editingRate && (
+                    <div className="mb-2">
+                      <label className="block text-sm font-bold text-gray-700 mb-2">โหมดของอัตราโควตา</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div onClick={() => setRatePoolMode('shared')} className={`border rounded-xl p-3 cursor-pointer transition-all ${ratePoolMode === 'shared' ? 'border-emerald-500 bg-emerald-50 shadow-sm ring-1 ring-emerald-500' : 'border-gray-200 hover:border-emerald-300 hover:bg-gray-50'}`}>
+                          <div className="font-bold text-gray-800 text-sm mb-1">โควตากองกลาง (Shared Pool)</div>
+                          <p className="text-xs text-gray-500">เลือกหลายสินค้า แชร์ยอดขายและโควตากองเดียวกัน (สร้าง 1 Rate รวม)</p>
+                        </div>
+                        <div onClick={() => setRatePoolMode('independent')} className={`border rounded-xl p-3 cursor-pointer transition-all ${ratePoolMode === 'independent' ? 'border-indigo-500 bg-indigo-50 shadow-sm ring-1 ring-indigo-500' : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'}`}>
+                          <div className="font-bold text-gray-800 text-sm mb-1">โควตาอิสระแยกชิ้น (Independent)</div>
+                          <p className="text-xs text-gray-500">เลือกหลายสินค้า กำหนดโควตาแยกกัน (สร้างแยก Rate ให้อัตโนมัติ)</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {editingRate && (
+                    <div className="mb-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800 flex gap-3">
+                      <div className="text-emerald-500 pt-0.5">ⓘ</div>
+                      <div>
+                        <strong>กำลังแก้ไขโควตากองกลาง (Shared Pool)</strong>
+                        <p className="mt-1">สินค้าที่เลือกทั้งหมดจะร่วมแชร์ยอดขายและโควตาจากถังเดียวกัน</p>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* 0. ชื่ออัตราโควตา */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">ชื่ออัตราโควตา</label>
@@ -1046,8 +1097,38 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   {/* 1. สินค้าและยอดขาย/โควตา — per-product rate table */}
                   <div className="bg-blue-50 rounded-lg p-3">
                     <label className="block text-sm font-medium text-gray-700 mb-1">สินค้าและยอดขาย/โควตา *</label>
+                    
+                    {(!editingRate && ratePoolMode === 'shared') && (
+                      <div className="mb-3 p-3 bg-white border rounded-lg">
+                        <label className="block text-sm text-gray-700 font-medium mb-1">ยอดขายกองกลาง (฿) / 1 โควตา</label>
+                        <input
+                          type="number"
+                          value={rateForm.salesPerQuota}
+                          onChange={e => setRateForm(prev => ({ ...prev, salesPerQuota: e.target.value }))}
+                          className="w-full border rounded px-3 py-2 text-sm"
+                          placeholder="เช่น 15000"
+                          min="1"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">สินค้าทุกชิ้นที่เลือกด้านล่าง จะแชร์เป้ายอดขายนี้ร่วมกัน</p>
+                      </div>
+                    )}
+                    
+                    {(editingRate) && (
+                      <div className="mb-3 p-3 bg-white border rounded-lg">
+                        <label className="block text-sm text-gray-700 font-medium mb-1">ยอดขายกองกลาง (฿) / 1 โควตา</label>
+                        <input
+                          type="number"
+                          value={rateForm.salesPerQuota}
+                          onChange={e => setRateForm(prev => ({ ...prev, salesPerQuota: e.target.value }))}
+                          className="w-full border rounded px-3 py-2 text-sm"
+                          placeholder="เช่น 15000"
+                          min="1"
+                        />
+                      </div>
+                    )}
+
                     {/* All products mode toggle */}
-                    {!editingRate && (
+                    {(!editingRate && ratePoolMode === 'shared') && (
                       <label className="flex items-center gap-2 cursor-pointer mb-2">
                         <input
                           type="checkbox"
@@ -1067,28 +1148,15 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                     )}
 
                     {allProductsMode && !editingRate ? (
-                      /* All products mode — single salesPerQuota input */
-                      <div>
-                        <p className="text-xs text-gray-500 mb-2">กำหนดยอดขาย (บาท) ต่อ 1 โควตา เท่ากันทุกสินค้า</p>
-                        <div className="bg-white rounded-lg border p-3">
-                          <div className="flex items-center gap-3">
-                            <label className="text-sm text-gray-600 whitespace-nowrap">ยอดขาย (฿) / 1 โควตา</label>
-                            <input
-                              type="number"
-                              value={allProductsSalesPerQuota}
-                              onChange={e => setAllProductsSalesPerQuota(e.target.value)}
-                              className="flex-1 border rounded px-3 py-2 text-sm text-right"
-                              placeholder="5000"
-                              min="1"
-                            />
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {activeQuotaProducts.map(qp => (
-                              <span key={qp.id} className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                                {qp.displayName}
-                              </span>
-                            ))}
-                          </div>
+                      /* All products mode — just show the selected products */
+                      <div className="bg-white rounded-lg border p-3">
+                        <p className="text-xs text-gray-500 mb-2">ระบบจะนำสินค้าโควตาทั้งหมดเข้าร่วมในถังเดียวกันโดยอัตโนมัติ</p>
+                        <div className="flex flex-wrap gap-1">
+                          {activeQuotaProducts.map(qp => (
+                            <span key={qp.id} className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                              {qp.displayName}
+                            </span>
+                          ))}
                         </div>
                       </div>
                     ) : (
@@ -1131,7 +1199,9 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                               <thead className="bg-gray-50">
                                 <tr>
                                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">สินค้า</th>
-                                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 w-40">ยอดขาย (฿) / 1 โควตา</th>
+                                  {(!editingRate && ratePoolMode === 'independent') && (
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 w-40">ยอดขาย (฿) / 1 โควตา</th>
+                                  )}
                                   <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 w-10"></th>
                                 </tr>
                               </thead>
@@ -1144,20 +1214,22 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                         <span className="font-medium text-gray-700">{qp?.displayName || `#${sr.quotaProductId}`}</span>
                                         {qp?.productSku && <span className="text-gray-400 text-xs ml-1">({qp.productSku})</span>}
                                       </td>
-                                      <td className="px-3 py-2">
-                                        <input
-                                          type="number"
-                                          value={sr.salesPerQuota}
-                                          onChange={e => {
-                                            const newRates = [...rateForm.scopeRates];
-                                            newRates[idx] = { ...newRates[idx], salesPerQuota: e.target.value };
-                                            setRateForm(prev => ({ ...prev, scopeRates: newRates }));
-                                          }}
-                                          className="w-full border rounded px-2 py-1 text-sm text-right"
-                                          placeholder="5000"
-                                          min="1"
-                                        />
-                                      </td>
+                                      {(!editingRate && ratePoolMode === 'independent') && (
+                                        <td className="px-3 py-2">
+                                          <input
+                                            type="number"
+                                            value={sr.salesPerQuota}
+                                            onChange={e => {
+                                              const newRates = [...rateForm.scopeRates];
+                                              newRates[idx] = { ...newRates[idx], salesPerQuota: e.target.value };
+                                              setRateForm(prev => ({ ...prev, scopeRates: newRates }));
+                                            }}
+                                            className="w-full border rounded px-2 py-1 text-sm text-right"
+                                            placeholder="5000"
+                                            min="1"
+                                          />
+                                        </td>
+                                      )}
                                       <td className="px-3 py-2 text-center">
                                         <button
                                           type="button"
@@ -1638,7 +1710,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                     <table className="w-full text-sm">
                       <thead className="bg-gradient-to-r from-gray-50 to-emerald-50/30 border-b">
                         <tr>
-                          {isConfirmMode && !isViewOnlyRole && (() => {
+                          {isConfirmMode && isSystemAdmin && (() => {
                             const unconfirmedUsers = rows.filter(s => !s.isConfirmed && !s.isBeforeUsageStart && (s.pendingAutoQuota ?? 0) > 0);
                             const allSelected = unconfirmedUsers.length > 0 && unconfirmedUsers.every(u => selectedUserIds.includes(u.userId));
                             return (
@@ -1682,7 +1754,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
                             return (
                               <tr key={row.userId} className="hover:bg-emerald-50/40 transition-colors even:bg-gray-50/50">
-                                {isConfirmMode && !isViewOnlyRole && (
+                                {isConfirmMode && isSystemAdmin && (
                                   <td className="px-3 py-3 text-center">
                                     {canCheck ? (
                                       <input
@@ -1778,7 +1850,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                         <Gift size={16} />
                                       </button>
                                     )}
-                                    {isSupervisor && (
+                                    {(isSupervisor || isSystemAdmin) && (
                                       <button
                                         onClick={() => {
                                           setTransferSource(row);
@@ -1800,7 +1872,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                     >
                                       <Eye size={16} />
                                     </button>
-                                    {!isViewOnlyRole && row.rateScheduleId && row.requireConfirm === 1 && !row.isBeforeUsageStart && (
+                                    {isSystemAdmin && row.rateScheduleId && row.requireConfirm === 1 && !row.isBeforeUsageStart && (
                                       <button
                                         disabled={bulkConfirming}
                                         onClick={async () => {
