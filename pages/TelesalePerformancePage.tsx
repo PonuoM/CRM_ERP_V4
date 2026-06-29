@@ -1,9 +1,48 @@
 import { useState, useEffect, useMemo } from 'react';
 import resolveApiBasePath from '@/utils/apiBasePath';
+import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
 
 // ==========================================
 // Interfaces
 // ==========================================
+interface DailyMetrics {
+    totalCalls: number;
+    connectedCalls: number;
+    talkedCalls: number;
+    missedCalls: number;
+    totalMinutes: number;
+    answerRate: number;
+    totalSales: number;
+    upsellSales: number;
+    cancelledSales: number;
+    returnedSales: number;
+    grossSales: number;
+    totalOrders: number;
+    upsellOrders: number;
+    grossOrders: number;
+    newCustOrders: number;
+    newCustSales: number;
+    coreCustOrders: number;
+    coreCustSales: number;
+    revivalCustOrders: number;
+    revivalCustSales: number;
+    bioSales: number;
+    fertilizerSales: number;
+    otherSales: number;
+}
+interface DailyRecord {
+    userId: number;
+    name: string;
+    team: string;
+    date: string;
+    metrics: DailyMetrics;
+}
+interface DailyFilterUser {
+    id: number;
+    name: string;
+    team: string;
+}
+
 interface Metrics {
     // Orders & Conversion
     totalOrders: number;
@@ -240,12 +279,47 @@ export default function TelesalePerformancePage() {
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
     // Daily KPI State (separate from monthly view)
-    const [dailyDate, setDailyDate] = useState(() => {
-        const today = new Date();
-        return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const [startDate, setStartDate] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 7);
+        return d.toISOString().split('T')[0];
     });
-    const [dailyData, setDailyData] = useState<PerformanceData | null>(null);
+    const [endDate, setEndDate] = useState(() => {
+        return new Date().toISOString().split('T')[0];
+    });
+    const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>([]);
+    const [dailyUsers, setDailyUsers] = useState<DailyFilterUser[]>([]);
     const [dailyLoading, setDailyLoading] = useState(false);
+    
+    // Filters
+    const [selectedTeam, setSelectedTeam] = useState<string>('all');
+    const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+    const [showUserDropdown, setShowUserDropdown] = useState(false);
+
+    // Column Visibility
+    const [visibleCols, setVisibleCols] = useState({
+        kpi_calls: true,
+        kpi_minutes: true,
+        kpi_connected: true,
+        kpi_talked: true,
+        kpi_missed: true,
+        kpi_answerRate: true,
+        kpi_newCust: true,
+        kpi_coreCust: true,
+        kpi_revivalCust: true,
+        kpi_upsell: true,
+        kpi_totalOrders: true,
+        kpi_totalSales: true,
+        kpi_closeRate: true,
+        
+        sales_gross: true,
+        sales_cancelled: true,
+        sales_returned: true,
+        sales_net: true,
+        sales_bio: true,
+        sales_fertilizer: true,
+        sales_other: true,
+    });
 
     // Target Modal State
     const [showTargetModal, setShowTargetModal] = useState(false);
@@ -303,14 +377,14 @@ export default function TelesalePerformancePage() {
         return () => clearTimeout(debounceTimer);
     }, [year, month]);
 
-    // Fetch Daily KPI Data (separate from monthly)
+    // Fetch Daily KPI Data
     useEffect(() => {
         const fetchDailyData = async () => {
             setDailyLoading(true);
             try {
                 const token = localStorage.getItem('authToken');
                 const API_BASE = resolveApiBasePath();
-                const url = `${API_BASE}/User_DB/telesale_performance.php?year=${year}&month=${month}&date=${dailyDate}`;
+                const url = `${API_BASE}/User_DB/telesale_daily_performance.php?start_date=${startDate}&end_date=${endDate}`;
 
                 const response = await fetch(url, {
                     headers: {
@@ -322,7 +396,8 @@ export default function TelesalePerformancePage() {
                 if (response.ok) {
                     const result = await response.json();
                     if (result.success) {
-                        setDailyData(result.data);
+                        setDailyRecords(result.data.dailyRecords);
+                        setDailyUsers(result.data.users);
                     }
                 }
             } catch (err) {
@@ -332,13 +407,76 @@ export default function TelesalePerformancePage() {
             }
         };
 
-        // Debounce daily fetch
         const debounceTimer = setTimeout(() => {
             fetchDailyData();
         }, 500);
 
         return () => clearTimeout(debounceTimer);
-    }, [dailyDate, year, month]);
+    }, [startDate, endDate]);
+
+    // Computed Daily Data
+    const filteredDailyRecords = useMemo(() => {
+        return dailyRecords.filter(r => {
+            const matchTeam = selectedTeam === 'all' || r.team === selectedTeam;
+            const matchUser = selectedUsers.length === 0 || selectedUsers.includes(r.userId.toString());
+            return matchTeam && matchUser;
+        }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || a.name.localeCompare(b.name));
+    }, [dailyRecords, selectedTeam, selectedUsers]);
+
+    const summaryDailyRecords = useMemo(() => {
+        const summary = new Map<number, DailyRecord>();
+        filteredDailyRecords.forEach(r => {
+            if (!summary.has(r.userId)) {
+                summary.set(r.userId, {
+                    userId: r.userId,
+                    name: r.name,
+                    team: r.team,
+                    date: 'สรุปรวม',
+                    metrics: {
+                        totalCalls: 0, connectedCalls: 0, talkedCalls: 0, missedCalls: 0, totalMinutes: 0, answerRate: 0,
+                        totalSales: 0, upsellSales: 0, cancelledSales: 0, returnedSales: 0, grossSales: 0,
+                        totalOrders: 0, upsellOrders: 0, grossOrders: 0,
+                        newCustOrders: 0, newCustSales: 0, coreCustOrders: 0, coreCustSales: 0, revivalCustOrders: 0, revivalCustSales: 0,
+                        bioSales: 0, fertilizerSales: 0, otherSales: 0,
+                    }
+                });
+            }
+            const s = summary.get(r.userId)!.metrics;
+            const m = r.metrics;
+            s.totalCalls += m.totalCalls;
+            s.connectedCalls += m.connectedCalls;
+            s.talkedCalls += m.talkedCalls;
+            s.missedCalls += m.missedCalls;
+            s.totalMinutes += m.totalMinutes;
+            s.totalSales += m.totalSales;
+            s.upsellSales += m.upsellSales;
+            s.cancelledSales += m.cancelledSales;
+            s.returnedSales += m.returnedSales;
+            s.grossSales += m.grossSales;
+            s.totalOrders += m.totalOrders;
+            s.upsellOrders += m.upsellOrders;
+            s.grossOrders += m.grossOrders;
+            s.newCustOrders += m.newCustOrders;
+            s.newCustSales += m.newCustSales;
+            s.coreCustOrders += m.coreCustOrders;
+            s.coreCustSales += m.coreCustSales;
+            s.revivalCustOrders += m.revivalCustOrders;
+            s.revivalCustSales += m.revivalCustSales;
+            s.bioSales += m.bioSales;
+            s.fertilizerSales += m.fertilizerSales;
+            s.otherSales += m.otherSales;
+        });
+        
+        // Recalculate rates
+        return Array.from(summary.values()).map(r => {
+            r.metrics.answerRate = r.metrics.totalCalls > 0 ? (r.metrics.connectedCalls / r.metrics.totalCalls) * 100 : 0;
+            return r;
+        });
+    }, [filteredDailyRecords]);
+
+    const availableTeams = useMemo(() => Array.from(new Set(dailyUsers.map(u => u.team))), [dailyUsers]);
+    const filteredUserDropdown = useMemo(() => dailyUsers.filter(u => selectedTeam === 'all' || u.team === selectedTeam), [dailyUsers, selectedTeam]);
+
 
     // Sorted telesale details
     const sortedDetails = useMemo(() => {
@@ -857,140 +995,307 @@ export default function TelesalePerformancePage() {
                 </div>
             </div>
 
-            {/* ================================================ */}
+                        {/* ================================================ */}
             {/* DAILY KPI TABLE - Separate Section */}
             {/* ================================================ */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <h2 className="text-lg font-bold text-gray-800">ตรวจสอบ KPI รายวัน</h2>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => {
-                                const d = new Date(dailyDate);
-                                d.setDate(d.getDate() - 1);
-                                setDailyDate(d.toISOString().split('T')[0]);
-                            }}
-                            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition-colors"
-                            title="วันก่อนหน้า"
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-8">
+                <div className="px-4 py-3 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-gray-50">
+                    <h2 className="text-lg font-bold text-gray-800">📊 ตรวจสอบ KPI & ยอดขายรายวัน</h2>
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                        <select
+                            value={selectedTeam}
+                            onChange={(e) => { setSelectedTeam(e.target.value); setSelectedUsers([]); }}
+                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500"
                         >
-                            ←
-                        </button>
-                        <input
-                            type="date"
-                            value={dailyDate}
-                            onChange={(e) => setDailyDate(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                        />
-                        <button
-                            onClick={() => {
-                                const d = new Date(dailyDate);
-                                d.setDate(d.getDate() + 1);
-                                setDailyDate(d.toISOString().split('T')[0]);
-                            }}
-                            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition-colors"
-                            title="วันถัดไป"
-                        >
-                            →
-                        </button>
+                            <option value="all">ทุกทีม</option>
+                            {availableTeams.map(t => (
+                                <option key={t} value={t}>{t}</option>
+                            ))}
+                        </select>
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowUserDropdown(!showUserDropdown)}
+                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 min-w-[160px] text-left flex justify-between items-center"
+                            >
+                                <span className="truncate max-w-[120px]">
+                                    {selectedUsers.length === 0 
+                                        ? "พนักงานทุกคน" 
+                                        : `เลือกแล้ว ${selectedUsers.length} คน`}
+                                </span>
+                                <span className="text-gray-400 text-xs">▼</span>
+                            </button>
+                            {showUserDropdown && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setShowUserDropdown(false)}></div>
+                                    <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                                        <div 
+                                            className="px-3 py-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer text-sm"
+                                            onClick={() => setSelectedUsers([])}
+                                        >
+                                            <label className="flex items-center gap-2 cursor-pointer w-full">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedUsers.length === 0} 
+                                                    readOnly 
+                                                    className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                />
+                                                <span>พนักงานทุกคน (All)</span>
+                                            </label>
+                                        </div>
+                                        {filteredUserDropdown.map(u => (
+                                            <div 
+                                                key={u.id}
+                                                className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                                onClick={() => {
+                                                    const idStr = u.id.toString();
+                                                    if (selectedUsers.includes(idStr)) {
+                                                        setSelectedUsers(prev => prev.filter(id => id !== idStr));
+                                                    } else {
+                                                        setSelectedUsers(prev => [...prev, idStr]);
+                                                    }
+                                                }}
+                                            >
+                                                <label className="flex items-center gap-2 cursor-pointer w-full">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedUsers.includes(u.id.toString())} 
+                                                        readOnly 
+                                                        className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                    />
+                                                    <span className="truncate">{u.name}</span>
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="w-64 bg-white">
+                            <UniversalDateRangePicker
+                                value={{ start: startDate, end: endDate }}
+                                onChange={(val) => {
+                                    setStartDate(val.start);
+                                    setEndDate(val.end);
+                                }}
+                            />
+                        </div>
+                    </div>
+                </div>
+                
+                {/* Column Toggles */}
+                <div className="p-3 bg-white border-b border-gray-200 text-xs">
+                    <div className="font-semibold text-gray-700 mb-2">ซ่อน/แสดง คอลัมน์ KPI:</div>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_calls} onChange={e => setVisibleCols(p => ({...p, kpi_calls: e.target.checked}))} /> สายที่โทร</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_minutes} onChange={e => setVisibleCols(p => ({...p, kpi_minutes: e.target.checked}))} /> นาที</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_connected} onChange={e => setVisibleCols(p => ({...p, kpi_connected: e.target.checked}))} /> รับสาย</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_talked} onChange={e => setVisibleCols(p => ({...p, kpi_talked: e.target.checked}))} /> ได้คุย(≥30s)</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_missed} onChange={e => setVisibleCols(p => ({...p, kpi_missed: e.target.checked}))} /> ไม่ได้รับ</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_answerRate} onChange={e => setVisibleCols(p => ({...p, kpi_answerRate: e.target.checked}))} /> %รับสาย</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_newCust} onChange={e => setVisibleCols(p => ({...p, kpi_newCust: e.target.checked}))} /> ลูกค้าใหม่</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_coreCust} onChange={e => setVisibleCols(p => ({...p, kpi_coreCust: e.target.checked}))} /> ลูกค้าเก่า</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_revivalCust} onChange={e => setVisibleCols(p => ({...p, kpi_revivalCust: e.target.checked}))} /> ลูกค้าขุด</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_upsell} onChange={e => setVisibleCols(p => ({...p, kpi_upsell: e.target.checked}))} /> Upsell</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_totalOrders} onChange={e => setVisibleCols(p => ({...p, kpi_totalOrders: e.target.checked}))} /> รวมออเดอร์</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_totalSales} onChange={e => setVisibleCols(p => ({...p, kpi_totalSales: e.target.checked}))} /> ยอดขายรวม</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_closeRate} onChange={e => setVisibleCols(p => ({...p, kpi_closeRate: e.target.checked}))} /> %ปิด</label>
+                    </div>
+                    
+                    <div className="font-semibold text-gray-700 mb-2">ซ่อน/แสดง คอลัมน์ ยอดขาย:</div>
+                    <div className="flex flex-wrap gap-2">
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.sales_gross} onChange={e => setVisibleCols(p => ({...p, sales_gross: e.target.checked}))} /> ยอดขายรวม (ก่อนหัก)</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.sales_cancelled} onChange={e => setVisibleCols(p => ({...p, sales_cancelled: e.target.checked}))} /> ยอดยกเลิก</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.sales_returned} onChange={e => setVisibleCols(p => ({...p, sales_returned: e.target.checked}))} /> ยอดตีกลับ</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.sales_net} onChange={e => setVisibleCols(p => ({...p, sales_net: e.target.checked}))} /> ยอดสุทธิ (Net)</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.sales_bio} onChange={e => setVisibleCols(p => ({...p, sales_bio: e.target.checked}))} /> ยอดชีวภัณฑ์</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.sales_fertilizer} onChange={e => setVisibleCols(p => ({...p, sales_fertilizer: e.target.checked}))} /> ยอดปุ๋ย</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.sales_other} onChange={e => setVisibleCols(p => ({...p, sales_other: e.target.checked}))} /> ยอดอื่นๆ</label>
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="p-4 bg-gray-50 border-b border-gray-200 text-sm font-semibold text-gray-700 flex justify-between">
+                    <span>1. สถิติการโทรรายวัน (Daily KPI)</span>
+                    <span className="text-gray-500 font-normal">ข้อมูลแบ่งตามวันที่และบุคคล</span>
+                </div>
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                     {dailyLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-                        </div>
+                        <div className="flex items-center justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div></div>
                     ) : (
                         <table className="w-full text-sm">
-                            <thead>
-                                <tr className="bg-gray-50 text-gray-700">
-                                    <th className="px-2 py-2 text-left font-medium" rowSpan={2}>#</th>
-                                    <th className="px-2 py-2 text-left font-medium" rowSpan={2}>ชื่อ</th>
-                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>สายที่โทร<br /><span className="text-xs text-gray-500 font-normal">ทั้งหมด</span></th>
-                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>นาทีที่โทร<br /><span className="text-xs text-gray-500 font-normal">ทั้งหมด</span></th>
-                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>รับสาย</th>
-                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap cursor-help" rowSpan={2} title="นับเฉพาะสายที่รับแล้วคุยได้ตั้งแต่ 30 วินาทีขึ้นไป">ได้คุย<br /><span className="text-xs text-gray-500 font-normal">(≥30 วินาที)</span></th>
-                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>ไม่ได้รับ</th>
-                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>%รับ</th>
-                                    {/* ลูกค้าใหม่ Group */}
-                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-green-100" colSpan={2}>ลูกค้าใหม่</th>
-                                    {/* ลูกค้าเก่า Group */}
-                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-blue-100" colSpan={2}>ลูกค้าเก่า</th>
-                                    {/* ลูกค้าขุด Group */}
-                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-orange-100" colSpan={2}>ลูกค้าขุด</th>
-                                    {/* Upsell Group */}
-                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-purple-100" colSpan={2}>Upsell</th>
-                                    {/* รวม */}
-                                    <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300" rowSpan={2}>รวม<br /><span className="text-xs text-gray-500 font-normal">ออเดอร์</span></th>
-                                    <th className="px-2 py-2 text-center font-medium" rowSpan={2}>ยอดขาย<br /><span className="text-xs text-gray-500 font-normal">รวม</span></th>
-                                    <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>% ปิด</th>
-                                </tr>
-                                <tr className="bg-gray-50 text-gray-600 text-xs">
-                                    {/* ลูกค้าใหม่ sub */}
-                                    <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-green-50">ออเดอร์</th>
-                                    <th className="px-1 py-1 text-center bg-green-50">ยอดขาย</th>
-                                    {/* ลูกค้าเก่า sub */}
-                                    <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-blue-50">ออเดอร์</th>
-                                    <th className="px-1 py-1 text-center bg-blue-50">ยอดขาย</th>
-                                    {/* ลูกค้าขุด sub */}
-                                    <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-orange-50">ออเดอร์</th>
-                                    <th className="px-1 py-1 text-center bg-orange-50">ยอดขาย</th>
-                                    {/* Upsell sub */}
-                                    <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-purple-50">ออเดอร์</th>
-                                    <th className="px-1 py-1 text-center bg-purple-50">ยอดขาย</th>
+                            <thead className="sticky top-0 z-10 shadow-sm">
+                                <tr className="bg-gray-100 text-gray-700">
+                                    <th className="px-2 py-2 text-left font-medium sticky left-0 bg-gray-100 border-r border-gray-200">วันที่</th>
+                                    <th className="px-2 py-2 text-left font-medium sticky left-[80px] bg-gray-100 border-r border-gray-200">ชื่อ</th>
+                                    {visibleCols.kpi_calls && <th className="px-2 py-2 text-center font-medium">สายที่โทร</th>}
+                                    {visibleCols.kpi_minutes && <th className="px-2 py-2 text-center font-medium">นาทีที่โทร</th>}
+                                    {visibleCols.kpi_connected && <th className="px-2 py-2 text-center font-medium">รับสาย</th>}
+                                    {visibleCols.kpi_talked && <th className="px-2 py-2 text-center font-medium">ได้คุย(≥30s)</th>}
+                                    {visibleCols.kpi_missed && <th className="px-2 py-2 text-center font-medium">ไม่ได้รับ</th>}
+                                    {visibleCols.kpi_answerRate && <th className="px-2 py-2 text-center font-medium">%รับ</th>}
+                                    
+                                    {visibleCols.kpi_newCust && <th className="px-2 py-2 text-center font-medium bg-green-50 border-l border-gray-200">ออเดอร์<br/>(ลค.ใหม่)</th>}
+                                    {visibleCols.kpi_coreCust && <th className="px-2 py-2 text-center font-medium bg-blue-50 border-l border-gray-200">ออเดอร์<br/>(ลค.เก่า)</th>}
+                                    {visibleCols.kpi_revivalCust && <th className="px-2 py-2 text-center font-medium bg-orange-50 border-l border-gray-200">ออเดอร์<br/>(ลค.ขุด)</th>}
+                                    {visibleCols.kpi_upsell && <th className="px-2 py-2 text-center font-medium bg-purple-50 border-l border-gray-200">ออเดอร์<br/>(Upsell)</th>}
+                                    
+                                    {visibleCols.kpi_totalOrders && <th className="px-2 py-2 text-center font-medium border-l border-gray-300">รวมออเดอร์</th>}
+                                    {visibleCols.kpi_totalSales && <th className="px-2 py-2 text-center font-medium">ยอดขายรวม</th>}
+                                    {visibleCols.kpi_closeRate && <th className="px-2 py-2 text-center font-medium">% ปิด</th>}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {dailyData?.telesaleDetails.map((ts, idx) => {
+                                {filteredDailyRecords.map((ts, idx) => {
                                     const totalOrders = ts.metrics.newCustOrders + ts.metrics.coreCustOrders + ts.metrics.revivalCustOrders + ts.metrics.upsellOrders;
-                                    const closeRate = ts.metrics.totalCalls > 0
-                                        ? ((totalOrders / ts.metrics.totalCalls) * 100).toFixed(1)
-                                        : '0.0';
+                                    const combinedSales = ts.metrics.newCustSales + ts.metrics.coreCustSales + ts.metrics.revivalCustSales + ts.metrics.upsellSales;
+                                    const closeRate = ts.metrics.totalCalls > 0 ? ((totalOrders / ts.metrics.totalCalls) * 100).toFixed(1) : '0.0';
                                     return (
-                                        <tr key={ts.userId} className="hover:bg-gray-50">
-                                            <td className="px-2 py-2 text-gray-500">{idx + 1}</td>
-                                            <td className="px-2 py-2 font-medium text-gray-800">{ts.name}</td>
-                                            <td className="px-2 py-2 text-center">{ts.metrics.totalCalls || '-'}</td>
-                                            <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes > 0 ? ts.metrics.totalMinutes.toFixed(0) : '-'}</td>
-                                            <td className="px-2 py-2 text-center text-emerald-600">{ts.metrics.connectedCalls || '-'}</td>
-                                            <td className="px-2 py-2 text-center">{ts.metrics.talkedCalls || '-'}</td>
-                                            <td className="px-2 py-2 text-center text-red-500">{ts.metrics.missedCalls || '-'}</td>
-                                            <td className="px-2 py-2 text-center">{ts.metrics.answerRate != null ? `${ts.metrics.answerRate}%` : '-'}</td>
-                                            {/* ลูกค้าใหม่ */}
-                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-green-50/30">{ts.metrics.newCustOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center bg-green-50/30 text-green-700">{ts.metrics.newCustSales > 0 ? `${formatMoney(ts.metrics.newCustSales)}` : '-'}</td>
-                                            {/* ลูกค้าเก่า */}
-                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-blue-50/30">{ts.metrics.coreCustOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center bg-blue-50/30 text-blue-700">{ts.metrics.coreCustSales > 0 ? `${formatMoney(ts.metrics.coreCustSales)}` : '-'}</td>
-                                            {/* ลูกค้าขุด */}
-                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-orange-50/30">{ts.metrics.revivalCustOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center bg-orange-50/30 text-orange-700">{ts.metrics.revivalCustSales > 0 ? `${formatMoney(ts.metrics.revivalCustSales)}` : '-'}</td>
-                                            {/* Upsell */}
-                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-purple-50/30">{ts.metrics.upsellOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center bg-purple-50/30 text-purple-700">{ts.metrics.upsellSales > 0 ? `${formatMoney(ts.metrics.upsellSales)}` : '-'}</td>
-                                            {/* รวม */}
-                                            <td className="px-2 py-2 text-center border-l-2 border-gray-200 font-bold">{totalOrders || '-'}</td>
-                                            <td className="px-2 py-2 text-center font-medium text-green-600">{ts.metrics.combinedSales > 0 ? `${formatMoney(ts.metrics.combinedSales)}` : '-'}</td>
-                                            <td className={`px-2 py-2 text-center font-medium ${parseFloat(closeRate) >= 5 ? 'text-green-600' :
-                                                parseFloat(closeRate) >= 2 ? 'text-yellow-600' :
-                                                    'text-red-600'
-                                                }`}>{parseFloat(closeRate) > 0 ? `${closeRate}%` : '-'}</td>
+                                        <tr key={`${ts.userId}-${ts.date}`} className="hover:bg-gray-50 bg-white">
+                                            <td className="px-2 py-2 text-gray-700 whitespace-nowrap sticky left-0 bg-white border-r border-gray-100">{ts.date}</td>
+                                            <td className="px-2 py-2 font-medium text-gray-800 whitespace-nowrap sticky left-[80px] bg-white border-r border-gray-100">{ts.name}</td>
+                                            {visibleCols.kpi_calls && <td className="px-2 py-2 text-center">{ts.metrics.totalCalls || '-'}</td>}
+                                            {visibleCols.kpi_minutes && <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes > 0 ? ts.metrics.totalMinutes.toFixed(0) : '-'}</td>}
+                                            {visibleCols.kpi_connected && <td className="px-2 py-2 text-center text-emerald-600">{ts.metrics.connectedCalls || '-'}</td>}
+                                            {visibleCols.kpi_talked && <td className="px-2 py-2 text-center">{ts.metrics.talkedCalls || '-'}</td>}
+                                            {visibleCols.kpi_missed && <td className="px-2 py-2 text-center text-red-500">{ts.metrics.missedCalls || '-'}</td>}
+                                            {visibleCols.kpi_answerRate && <td className="px-2 py-2 text-center">{ts.metrics.answerRate != null ? `${ts.metrics.answerRate.toFixed(1)}%` : '-'}</td>}
+                                            
+                                            {visibleCols.kpi_newCust && <td className="px-2 py-2 text-center bg-green-50/20 border-l border-gray-100">{ts.metrics.newCustOrders || '-'}</td>}
+                                            {visibleCols.kpi_coreCust && <td className="px-2 py-2 text-center bg-blue-50/20 border-l border-gray-100">{ts.metrics.coreCustOrders || '-'}</td>}
+                                            {visibleCols.kpi_revivalCust && <td className="px-2 py-2 text-center bg-orange-50/20 border-l border-gray-100">{ts.metrics.revivalCustOrders || '-'}</td>}
+                                            {visibleCols.kpi_upsell && <td className="px-2 py-2 text-center bg-purple-50/20 border-l border-gray-100">{ts.metrics.upsellOrders || '-'}</td>}
+                                            
+                                            {visibleCols.kpi_totalOrders && <td className="px-2 py-2 text-center border-l border-gray-200 font-bold">{totalOrders || '-'}</td>}
+                                            {visibleCols.kpi_totalSales && <td className="px-2 py-2 text-center font-medium text-green-600">{combinedSales > 0 ? formatNumber(combinedSales) : '-'}</td>}
+                                            {visibleCols.kpi_closeRate && <td className={`px-2 py-2 text-center font-medium ${parseFloat(closeRate) >= 5 ? 'text-green-600' : parseFloat(closeRate) >= 2 ? 'text-yellow-600' : 'text-red-600'}`}>{parseFloat(closeRate) > 0 ? `${closeRate}%` : '-'}</td>}
                                         </tr>
                                     );
                                 })}
-                                {(!dailyData || dailyData.telesaleDetails.length === 0) && (
-                                    <tr>
-                                        <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
-                                            ไม่มีข้อมูลสำหรับวันที่เลือก
-                                        </td>
-                                    </tr>
-                                )}
+                            </tbody>
+                            <thead className="bg-gray-100 text-gray-700 shadow-sm border-t-2 border-gray-300">
+                                <tr>
+                                    <th className="px-2 py-2 text-left font-medium sticky left-0 bg-gray-100 border-r border-gray-200">สรุปรวม</th>
+                                    <th className="px-2 py-2 text-left font-medium sticky left-[80px] bg-gray-100 border-r border-gray-200">ตามพนักงาน</th>
+                                    {visibleCols.kpi_calls && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_minutes && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_connected && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_talked && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_missed && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_answerRate && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_newCust && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_coreCust && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_revivalCust && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_upsell && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_totalOrders && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_totalSales && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_closeRate && <th className="px-2 py-2 text-center"></th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 bg-blue-50/30">
+                                {summaryDailyRecords.map((ts, idx) => {
+                                    const totalOrders = ts.metrics.newCustOrders + ts.metrics.coreCustOrders + ts.metrics.revivalCustOrders + ts.metrics.upsellOrders;
+                                    const combinedSales = ts.metrics.newCustSales + ts.metrics.coreCustSales + ts.metrics.revivalCustSales + ts.metrics.upsellSales;
+                                    const closeRate = ts.metrics.totalCalls > 0 ? ((totalOrders / ts.metrics.totalCalls) * 100).toFixed(1) : '0.0';
+                                    return (
+                                        <tr key={`sum-${ts.userId}`} className="font-semibold text-gray-800">
+                                            <td className="px-2 py-2 sticky left-0 bg-blue-50 border-r border-blue-100">{ts.date}</td>
+                                            <td className="px-2 py-2 sticky left-[80px] bg-blue-50 border-r border-blue-100">{ts.name}</td>
+                                            {visibleCols.kpi_calls && <td className="px-2 py-2 text-center">{ts.metrics.totalCalls || '-'}</td>}
+                                            {visibleCols.kpi_minutes && <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes > 0 ? ts.metrics.totalMinutes.toFixed(0) : '-'}</td>}
+                                            {visibleCols.kpi_connected && <td className="px-2 py-2 text-center text-emerald-600">{ts.metrics.connectedCalls || '-'}</td>}
+                                            {visibleCols.kpi_talked && <td className="px-2 py-2 text-center">{ts.metrics.talkedCalls || '-'}</td>}
+                                            {visibleCols.kpi_missed && <td className="px-2 py-2 text-center text-red-500">{ts.metrics.missedCalls || '-'}</td>}
+                                            {visibleCols.kpi_answerRate && <td className="px-2 py-2 text-center">{ts.metrics.answerRate != null ? `${ts.metrics.answerRate.toFixed(1)}%` : '-'}</td>}
+                                            {visibleCols.kpi_newCust && <td className="px-2 py-2 text-center border-l border-gray-100">{ts.metrics.newCustOrders || '-'}</td>}
+                                            {visibleCols.kpi_coreCust && <td className="px-2 py-2 text-center border-l border-gray-100">{ts.metrics.coreCustOrders || '-'}</td>}
+                                            {visibleCols.kpi_revivalCust && <td className="px-2 py-2 text-center border-l border-gray-100">{ts.metrics.revivalCustOrders || '-'}</td>}
+                                            {visibleCols.kpi_upsell && <td className="px-2 py-2 text-center border-l border-gray-100">{ts.metrics.upsellOrders || '-'}</td>}
+                                            {visibleCols.kpi_totalOrders && <td className="px-2 py-2 text-center border-l border-gray-200 text-blue-700">{totalOrders || '-'}</td>}
+                                            {visibleCols.kpi_totalSales && <td className="px-2 py-2 text-center text-green-700">{combinedSales > 0 ? formatNumber(combinedSales) : '-'}</td>}
+                                            {visibleCols.kpi_closeRate && <td className={`px-2 py-2 text-center ${parseFloat(closeRate) >= 5 ? 'text-green-700' : 'text-blue-700'}`}>{parseFloat(closeRate) > 0 ? `${closeRate}%` : '-'}</td>}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+
+                {/* Sales Section */}
+                <div className="p-4 bg-gray-50 border-y border-gray-200 text-sm font-semibold text-gray-700 flex justify-between mt-4">
+                    <span>2. ยอดขายรายวัน (Daily Sales)</span>
+                    <span className="text-gray-500 font-normal">ข้อมูลยอดขายและการหักยกเลิก/ตีกลับ</span>
+                </div>
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto pb-4">
+                    {dailyLoading ? (
+                        <div className="flex items-center justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div></div>
+                    ) : (
+                        <table className="w-full text-sm">
+                            <thead className="sticky top-0 z-10 shadow-sm">
+                                <tr className="bg-gray-100 text-gray-700">
+                                    <th className="px-2 py-2 text-left font-medium sticky left-0 bg-gray-100 border-r border-gray-200">วันที่</th>
+                                    <th className="px-2 py-2 text-left font-medium sticky left-[80px] bg-gray-100 border-r border-gray-200">ชื่อ</th>
+                                    {visibleCols.sales_gross && <th className="px-2 py-2 text-right font-medium">ยอดขายรวม (ตั้งต้น)</th>}
+                                    {visibleCols.sales_cancelled && <th className="px-2 py-2 text-right font-medium text-red-600">ยอดยกเลิก</th>}
+                                    {visibleCols.sales_returned && <th className="px-2 py-2 text-right font-medium text-orange-600">ยอดตีกลับ</th>}
+                                    {visibleCols.sales_net && <th className="px-2 py-2 text-right font-bold text-green-700 border-l-2 border-gray-300">ยอดสุทธิ (Net)</th>}
+                                    {visibleCols.sales_bio && <th className="px-2 py-2 text-right font-medium border-l border-gray-200">ยอดชีวภัณฑ์</th>}
+                                    {visibleCols.sales_fertilizer && <th className="px-2 py-2 text-right font-medium">ยอดปุ๋ย</th>}
+                                    {visibleCols.sales_other && <th className="px-2 py-2 text-right font-medium">ยอดอื่นๆ</th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {filteredDailyRecords.map((ts, idx) => {
+                                    const netSales = ts.metrics.grossSales - ts.metrics.cancelledSales - ts.metrics.returnedSales;
+                                    return (
+                                        <tr key={`sales-${ts.userId}-${ts.date}`} className="hover:bg-gray-50 bg-white">
+                                            <td className="px-2 py-2 text-gray-700 whitespace-nowrap sticky left-0 bg-white border-r border-gray-100">{ts.date}</td>
+                                            <td className="px-2 py-2 font-medium text-gray-800 whitespace-nowrap sticky left-[80px] bg-white border-r border-gray-100">{ts.name}</td>
+                                            {visibleCols.sales_gross && <td className="px-2 py-2 text-right">{ts.metrics.grossSales > 0 ? formatNumber(ts.metrics.grossSales) : '-'}</td>}
+                                            {visibleCols.sales_cancelled && <td className="px-2 py-2 text-right text-red-500">{ts.metrics.cancelledSales > 0 ? `-${formatNumber(ts.metrics.cancelledSales)}` : '-'}</td>}
+                                            {visibleCols.sales_returned && <td className="px-2 py-2 text-right text-orange-500">{ts.metrics.returnedSales > 0 ? `-${formatNumber(ts.metrics.returnedSales)}` : '-'}</td>}
+                                            {visibleCols.sales_net && <td className="px-2 py-2 text-right font-bold text-green-600 border-l-2 border-gray-100">{formatNumber(netSales)}</td>}
+                                            {visibleCols.sales_bio && <td className="px-2 py-2 text-right text-gray-700 border-l border-gray-100">{ts.metrics.bioSales > 0 ? formatNumber(ts.metrics.bioSales) : '-'}</td>}
+                                            {visibleCols.sales_fertilizer && <td className="px-2 py-2 text-right text-gray-700">{ts.metrics.fertilizerSales > 0 ? formatNumber(ts.metrics.fertilizerSales) : '-'}</td>}
+                                            {visibleCols.sales_other && <td className="px-2 py-2 text-right text-gray-700">{ts.metrics.otherSales > 0 ? formatNumber(ts.metrics.otherSales) : '-'}</td>}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                            <thead className="bg-gray-100 text-gray-700 shadow-sm border-t-2 border-gray-300">
+                                <tr>
+                                    <th className="px-2 py-2 text-left font-medium sticky left-0 bg-gray-100 border-r border-gray-200">สรุปรวม</th>
+                                    <th className="px-2 py-2 text-left font-medium sticky left-[80px] bg-gray-100 border-r border-gray-200">ตามพนักงาน</th>
+                                    {visibleCols.sales_gross && <th className="px-2 py-2 text-right"></th>}
+                                    {visibleCols.sales_cancelled && <th className="px-2 py-2 text-right"></th>}
+                                    {visibleCols.sales_returned && <th className="px-2 py-2 text-right"></th>}
+                                    {visibleCols.sales_net && <th className="px-2 py-2 text-right border-l-2 border-gray-300"></th>}
+                                    {visibleCols.sales_bio && <th className="px-2 py-2 text-right border-l border-gray-200"></th>}
+                                    {visibleCols.sales_fertilizer && <th className="px-2 py-2 text-right"></th>}
+                                    {visibleCols.sales_other && <th className="px-2 py-2 text-right"></th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 bg-green-50/30">
+                                {summaryDailyRecords.map((ts, idx) => {
+                                    const netSales = ts.metrics.grossSales - ts.metrics.cancelledSales - ts.metrics.returnedSales;
+                                    return (
+                                        <tr key={`sums-${ts.userId}`} className="font-semibold text-gray-800">
+                                            <td className="px-2 py-2 sticky left-0 bg-green-50 border-r border-green-100">{ts.date}</td>
+                                            <td className="px-2 py-2 sticky left-[80px] bg-green-50 border-r border-green-100">{ts.name}</td>
+                                            {visibleCols.sales_gross && <td className="px-2 py-2 text-right">{formatNumber(ts.metrics.grossSales)}</td>}
+                                            {visibleCols.sales_cancelled && <td className="px-2 py-2 text-right text-red-600">{ts.metrics.cancelledSales > 0 ? `-${formatNumber(ts.metrics.cancelledSales)}` : '-'}</td>}
+                                            {visibleCols.sales_returned && <td className="px-2 py-2 text-right text-orange-600">{ts.metrics.returnedSales > 0 ? `-${formatNumber(ts.metrics.returnedSales)}` : '-'}</td>}
+                                            {visibleCols.sales_net && <td className="px-2 py-2 text-right text-green-700 border-l-2 border-gray-200 font-bold">{formatNumber(netSales)}</td>}
+                                            {visibleCols.sales_bio && <td className="px-2 py-2 text-right text-gray-800 border-l border-gray-200">{ts.metrics.bioSales > 0 ? formatNumber(ts.metrics.bioSales) : '-'}</td>}
+                                            {visibleCols.sales_fertilizer && <td className="px-2 py-2 text-right text-gray-800">{ts.metrics.fertilizerSales > 0 ? formatNumber(ts.metrics.fertilizerSales) : '-'}</td>}
+                                            {visibleCols.sales_other && <td className="px-2 py-2 text-right text-gray-800">{ts.metrics.otherSales > 0 ? formatNumber(ts.metrics.otherSales) : '-'}</td>}
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     )}
                 </div>
             </div>
-
             {/* Target Modal */}
             {showTargetModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowTargetModal(false)}>
