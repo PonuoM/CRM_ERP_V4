@@ -180,7 +180,7 @@ PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื
   - Click outside → auto close (ref + mousedown listener)
   - State: `rateSelectorOpen` + `rateSelectorRef`
 - **Pending counts:** pre-loaded `⏳ N รอยืนยัน` badge ใน dropdown options
-- **Checkbox + Bulk confirm / Individual confirm:** แสดงเฉพาะ confirm mode + require_confirm=1 (สำหรับผู้ที่มีสิทธิ์ `is_system = 1` เท่านั้น)
+- **Checkbox + Bulk confirm / Individual confirm:** แสดงเฉพาะ confirm mode + require_confirm=1 (สงวนสิทธิ์ให้ผู้ที่มี `is_system = 1` เท่านั้นที่จะเห็นปุ่มและกดยืนยันได้)
 - **Allocation modal:** เลือกสินค้าเอง (checkbox "สินค้าทั้งหมด" default ติ๊ก / เอาติ๊กออก → toggle ทีละตัว) + จำนวนต่อสินค้า + วันเริ่ม/หมดอายุ + หมายเหตุ + สรุปจำนวนแถว (ไม่ส่ง periodStart/periodEnd)
 - **Breakdown modal (👁️):** ประวัติโควตา แสดงรายละเอียดแยกตาม rate + แสดงชื่อสินค้า (`[Product Name]`) และชื่อ Rate อ้างอิงเพื่อป้องกันการสับสนว่าเป็นข้อมูลซ้ำซ้อน
 - **Snapshot ยอดขาย (Audit):** ในโหมดรอยืนยัน เมื่อกดยืนยันโควตา ระบบจะดึงยอดขาย ณ เสี้ยววินาทีนั้นมาเก็บใน `sales_at_allocation` และแสดงตัวเลข `(ยืนยัน: ฿xxx,xxx)` สีเขียวใต้ยอดขาย Real-time ในตารางหลัก + ประวัติ Modal
