@@ -116,7 +116,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
         q: searchTerm.trim(),
         companyId: companyId,
         pageSize: 100, // Reasonable limit for search results
-        excludeBlocked: true,
+        excludeBlocked: false,
       });
 
       const foundCustomers = (response.data || []).map((c: any) => mapCustomerFromApi(c));
@@ -327,11 +327,23 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                 <li
                   key={customer.id}
                   onClick={() => handleSelectCustomer(customer)}
-                  className="p-3 hover:bg-blue-50 rounded-lg cursor-pointer border flex justify-between items-center"
+                  className={`p-3 rounded-lg cursor-pointer border flex justify-between items-center ${
+                    customer.isBlocked
+                      ? "bg-red-50 hover:bg-red-100 border-red-200"
+                      : "hover:bg-blue-50"
+                  }`}
                 >
                   <div>
-                    <p className="font-bold text-blue-700" style={{ color: "#000000" }}>
+                    <p
+                      className="font-bold text-blue-700"
+                      style={{ color: customer.isBlocked ? "#b91c1c" : "#000000" }}
+                    >
                       {`${customer.firstName} ${customer.lastName}`}
+                      {customer.isBlocked && (
+                        <span className="ml-2 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">
+                          ถูกบล็อค
+                        </span>
+                      )}
                     </p>
                     <p className="text-sm text-gray-600" style={{ color: "#000000" }}>
                       {customer.phone}
@@ -351,6 +363,21 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
         {/* Search Result */}
         {customerDetails && selectedCustomer ? (
           <div className="mt-6">
+            {customerDetails.isBlocked && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-xl shadow-sm">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <span className="text-red-600 font-bold text-lg flex items-center gap-2">
+                      ⚠️ ลูกค้าคนนี้ถูกระงับการติดต่อ (บล็อค)
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2 text-sm text-red-700 font-semibold">
+                  เหตุผลการบล็อค: <span className="font-bold text-red-900 underline">{customerDetails.blockReason || "ไม่ระบุเหตุผล"}</span>
+                </div>
+              </div>
+            )}
+
             {/* Customer Card */}
             <div className="bg-white p-6 rounded-2xl shadow-lg mb-6 flex justify-between items-start">
               <div className="flex items-center">

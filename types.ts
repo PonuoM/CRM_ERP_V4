@@ -425,6 +425,7 @@ export interface Customer {
   isInWaitingBasket?: boolean; // อยู่ในตะกร้ารอ 30 วันหรือไม่
   waitingBasketStartDate?: string; // วันที่เริ่มต้นในตะกร้ารอ
   isBlocked?: boolean; // ระงับการใช้งานหรือไม่
+  blockReason?: string; // เหตุผลที่บล็อค
   isUpsellEligible?: boolean; // Eligible for upsell (has Pending order by others)
   firstOrderDate?: string; // วันที่สั่งซื้อครั้งแรก
   lastOrderDate?: string; // วันที่สั่งซื้อล่าสุด

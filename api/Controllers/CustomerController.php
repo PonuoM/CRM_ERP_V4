@@ -1013,7 +1013,8 @@ function handle_customers(PDO $pdo, ?string $id): void
                             street, subdistrict, district, postal_code, recipient_first_name, recipient_last_name, recipient_phone,
                             backup_phone, email, follow_up_date, total_calls,
                             is_in_waiting_basket, waiting_basket_start_date, is_blocked,
-                            (SELECT basket_name FROM basket_config WHERE id = customers.current_basket_key) AS basket_name";
+                            (SELECT basket_name FROM basket_config WHERE id = customers.current_basket_key) AS basket_name,
+                            (SELECT reason FROM customer_blocks WHERE customer_id = CAST(customers.customer_id AS CHAR) AND active = 1 ORDER BY id DESC LIMIT 1) AS block_reason";
                         $sql = "SELECT $neededCols FROM customers WHERE $whereSql ORDER BY $orderBy";
 
                         if ($page) {
