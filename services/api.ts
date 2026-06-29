@@ -492,6 +492,38 @@ export async function listPromotions(companyId?: number) {
   return apiFetch(`promotions${companyId ? `?${qs}` : ""}`);
 }
 
+export async function listPriceAnnouncements(month: string, productId?: number) {
+  const qs = new URLSearchParams({ month });
+  if (productId) qs.set("product_id", String(productId));
+  return apiFetch(`price_announcements?${qs}`);
+}
+
+export async function getPriceAnnouncement(id: number) {
+  return apiFetch(`price_announcements/${id}`);
+}
+
+export async function createPriceAnnouncement(payload: any) {
+  return apiFetch(`price_announcements`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updatePriceAnnouncement(id: number, payload: any) {
+  return apiFetch(`price_announcements/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deletePriceAnnouncement(id: number) {
+  return apiFetch(`price_announcements/${id}`, { method: "DELETE" });
+}
+
+export async function listRoles() {
+  return apiFetch(`roles`);
+}
+
 
 export async function createProduct(payload: any) {
   return apiFetch("products", {

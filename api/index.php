@@ -59,6 +59,10 @@ try {
             require_once __DIR__ . '/Controllers/PromotionController.php';
             handle_promotions($pdo, $id);
             break;
+        case 'price_announcements':
+            require_once __DIR__ . '/Controllers/PriceAnnouncementController.php';
+            handle_price_announcements($pdo, $id);
+            break;
         case 'finance_approval_counts':
             require_once __DIR__ . '/Controllers/PromotionController.php';
             handle_finance_approval_counts($pdo);

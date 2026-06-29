@@ -107,6 +107,7 @@ import CustomerDistributionPage from "./pages/CustomerDistributionPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import RandomEmployeePage from "./pages/RandomEmployeePage";
 import ProductManagementPage from "./pages/ProductManagementPage";
+import PriceAnnouncementPage from "./pages/PriceAnnouncementPage";
 import QuotaSettingsPage from "./pages/QuotaSettingsPage";
 import TelesaleSummaryDashboard from "./pages/TelesaleSummaryDashboard";
 import PancakeUserIntegrationPage from "./pages/PancakeUserIntegrationPage";
@@ -6759,6 +6760,16 @@ const App: React.FC = () => {
           openModal={openModal}
           currentUser={currentUser}
           allCompanies={companies}
+        />
+      );
+    }
+    if (activePage === "Price Announcements") {
+      return (
+        <PriceAnnouncementPage
+          products={companyProducts}
+          allCompanies={companies}
+          currentUser={currentUser}
+          canEdit={isSuperAdmin || !!rolePermissions?.["marketing.price_announcements"]?.use}
         />
       );
     }
