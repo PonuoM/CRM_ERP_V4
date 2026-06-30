@@ -840,7 +840,9 @@ export interface PriceAnnouncementTier {
   id?: number;
   quantity: number;
   new_total_price: number;
+  new_unit_price?: number | null; // manual override; falls back to new_total_price / quantity when null
   old_total_price?: number | null; // resolved by API from previous month, read-only
+  old_unit_price?: number | null; // resolved by API from previous month, read-only
   notes: string[];
 }
 

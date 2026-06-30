@@ -20,9 +20,14 @@ interface PriceAnnouncementModalProps {
 
 type LocalTier = PriceAnnouncementTier & {
   localId: number;
+  // Once the unit price has been typed directly, stop auto-recomputing it from total/quantity.
+  unitPriceManual?: boolean;
   // Snapshot of the value at copy/load time, used to highlight edited rows.
-  original?: { quantity: number; new_total_price: number };
+  original?: { quantity: number; new_total_price: number; new_unit_price: number | null };
 };
+
+const computeUnitPrice = (totalPrice: number, quantity: number): number | null =>
+  quantity ? Math.round((totalPrice / quantity) * 100) / 100 : null;
 
 type LocalDiscountTier = PriceAnnouncementDiscountTier & {
   localId: number;
@@ -89,12 +94,18 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       setGeneralNotes(source.general_notes || '');
       // Drop server-assigned ids when copying so they're treated as brand-new rows on submit.
       setTiers(
-        source.tiers.map((t) => ({
-          ...t,
-          id: announcement ? t.id : undefined,
-          localId: Date.now() + Math.random(),
-          original: { quantity: t.quantity, new_total_price: t.new_total_price },
-        }))
+        source.tiers.map((t) => {
+          const unitPrice = t.new_unit_price ?? computeUnitPrice(t.new_total_price, t.quantity);
+          return {
+            ...t,
+            id: announcement ? t.id : undefined,
+            localId: Date.now() + Math.random(),
+            new_unit_price: unitPrice,
+            // An explicit stored override stays locked; a derived value keeps auto-syncing with total/qty.
+            unitPriceManual: t.new_unit_price != null,
+            original: { quantity: t.quantity, new_total_price: t.new_total_price, new_unit_price: unitPrice },
+          };
+        })
       );
       setDiscountTiers(
         (source.discount_tiers || []).map((dt) => ({
@@ -130,7 +141,10 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       setError('กรุณากรอกจำนวนและราคาใหม่');
       return;
     }
-    setTiers((prev) => [...prev, { localId: Date.now() + Math.random(), quantity, new_total_price: price, notes: [] }]);
+    setTiers((prev) => [
+      ...prev,
+      { localId: Date.now() + Math.random(), quantity, new_total_price: price, new_unit_price: computeUnitPrice(price, quantity), notes: [] },
+    ]);
     setTierForm({ quantity: '', new_total_price: '' });
     setError('');
   };
@@ -139,16 +153,42 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
 
   const updateTierQuantity = (localId: number, value: string) => {
     const quantity = parseInt(value, 10);
-    setTiers((prev) => prev.map((t) => (t.localId === localId ? { ...t, quantity: isNaN(quantity) ? 0 : quantity } : t)));
+    setTiers((prev) =>
+      prev.map((t) => {
+        if (t.localId !== localId) return t;
+        const q = isNaN(quantity) ? 0 : quantity;
+        return { ...t, quantity: q, new_unit_price: t.unitPriceManual ? t.new_unit_price : computeUnitPrice(t.new_total_price, q) };
+      })
+    );
   };
 
   const updateTierPrice = (localId: number, value: string) => {
     const price = parseFloat(value);
-    setTiers((prev) => prev.map((t) => (t.localId === localId ? { ...t, new_total_price: isNaN(price) ? 0 : price } : t)));
+    setTiers((prev) =>
+      prev.map((t) => {
+        if (t.localId !== localId) return t;
+        const p = isNaN(price) ? 0 : price;
+        return { ...t, new_total_price: p, new_unit_price: t.unitPriceManual ? t.new_unit_price : computeUnitPrice(p, t.quantity) };
+      })
+    );
+  };
+
+  const updateTierUnitPrice = (localId: number, value: string) => {
+    if (value === '') {
+      setTiers((prev) => prev.map((t) => (t.localId === localId ? { ...t, new_unit_price: null, unitPriceManual: true } : t)));
+      return;
+    }
+    const price = parseFloat(value);
+    setTiers((prev) =>
+      prev.map((t) => (t.localId === localId ? { ...t, new_unit_price: isNaN(price) ? null : price, unitPriceManual: true } : t))
+    );
   };
 
   const isTierChanged = (t: LocalTier) =>
-    !!t.original && (t.original.quantity !== t.quantity || t.original.new_total_price !== t.new_total_price);
+    !!t.original &&
+    (t.original.quantity !== t.quantity ||
+      t.original.new_total_price !== t.new_total_price ||
+      (t.original.new_unit_price ?? null) !== (t.new_unit_price ?? null));
 
   const addTierNote = (localId: number) => {
     const text = (noteDraft[localId] || '').trim();
@@ -236,7 +276,17 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
         month: `${month}-01`,
         title: title || null,
         general_notes: generalNotes || null,
-        tiers: tiers.map((t) => ({ quantity: t.quantity, new_total_price: t.new_total_price, notes: t.notes })),
+        tiers: tiers.map((t) => {
+          // Flush any note still sitting in the draft input (typed but never confirmed with "+")
+          // so it isn't silently lost on save.
+          const pendingNote = (noteDraft[t.localId] || '').trim();
+          return {
+            quantity: t.quantity,
+            new_total_price: t.new_total_price,
+            new_unit_price: t.new_unit_price,
+            notes: pendingNote ? [...t.notes, pendingNote] : t.notes,
+          };
+        }),
         discount_tiers: discountEnabled
           ? discountTiers.map((dt) => ({
               min_amount: dt.min_amount,
@@ -244,7 +294,9 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
               transfer_discount_pct: dt.transfer_discount_pct,
             }))
           : [],
-        discount_notes: discountEnabled ? discountNotes : [],
+        discount_notes: discountEnabled
+          ? (discountNoteDraft.trim() ? [...discountNotes, discountNoteDraft.trim()] : discountNotes)
+          : [],
         visibility_role_ids: visibilityRoleIds,
         visibility_company_ids: visibilityCompanyIds,
       };
@@ -387,8 +439,16 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
                         <div className="text-xs text-green-600 mt-0.5">เดิม {t.original!.new_total_price.toLocaleString()}</div>
                       )}
                     </td>
-                    <td className={`px-2 py-1 ${changed ? 'text-green-700' : ''}`}>
-                      {t.quantity ? (t.new_total_price / t.quantity).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}
+                    <td className={cellClass}>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={t.new_unit_price ?? ''}
+                        onChange={(e) => updateTierUnitPrice(t.localId, e.target.value)}
+                        placeholder="auto"
+                        className={`w-24 px-2 py-1 border rounded text-sm ${changed ? 'border-green-400 text-green-800 font-medium' : 'border-gray-300'}`}
+                      />
                     </td>
                     <td className="px-2 py-1">
                       <ul className="space-y-1 mb-1">
@@ -407,6 +467,12 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
                           placeholder="+ เพิ่มหมายเหตุ"
                           value={noteDraft[t.localId] || ''}
                           onChange={(e) => setNoteDraft((p) => ({ ...p, [t.localId]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addTierNote(t.localId);
+                            }
+                          }}
                           className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs"
                         />
                         <button type="button" onClick={() => addTierNote(t.localId)} className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300">
@@ -564,6 +630,12 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
                     placeholder="+ เพิ่มหมายเหตุเงื่อนไข (เช่น ไม่รวมปุ๋ย)"
                     value={discountNoteDraft}
                     onChange={(e) => setDiscountNoteDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addDiscountNote();
+                      }
+                    }}
                     className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs"
                   />
                   <button type="button" onClick={addDiscountNote} className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300">

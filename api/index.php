@@ -4250,14 +4250,17 @@ function handle_companies(PDO $pdo, ?string $id): void
     }
     $companyId = $user['company_id'];
     $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
+    // Admin Control / Admin System manage cross-company features (e.g. Price Announcements'
+    // "show to other companies too" picker) and need to see every company, not just their own.
+    $canSeeAllCompanies = $isSuperAdmin || in_array($user['role'], ['Admin Control', 'Admin System'], true);
 
     switch (method()) {
         case 'GET':
             if ($id) {
-                // If specific ID requested, ensure it belongs to user's company (unless SuperAdmin)
+                // If specific ID requested, ensure it belongs to user's company (unless they can see all)
                 $sql = 'SELECT * FROM companies WHERE id = ?';
                 $params = [$id];
-                if (!$isSuperAdmin) {
+                if (!$canSeeAllCompanies) {
                     $sql .= ' AND id = ?';
                     $params[] = $companyId;
                 }
@@ -4266,10 +4269,10 @@ function handle_companies(PDO $pdo, ?string $id): void
                 $row = $stmt->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
-                // List companies: only show user's company (unless SuperAdmin)
+                // List companies: only show user's company unless they can see all
                 $sql = 'SELECT * FROM companies';
                 $params = [];
-                if (!$isSuperAdmin) {
+                if (!$canSeeAllCompanies) {
                     $sql .= ' WHERE id = ?';
                     $params[] = $companyId;
                 }
