@@ -836,6 +836,41 @@ export interface Promotion {
   items: PromotionItem[];
 }
 
+export interface PriceAnnouncementTier {
+  id?: number;
+  quantity: number;
+  new_total_price: number;
+  old_total_price?: number | null; // resolved by API from previous month, read-only
+  notes: string[];
+}
+
+export interface PriceAnnouncementDiscountTier {
+  id?: number;
+  min_amount: number;
+  cod_discount_pct?: number | null;
+  transfer_discount_pct?: number | null;
+}
+
+export interface PriceAnnouncement {
+  id: number;
+  company_id: number;
+  company_name?: string;
+  product_id: number;
+  product_name?: string;
+  sku?: string;
+  month: string; // YYYY-MM-DD (first of month)
+  title?: string | null;
+  general_notes?: string | null; // free-form multi-line notes for the whole price table (e.g. redemption rules)
+  created_by?: number;
+  created_at?: string;
+  updated_at?: string | null;
+  tiers: PriceAnnouncementTier[];
+  discount_tiers: PriceAnnouncementDiscountTier[];
+  discount_notes: string[];
+  visibility_role_ids: number[];
+  visibility_company_ids: number[];
+}
+
 export interface CallHistory {
   id: number;
   customerId: string;

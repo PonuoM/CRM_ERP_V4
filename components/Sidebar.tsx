@@ -98,6 +98,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Calls Overview": "ภาพรวมการโทร",
     "Call Management": "จัดการการโทร",
     Promotions: "โปรโมชั่น",
+    "Price Announcements": "ประกาศราคา/โปรโมชั่น",
     Marketing: "การตลาด",
     Users: "ผู้ใช้งาน",
     Permissions: "สิทธิ์การใช้งาน",
@@ -404,6 +405,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Ads Input V2", icon: Pencil, key: "marketing.ads_input_v2" },
         { label: "Ads History", icon: Calendar, key: "marketing.ads_history" },
         { label: "Marketing User Management", icon: Users, key: "marketing.user_management" },
+        { label: "Price Announcements", icon: Gift, key: "marketing.price_announcements" },
       ]
     },
     {
