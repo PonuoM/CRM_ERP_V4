@@ -1721,6 +1721,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           if (targetIdx !== undefined) {
             const target = mergedData[targetIdx];
             target.total_sales = Number(target.total_sales || 0) + Number(noAdsRow.total_sales || 0);
+            target.total_sales_bio = Number(target.total_sales_bio || 0) + Number(noAdsRow.total_sales_bio || 0);
+            target.total_sales_fertilizer = Number(target.total_sales_fertilizer || 0) + Number(noAdsRow.total_sales_fertilizer || 0);
             target.total_orders = Number(target.total_orders || 0) + Number(noAdsRow.total_orders || 0);
             target.new_customer_orders = Number(target.new_customer_orders || 0) + Number(noAdsRow.new_customer_orders || 0);
             target.reorder_customer_orders = Number(target.reorder_customer_orders || 0) + Number(noAdsRow.reorder_customer_orders || 0);
@@ -1730,6 +1732,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             target.reorder_customers = Number(target.reorder_customers || 0) + Number(noAdsRow.reorder_customers || 0);
             target.total_customers = Number(target.total_customers || 0) + Number(noAdsRow.total_customers || 0);
             target.returned_sales = Number(target.returned_sales || 0) + Number(noAdsRow.returned_sales || 0);
+            target.returned_sales_bio = Number(target.returned_sales_bio || 0) + Number(noAdsRow.returned_sales_bio || 0);
+            target.returned_sales_fertilizer = Number(target.returned_sales_fertilizer || 0) + Number(noAdsRow.returned_sales_fertilizer || 0);
             target.returned_orders = Number(target.returned_orders || 0) + Number(noAdsRow.returned_orders || 0);
             target.cancelled_sales = Number(target.cancelled_sales || 0) + Number(noAdsRow.cancelled_sales || 0);
             target.cancelled_orders = Number(target.cancelled_orders || 0) + Number(noAdsRow.cancelled_orders || 0);
@@ -1777,11 +1781,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 staff_first_name: '-',
                 staff_last_name: '',
                 ads_cost: 0, impressions: 0, reach: 0, clicks: 0,
-                total_sales: 0, total_orders: 0,
+                total_sales: 0, total_sales_bio: 0, total_sales_fertilizer: 0,
+                total_orders: 0,
                 new_customer_orders: 0, reorder_customer_orders: 0,
                 new_customer_sales: 0, reorder_customer_sales: 0,
                 total_customers: 0,
-                returned_sales: 0, returned_orders: 0,
+                returned_sales: 0, returned_sales_bio: 0, returned_sales_fertilizer: 0,
+                returned_orders: 0,
                 cancelled_sales: 0, cancelled_orders: 0,
                 page_managers: managers
               });
@@ -2062,15 +2068,29 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         })()
       }));
     } else {
-      headers = ["Page", "Ads Cost", "Impressions", "Reach", "Clicks", "Sales", "Returned Sales", "Cancelled Sales", "New Cust Sales", "Reorder Sales", "New Cust Count", "Reorder Cust Count", "Total Cust", "ROAS", "%Ads"];
+      headers = [
+        "Page", "Ads Cost", "Impressions", "Reach", "Clicks", 
+        "Grand Total Sales", "Grand Total Sales (Bio)", "Grand Total Sales (Fertilizer)",
+        "Sales", "Sales (Bio)", "Sales (Fertilizer)", 
+        "Returned Sales", "Returned Sales (Bio)", "Returned Sales (Fertilizer)",
+        "Cancelled Sales", "New Cust Sales", "Reorder Sales", 
+        "New Cust Count", "Reorder Cust Count", "Total Cust", "ROAS", "%Ads"
+      ];
       dataToExport = dashboardData.map(row => ({
         Page: row.page_name,
         "Ads Cost": row.ads_cost,
         "Impressions": row.impressions || 0,
         "Reach": row.reach || 0,
         "Clicks": row.clicks || 0,
+        "Grand Total Sales": Number(row.total_sales || 0) + Number(row.returned_sales || 0),
+        "Grand Total Sales (Bio)": Number(row.total_sales_bio || 0) + Number(row.returned_sales_bio || 0),
+        "Grand Total Sales (Fertilizer)": Number(row.total_sales_fertilizer || 0) + Number(row.returned_sales_fertilizer || 0),
         "Sales": row.total_sales,
+        "Sales (Bio)": row.total_sales_bio || 0,
+        "Sales (Fertilizer)": row.total_sales_fertilizer || 0,
         "Returned Sales": row.returned_sales || 0,
+        "Returned Sales (Bio)": row.returned_sales_bio || 0,
+        "Returned Sales (Fertilizer)": row.returned_sales_fertilizer || 0,
         "Cancelled Sales": row.cancelled_sales || 0,
         "New Cust Sales": row.new_customer_sales,
         "Reorder Sales": row.reorder_customer_sales,
@@ -3094,12 +3114,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     /* Page Dashboard Table */
                     <>
                       <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10 shadow-sm">
-                        <tr>
-                          <th className="px-3 py-2 text-left bg-gray-50">เพจ</th>
-                          <th className="px-3 py-2 text-left bg-gray-50">ประเภทเพจ</th>
-                          <th className="px-3 py-2 text-left bg-gray-50">ผู้ดูแลเพจ</th>
-                          <th className="px-3 py-2 text-left bg-gray-50">ผู้ลงแอด</th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
+                        <tr className="border-b border-gray-200">
+                          <th rowSpan={2} className="px-3 py-2 text-left bg-gray-100 align-middle border-r border-gray-200">เพจ</th>
+                          <th rowSpan={2} className="px-3 py-2 text-left bg-gray-100 align-middle border-r border-gray-200">ประเภทเพจ</th>
+                          <th rowSpan={2} className="px-3 py-2 text-left bg-gray-100 align-middle border-r border-gray-200">ผู้ดูแลเพจ</th>
+                          <th rowSpan={2} className="px-3 py-2 text-left bg-gray-100 align-middle border-r border-gray-200">ผู้ลงแอด</th>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">
                             <div className="group relative inline-block cursor-help">
                               ค่าแอด
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
@@ -3109,31 +3129,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">อิมเพรสชั่น</th>
-                          <th className="px-3 py-2 text-right bg-gray-50">การเข้าถึง</th>
-                          <th className="px-3 py-2 text-right bg-blue-50 text-blue-700">
-                            <div className="group relative inline-block cursor-help">
-                              ยอดขายรวม
-                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">💰 ยอดขายรวมทั้งหมด (Grand Total Sales)</p>
-                                <p>ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= ยอดขายสำเร็จ + ยอดตีกลับ</p>
-                              </div>
-                            </div>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">อิมเพรสชั่น</th>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">การเข้าถึง</th>
+                          
+                          {/* กรอบยอดขายรวม */}
+                          <th colSpan={3} className="px-3 py-1.5 text-center bg-blue-100 text-blue-800 font-bold border-l-2 border-r-2 border-t border-blue-300">
+                            ยอดขายรวม (Grand Total Sales)
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
-                            <div className="group relative inline-block cursor-help">
-                              ยอดขาย
-                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">📊 ยอดขาย (Sales)</p>
-                                <p>ยอดรวม total_amount จากตาราง orders</p>
-                                <p className="mt-1 text-gray-300">ไม่รวม order ที่ถูกยกเลิก (Cancelled) และตีกลับ (Returned)</p>
-                              </div>
-                            </div>
+                          
+                          {/* กรอบยอดขาย */}
+                          <th colSpan={3} className="px-3 py-1.5 text-center bg-gray-200 text-gray-800 font-bold border-l border-r-2 border-t border-gray-400">
+                            ยอดขาย (Sales)
                           </th>
-                          <th className="px-3 py-2 text-right bg-amber-50 text-amber-700">ตีกลับ</th>
-                          <th className="px-3 py-2 text-right bg-red-50 text-red-700">ยกเลิก</th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
+                          
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-amber-100 text-amber-800 align-middle border-r border-gray-200">ตีกลับ</th>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-red-100 text-red-800 align-middle border-r border-gray-200">ยกเลิก</th>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">
                             <div className="group relative inline-block cursor-help">
                               ยอดขาย ลค.ใหม่
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
@@ -3143,7 +3154,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">
                             <div className="group relative inline-block cursor-help">
                               รีออเดอร์
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
@@ -3153,7 +3164,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">
                             <div className="group relative inline-block cursor-help">
                               ทัก/คลิก
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
@@ -3163,10 +3174,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">ลูกค้าใหม่ (คน)</th>
-                          <th className="px-3 py-2 text-right bg-gray-50">รีออเดอร์ (คน)</th>
-                          <th className="px-3 py-2 text-right bg-gray-50">จำนวนลูกค้า</th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">ลูกค้าใหม่ (คน)</th>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">รีออเดอร์ (คน)</th>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">จำนวนลูกค้า</th>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">
                             <div className="group relative inline-block cursor-help">
                               ROAS
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
@@ -3178,7 +3189,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">
                             <div className="group relative inline-block cursor-help">
                               ราคาต่อทัก
                               <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
@@ -3189,43 +3200,40 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">%ค่าแอด ลค.ใหม่</th>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle border-r border-gray-200">%ค่าแอด</th>
+                          <th rowSpan={2} className="px-3 py-2 text-right bg-gray-100 align-middle">ปิดการขาย</th>
+                        </tr>
+                        <tr className="border-b border-gray-200">
+                          {/* ขายรวม Sub-headers */}
+                          <th className="px-3 py-1.5 text-right bg-blue-50 text-blue-700 border-l-2 border-blue-300">ชีวภัณฑ์</th>
+                          <th className="px-3 py-1.5 text-right bg-blue-50 text-blue-700">ปุ๋ย</th>
+                          <th className="px-3 py-1.5 text-right bg-blue-100 text-blue-800 font-bold border-r-2 border-blue-300">
                             <div className="group relative inline-block cursor-help">
-                              %Ads/ยอด ลค.ใหม่
-                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">📉 %Ads/ยอดขาย ลูกค้าใหม่</p>
-                                <p>สัดส่วนค่าแอดเทียบยอดขายลูกค้าใหม่</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขาย ลค.ใหม่) × 100</p>
-                                <p className="mt-1 text-gray-300">ตัวอย่าง: ค่าแอด 5,000 ÷ ยอดขาย ลค.ใหม่ 10,000 = 50%</p>
-                                <p className="text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
+                              ยอดรวม
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">💰 ยอดขายรวมทั้งหมด (Grand Total Sales)</p>
+                                <p>ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
+                                <p className="mt-1 text-yellow-300 font-medium">= ยอดขายสำเร็จ + ยอดตีกลับ</p>
                               </div>
                             </div>
                           </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
+                          
+                          {/* ยอดขาย Sub-headers */}
+                          <th className="px-3 py-1.5 text-right bg-gray-50 text-gray-700 border-l border-gray-300">ชีวภัณฑ์</th>
+                          <th className="px-3 py-1.5 text-right bg-gray-50 text-gray-700">ปุ๋ย</th>
+                          <th className="px-3 py-1.5 text-right bg-gray-100 text-gray-800 font-bold border-r-2 border-gray-400">
                             <div className="group relative inline-block cursor-help">
-                              %Ads
-                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">📉 %Ads (Ads Cost Ratio)</p>
-                                <p>สัดส่วนค่าแอดเทียบยอดขายรวม</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= (ค่าแอด ÷ ยอดขายรวม) × 100</p>
-                                <p className="mt-1 text-gray-300">ยอดขายรวม = ยอดขาย + ตีกลับ (ไม่รวมยกเลิก)</p>
-                                <p className="text-gray-300">→ ยิ่งต่ำยิ่งดี</p>
-                              </div>
-                            </div>
-                          </th>
-                          <th className="px-3 py-2 text-right bg-gray-50">
-                            <div className="group relative inline-block cursor-help">
-                              %ปิดการขาย
-                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-72 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
-                                <p className="font-bold mb-1">🎯 %ปิดการขาย (Close Rate)</p>
-                                <p>อัตราการปิดการขายเทียบจำนวนคลิก</p>
-                                <p className="mt-1 text-yellow-300 font-medium">= (จำนวน orders ÷ ทัก/คลิก) × 100</p>
-                                <p className="mt-1 text-gray-300">ตัวอย่าง: orders 50 ÷ คลิก 200 = 25%</p>
-                                <p className="text-gray-300">→ ยิ่งสูงยิ่งดี</p>
+                              ยอดรวม
+                              <div className="hidden group-hover:block absolute z-50 bg-gray-800 text-white text-xs rounded-lg p-3 w-64 right-0 top-full mt-1 shadow-lg font-normal text-left whitespace-normal">
+                                <p className="font-bold mb-1">📊 ยอดขาย (Sales)</p>
+                                <p>ยอดรวม total_amount จากตาราง orders</p>
+                                <p className="mt-1 text-gray-300">ไม่รวม order ที่ถูกยกเลิก (Cancelled) และตีกลับ (Returned)</p>
                               </div>
                             </div>
                           </th>
                         </tr>
+
                       </thead>
                       <tbody>
                         {(() => {
@@ -3277,10 +3285,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   </td>
                                   <td className="px-3 py-2 text-right">{Number(row.impressions || 0).toLocaleString('th-TH')}</td>
                                   <td className="px-3 py-2 text-right">{Number(row.reach || 0).toLocaleString('th-TH')}</td>
-                                  <td className="px-3 py-2 text-right font-semibold text-blue-700">
+                                  <td className="px-3 py-2 text-right text-blue-600 border-l-2 border-blue-200 bg-blue-50/20">
+                                    {(Number(row.total_sales_bio || 0) + Number(row.returned_sales_bio || 0)).toLocaleString('th-TH')}
+                                  </td>
+                                  <td className="px-3 py-2 text-right text-blue-600 bg-blue-50/20">
+                                    {(Number(row.total_sales_fertilizer || 0) + Number(row.returned_sales_fertilizer || 0)).toLocaleString('th-TH')}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-semibold text-blue-700 border-r-2 border-blue-200 bg-blue-50/40">
                                     {(Number(row.total_sales || 0) + Number(row.returned_sales || 0)).toLocaleString('th-TH')}
                                   </td>
-                                  <td className="px-3 py-2 text-right">
+                                  <td className="px-3 py-2 text-right text-gray-600 border-l border-gray-300 bg-gray-50/20">
+                                    {Number(row.total_sales_bio || 0).toLocaleString('th-TH')}
+                                  </td>
+                                  <td className="px-3 py-2 text-right text-gray-600 bg-gray-50/20">
+                                    {Number(row.total_sales_fertilizer || 0).toLocaleString('th-TH')}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-semibold text-gray-800 border-r-2 border-gray-300 bg-gray-50/40">
                                     {Number(row.total_sales || 0).toLocaleString('th-TH')}
                                   </td>
                                   <td className="px-3 py-2 text-right text-amber-600">
@@ -3331,10 +3351,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                     <td className="px-3 py-2 text-right">
                                       {summaryRows.reduce((acc: number, row: any) => acc + Number(row.reach || 0), 0).toLocaleString('th-TH')}
                                     </td>
-                                    <td className="px-3 py-2 text-right font-semibold text-blue-700">
+                                    <td className="px-3 py-2 text-right text-blue-600 border-l-2 border-blue-300 bg-blue-50/20">
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales_bio || 0) + Number(row.returned_sales_bio || 0), 0).toLocaleString('th-TH')}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-blue-600 bg-blue-50/20">
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales_fertilizer || 0) + Number(row.returned_sales_fertilizer || 0), 0).toLocaleString('th-TH')}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-semibold text-blue-700 border-r-2 border-blue-300 bg-blue-100">
                                       {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0) + Number(row.returned_sales || 0), 0).toLocaleString('th-TH')}
                                     </td>
-                                    <td className="px-3 py-2 text-right">
+                                    <td className="px-3 py-2 text-right text-gray-600 border-l border-gray-300 bg-gray-50/20">
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales_bio || 0), 0).toLocaleString('th-TH')}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-gray-600 bg-gray-50/20">
+                                      {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales_fertilizer || 0), 0).toLocaleString('th-TH')}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-semibold text-gray-800 border-r-2 border-gray-300 bg-gray-100">
                                       {summaryRows.reduce((acc: number, row: any) => acc + Number(row.total_sales || 0), 0).toLocaleString('th-TH')}
                                     </td>
                                     <td className="px-3 py-2 text-right text-amber-600">
