@@ -1056,7 +1056,7 @@ export default function TelesalePerformancePage() {
                             : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                    สรุปภาพรวมรายวัน (แบบเดิม)
+                    สรุปภาพรวมรายวัน
                 </button>
                 <button
                     onClick={() => setDailyViewMode('new')}
@@ -1066,7 +1066,7 @@ export default function TelesalePerformancePage() {
                             : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                    เจาะลึก KPI & หมวดหมู่ (แบบใหม่)
+                    เจาะลึก KPI & หมวดหมู่
                 </button>
             </div>
 
