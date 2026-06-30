@@ -441,12 +441,29 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                       {remainingTime.text}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="group relative inline-block">
+                      <div className="group relative flex flex-col gap-1 items-start">
                         <span
                           className={`px-2 py-0.5 text-[11px] font-medium rounded-full whitespace-nowrap cursor-help ${statusColorMap[customer.lifecycleStatus] || "bg-gray-100 text-gray-800"}`}
                         >
                           {lifecycleLabel(customer.lifecycleStatus)}
                         </span>
+                        
+                        {/* Appointment Info */}
+                        {(customer as any).next_appointment_date && (customer as any).next_appointment_status !== 'เสร็จสิ้น' && (
+                          <div className="flex flex-col mt-1">
+                            <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded flex items-center gap-1 border border-blue-100">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                              นัด: {new Date((customer as any).next_appointment_date.replace(' ', 'T')).toLocaleDateString("th-TH", {
+                                day: "numeric",
+                                month: "short",
+                                year: "2-digit"
+                              })} เวลา {new Date((customer as any).next_appointment_date.replace(' ', 'T')).toLocaleTimeString("th-TH", {
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })} น.
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </td>
                     {/* Dynamic Do Reason Column */}
