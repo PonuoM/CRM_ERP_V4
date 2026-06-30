@@ -58,7 +58,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
   const [generalNotes, setGeneralNotes] = useState('');
 
   const [tiers, setTiers] = useState<LocalTier[]>([]);
-  const [tierForm, setTierForm] = useState({ quantity: '', new_total_price: '' });
+  const [tierForm, setTierForm] = useState({ quantity: '', new_total_price: '', new_unit_price: '' });
   const [noteDraft, setNoteDraft] = useState<Record<number, string>>({});
 
   const [discountEnabled, setDiscountEnabled] = useState(false);
@@ -141,11 +141,20 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       setError('กรุณากรอกจำนวนและราคาใหม่');
       return;
     }
+    const manualUnitPrice = tierForm.new_unit_price.trim() !== '' ? parseFloat(tierForm.new_unit_price) : null;
+    const hasManualUnitPrice = manualUnitPrice !== null && !isNaN(manualUnitPrice);
     setTiers((prev) => [
       ...prev,
-      { localId: Date.now() + Math.random(), quantity, new_total_price: price, new_unit_price: computeUnitPrice(price, quantity), notes: [] },
+      {
+        localId: Date.now() + Math.random(),
+        quantity,
+        new_total_price: price,
+        new_unit_price: hasManualUnitPrice ? manualUnitPrice : computeUnitPrice(price, quantity),
+        unitPriceManual: hasManualUnitPrice,
+        notes: [],
+      },
     ]);
-    setTierForm({ quantity: '', new_total_price: '' });
+    setTierForm({ quantity: '', new_total_price: '', new_unit_price: '' });
     setError('');
   };
 
@@ -389,6 +398,15 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
               placeholder="ราคาใหม่ (รวม)"
               value={tierForm.new_total_price}
               onChange={(e) => setTierForm((p) => ({ ...p, new_total_price: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+            />
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="ซองละใหม่ (auto ถ้าเว้นว่าง)"
+              value={tierForm.new_unit_price}
+              onChange={(e) => setTierForm((p) => ({ ...p, new_unit_price: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
             />
             <button
