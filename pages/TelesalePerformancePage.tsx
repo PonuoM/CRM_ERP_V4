@@ -278,7 +278,18 @@ export default function TelesalePerformancePage() {
     const [sortField, setSortField] = useState<keyof Metrics>('combinedSales');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-    // Daily KPI State (separate from monthly view)
+    // View Mode for Daily
+    const [dailyViewMode, setDailyViewMode] = useState<'old' | 'new'>('old');
+
+    // Old Daily KPI State
+    const [dailyDate, setDailyDate] = useState(() => {
+        const today = new Date();
+        return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    });
+    const [oldDailyData, setOldDailyData] = useState<PerformanceData | null>(null);
+    const [oldDailyLoading, setOldDailyLoading] = useState(false);
+
+    // New Daily KPI State
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 7);
@@ -377,7 +388,43 @@ export default function TelesalePerformancePage() {
         return () => clearTimeout(debounceTimer);
     }, [year, month]);
 
-    // Fetch Daily KPI Data
+    // Fetch Old Daily KPI Data
+    useEffect(() => {
+        const fetchOldDailyData = async () => {
+            setOldDailyLoading(true);
+            try {
+                const token = localStorage.getItem('authToken');
+                const API_BASE = resolveApiBasePath();
+                const url = `${API_BASE}/User_DB/telesale_performance.php?year=${year}&month=${month}&date=${dailyDate}`;
+
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success) {
+                        setOldDailyData(result.data);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching old daily data:', err);
+            } finally {
+                setOldDailyLoading(false);
+            }
+        };
+
+        const debounceTimer = setTimeout(() => {
+            fetchOldDailyData();
+        }, 500);
+
+        return () => clearTimeout(debounceTimer);
+    }, [dailyDate, year, month]);
+
+    // Fetch New Daily KPI Data
     useEffect(() => {
         const fetchDailyData = async () => {
             setDailyLoading(true);
@@ -998,7 +1045,147 @@ export default function TelesalePerformancePage() {
                         {/* ================================================ */}
             {/* DAILY KPI TABLE - Separate Section */}
             {/* ================================================ */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-8">
+            
+            {/* View Mode Tabs */}
+            <div className="flex items-center gap-2 mt-8 mb-4 border-b border-gray-200">
+                <button
+                    onClick={() => setDailyViewMode('old')}
+                    className={`px-4 py-2 font-medium text-sm transition-colors ${
+                        dailyViewMode === 'old' 
+                            ? 'text-blue-600 border-b-2 border-blue-600' 
+                            : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    สรุปภาพรวมรายวัน (แบบเดิม)
+                </button>
+                <button
+                    onClick={() => setDailyViewMode('new')}
+                    className={`px-4 py-2 font-medium text-sm transition-colors ${
+                        dailyViewMode === 'new' 
+                            ? 'text-blue-600 border-b-2 border-blue-600' 
+                            : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    เจาะลึก KPI & หมวดหมู่ (แบบใหม่)
+                </button>
+            </div>
+
+            {dailyViewMode === 'old' && (
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-gray-50">
+                        <h2 className="text-lg font-bold text-gray-800">สรุปผลงานรายวัน</h2>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => {
+                                    const d = new Date(dailyDate);
+                                    d.setDate(d.getDate() - 1);
+                                    setDailyDate(d.toISOString().split('T')[0]);
+                                }}
+                                className="px-3 py-2 bg-white border hover:bg-gray-50 rounded-lg text-gray-700 transition-colors"
+                            >
+                                ←
+                            </button>
+                            <input
+                                type="date"
+                                value={dailyDate}
+                                onChange={(e) => setDailyDate(e.target.value)}
+                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                            />
+                            <button
+                                onClick={() => {
+                                    const d = new Date(dailyDate);
+                                    d.setDate(d.getDate() + 1);
+                                    setDailyDate(d.toISOString().split('T')[0]);
+                                }}
+                                className="px-3 py-2 bg-white border hover:bg-gray-50 rounded-lg text-gray-700 transition-colors"
+                            >
+                                →
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        {oldDailyLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                            </div>
+                        ) : (
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="bg-gray-50 text-gray-700">
+                                        <th className="px-2 py-2 text-left font-medium" rowSpan={2}>#</th>
+                                        <th className="px-2 py-2 text-left font-medium" rowSpan={2}>ชื่อ</th>
+                                        <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>สายที่โทร<br /><span className="text-xs text-gray-500 font-normal">ทั้งหมด</span></th>
+                                        <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>นาทีที่โทร<br /><span className="text-xs text-gray-500 font-normal">ทั้งหมด</span></th>
+                                        <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>รับสาย</th>
+                                        <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>ได้คุย<br /><span className="text-xs text-gray-500 font-normal">(≥30 วินาที)</span></th>
+                                        <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>ไม่ได้รับ</th>
+                                        <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>%รับ</th>
+                                        <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-green-100" colSpan={2}>ลูกค้าใหม่</th>
+                                        <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-blue-100" colSpan={2}>ลูกค้าเก่า</th>
+                                        <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-orange-100" colSpan={2}>ลูกค้าขุด</th>
+                                        <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300 bg-purple-100" colSpan={2}>Upsell</th>
+                                        <th className="px-2 py-2 text-center font-medium border-l-2 border-gray-300" rowSpan={2}>รวม<br /><span className="text-xs text-gray-500 font-normal">ออเดอร์</span></th>
+                                        <th className="px-2 py-2 text-center font-medium" rowSpan={2}>ยอดขาย<br /><span className="text-xs text-gray-500 font-normal">รวม</span></th>
+                                        <th className="px-2 py-2 text-center font-medium whitespace-nowrap" rowSpan={2}>% ปิด</th>
+                                    </tr>
+                                    <tr className="bg-gray-50 text-gray-600 text-xs">
+                                        <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-green-50">ออเดอร์</th>
+                                        <th className="px-1 py-1 text-center bg-green-50">ยอดขาย</th>
+                                        <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-blue-50">ออเดอร์</th>
+                                        <th className="px-1 py-1 text-center bg-blue-50">ยอดขาย</th>
+                                        <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-orange-50">ออเดอร์</th>
+                                        <th className="px-1 py-1 text-center bg-orange-50">ยอดขาย</th>
+                                        <th className="px-1 py-1 text-center border-l-2 border-gray-300 bg-purple-50">ออเดอร์</th>
+                                        <th className="px-1 py-1 text-center bg-purple-50">ยอดขาย</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {oldDailyData?.telesaleDetails.map((ts, idx) => {
+                                        const totalOrders = ts.metrics.newCustOrders + ts.metrics.coreCustOrders + ts.metrics.revivalCustOrders + ts.metrics.upsellOrders;
+                                        const closeRate = ts.metrics.totalCalls > 0
+                                            ? ((totalOrders / ts.metrics.totalCalls) * 100).toFixed(1)
+                                            : '0.0';
+                                        return (
+                                            <tr key={ts.userId} className="hover:bg-gray-50">
+                                                <td className="px-2 py-2 text-gray-500">{idx + 1}</td>
+                                                <td className="px-2 py-2 font-medium text-gray-800">{ts.name}</td>
+                                                <td className="px-2 py-2 text-center">{ts.metrics.totalCalls || '-'}</td>
+                                                <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes > 0 ? ts.metrics.totalMinutes.toFixed(0) : '-'}</td>
+                                                <td className="px-2 py-2 text-center text-emerald-600">{ts.metrics.connectedCalls || '-'}</td>
+                                                <td className="px-2 py-2 text-center">{ts.metrics.talkedCalls || '-'}</td>
+                                                <td className="px-2 py-2 text-center text-red-500">{ts.metrics.missedCalls || '-'}</td>
+                                                <td className="px-2 py-2 text-center">{ts.metrics.answerRate != null ? `${ts.metrics.answerRate}%` : '-'}</td>
+                                                <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-green-50/30">{ts.metrics.newCustOrders || '-'}</td>
+                                                <td className="px-2 py-2 text-center bg-green-50/30 text-green-700">{ts.metrics.newCustSales > 0 ? `฿${formatNumber(Math.round(ts.metrics.newCustSales))}` : '-'}</td>
+                                                <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-blue-50/30">{ts.metrics.coreCustOrders || '-'}</td>
+                                                <td className="px-2 py-2 text-center bg-blue-50/30 text-blue-700">{ts.metrics.coreCustSales > 0 ? `฿${formatNumber(Math.round(ts.metrics.coreCustSales))}` : '-'}</td>
+                                                <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-orange-50/30">{ts.metrics.revivalCustOrders || '-'}</td>
+                                                <td className="px-2 py-2 text-center bg-orange-50/30 text-orange-700">{ts.metrics.revivalCustSales > 0 ? `฿${formatNumber(Math.round(ts.metrics.revivalCustSales))}` : '-'}</td>
+                                                <td className="px-2 py-2 text-center border-l-2 border-gray-200 bg-purple-50/30">{ts.metrics.upsellOrders || '-'}</td>
+                                                <td className="px-2 py-2 text-center bg-purple-50/30 text-purple-700">{ts.metrics.upsellSales > 0 ? `฿${formatNumber(Math.round(ts.metrics.upsellSales))}` : '-'}</td>
+                                                <td className="px-2 py-2 text-center border-l-2 border-gray-200 font-bold">{totalOrders || '-'}</td>
+                                                <td className="px-2 py-2 text-center font-medium text-green-600">{ts.metrics.combinedSales > 0 ? `฿${formatNumber(Math.round(ts.metrics.combinedSales))}` : '-'}</td>
+                                                <td className={`px-2 py-2 text-center font-medium ${parseFloat(closeRate) >= 5 ? 'text-green-600' : parseFloat(closeRate) >= 2 ? 'text-yellow-600' : 'text-red-600'}`}>{parseFloat(closeRate) > 0 ? `${closeRate}%` : '-'}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {(!oldDailyData || oldDailyData.telesaleDetails.length === 0) && (
+                                        <tr>
+                                            <td colSpan={19} className="px-4 py-8 text-center text-gray-500">
+                                                ไม่มีข้อมูลสำหรับวันที่เลือก
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {dailyViewMode === 'new' && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-gray-50">
                     <h2 className="text-lg font-bold text-gray-800">📊 ตรวจสอบ KPI & ยอดขายรายวัน</h2>
                     <div className="flex flex-col sm:flex-row items-center gap-3">
@@ -1296,6 +1483,8 @@ export default function TelesalePerformancePage() {
                     )}
                 </div>
             </div>
+            )}
+
             {/* Target Modal */}
             {showTargetModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowTargetModal(false)}>
