@@ -194,10 +194,12 @@ PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื
 
 - Tab ที่ 3 ("⊕ สินค้าโควตา") แสดงเมื่อ `companyId` prop ถูกส่ง
 - Filter สินค้าโควตาออกจาก tab ปกติ (ป้องกันซ้ำ)
-- Props: `companyId?`, `currentUserId?`
-- Self-loading quota per product → match userId → badge คงเหลือ
+- Props: `companyId?`, `currentUserId?`, `quotaMap?`, `quotaProducts?`
+- **Dynamic Quota (Best Practice):** ตัว Modal ลดภาระการเรียก API (Dumb Component) โดยจะรับ `quotaMap` (แผนผังโควตาที่ถูกหักลบสินค้าในตะกร้าบิลแบบ Real-time) และ `quotaProducts` ที่ถูกคำนวณจากหน้า `CreateOrderPage`
+- ทำให้สามารถเช็คโควตากองกลางได้แม่นยำ หากเพิ่มสินค้าลงตะกร้าบิลจนแต้มกองกลางหมด Modal จะแสดงสถานะโควตาหมดทันทีโดยไม่ต้องโหลด API ใหม่
+- การ Disable ปุ่ม "เลือก" จะดูจากเงื่อนไขว่า `โควตาคงเหลือ < ต้นทุนโควตาของสินค้านั้นๆ (quotaCost)` หรือเช็คจากแฟล็ก `isExhausted` เป็นหลัก
 
-**Badge:** `>3` ✅ green | `≤3 >0` ⚠️ yellow | `≤0` ❌ red disabled | ไม่มีข้อมูล `—` gray
+**Badge:** `isExhausted = true` ❌ red disabled | `isExhausted = false, remaining > 3` ✅ green | `isExhausted = false, remaining ≤ 3` ⚠️ yellow | ไม่มีข้อมูล `—` gray
 
 ---
 
@@ -217,14 +219,17 @@ Helper: DELETE existing → SELECT quota_products → SELECT order_items → mat
 
 | จุด | เงื่อนไข | ผล |
 |-----|---------|-----|
-| ProductSelectorModal | `remaining ≤ 0` | disabled + "โควตาหมด" |
-| Quantity input (create) | `nextQty > quotaMaxMap` | ตัดค่าลง + alert |
-| Quantity input (upsell) | `nextQty > quotaMaxMap` | ตัดค่าลง + alert (ผ่าน `handleUpsellUpdateItem`) |
+| ProductSelectorModal | `isExhausted` (โควตาคงเหลือน้อยกว่าราคาสินค้า) | disabled + "โควตาหมด" |
+| Quantity input (create) | `nextQty > quotaMaxMap` (เพดาน Absolute Max) | ตัดค่าลง + alert |
+| Quantity input (upsell) | `nextQty > quotaMaxMap` (เพดาน Absolute Max) | ตัดค่าลง + alert (ผ่าน `handleUpsellUpdateItem`) |
 
 ### quotaMaxMap (Real-time Quantity Limit)
-`Map<productId, maxQty>` — โหลดตอน mount CreateOrderPage (dynamic import) → `Math.floor(remaining / quotaCost)` → enforce ทั้ง create mode + upsell mode
+`Map<productId, absoluteMaxQty>` — โหลดและคำนวณผ่าน `useMemo` แบบ Real-time ที่หน้า `CreateOrderPage.tsx`
+- **การคำนวณ Absolute Max:** `(จำนวนของสินค้านี้ที่มีอยู่ในบิลปัจจุบัน) + (แต้มกองกลางที่เหลืออยู่หลังจากหักสินค้าทั้งหมดในบิลแล้ว / ราคาโควตา)`
+- ระบบเช็คการกระจายสินค้าที่มีรหัสเหมือนกันในหลายแถว (Multiple rows) ด้วย `.reduce()`
+- ทำให้ตารางบังคับเพดานสูงสุดในการพิมพ์เลขได้อย่างแม่นยำ ไม่ยอมให้กรอกเกินกองกลางแม้แต่นิดเดียว โดยไม่รบกวนข้อมูลเดิมที่พิมพ์ค้างไว้
 
-**Visual:** `max` attr + border emerald + label "โควตา: N" + tooltip (เหมือนกันทั้ง 2 โหมด)
+**Visual:** `max` attr + border emerald + label "โควตา: N" + tooltip (เหมือนกันทั้ง 2 โหมด) (ตัวเลข N จะลดลงแบบ Dynamic เมื่อเพิ่มสินค้าตัวอื่นที่แชร์กองกลางเดียวกัน)
 
 ### Phase 3 (ยังไม่ทำ)
 - [ ] Backend validation (block order API)
