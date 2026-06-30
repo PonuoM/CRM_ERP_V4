@@ -53,6 +53,8 @@ function db_connect(): PDO
     ];
     try {
       $pdo = new PDO($dsn, $DB_USER, $DB_PASS, $opts);
+      // Disable ONLY_FULL_GROUP_BY to restore compatibility with AppServ SQL queries
+      $pdo->exec("SET SESSION sql_mode = (SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))");
       return $pdo;
     } catch (Throwable $e) {
       $lastError = $e;
@@ -167,9 +169,10 @@ function get_authenticated_user(PDO $pdo): ?array
   $token = $matches[1];
 
   $stmt = $pdo->prepare('
-      SELECT u.id, u.username, u.role, u.company_id, u.status 
+      SELECT u.id, u.username, u.role, u.company_id, u.status, r.is_system 
       FROM user_tokens ut
       JOIN users u ON u.id = ut.user_id
+      LEFT JOIN roles r ON u.role = r.name
       WHERE ut.token = ? AND ut.expires_at > NOW()
   ');
   $stmt->execute([$token]);
@@ -199,3 +202,4 @@ function set_audit_context(PDO $pdo, string $apiSource, ?int $userId = null): vo
   $pdo->exec("SET @audit_api_source = " . $pdo->quote($apiSource));
   $pdo->exec("SET @audit_user_id = " . ($userId !== null ? intval($userId) : 'NULL'));
 }
+

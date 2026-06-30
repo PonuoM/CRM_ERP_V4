@@ -8,6 +8,7 @@ export interface QuotaInfo {
     remaining: number;
     totalQuota: number;
     isQuotaProduct: boolean;
+    isExhausted?: boolean;
 }
 
 interface ProductSelectorModalProps {
@@ -23,6 +24,8 @@ interface ProductSelectorModalProps {
     onSelectPromotion: (promotionId: number | string) => void;
     /** Optional: quota remaining info per product (keyed by productId) */
     quotaMap?: Map<number, QuotaInfo>;
+    /** Optional: list of quota products to show in the Quota tab */
+    quotaProducts?: QuotaProduct[];
     /** Company ID for loading quota products */
     companyId?: number;
     /** Current user ID for loading personal quota data */
@@ -41,13 +44,10 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
     onSelectProduct,
     onSelectPromotion,
     quotaMap,
+    quotaProducts = [],
     companyId,
     currentUserId,
 }) => {
-    const [quotaProducts, setQuotaProducts] = useState<QuotaProduct[]>([]);
-    const [loadingQuota, setLoadingQuota] = useState(false);
-    // Internal quota map for the quota tab (productId → { remaining, totalQuota })
-    const [quotaTabMap, setQuotaTabMap] = useState<Map<number, { remaining: number; totalQuota: number }>>(new Map());
     const [jstSyncInfo, setJstSyncInfo] = useState<{ time: string | null; source: string; show_inventory?: boolean } | null>(null);
 
     // Load JST sync info
@@ -63,72 +63,8 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
         }
     }, [isOpen]);
 
-    // Load quota products when modal opens (needed to filter them from normal tab)
-    useEffect(() => {
-        if (isOpen && companyId && quotaProducts.length === 0) {
-            listQuotaProducts(companyId)
-                .then((data) => {
-                    const activeProducts = data.filter(qp => qp.isActive);
-                    setQuotaProducts(activeProducts);
-                })
-                .catch(() => {});
-        }
-    }, [isOpen, companyId]);
-
-    // Load quota summary when quota tab is opened
-    useEffect(() => {
-        if (isOpen && companyId && tab === 'quota' && quotaProducts.length > 0) {
-            setLoadingQuota(true);
-            (async () => {
-                if (currentUserId) {
-                    try {
-                        const details = await getUserQuotaDetail({ companyId, userId: currentUserId, rateScheduleId: 'all' });
-                        const newMap = new Map<number, { remaining: number; totalQuota: number }>();
-                        
-                        for (const qp of quotaProducts) {
-                            let totalRemaining = 0;
-                            let totalQuotaVal = 0;
-                            let hasRate = false;
-                            
-                            // Find all valid rates that include this quota product
-                            const applicableRates = details.filter(d => 
-                                d.scopeIds && 
-                                d.scopeIds.includes(qp.id) &&
-                                !d.isExpired
-                            );
-                            
-                            for (const rate of applicableRates) {
-                                hasRate = true;
-                                totalRemaining += Number(rate.remaining ?? 0);
-                                totalQuotaVal += Number(rate.totalQuota ?? 0);
-                            }
-                            
-                            if (hasRate) {
-                                newMap.set(qp.productId, {
-                                    remaining: totalRemaining,
-                                    totalQuota: totalQuotaVal,
-                                });
-                            }
-                        }
-                        setQuotaTabMap(newMap);
-                    } catch { /* ignore */ }
-                }
-            })()
-                .catch(() => {})
-                .finally(() => setLoadingQuota(false));
-        }
-    }, [isOpen, companyId, tab, quotaProducts.length, currentUserId]);
-
     // Set of product IDs that are quota products (to exclude from normal tab)
     const quotaProductIds = new Set(quotaProducts.map(qp => qp.productId));
-
-    // Reset when modal closes
-    useEffect(() => {
-        if (!isOpen) {
-            setQuotaProducts([]);
-            setQuotaTabMap(new Map());
-        }
-    }, [isOpen]);
 
     // Helper function to get promotion price from summing all items' price_override or product_price
     const calcPromotionPrice = (promotion: Promotion): number => {
@@ -186,31 +122,29 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
         );
     };
 
-    /** Render quota badge for quota tab (uses internal quotaTabMap or external quotaMap as fallback) */
+    /** Render quota badge for quota tab (uses external quotaMap) */
     const renderQuotaTabBadge = (qp: QuotaProduct) => {
-        // Try internal quota tab map first, then external quotaMap
-        const internalInfo = quotaTabMap.get(qp.productId);
         const externalInfo = quotaMap?.get(qp.productId);
-        const remaining = internalInfo?.remaining ?? externalInfo?.remaining;
-        const totalQuota = internalInfo?.totalQuota ?? externalInfo?.totalQuota;
+        const remaining = externalInfo?.remaining;
+        const totalQuota = externalInfo?.totalQuota;
 
         if (remaining === undefined || remaining === null) {
             return <span className="text-xs text-gray-400">—</span>;
         }
 
-        const isZero = remaining <= 0;
+        const isExhausted = externalInfo?.isExhausted;
 
         return (
             <span
                 className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                    isZero
+                    isExhausted
                         ? 'bg-red-100 text-red-700'
                         : remaining <= 3
                             ? 'bg-amber-100 text-amber-700'
                             : 'bg-emerald-100 text-emerald-700'
                 }`}
             >
-                {isZero ? '❌' : remaining <= 3 ? '⚠️' : '✅'} {remaining} / {totalQuota ?? 0}
+                {isExhausted ? '❌' : remaining <= 3 ? '⚠️' : '✅'} {remaining} / {totalQuota ?? 0}
             </span>
         );
     };
@@ -326,7 +260,7 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                                         )
                                         .map((p) => {
                                             const qInfo = quotaMap?.get(p.id);
-                                            const isQuotaExhausted = qInfo?.isQuotaProduct && qInfo.remaining <= 0;
+                                            const isQuotaExhausted = qInfo?.isQuotaProduct && qInfo.isExhausted;
 
                                             return (
                                                 <tr
@@ -452,12 +386,7 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                         {/* ====== Tab: Quota Products ====== */}
                         {tab === 'quota' && (
                             <>
-                                {loadingQuota ? (
-                                    <div className="flex items-center justify-center py-16 text-gray-400">
-                                        <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600 mr-3" />
-                                        กำลังโหลดสินค้าโควตา...
-                                    </div>
-                                ) : quotaProducts.length === 0 ? (
+                                {quotaProducts.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                                         <svg className="w-12 h-12 mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
@@ -490,10 +419,7 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                                                 )
                                                 .map(qp => {
                                                     const qInfo = quotaMap?.get(qp.productId);
-                                                    // Check both external quotaMap AND internal quotaTabMap
-                                                    const tabInfo = quotaTabMap.get(qp.productId);
-                                                    const remaining = tabInfo?.remaining ?? qInfo?.remaining;
-                                                    const isExhausted = remaining !== undefined && remaining <= 0;
+                                                    const isExhausted = qInfo?.isExhausted;
 
                                                     return (
                                                         <tr
