@@ -294,8 +294,24 @@ export async function getPendingCounts(
   return result;
 }
 
+export async function getUsageBreakdown(params: {
+  companyId: number;
+  userId: number;
+  rateScheduleId?: number | 'all';
+}): Promise<any[]> {
+  const q = new URLSearchParams();
+  q.append('action', 'usage_breakdown');
+  q.append('companyId', params.companyId.toString());
+  q.append('userId', params.userId.toString());
+  if (params.rateScheduleId !== undefined) {
+    q.append('rateScheduleId', params.rateScheduleId.toString());
+  }
+  const res = await apiFetch(`${QUOTA_API}?${q.toString()}`);
+  return res.data || [];
+}
+
 // ============================================================
-// User Quota Detail (per-rate breakdown)
+// Other Quota Related APIs(per-rate breakdown)
 // ============================================================
 
 export interface UserQuotaDetailItem {

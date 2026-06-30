@@ -10,12 +10,13 @@ import {
   listQuotaProducts, createQuotaProduct, createQuotaProductWithNew, updateQuotaProduct,
   listRateSchedules, createRateSchedule, updateRateSchedule, deleteRateSchedule, getActiveRate,
   getQuotaSummary, allocateQuota, transferQuota, listQuotaAllocations, confirmQuota,
-  getSummaryByRate, bulkConfirmQuota, getUserQuotaDetail, getPendingCounts,
+  getSummaryByRate, bulkConfirmQuota, getUserQuotaDetail, getPendingCounts, getUsageBreakdown,
 } from '../services/quotaApi';
 import type { UserQuotaDetailItem } from '../services/quotaApi';
 import { listProducts } from '../services/api';
 import SingleDatePicker from '../components/SingleDatePicker';
 import DateRangePicker from '../components/DateRangePicker';
+import OrderDetailModal from '../components/OrderDetailModal';
 
 interface QuotaSettingsPageProps {
   currentUser: User;
@@ -100,6 +101,12 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const [breakdownUser, setBreakdownUser] = useState<QuotaSummary | null>(null);
   const [breakdownData, setBreakdownData] = useState<UserQuotaDetailItem[]>([]);
   const [breakdownLoading, setBreakdownLoading] = useState(false);
+
+  // Usage breakdown modal
+  const [usageBreakdownUser, setUsageBreakdownUser] = useState<QuotaSummary | null>(null);
+  const [usageBreakdownData, setUsageBreakdownData] = useState<any[]>([]);
+  const [usageBreakdownLoading, setUsageBreakdownLoading] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   // Transfer modal
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -514,6 +521,24 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     } catch (e) {
       console.error('Failed to load history', e);
     }
+  };
+
+  // -- Usage Breakdown --
+  const handleOpenUsageBreakdown = async (summary: QuotaSummary) => {
+    setUsageBreakdownUser(summary);
+    setUsageBreakdownData([]);
+    setUsageBreakdownLoading(true);
+    try {
+      const data = await getUsageBreakdown({
+        companyId,
+        userId: summary.userId,
+        rateScheduleId: summaryRateId,
+      });
+      setUsageBreakdownData(data);
+    } catch (e) {
+      console.error(e);
+    }
+    setUsageBreakdownLoading(false);
   };
 
   // -- Transfer --
@@ -1815,14 +1840,22 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                 >
                                   <span className="border-b border-dashed border-emerald-400">{Number(row.totalQuota)}</span>
                                 </td>
-                                <td className="px-4 py-3 text-right font-mono text-orange-600">
-                                  {Number(row.totalUsed)}
+                                <td 
+                                  className="px-4 py-3 text-right font-mono text-orange-600 cursor-pointer hover:bg-orange-50 transition-colors"
+                                  onClick={() => handleOpenUsageBreakdown(row)}
+                                  title="คลิกเพื่อดูประวัติการใช้โควตา (Usage Breakdown)"
+                                >
+                                  <span className="border-b border-dashed border-orange-400">{Number(row.totalUsed)}</span>
                                 </td>
-                                <td className="px-4 py-3 text-right">
-                                  <span className={`font-mono font-bold text-lg ${
-                                    row.isExpired ? 'text-gray-400 line-through' :
-                                    row.isBeforeUsageStart ? 'text-gray-400' :
-                                    Number(row.remaining) > 0 ? 'text-green-600' : Number(row.remaining) === 0 ? 'text-gray-400' : 'text-red-600'
+                                <td 
+                                  className="px-4 py-3 text-right cursor-pointer hover:bg-gray-50 transition-colors"
+                                  onClick={() => handleOpenUsageBreakdown(row)}
+                                  title="คลิกเพื่อดูประวัติการใช้โควตา (Usage Breakdown)"
+                                >
+                                  <span className={`font-mono font-bold text-lg border-b border-dashed ${
+                                    row.isExpired ? 'text-gray-400 line-through border-gray-400' :
+                                    row.isBeforeUsageStart ? 'text-gray-400 border-gray-400' :
+                                    Number(row.remaining) > 0 ? 'text-green-600 border-green-600' : Number(row.remaining) === 0 ? 'text-gray-400 border-gray-400' : 'text-red-600 border-red-600'
                                   }`}>
                                     {row.isExpired ? '0 (หมดอายุ)' : row.isBeforeUsageStart ? '0 (ยังไม่เริ่มใช้)' : Number(row.remaining)}
                                   </span>
@@ -2389,6 +2422,99 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
         </div>
       </div>
     )}
+
+    {/* Usage Breakdown Modal */}
+    {usageBreakdownUser && (
+      <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/50">
+            <div>
+              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <Clock className="text-orange-500" size={24} />
+                ประวัติการใช้งานโควตา — {usageBreakdownUser.userName}
+              </h2>
+              <div className="text-sm text-gray-500 mt-1">
+                เรียกดูประวัติการหักโควตาจากบิลสั่งซื้อ (เรียงจากล่าสุดไปเก่าสุด)
+              </div>
+            </div>
+            <button onClick={() => setUsageBreakdownUser(null)} className="text-gray-400 hover:text-gray-600">
+              <X size={24} />
+            </button>
+          </div>
+          
+          <div className="p-6 overflow-y-auto bg-gray-50 flex-1">
+            {usageBreakdownLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-500 gap-3">
+                <Loader2 className="animate-spin text-emerald-500" size={32} />
+                <span>กำลังโหลดข้อมูล...</span>
+              </div>
+            ) : usageBreakdownData.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 bg-white rounded-xl shadow-sm border border-gray-100">
+                <Package className="mx-auto text-gray-300 mb-3" size={48} />
+                ไม่มีประวัติการใช้งานโควตา
+              </div>
+            ) : (
+              <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gradient-to-r from-gray-50 to-orange-50/30 border-b">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">วันเวลา</th>
+                      <th className="px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">รหัสคำสั่งซื้อ</th>
+                      <th className="px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">รายการสินค้า</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-600 text-xs uppercase tracking-wider">จำนวนชิ้น</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-600 text-xs uppercase tracking-wider">แต้มที่ใช้ไป</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {usageBreakdownData.map(item => (
+                      <tr key={item.id} className="hover:bg-orange-50/40 transition-colors">
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                          {item.created_at}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button 
+                            onClick={() => setSelectedOrderId(item.order_id)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline font-mono font-medium"
+                            title="ดูรายละเอียดคำสั่งซื้อ"
+                          >
+                            {item.order_id}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-800">
+                          {item.product_name}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-gray-600">
+                          {Number(item.item_quantity).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-orange-600 font-bold">
+                          {Number(item.quantity_used)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t font-semibold">
+                    <tr>
+                      <td colSpan={4} className="px-4 py-3 text-right text-gray-600">รวมโควตาที่ใช้ไปทั้งหมด:</td>
+                      <td className="px-4 py-3 text-right font-mono text-orange-600 text-lg">
+                        {usageBreakdownData.reduce((s, i) => s + Number(i.quantity_used), 0)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Order Detail Modal */}
+    <OrderDetailModal
+      isOpen={!!selectedOrderId}
+      onClose={() => setSelectedOrderId(null)}
+      orderId={selectedOrderId}
+      companyId={companyId}
+    />
   </>
   );
 };
