@@ -55,6 +55,9 @@ try {
             case 'pending_counts':
                 handlePendingCounts($conn);
                 break;
+            case 'usage_breakdown':
+                handleUsageBreakdown($conn);
+                break;
             default:
                 json_response(['error' => 'Unknown action: ' . $action], 400);
         }
@@ -226,8 +229,8 @@ function handleListAllocations(PDO $conn) {
         SELECT qa.*, 
             u.first_name AS user_first_name, u.last_name AS user_last_name,
             ab.first_name AS allocated_by_first_name, ab.last_name AS allocated_by_last_name,
-            qp.name AS product_name,
-            qrs.name AS rate_name
+            qp.display_name AS product_name,
+            qrs.rate_name AS rate_name
         FROM quota_allocations qa
         LEFT JOIN users u ON u.id = qa.user_id
         LEFT JOIN users ab ON ab.id = qa.allocated_by
@@ -629,7 +632,7 @@ function handleUpdateRate(PDO $conn, array $data) {
         json_response(['error' => 'id required'], 400);
     }
 
-    $fields = [];
+    $fields = ['quota_product_id = NULL']; // Enforce shared pool mode
     $params = [':id' => $id];
 
     if (array_key_exists('rateName', $data)) {
@@ -702,8 +705,22 @@ function handleDeleteRate(PDO $conn, array $data) {
         json_response(['error' => 'id required'], 400);
     }
 
-    $conn->prepare("UPDATE quota_rate_schedules SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL")->execute([':id' => $id]);
-    json_response(['success' => true]);
+    try {
+        $conn->beginTransaction();
+        
+        // 1. Soft delete the rate schedule
+        $conn->prepare("UPDATE quota_rate_schedules SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL")->execute([':id' => $id]);
+        
+        // 2. Soft delete all auto_confirmed allocations that came from this rate schedule
+        // This prevents the user from getting double points if the admin creates a new rate for the same period and confirms again.
+        $conn->prepare("UPDATE quota_allocations SET deleted_at = NOW() WHERE rate_schedule_id = :id AND source = 'auto_confirmed' AND deleted_at IS NULL")->execute([':id' => $id]);
+        
+        $conn->commit();
+        json_response(['success' => true]);
+    } catch (Exception $e) {
+        $conn->rollBack();
+        json_response(['error' => $e->getMessage()], 500);
+    }
 }
 
 function handleConfirmQuota(PDO $conn, array $data) {
@@ -1221,12 +1238,16 @@ function handleSummaryByRate(PDO $conn) {
     $whereClause = "company_id = :companyId AND status = 'active' AND role IN ('Telesale', 'Supervisor Telesale', 'Admin Page')";
     $params = [':companyId' => $companyId];
 
-    if ($authRole === 'Telesale') {
-        $whereClause .= " AND id = :authUserId";
-        $params[':authUserId'] = $authUserId;
-    } elseif ($authRole === 'Supervisor Telesale') {
-        $whereClause .= " AND :authUserId IN (id, supervisor_id)";
-        $params[':authUserId'] = $authUserId;
+    $isSystem = intval($authUser['is_system'] ?? 0) === 1;
+
+    if (!$isSystem) {
+        if ($authRole === 'Telesale') {
+            $whereClause .= " AND id = :authUserId";
+            $params[':authUserId'] = $authUserId;
+        } elseif ($authRole === 'Supervisor Telesale') {
+            $whereClause .= " AND :authUserId IN (id, supervisor_id)";
+            $params[':authUserId'] = $authUserId;
+        }
     }
 
     $stmtUsers = $conn->prepare("
@@ -1841,12 +1862,16 @@ function handlePendingCounts(PDO $conn) {
     $whereClause = "company_id = :companyId AND status = 'active' AND role IN ('Telesale', 'Supervisor Telesale', 'Admin Page')";
     $params = [':companyId' => $companyId];
 
-    if ($authRole === 'Telesale') {
-        $whereClause .= " AND id = :authUserId";
-        $params[':authUserId'] = $authUserId;
-    } elseif ($authRole === 'Supervisor Telesale') {
-        $whereClause .= " AND :authUserId IN (id, supervisor_id)";
-        $params[':authUserId'] = $authUserId;
+    $isSystem = intval($authUser['is_system'] ?? 0) === 1;
+
+    if (!$isSystem) {
+        if ($authRole === 'Telesale') {
+            $whereClause .= " AND id = :authUserId";
+            $params[':authUserId'] = $authUserId;
+        } elseif ($authRole === 'Supervisor Telesale') {
+            $whereClause .= " AND :authUserId IN (id, supervisor_id)";
+            $params[':authUserId'] = $authUserId;
+        }
     }
 
     $stmtUsers = $conn->prepare("
@@ -1906,4 +1931,66 @@ function handlePendingCounts(PDO $conn) {
     }
 
     json_response(['success' => true, 'data' => $counts]);
+}
+
+function handleUsageBreakdown(PDO $conn) {
+    $companyId = intval($_GET['companyId'] ?? 0);
+    $userId = intval($_GET['userId'] ?? 0);
+    $rateScheduleId = $_GET['rateScheduleId'] ?? 'all';
+
+    if (!$companyId || !$userId) {
+        json_response(['error' => 'Missing required parameters'], 400);
+    }
+
+    // Base query
+    $sql = "
+        SELECT 
+            qu.id,
+            qu.order_id, 
+            qu.quantity_used, 
+            qu.created_at, 
+            qp.display_name as product_name,
+            (
+                SELECT COALESCE(SUM(oi.quantity), 0) 
+                FROM order_items oi 
+                WHERE oi.order_id = qu.order_id 
+                AND oi.product_id = qp.product_id 
+                AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            ) as item_quantity
+        FROM quota_usage qu
+        JOIN quota_products qp ON qp.id = qu.quota_product_id
+        JOIN orders o ON o.id = qu.order_id
+        WHERE qu.user_id = :userId 
+          AND qu.company_id = :companyId
+          AND qu.deleted_at IS NULL
+          AND o.order_status NOT IN ('Cancelled', 'Returned', 'ตีกลับ', 'ยกเลิก')
+    ";
+
+    $params = [
+        ':userId' => $userId,
+        ':companyId' => $companyId
+    ];
+
+    // If a specific rate is selected, filter by the scope of that rate
+    if ($rateScheduleId !== 'all') {
+        $stmtScope = $conn->prepare("SELECT quota_product_id FROM quota_rate_scope WHERE rate_schedule_id = :rid");
+        $stmtScope->execute([':rid' => $rateScheduleId]);
+        $scopeIds = $stmtScope->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($scopeIds)) {
+            // Rate has no scope, which means it applies to NO products (should not happen usually, but handle it)
+            json_response(['success' => true, 'data' => []]);
+        }
+
+        $inClause = implode(',', array_map('intval', $scopeIds));
+        $sql .= " AND qu.quota_product_id IN ($inClause)";
+    }
+
+    $sql .= " ORDER BY qu.created_at DESC";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->execute($params);
+    $usages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    json_response(['success' => true, 'data' => $usages]);
 }

@@ -762,6 +762,30 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 // Use mainOrderId for the rest of the operation
                 $id = $mainOrderId;
+
+                // --- PAST MONTH LOCK ENFORCEMENT ---
+                $currentUser = get_authenticated_user($pdo);
+                $role = $currentUser['role'] ?? '';
+                $managerRoles = ['admin', 'manager', 'Super Admin', 'Admin System', 'Admin Control', 'Admin Page', 'Backoffice', 'Sup Backoffice', 'CEO', 'Finance'];
+                if (!in_array($role, $managerRoles)) {
+                    $stmtLock = $pdo->prepare('SELECT order_date FROM orders WHERE id = ?');
+                    $stmtLock->execute([$id]);
+                    $orderLockData = $stmtLock->fetch();
+                    if ($orderLockData) {
+                        $orderDateStr = $orderLockData['order_date'];
+                        if ($orderDateStr) {
+                            $orderTs = strtotime($orderDateStr);
+                            $orderYearMonth = date('Y-m', $orderTs);
+                            $currentYearMonth = date('Y-m');
+                            if ($orderYearMonth < $currentYearMonth) {
+                                $pdo->rollBack();
+                                json_response(['error' => 'ORDER_MONTH_LOCKED', 'message' => 'ไม่สามารถแก้ไขออเดอร์ข้ามเดือนได้ เพื่อป้องกันผลกระทบต่อยอดขาย'], 403);
+                            }
+                        }
+                    }
+                }
+                // --- END PAST MONTH LOCK ENFORCEMENT ---
+
                 // 1. Update main order fields
                 $updateFields = [];
                 $params = [];

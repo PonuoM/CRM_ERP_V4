@@ -713,8 +713,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     });
   };
 
-  // 🎫 QUOTA MAX: Map<productId, maxQty> for real-time quantity enforcement
-  const [quotaMaxMap, setQuotaMaxMap] = useState<Map<number, number>>(new Map());
+  // 🎫 QUOTA SYSTEM (Dynamic Evaluation)
+  const [quotaProductsList, setQuotaProductsList] = useState<any[]>([]);
+  const [quotaDetails, setQuotaDetails] = useState<any[]>([]);
+
+  // Fetch Quota Base Data
   useEffect(() => {
     if (!currentUser?.companyId || !currentUser?.id) return;
     let cancelled = false;
@@ -722,43 +725,132 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       try {
         const { listQuotaProducts, getUserQuotaDetail } = await import('../services/quotaApi');
         const qps = await listQuotaProducts(currentUser.companyId);
-        const activeQps = qps.filter(q => q.isActive);
+        const activeQps = qps.filter((q: any) => q.isActive);
         if (activeQps.length === 0 || cancelled) return;
         
-        const newMap = new Map<number, number>();
         const details = await getUserQuotaDetail({ 
             companyId: currentUser.companyId, 
             userId: currentUser.id, 
             rateScheduleId: 'all' 
         });
 
-        for (const qp of activeQps) {
-          try {
-            let totalRemaining = 0;
-            let hasRate = false;
-            
-            const applicableRates = details.filter(d => 
-                d.scopeIds && 
-                d.scopeIds.includes(qp.id) &&
-                !d.isExpired
-            );
-            
-            for (const rate of applicableRates) {
-                hasRate = true;
-                totalRemaining += Number(rate.remaining ?? 0);
-            }
-
-            if (hasRate) {
-              const cost = qp.quotaCost ?? 1;
-              newMap.set(qp.productId, Math.max(0, Math.floor(totalRemaining / cost)));
-            }
-          } catch { /* skip */ }
+        if (!cancelled) {
+          setQuotaProductsList(activeQps);
+          setQuotaDetails(details);
         }
-        if (!cancelled) setQuotaMaxMap(newMap);
       } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
   }, [currentUser?.companyId, currentUser?.id]);
+
+  // Dynamically calculate remaining quota by RateSchedule ID (subtracting cart items)
+  const dynamicQuotaRemainingByRate = useMemo(() => {
+    const remainingMap = new Map<number, number>(); // rateScheduleId -> dynamic remaining
+
+    // 1. Initialize map with DB remaining
+    quotaDetails.forEach((d: any) => {
+        if (!d.isExpired && d.rateScheduleId) {
+            remainingMap.set(d.rateScheduleId, Number(d.remaining ?? 0));
+        }
+    });
+
+    // 2. Subtract currently consumed quota in the cart
+    if (orderData?.items) {
+        orderData.items.forEach((item) => {
+            const pid = item.productId;
+            const qty = Math.max(0, item.quantity ?? 0);
+            if (!pid || qty <= 0) return;
+
+            // Find matching quota product
+            const qp = quotaProductsList.find((q: any) => q.productId === pid);
+            if (!qp) return;
+
+            const cost = qp.quotaCost ?? 1;
+            const consumed = qty * cost;
+
+            // Find applicable rates for this quota product and deduct
+            quotaDetails.forEach((d: any) => {
+                if (!d.isExpired && d.rateScheduleId && d.scopeIds && d.scopeIds.includes(qp.id)) {
+                    const currentRemaining = remainingMap.get(d.rateScheduleId) ?? 0;
+                    remainingMap.set(d.rateScheduleId, currentRemaining - consumed);
+                }
+            });
+        });
+    }
+
+    return remainingMap;
+  }, [quotaDetails, quotaProductsList, orderData?.items]);
+
+  // Map to pass to ProductSelectorModal
+  const dynamicProductQuotaMap = useMemo(() => {
+    const map = new Map<number, any>();
+    
+    for (const qp of quotaProductsList) {
+        let totalRemaining = 0; // Sum of dynamic remaining across all applicable rates
+        let totalQuotaVal = 0;
+        let hasRate = false;
+
+        quotaDetails.forEach((d: any) => {
+            if (!d.isExpired && d.rateScheduleId && d.scopeIds && d.scopeIds.includes(qp.id)) {
+                hasRate = true;
+                totalRemaining += (dynamicQuotaRemainingByRate.get(d.rateScheduleId) ?? 0);
+                totalQuotaVal += Number(d.totalQuota ?? 0);
+            }
+        });
+
+        if (hasRate) {
+            const cost = qp.quotaCost ?? 1;
+            map.set(qp.productId, {
+                isQuotaProduct: true,
+                remaining: totalRemaining,
+                totalQuota: totalQuotaVal,
+                // Crucial: check if remaining is less than the cost!
+                isExhausted: totalRemaining < cost
+            });
+        } else {
+            map.set(qp.productId, {
+                isQuotaProduct: true,
+                remaining: 0,
+                totalQuota: 0,
+                isExhausted: true
+            });
+        }
+    }
+    return map;
+  }, [quotaDetails, quotaProductsList, dynamicQuotaRemainingByRate]);
+
+  // 🎫 QUOTA MAX: Map<productId, maxQty> for real-time quantity enforcement (Dynamic Absolute Max)
+  const quotaMaxMap = useMemo(() => {
+    const newMap = new Map<number, number>();
+    for (const qp of quotaProductsList) {
+        let dynamicRemaining = 0;
+        let hasRate = false;
+        quotaDetails.forEach((d: any) => {
+            if (!d.isExpired && d.scopeIds && d.scopeIds.includes(qp.id)) {
+                hasRate = true;
+                dynamicRemaining += (dynamicQuotaRemainingByRate.get(d.rateScheduleId) ?? 0);
+            }
+        });
+        if (hasRate) {
+            const cost = qp.quotaCost ?? 1;
+            
+            // Find current quantity of this product in the cart (sum across all rows)
+            let currentQty = 0;
+            if (orderData?.items) {
+                currentQty = orderData.items
+                    .filter(i => i.productId === qp.productId)
+                    .reduce((sum, item) => sum + Math.max(0, item.quantity ?? 0), 0);
+            }
+
+            // Max allowed is what's already in the cart PLUS whatever additional we can afford
+            const additionalAllowed = Math.max(0, Math.floor(dynamicRemaining / cost));
+            const absoluteMax = currentQty + additionalAllowed;
+            
+            newMap.set(qp.productId, absoluteMax);
+        }
+    }
+    return newMap;
+  }, [quotaDetails, quotaProductsList, dynamicQuotaRemainingByRate, orderData?.items]);
 
   const [transferSlipUploads, setTransferSlipUploads] = useState<
     TransferSlipUpload[]
@@ -7193,6 +7285,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             onSelectPromotion={handleUpsellAddPromotionById}
             companyId={currentUser?.companyId}
             currentUserId={currentUser?.id}
+            quotaMap={dynamicProductQuotaMap}
+            quotaProducts={quotaProductsList}
           />
         </div>
       </div>
@@ -10352,6 +10446,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   onSelectPromotion={addPromotionByIdFixed}
                   companyId={currentUser?.companyId}
                   currentUserId={currentUser?.id}
+                  quotaMap={dynamicProductQuotaMap}
+                  quotaProducts={quotaProductsList}
                 />
               </div>
             )}

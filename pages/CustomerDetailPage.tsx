@@ -1367,7 +1367,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                           {paginatedCallHistory.map((c) => (
                             <tr key={c.id} className="border-b last:border-0">
                               <td className="py-2 px-2">
-                                {formatThaiDateTime(c.date)}
+                                {formatThaiDateTime(c.date, { hour: "2-digit", minute: "2-digit" })}
                               </td>
                               <td className="py-2 px-2">{c.caller}</td>
                               <td className="py-2 px-2">

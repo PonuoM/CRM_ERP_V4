@@ -77,6 +77,7 @@ try {
             o.amount_paid,
             o.shipping_cost,
             o.bill_discount,
+            o.coupon_discount,
             o.street, o.subdistrict, o.district, o.province, o.postal_code,
             o.recipient_first_name, o.recipient_last_name,
             o.customer_type,
@@ -134,6 +135,7 @@ try {
         'cod'      => [],
         'airport'  => [],
         'boxes'    => [],
+        'cancellations' => [],
     ];
 
     if (!empty($orderIds)) {
@@ -241,18 +243,29 @@ try {
         } catch (Throwable $e) {}
 
         try {
-            $returnedIds = array_values(array_unique(array_filter(array_map(function($r) {
-                return ($r['order_status'] ?? '') === 'Returned' ? $r['order_id'] : null;
-            }, $rows))));
-            if (!empty($returnedIds)) {
-                $retChunks = array_chunk($returnedIds, $chunkSize);
-                foreach ($retChunks as $retChunk) {
-                    $ph = implode(',', array_fill(0, count($retChunk), '?'));
-                    $bStmt = $pdo->prepare("SELECT order_id, box_number, return_status FROM order_boxes WHERE order_id IN ($ph)");
-                    $bStmt->execute($retChunk);
-                    foreach ($bStmt->fetchAll(PDO::FETCH_ASSOC) as $b) {
-                        $lookups['boxes'][$b['order_id'] . '-' . $b['box_number']] = $b['return_status'];
-                    }
+            foreach ($chunks as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $bStmt = $pdo->prepare("SELECT order_id, box_number, return_status
+                     FROM order_boxes
+                     WHERE order_id IN ($ph) AND return_status IS NOT NULL");
+                $bStmt->execute($chunk);
+                foreach ($bStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $key = $r['order_id'] . '-' . $r['box_number'];
+                    $lookups['boxes'][$key] = $r['return_status'];
+                }
+            }
+        } catch (Throwable $e) {}
+
+        try {
+            foreach ($chunks as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $canStmt = $pdo->prepare("SELECT oc.order_id, ct.label
+                     FROM order_cancellations oc
+                     INNER JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
+                     WHERE oc.order_id IN ($ph)");
+                $canStmt->execute($chunk);
+                foreach ($canStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $lookups['cancellations'][$r['order_id']] = $r['label'];
                 }
             }
         } catch (Throwable $e) {}

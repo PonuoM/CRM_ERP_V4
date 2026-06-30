@@ -1082,8 +1082,10 @@ const PromoCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ cur
       await patchOrder(updatedOrder.id, updatedOrder);
       setManageOrder(null);
       fetchData(); // Refresh list
-    } catch (err) {
+    } catch (err: any) {
+      alert(`ไม่สามารถบันทึกได้: ${err.message || 'เกิดข้อผิดพลาด'}`);
       console.error('Failed to save order', err);
+      throw err;
     }
   };
 
@@ -1575,8 +1577,10 @@ const CreatorCheckTab: React.FC<{ currentUser: User; companyId: number }> = ({ c
       await patchOrder(updatedOrder.id, updatedOrder);
       setManageOrder(null);
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
+      alert(`ไม่สามารถบันทึกได้: ${err.message || 'เกิดข้อผิดพลาด'}`);
       console.error('Failed to save order', err);
+      throw err;
     }
   };
 
