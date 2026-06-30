@@ -972,6 +972,7 @@ model price_announcement_tiers {
   announcement_id  Int
   quantity         Int
   new_total_price  Decimal @db.Decimal(12, 2)
+  new_unit_price   Decimal? @db.Decimal(12, 2)
   sort_order       Int    @default(0)
 
   @@index([announcement_id], map: "idx_announcement")

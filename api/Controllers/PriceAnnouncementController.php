@@ -243,13 +243,21 @@ function pa_is_visible_to(PDO $pdo, int $announcementId, int $companyId, int $ro
 /** Insert tiers (+ their notes), discount tiers, discount notes, and visibility rows for an announcement. */
 function pa_write_children(PDO $pdo, int $announcementId, array $tiers, array $discountTiers, array $discountNotes, array $roleIds, array $companyIds): void
 {
-    $tierStmt = $pdo->prepare('INSERT INTO price_announcement_tiers (announcement_id, quantity, new_total_price, sort_order) VALUES (?, ?, ?, ?)');
+    $tierStmt = $pdo->prepare('INSERT INTO price_announcement_tiers (announcement_id, quantity, new_total_price, new_unit_price, sort_order) VALUES (?, ?, ?, ?, ?)');
     $tierNoteStmt = $pdo->prepare('INSERT INTO price_announcement_tier_notes (tier_id, note_text, sort_order) VALUES (?, ?, ?)');
     foreach ($tiers as $i => $tier) {
+        $quantity = (int) ($tier['quantity'] ?? 0);
+        $totalPrice = (float) ($tier['new_total_price'] ?? $tier['newTotalPrice'] ?? 0);
+        $unitPriceRaw = $tier['new_unit_price'] ?? $tier['newUnitPrice'] ?? null;
+        // Manual override if provided; otherwise derive from total/quantity as before.
+        $unitPrice = ($unitPriceRaw !== null && $unitPriceRaw !== '')
+            ? (float) $unitPriceRaw
+            : ($quantity ? round($totalPrice / $quantity, 2) : null);
         $tierStmt->execute([
             $announcementId,
-            (int) ($tier['quantity'] ?? 0),
-            (float) ($tier['new_total_price'] ?? $tier['newTotalPrice'] ?? 0),
+            $quantity,
+            $totalPrice,
+            $unitPrice,
             $i,
         ]);
         $tierId = (int) $pdo->lastInsertId();
@@ -341,10 +349,16 @@ function pa_attach_children(PDO $pdo, array $row, bool $withPreviousMonth): arra
         $prevStmt->execute([$row['company_id'], $row['product_id'], $row['month']]);
         $prevId = $prevStmt->fetchColumn();
         if ($prevId) {
-            $prevTiersStmt = $pdo->prepare('SELECT quantity, new_total_price FROM price_announcement_tiers WHERE announcement_id = ?');
+            $prevTiersStmt = $pdo->prepare('SELECT quantity, new_total_price, new_unit_price FROM price_announcement_tiers WHERE announcement_id = ?');
             $prevTiersStmt->execute([$prevId]);
             foreach ($prevTiersStmt->fetchAll() as $pt) {
-                $previousPriceByQty[(int) $pt['quantity']] = (float) $pt['new_total_price'];
+                $qty = (int) $pt['quantity'];
+                $previousPriceByQty[$qty] = [
+                    'total' => (float) $pt['new_total_price'],
+                    'unit' => $pt['new_unit_price'] !== null
+                        ? (float) $pt['new_unit_price']
+                        : ($qty ? round((float) $pt['new_total_price'] / $qty, 2) : null),
+                ];
             }
         }
     }
@@ -357,7 +371,8 @@ function pa_attach_children(PDO $pdo, array $row, bool $withPreviousMonth): arra
         $noteStmt->execute([$tier['id']]);
         $tier['notes'] = $noteStmt->fetchAll(PDO::FETCH_COLUMN);
         $qty = (int) $tier['quantity'];
-        $tier['old_total_price'] = $previousPriceByQty[$qty] ?? null;
+        $tier['old_total_price'] = $previousPriceByQty[$qty]['total'] ?? null;
+        $tier['old_unit_price'] = $previousPriceByQty[$qty]['unit'] ?? null;
     }
     unset($tier);
     $row['tiers'] = $tiers;
