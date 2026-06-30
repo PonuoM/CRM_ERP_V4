@@ -284,11 +284,7 @@ try {
     $flatData = [];
     foreach ($dailyData as $d => $users) {
         foreach ($users as $uid => $record) {
-            // Only add if there is some activity to avoid huge empty payloads
-            $m = $record['metrics'];
-            if ($m['totalCalls'] > 0 || $m['grossOrders'] > 0) {
-                $flatData[] = $record;
-            }
+            $flatData[] = $record;
         }
     }
 
