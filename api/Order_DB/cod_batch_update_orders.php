@@ -109,6 +109,20 @@ try {
         ];
     }
 
+    // 3.5 Fetch reconciled amounts from Bank Audit (Best Practice Guard)
+    $reconciledSql = "
+    SELECT order_id, SUM(confirmed_amount) as total_confirmed
+    FROM statement_reconcile_logs 
+    WHERE order_id IN ($placeholders) AND confirmed_action = 'Confirmed'
+    GROUP BY order_id
+    ";
+    $reconciledStmt = $pdo->prepare($reconciledSql);
+    $reconciledStmt->execute($orderIds); // no company_id in statement_reconcile_logs currently
+    $reconciledTotals = [];
+    foreach ($reconciledStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $reconciledTotals[$row['order_id']] = (float) $row['total_confirmed'];
+    }
+
     // 4. Update each order
     $pdo->beginTransaction();
     set_audit_context($pdo, 'orders/cod_batch_update');
@@ -134,6 +148,7 @@ try {
         $codTotal = $codTotals[$orderId] ?? 0;
         $slipTotal = $slipTotals[$orderId] ?? 0;
         $totalPaid = round($codTotal + $slipTotal, 2);
+        $reconciledTotal = $reconciledTotals[$orderId] ?? 0;
         
         // Cap at 1.5x total_amount to prevent doubling bugs (allows normal overpayments)
         $orderTotal = $orderTotals[$orderId] ?? 0;
@@ -145,6 +160,16 @@ try {
         $currentPayment = $orderCurrentStatus[$orderId]['payment_status'] ?? '';
         $currentOrder = $orderCurrentStatus[$orderId]['order_status'] ?? '';
         $isProtected = in_array($currentPayment, $protectedPaymentStatuses) || in_array($currentOrder, $protectedOrderStatuses);
+
+        // GUARD: Do NOT downgrade orders already confirmed by Bank Audit
+        $currentPayment = $orderCurrentStatus[$orderId]['payment_status'] ?? '';
+        $currentOrder = $orderCurrentStatus[$orderId]['order_status'] ?? '';
+        $isProtected = in_array($currentPayment, $protectedPaymentStatuses) || in_array($currentOrder, $protectedOrderStatuses);
+
+        // Best Practice Guard: ensure amount_paid doesn't drop below what was already reconciled by Bank Audit
+        if ($isProtected && $reconciledTotal > 0 && $totalPaid < $reconciledTotal) {
+            $totalPaid = max($totalPaid, $reconciledTotal);
+        }
 
         if ($isProtected) {
             // Only update amount_paid, preserve existing statuses

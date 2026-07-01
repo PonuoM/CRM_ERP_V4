@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   User,
   Customer,
@@ -523,6 +523,21 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
   const salesInputRef = useRef<HTMLInputElement | null>(null);
   const customersInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [selectedPageId, setSelectedPageId] = useState<number | null>(null);
+  const [pages, setPages] = useState<{ id: number; name: string }[]>([]);
+  const [platforms, setPlatforms] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    apiFetch('pages').then((data) => {
+      if (Array.isArray(data)) setPages(data);
+    }).catch(console.error);
+
+    apiFetch('platforms').then((data) => {
+      if (Array.isArray(data)) setPlatforms(data);
+    }).catch(console.error);
+  }, []);
+
   const resetSelectedFile = (type: TemplateKey) => {
     setSelectedFiles((prev) => {
       const next = { ...prev };
@@ -578,7 +593,11 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
         try {
           const result = await apiFetch('import/sales_fast.php', {
             method: 'POST',
-            body: JSON.stringify({ rows: salesRows })
+            body: JSON.stringify({ 
+              rows: salesRows,
+              salesChannel: selectedPlatform,
+              salesChannelPageId: selectedPageId
+            })
           }) as ImportResultSummary;
 
           if (result) {
@@ -705,6 +724,36 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
               <h3 className="font-medium text-gray-800 mb-4">
                 นำเข้าข้อมูลการขาย
               </h3>
+
+              <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">ช่องทางการขาย (Optional)</label>
+                  <select
+                    value={selectedPlatform || ""}
+                    onChange={(e) => {
+                      setSelectedPlatform(e.target.value || null);
+                      setSelectedPageId(null);
+                    }}
+                    className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">-- ไม่ระบุ --</option>
+                    {platforms.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">เพจ (Optional)</label>
+                  <select
+                    value={selectedPageId || ""}
+                    onChange={(e) => setSelectedPageId(e.target.value ? Number(e.target.value) : null)}
+                    disabled={!selectedPlatform || ["Shopee", "Lazada", "โทรขาย"].includes(selectedPlatform)}
+                    className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                  >
+                    <option value="">-- ไม่ระบุ --</option>
+                    {pages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
               <div className="flex items-center gap-3 mb-4">
                 <button
                   type="button"

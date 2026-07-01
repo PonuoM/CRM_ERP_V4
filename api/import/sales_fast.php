@@ -62,6 +62,13 @@ if (!isset($input['rows']) || !is_array($input['rows'])) {
 $rows = $input['rows'];
 $totalRows = count($rows);
 
+// Handle optional channel selection
+$salesChannel = sanitize_value($input['salesChannel'] ?? null);
+$salesChannelPageId = sanitize_value($input['salesChannelPageId'] ?? null);
+if ($salesChannelPageId !== null) {
+    $salesChannelPageId = (int)$salesChannelPageId;
+}
+
 $summary = [
     'totalRows' => $totalRows,
     'createdCustomers' => 0,
@@ -248,8 +255,9 @@ try {
         recipient_first_name, recipient_last_name, 
         street, subdistrict, district, province, postal_code,
         total_amount, payment_method, payment_status, 
-        order_status, shipping_cost, customer_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Approved', 'Delivered', 0, 'New Customer')");
+        order_status, shipping_cost, customer_type,
+        sales_channel, sales_channel_page_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Approved', 'Delivered', 0, 'New Customer', ?, ?)");
     
     $stmtInsItem = $pdo->prepare("INSERT INTO order_items (
         order_id, parent_order_id, creator_id, 
@@ -331,7 +339,6 @@ try {
         $firstName = sanitize_value($first['customerFirstName'] ?? null) ?: 'Customer';
         $lastName = sanitize_value($first['customerLastName'] ?? null) ?: '';
         
-        // Insert order
         $stmtInsOrder->execute([
             $orderId, $customerPk, $user['company_id'], $creatorId,
             $orderDate, $orderDate,
@@ -341,7 +348,8 @@ try {
             sanitize_value($first['district'] ?? null),
             sanitize_value($first['province'] ?? null),
             sanitize_value($first['postalCode'] ?? null),
-            $totalAmount, $paymentMethod
+            $totalAmount, $paymentMethod,
+            $salesChannel, $salesChannelPageId
         ]);
         
         // Insert items
