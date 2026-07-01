@@ -8,9 +8,10 @@ interface NotificationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   userRole: string;
+  onViewAll?: () => void;
 }
 
-const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose, userRole }) => {
+const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose, userRole, onViewAll }) => {
   const [updates, setUpdates] = useState<SystemUpdate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [readIds, setReadIds] = useState<Set<number>>(new Set());
@@ -109,7 +110,7 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
       {/* Popover */}
       <div
         ref={drawerRef}
-        className={`fixed bottom-16 left-20 lg:left-64 lg:ml-2 w-80 max-h-[75vh] bg-[#1a1a1a] text-white shadow-2xl rounded-xl z-50 flex flex-col border border-gray-800 transform transition-all duration-200 origin-bottom-left ${
+        className={`fixed bottom-16 left-20 lg:left-64 lg:ml-2 w-80 max-h-[75vh] bg-[#1a1a1a] text-white shadow-2xl rounded-xl z-[100] flex flex-col border border-gray-800 transform transition-all duration-200 origin-bottom-left ${
           isOpen ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 translate-y-4 pointer-events-none'
         }`}
       >
@@ -118,6 +119,14 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
             การแจ้งเตือน
           </h2>
           <div className="flex items-center gap-2">
+            {onViewAll && (
+              <button
+                onClick={onViewAll}
+                className="text-[11px] text-gray-400 hover:text-white px-2 py-1 rounded transition-colors"
+              >
+                ดูทั้งหมด
+              </button>
+            )}
             <button
               onClick={markAllAsRead}
               className="text-[11px] flex items-center gap-1 text-gray-300 hover:text-white border border-gray-600 hover:border-gray-400 px-2 py-1 rounded transition-colors"
@@ -160,9 +169,29 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
                       <h4 className={`text-sm ${isUnread ? 'font-bold text-white' : 'font-medium text-gray-300'}`}>
                         {update.title}
                       </h4>
-                      <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">
-                        {update.message}
-                      </p>
+                      <p className="text-xs text-gray-400 mt-1.5 whitespace-pre-wrap">{update.message}</p>
+                      {update.image_url && (() => {
+                        let images: string[] = [];
+                        try {
+                          images = JSON.parse(update.image_url);
+                        } catch {
+                          images = [update.image_url];
+                        }
+                        if (images.length === 0) return null;
+                        
+                        return (
+                          <div className="mt-2 relative inline-block">
+                            <img src={images[0]} alt="Update" className="rounded-md max-w-full h-auto max-h-32 object-contain bg-gray-800" />
+                            {images.length > 1 && (
+                              <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center rounded-md pointer-events-none">
+                                <span className="text-white font-medium text-xs px-2 py-1 bg-black bg-opacity-50 rounded-full">
+                                  +{images.length - 1} รูปภาพ
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div className="text-[10px] text-gray-500 mt-2 font-medium">
                         {formatThaiDateTime(update.created_at)}
                       </div>

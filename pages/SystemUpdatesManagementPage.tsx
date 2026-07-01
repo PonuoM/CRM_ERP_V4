@@ -8,6 +8,9 @@ const SystemUpdatesManagementPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUpdate, setEditingUpdate] = useState<SystemUpdate | null>(null);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
+  const [retainedImages, setRetainedImages] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     title: '',
     message: '',
@@ -36,8 +39,24 @@ const SystemUpdatesManagementPage: React.FC = () => {
   }, []);
 
   const handleOpenModal = (update?: SystemUpdate) => {
+    setSelectedImages([]);
+    setNewImagePreviews([]);
+    setRetainedImages([]);
+    
     if (update) {
       setEditingUpdate(update);
+      
+      let parsedImages: string[] = [];
+      if (update.image_url) {
+        try {
+          parsedImages = JSON.parse(update.image_url);
+        } catch {
+          // Fallback if it's a single string URL
+          parsedImages = [update.image_url];
+        }
+      }
+      setRetainedImages(parsedImages);
+      
       setFormData({
         title: update.title,
         message: update.message,
@@ -58,13 +77,56 @@ const SystemUpdatesManagementPage: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const filesArray = Array.from(e.target.files);
+      setSelectedImages(prev => [...prev, ...filesArray]);
+      
+      const newPreviews = filesArray.map(file => URL.createObjectURL(file));
+      setNewImagePreviews(prev => [...prev, ...newPreviews]);
+    }
+    // reset input so same file can be selected again if needed
+    e.target.value = '';
+  };
+
+  const handleRemoveNewImage = (index: number) => {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
+    setNewImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  const handleRemoveRetainedImage = (index: number) => {
+    setRetainedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (editingUpdate) {
-        await updateSystemUpdate(editingUpdate.id, formData);
+      const submitData = new FormData();
+      submitData.append('title', formData.title);
+      submitData.append('message', formData.message);
+      submitData.append('type', formData.type);
+      submitData.append('is_active', String(formData.is_active));
+      if (formData.target_roles) {
+        submitData.append('target_roles', formData.target_roles);
       } else {
-        await createSystemUpdate(formData);
+        submitData.append('target_roles', '');
+      }
+      
+      if (selectedImages.length > 0) {
+        selectedImages.forEach(file => {
+          submitData.append('images[]', file);
+        });
+      }
+      if (retainedImages.length > 0) {
+        retainedImages.forEach(url => {
+          submitData.append('retained_images[]', url);
+        });
+      }
+
+      if (editingUpdate) {
+        await updateSystemUpdate(editingUpdate.id, submitData);
+      } else {
+        await createSystemUpdate(submitData);
       }
       setIsModalOpen(false);
       fetchUpdates();
@@ -194,8 +256,8 @@ const SystemUpdatesManagementPage: React.FC = () => {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-md max-h-[95vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-gray-900">{editingUpdate ? 'แก้ไขการแจ้งเตือน' : 'สร้างการแจ้งเตือน'}</h2>
               <button 
@@ -271,6 +333,47 @@ const SystemUpdatesManagementPage: React.FC = () => {
                     );
                   })}
                 </div>
+              </div>
+              
+              <div>
+                <label className="block text-gray-700 text-sm font-semibold mb-1">รูปภาพประกอบ (ไม่บังคับ, อัปโหลดได้หลายรูป)</label>
+                
+                <div className="flex flex-wrap gap-4 mb-3">
+                  {retainedImages.map((url, idx) => (
+                    <div key={`retained-${idx}`} className="relative inline-block">
+                      <img src={url} alt={`Retained ${idx}`} className="h-24 w-auto rounded-lg border border-gray-200 object-contain" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRetainedImage(idx)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {newImagePreviews.map((url, idx) => (
+                    <div key={`new-${idx}`} className="relative inline-block">
+                      <img src={url} alt={`New ${idx}`} className="h-24 w-auto rounded-lg border border-blue-200 object-contain" />
+                      <div className="absolute top-1 left-1 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded shadow">ใหม่</div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveNewImage(idx)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <input
+                  type="file"
+                  multiple
+                  accept="image/jpeg, image/png, image/webp"
+                  onChange={handleImageChange}
+                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all cursor-pointer"
+                />
               </div>
               <div className="flex items-center p-4 border border-gray-200 rounded-lg bg-gray-50">
                 <input

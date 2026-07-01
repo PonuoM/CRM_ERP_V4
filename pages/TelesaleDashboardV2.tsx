@@ -596,8 +596,11 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // Sort by upcoming birthday
     const [sortByBirthday, setSortByBirthday] = useState(false);
 
+    // Show Contacted Filter
+    const [showContactedDateRange, setShowContactedDateRange] = useState<DateRange>({ start: '', end: '' });
+
     // Check if any filters are active (including search)
-    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || selectedGrades.length > 0 || appointmentDateRange.start !== '' || appointmentDateRange.end !== '' || filterByOverdueAppointment || hideContactedDateRange.start !== '' || hideContactedDateRange.end !== '' || activeSearchTerm || sortByBirthday;
+    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || selectedGrades.length > 0 || appointmentDateRange.start !== '' || appointmentDateRange.end !== '' || filterByOverdueAppointment || hideContactedDateRange.start !== '' || hideContactedDateRange.end !== '' || activeSearchTerm || sortByBirthday || showContactedDateRange.start !== '' || showContactedDateRange.end !== '';
 
     // Clear all filters (including search)
     const clearAllFilters = () => {
@@ -922,6 +925,32 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 });
             }
 
+            // Apply Show Contacted DateRange Filter
+            if (showContactedDateRange.start || showContactedDateRange.end) {
+                const s = showContactedDateRange.start ? new Date(showContactedDateRange.start) : null;
+                const e = showContactedDateRange.end ? new Date(showContactedDateRange.end) : null;
+                if (s) s.setHours(0, 0, 0, 0);
+                if (e) e.setHours(23, 59, 59, 999);
+
+                filtered = filtered.filter(c => {
+                    const lastCall = lastCallMap.get(String(c.id));
+                    if (!lastCall) return false;
+
+                    const safeDateStr = String(lastCall.date).replace(' ', 'T');
+                    const lastCallDate = new Date(safeDateStr);
+                    const callTime = lastCallDate.getTime();
+                    
+                    if (s && e) {
+                        return callTime >= s.getTime() && callTime <= e.getTime();
+                    } else if (s) {
+                        return callTime >= s.getTime();
+                    } else if (e) {
+                        return callTime <= e.getTime();
+                    }
+                    return true;
+                });
+            }
+
             // Apply Hide Contacted Filter
             if (hideContactedDateRange.start || hideContactedDateRange.end) {
                 const s = hideContactedDateRange.start ? new Date(hideContactedDateRange.start) : null;
@@ -960,7 +989,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return matches;
-    }, [basketGroups, activeSearchTerm, appointmentDateRange, filterByOverdueAppointment, hideContactedDateRange, deferredSelectedRegions, deferredSelectedTagIds, deferredSelectedGrades, deferredQuickFilter, lastCallMap, appointmentInfoMap, sortByBirthday]);
+    }, [basketGroups, activeSearchTerm, appointmentDateRange, filterByOverdueAppointment, hideContactedDateRange, deferredSelectedRegions, deferredSelectedTagIds, deferredSelectedGrades, deferredQuickFilter, lastCallMap, appointmentInfoMap, sortByBirthday, showContactedDateRange]);
 
     // Count total overdue appointments for display (ONLY for current user's customers)
     const overdueAppointmentCount = useMemo(() => {
@@ -1116,6 +1145,32 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             });
         }
 
+        // Apply Show Contacted DateRange Filter
+        if (showContactedDateRange.start || showContactedDateRange.end) {
+            const s = showContactedDateRange.start ? new Date(showContactedDateRange.start) : null;
+            const e = showContactedDateRange.end ? new Date(showContactedDateRange.end) : null;
+            if (s) s.setHours(0, 0, 0, 0);
+            if (e) e.setHours(23, 59, 59, 999);
+
+            customers = customers.filter(c => {
+                const lastCall = lastCallMap.get(String(c.id));
+                if (!lastCall) return false;
+
+                const safeDateStr = String(lastCall.date).replace(' ', 'T');
+                const lastCallDate = new Date(safeDateStr);
+                const callTime = lastCallDate.getTime();
+                
+                if (s && e) {
+                    return callTime >= s.getTime() && callTime <= e.getTime();
+                } else if (s) {
+                    return callTime >= s.getTime();
+                } else if (e) {
+                    return callTime <= e.getTime();
+                }
+                return true;
+            });
+        }
+
         // Apply Birthday Today Filter - show only customers with birthdays today
         if (sortByBirthday) {
             const today = new Date();
@@ -1215,7 +1270,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return customers;
-    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, deferredSelectedGrades, appointmentDateRange, filterByOverdueAppointment, appointmentInfoMap, hideContactedDateRange, sortByBirthday]);
+    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, deferredSelectedGrades, appointmentDateRange, filterByOverdueAppointment, appointmentInfoMap, hideContactedDateRange, sortByBirthday, showContactedDateRange]);
 
     // Manual sync - just refresh to get fresh data from API via App.tsx
     const handleManualSync = () => {
@@ -1357,6 +1412,17 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                         />
                     </div>
 
+                    {/* Show Contacted DateRange Filter */}
+                    <div className="flex items-center">
+                        <DateRangePicker
+                            value={showContactedDateRange}
+                            onChange={(range) => {
+                                setShowContactedDateRange(range);
+                            }}
+                            placeholder="แสดงที่โทรแล้ว (ทั้งหมด)"
+                        />
+                    </div>
+
                     {/* Sort by Upcoming Birthday Button */}
                     <button
                         onClick={() => setSortByBirthday(!sortByBirthday)}
@@ -1464,7 +1530,10 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     {/* Clear Filters Button - only show when filters are active */}
                     {hasActiveFilters && (
                         <button
-                            onClick={clearAllFilters}
+                            onClick={() => {
+                                clearAllFilters();
+                                setShowContactedDateRange({ start: '', end: '' });
+                            }}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 transition-all"
                             title="ล้างตัวกรองทั้งหมด"
                         >

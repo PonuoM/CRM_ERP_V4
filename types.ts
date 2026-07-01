@@ -969,10 +969,11 @@ export interface SystemUpdate {
   title: string;
   message: string;
   type: 'info' | 'warning' | 'success' | 'danger';
-  is_active: number;
-  created_by: number;
+  is_active: number | boolean;
   created_at: string;
+  created_by: number;
   first_name?: string;
   last_name?: string;
-  target_roles?: string;
+  target_roles?: string | null;
+  image_url?: string | null;
 }
