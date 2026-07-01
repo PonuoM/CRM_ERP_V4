@@ -8,12 +8,18 @@
  *     segment  = matched customer's CURRENT basket (customers.current_basket_key); unmatched -> "ไม่มีแคมเปญ"
  *       names_called = distinct customer phone dialed
  *       total_calls  = COUNT(*)
+ *       answered     = status = 1 (รับสาย, any duration)
+ *       missed       = status = 0 (ไม่รับสาย)
  *       talked       = status = 1 AND TIME_TO_SEC(duration) >= 30   (system standard "ได้คุย")
  *
  * Sale side  — from order_items (excl. cancelled / freebie):
  *     agent = COALESCE(oi.creator_id, o.creator_id) (role 6/7, company)
  *     segment = order_items.basket_key_at_sale -> campaign basket name; else "ไม่มีแคมเปญ"
  *       orders = COUNT(DISTINCT order id), sales = SUM(net_total)
+ *
+ * Ownership — from customers (CURRENT snapshot, not period-bound, same convention as call segment):
+ *     owned = COUNT(*) of customers.assigned_to = agent, grouped by customers.current_basket_key.
+ *     Segments with owned customers are shown even with zero call/sale activity in both periods.
  *
  * Teams: no `teams` table. team head = role-6 supervisor; a telesale's team is resolved via
  *   supervisor_id (-> role-6 user) OR team_id (matched to a role-6 supervisor's team_id).
@@ -110,7 +116,7 @@ try {
         ];
     }
     if (empty($userMap)) {
-        json_response(['success' => true, 'periods' => ['a' => ['month' => $monthA, 'year' => $yearA], 'b' => ['month' => $monthB, 'year' => $yearB]], 'has_teams' => false, 'teams_list' => [], 'agents_list' => [], 'total' => null, 'groups' => []]);
+        json_response(['success' => true, 'periods' => ['a' => ['month' => $monthA, 'year' => $yearA], 'b' => ['month' => $monthB, 'year' => $yearB]], 'has_teams' => false, 'teams_list' => [], 'agents_list' => [], 'owned' => 0, 'total' => null, 'groups' => []]);
         exit;
     }
 
@@ -162,7 +168,7 @@ try {
     });
 
     if (empty($activeIds)) {
-        json_response(['success' => true, 'periods' => ['a' => ['month' => $monthA, 'year' => $yearA], 'b' => ['month' => $monthB, 'year' => $yearB]], 'has_teams' => $hasTeams, 'teams_list' => $teamsListOut, 'agents_list' => $agentsList, 'total' => null, 'groups' => []]);
+        json_response(['success' => true, 'periods' => ['a' => ['month' => $monthA, 'year' => $yearA], 'b' => ['month' => $monthB, 'year' => $yearB]], 'has_teams' => $hasTeams, 'teams_list' => $teamsListOut, 'agents_list' => $agentsList, 'owned' => 0, 'total' => null, 'groups' => []]);
         exit;
     }
     $idPh = implode(',', array_fill(0, count($activeIds), '?'));
@@ -193,7 +199,7 @@ try {
         return strncmp($p, '66', 2) === 0 ? '0' . substr($p, 2) : $p;
     };
     $emptyMetrics = function () {
-        return ['names_called' => 0, 'total_calls' => 0, 'talked' => 0, 'orders' => 0, 'sales' => 0.0];
+        return ['names_called' => 0, 'total_calls' => 0, 'answered' => 0, 'missed' => 0, 'talked' => 0, 'orders' => 0, 'sales' => 0.0];
     };
 
     $agents = [];
@@ -212,13 +218,15 @@ try {
             ];
         }
         if (!isset($agents[$aid]['seg'][$seg])) {
-            $agents[$aid]['seg'][$seg] = ['a' => $emptyMetrics(), 'b' => $emptyMetrics()];
+            $agents[$aid]['seg'][$seg] = ['owned' => 0, 'a' => $emptyMetrics(), 'b' => $emptyMetrics()];
         }
     };
 
     $callSql = "
         SELECT matched_user_id AS agent_id, call_termination AS dialed,
                COUNT(*) AS total_calls,
+               SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS answered,
+               SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS missed,
                SUM(CASE WHEN status = 1 AND TIME_TO_SEC(duration) >= 30 THEN 1 ELSE 0 END) AS talked
         FROM call_import_logs
         WHERE rec_type = 2 AND matched_user_id IN ($idPh)
@@ -250,6 +258,8 @@ try {
             $m = &$agents[$aid]['seg'][$seg][$key];
             $m['names_called'] += 1;
             $m['total_calls'] += (int) $r['total_calls'];
+            $m['answered'] += (int) $r['answered'];
+            $m['missed'] += (int) $r['missed'];
             $m['talked'] += (int) $r['talked'];
             unset($m);
         }
@@ -267,6 +277,27 @@ try {
         }
     }
 
+    // ---- Owned customers (CURRENT snapshot, not period-bound) — assigned_to agent, grouped by
+    // current basket. (A true point-in-time historical version was attempted via customer_audit_log
+    // but abandoned: the basket-routing system reassigns ownership across the whole customer pool so
+    // heavily — ~900K+ change events — that even single-team-scoped reconstruction took 28s/94MB;
+    // only single-agent scope was fast enough (~5s), which wasn't a usable threshold for this report.)
+    $ownedSql = "
+        SELECT assigned_to AS agent_id, current_basket_key AS basket_id, COUNT(*) AS cnt
+        FROM customers
+        WHERE company_id = ? AND assigned_to IN ($idPh)
+        GROUP BY assigned_to, current_basket_key
+    ";
+    $os = $pdo->prepare($ownedSql);
+    $os->execute(array_merge([$companyId], $activeIds));
+    while ($r = $os->fetch(PDO::FETCH_ASSOC)) {
+        $aid = (int) $r['agent_id'];
+        if (!isset($userMap[$aid])) continue;
+        $seg = $segOf($r['basket_id']);
+        $ensureSeg($aid, $seg);
+        $agents[$aid]['seg'][$seg]['owned'] += (int) $r['cnt'];
+    }
+
     // Segment ordering
     $segOrder = [$NO_CAMPAIGN => -1];
     foreach ($campaignBaskets as $b) {
@@ -278,24 +309,31 @@ try {
         return $ox === $oy ? strcmp($x, $y) : ($ox <=> $oy);
     };
     $sumInto = function (&$dst, $src) {
-        foreach (['names_called', 'total_calls', 'talked', 'orders', 'sales'] as $f) $dst[$f] += $src[$f];
+        foreach (['names_called', 'total_calls', 'answered', 'missed', 'talked', 'orders', 'sales'] as $f) $dst[$f] += $src[$f];
     };
 
     // Build agent rows
     $agentOut = [];
     foreach ($agents as $a) {
         $agentTotal = ['a' => $emptyMetrics(), 'b' => $emptyMetrics()];
+        $agentOwned = 0;
         $segNames = array_keys($a['seg']);
         usort($segNames, $segSort);
         $segments = [];
         foreach ($segNames as $segName) {
             $sd = $a['seg'][$segName];
-            if (array_sum($sd['a']) <= 0 && array_sum($sd['b']) <= 0) continue;
-            $segments[] = ['segment' => $segName, 'a' => $sd['a'], 'b' => $sd['b']];
+            if (array_sum($sd['a']) <= 0 && array_sum($sd['b']) <= 0 && $sd['owned'] <= 0) continue;
+            // "ไม่มีแคมเปญ" segment is hidden from the breakdown (these are unowned/reclaimed
+            // customers, not a real campaign — see report discussion) but its activity still
+            // rolls up into the agent/team/grand totals below.
+            if ($segName !== $NO_CAMPAIGN) {
+                $segments[] = ['segment' => $segName, 'owned' => $sd['owned'], 'a' => $sd['a'], 'b' => $sd['b']];
+            }
             $sumInto($agentTotal['a'], $sd['a']);
             $sumInto($agentTotal['b'], $sd['b']);
+            $agentOwned += $sd['owned'];
         }
-        if (empty($segments)) continue;
+        if (array_sum($agentTotal['a']) <= 0 && array_sum($agentTotal['b']) <= 0 && $agentOwned <= 0) continue;
         $agentOut[] = [
             'agent_id' => $a['agent_id'],
             'username' => $a['username'],
@@ -306,6 +344,7 @@ try {
             'team_name' => $a['team_name'],
             'is_inactive' => $a['is_inactive'],
             'is_head' => $a['role_label'] === 'Sup',
+            'owned' => $agentOwned,
             'total' => $agentTotal,
             'segments' => $segments,
         ];
@@ -313,17 +352,20 @@ try {
 
     // Group agents by team
     $grand = ['a' => $emptyMetrics(), 'b' => $emptyMetrics()];
+    $grandOwned = 0;
     $groupsMap = [];
     foreach ($agentOut as $a) {
         $tk = $a['team_key'];
         if (!isset($groupsMap[$tk])) {
-            $groupsMap[$tk] = ['team_key' => $tk, 'team_name' => $a['team_name'], 'total' => ['a' => $emptyMetrics(), 'b' => $emptyMetrics()], 'agents' => []];
+            $groupsMap[$tk] = ['team_key' => $tk, 'team_name' => $a['team_name'], 'owned' => 0, 'total' => ['a' => $emptyMetrics(), 'b' => $emptyMetrics()], 'agents' => []];
         }
         $groupsMap[$tk]['agents'][] = $a;
+        $groupsMap[$tk]['owned'] += $a['owned'];
         $sumInto($groupsMap[$tk]['total']['a'], $a['total']['a']);
         $sumInto($groupsMap[$tk]['total']['b'], $a['total']['b']);
         $sumInto($grand['a'], $a['total']['a']);
         $sumInto($grand['b'], $a['total']['b']);
+        $grandOwned += $a['owned'];
     }
     // Sort agents within team: head first, then by label
     foreach ($groupsMap as &$g) {
@@ -347,6 +389,7 @@ try {
         'has_teams' => $hasTeams,
         'teams_list' => $teamsListOut,
         'agents_list' => $agentsList,
+        'owned' => $grandOwned,
         'total' => $grand,
         'groups' => $groups,
     ]);
