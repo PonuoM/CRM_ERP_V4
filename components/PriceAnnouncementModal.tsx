@@ -104,11 +104,10 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
             id: announcement ? t.id : undefined,
             localId: Date.now() + Math.random(),
             new_unit_price: unitPrice,
-            // An explicit stored override stays locked; a derived value keeps auto-syncing with total/qty.
             unitPriceManual: t.new_unit_price != null,
             original: { quantity: t.quantity, new_total_price: t.new_total_price, new_unit_price: unitPrice },
           };
-        })
+        }).sort((a, b) => a.quantity - b.quantity)
       );
       setDiscountTiers(
         (source.discount_tiers || []).map((dt) => ({
@@ -148,17 +147,16 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
     }
     const manualUnitPrice = tierForm.new_unit_price.trim() !== '' ? parseFloat(tierForm.new_unit_price) : null;
     const hasManualUnitPrice = manualUnitPrice !== null && !isNaN(manualUnitPrice);
-    setTiers((prev) => [
-      ...prev,
-      {
+    setTiers((prev) =>
+      [...prev, {
         localId: Date.now() + Math.random(),
         quantity,
         new_total_price: price,
         new_unit_price: hasManualUnitPrice ? manualUnitPrice : computeUnitPrice(price, quantity),
         unitPriceManual: hasManualUnitPrice,
         notes: [],
-      },
-    ]);
+      }].sort((a, b) => a.quantity - b.quantity)
+    );
     setTierForm({ quantity: '', new_total_price: '', new_unit_price: '' });
     setError('');
   };
@@ -172,7 +170,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
         if (t.localId !== localId) return t;
         const q = isNaN(quantity) ? 0 : quantity;
         return { ...t, quantity: q, new_unit_price: t.unitPriceManual ? t.new_unit_price : computeUnitPrice(t.new_total_price, q) };
-      })
+      }).sort((a, b) => a.quantity - b.quantity)
     );
   };
 
