@@ -14,7 +14,11 @@ export default function MonthlySummaryTab({ companyId }: Props) {
   const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'));
   const { summary, loading, error } = useMonthlySummary(companyId, month);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [isCentralExpanded, setIsCentralExpanded] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+
+  const toggleRow = (groupId: string) => {
+    setExpandedRows(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
 
   const displayRows = useMemo(() => {
     let centralRow = null;
@@ -126,14 +130,14 @@ export default function MonthlySummaryTab({ companyId }: Props) {
                 displayRows.map((row) => (
                   <React.Fragment key={row.group_id}>
                     <tr 
-                      className={`hover:bg-gray-50 ${row.isCentral ? 'bg-blue-50/50 cursor-pointer select-none' : ''}`}
-                      onClick={() => row.isCentral && setIsCentralExpanded(!isCentralExpanded)}
+                      className={`hover:bg-gray-50 ${row.isParent ? 'bg-blue-50/50 cursor-pointer select-none' : ''}`}
+                      onClick={() => row.isParent && toggleRow(row.group_id)}
                     >
                       <td className="px-4 py-3 font-medium text-gray-900 flex items-center gap-2">
-                        {row.isCentral && (
-                           isCentralExpanded ? <ChevronDown size={16} className="text-blue-600" /> : <ChevronRight size={16} className="text-blue-600" />
+                        {row.isParent && (
+                           expandedRows[row.group_id] ? <ChevronDown size={16} className="text-blue-600" /> : <ChevronRight size={16} className="text-blue-600" />
                         )}
-                        <span className={row.isCentral ? "text-blue-700" : ""}>{row.name}</span>
+                        <span className={row.isParent ? "text-blue-700" : ""}>{row.name}</span>
                       </td>
                       <td className="px-4 py-3 text-right">{row.start_balance.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right text-purple-600">{row.new_created.toLocaleString()}</td>
@@ -141,9 +145,9 @@ export default function MonthlySummaryTab({ companyId }: Props) {
                       <td className="px-4 py-3 text-right text-red-600">-{row.lost.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right font-bold text-blue-700">{row.current_balance.toLocaleString()}</td>
                     </tr>
-                    {row.isCentral && isCentralExpanded && row.children.map((child: any) => (
+                    {row.isParent && expandedRows[row.group_id] && row.children.map((child: any) => (
                       <tr key={child.group_id} className="bg-blue-50/20 hover:bg-blue-50/40">
-                         <td className="px-4 py-3 pl-10 text-gray-700 text-sm">{child.name.replace('ตะกร้ากลาง (', '').replace(')', '')}</td>
+                         <td className="px-4 py-3 pl-10 text-gray-700 text-sm">{child.name.includes('(') ? child.name.split('(')[1].replace(')', '') : child.name}</td>
                          <td className="px-4 py-3 text-right text-gray-600 text-sm">{child.start_balance.toLocaleString()}</td>
                          <td className="px-4 py-3 text-right text-purple-600/80 text-sm">{child.new_created.toLocaleString()}</td>
                          <td className="px-4 py-3 text-right text-green-600/80 text-sm">+{child.received.toLocaleString()}</td>

@@ -16,7 +16,11 @@ export default function TimeTravelTab({ companyId }: Props) {
   const [submittedTime, setSubmittedTime] = useState(targetTime);
   const { snapshotData, loading, error } = useTimeTravel(companyId, submittedTime);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [isCentralExpanded, setIsCentralExpanded] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+
+  const toggleRow = (groupId: string) => {
+    setExpandedRows(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
 
   const displayRows = React.useMemo(() => {
     let centralRow = null;
@@ -147,14 +151,14 @@ export default function TimeTravelTab({ companyId }: Props) {
                 displayRows.map((row) => (
                   <React.Fragment key={row.group_id}>
                     <tr 
-                      className={`hover:bg-gray-50 ${row.isCentral ? 'bg-blue-50/50 cursor-pointer select-none' : ''}`}
-                      onClick={() => row.isCentral && setIsCentralExpanded(!isCentralExpanded)}
+                      className={`hover:bg-gray-50 ${row.isParent ? 'bg-blue-50/50 cursor-pointer select-none' : ''}`}
+                      onClick={() => row.isParent && toggleRow(row.group_id)}
                     >
                       <td className="px-4 py-3 font-medium text-gray-900 flex items-center gap-2">
-                        {row.isCentral && (
-                           isCentralExpanded ? <ChevronDown size={16} className="text-blue-600" /> : <ChevronRight size={16} className="text-blue-600" />
+                        {row.isParent && (
+                           expandedRows[row.group_id] ? <ChevronDown size={16} className="text-blue-600" /> : <ChevronRight size={16} className="text-blue-600" />
                         )}
-                        <span className={row.isCentral ? "text-blue-700" : ""}>{row.name}</span>
+                        <span className={row.isParent ? "text-blue-700" : ""}>{row.name}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-blue-700 bg-blue-50/30">
                         {row.snapshot_balance.toLocaleString()}
@@ -164,9 +168,9 @@ export default function TimeTravelTab({ companyId }: Props) {
                       <td className="px-4 py-3 text-right text-gray-500">{row.received_since.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right text-gray-500">{row.lost_since.toLocaleString()}</td>
                     </tr>
-                    {row.isCentral && isCentralExpanded && row.children.map((child: any) => (
+                    {row.isParent && expandedRows[row.group_id] && row.children.map((child: any) => (
                       <tr key={child.group_id} className="bg-blue-50/20 hover:bg-blue-50/40">
-                         <td className="px-4 py-3 pl-10 text-gray-700 text-sm">{child.name.replace('ตะกร้ากลาง (', '').replace(')', '')}</td>
+                         <td className="px-4 py-3 pl-10 text-gray-700 text-sm">{child.name.includes('(') ? child.name.split('(')[1].replace(')', '') : child.name}</td>
                          <td className="px-4 py-3 text-right font-semibold text-blue-700/80 text-sm bg-blue-50/30">{child.snapshot_balance.toLocaleString()}</td>
                          <td className="px-4 py-3 text-right text-gray-600 text-sm">{child.current_balance.toLocaleString()}</td>
                          <td className="px-4 py-3 text-right text-gray-500/80 text-sm">{child.new_since.toLocaleString()}</td>

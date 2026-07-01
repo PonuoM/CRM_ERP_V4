@@ -214,7 +214,8 @@ class DistributionReportController {
                     CASE 
                         WHEN bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name)
                         WHEN bc.target_page = 'distribution' THEN 'CENTRAL' 
-                        WHEN c.assigned_to > 0 THEN c.assigned_to
+                        WHEN c.assigned_to > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', c.assigned_to, '_BASKET_', bc.basket_name)
+                        WHEN c.assigned_to > 0 THEN CONCAT('AGENT_', c.assigned_to)
                         ELSE 'OTHER'
                     END as group_id,
                     COUNT(*) as cnt
@@ -233,7 +234,8 @@ class DistributionReportController {
                     CASE 
                         WHEN bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name)
                         WHEN bc.target_page = 'distribution' THEN 'CENTRAL' 
-                        WHEN c.assigned_to > 0 THEN c.assigned_to
+                        WHEN c.assigned_to > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', c.assigned_to, '_BASKET_', bc.basket_name)
+                        WHEN c.assigned_to > 0 THEN CONCAT('AGENT_', c.assigned_to)
                         ELSE 'OTHER'
                     END as group_id,
                     COUNT(*) as cnt
@@ -263,7 +265,9 @@ class DistributionReportController {
                         CASE 
                             WHEN (cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0') AND bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name) 
                             WHEN (cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0') THEN 'CENTRAL' 
-                            ELSE cal.new_value 
+                            WHEN cal.new_value > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', cal.new_value, '_BASKET_', bc.basket_name) 
+                            WHEN cal.new_value > 0 THEN CONCAT('AGENT_', cal.new_value)
+                            ELSE cal.new_value
                         END as group_id,
                         COUNT(*) as received,
                         0 as lost
@@ -282,7 +286,9 @@ class DistributionReportController {
                         CASE 
                             WHEN (cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0') AND bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name) 
                             WHEN (cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0') THEN 'CENTRAL' 
-                            ELSE cal.old_value 
+                            WHEN cal.old_value > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', cal.old_value, '_BASKET_', bc.basket_name) 
+                            WHEN cal.old_value > 0 THEN CONCAT('AGENT_', cal.old_value)
+                            ELSE cal.old_value
                         END as group_id,
                         0 as received,
                         COUNT(*) as lost
@@ -351,6 +357,16 @@ class DistributionReportController {
                     $name = "อื่นๆ (ไม่มีข้อมูลตะกร้า)";
                     // Skip 'OTHER' if 0 balance to keep it clean
                     if ($current == 0 && $start == 0 && $received == 0 && $lost == 0) continue;
+                } else if (strpos($g, 'AGENT_') === 0) {
+                    if (preg_match('/^AGENT_(\d+)_BASKET_(.+)$/', $g, $matches)) {
+                        $agentId = $matches[1];
+                        $basketName = $matches[2];
+                        $agentName = isset($users[$agentId]) ? $users[$agentId] : "ไม่ระบุ ($agentId)";
+                        $name = "$agentName ($basketName)";
+                    } else {
+                        $agentId = substr($g, 6);
+                        $name = isset($users[$agentId]) ? $users[$agentId] : "ไม่ระบุ ($agentId)";
+                    }
                 } else if (isset($users[$g])) {
                     $name = $users[$g];
                 }
@@ -408,7 +424,8 @@ class DistributionReportController {
                     CASE 
                         WHEN bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name)
                         WHEN bc.target_page = 'distribution' THEN 'CENTRAL' 
-                        WHEN c.assigned_to > 0 THEN c.assigned_to
+                        WHEN c.assigned_to > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', c.assigned_to, '_BASKET_', bc.basket_name)
+                        WHEN c.assigned_to > 0 THEN CONCAT('AGENT_', c.assigned_to)
                         ELSE 'OTHER'
                     END as group_id,
                     COUNT(*) as cnt
@@ -427,7 +444,8 @@ class DistributionReportController {
                     CASE 
                         WHEN bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name)
                         WHEN bc.target_page = 'distribution' THEN 'CENTRAL' 
-                        WHEN c.assigned_to > 0 THEN c.assigned_to
+                        WHEN c.assigned_to > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', c.assigned_to, '_BASKET_', bc.basket_name)
+                        WHEN c.assigned_to > 0 THEN CONCAT('AGENT_', c.assigned_to)
                         ELSE 'OTHER'
                     END as group_id,
                     COUNT(*) as cnt
@@ -457,7 +475,9 @@ class DistributionReportController {
                         CASE 
                             WHEN (cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0') AND bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name) 
                             WHEN (cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0') THEN 'CENTRAL' 
-                            ELSE cal.new_value 
+                            WHEN cal.new_value > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', cal.new_value, '_BASKET_', bc.basket_name) 
+                            WHEN cal.new_value > 0 THEN CONCAT('AGENT_', cal.new_value)
+                            ELSE cal.new_value
                         END as group_id,
                         COUNT(*) as received,
                         0 as lost
@@ -476,7 +496,9 @@ class DistributionReportController {
                         CASE 
                             WHEN (cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0') AND bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name) 
                             WHEN (cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0') THEN 'CENTRAL' 
-                            ELSE cal.old_value 
+                            WHEN cal.old_value > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', cal.old_value, '_BASKET_', bc.basket_name) 
+                            WHEN cal.old_value > 0 THEN CONCAT('AGENT_', cal.old_value)
+                            ELSE cal.old_value
                         END as group_id,
                         0 as received,
                         COUNT(*) as lost
@@ -546,6 +568,16 @@ class DistributionReportController {
                 } else if ($g === 'OTHER') {
                     $name = "อื่นๆ (ไม่มีข้อมูลตะกร้า)";
                     if ($current == 0 && $snapshot == 0) continue;
+                } else if (strpos($g, 'AGENT_') === 0) {
+                    if (preg_match('/^AGENT_(\d+)_BASKET_(.+)$/', $g, $matches)) {
+                        $agentId = $matches[1];
+                        $basketName = $matches[2];
+                        $agentName = isset($users[$agentId]) ? $users[$agentId] : "ไม่ระบุ ($agentId)";
+                        $name = "$agentName ($basketName)";
+                    } else {
+                        $agentId = substr($g, 6);
+                        $name = isset($users[$agentId]) ? $users[$agentId] : "ไม่ระบุ ($agentId)";
+                    }
                 } else if (isset($users[$g])) {
                     $name = $users[$g];
                 }
