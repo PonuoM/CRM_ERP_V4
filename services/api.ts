@@ -2870,3 +2870,43 @@ export async function fetchJstInventory(params: JstInventoryParams = {}): Promis
 export async function getJstSyncInfo() {
   return apiFetch("jst_sync_info");
 }
+
+// System Updates APIs
+export async function getSystemUpdates() {
+  return apiFetch("system_updates");
+}
+
+export async function createSystemUpdate(payload: {
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'success' | 'danger';
+  is_active?: number | boolean;
+  target_roles?: string | null;
+}) {
+  return apiFetch("system_updates", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateSystemUpdate(
+  id: number,
+  payload: Partial<{
+    title: string;
+    message: string;
+    type: 'info' | 'warning' | 'success' | 'danger';
+    is_active: number | boolean;
+    target_roles?: string | null;
+  }>
+) {
+  return apiFetch(`system_updates/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteSystemUpdate(id: number) {
+  return apiFetch(`system_updates/${id}`, {
+    method: "DELETE",
+  });
+}

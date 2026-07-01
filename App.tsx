@@ -148,6 +148,7 @@ import ReturnManagementPage from "./pages/ReturnManagementPage";
 import CheckOrderPage from "./pages/CheckOrderPage";
 import InventoryPage from "./pages/jst/InventoryPage";
 import CompanySettingsPage from "./pages/jst/CompanySettingsPage";
+import SystemUpdatesManagementPage from "./pages/SystemUpdatesManagementPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
 import CancelConfirmModal from "./components/CancelConfirmModal";
 import ShopeeLoyaltyImport from "./pages/ShopeeLoyaltyImport";
@@ -7521,6 +7522,13 @@ const App: React.FC = () => {
         );
 
       // PROCESSED: Management Pages
+      case "System Updates":
+      case "จัดการอัปเดตระบบ":
+      case "system_updates":
+        return <SystemUpdatesManagementPage />;
+
+
+
       case "Users":
       case "จัดการผู้ใช้":
         return (
@@ -8217,6 +8225,7 @@ const App: React.FC = () => {
             </header>
           )}
           <main className="flex-1 overflow-x-auto overflow-y-auto bg-[#F5F5F5] relative">
+
             <div className="max-w-full min-h-full">
               {renderPage()}
             </div>

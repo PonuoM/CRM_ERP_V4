@@ -2,6 +2,10 @@
 require_once __DIR__ . '/core/bootstrap.php';
 try {
     switch ($resource) {
+        case 'system_updates':
+            require_once __DIR__ . '/Controllers/SystemUpdateController.php';
+            handle_system_updates($pdo, $id);
+            break;
         case 'shopee_loyalty':
             require_once __DIR__ . '/shopee_loyalty.php';
             handle_shopee_loyalty($pdo, $id, $action);
