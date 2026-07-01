@@ -644,16 +644,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className={`p-4 ${isCollapsed ? "items-center flex-col gap-2 flex" : "flex items-center gap-2"}`}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className={`flex items-center flex-1 hover:bg-gray-50 rounded-lg p-2 transition-colors ${isCollapsed ? "justify-center w-full" : "space-x-3 w-full"
+            className={`flex items-center flex-1 min-w-0 hover:bg-gray-50 rounded-lg p-2 transition-colors ${isCollapsed ? "justify-center w-full" : "space-x-3 w-full"
               }`}
           >
             <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-white font-bold flex-shrink-0">
               {user.firstName.charAt(0)}
             </div>
             {!isCollapsed && (
-              <div className="overflow-hidden text-left flex-1">
-                <p className="font-semibold text-sm text-gray-800 truncate">{`${user.firstName} ${user.lastName}`}</p>
-                <p className="text-xs text-gray-500 truncate">
+              <div className="overflow-hidden text-left flex-1 min-w-0">
+                <p className="font-semibold text-sm text-gray-800 truncate w-full">{`${user.firstName} ${user.lastName}`}</p>
+                <p className="text-xs text-gray-500 truncate w-full">
                   {user.role === UserRole.AdminControl
                     ? "Admin Company"
                     : user.role}
@@ -661,7 +661,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
             {!isCollapsed && (
-              <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform duration-300 ${isUserMenuOpen ? "rotate-90" : ""}`} />
+              <ChevronRight className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-300 ${isUserMenuOpen ? "rotate-90" : ""}`} />
             )}
           </button>
 
@@ -715,6 +715,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       <NotificationDrawer 
         isOpen={isNotificationOpen} 
         onClose={() => setIsNotificationOpen(false)} 
+        onViewAll={() => {
+          setActivePage("System Updates History");
+          setIsNotificationOpen(false);
+        }}
         userRole={user.role} 
       />
     </div>

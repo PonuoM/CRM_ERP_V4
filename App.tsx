@@ -149,6 +149,7 @@ import CheckOrderPage from "./pages/CheckOrderPage";
 import InventoryPage from "./pages/jst/InventoryPage";
 import CompanySettingsPage from "./pages/jst/CompanySettingsPage";
 import SystemUpdatesManagementPage from "./pages/SystemUpdatesManagementPage";
+import SystemUpdatesHistoryPage from "./pages/SystemUpdatesHistoryPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
 import CancelConfirmModal from "./components/CancelConfirmModal";
 import ShopeeLoyaltyImport from "./pages/ShopeeLoyaltyImport";
@@ -7528,6 +7529,10 @@ const App: React.FC = () => {
         );
 
       // PROCESSED: Management Pages
+      case "System Updates History":
+      case "system_updates_history":
+        return <SystemUpdatesHistoryPage userRole={currentUser?.role || ''} />;
+
       case "System Updates":
       case "จัดการอัปเดตระบบ":
       case "system_updates":
@@ -8163,7 +8168,7 @@ const App: React.FC = () => {
         )}
         {/* Fixed Sidebar */}
         {!viewingCustomer && !hideSidebar && (
-          <div className="fixed left-0 top-0 h-screen z-10">
+          <div className="fixed left-0 top-0 h-screen z-40">
             <Sidebar
               user={currentUser}
               activePage={activePage}

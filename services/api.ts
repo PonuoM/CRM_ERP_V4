@@ -2882,10 +2882,10 @@ export async function createSystemUpdate(payload: {
   type: 'info' | 'warning' | 'success' | 'danger';
   is_active?: number | boolean;
   target_roles?: string | null;
-}) {
+} | FormData) {
   return apiFetch("system_updates", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: payload instanceof FormData ? payload : JSON.stringify(payload),
   });
 }
 
@@ -2897,11 +2897,11 @@ export async function updateSystemUpdate(
     type: 'info' | 'warning' | 'success' | 'danger';
     is_active: number | boolean;
     target_roles?: string | null;
-  }>
+  }> | FormData
 ) {
   return apiFetch(`system_updates/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
+    method: payload instanceof FormData ? "POST" : "PATCH",
+    body: payload instanceof FormData ? payload : JSON.stringify(payload),
   });
 }
 

@@ -43,6 +43,10 @@ export default defineConfig(({ command, mode }) => {
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/api/, '/CRM_ERP_V4/api'),
         },
+        '/CRM_ERP_V4/api': {
+          target: 'http://localhost',
+          changeOrigin: true,
+        },
         [`${APP_BASE_PATH}api`]: {
           target: 'http://localhost',
           changeOrigin: true,
