@@ -142,7 +142,7 @@ const AnnouncementSheet: React.FC<AnnouncementSheetProps> = ({ a, allCompanies, 
             </tr>
           </thead>
           <tbody>
-            {a.tiers.map((t, i) => (
+            {[...a.tiers].sort((x, y) => x.quantity - y.quantity).map((t, i) => (
               <tr key={i} className={i % 2 === 1 ? 'bg-gray-50' : 'bg-white'}>
                 <td className="border border-gray-300 px-4 py-2 text-gray-700">{t.quantity}</td>
                 <td className="border border-gray-300 px-4 py-2 text-right text-gray-400 line-through">
