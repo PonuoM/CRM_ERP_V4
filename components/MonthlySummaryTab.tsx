@@ -114,6 +114,7 @@ export default function MonthlySummaryTab({ companyId }: Props) {
 
       {showExportModal && (
         <ExportTypeModal
+          isOpen={showExportModal}
           onClose={() => setShowExportModal(false)}
           onConfirm={handleExport}
         />

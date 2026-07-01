@@ -135,6 +135,7 @@ export default function TimeTravelTab({ companyId }: Props) {
 
       {showExportModal && (
         <ExportTypeModal
+          isOpen={showExportModal}
           onClose={() => setShowExportModal(false)}
           onConfirm={handleExport}
         />
