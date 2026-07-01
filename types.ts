@@ -963,3 +963,16 @@ export interface Page {
   name: string;
   platformId: number;
 }
+
+export interface SystemUpdate {
+  id: number;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'success' | 'danger';
+  is_active: number;
+  created_by: number;
+  created_at: string;
+  first_name?: string;
+  last_name?: string;
+  target_roles?: string;
+}

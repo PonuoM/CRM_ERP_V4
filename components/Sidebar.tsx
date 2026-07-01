@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { User as UserType, UserRole } from "../types";
+import { User as UserType, UserRole, SystemUpdate } from "../types";
+import { getSystemUpdates } from '@/services/api';
+import NotificationDrawer from "./NotificationDrawer";
 import {
   LayoutDashboard,
   Users,
@@ -8,6 +10,7 @@ import {
   FileText,
   Briefcase,
   Settings,
+
   Share2,
   Package,
   BarChart2,
@@ -22,6 +25,8 @@ import {
   ChevronRight,
   Layers,
   Truck,
+  Bell,
+
   Pencil,
   Calendar,
   DollarSign,
@@ -75,6 +80,43 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Home": true,
   });
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const data = await getSystemUpdates();
+        if (Array.isArray(data)) {
+          const roleUpdates = data.filter(u => {
+            if (!u.target_roles) return true;
+            const targetRolesArray = u.target_roles.split(',').map(r => r.trim());
+            if (targetRolesArray.length === 0 || (targetRolesArray.length === 1 && targetRolesArray[0] === '')) {
+              return true;
+            }
+            return targetRolesArray.includes(user.role);
+          });
+          
+          let readIds = new Set<number>();
+          const saved = localStorage.getItem('readSystemUpdates');
+          if (saved) {
+            readIds = new Set(JSON.parse(saved));
+          }
+          
+          const unread = roleUpdates.filter(u => !readIds.has(u.id)).length;
+          setUnreadCount(unread);
+        }
+      } catch (err) {
+        console.error("Error fetching system updates for badge", err);
+      }
+    };
+    
+    fetchUnreadCount();
+    
+    const handleUpdate = () => fetchUnreadCount();
+    window.addEventListener('systemUpdatesRead', handleUpdate);
+    return () => window.removeEventListener('systemUpdatesRead', handleUpdate);
+  }, [user.role]);
 
   // Permission Check: Default to FALSE (Deny All) unless explicitly allowed
   const canView = (key?: string) => {
@@ -422,17 +464,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Loyalty Dashboard", icon: Target, key: "loyalty.dashboard" },
         { label: "Executive Report", icon: FileText, key: "loyalty.report" },
       ]
-    },
+    }
   ];
-
-  // System menu for Change Password (always available if allowed)
-  const systemMenu: NavItem = {
-    label: "System",
-    icon: Settings,
-    children: [
-      { label: "Change Password", icon: Key, key: "nav.change_password" }
-    ]
-  };
 
   const getNavItems = (): NavItem[] => {
     const items = MASTER_MENU.reduce<NavItem[]>((acc, item) => {
@@ -605,10 +638,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         {navItems.map(renderNavItem)}
       </nav>
       <div className="border-t border-gray-200 mt-auto relative">
-        <div className={`p-4 ${isCollapsed ? "items-center justify-center flex" : ""}`}>
+        <div className={`p-4 ${isCollapsed ? "items-center flex-col gap-2 flex" : "flex items-center gap-2"}`}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className={`flex items-center w-full hover:bg-gray-50 rounded-lg p-2 transition-colors ${isCollapsed ? "justify-center" : "space-x-3"
+            className={`flex items-center flex-1 hover:bg-gray-50 rounded-lg p-2 transition-colors ${isCollapsed ? "justify-center w-full" : "space-x-3 w-full"
               }`}
           >
             <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-white font-bold flex-shrink-0">
@@ -629,6 +662,18 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
 
+          {/* Notification Button */}
+          <button
+            onClick={() => setIsNotificationOpen(true)}
+            className="relative p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
+            title="การแจ้งเตือน"
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+            )}
+          </button>
+
           {/* User Dropdown */}
           {!isCollapsed && isUserMenuOpen && (
             <div className="absolute bottom-full left-0 w-full mb-1 px-2">
@@ -639,6 +684,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <Key className="w-4 h-4" /> เปลี่ยนรหัสผ่าน
                 </button>
+                {user.role === UserRole.SuperAdmin && (
+                  <button
+                    onClick={() => { setActivePage("System Updates"); setIsUserMenuOpen(false); }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                  >
+                    <Bell className="w-4 h-4" /> จัดการอัปเดตระบบ
+                  </button>
+                )}
+
                 <button
                   onClick={onLogout}
                   className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 flex items-center gap-2"
@@ -653,6 +707,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       </div>
+      
+      {/* Notification Drawer */}
+      <NotificationDrawer 
+        isOpen={isNotificationOpen} 
+        onClose={() => setIsNotificationOpen(false)} 
+        userRole={user.role} 
+      />
     </div>
   );
 };
