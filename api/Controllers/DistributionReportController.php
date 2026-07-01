@@ -212,8 +212,10 @@ class DistributionReportController {
             $sql_current = "
                 SELECT 
                     CASE 
+                        WHEN bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name)
                         WHEN bc.target_page = 'distribution' THEN 'CENTRAL' 
-                        WHEN c.assigned_to > 0 THEN c.assigned_to
+                        WHEN c.assigned_to > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', c.assigned_to, '_BASKET_', bc.basket_name)
+                        WHEN c.assigned_to > 0 THEN CONCAT('AGENT_', c.assigned_to)
                         ELSE 'OTHER'
                     END as group_id,
                     COUNT(*) as cnt
@@ -230,8 +232,10 @@ class DistributionReportController {
             $sql_new = "
                 SELECT 
                     CASE 
+                        WHEN bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name)
                         WHEN bc.target_page = 'distribution' THEN 'CENTRAL' 
-                        WHEN c.assigned_to > 0 THEN c.assigned_to
+                        WHEN c.assigned_to > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', c.assigned_to, '_BASKET_', bc.basket_name)
+                        WHEN c.assigned_to > 0 THEN CONCAT('AGENT_', c.assigned_to)
                         ELSE 'OTHER'
                     END as group_id,
                     COUNT(*) as cnt
@@ -258,11 +262,18 @@ class DistributionReportController {
                 FROM (
                     -- Received (new_value is Agent or NULL for Central)
                     SELECT 
-                        CASE WHEN cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0' THEN 'CENTRAL' ELSE cal.new_value END as group_id,
+                        CASE 
+                            WHEN (cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0') AND bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name) 
+                            WHEN (cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0') THEN 'CENTRAL' 
+                            WHEN cal.new_value > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', cal.new_value, '_BASKET_', bc.basket_name) 
+                            WHEN cal.new_value > 0 THEN CONCAT('AGENT_', cal.new_value)
+                            ELSE cal.new_value
+                        END as group_id,
                         COUNT(*) as received,
                         0 as lost
                     FROM customer_audit_log cal
                     JOIN customers c ON c.customer_id = cal.customer_id
+                    LEFT JOIN basket_config bc ON (c.current_basket_key = bc.basket_key OR c.current_basket_key = bc.id)
                     WHERE cal.field_name = 'assigned_to'
                       AND c.company_id = :company_id1
                       AND cal.created_at BETWEEN :start_date1 AND :end_date1
@@ -272,11 +283,18 @@ class DistributionReportController {
 
                     -- Lost (old_value is Agent or NULL for Central)
                     SELECT 
-                        CASE WHEN cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0' THEN 'CENTRAL' ELSE cal.old_value END as group_id,
+                        CASE 
+                            WHEN (cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0') AND bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name) 
+                            WHEN (cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0') THEN 'CENTRAL' 
+                            WHEN cal.old_value > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', cal.old_value, '_BASKET_', bc.basket_name) 
+                            WHEN cal.old_value > 0 THEN CONCAT('AGENT_', cal.old_value)
+                            ELSE cal.old_value
+                        END as group_id,
                         0 as received,
                         COUNT(*) as lost
                     FROM customer_audit_log cal
                     JOIN customers c ON c.customer_id = cal.customer_id
+                    LEFT JOIN basket_config bc ON (c.current_basket_key = bc.basket_key OR c.current_basket_key = bc.id)
                     WHERE cal.field_name = 'assigned_to'
                       AND c.company_id = :company_id2
                       AND cal.created_at BETWEEN :start_date2 AND :end_date2
@@ -330,12 +348,25 @@ class DistributionReportController {
                 if ($start < 0) $start = 0; // Guard against anomalies
 
                 $name = "ไม่ทราบชื่อ";
-                if ($g === 'CENTRAL') {
+                if (strpos($g, 'BASKET_') === 0) {
+                    $basketName = substr($g, 7);
+                    $name = "ตะกร้ากลาง ($basketName)";
+                } else if ($g === 'CENTRAL') {
                     $name = "ตะกร้ากลาง (Distribution)";
                 } else if ($g === 'OTHER') {
                     $name = "อื่นๆ (ไม่มีข้อมูลตะกร้า)";
                     // Skip 'OTHER' if 0 balance to keep it clean
                     if ($current == 0 && $start == 0 && $received == 0 && $lost == 0) continue;
+                } else if (strpos($g, 'AGENT_') === 0) {
+                    if (preg_match('/^AGENT_(\d+)_BASKET_(.+)$/', $g, $matches)) {
+                        $agentId = $matches[1];
+                        $basketName = $matches[2];
+                        $agentName = isset($users[$agentId]) ? $users[$agentId] : "ไม่ระบุ ($agentId)";
+                        $name = "$agentName ($basketName)";
+                    } else {
+                        $agentId = substr($g, 6);
+                        $name = isset($users[$agentId]) ? $users[$agentId] : "ไม่ระบุ ($agentId)";
+                    }
                 } else if (isset($users[$g])) {
                     $name = $users[$g];
                 }
@@ -353,6 +384,8 @@ class DistributionReportController {
 
             // Sort: CENTRAL first, then by current balance desc
             usort($summary, function($a, $b) {
+                if (strpos($a['group_id'], 'BASKET_') === 0 && strpos($b['group_id'], 'BASKET_') !== 0) return -1;
+                if (strpos($b['group_id'], 'BASKET_') === 0 && strpos($a['group_id'], 'BASKET_') !== 0) return 1;
                 if ($a['group_id'] === 'CENTRAL') return -1;
                 if ($b['group_id'] === 'CENTRAL') return 1;
                 return $b['current_balance'] <=> $a['current_balance'];
@@ -389,8 +422,10 @@ class DistributionReportController {
             $sql_current = "
                 SELECT 
                     CASE 
+                        WHEN bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name)
                         WHEN bc.target_page = 'distribution' THEN 'CENTRAL' 
-                        WHEN c.assigned_to > 0 THEN c.assigned_to
+                        WHEN c.assigned_to > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', c.assigned_to, '_BASKET_', bc.basket_name)
+                        WHEN c.assigned_to > 0 THEN CONCAT('AGENT_', c.assigned_to)
                         ELSE 'OTHER'
                     END as group_id,
                     COUNT(*) as cnt
@@ -407,8 +442,10 @@ class DistributionReportController {
             $sql_new = "
                 SELECT 
                     CASE 
+                        WHEN bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name)
                         WHEN bc.target_page = 'distribution' THEN 'CENTRAL' 
-                        WHEN c.assigned_to > 0 THEN c.assigned_to
+                        WHEN c.assigned_to > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', c.assigned_to, '_BASKET_', bc.basket_name)
+                        WHEN c.assigned_to > 0 THEN CONCAT('AGENT_', c.assigned_to)
                         ELSE 'OTHER'
                     END as group_id,
                     COUNT(*) as cnt
@@ -435,11 +472,18 @@ class DistributionReportController {
                 FROM (
                     -- Received
                     SELECT 
-                        CASE WHEN cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0' THEN 'CENTRAL' ELSE cal.new_value END as group_id,
+                        CASE 
+                            WHEN (cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0') AND bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name) 
+                            WHEN (cal.new_value IS NULL OR cal.new_value = '' OR cal.new_value = '0') THEN 'CENTRAL' 
+                            WHEN cal.new_value > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', cal.new_value, '_BASKET_', bc.basket_name) 
+                            WHEN cal.new_value > 0 THEN CONCAT('AGENT_', cal.new_value)
+                            ELSE cal.new_value
+                        END as group_id,
                         COUNT(*) as received,
                         0 as lost
                     FROM customer_audit_log cal
                     JOIN customers c ON c.customer_id = cal.customer_id
+                    LEFT JOIN basket_config bc ON (c.current_basket_key = bc.basket_key OR c.current_basket_key = bc.id)
                     WHERE cal.field_name = 'assigned_to'
                       AND c.company_id = :company_id1
                       AND cal.created_at BETWEEN :target_time1 AND :now1
@@ -449,11 +493,18 @@ class DistributionReportController {
 
                     -- Lost
                     SELECT 
-                        CASE WHEN cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0' THEN 'CENTRAL' ELSE cal.old_value END as group_id,
+                        CASE 
+                            WHEN (cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0') AND bc.target_page = 'distribution' AND bc.basket_name IS NOT NULL THEN CONCAT('BASKET_', bc.basket_name) 
+                            WHEN (cal.old_value IS NULL OR cal.old_value = '' OR cal.old_value = '0') THEN 'CENTRAL' 
+                            WHEN cal.old_value > 0 AND bc.basket_name IS NOT NULL THEN CONCAT('AGENT_', cal.old_value, '_BASKET_', bc.basket_name) 
+                            WHEN cal.old_value > 0 THEN CONCAT('AGENT_', cal.old_value)
+                            ELSE cal.old_value
+                        END as group_id,
                         0 as received,
                         COUNT(*) as lost
                     FROM customer_audit_log cal
                     JOIN customers c ON c.customer_id = cal.customer_id
+                    LEFT JOIN basket_config bc ON (c.current_basket_key = bc.basket_key OR c.current_basket_key = bc.id)
                     WHERE cal.field_name = 'assigned_to'
                       AND c.company_id = :company_id2
                       AND cal.created_at BETWEEN :target_time2 AND :now2
@@ -509,11 +560,24 @@ class DistributionReportController {
                 if ($snapshot < 0) $snapshot = 0;
 
                 $name = "ไม่ทราบชื่อ";
-                if ($g === 'CENTRAL') {
+                if (strpos($g, 'BASKET_') === 0) {
+                    $basketName = substr($g, 7);
+                    $name = "ตะกร้ากลาง ($basketName)";
+                } else if ($g === 'CENTRAL') {
                     $name = "ตะกร้ากลาง (Distribution)";
                 } else if ($g === 'OTHER') {
                     $name = "อื่นๆ (ไม่มีข้อมูลตะกร้า)";
                     if ($current == 0 && $snapshot == 0) continue;
+                } else if (strpos($g, 'AGENT_') === 0) {
+                    if (preg_match('/^AGENT_(\d+)_BASKET_(.+)$/', $g, $matches)) {
+                        $agentId = $matches[1];
+                        $basketName = $matches[2];
+                        $agentName = isset($users[$agentId]) ? $users[$agentId] : "ไม่ระบุ ($agentId)";
+                        $name = "$agentName ($basketName)";
+                    } else {
+                        $agentId = substr($g, 6);
+                        $name = isset($users[$agentId]) ? $users[$agentId] : "ไม่ระบุ ($agentId)";
+                    }
                 } else if (isset($users[$g])) {
                     $name = $users[$g];
                 }
@@ -531,6 +595,8 @@ class DistributionReportController {
 
             // Sort: CENTRAL first, then by snapshot balance desc
             usort($summary, function($a, $b) {
+                if (strpos($a['group_id'], 'BASKET_') === 0 && strpos($b['group_id'], 'BASKET_') !== 0) return -1;
+                if (strpos($b['group_id'], 'BASKET_') === 0 && strpos($a['group_id'], 'BASKET_') !== 0) return 1;
                 if ($a['group_id'] === 'CENTRAL') return -1;
                 if ($b['group_id'] === 'CENTRAL') return 1;
                 return $b['snapshot_balance'] <=> $a['snapshot_balance'];
