@@ -2,6 +2,18 @@
 require_once __DIR__ . '/core/bootstrap.php';
 try {
     switch ($resource) {
+        case 'distribution_movement':
+            require_once __DIR__ . '/Controllers/DistributionReportController.php';
+            if ($id === 'stats') {
+                DistributionReportController::get_movement_stats($pdo);
+            } else if ($id === 'ledger') {
+                DistributionReportController::get_movement_ledger($pdo);
+            } else if ($id === 'monthly_summary') {
+                DistributionReportController::get_monthly_summary($pdo);
+            } else if ($id === 'time_travel') {
+                DistributionReportController::get_time_travel_snapshot($pdo);
+            }
+            break;
         case 'system_updates':
             require_once __DIR__ . '/Controllers/SystemUpdateController.php';
             handle_system_updates($pdo, $id);
