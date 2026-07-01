@@ -863,6 +863,7 @@ export interface PriceAnnouncement {
   month: string; // YYYY-MM-DD (first of month)
   title?: string | null;
   general_notes?: string | null; // free-form multi-line notes for the whole price table (e.g. redemption rules)
+  image_url?: string | null;
   created_by?: number;
   created_at?: string;
   updated_at?: string | null;

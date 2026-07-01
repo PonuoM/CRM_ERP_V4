@@ -524,6 +524,13 @@ export async function listRoles() {
   return apiFetch(`roles`);
 }
 
+export async function uploadPriceImage(contentBase64: string): Promise<{ url: string }> {
+  return apiFetch(`price_announcement_images`, {
+    method: "POST",
+    body: JSON.stringify({ contentBase64 }),
+  });
+}
+
 
 export async function createProduct(payload: any) {
   return apiFetch("products", {

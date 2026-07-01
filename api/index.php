@@ -79,6 +79,10 @@ try {
             require_once __DIR__ . '/Controllers/PriceAnnouncementController.php';
             handle_price_announcements($pdo, $id);
             break;
+        case 'price_announcement_images':
+            require_once __DIR__ . '/Controllers/PriceAnnouncementController.php';
+            handle_price_announcement_image_upload($pdo);
+            break;
         case 'finance_approval_counts':
             require_once __DIR__ . '/Controllers/PromotionController.php';
             handle_finance_approval_counts($pdo);
@@ -473,9 +477,12 @@ try {
             handle_order_slips($pdo, $id);
             break;
         case 'uploads':
-            // Handle static file serving for uploads (e.g., slips)
+            // Handle static file serving for uploads (e.g., slips, price_images)
             if ($id === 'slips' && $action !== null) {
                 handle_serve_slip_file($action);
+            } elseif ($id === 'price_images' && $action !== null) {
+                require_once __DIR__ . '/Controllers/PriceAnnouncementController.php';
+                handle_serve_price_image($action);
             } else {
                 json_response(['error' => 'NOT_FOUND'], 404);
             }

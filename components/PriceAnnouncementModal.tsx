@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Product, Company, PriceAnnouncement, PriceAnnouncementTier, PriceAnnouncementDiscountTier } from '../types';
-import { createPriceAnnouncement, updatePriceAnnouncement, listRoles } from '../services/api';
+import { createPriceAnnouncement, updatePriceAnnouncement, listRoles, uploadPriceImage } from '../services/api';
 import Modal from './Modal';
 import MultiSelectFilter, { MultiSelectOption } from './MultiSelectFilter';
 
@@ -56,6 +56,8 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
   const [month, setMonth] = useState('');
   const [title, setTitle] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [imageUploading, setImageUploading] = useState(false);
 
   const [tiers, setTiers] = useState<LocalTier[]>([]);
   const [tierForm, setTierForm] = useState({ quantity: '', new_total_price: '', new_unit_price: '' });
@@ -92,6 +94,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       setMonth(announcement ? monthInputValue(announcement.month) : nextMonthValue(source.month));
       setTitle(source.title || '');
       setGeneralNotes(source.general_notes || '');
+      setImageUrl(source.image_url || '');
       // Drop server-assigned ids when copying so they're treated as brand-new rows on submit.
       setTiers(
         source.tiers.map((t) => {
@@ -124,6 +127,8 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       setMonth(new Date().toISOString().slice(0, 7));
       setTitle('');
       setGeneralNotes('');
+      setImageUrl('');
+      setImageUploading(false);
       setTiers([]);
       setDiscountTiers([]);
       setDiscountEnabled(false);
@@ -285,6 +290,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
         month: `${month}-01`,
         title: title || null,
         general_notes: generalNotes || null,
+        image_url: imageUrl.trim() || null,
         tiers: tiers.map((t) => {
           // Flush any note still sitting in the draft input (typed but never confirmed with "+")
           // so it isn't silently lost on save.
@@ -522,6 +528,78 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
             placeholder={'หมายเหตุ : เสื้อ 3 ตัว แลก ไตโค หรือ ไคโตซาน ได้ 1 ซอง\nหมายเหตุ : เสื้อ 3 ตัว แลก หมวก 1 ใบ\nหมายเหตุ : ซื้อครบ 5500 แถมเสื้อ 1 ตัว'}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm whitespace-pre-wrap"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">รูปภาพสินค้า (ถ้ามี)</label>
+          <div className="flex items-start gap-3">
+            {imageUrl && (
+              <div className="relative flex-shrink-0">
+                <img
+                  src={imageUrl}
+                  alt="preview"
+                  className="h-24 w-24 object-cover border border-gray-200 rounded-lg"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setImageUrl('')}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600"
+                  title="ลบรูป"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            <div className="flex-1">
+              <label className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${imageUploading ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'}`}>
+                <div className="flex flex-col items-center justify-center gap-1 text-center px-2">
+                  {imageUploading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-xs text-blue-600">กำลังอัปโหลด...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-xs text-gray-500">{imageUrl ? 'เปลี่ยนรูป' : 'คลิกเพื่ออัปโหลดรูป'}</span>
+                      <span className="text-xs text-gray-400">PNG, JPG, WebP</span>
+                    </>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                  className="hidden"
+                  disabled={imageUploading}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setImageUploading(true);
+                    setError('');
+                    try {
+                      const base64 = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => resolve(ev.target?.result as string);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                      });
+                      const res = await uploadPriceImage(base64);
+                      setImageUrl(res.url);
+                    } catch {
+                      setError('อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่');
+                    } finally {
+                      setImageUploading(false);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+              <p className="text-xs text-gray-400 mt-1">รูปจะแสดงทางซ้ายของตารางราคา</p>
+            </div>
+          </div>
         </div>
 
         <div>
