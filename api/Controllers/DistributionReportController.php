@@ -269,6 +269,7 @@ class DistributionReportController {
                         0 as lost
                     FROM customer_audit_log cal
                     JOIN customers c ON c.customer_id = cal.customer_id
+                    LEFT JOIN basket_config bc ON (c.current_basket_key = bc.basket_key OR c.current_basket_key = bc.id)
                     WHERE cal.field_name = 'assigned_to'
                       AND c.company_id = :company_id1
                       AND cal.created_at BETWEEN :start_date1 AND :end_date1
@@ -287,6 +288,7 @@ class DistributionReportController {
                         COUNT(*) as lost
                     FROM customer_audit_log cal
                     JOIN customers c ON c.customer_id = cal.customer_id
+                    LEFT JOIN basket_config bc ON (c.current_basket_key = bc.basket_key OR c.current_basket_key = bc.id)
                     WHERE cal.field_name = 'assigned_to'
                       AND c.company_id = :company_id2
                       AND cal.created_at BETWEEN :start_date2 AND :end_date2
@@ -461,6 +463,7 @@ class DistributionReportController {
                         0 as lost
                     FROM customer_audit_log cal
                     JOIN customers c ON c.customer_id = cal.customer_id
+                    LEFT JOIN basket_config bc ON (c.current_basket_key = bc.basket_key OR c.current_basket_key = bc.id)
                     WHERE cal.field_name = 'assigned_to'
                       AND c.company_id = :company_id1
                       AND cal.created_at BETWEEN :target_time1 AND :now1
@@ -479,6 +482,7 @@ class DistributionReportController {
                         COUNT(*) as lost
                     FROM customer_audit_log cal
                     JOIN customers c ON c.customer_id = cal.customer_id
+                    LEFT JOIN basket_config bc ON (c.current_basket_key = bc.basket_key OR c.current_basket_key = bc.id)
                     WHERE cal.field_name = 'assigned_to'
                       AND c.company_id = :company_id2
                       AND cal.created_at BETWEEN :target_time2 AND :now2
