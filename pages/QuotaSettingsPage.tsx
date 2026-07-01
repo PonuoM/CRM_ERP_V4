@@ -3,7 +3,7 @@ import {
   Package, Plus, Edit, Trash2, Calendar, DollarSign,
   ChevronDown, ChevronRight, Search, RefreshCcw,
   TrendingUp, Users, Clock, Gift, Eye, Settings,
-  AlertCircle, CheckCircle, X, Filter, Info
+  AlertCircle, CheckCircle, X, Filter, Info, Loader2
 } from 'lucide-react';
 import type { Product, User, QuotaProduct, QuotaRateSchedule, QuotaAllocation, QuotaSummary } from '../types';
 import {
