@@ -19,12 +19,9 @@ register_shutdown_function(function () {
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv("DB_HOST") ?: "localhost";
 $DB_PORT = getenv("DB_PORT") ?: "3306";
-// Auto-detect local environment
-$isLocal = in_array($_SERVER['SERVER_NAME'] ?? '', ['localhost', '127.0.0.1']) || php_sapi_name() === 'cli';
-
-$DB_NAME = getenv("DB_NAME") ?: ($isLocal ? "erp" : "primacom_mini_erp");
-$DB_USER = getenv("DB_USER") ?: ($isLocal ? "root" : "primacom_bloguser");
-$DB_PASS = getenv("DB_PASS") !== false ? getenv("DB_PASS") : ($isLocal ? "12345678" : "pJnL53Wkhju2LaGPytw8");
+$DB_NAME = getenv("DB_NAME") ?: "erp";
+$DB_USER = getenv("DB_USER") ?: "root";
+$DB_PASS = getenv("DB_PASS") ?: "12345678";
 
 
 
