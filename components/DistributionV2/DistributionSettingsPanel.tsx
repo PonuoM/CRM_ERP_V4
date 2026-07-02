@@ -14,6 +14,8 @@ interface DistributionSettingsPanelProps {
     fetchAllBasketCounts: () => void;
     fetchCustomers: () => void;
     fetchAgents: () => void;
+    strictDuplicateCheck: boolean;
+    setStrictDuplicateCheck: (val: boolean) => void;
 }
 
 const DistributionSettingsPanel: React.FC<DistributionSettingsPanelProps> = ({
@@ -27,7 +29,9 @@ const DistributionSettingsPanel: React.FC<DistributionSettingsPanelProps> = ({
     loadingCustomers,
     fetchAllBasketCounts,
     fetchCustomers,
-    fetchAgents
+    fetchAgents,
+    strictDuplicateCheck,
+    setStrictDuplicateCheck
 }) => {
     return (
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
@@ -71,6 +75,18 @@ const DistributionSettingsPanel: React.FC<DistributionSettingsPanelProps> = ({
                         รีเฟรช
                     </button>
                 </div>
+            </div>
+            <div className="mt-4 flex items-center gap-2 border-t pt-4">
+                <input 
+                    type="checkbox" 
+                    id="strictDuplicateCheck" 
+                    checked={strictDuplicateCheck} 
+                    onChange={(e) => setStrictDuplicateCheck(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                />
+                <label htmlFor="strictDuplicateCheck" className="text-sm text-gray-700 select-none cursor-pointer">
+                    เปิดใช้งาน Smart Allocation (ตรวจสอบและหลีกเลี่ยงการแจกรายชื่อซ้ำให้พนักงานคนเดิม)
+                </label>
             </div>
         </div>
     );

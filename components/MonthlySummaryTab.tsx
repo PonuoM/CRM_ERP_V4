@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useMonthlySummary } from '../hooks/useMonthlySummary';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { Download, AlertCircle, FileSpreadsheet } from 'lucide-react';
+import { Download, AlertCircle, FileSpreadsheet, ChevronDown, ChevronRight } from 'lucide-react';
 import { downloadDataFile } from '../utils/exportUtils';
 import ExportTypeModal from './ExportTypeModal';
 
@@ -14,6 +14,41 @@ export default function MonthlySummaryTab({ companyId }: Props) {
   const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'));
   const { summary, loading, error } = useMonthlySummary(companyId, month);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+
+  const toggleRow = (groupId: string) => {
+    setExpandedRows(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
+
+  const displayRows = useMemo(() => {
+    let centralRow = null;
+    const regularRows: any[] = [];
+    const basketRows: any[] = [];
+
+    summary.forEach((row: any) => {
+      if (row.group_id === 'CENTRAL' || (typeof row.group_id === 'string' && row.group_id.startsWith('BASKET_'))) {
+        basketRows.push(row);
+      } else {
+        regularRows.push(row);
+      }
+    });
+
+    if (basketRows.length > 0) {
+      centralRow = {
+        group_id: 'AGGREGATED_CENTRAL',
+        name: 'ตะกร้ากลาง (Distribution)',
+        isCentral: true,
+        start_balance: basketRows.reduce((sum, r) => sum + r.start_balance, 0),
+        new_created: basketRows.reduce((sum, r) => sum + r.new_created, 0),
+        received: basketRows.reduce((sum, r) => sum + r.received, 0),
+        lost: basketRows.reduce((sum, r) => sum + r.lost, 0),
+        current_balance: basketRows.reduce((sum, r) => sum + r.current_balance, 0),
+        children: basketRows
+      };
+      return [centralRow, ...regularRows];
+    }
+    return regularRows;
+  }, [summary]);
 
   const handleExport = (type: 'csv' | 'xlsx') => {
     if (!summary || summary.length === 0) return;
@@ -85,26 +120,42 @@ export default function MonthlySummaryTab({ companyId }: Props) {
                     </div>
                   </td>
                 </tr>
-              ) : summary.length === 0 ? (
+              ) : displayRows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                     ไม่มีข้อมูลความเคลื่อนไหวในเดือนนี้
                   </td>
                 </tr>
               ) : (
-                summary.map((row) => (
-                  <tr key={row.group_id} className={`hover:bg-gray-50 ${row.group_id === 'CENTRAL' ? 'bg-blue-50/50' : ''}`}>
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      {row.name}
-                    </td>
-                    <td className="px-4 py-3 text-right">{row.start_balance.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-purple-600">+{row.new_created.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-green-600">+{row.received.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-red-600">-{row.lost.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-bold text-blue-700 bg-blue-50/30">
-                      {row.current_balance.toLocaleString()}
-                    </td>
-                  </tr>
+                displayRows.map((row) => (
+                  <React.Fragment key={row.group_id}>
+                    <tr 
+                      className={`hover:bg-gray-50 ${row.isParent ? 'bg-blue-50/50 cursor-pointer select-none' : ''}`}
+                      onClick={() => row.isParent && toggleRow(row.group_id)}
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-900 flex items-center gap-2">
+                        {row.isParent && (
+                           expandedRows[row.group_id] ? <ChevronDown size={16} className="text-blue-600" /> : <ChevronRight size={16} className="text-blue-600" />
+                        )}
+                        <span className={row.isParent ? "text-blue-700" : ""}>{row.name}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right">{row.start_balance.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-purple-600">{row.new_created.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-green-600">+{row.received.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-red-600">-{row.lost.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-bold text-blue-700">{row.current_balance.toLocaleString()}</td>
+                    </tr>
+                    {row.isParent && expandedRows[row.group_id] && row.children.map((child: any) => (
+                      <tr key={child.group_id} className="bg-blue-50/20 hover:bg-blue-50/40">
+                         <td className="px-4 py-3 pl-10 text-gray-700 text-sm">{child.name.includes('(') ? child.name.split('(')[1].replace(')', '') : child.name}</td>
+                         <td className="px-4 py-3 text-right text-gray-600 text-sm">{child.start_balance.toLocaleString()}</td>
+                         <td className="px-4 py-3 text-right text-purple-600/80 text-sm">{child.new_created.toLocaleString()}</td>
+                         <td className="px-4 py-3 text-right text-green-600/80 text-sm">+{child.received.toLocaleString()}</td>
+                         <td className="px-4 py-3 text-right text-red-600/80 text-sm">-{child.lost.toLocaleString()}</td>
+                         <td className="px-4 py-3 text-right font-semibold text-blue-700/80 text-sm">{child.current_balance.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
                 ))
               )}
             </tbody>
@@ -114,6 +165,7 @@ export default function MonthlySummaryTab({ companyId }: Props) {
 
       {showExportModal && (
         <ExportTypeModal
+          isOpen={showExportModal}
           onClose={() => setShowExportModal(false)}
           onConfirm={handleExport}
         />

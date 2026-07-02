@@ -1651,8 +1651,8 @@ function calculateQuotaByRate(PDO $conn, array $rate, int $userId, int $companyI
                 break; // ถึงรอบปัจจุบัน ให้หยุด loop
             }
 
-            // A. หารายรับของรอบบิลนั้นๆ
-            $sConf = $conn->prepare("SELECT COALESCE(SUM(quantity), 0) FROM quota_allocations WHERE user_id = :uid AND source = 'auto_confirmed' AND rate_schedule_id = :rsId AND deleted_at IS NULL");
+            // A. หารายรับของรอบบิลนั้นๆ (รวม Auto, Transfer และ Admin)
+            $sConf = $conn->prepare("SELECT COALESCE(SUM(quantity), 0) FROM quota_allocations WHERE user_id = :uid AND source IN ('auto_confirmed', 'admin', 'transfer') AND rate_schedule_id = :rsId AND deleted_at IS NULL");
             $sConf->execute([':uid' => $userId, ':rsId' => (string)$hr['id']]);
             $histIncome = floatval($sConf->fetchColumn());
 

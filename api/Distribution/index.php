@@ -50,6 +50,8 @@ function handleDistribute($pdo, $companyId)
     $targetBasketKey = $input['target_basket_key'] ?? null;
     $triggeredBy = $input['triggered_by'] ?? null;
 
+    $strictDuplicateCheck = $input['strict_duplicate_check'] ?? false;
+
     if (empty($assignments)) {
         http_response_code(400);
         echo json_encode(['error' => 'No assignments provided']);
@@ -126,11 +128,13 @@ function handleDistribute($pdo, $companyId)
                 continue;
 
             // 1. Check if already assigned in this round
-            $checkStmt->execute([$customerId, $agentId]);
-            if ($checkStmt->fetchColumn()) {
-                // Already assigned to this agent in current round
-                $failedIds[] = $customerId;
-                continue;
+            if ($strictDuplicateCheck) {
+                $checkStmt->execute([$customerId, $agentId]);
+                if ($checkStmt->fetchColumn()) {
+                    // Already assigned to this agent in current round
+                    $failedIds[] = $customerId;
+                    continue;
+                }
             }
 
             // 1.5 Get old data before update
