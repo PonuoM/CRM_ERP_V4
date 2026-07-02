@@ -31,6 +31,12 @@ const TelesaleCallstatsPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [baskets, setBaskets] = useState<BasketDef[]>([]);
     const [agents, setAgents] = useState<AgentData[]>([]);
+    const [selectedAgentId, setSelectedAgentId] = useState<number | 'all'>('all');
+
+    const filteredAgents = useMemo(() => {
+        if (selectedAgentId === 'all') return agents;
+        return agents.filter(a => a.agent_id === selectedAgentId);
+    }, [agents, selectedAgentId]);
 
     // Drill-down Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -148,8 +154,21 @@ const TelesaleCallstatsPage: React.FC = () => {
                     </div>
 
                     <div className="flex flex-col gap-3 items-end">
-                        {/* View Mode Toggle */}
-                        <div className="flex bg-slate-200/60 p-1 rounded-lg">
+                        <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
+                            {/* Agent Selector */}
+                            <select
+                                value={selectedAgentId}
+                                onChange={(e) => setSelectedAgentId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                                className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[200px]"
+                            >
+                                <option value="all">ดูพนักงานทั้งหมด</option>
+                                {agents.map(a => (
+                                    <option key={a.agent_id} value={a.agent_id}>{a.agent_name}</option>
+                                ))}
+                            </select>
+
+                            {/* View Mode Toggle */}
+                            <div className="flex bg-slate-200/60 p-1 rounded-lg">
                             <button
                                 onClick={() => setViewMode('performance')}
                                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
@@ -166,6 +185,7 @@ const TelesaleCallstatsPage: React.FC = () => {
                             >
                                 <Clock className="w-4 h-4" /> ลูกค้าในมือ (Realtime)
                             </button>
+                        </div>
                         </div>
 
                         {/* Filter Toggle */}
@@ -211,7 +231,7 @@ const TelesaleCallstatsPage: React.FC = () => {
                             <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
                             <p className="text-slate-500 font-medium">กำลังโหลดข้อมูลสถิติ...</p>
                         </div>
-                    ) : agents.length === 0 ? (
+                    ) : filteredAgents.length === 0 ? (
                         <div className="flex items-center justify-center p-32 text-slate-500 font-medium">
                             ไม่พบข้อมูลพนักงาน Telesale
                         </div>
@@ -234,10 +254,10 @@ const TelesaleCallstatsPage: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {agents.map((agent, idx) => (
+                                    {filteredAgents.map((agent, idx) => (
                                         <tr key={agent.agent_id} className="group hover:bg-indigo-50/40 transition-colors border-b border-slate-100 last:border-0">
                                             {/* Sticky Agent Name */}
-                                            <td className="sticky left-0 z-10 bg-white group-hover:bg-indigo-50/40 p-5 shadow-[4px_0_12px_rgba(0,0,0,0.02)] transition-colors">
+                                            <td className="sticky left-0 z-10 bg-white group-hover:bg-indigo-50 p-5 shadow-[4px_0_12px_rgba(0,0,0,0.02)] transition-colors">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200/50 flex items-center justify-center text-indigo-700 font-bold shadow-sm">
                                                         {agent.agent_name.charAt(0)}
