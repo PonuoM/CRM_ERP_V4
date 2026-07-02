@@ -20,10 +20,13 @@ register_shutdown_function(function () {
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv("DB_HOST") ?: "localhost";
 $DB_PORT = getenv("DB_PORT") ?: "3306";
-$DB_NAME = getenv("DB_NAME") ?: "primacom_mini_erp";
-$DB_USER = getenv("DB_USER") ?: "primacom_bloguser";
+// Auto-detect local environment
+$isLocal = in_array($_SERVER['SERVER_NAME'] ?? '', ['localhost', '127.0.0.1']) || php_sapi_name() === 'cli';
+
+$DB_NAME = getenv("DB_NAME") ?: ($isLocal ? "erp" : "primacom_mini_erp");
+$DB_USER = getenv("DB_USER") ?: ($isLocal ? "root" : "primacom_bloguser");
 // $DB_PASS = getenv("DB_PASS") ?: "MzBpsVmDmhg8afrxgaUg"; 
-$DB_PASS = getenv("DB_PASS") ?: "pJnL53Wkhju2LaGPytw8";
+$DB_PASS = getenv("DB_PASS") !== false ? getenv("DB_PASS") : ($isLocal ? "12345678" : "pJnL53Wkhju2LaGPytw8");
 
 
 
@@ -71,13 +74,13 @@ function db_connect(): PDO
   if ($lastError) {
     throw new RuntimeException(
       "MySQL connection failed for host " .
-      $DB_HOST .
-      ":" .
-      $DB_PORT .
-      " / db " .
-      $DB_NAME .
-      " - " .
-      $lastError->getMessage(),
+        $DB_HOST .
+        ":" .
+        $DB_PORT .
+        " / db " .
+        $DB_NAME .
+        " - " .
+        $lastError->getMessage(),
     );
   }
   throw new RuntimeException("MySQL connection failed (unknown error)");
@@ -202,4 +205,3 @@ function set_audit_context(PDO $pdo, string $apiSource, ?int $userId = null): vo
   $pdo->exec("SET @audit_api_source = " . $pdo->quote($apiSource));
   $pdo->exec("SET @audit_user_id = " . ($userId !== null ? intval($userId) : 'NULL'));
 }
-
