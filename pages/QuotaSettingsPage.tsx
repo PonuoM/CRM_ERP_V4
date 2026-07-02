@@ -3,7 +3,7 @@ import {
   Package, Plus, Edit, Trash2, Calendar, DollarSign,
   ChevronDown, ChevronRight, Search, RefreshCcw,
   TrendingUp, Users, Clock, Gift, Eye, Settings,
-  AlertCircle, CheckCircle, X, Filter, Info
+  AlertCircle, CheckCircle, X, Filter, Info, Loader2
 } from 'lucide-react';
 import type { Product, User, QuotaProduct, QuotaRateSchedule, QuotaAllocation, QuotaSummary } from '../types';
 import {
@@ -16,6 +16,7 @@ import type { UserQuotaDetailItem } from '../services/quotaApi';
 import { listProducts } from '../services/api';
 import SingleDatePicker from '../components/SingleDatePicker';
 import DateRangePicker from '../components/DateRangePicker';
+import { useToast } from '../components/Toast';
 import OrderDetailModal from '../components/OrderDetailModal';
 
 interface QuotaSettingsPageProps {
@@ -24,6 +25,7 @@ interface QuotaSettingsPageProps {
 }
 
 const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, products: propProducts }) => {
+  const { toast } = useToast();
   // ============ State ============
   const [activeTab, setActiveTab] = useState<'products' | 'rates' | 'summary'>('products');
   const [loading, setLoading] = useState(false);
@@ -272,18 +274,18 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     if (editingProduct) {
       // Edit mode
       if (!productForm.displayName.trim()) {
-        alert('กรุณากรอกชื่อที่แสดงในระบบ');
+        toast('warning', 'กรุณากรอกชื่อที่แสดงในระบบ');
         return;
       }
     } else if (productCreateMode === 'existing') {
       if (!productForm.productId || !productForm.displayName.trim()) {
-        alert('กรุณาเลือกสินค้าและกรอกชื่อที่แสดงในระบบ');
+        toast('warning', 'กรุณาเลือกสินค้าและกรอกชื่อที่แสดงในระบบ');
         return;
       }
     } else {
       // new mode
       if (!newProductForm.sku.trim() || !productForm.displayName.trim()) {
-        alert('กรุณากรอก SKU และชื่อที่แสดงในระบบ');
+        toast('warning', 'กรุณากรอก SKU และชื่อที่แสดงในระบบ');
         return;
       }
     }
@@ -326,7 +328,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
       setProductCreateMode('existing');
       loadQuotaProducts();
     } catch (e) {
-      alert('Error: ' + (e as Error).message);
+      toast('error', 'Error: ' + (e as Error).message);
     }
   };
 
@@ -335,7 +337,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
       await updateQuotaProduct({ id: qp.id, isActive: !qp.isActive });
       loadQuotaProducts();
     } catch (e) {
-      alert('Error: ' + (e as Error).message);
+      toast('error', 'Error: ' + (e as Error).message);
     }
   };
 
@@ -354,22 +356,26 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const handleSaveRate = async () => {
     // Build effective scope rates — expand allProductsMode if needed
     let effectiveScopeRates = rateForm.scopeRates;
-    if (allProductsMode && !editingRate) {
-      const spq = allProductsSalesPerQuota;
+    if (ratePoolMode === 'shared' && !editingRate) {
+      const spq = rateForm.salesPerQuota;
       if (!spq || parseFloat(spq) <= 0) {
-        alert('กรุณากรอกยอดขาย/โควตา');
+        toast('warning', 'กรุณากรอกยอดขาย/โควตา');
         return;
       }
-      if (activeQuotaProducts.length === 0) {
-        alert('ยังไม่มีสินค้าโควตา กรุณาสร้างสินค้าโควตาก่อน');
-        return;
+      if (allProductsMode) {
+        if (activeQuotaProducts.length === 0) {
+          toast('warning', 'ยังไม่มีสินค้าโควตา กรุณาสร้างสินค้าโควตาก่อน');
+          return;
+        }
+        effectiveScopeRates = activeQuotaProducts.map(qp => ({ quotaProductId: qp.id, salesPerQuota: spq }));
+      } else {
+        effectiveScopeRates = effectiveScopeRates.map(sr => ({ ...sr, salesPerQuota: spq }));
       }
-      effectiveScopeRates = activeQuotaProducts.map(qp => ({ quotaProductId: qp.id, salesPerQuota: spq }));
     }
 
     // Validate scope rates
     if (effectiveScopeRates.length === 0 && !editingRate) {
-      alert('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
+      toast('warning', 'กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
       return;
     }
 
@@ -377,25 +383,25 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     const invalidRate = effectiveScopeRates.find(sr => !sr.salesPerQuota || parseFloat(sr.salesPerQuota) <= 0);
     if (invalidRate) {
       const qp = activeQuotaProducts.find(p => p.id === invalidRate.quotaProductId);
-      alert(`กรุณากรอกยอดขาย/โควตาของ ${qp?.displayName || 'สินค้า'}`);
+      toast('warning', `กรุณากรอกยอดขาย/โควตาของ ${qp?.displayName || 'สินค้า'}`);
       return;
     }
 
     // Validate confirm mode dates
     if (!rateForm.calcPeriodStart || !rateForm.calcPeriodEnd) {
-      alert('กรุณาระบุช่วงออเดอร์คำนวณ (เริ่มต้น และ สิ้นสุด)');
+      toast('warning', 'กรุณาระบุช่วงออเดอร์คำนวณ (เริ่มต้น และ สิ้นสุด)');
       return;
     }
     if (rateForm.calcPeriodStart >= rateForm.calcPeriodEnd) {
-      alert('ช่วงออเดอร์เริ่มต้นต้องน้อยกว่าสิ้นสุด');
+      toast('warning', 'ช่วงออเดอร์เริ่มต้นต้องน้อยกว่าสิ้นสุด');
       return;
     }
     if (!rateForm.usageStartDate) {
-      alert('กรุณาระบุวันเริ่มใช้โควตา');
+      toast('warning', 'กรุณาระบุวันเริ่มใช้โควตา');
       return;
     }
     if (rateForm.usageEndDate && rateForm.usageStartDate >= rateForm.usageEndDate) {
-      alert('วันเริ่มใช้ต้องน้อยกว่าวันหมดอายุ');
+      toast('warning', 'วันเริ่มใช้ต้องน้อยกว่าวันหมดอายุ');
       return;
     }
 
@@ -464,7 +470,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
       setAllProductsSalesPerQuota('');
       loadAllRates();
     } catch (e) {
-      alert('Error: ' + (e as Error).message);
+      toast('error', 'Error: ' + (e as Error).message);
     }
   };
 
@@ -476,7 +482,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
       ? activeQuotaProducts.map(qp => qp.id)
       : allocateProductIds;
     if (targetIds.length === 0) {
-      alert('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
+      toast('warning', 'กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
       return;
     }
     try {
@@ -504,7 +510,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
       setAllocateProductIds([]);
       loadSummaryByRateId(summaryRateId);
     } catch (e) {
-      alert('Error: ' + (e as Error).message);
+      toast('error', 'Error: ' + (e as Error).message);
     }
   };
 
@@ -544,16 +550,16 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   // -- Transfer --
   const handleTransfer = async () => {
     if (!transferSource || !transferTargetId || !transferQuantity) {
-      alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+      toast('warning', 'กรุณากรอกข้อมูลให้ครบถ้วน');
       return;
     }
     const qty = parseFloat(transferQuantity);
     if (qty <= 0) {
-      alert('จำนวนต้องมากกว่า 0');
+      toast('warning', 'จำนวนต้องมากกว่า 0');
       return;
     }
     if (qty > transferSource.remaining) {
-      alert('จำนวนที่โอนต้องไม่เกินโควตาคงเหลือของผู้โอน');
+      toast('warning', 'จำนวนที่โอนต้องไม่เกินโควตาคงเหลือของผู้โอน');
       return;
     }
 
@@ -563,7 +569,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     // Actually, if we are in 'all' mode, we might not be able to transfer specific quota.
     // Let's pass null for quotaProductId (global/shared) if in 'all' mode. But it's safer to require a specific rate.
     if (summaryRateId === 'all') {
-      alert('กรุณาเลือกอัตราโควตาที่ต้องการโอน (ไม่สามารถโอนในหน้า "ทั้งหมด" ได้)');
+      toast('warning', 'กรุณาเลือกอัตราโควตาที่ต้องการโอน (ไม่สามารถโอนในหน้า "ทั้งหมด" ได้)');
       return;
     }
 
@@ -586,7 +592,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
       setTransferNote('');
       loadSummaryByRateId(summaryRateId);
     } catch (e) {
-      alert('Error: ' + (e as Error).message);
+      toast('error', 'Error: ' + (e as Error).message);
     }
   };
 
@@ -1685,11 +1691,11 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                         confirmedBy: currentUser.id,
                         companyId,
                       });
-                      alert(`ยืนยันสำเร็จ ${res.confirmed} คน`);
+                      toast('success', `ยืนยันสำเร็จ ${res.confirmed} คน`);
                       setSelectedUserIds([]);
                       loadSummaryByRateId(summaryRateId);
                     } catch (e) {
-                      alert('Error: ' + (e as Error).message);
+                      toast('error', 'Error: ' + (e as Error).message);
                     } finally {
                       setBulkConfirming(false);
                     }
@@ -1918,10 +1924,10 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                                               companyId,
                                             });
                                             const r = res.results?.[0];
-                                            alert(`ยืนยันโควตาสำเร็จ (${r?.confirmedQuota ?? 0} โควตา จากยอดขาย ฿${Number(r?.totalSales ?? 0).toLocaleString()})`);
+                                            toast('success', `ยืนยันโควตาสำเร็จ (${r?.confirmedQuota ?? 0} โควตา จากยอดขาย ฿${Number(r?.totalSales ?? 0).toLocaleString()})`);
                                             loadSummaryByRateId(summaryRateId);
                                           } catch (e) {
-                                            alert('Error: ' + (e as Error).message);
+                                            toast('error', 'Error: ' + (e as Error).message);
                                           } finally {
                                             setBulkConfirming(false);
                                           }

@@ -4,8 +4,98 @@
  * Monthly price/promotion announcement — manual publishing CMS.
  * Does not affect live order calculation; orders.bill_discount stays manual.
  */
+
+/** Upload a product image for a price announcement. Saves to api/uploads/price_images/. */
+function handle_price_announcement_image_upload(PDO $pdo): void
+{
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+        return;
+    }
+    if (method() !== 'POST') {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+        return;
+    }
+
+    $in = json_input();
+    $content = $in['contentBase64'] ?? '';
+    if (!$content) {
+        json_response(['error' => 'CONTENT_REQUIRED', 'message' => 'contentBase64 is required'], 400);
+        return;
+    }
+
+    $baseDir = __DIR__ . '/../uploads/price_images';
+    if (!is_dir($baseDir)) {
+        @mkdir($baseDir, 0775, true);
+    }
+
+    if (!preg_match('/^data:(image\/(png|jpeg|jpg|gif|webp));base64,(.*)$/s', $content, $m)) {
+        json_response(['error' => 'INVALID_IMAGE', 'message' => 'Only png/jpg/gif/webp are supported'], 400);
+        return;
+    }
+
+    $ext = $m[2] === 'jpeg' ? 'jpg' : $m[2];
+    $data = base64_decode($m[3]);
+    if ($data === false) {
+        json_response(['error' => 'DECODE_FAILED'], 400);
+        return;
+    }
+
+    $fname = 'product_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 8) . '.' . $ext;
+    $path = $baseDir . DIRECTORY_SEPARATOR . $fname;
+    if (file_put_contents($path, $data) === false) {
+        json_response(['error' => 'WRITE_FAILED'], 500);
+        return;
+    }
+
+    json_response(['url' => 'api/uploads/price_images/' . $fname]);
+}
+
+/** Serve a price image file (path-traversal-safe). */
+function handle_serve_price_image(string $filename): void
+{
+    $baseDir = __DIR__ . '/../uploads/price_images';
+    $filePath = $baseDir . DIRECTORY_SEPARATOR . $filename;
+
+    if (!file_exists($filePath) || !is_file($filePath)) {
+        http_response_code(404);
+        echo 'File not found';
+        exit;
+    }
+
+    $realBaseDir = realpath($baseDir);
+    $realFilePath = realpath($filePath);
+    if (!$realBaseDir || !$realFilePath || strpos($realFilePath, $realBaseDir) !== 0) {
+        http_response_code(403);
+        echo 'Access denied';
+        exit;
+    }
+
+    $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    $mimeTypes = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'];
+    $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
+
+    header('Content-Type: ' . $mime);
+    header('Cache-Control: public, max-age=31536000');
+    readfile($filePath);
+    exit;
+}
+function ensure_price_announcement_image_column(PDO $pdo): void
+{
+    try {
+        $pdo->exec("ALTER TABLE price_announcements ADD COLUMN image_url VARCHAR(500) NULL AFTER general_notes");
+    } catch (Throwable $e) {
+        // 1060 = Duplicate column name — column already exists, nothing to do
+        if (strpos($e->getMessage(), '1060') === false) {
+            throw $e;
+        }
+    }
+}
+
 function handle_price_announcements(PDO $pdo, ?string $id): void
 {
+    ensure_price_announcement_image_column($pdo);
     $user = get_authenticated_user($pdo);
     if (!$user) {
         json_response(['error' => 'UNAUTHORIZED'], 401);
@@ -90,6 +180,7 @@ function handle_price_announcements(PDO $pdo, ?string $id): void
             $month = $in['month'] ?? null;
             $title = trim((string) ($in['title'] ?? ''));
             $generalNotes = trim((string) ($in['general_notes'] ?? $in['generalNotes'] ?? ''));
+            $imageUrl = trim((string) ($in['image_url'] ?? $in['imageUrl'] ?? ''));
             $tiers = $in['tiers'] ?? [];
             $discountTiers = $in['discount_tiers'] ?? $in['discountTiers'] ?? [];
             $discountNotes = $in['discount_notes'] ?? $in['discountNotes'] ?? [];
@@ -104,8 +195,8 @@ function handle_price_announcements(PDO $pdo, ?string $id): void
 
             $pdo->beginTransaction();
             try {
-                $stmt = $pdo->prepare('INSERT INTO price_announcements (company_id, product_id, month, title, general_notes, created_by) VALUES (?, ?, ?, ?, ?, ?)');
-                $stmt->execute([$companyId, $productId, $month, $title !== '' ? $title : null, $generalNotes !== '' ? $generalNotes : null, $user['id']]);
+                $stmt = $pdo->prepare('INSERT INTO price_announcements (company_id, product_id, month, title, general_notes, image_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)');
+                $stmt->execute([$companyId, $productId, $month, $title !== '' ? $title : null, $generalNotes !== '' ? $generalNotes : null, $imageUrl !== '' ? $imageUrl : null, $user['id']]);
                 $announcementId = (int) $pdo->lastInsertId();
 
                 pa_write_children($pdo, $announcementId, $tiers, $discountTiers, $discountNotes, $roleIds, $companyIds);
@@ -159,6 +250,11 @@ function handle_price_announcements(PDO $pdo, ?string $id): void
                     $notes = trim((string) ($in['general_notes'] ?? $in['generalNotes']));
                     $fields[] = 'general_notes = ?';
                     $params[] = $notes !== '' ? $notes : null;
+                }
+                if (array_key_exists('image_url', $in) || array_key_exists('imageUrl', $in)) {
+                    $imgUrl = trim((string) ($in['image_url'] ?? $in['imageUrl'] ?? ''));
+                    $fields[] = 'image_url = ?';
+                    $params[] = $imgUrl !== '' ? $imgUrl : null;
                 }
                 if (!empty($fields)) {
                     $fields[] = 'updated_at = NOW()';

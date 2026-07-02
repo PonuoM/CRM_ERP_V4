@@ -9,6 +9,7 @@
     "test:run": "vitest run",
     "build": "vite build",
     "preview": "vite preview",
+    "beta:build": "vite build && npx tsx scripts/beta-deploy.ts",
     "host:build": "npx tsx scripts/host/host-build.ts",
     "db:sync": "npx tsx scripts/sync-db-url.ts",
     "db:pull": "npx tsx scripts/prisma/db-pull.ts",

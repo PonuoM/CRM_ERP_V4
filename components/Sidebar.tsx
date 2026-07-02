@@ -44,6 +44,7 @@ import {
   History,
   BarChart3,
   ShoppingBag,
+  Activity,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -198,10 +199,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Orders & Customers": "คำสั่งซื้อและลูกค้า",
     "Cancellation Dashboard": "แดชบอร์ดยกเลิก",
     "COD Management": "จัดการยอด COD",
-    "Order Tab Settings": "ตั้งค่าจัดการคำสั่งซื้อ",
+    "Order Tab Settings": "ตั้งค่าแท็บ",
     "Basket Settings": "ตั้งค่าถัง",
     "Export Template Settings": "ตั้งค่าการส่งออกข้อมูล",
     "Distribution V2": "แจกงาน V2",
+    "Distribution Dashboard": "รายงานความเคลื่อนไหว (Movement)",
     "Finance": "การเงิน",
     "Accounting Audit": "ตรวจสอบจากบัญชี",
     "Bank Account Audit": "ตรวจสอบบัญชีธนาคาร",
@@ -270,6 +272,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Telesale Campaign Compare", icon: BarChart3, key: "monitor.campaign_compare" },
         { label: "Lead Performance", icon: BarChart2, key: "monitor.lead_performance" },
         { label: "Team Appointments", icon: Calendar, key: "monitor.team_appointments" },
+        { label: "Distribution Dashboard", icon: Activity, key: "nav.distribution_dashboard" },
       ]
     },
     {

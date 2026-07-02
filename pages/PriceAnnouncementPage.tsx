@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, Trash2, Copy, Package, Users, Building2, Percent, StickyNote, Calendar } from 'lucide-react';
+import { Plus, Pencil, Trash2, Copy, Package, Users, Building2, Percent, StickyNote, Calendar, Search } from 'lucide-react';
 import { Product, Company, User, PriceAnnouncement } from '../types';
 import { listPriceAnnouncements, deletePriceAnnouncement } from '../services/api';
 import PriceAnnouncementModal from '../components/PriceAnnouncementModal';
-import MultiSelectFilter, { MultiSelectOption } from '../components/MultiSelectFilter';
 
 interface PriceAnnouncementPageProps {
   products: Product[];
@@ -51,7 +50,9 @@ interface AnnouncementSheetProps {
 }
 
 // Big, spreadsheet-style detail view for a single announcement (the content shown under the active tab).
-const AnnouncementSheet: React.FC<AnnouncementSheetProps> = ({ a, allCompanies, canEdit, onCopy, onEdit, onDelete }) => (
+const AnnouncementSheet: React.FC<AnnouncementSheetProps> = ({ a, allCompanies, canEdit, onCopy, onEdit, onDelete }) => {
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  return (
   <div>
     {/* Header */}
     <div className="flex flex-wrap items-start justify-between gap-3 p-4 border-b border-gray-200">
@@ -105,42 +106,66 @@ const AnnouncementSheet: React.FC<AnnouncementSheetProps> = ({ a, allCompanies, 
       </div>
     </div>
 
-    {/* Price table — full spreadsheet-style grid */}
-    <div className="overflow-x-auto p-4">
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr>
-            <th className="border border-gray-300 bg-gray-100 px-4 py-2.5 text-left font-semibold text-gray-700">จำนวน</th>
-            <th className="border border-gray-300 bg-gray-100 px-4 py-2.5 text-right font-semibold text-gray-700">ราคาเก่า</th>
-            <th className="border border-gray-300 bg-yellow-100 px-4 py-2.5 text-right font-semibold text-gray-800">ราคาใหม่</th>
-            <th className="border border-gray-300 bg-yellow-100 px-4 py-2.5 text-right font-semibold text-gray-800">ต่อหน่วย</th>
-            <th className="border border-gray-300 bg-gray-100 px-4 py-2.5 text-left font-semibold text-gray-700">หมายเหตุ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {a.tiers.map((t, i) => (
-            <tr key={i} className={i % 2 === 1 ? 'bg-gray-50' : 'bg-white'}>
-              <td className="border border-gray-300 px-4 py-2 text-gray-700">{t.quantity}</td>
-              <td className="border border-gray-300 px-4 py-2 text-right text-gray-400 line-through">
-                {t.old_total_price != null ? formatMoney(t.old_total_price) : '-'}
-              </td>
-              <td className="border border-gray-300 px-4 py-2 text-right font-bold text-indigo-700">
-                {formatMoney(t.new_total_price)}
-              </td>
-              <td className="border border-gray-300 px-4 py-2 text-right text-gray-500">
-                {t.new_unit_price != null
-                  ? formatMoney(t.new_unit_price)
-                  : t.quantity
-                    ? formatMoney(t.new_total_price / t.quantity)
-                    : '-'}
-              </td>
-              <td className="border border-gray-300 px-4 py-2 text-gray-600 italic">
-                {t.notes.length > 0 ? t.notes.map((n, ni) => <div key={ni}>• {n}</div>) : ''}
-              </td>
+    {/* Price table — spreadsheet-style grid, with optional product image on the left */}
+    <div className="flex items-start gap-3 p-4">
+      {a.image_url && (
+        <div className="flex-shrink-0 flex flex-col border border-gray-300 rounded-lg overflow-hidden bg-white" style={{ width: 180 }}>
+          <div className="bg-gray-100 px-2 py-1.5 text-xs font-semibold text-gray-700 text-center border-b border-gray-300 leading-snug">
+            {(a.title || a.product_name || '').length > 28
+              ? (a.title || a.product_name || '').slice(0, 28) + '…'
+              : (a.title || a.product_name || '')}
+          </div>
+          <img
+            src={a.image_url}
+            alt={a.title || a.product_name}
+            className="w-full object-contain bg-white cursor-zoom-in"
+            style={{ height: 180 }}
+            onClick={() => setLightbox(a.image_url!)}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+          {a.sku && (
+            <div className="bg-gray-50 px-2 py-1 text-center text-xs text-gray-400 border-t border-gray-200 truncate">
+              {a.sku}
+            </div>
+          )}
+        </div>
+      )}
+      <div className="overflow-x-auto flex-1">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className="border border-gray-300 bg-gray-100 px-4 py-2.5 text-left font-semibold text-gray-700">จำนวน</th>
+              <th className="border border-gray-300 bg-gray-100 px-4 py-2.5 text-right font-semibold text-gray-700">ราคาเก่า</th>
+              <th className="border border-gray-300 bg-yellow-100 px-4 py-2.5 text-right font-semibold text-gray-800">ราคาใหม่</th>
+              <th className="border border-gray-300 bg-yellow-100 px-4 py-2.5 text-right font-semibold text-gray-800">ต่อหน่วย</th>
+              <th className="border border-gray-300 bg-gray-100 px-4 py-2.5 text-left font-semibold text-gray-700">หมายเหตุ</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {[...a.tiers].sort((x, y) => x.quantity - y.quantity).map((t, i) => (
+              <tr key={i} className={i % 2 === 1 ? 'bg-gray-50' : 'bg-white'}>
+                <td className="border border-gray-300 px-4 py-2 text-gray-700">{t.quantity}</td>
+                <td className="border border-gray-300 px-4 py-2 text-right text-gray-400 line-through">
+                  {t.old_total_price != null ? formatMoney(t.old_total_price) : '-'}
+                </td>
+                <td className="border border-gray-300 px-4 py-2 text-right font-bold text-indigo-700">
+                  {formatMoney(t.new_total_price)}
+                </td>
+                <td className="border border-gray-300 px-4 py-2 text-right text-gray-500">
+                  {t.new_unit_price != null
+                    ? formatMoney(t.new_unit_price)
+                    : t.quantity
+                      ? formatMoney(t.new_total_price / t.quantity)
+                      : '-'}
+                </td>
+                <td className="border border-gray-300 px-4 py-2 text-gray-600 italic">
+                  {t.notes.length > 0 ? t.notes.map((n, ni) => <div key={ni}>• {n}</div>) : ''}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
 
     {/* General notes */}
@@ -148,6 +173,27 @@ const AnnouncementSheet: React.FC<AnnouncementSheetProps> = ({ a, allCompanies, 
       <div className="mx-4 mb-4 px-4 py-3 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-gray-800 whitespace-pre-line flex gap-2">
         <StickyNote size={16} className="flex-shrink-0 mt-0.5 text-yellow-600" />
         <div>{a.general_notes}</div>
+      </div>
+    )}
+
+    {/* Lightbox overlay */}
+    {lightbox && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+        onClick={() => setLightbox(null)}
+      >
+        <img
+          src={lightbox}
+          alt=""
+          className="max-w-[90vw] max-h-[90vh] object-contain rounded shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        />
+        <button
+          className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/80 rounded-full w-9 h-9 flex items-center justify-center text-xl leading-none"
+          onClick={() => setLightbox(null)}
+        >
+          ×
+        </button>
       </div>
     )}
 
@@ -197,7 +243,8 @@ const AnnouncementSheet: React.FC<AnnouncementSheetProps> = ({ a, allCompanies, 
       </div>
     )}
   </div>
-);
+  );
+};
 
 interface SheetSectionProps {
   list: PriceAnnouncement[];
@@ -208,70 +255,96 @@ interface SheetSectionProps {
   onDelete: (id: number) => void;
 }
 
-// One product per tab, like switching sheet tabs in Excel/Google Sheets.
+// Sidebar navigation — product list on the left, announcement detail on the right.
 const SheetSection: React.FC<SheetSectionProps> = ({ list, allCompanies, canEdit, onCopy, onEdit, onDelete }) => {
   const [activeId, setActiveId] = useState<number | null>(list[0]?.id ?? null);
-  // Filter which tabs show, by product — handy once a month has 20-30 announcements.
-  const [filterProductIds, setFilterProductIds] = useState<number[]>([]);
+  const [search, setSearch] = useState('');
 
-  const filterOptions: MultiSelectOption[] = useMemo(() => {
-    const byProduct = new Map<number, string>();
-    list.forEach((a) => {
-      if (!byProduct.has(a.product_id)) {
-        byProduct.set(a.product_id, a.title || a.product_name || `#${a.product_id}`);
-      }
-    });
-    return Array.from(byProduct.entries()).map(([id, label]) => ({ id, label }));
+  // Products that appear more than once (different visibility) get a company sub-label.
+  const duplicateProductIds = useMemo(() => {
+    const counts = new Map<number, number>();
+    list.forEach((a) => counts.set(a.product_id, (counts.get(a.product_id) || 0) + 1));
+    return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id));
   }, [list]);
 
-  const visibleList = filterProductIds.length === 0 ? list : list.filter((a) => filterProductIds.includes(a.product_id));
+  const filteredList = useMemo(() => {
+    if (!search.trim()) return list;
+    const q = search.toLowerCase();
+    return list.filter((a) =>
+      (a.title || '').toLowerCase().includes(q) ||
+      (a.product_name || '').toLowerCase().includes(q)
+    );
+  }, [list, search]);
 
   useEffect(() => {
-    if (!visibleList.some((a) => a.id === activeId)) {
-      setActiveId(visibleList[0]?.id ?? null);
+    if (!filteredList.some((a) => a.id === activeId)) {
+      setActiveId(filteredList[0]?.id ?? null);
     }
-  }, [visibleList, activeId]);
+  }, [filteredList, activeId]);
 
-  const active = visibleList.find((a) => a.id === activeId) || visibleList[0];
+  const active = filteredList.find((a) => a.id === activeId) ?? filteredList[0] ?? null;
 
   return (
-    <div className="bg-white border border-gray-300 rounded-lg shadow-sm">
-      {list.length > 1 && (
-        <div className="p-2.5 border-b border-gray-200 bg-gray-50 rounded-t-lg">
-          <div className="max-w-xs">
-            <MultiSelectFilter
-              options={filterOptions}
-              selectedIds={filterProductIds}
-              onChange={setFilterProductIds}
-              placeholder="ค้นหาชื่อสินค้า/หัวข้อ..."
-              emptyMeansAllLabel="กรองตามสินค้า — แสดงทั้งหมด"
-              emptyHint="ไม่เลือก = แสดงสินค้าทั้งหมด"
+    <div className="bg-white border border-gray-300 rounded-lg shadow-sm flex overflow-hidden" style={{ height: 'calc(100vh - 200px)', minHeight: 400 }}>
+      {/* Left sidebar — scrollable product list with search */}
+      <div className="w-52 flex-shrink-0 border-r border-gray-200 flex flex-col bg-gray-50">
+        <div className="p-2 border-b border-gray-200">
+          <div className="relative">
+            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`ค้นหาใน ${list.length} รายการ...`}
+              className="w-full pl-6 pr-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
             />
           </div>
         </div>
-      )}
-      {!active ? (
-        <div className="text-center text-gray-500 py-10 text-sm">ไม่พบสินค้าตามที่กรอง</div>
-      ) : (
-        <>
-          <div className="flex gap-1 overflow-x-auto border-b border-gray-300 bg-gray-50 px-2">
-            {visibleList.map((a) => (
-              <button
-                key={a.id}
-                onClick={() => setActiveId(a.id)}
-                className={`px-5 py-3 text-base font-medium whitespace-nowrap border-b-2 transition-colors ${
-                  a.id === active.id
-                    ? 'border-blue-600 text-blue-700 bg-white'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                {a.title || a.product_name}
-              </button>
-            ))}
-          </div>
+
+        <div className="overflow-y-auto flex-1 min-h-0">
+          {filteredList.length === 0 ? (
+            <div className="text-xs text-gray-400 text-center py-6">ไม่พบรายการ</div>
+          ) : (
+            filteredList.map((a) => {
+              const isDup = duplicateProductIds.has(a.product_id);
+              const label = a.title || a.product_name || `#${a.id}`;
+              const isActive = a.id === active?.id;
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => setActiveId(a.id)}
+                  title={label + (isDup && a.company_name ? ` · ${a.company_name}` : '')}
+                  className={`w-full text-left px-3 py-2.5 text-xs border-b border-gray-100 transition-colors flex flex-col gap-0.5 ${
+                    isActive
+                      ? 'bg-blue-600 text-white font-semibold'
+                      : 'text-gray-700 hover:bg-blue-50 hover:text-blue-700'
+                  }`}
+                >
+                  <span className="leading-tight">{label}</span>
+                  {isDup && a.company_name && (
+                    <span className={`text-xs leading-tight ${isActive ? 'text-blue-100' : 'text-gray-400'}`}>
+                      {a.company_name}
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div className="px-3 py-1.5 border-t border-gray-200 bg-white text-xs text-gray-400 text-center">
+          {filteredList.length < list.length ? `${filteredList.length} / ${list.length}` : list.length} รายการ
+        </div>
+      </div>
+
+      {/* Right — announcement detail */}
+      <div className="flex-1 min-w-0 overflow-auto">
+        {!active ? (
+          <div className="text-center text-gray-500 py-10 text-sm">ไม่พบรายการ</div>
+        ) : (
           <AnnouncementSheet a={active} allCompanies={allCompanies} canEdit={canEdit} onCopy={onCopy} onEdit={onEdit} onDelete={onDelete} />
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 };
@@ -338,7 +411,7 @@ const PriceAnnouncementPage: React.FC<PriceAnnouncementPageProps> = ({ products,
   };
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="px-2 md:px-4 py-4 md:py-6">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h1 className="text-xl font-semibold text-gray-900">ประกาศราคา / โปรโมชั่นรายเดือน</h1>
         <div className="flex items-center gap-3">

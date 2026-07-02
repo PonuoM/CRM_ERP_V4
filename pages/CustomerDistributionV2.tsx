@@ -48,6 +48,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [dashboardBaskets, setDashboardBaskets] = useState<BasketConfig[]>([]);
     const [basketCounts, setBasketCounts] = useState<Record<string, number>>({});
     const [activeBasket, setActiveBasket] = useState<string>('');
+    const [strictDuplicateCheck, setStrictDuplicateCheck] = useState(false);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [agents, setAgents] = useState<AgentWithBaskets[]>([]);
     const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
@@ -637,7 +638,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             const conflictSet = new Set(conflicts);
 
             const bestAgent = selectedAgents
-                .filter(id => quota[id] > 0 && !conflictSet.has(id))
+                .filter(id => quota[id] > 0 && (!strictDuplicateCheck || !conflictSet.has(id)))
                 .sort((a, b) => assigned[a].length - assigned[b].length)[0];
 
             if (bestAgent !== undefined) {
@@ -949,6 +950,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         triggered_by: (currentUser as any)?.id,
                         distribution_mode: distributionMode,
                         min_call_minutes: hasCallFilterApplied ? parseInt(callThresholdMinutes) : null,
+                        strict_duplicate_check: strictDuplicateCheck,
                         agent_snapshot: agentSnapshot
                     })
                 }
@@ -1796,6 +1798,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             {/* Section 1: Distribution Settings */}
             {!isHoldingBasketActive && (
                 <DistributionSettingsPanel
+                    strictDuplicateCheck={strictDuplicateCheck}
+                    setStrictDuplicateCheck={setStrictDuplicateCheck}
                     baskets={baskets}
                     basketCounts={basketCounts}
                     activeBasket={activeBasket}
