@@ -28,6 +28,14 @@ try {
 
   $pdo = db_connect();
 
+  // Cross-company transfer columns may not exist yet on older DBs
+  $hasTransferColumns = true;
+  try {
+    $pdo->query("SELECT assigned_company_id FROM statement_logs LIMIT 0");
+  } catch (PDOException $e) {
+    $hasTransferColumns = false;
+  }
+
   // Format dates
   $startDate = date("Y-m-d 00:00:00", strtotime($startDateRaw));
   $endDate = date("Y-m-d 23:59:59", strtotime($endDateRaw));
@@ -38,14 +46,46 @@ try {
     $bankFilter = "AND sl.bank_account_id = :bankAccountId";
   }
 
+  // Transfer-aware select/join/where fragments (only when columns exist)
+  $transferSelect = "";
+  $transferJoin = "";
+  if ($hasTransferColumns) {
+    $transferSelect = "
+      sl.assigned_company_id,
+      sl.assigned_at,
+      sl.assign_note,
+      sb.company_id AS owner_company_id,
+      c_owner.name AS owner_company_name,
+      c_assigned.name AS assigned_company_name,
+      IFNULL(CONCAT(u_assigner.first_name, ' ', u_assigner.last_name), NULL) AS assigned_by_name,
+      sl.bank_account_id AS statement_bank_account_id,
+      COALESCE(sl.bank_display_name, CONCAT(ba.bank, ' - ', ba.bank_number)) AS statement_bank_display,";
+    $transferJoin = "
+    LEFT JOIN companies c_owner ON c_owner.id = sb.company_id
+    LEFT JOIN companies c_assigned ON c_assigned.id = sl.assigned_company_id
+    LEFT JOIN users u_assigner ON u_assigner.id = sl.assigned_by
+    LEFT JOIN bank_account ba ON ba.id = sl.bank_account_id";
+  }
+
+  // Visibility:
+  // 1) แถวของบริษัทตัวเอง (รวมที่โอนออกไปแล้ว — แสดงแบบ read-only) → ใช้ bank filter ตามปกติ
+  // 2) แถวที่ถูกโอนสิทธิ์มาให้บริษัทนี้ → เห็นเสมอไม่ว่าจะเลือกธนาคารไหน
+  if ($hasTransferColumns) {
+    $visibilityWhere = "((sb.company_id = :companyId {$bankFilter})
+      OR (sl.assigned_company_id = :assignedCompanyId AND sb.company_id <> :assignedCompanyId2))";
+  } else {
+    $visibilityWhere = "(sb.company_id = :companyId {$bankFilter})";
+  }
+
   // Query: Statement Logs LEFT JOIN Reconcile Logs LEFT JOIN Orders LEFT JOIN COD Documents
   $sql = "
-    SELECT 
+    SELECT
       sl.id,
       sl.transfer_at,
       sl.amount as statement_amount,
       sl.channel,
       sl.description,
+      {$transferSelect}
       -- COD document info (if this statement was matched to a COD document)
       cd.id as cod_document_id,
       cd.document_number as cod_document_number,
@@ -78,8 +118,8 @@ try {
     LEFT JOIN users u_creator ON u_creator.id = srl.created_by
     LEFT JOIN users u_confirmer ON u_confirmer.id = srl.confirmed_by
     LEFT JOIN cod_documents cd ON cd.matched_statement_log_id = sl.id
-    WHERE sb.company_id = :companyId
-      {$bankFilter}
+    {$transferJoin}
+    WHERE {$visibilityWhere}
       AND sl.transfer_at BETWEEN :startDate AND :endDate
     GROUP BY sl.id, cd.id, cd.document_number, cd.total_input_amount, cd.status
     ORDER BY sl.transfer_at ASC
@@ -92,6 +132,10 @@ try {
     ':startDate' => $startDate,
     ':endDate' => $endDate
   ];
+  if ($hasTransferColumns) {
+    $params[':assignedCompanyId'] = $companyId;
+    $params[':assignedCompanyId2'] = $companyId;
+  }
   if ($bankAccountId > 0) {
     $params[':bankAccountId'] = $bankAccountId;
   }
@@ -209,6 +253,21 @@ try {
     $status = 'Unmatched';
     $diff = 0;
 
+    // Cross-company transfer direction for this row (relative to requesting company)
+    $transferDirection = null; // 'out' = โอนออกไปให้บริษัทอื่น (read-only), 'in' = ถูกโอนมาให้บริษัทนี้
+    if ($hasTransferColumns && !empty($row['assigned_company_id'])) {
+      $assignedTo = (int) $row['assigned_company_id'];
+      $ownerCo = (int) $row['owner_company_id'];
+      if ($ownerCo === $companyId && $assignedTo !== $companyId) {
+        $transferDirection = 'out';
+      } elseif ($assignedTo === $companyId && $ownerCo !== $companyId) {
+        $transferDirection = 'in';
+      }
+    }
+    // Transferred-in rows sit on the origin company's bank account, so the
+    // page-selected bank never matches — relax bank checks for auto-match.
+    $relaxBankCheck = ($transferDirection === 'in');
+
     // Parse aggregated items
     $reconcileItems = [];
     $rawItems = json_decode($row['reconcile_items'], true);
@@ -314,7 +373,7 @@ try {
     $suggestedSlipCount = 0;
     $suggestedSlipIndex = 0;
 
-    if ($matchStatement && $status === 'Unmatched') {
+    if ($matchStatement && $status === 'Unmatched' && $transferDirection !== 'out') {
       $stmtAmount = (float) $row['statement_amount'];
       $stmtDate = $row['transfer_at'];
 
@@ -339,7 +398,7 @@ try {
                 continue;
 
               // Bank Match (if slip has bank)
-              if ($slipBankId && $slipBankId !== $bankAccountId)
+              if (!$relaxBankCheck && $slipBankId && $slipBankId !== $bankAccountId)
                 continue;
 
               // Time Match (within 15 min)
@@ -374,7 +433,7 @@ try {
 
           if (abs($targetAmount - $stmtAmount) <= 0.01) {
             $ordBankId = $ord['bank_account_id'] ?? $ord['slip_bank_account_id'];
-            if (!$ordBankId || (int) $ordBankId === $bankAccountId) {
+            if ($relaxBankCheck || !$ordBankId || (int) $ordBankId === $bankAccountId) {
               $ordDate = $ord['slip_transfer_date'] ?? $ord['transfer_date'];
               if ($ordDate) {
                 $timeDiff = abs(strtotime($stmtDate) - strtotime($ordDate));
@@ -443,7 +502,7 @@ try {
                 $slipBankId = isset($slip['bank_account_id']) ? (int) $slip['bank_account_id'] : null;
 
                 if (abs($slipAmount - $stmtAmount) > 0.01) continue;
-                if ($slipBankId && $slipBankId !== $bankAccountId) continue;
+                if (!$relaxBankCheck && $slipBankId && $slipBankId !== $bankAccountId) continue;
 
                 if ($slipDate) {
                   $timeDiffSec = abs(strtotime($stmtDate) - strtotime($slipDate));
@@ -482,7 +541,7 @@ try {
 
           if ($amountMatch) {
             $ordBankId = $ord['bank_account_id'] ?? $ord['slip_bank_account_id'] ?? null;
-            if (!$ordBankId || (int) $ordBankId === $bankAccountId) {
+            if ($relaxBankCheck || !$ordBankId || (int) $ordBankId === $bankAccountId) {
               $ordDate = $ord['slip_transfer_date'] ?? $ord['transfer_date'] ?? null;
               if ($ordDate) {
                 $timeDiffSec = abs(strtotime($stmtDate) - strtotime($ordDate));
@@ -579,6 +638,16 @@ try {
       'cod_total_amount' => $codTotalAmount,
       'cod_status' => $row['cod_status'] ?? null,
       'is_cod_document' => $isCodDocument,
+      // Cross-company transfer info
+      'transfer_direction' => $transferDirection,
+      'assigned_company_id' => $hasTransferColumns && !empty($row['assigned_company_id']) ? (int) $row['assigned_company_id'] : null,
+      'assigned_company_name' => $hasTransferColumns ? ($row['assigned_company_name'] ?? null) : null,
+      'owner_company_id' => $hasTransferColumns ? (int) ($row['owner_company_id'] ?? $companyId) : $companyId,
+      'owner_company_name' => $hasTransferColumns ? ($row['owner_company_name'] ?? null) : null,
+      'assigned_at' => $hasTransferColumns ? ($row['assigned_at'] ?? null) : null,
+      'assign_note' => $hasTransferColumns ? ($row['assign_note'] ?? null) : null,
+      'assigned_by_name' => $hasTransferColumns ? ($row['assigned_by_name'] ?? null) : null,
+      'statement_bank_display' => $hasTransferColumns ? ($row['statement_bank_display'] ?? null) : null,
     ];
   }
 

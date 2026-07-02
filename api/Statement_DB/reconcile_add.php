@@ -31,12 +31,30 @@ try {
     $pdo = db_connect();
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // 1. Get statement amount
-    $stmtFetch = $pdo->prepare("SELECT id, amount FROM statement_logs WHERE id = :id");
+    // 1. Get statement amount + ownership (transfer-aware when columns exist)
+    $hasTransferColumns = true;
+    try {
+        $pdo->query("SELECT assigned_company_id FROM statement_logs LIMIT 0");
+    } catch (PDOException $e) {
+        $hasTransferColumns = false;
+    }
+    $ownershipExpr = $hasTransferColumns
+        ? "COALESCE(sl.assigned_company_id, sb.company_id)"
+        : "sb.company_id";
+    $stmtFetch = $pdo->prepare("
+      SELECT sl.id, sl.amount, {$ownershipExpr} AS effective_company_id
+      FROM statement_logs sl
+      INNER JOIN statement_batchs sb ON sb.id = sl.batch_id
+      WHERE sl.id = :id
+    ");
     $stmtFetch->execute([':id' => $statementId]);
     $stmtInfo = $stmtFetch->fetch(PDO::FETCH_ASSOC);
     if (!$stmtInfo) {
         echo json_encode(["ok" => false, "error" => "Statement not found"], JSON_UNESCAPED_UNICODE);
+        exit();
+    }
+    if ((int) $stmtInfo['effective_company_id'] !== $companyId) {
+        echo json_encode(["ok" => false, "error" => "Statement นี้ไม่ได้อยู่ในสิทธิ์ของบริษัทคุณ (อาจถูกโอนให้บริษัทอื่นแล้ว) กรุณารีเฟรชข้อมูล"], JSON_UNESCAPED_UNICODE);
         exit();
     }
     $statementAmount = (float) $stmtInfo['amount'];

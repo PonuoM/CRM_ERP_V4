@@ -206,7 +206,28 @@ try {
   ]);
   $bank = $bankStmt->fetch(PDO::FETCH_ASSOC);
   if (!$bank) {
-    throw new RuntimeException("Bank account not found for this company");
+    // Fallback: allow a bank owned by another company ONLY if it has statements
+    // transferred to this company (cross-company transfer flow)
+    $transferBankStmt = null;
+    try {
+      $transferBankStmt = $pdo->prepare("
+        SELECT ba.id, ba.bank, ba.bank_number
+        FROM bank_account ba
+        WHERE ba.id = :id AND ba.deleted_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM statement_logs sl
+            WHERE sl.bank_account_id = ba.id AND sl.assigned_company_id = :companyId
+          )
+      ");
+      $transferBankStmt->execute([":id" => $bankAccountId, ":companyId" => $companyId]);
+      $bank = $transferBankStmt->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+      // assigned_company_id column may not exist yet
+      $bank = false;
+    }
+    if (!$bank) {
+      throw new RuntimeException("Bank account not found for this company");
+    }
   }
   $bankDisplayName = trim($bank["bank"] . " - " . $bank["bank_number"]);
 
@@ -258,8 +279,28 @@ try {
   $existingReconCache = [];
   $reconcileLogIds = []; // Track reconcile log IDs per statement_id
 
-  // Prepare statement fetch query
-  $stmtFetchSql = $pdo->prepare("SELECT amount FROM statement_logs WHERE id = :id");
+  // Prepare statement fetch query — include ownership info (transfer-aware when columns exist)
+  $hasTransferColumns = true;
+  try {
+    $pdo->query("SELECT assigned_company_id FROM statement_logs LIMIT 0");
+  } catch (PDOException $e) {
+    $hasTransferColumns = false;
+  }
+  if ($hasTransferColumns) {
+    $stmtFetchSql = $pdo->prepare("
+      SELECT sl.amount, COALESCE(sl.assigned_company_id, sb.company_id) AS effective_company_id
+      FROM statement_logs sl
+      INNER JOIN statement_batchs sb ON sb.id = sl.batch_id
+      WHERE sl.id = :id
+    ");
+  } else {
+    $stmtFetchSql = $pdo->prepare("
+      SELECT sl.amount, sb.company_id AS effective_company_id
+      FROM statement_logs sl
+      INNER JOIN statement_batchs sb ON sb.id = sl.batch_id
+      WHERE sl.id = :id
+    ");
+  }
 
   foreach ($items as $item) {
     $statementId = isset($item["statement_id"]) ? (int) $item["statement_id"] : 0;
@@ -274,6 +315,10 @@ try {
     if (!$stmtInfo) {
       file_put_contents(__DIR__ . "/debug_reconcile.txt", "Error: Statement not found $statementId\n", FILE_APPEND);
       throw new RuntimeException("Statement log not found for ID: " . $statementId);
+    }
+    // Ownership guard: statement must belong to (or be transferred to) the requesting company
+    if ((int) $stmtInfo['effective_company_id'] !== $companyId) {
+      throw new RuntimeException("Statement นี้ไม่ได้อยู่ในสิทธิ์ของบริษัทคุณ (อาจถูกโอนให้บริษัทอื่นแล้ว) กรุณารีเฟรชข้อมูล");
     }
     $statementAmount = (float) $stmtInfo['amount'];
     file_put_contents(__DIR__ . "/debug_reconcile.txt", "Process Item: StmtId=$statementId, Type=$reconcileType, Amount=$statementAmount\n", FILE_APPEND);

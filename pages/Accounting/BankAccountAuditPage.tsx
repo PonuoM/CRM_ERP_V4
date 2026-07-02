@@ -34,6 +34,21 @@ interface AuditLog {
     is_cod_document?: boolean;
     reconcile_items?: any[];
     matched_orders?: { reconcile_id: number; order_id: string; confirmed_amount: number; confirmed_at?: string | null; payment_method?: string | null; duplicate_reconcile_count?: number; is_over_reconciled?: boolean; total_reconciled_amount?: number; order_total_amount?: number }[];
+    // Cross-company transfer info
+    transfer_direction?: 'in' | 'out' | null;
+    assigned_company_id?: number | null;
+    assigned_company_name?: string | null;
+    owner_company_id?: number;
+    owner_company_name?: string | null;
+    assigned_at?: string | null;
+    assign_note?: string | null;
+    assigned_by_name?: string | null;
+    statement_bank_display?: string | null;
+}
+
+interface CompanyOption {
+    id: number;
+    name: string;
 }
 
 interface BankAccount {
@@ -41,6 +56,8 @@ interface BankAccount {
     bank: string;
     bank_number: string;
     account_name: string;
+    // Set when this bank belongs to another company but has statements transferred to us
+    transferred_from?: string | null;
 }
 
 interface BankAccountAuditPageProps {
@@ -96,6 +113,16 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     // State for COD document detail modal
     const [isCodDetailModalOpen, setIsCodDetailModalOpen] = useState(false);
     const [selectedCodLog, setSelectedCodLog] = useState<AuditLog | null>(null);
+
+    // Cross-company transfer modal state
+    const [companies, setCompanies] = useState<CompanyOption[]>([]);
+    const [transferPending, setTransferPending] = useState<{
+        log: AuditLog;
+        targetCompanyId: string;
+        note: string;
+        error: string;
+        saving: boolean;
+    } | null>(null);
     const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
 
@@ -107,26 +134,53 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     useEffect(() => {
         fetchBanks();
+        fetchCompanies();
     }, []);
+
+    const fetchCompanies = async () => {
+        try {
+            const res = await apiFetch('companies');
+            const list = Array.isArray(res) ? res : (res?.data || []);
+            setCompanies(list.map((c: any) => ({ id: Number(c.id), name: c.name })));
+        } catch (error) {
+            console.error("Failed to fetch companies", error);
+        }
+    };
 
     const fetchBanks = async () => {
         try {
-            const res = await apiFetch(`bank_accounts?companyId=${currentUser.companyId || (currentUser as any).company_id}`, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
-            });
+            const companyId = currentUser.companyId || (currentUser as any).company_id;
+            const [res, transferredRes] = await Promise.all([
+                apiFetch(`bank_accounts?companyId=${companyId}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                }),
+                // บัญชีของบริษัทอื่นที่มี statement โอนสิทธิ์มาให้เรา
+                apiFetch(`Statement_DB/get_transferred_bank_accounts.php?company_id=${companyId}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                }).catch(() => null),
+            ]);
+
             // API returns the array directly, not wrapped in a data property
-            if (Array.isArray(res)) {
-                setBanks(res);
-                if (res.length > 0) {
-                    setSelectedBankId(String(res[0].id));
-                }
-            } else if (res && res.data && Array.isArray(res.data)) {
-                // Fallback in case API structure changes
-                setBanks(res.data);
-                if (res.data.length > 0) {
-                    setSelectedBankId(String(res.data[0].id));
-                }
+            const ownBanks: BankAccount[] = Array.isArray(res) ? res : (res?.data && Array.isArray(res.data) ? res.data : []);
+
+            const transferredBanks: BankAccount[] = (transferredRes?.ok && Array.isArray(transferredRes.data))
+                ? transferredRes.data
+                    .filter((tb: any) => !ownBanks.some(ob => Number(ob.id) === Number(tb.id)))
+                    .map((tb: any) => ({
+                        id: Number(tb.id),
+                        bank: tb.bank,
+                        bank_number: tb.bank_number,
+                        account_name: '',
+                        transferred_from: tb.owner_company_name || null,
+                    }))
+                : [];
+
+            const allBanks = [...ownBanks, ...transferredBanks];
+            setBanks(allBanks);
+            if (allBanks.length > 0) {
+                setSelectedBankId(String(allBanks[0].id));
             }
         } catch (error) {
             console.error("Failed to fetch banks", error);
@@ -298,6 +352,12 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     const handleActionChange = async (log: AuditLog, action: string) => {
         if (!action) return;
 
+        // โอนสิทธิ์ statement ให้บริษัทอื่น — เปิด modal เลือกบริษัท
+        if (action === 'Transfer') {
+            setTransferPending({ log, targetCompanyId: '', note: '', error: '', saving: false });
+            return;
+        }
+
         const label = action === 'Suspense' ? 'พักรับ (Suspense)' : 'มัดจำรับ (Deposit)';
 
         // If it's a "Confirm Match" action (custom value likely just the orderId, but here action is select value)
@@ -337,6 +397,91 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                 } : l));
             } else {
                 alert('บันทึกไม่สำเร็จ: ' + (res.error || 'Server error'));
+            }
+        } catch (e: any) {
+            alert('Error: ' + e.message);
+        }
+    };
+
+    // Execute cross-company transfer from modal
+    const executeTransfer = async () => {
+        if (!transferPending) return;
+        const { log, targetCompanyId, note } = transferPending;
+        if (!targetCompanyId) {
+            setTransferPending({ ...transferPending, error: 'กรุณาเลือกบริษัทปลายทาง' });
+            return;
+        }
+
+        setTransferPending({ ...transferPending, saving: true, error: '' });
+        try {
+            const res = await apiFetch('Statement_DB/transfer_statement.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'transfer',
+                    statement_log_id: log.id,
+                    company_id: currentUser.companyId || (currentUser as any).company_id,
+                    user_id: currentUser.id,
+                    target_company_id: parseInt(targetCompanyId),
+                    note: note.trim() || null,
+                })
+            });
+
+            if (res.ok) {
+                const targetName = res.target_company_name || companies.find(c => String(c.id) === targetCompanyId)?.name || '';
+                // Optimistic update: mark row as transferred out (read-only)
+                setLogs(prev => prev.map(l => l.id === log.id ? {
+                    ...l,
+                    transfer_direction: 'out' as const,
+                    assigned_company_id: parseInt(targetCompanyId),
+                    assigned_company_name: targetName,
+                    assigned_at: new Date().toISOString(),
+                    assign_note: note.trim() || null,
+                } : l));
+                setTransferPending(null);
+            } else {
+                setTransferPending({ ...transferPending, saving: false, error: res.error || 'โอนไม่สำเร็จ' });
+            }
+        } catch (e: any) {
+            setTransferPending({ ...transferPending, saving: false, error: e.message || 'Error' });
+        }
+    };
+
+    // Cancel a transfer (ได้ทั้งฝั่งต้นทางและฝั่งที่รับโอนมา ตราบใดที่ยังไม่ผูก)
+    const handleCancelTransfer = async (log: AuditLog) => {
+        const msg = log.transfer_direction === 'in'
+            ? `ส่งคืน statement นี้ให้ ${log.owner_company_name || 'บริษัทต้นทาง'}?`
+            : `ยกเลิกการโอน statement นี้ (ดึงสิทธิ์กลับจาก ${log.assigned_company_name || 'บริษัทปลายทาง'})?`;
+        if (!window.confirm(msg)) return;
+
+        try {
+            const res = await apiFetch('Statement_DB/transfer_statement.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'cancel',
+                    statement_log_id: log.id,
+                    company_id: currentUser.companyId || (currentUser as any).company_id,
+                    user_id: currentUser.id,
+                })
+            });
+
+            if (res.ok) {
+                if (log.transfer_direction === 'in') {
+                    // แถวที่โอนมาให้เรา — พอส่งคืนแล้วหายจากรายการของเรา
+                    setLogs(prev => prev.filter(l => l.id !== log.id));
+                } else {
+                    // แถวของเราที่โอนออกไป — กลับมาเป็นแถวปกติ
+                    setLogs(prev => prev.map(l => l.id === log.id ? {
+                        ...l,
+                        transfer_direction: null,
+                        assigned_company_id: null,
+                        assigned_company_name: null,
+                        assigned_at: null,
+                        assign_note: null,
+                    } : l));
+                    fetchAuditLogs(true);
+                }
+            } else {
+                alert('ยกเลิกการโอนไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
         } catch (e: any) {
             alert('Error: ' + e.message);
@@ -752,6 +897,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             log.order_id || '',
             log.order_amount || '',
             log.payment_method || '',
+            log.transfer_direction === 'out' ? `โอนให้ ${log.assigned_company_name || 'บริษัทอื่น'}` :
             log.status === 'Unmatched' ? 'ยังไม่จับคู่' :
                 log.status === 'Exact' ? 'พอดี' :
                     log.status === 'Over' ? 'เกิน' :
@@ -819,7 +965,9 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                         <option value="" disabled>เลือกธนาคาร</option>
                                         {banks.map((bank) => (
                                             <option key={bank.id} value={String(bank.id)}>
-                                                {bank.bank} - {bank.bank_number} ({bank.account_name})
+                                                {bank.transferred_from
+                                                    ? `${bank.bank} - ${bank.bank_number} (โอนมาจาก ${bank.transferred_from})`
+                                                    : `${bank.bank} - ${bank.bank_number} (${bank.account_name})`}
                                             </option>
                                         ))}
                                     </select>
@@ -972,7 +1120,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                         </tr>
                                     ) : (
                                         filteredLogs.map((log, index) => (
-                                            <tr key={log.id} className={`transition-colors ${hasDuplicateOrders(log) ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}>
+                                            <tr key={log.id} className={`transition-colors ${hasDuplicateOrders(log) ? 'bg-red-50 hover:bg-red-100' : log.transfer_direction === 'out' ? 'bg-violet-50/60 hover:bg-violet-50 opacity-80' : 'hover:bg-gray-50'}`}>
                                                 <td className="px-4 py-3 text-center text-gray-500">{index + 1}</td>
                                                 <td className="px-4 py-3 whitespace-nowrap">{formatDate(log.transfer_at)}</td>
                                                 <td className="px-4 py-3 text-right font-medium">{formatCurrency(log.statement_amount)}</td>
@@ -981,7 +1129,34 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
                                                 {/* Order Info */}
                                                 <td className="px-4 py-3 whitespace-nowrap">
-                                                    {log.status === 'Suspense' ? (
+                                                    {log.transfer_direction === 'in' && (
+                                                        <div className="mb-1">
+                                                            <span
+                                                                className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-bold cursor-help"
+                                                                title={`โอนมาจาก ${log.owner_company_name || '-'}${log.statement_bank_display ? `\nบัญชีต้นทาง: ${log.statement_bank_display}` : ''}${log.assigned_by_name ? `\nโอนโดย: ${log.assigned_by_name}` : ''}${log.assign_note ? `\nหมายเหตุ: ${log.assign_note}` : ''}`}
+                                                            >
+                                                                ⇄ โอนมาจาก {log.owner_company_name || 'บริษัทอื่น'}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {log.transfer_direction === 'out' ? (
+                                                        <div className="flex flex-col items-start gap-1">
+                                                            <span
+                                                                className="text-violet-600 italic font-medium flex items-center gap-1 cursor-help"
+                                                                title={`โอนเมื่อ ${log.assigned_at ? formatDate(log.assigned_at) : '-'}${log.assigned_by_name ? `\nโอนโดย: ${log.assigned_by_name}` : ''}${log.assign_note ? `\nหมายเหตุ: ${log.assign_note}` : ''}`}
+                                                            >
+                                                                <i className="fa-solid fa-share text-xs"></i>
+                                                                โอนให้ {log.assigned_company_name || `บริษัท #${log.assigned_company_id}`}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => handleCancelTransfer(log)}
+                                                                className="text-xs text-red-600 hover:text-white hover:bg-red-500 bg-white border border-red-200 px-2 py-0.5 rounded-full transition-all shadow-sm font-medium"
+                                                                title="ดึงสิทธิ์กลับมาบริษัทเรา (ทำได้เฉพาะตอนที่ปลายทางยังไม่ผูก)"
+                                                            >
+                                                                ยกเลิกโอน
+                                                            </button>
+                                                        </div>
+                                                    ) : log.status === 'Suspense' ? (
                                                         <span className="text-orange-500 italic font-medium">พักรับ (Suspense)</span>
                                                     ) : log.is_cod_document && log.cod_document_number ? (
                                                         // COD Document - show document number and open detail modal
@@ -1117,14 +1292,25 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
                                                             {/* Search Button for Unmatched or Unconfirmed items */}
                                                             {!log.confirmed_at && (
-                                                                <button
-                                                                    onClick={() => openSearchModal(log)}
-                                                                    className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 hover:bg-blue-100 transition-colors"
-                                                                    title="ค้นหาและจับคู่คำสั่งซื้อ"
-                                                                >
-                                                                    <Search className="w-3 h-3" />
-                                                                    ค้นหา
-                                                                </button>
+                                                                <div className="flex items-center gap-1">
+                                                                    <button
+                                                                        onClick={() => openSearchModal(log)}
+                                                                        className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 hover:bg-blue-100 transition-colors"
+                                                                        title="ค้นหาและจับคู่คำสั่งซื้อ"
+                                                                    >
+                                                                        <Search className="w-3 h-3" />
+                                                                        ค้นหา
+                                                                    </button>
+                                                                    {log.transfer_direction === 'in' && log.status === 'Unmatched' && (
+                                                                        <button
+                                                                            onClick={() => handleCancelTransfer(log)}
+                                                                            className="text-xs flex items-center gap-1 text-violet-600 hover:text-violet-800 bg-violet-50 px-2 py-0.5 rounded border border-violet-100 hover:bg-violet-100 transition-colors"
+                                                                            title={`ส่งคืน statement นี้ให้ ${log.owner_company_name || 'บริษัทต้นทาง'}`}
+                                                                        >
+                                                                            ↩ ส่งคืน
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                             )}
                                                         </div>
                                                     )}
@@ -1149,6 +1335,11 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                 {/* Status */}
                                                 <td className="px-4 py-3 text-center">
                                                     <div className="flex flex-col gap-1 items-center" title={[log.note, log.mismatch_reason].filter(Boolean).join('\n') || undefined}>
+                                                        {log.transfer_direction === 'out' && (
+                                                            <span className="text-violet-600 bg-violet-100 px-2 py-1 rounded-full text-xs font-bold shadow-sm cursor-help" title={`โอนสิทธิ์ให้ ${log.assigned_company_name || '-'} แล้ว — อ่านอย่างเดียว`}>
+                                                                โอนแล้ว
+                                                            </span>
+                                                        )}
                                                         {log.status !== 'Unmatched' && (
                                                             <span className={`${getStatusColor(log.status)} shadow-sm cursor-help`}>
                                                                 {log.status === 'Exact' ? 'พอดี' :
@@ -1160,7 +1351,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                             </span>
                                                         )}
 
-                                                        {log.status === 'Unmatched' && (
+                                                        {log.status === 'Unmatched' && log.transfer_direction !== 'out' && (
                                                             <div className="flex flex-col gap-1 items-center">
                                                                 <div className="relative">
                                                                     <select
@@ -1175,6 +1366,9 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                         <option value="" disabled>เลือกสถานะ...</option>
                                                                         <option value="Suspense">พักรับ</option>
                                                                         <option value="Deposit">มัดจำรับ</option>
+                                                                        {log.transfer_direction !== 'in' && (
+                                                                            <option value="Transfer">โอนให้บริษัทอื่น</option>
+                                                                        )}
                                                                     </select>
                                                                 </div>
                                                             </div>
@@ -1595,6 +1789,89 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm"
                             >
                                 ยืนยันจับคู่
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Transfer Statement Modal (โอนสิทธิ์ให้บริษัทอื่น) */}
+            {transferPending && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => !transferPending.saving && setTransferPending(null)}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all" onClick={e => e.stopPropagation()}>
+                        <div className="px-6 py-4 border-b bg-violet-50 rounded-t-xl">
+                            <h3 className="text-lg font-semibold text-violet-800 flex items-center gap-2">
+                                <i className="fa-solid fa-share text-violet-600"></i>
+                                โอน Statement ให้บริษัทอื่น
+                            </h3>
+                        </div>
+                        <div className="px-6 py-5">
+                            <div className="bg-gray-50 rounded-lg p-4 space-y-2 mb-4">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500 text-sm">วัน/เวลา:</span>
+                                    <span className="font-medium">{formatDate(transferPending.log.transfer_at)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500 text-sm">ยอดเงิน:</span>
+                                    <span className="font-semibold text-violet-700">{formatCurrency(transferPending.log.statement_amount)}</span>
+                                </div>
+                                {transferPending.log.description && (
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-gray-500 text-sm shrink-0">รายละเอียด:</span>
+                                        <span className="font-medium text-sm text-right truncate" title={transferPending.log.description}>{transferPending.log.description}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                บริษัทปลายทาง <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                                className="w-full px-3 py-2 border rounded-md text-sm border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 mb-3"
+                                value={transferPending.targetCompanyId}
+                                onChange={(e) => setTransferPending({ ...transferPending, targetCompanyId: e.target.value, error: '' })}
+                            >
+                                <option value="">เลือกบริษัท...</option>
+                                {companies
+                                    .filter(c => c.id !== (currentUser.companyId || (currentUser as any).company_id))
+                                    .map(c => (
+                                        <option key={c.id} value={String(c.id)}>{c.name}</option>
+                                    ))}
+                            </select>
+
+                            <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+                            <textarea
+                                value={transferPending.note}
+                                onChange={(e) => setTransferPending({ ...transferPending, note: e.target.value })}
+                                className="w-full p-2 border rounded-md text-sm border-gray-300"
+                                rows={2}
+                                placeholder="เช่น เงินของออเดอร์บริษัทปลายทาง ลูกค้าโอนเข้าบัญชีเรา"
+                            />
+
+                            <p className="text-xs text-gray-400 mt-3">
+                                หลังโอนแล้ว บริษัทปลายทางจะเห็นรายการนี้และผูกกับออเดอร์ของตัวเองได้
+                                ฝั่งเราจะเห็นเป็นรายการอ่านอย่างเดียว และยกเลิกการโอนได้ตราบใดที่ปลายทางยังไม่ผูกออเดอร์
+                            </p>
+
+                            {transferPending.error && (
+                                <p className="text-red-500 text-sm mt-2">{transferPending.error}</p>
+                            )}
+                        </div>
+                        <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3 rounded-b-xl">
+                            <button
+                                onClick={() => setTransferPending(null)}
+                                disabled={transferPending.saving}
+                                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium disabled:opacity-50"
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={executeTransfer}
+                                disabled={transferPending.saving}
+                                className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm font-medium shadow-sm disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {transferPending.saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                                โอน Statement
                             </button>
                         </div>
                     </div>
