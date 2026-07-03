@@ -119,6 +119,16 @@ const ReturnedOrdersReportPage: React.FC = () => {
     }
   };
 
+  const getPlayableAudioUrl = (url: string) => {
+    if (url.includes('drive.google.com')) {
+      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        return `https://drive.google.com/uc?export=download&id=${match[1]}`;
+      }
+    }
+    return url;
+  };
+
   // Summary calc
   const totalOrders = data.length;
   const totalAmount = data.reduce((sum, item) => sum + parseFloat(item.total_amount as any || 0), 0);
@@ -252,7 +262,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                             {order.audio_links && order.audio_links.length > 0 ? (
                               <div className="flex flex-col gap-2">
                                 {order.audio_links.map((link, i) => (
-                                  <audio key={i} controls src={link} className="h-8 w-48" preload="none"></audio>
+                                  <audio key={i} controls src={getPlayableAudioUrl(link)} className="h-8 w-48" preload="none"></audio>
                                 ))}
                               </div>
                             ) : (
