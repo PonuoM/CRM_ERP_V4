@@ -25,10 +25,10 @@ const ReturnedOrdersReportPage: React.FC = () => {
   
   // State
   const [activeTab, setActiveTab] = useState<'Returned' | 'Cancelled'>('Returned');
-  const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-    new Date()
-  ]);
+  const [dateRange, setDateRange] = useState({
+    start: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
+    end: format(new Date(), 'yyyy-MM-dd')
+  });
   const [data, setData] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(false);
   const [processingAudio, setProcessingAudio] = useState<string | null>(null);
@@ -39,8 +39,8 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const start = dateRange[0] ? format(dateRange[0], 'yyyy-MM-dd') : '';
-      const end = dateRange[1] ? format(dateRange[1], 'yyyy-MM-dd') : '';
+      const start = dateRange.start;
+      const end = dateRange.end;
       
       const token = localStorage.getItem('token');
       const res = await fetch(`/api/returned_orders_report?start_date=${start}&end_date=${end}&status_type=${activeTab}&user_id=${userId}`, {
@@ -152,8 +152,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
                   <UniversalDateRangePicker
-                    startDate={dateRange[0]}
-                    endDate={dateRange[1]}
+                    value={dateRange}
                     onChange={(update) => setDateRange(update)}
                   />
                 </div>
