@@ -119,16 +119,6 @@ const ReturnedOrdersReportPage: React.FC = () => {
     }
   };
 
-  const getPlayableAudioUrl = (url: string) => {
-    if (url.includes('drive.google.com')) {
-      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-      if (match && match[1]) {
-        return `https://drive.google.com/uc?export=download&id=${match[1]}`;
-      }
-    }
-    return url;
-  };
-
   // Summary calc
   const totalOrders = data.length;
   const totalAmount = data.reduce((sum, item) => sum + parseFloat(item.total_amount as any || 0), 0);
@@ -262,7 +252,17 @@ const ReturnedOrdersReportPage: React.FC = () => {
                             {order.audio_links && order.audio_links.length > 0 ? (
                               <div className="flex flex-col gap-2">
                                 {order.audio_links.map((link, i) => (
-                                  <audio key={i} controls src={getPlayableAudioUrl(link)} className="h-8 w-48" preload="none"></audio>
+                                  <a 
+                                    key={i} 
+                                    href={link} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 hover:underline text-sm flex items-center gap-1"
+                                    title="ฟังไฟล์เสียงบน Google Drive"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                    ไฟล์เสียงที่ {i + 1}
+                                  </a>
                                 ))}
                               </div>
                             ) : (
