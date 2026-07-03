@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import Sidebar from '@/components/Sidebar';
 import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
 import { useToast } from '@/components/Toast';
 import { format } from 'date-fns';
@@ -125,9 +124,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const totalAmount = data.reduce((sum, item) => sum + parseFloat(item.total_amount as any || 0), 0);
 
   return (
-    <div className="flex h-screen bg-gray-50 text-gray-900">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden h-full">
         <header className="flex justify-between items-center p-4 bg-white border-b shadow-sm">
           <h1 className="text-2xl font-semibold">Special Orders Report</h1>
         </header>
@@ -290,7 +287,6 @@ const ReturnedOrdersReportPage: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
     </div>
   );
 };
