@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
 import { useToast } from '@/components/Toast';
+import Modal from '@/components/Modal';
 import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
 
@@ -33,6 +34,9 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const [data, setData] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(false);
   const [processingAudio, setProcessingAudio] = useState<string | null>(null);
+  const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
+  const [modalOrderId, setModalOrderId] = useState<string>('');
+  const [modalAudioUrl, setModalAudioUrl] = useState<string>('');
 
   // Filters
   const [userId, setUserId] = useState<string>('');
@@ -48,10 +52,10 @@ const ReturnedOrdersReportPage: React.FC = () => {
       if (json && json.ok) {
         setData(json.data);
       } else {
-        toast.error('Error', json?.message || 'Failed to fetch data');
+        toast.error('ข้อผิดพลาด', json?.message || 'ไม่สามารถดึงข้อมูลได้');
       }
     } catch (err: any) {
-      toast.error('Error', err.message || 'An error occurred');
+      toast.error('ข้อผิดพลาด', err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
     } finally {
       setLoading(false);
     }
@@ -70,37 +74,46 @@ const ReturnedOrdersReportPage: React.FC = () => {
       });
       
       if (json && json.ok) {
-        toast.success('Success', json.message);
+        toast.success('สำเร็จ', json.message || 'จับคู่ไฟล์เสียงสำเร็จ');
         fetchData(); // refresh to show new audio
       } else {
-        toast.error('Error', json?.message);
+        toast.error('ข้อผิดพลาด', json?.message);
       }
     } catch (err: any) {
-      toast.error('Error', err.message);
+      toast.error('ข้อผิดพลาด', err.message);
     } finally {
       setProcessingAudio(null);
     }
   };
 
-  const handleManualAttach = async (orderId: string) => {
-    const url = prompt('Enter Audio URL:');
-    if (!url) return;
+  const handleManualAttach = (orderId: string) => {
+    setModalOrderId(orderId);
+    setModalAudioUrl('');
+    setIsAudioModalOpen(true);
+  };
+
+  const submitManualAttach = async () => {
+    if (!modalAudioUrl.trim()) {
+      toast.error('ข้อผิดพลาด', 'กรุณาระบุลิงก์ไฟล์เสียง');
+      return;
+    }
     
     try {
-      setProcessingAudio(orderId);
+      setIsAudioModalOpen(false);
+      setProcessingAudio(modalOrderId);
       const json = await apiFetch('returned_orders_report/manual-audio', {
         method: 'POST',
-        body: JSON.stringify({ order_id: orderId, audio_url: url })
+        body: JSON.stringify({ order_id: modalOrderId, audio_url: modalAudioUrl })
       });
       
       if (json && json.ok) {
-        toast.success('Success', 'Audio attached successfully');
+        toast.success('สำเร็จ', 'แนบไฟล์เสียงเรียบร้อยแล้ว');
         fetchData();
       } else {
-        toast.error('Error', json?.message);
+        toast.error('ข้อผิดพลาด', json?.message);
       }
     } catch (err: any) {
-      toast.error('Error', err.message);
+      toast.error('ข้อผิดพลาด', err.message);
     } finally {
       setProcessingAudio(null);
     }
@@ -113,7 +126,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
         <header className="flex justify-between items-center p-4 bg-white border-b shadow-sm">
-          <h1 className="text-2xl font-semibold">Special Orders Report</h1>
+          <h1 className="text-2xl font-semibold">รายงานออเดอร์ตีกลับและยกเลิก</h1>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -137,19 +150,19 @@ const ReturnedOrdersReportPage: React.FC = () => {
               {/* Filters */}
               <div className="flex flex-wrap gap-4 items-end mb-6 bg-gray-50 p-4 rounded-lg">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ช่วงวันที่</label>
                   <UniversalDateRangePicker
                     value={dateRange}
                     onChange={(update) => setDateRange(update)}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">รหัสพนักงาน</label>
                   <input 
                     type="text" 
                     value={userId} 
                     onChange={e => setUserId(e.target.value)} 
-                    placeholder="User ID..."
+                    placeholder="รหัสพนักงาน..."
                     className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
@@ -158,7 +171,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                   className="bg-gray-800 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition"
                   disabled={loading}
                 >
-                  {loading ? 'Searching...' : 'Search'}
+                  {loading ? 'กำลังค้นหา...' : 'ค้นหา'}
                 </button>
               </div>
 
@@ -166,7 +179,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div className="bg-white border rounded-lg p-4 flex items-center justify-between shadow-sm">
                   <div>
-                    <p className="text-sm text-gray-500 font-medium">Total {activeTab} Orders</p>
+                    <p className="text-sm text-gray-500 font-medium">รวมออเดอร์{activeTab === 'Returned' ? 'ตีกลับ' : 'ยกเลิก'}</p>
                     <p className="text-3xl font-bold text-gray-800">{totalOrders}</p>
                   </div>
                   <div className={`p-3 rounded-full ${activeTab === 'Returned' ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
@@ -175,7 +188,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                 </div>
                 <div className="bg-white border rounded-lg p-4 flex items-center justify-between shadow-sm">
                   <div>
-                    <p className="text-sm text-gray-500 font-medium">Total Amount</p>
+                    <p className="text-sm text-gray-500 font-medium">ยอดเงินรวม</p>
                     <p className="text-3xl font-bold text-green-600">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                   </div>
                   <div className="p-3 rounded-full bg-green-100 text-green-600">
@@ -189,23 +202,23 @@ const ReturnedOrdersReportPage: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dates</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Audio Links</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">รหัสออเดอร์</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">วันที่</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ลูกค้า</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ยอดเงิน</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">เหตุผล</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ไฟล์เสียง</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {loading ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-gray-500">Loading data...</td>
+                        <td colSpan={7} className="px-4 py-8 text-center text-gray-500">กำลังโหลดข้อมูล...</td>
                       </tr>
                     ) : data.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No {activeTab.toLowerCase()} orders found in this period.</td>
+                        <td colSpan={7} className="px-4 py-8 text-center text-gray-500">ไม่พบข้อมูลในช่วงเวลานี้</td>
                       </tr>
                     ) : (
                       data.map((order, idx) => (
@@ -215,12 +228,12 @@ const ReturnedOrdersReportPage: React.FC = () => {
                             <div className="text-xs text-gray-500 mt-1">{order.creator_name}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                            <div><span className="font-medium text-gray-700">Ord:</span> {order.order_date?.substring(0,10)}</div>
+                            <div><span className="font-medium text-gray-700">สร้าง:</span> {order.order_date?.substring(0,10)}</div>
                             {activeTab === 'Returned' && order.returned_at && (
-                              <div className="text-orange-600 mt-1"><span className="font-medium">Ret:</span> {order.returned_at?.substring(0,10)}</div>
+                              <div className="text-orange-600 mt-1"><span className="font-medium">ตีกลับ:</span> {order.returned_at?.substring(0,10)}</div>
                             )}
                             {activeTab === 'Cancelled' && order.cancelled_at && (
-                              <div className="text-red-600 mt-1"><span className="font-medium">Can:</span> {order.cancelled_at?.substring(0,10)}</div>
+                              <div className="text-red-600 mt-1"><span className="font-medium">ยกเลิก:</span> {order.cancelled_at?.substring(0,10)}</div>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -243,7 +256,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                                 ))}
                               </div>
                             ) : (
-                              <span className="text-xs text-gray-400 italic">No audio attached</span>
+                              <span className="text-xs text-gray-400 italic">ไม่มีไฟล์เสียง</span>
                             )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
@@ -253,14 +266,14 @@ const ReturnedOrdersReportPage: React.FC = () => {
                                 disabled={processingAudio === order.order_id}
                                 className="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1 rounded w-full flex justify-center items-center gap-1 disabled:opacity-50"
                               >
-                                {processingAudio === order.order_id ? 'Matching...' : 'Auto Match'}
+                                {processingAudio === order.order_id ? 'กำลังจับคู่...' : 'จับคู่อัตโนมัติ'}
                               </button>
                               <button 
                                 onClick={() => handleManualAttach(order.order_id)}
                                 disabled={processingAudio === order.order_id}
-                                className="text-gray-600 hover:text-gray-900 bg-gray-100 px-3 py-1 rounded w-full text-xs"
+                                className="text-gray-600 hover:text-gray-900 bg-gray-100 px-3 py-1 rounded w-full text-xs disabled:opacity-50"
                               >
-                                Manual Attach
+                                แนบลิงก์เอง
                               </button>
                             </div>
                           </td>
@@ -273,6 +286,39 @@ const ReturnedOrdersReportPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Audio Modal */}
+        {isAudioModalOpen && (
+          <Modal title="แนบลิงก์ไฟล์เสียง" onClose={() => setIsAudioModalOpen(false)} size="md">
+            <div className="p-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                ลิงก์ไฟล์เสียงสำหรับออเดอร์ <span className="font-bold text-blue-600">{modalOrderId}</span>
+              </label>
+              <input
+                type="url"
+                value={modalAudioUrl}
+                onChange={e => setModalAudioUrl(e.target.value)}
+                placeholder="https://example.com/audio.mp3"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setIsAudioModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={submitManualAttach}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  บันทึก
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
     </div>
   );
 };
