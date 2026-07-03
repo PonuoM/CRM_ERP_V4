@@ -101,6 +101,7 @@ import LeadPerformancePage from "./pages/Monitor/LeadPerformancePage";
 import TeamAppointmentsPage from "./pages/Monitor/TeamAppointmentsPage";
 import SalesMonitoringPage from "./pages/Monitor/SalesMonitoringPage";
 import ReportsPage from "./pages/ReportsPage";
+import ReturnedOrdersReportPage from "./pages/ReturnedOrdersReportPage";
 import ProductSalesReportPage from "./pages/ProductSalesReportPage";
 import ProductAnalysisPage from "./pages/ProductAnalysisPage";
 import CustomerDistributionPage from "./pages/CustomerDistributionPage";
@@ -7023,6 +7024,9 @@ const App: React.FC = () => {
           openModal={openModal}
         />
       );
+    }
+    if (activePage === "Special Orders Report") {
+      return <ReturnedOrdersReportPage />;
     }
     if (activePage === "Reports") {
       return (
