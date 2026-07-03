@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
 import { useToast } from '@/components/Toast';
+import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
 
 interface OrderData {
@@ -42,19 +43,15 @@ const ReturnedOrdersReportPage: React.FC = () => {
       const start = dateRange.start;
       const end = dateRange.end;
       
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/returned_orders_report?start_date=${start}&end_date=${end}&status_type=${activeTab}&user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const json = await apiFetch(`returned_orders_report?start_date=${start}&end_date=${end}&status_type=${activeTab}&user_id=${userId}`);
       
-      const json = await res.json();
-      if (json.ok) {
+      if (json && json.ok) {
         setData(json.data);
       } else {
-        addToast(json.message || 'Failed to fetch data', 'error');
+        toast.error('Error', json?.message || 'Failed to fetch data');
       }
     } catch (err: any) {
-      addToast(err.message || 'An error occurred', 'error');
+      toast.error('Error', err.message || 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -67,24 +64,19 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const handleAutoMatch = async (orderId: string) => {
     try {
       setProcessingAudio(orderId);
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/returned_orders_report/auto-match', {
+      const json = await apiFetch('returned_orders_report/auto-match', {
         method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({ order_id: orderId })
       });
-      const json = await res.json();
-      if (json.ok) {
-        addToast(json.message, 'success');
+      
+      if (json && json.ok) {
+        toast.success('Success', json.message);
         fetchData(); // refresh to show new audio
       } else {
-        addToast(json.message, 'error');
+        toast.error('Error', json?.message);
       }
     } catch (err: any) {
-      addToast(err.message, 'error');
+      toast.error('Error', err.message);
     } finally {
       setProcessingAudio(null);
     }
@@ -96,24 +88,19 @@ const ReturnedOrdersReportPage: React.FC = () => {
     
     try {
       setProcessingAudio(orderId);
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/returned_orders_report/manual-audio', {
+      const json = await apiFetch('returned_orders_report/manual-audio', {
         method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({ order_id: orderId, audio_url: url })
       });
-      const json = await res.json();
-      if (json.ok) {
-        addToast('Audio attached successfully', 'success');
+      
+      if (json && json.ok) {
+        toast.success('Success', 'Audio attached successfully');
         fetchData();
       } else {
-        addToast(json.message, 'error');
+        toast.error('Error', json?.message);
       }
     } catch (err: any) {
-      addToast(err.message, 'error');
+      toast.error('Error', err.message);
     } finally {
       setProcessingAudio(null);
     }
