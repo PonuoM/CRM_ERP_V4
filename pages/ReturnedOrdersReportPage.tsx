@@ -5,6 +5,12 @@ import Modal from '@/components/Modal';
 import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
 
+interface AudioLink {
+  url: string;
+  date?: string;
+  notes?: string;
+}
+
 interface OrderData {
   order_id: string;
   order_date: string;
@@ -16,10 +22,11 @@ interface OrderData {
   order_status: string;
   cancel_type: string;
   cancel_notes: string;
+  admin_resolution_notes?: string;
   cancelled_at: string;
   returned_at: string;
   creator_name: string;
-  audio_links: string[];
+  audio_links: AudioLink[];
 }
 
 const ReturnedOrdersReportPage: React.FC = () => {
@@ -37,6 +44,13 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
   const [modalOrderId, setModalOrderId] = useState<string>('');
   const [modalAudioUrl, setModalAudioUrl] = useState<string>('');
+  const [modalAudioDate, setModalAudioDate] = useState<string>('');
+  const [modalAudioNotes, setModalAudioNotes] = useState<string>('');
+
+  // Summary Modal
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [summaryOrderId, setSummaryOrderId] = useState<string>('');
+  const [summaryText, setSummaryText] = useState<string>('');
 
   // Filters
   const [userId, setUserId] = useState<string>('');
@@ -89,6 +103,8 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const handleManualAttach = (orderId: string) => {
     setModalOrderId(orderId);
     setModalAudioUrl('');
+    setModalAudioDate('');
+    setModalAudioNotes('');
     setIsAudioModalOpen(true);
   };
 
@@ -103,7 +119,12 @@ const ReturnedOrdersReportPage: React.FC = () => {
       setProcessingAudio(modalOrderId);
       const json = await apiFetch('returned_orders_report/manual-audio', {
         method: 'POST',
-        body: JSON.stringify({ order_id: modalOrderId, audio_url: modalAudioUrl })
+        body: JSON.stringify({ 
+          order_id: modalOrderId, 
+          audio_url: modalAudioUrl,
+          audio_date: modalAudioDate,
+          notes: modalAudioNotes
+        })
       });
       
       if (json && json.ok) {
@@ -116,6 +137,31 @@ const ReturnedOrdersReportPage: React.FC = () => {
       toast.error('ข้อผิดพลาด', err.message);
     } finally {
       setProcessingAudio(null);
+    }
+  };
+
+  const handleEditSummary = (orderId: string, currentSummary: string) => {
+    setSummaryOrderId(orderId);
+    setSummaryText(currentSummary || '');
+    setIsSummaryModalOpen(true);
+  };
+
+  const submitSummary = async () => {
+    try {
+      setIsSummaryModalOpen(false);
+      const json = await apiFetch('returned_orders_report/summary', {
+        method: 'POST',
+        body: JSON.stringify({ order_id: summaryOrderId, summary: summaryText })
+      });
+      
+      if (json && json.ok) {
+        toast.success('สำเร็จ', 'บันทึกสรุปออเดอร์เรียบร้อยแล้ว');
+        fetchData();
+      } else {
+        toast.error('ข้อผิดพลาด', json?.message);
+      }
+    } catch (err: any) {
+      toast.error('ข้อผิดพลาด', err.message);
     }
   };
 
@@ -207,6 +253,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ลูกค้า</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ยอดเงิน</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">เหตุผล</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">สรุปออเดอร์</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ไฟล์เสียง</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
                     </tr>
@@ -248,21 +295,34 @@ const ReturnedOrdersReportPage: React.FC = () => {
                             <div className="font-medium text-gray-800">{order.cancel_type || '-'}</div>
                             <div className="text-gray-500 text-xs mt-1 max-w-xs truncate" title={order.cancel_notes}>{order.cancel_notes}</div>
                           </td>
+                          <td className="px-4 py-3 text-sm max-w-[200px]">
+                            <div className="flex justify-between items-start gap-2 group">
+                              <div className="text-gray-600 text-xs whitespace-pre-wrap line-clamp-3" title={order.admin_resolution_notes}>
+                                {order.admin_resolution_notes || <span className="text-gray-400 italic">ไม่มีสรุป</span>}
+                              </div>
+                              <button onClick={() => handleEditSummary(order.order_id, order.admin_resolution_notes || '')} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="แก้ไขสรุปออเดอร์">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                              </button>
+                            </div>
+                          </td>
                           <td className="px-4 py-3">
                             {order.audio_links && order.audio_links.length > 0 ? (
-                              <div className="flex flex-col gap-2">
+                              <div className="flex flex-col gap-3">
                                 {order.audio_links.map((link, i) => (
-                                  <a 
-                                    key={i} 
-                                    href={link} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 hover:underline text-sm flex items-center gap-1"
-                                    title="ฟังไฟล์เสียงบน Google Drive"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                                    ไฟล์เสียงที่ {i + 1}
-                                  </a>
+                                  <div key={i} className="flex flex-col gap-1 border-b border-gray-100 pb-2 last:border-0 last:pb-0">
+                                    <a 
+                                      href={link.url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 hover:underline text-sm flex items-center gap-1"
+                                      title="ฟังไฟล์เสียงบน Google Drive"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                      ไฟล์เสียงที่ {i + 1}
+                                    </a>
+                                    {link.date && <div className="text-xs text-gray-500 flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>{link.date}</div>}
+                                    {link.notes && <div className="text-xs text-gray-500 bg-gray-50 p-1 rounded italic">{link.notes}</div>}
+                                  </div>
                                 ))}
                               </div>
                             ) : (
@@ -312,6 +372,28 @@ const ReturnedOrdersReportPage: React.FC = () => {
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 autoFocus
               />
+              
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                วันที่และเวลาของไฟล์เสียง (ไม่บังคับ)
+              </label>
+              <input
+                type="datetime-local"
+                value={modalAudioDate}
+                onChange={e => setModalAudioDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              />
+
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                หมายเหตุเพิ่มเติม (ไม่บังคับ)
+              </label>
+              <textarea
+                value={modalAudioNotes}
+                onChange={e => setModalAudioNotes(e.target.value)}
+                placeholder="เช่น ไฟล์เสียงสั้นเกินไป, ลูกค้าไม่พอใจ ฯลฯ"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                rows={3}
+              />
+
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setIsAudioModalOpen(false)}
@@ -321,6 +403,39 @@ const ReturnedOrdersReportPage: React.FC = () => {
                 </button>
                 <button
                   onClick={submitManualAttach}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  บันทึก
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Summary Modal */}
+        {isSummaryModalOpen && (
+          <Modal title="ระบุสรุปออเดอร์" onClose={() => setIsSummaryModalOpen(false)} size="md">
+            <div className="p-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                สรุปออเดอร์สำหรับออเดอร์ <span className="font-bold text-blue-600">{summaryOrderId}</span>
+              </label>
+              <textarea
+                value={summaryText}
+                onChange={e => setSummaryText(e.target.value)}
+                placeholder="เช่น หักเงินพนักงาน เนื่องจากผิดกฏการขาย ในวันที่ 2026-07-01..."
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                rows={5}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setIsSummaryModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={submitSummary}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   บันทึก

@@ -67,15 +67,13 @@ class ReturnedOrdersReportService
                     WHERE ob.order_id = o.id
                 ) AS returned_at,
                 u.username AS creator_name,
-                GROUP_CONCAT(DISTINCT al.audio_url SEPARATOR '||') AS audio_links
+                o.admin_resolution_notes
             FROM orders o
             LEFT JOIN customers c ON o.customer_id = c.customer_id
             LEFT JOIN order_cancellations oc ON o.id = oc.order_id
             LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
             LEFT JOIN users u ON o.creator_id = u.id
-            LEFT JOIN order_audio_links al ON o.id = al.order_id
             WHERE $where
-            GROUP BY o.id
             ORDER BY o.order_date DESC
         ";
 
@@ -83,9 +81,24 @@ class ReturnedOrdersReportService
         $stmt->execute($params);
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Process audio links
+        // Fetch audio links
+        $orderIds = array_column($results, 'order_id');
+        $audioLinksByOrder = [];
+        if (!empty($orderIds)) {
+            $in = str_repeat('?,', count($orderIds) - 1) . '?';
+            $audioStmt = $this->pdo->prepare("SELECT order_id, audio_url, audio_date, notes FROM order_audio_links WHERE order_id IN ($in) ORDER BY created_at ASC");
+            $audioStmt->execute($orderIds);
+            while ($row = $audioStmt->fetch(PDO::FETCH_ASSOC)) {
+                $audioLinksByOrder[$row['order_id']][] = [
+                    'url' => $row['audio_url'],
+                    'date' => $row['audio_date'],
+                    'notes' => $row['notes']
+                ];
+            }
+        }
+
         foreach ($results as &$row) {
-            $row['audio_links'] = $row['audio_links'] ? explode('||', $row['audio_links']) : [];
+            $row['audio_links'] = $audioLinksByOrder[$row['order_id']] ?? [];
         }
 
         return $results;
@@ -159,7 +172,10 @@ class ReturnedOrdersReportService
             }
 
             if ($isRelevant && !empty($call['link'])) {
-                $foundLinks[] = $call['link'];
+                $foundLinks[] = [
+                    'url' => $call['link'],
+                    'date' => $call['date']
+                ];
             }
         }
 
@@ -169,8 +185,8 @@ class ReturnedOrdersReportService
 
         // Save found links to database
         $savedCount = 0;
-        foreach ($foundLinks as $link) {
-            if ($this->saveAudioLink($orderId, $link, 'auto', $userId)) {
+        foreach ($foundLinks as $linkData) {
+            if ($this->saveAudioLink($orderId, $linkData['url'], 'auto', $userId, $linkData['date'])) {
                 $savedCount++;
             }
         }
@@ -182,12 +198,12 @@ class ReturnedOrdersReportService
         ];
     }
 
-    public function saveManualAudioLink(string $orderId, string $audioUrl, int $userId): bool
+    public function saveManualAudioLink(string $orderId, string $audioUrl, int $userId, ?string $audioDate = null, ?string $notes = null): bool
     {
-        return $this->saveAudioLink($orderId, $audioUrl, 'manual', $userId);
+        return $this->saveAudioLink($orderId, $audioUrl, 'manual', $userId, $audioDate, $notes);
     }
 
-    private function saveAudioLink(string $orderId, string $audioUrl, string $source, int $userId): bool
+    private function saveAudioLink(string $orderId, string $audioUrl, string $source, int $userId, ?string $audioDate = null, ?string $notes = null): bool
     {
         // Check if link already exists for this order
         $check = $this->pdo->prepare("SELECT id FROM order_audio_links WHERE order_id = :order_id AND audio_url = :audio_url");
@@ -197,15 +213,26 @@ class ReturnedOrdersReportService
         }
 
         $stmt = $this->pdo->prepare("
-            INSERT INTO order_audio_links (order_id, audio_url, source, created_by)
-            VALUES (:order_id, :audio_url, :source, :created_by)
+            INSERT INTO order_audio_links (order_id, audio_url, source, created_by, audio_date, notes)
+            VALUES (:order_id, :audio_url, :source, :created_by, :audio_date, :notes)
         ");
         
         return $stmt->execute([
             ':order_id' => $orderId,
             ':audio_url' => $audioUrl,
             ':source' => $source,
-            ':created_by' => $userId
+            ':created_by' => $userId,
+            ':audio_date' => $audioDate ?: null,
+            ':notes' => $notes ?: null
+        ]);
+    }
+
+    public function saveOrderSummary(string $orderId, string $summary): bool
+    {
+        $stmt = $this->pdo->prepare("UPDATE orders SET admin_resolution_notes = :summary WHERE id = :order_id");
+        return $stmt->execute([
+            ':summary' => $summary,
+            ':order_id' => $orderId
         ]);
     }
 }
