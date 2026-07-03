@@ -163,7 +163,11 @@ class ReturnedOrdersReportService
         $foundLinks = [];
 
         foreach ($data['data'] as $call) {
-            $callTs = strtotime($call['date']);
+            $callDate = $call['date'];
+            if (!empty($call['time'])) {
+                $callDate .= ' ' . $call['time'];
+            }
+            $callTs = strtotime($callDate);
             $isRelevant = false;
 
             // Check if call date is >= order date (up to present)
@@ -174,7 +178,7 @@ class ReturnedOrdersReportService
             if ($isRelevant && !empty($call['link'])) {
                 $foundLinks[] = [
                     'url' => $call['link'],
-                    'date' => $call['date']
+                    'date' => $callDate
                 ];
             }
         }

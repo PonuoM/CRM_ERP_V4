@@ -174,7 +174,11 @@ function fetchRelevantAudioLinks($phone, $orderDate, $cancelDate, $returnDate, $
     $returnTs = !empty($returnDate) && $returnDate !== '-' ? strtotime(substr($returnDate, 0, 10)) : 0;
 
     foreach($data['data'] as $call) {
-        $callTs = strtotime($call['date']);
+        $callDate = $call['date'];
+        if (!empty($call['time'])) {
+            $callDate .= ' ' . $call['time'];
+        }
+        $callTs = strtotime($callDate);
         $isRelevant = false;
 
         // เช็คว่าไฟล์เสียงอยู่ในช่วง -1 ถึง +2 วัน ของวันสร้างออเดอร์ หรือ วันยกเลิก/ตีกลับ หรือไม่
