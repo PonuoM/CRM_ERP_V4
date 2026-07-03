@@ -320,7 +320,21 @@ const ReturnedOrdersReportPage: React.FC = () => {
                                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                       ไฟล์เสียงที่ {i + 1}
                                     </a>
-                                    {link.date && <div className="text-xs text-gray-500 flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>{link.date}</div>}
+                                    {link.date && (
+                                      <div className="text-xs text-gray-500 flex items-center gap-1">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                        {(() => {
+                                          try {
+                                            const d = new Date(link.date.replace(' ', 'T'));
+                                            return isNaN(d.getTime()) ? link.date : format(d, 'dd/MM/yyyy HH:mm');
+                                          } catch {
+                                            return link.date;
+                                          }
+                                        })()}
+                                      </div>
+                                    )}
                                     {link.notes && <div className="text-xs text-gray-500 bg-gray-50 p-1 rounded italic">{link.notes}</div>}
                                   </div>
                                 ))}
