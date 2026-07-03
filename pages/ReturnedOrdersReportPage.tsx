@@ -23,7 +23,7 @@ interface OrderData {
 }
 
 const ReturnedOrdersReportPage: React.FC = () => {
-  const { addToast } = useToast();
+  const toast = useToast();
   
   // State
   const [activeTab, setActiveTab] = useState<'Returned' | 'Cancelled'>('Returned');
