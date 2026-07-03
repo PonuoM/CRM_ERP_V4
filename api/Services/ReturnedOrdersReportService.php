@@ -205,11 +205,22 @@ class ReturnedOrdersReportService
 
     private function saveAudioLink(string $orderId, string $audioUrl, string $source, int $userId, ?string $audioDate = null, ?string $notes = null): bool
     {
-        // Check if link already exists for this order
-        $check = $this->pdo->prepare("SELECT id FROM order_audio_links WHERE order_id = :order_id AND audio_url = :audio_url");
+        $check = $this->pdo->prepare("SELECT id, audio_date, notes FROM order_audio_links WHERE order_id = :order_id AND audio_url = :audio_url");
         $check->execute([':order_id' => $orderId, ':audio_url' => $audioUrl]);
-        if ($check->fetch()) {
-            return false; // Already exists
+        $existing = $check->fetch();
+        
+        if ($existing) {
+            // Update the record if we have new audio_date or notes
+            if (($audioDate && empty($existing['audio_date'])) || ($notes && empty($existing['notes']))) {
+                $upd = $this->pdo->prepare("UPDATE order_audio_links SET audio_date = COALESCE(audio_date, :audio_date), notes = COALESCE(notes, :notes) WHERE id = :id");
+                $upd->execute([
+                    ':audio_date' => $audioDate ?: null,
+                    ':notes' => $notes ?: null,
+                    ':id' => $existing['id']
+                ]);
+                return true; // Consider it updated
+            }
+            return false; // Already exists and no updates needed
         }
 
         $stmt = $this->pdo->prepare("
