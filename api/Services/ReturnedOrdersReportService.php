@@ -153,10 +153,10 @@ class ReturnedOrdersReportService
             $callTs = strtotime($call['date']);
             $isRelevant = false;
 
-            // Check if call is within -1 to +2 days of order/cancel/return date
-            if ($orderTs && $callTs >= ($orderTs - 86400) && $callTs <= ($orderTs + 172800)) $isRelevant = true;
-            if ($cancelTs && $callTs >= ($cancelTs - 86400) && $callTs <= ($cancelTs + 172800)) $isRelevant = true;
-            if ($returnTs && $callTs >= ($returnTs - 86400) && $callTs <= ($returnTs + 172800)) $isRelevant = true;
+            // Check if call date is >= order date (up to present)
+            if ($orderTs && $callTs >= $orderTs) {
+                $isRelevant = true;
+            }
 
             if ($isRelevant && !empty($call['link'])) {
                 $foundLinks[] = $call['link'];
