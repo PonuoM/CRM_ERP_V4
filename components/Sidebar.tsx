@@ -384,6 +384,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: BarChart2,
       children: [
         { label: "Reports", icon: BarChart2, key: "reports.reports" }, // Or nav.reports
+        { label: "Special Orders Report", icon: BarChart2, key: "reports.special_orders" },
         { label: "Export History", icon: FileUp, key: "reports.export_history" },
         { label: "Import Export", icon: FileUp, key: "reports.import_export" },
         { label: "Random Employee List", icon: Users, key: "reports.random_employee" },
