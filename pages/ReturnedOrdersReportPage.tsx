@@ -4,9 +4,7 @@ import { useToast } from '@/components/Toast';
 import Modal from '@/components/Modal';
 import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
-import ManualAudioModal from '@/components/ReturnedOrdersReport/ManualAudioModal';
-import AudioNotesModal from '@/components/ReturnedOrdersReport/AudioNotesModal';
-import OrderSummaryModal from '@/components/ReturnedOrdersReport/OrderSummaryModal';
+import OrderDetailsModal from '@/components/ReturnedOrdersReport/OrderDetailsModal';
 
 interface AudioLink {
   id: number;
@@ -46,18 +44,9 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const [data, setData] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(false);
   const [processingAudio, setProcessingAudio] = useState<string | null>(null);
-  const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
-  const [modalOrderId, setModalOrderId] = useState<string>('');
 
-  // Summary Modal
-  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
-  const [summaryOrderId, setSummaryOrderId] = useState<string>('');
-  const [summaryText, setSummaryText] = useState<string>('');
-
-  // Audio Notes Modal
-  const [isAudioNotesModalOpen, setIsAudioNotesModalOpen] = useState(false);
-  const [audioNotesId, setAudioNotesId] = useState<number>(0);
-  const [audioNotesText, setAudioNotesText] = useState<string>('');
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null);
 
   // Filters
   const [userId, setUserId] = useState<string>('');
@@ -127,79 +116,20 @@ const ReturnedOrdersReportPage: React.FC = () => {
     }
   };
 
-  const handleManualAttach = (orderId: string) => {
-    setModalOrderId(orderId);
-    setIsAudioModalOpen(true);
+  const handleOpenDetails = (order: OrderData) => {
+    setSelectedOrder(order);
+    setIsDetailsModalOpen(true);
   };
 
-  const submitManualAttach = async (data: { order_id: string; audio_url: string; audio_date: string; notes: string }) => {
-    if (!data.audio_url.trim()) {
-      toast.error('ข้อผิดพลาด', 'กรุณาระบุลิงก์ไฟล์เสียง');
-      return;
-    }
-    
+  const submitDetails = async (payload: any) => {
     try {
-      setIsAudioModalOpen(false);
-      setProcessingAudio(data.order_id);
-      const json = await apiFetch('returned_orders_report/manual-audio', {
+      const json = await apiFetch('returned_orders_report/update-details', {
         method: 'POST',
-        body: JSON.stringify(data)
+        body: JSON.stringify(payload)
       });
       
       if (json && json.ok) {
-        toast.success('สำเร็จ', 'แนบไฟล์เสียงเรียบร้อยแล้ว');
-        fetchData();
-      } else {
-        toast.error('ข้อผิดพลาด', json?.message);
-      }
-    } catch (err: any) {
-      toast.error('ข้อผิดพลาด', err.message);
-    } finally {
-      setProcessingAudio(null);
-    }
-  };
-
-  const handleEditAudioNotes = (linkId: number, currentNotes: string) => {
-    setAudioNotesId(linkId);
-    setAudioNotesText(currentNotes || '');
-    setIsAudioNotesModalOpen(true);
-  };
-
-  const submitAudioNotes = async (id: number, notes: string) => {
-    try {
-      setIsAudioNotesModalOpen(false);
-      const json = await apiFetch('returned_orders_report/audio-notes', {
-        method: 'POST',
-        body: JSON.stringify({ id, notes })
-      });
-      
-      if (json && json.ok) {
-        toast.success('สำเร็จ', 'บันทึกหมายเหตุไฟล์เสียงเรียบร้อยแล้ว');
-        fetchData();
-      } else {
-        toast.error('ข้อผิดพลาด', json?.message);
-      }
-    } catch (err: any) {
-      toast.error('ข้อผิดพลาด', err.message);
-    }
-  };
-
-  const handleEditSummary = (orderId: string, currentSummary: string) => {
-    setSummaryOrderId(orderId);
-    setSummaryText(currentSummary || '');
-    setIsSummaryModalOpen(true);
-  };
-
-  const submitSummary = async (orderId: string, summary: string) => {
-    try {
-      setIsSummaryModalOpen(false);
-      const json = await apiFetch('returned_orders_report/summary', {
-        method: 'POST',
-        body: JSON.stringify({ order_id: orderId, summary })
-      });
-      
-      if (json && json.ok) {
-        toast.success('สำเร็จ', 'บันทึกสรุปออเดอร์เรียบร้อยแล้ว');
+        toast.success('สำเร็จ', 'บันทึกข้อมูลเรียบร้อยแล้ว');
         fetchData();
       } else {
         toast.error('ข้อผิดพลาด', json?.message);
@@ -338,7 +268,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                             <div className="text-xs text-gray-500 mt-1">{order.creator_name}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                            <div><span className="font-medium text-gray-700">สร้าง:</span> {order.order_date?.substring(0,10)}</div>
+                            <div><span className="font-medium text-gray-700">วันที่สั่งซื้อ:</span> {order.order_date?.substring(0,10)}</div>
                             {activeTab === 'Returned' && order.returned_at && (
                               <div className="text-orange-600 mt-1"><span className="font-medium">ตีกลับ:</span> {order.returned_at?.substring(0,10)}</div>
                             )}
@@ -363,7 +293,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                               <div className="text-gray-600 text-xs whitespace-pre-wrap line-clamp-3" title={order.admin_resolution_notes}>
                                 {order.admin_resolution_notes || <span className="text-gray-400 italic">ไม่มีสรุป</span>}
                               </div>
-                              <button onClick={() => handleEditSummary(order.order_id, order.admin_resolution_notes || '')} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="แก้ไขสรุปออเดอร์">
+                              <button onClick={() => handleOpenDetails(order)} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="จัดการรายละเอียด">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                               </button>
                             </div>
@@ -385,7 +315,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                                         ไฟล์เสียงที่ {i + 1}
                                       </a>
                                       {link.id && (
-                                        <button onClick={() => handleEditAudioNotes(link.id, link.notes || '')} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover/audio:opacity-100 transition-opacity flex-shrink-0" title="เพิ่ม/แก้ไขหมายเหตุไฟล์เสียง">
+                                        <button onClick={() => handleOpenDetails(order)} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover/audio:opacity-100 transition-opacity flex-shrink-0" title="จัดการรายละเอียด">
                                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                         </button>
                                       )}
@@ -423,11 +353,12 @@ const ReturnedOrdersReportPage: React.FC = () => {
                                 {processingAudio === order.order_id ? 'กำลังจับคู่...' : 'จับคู่อัตโนมัติ'}
                               </button>
                               <button 
-                                onClick={() => handleManualAttach(order.order_id)}
+                                onClick={() => handleOpenDetails(order)}
                                 disabled={processingAudio === order.order_id}
-                                className="text-gray-600 hover:text-gray-900 bg-gray-100 px-3 py-1 rounded w-full text-xs disabled:opacity-50"
+                                className="text-gray-600 hover:text-gray-900 bg-gray-100 px-3 py-1 rounded w-full text-xs disabled:opacity-50 flex items-center justify-center gap-1"
                               >
-                                แนบลิงก์เอง
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                จัดการรายละเอียด
                               </button>
                               
                               <button
@@ -459,27 +390,11 @@ const ReturnedOrdersReportPage: React.FC = () => {
           </div>
         </div>
 
-        <ManualAudioModal
-          isOpen={isAudioModalOpen}
-          onClose={() => setIsAudioModalOpen(false)}
-          onSubmit={submitManualAttach}
-          orderId={modalOrderId}
-        />
-
-        <OrderSummaryModal
-          isOpen={isSummaryModalOpen}
-          onClose={() => setIsSummaryModalOpen(false)}
-          onSubmit={(orderId, summary) => submitSummary(orderId, summary)}
-          orderId={summaryOrderId}
-          initialSummary={summaryText}
-        />
-
-        <AudioNotesModal
-          isOpen={isAudioNotesModalOpen}
-          onClose={() => setIsAudioNotesModalOpen(false)}
-          onSubmit={(id, notes) => submitAudioNotes(id, notes)}
-          audioLinkId={audioNotesId}
-          initialNotes={audioNotesText}
+        <OrderDetailsModal
+          isOpen={isDetailsModalOpen}
+          onClose={() => setIsDetailsModalOpen(false)}
+          onSubmit={submitDetails}
+          orderData={selectedOrder}
         />
     </div>
   );
