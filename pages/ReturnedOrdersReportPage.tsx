@@ -4,6 +4,9 @@ import { useToast } from '@/components/Toast';
 import Modal from '@/components/Modal';
 import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
+import ManualAudioModal from '@/components/ReturnedOrdersReport/ManualAudioModal';
+import AudioNotesModal from '@/components/ReturnedOrdersReport/AudioNotesModal';
+import OrderSummaryModal from '@/components/ReturnedOrdersReport/OrderSummaryModal';
 
 interface AudioLink {
   id: number;
@@ -44,9 +47,6 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const [processingAudio, setProcessingAudio] = useState<string | null>(null);
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
   const [modalOrderId, setModalOrderId] = useState<string>('');
-  const [modalAudioUrl, setModalAudioUrl] = useState<string>('');
-  const [modalAudioDate, setModalAudioDate] = useState<string>('');
-  const [modalAudioNotes, setModalAudioNotes] = useState<string>('');
 
   // Summary Modal
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
@@ -108,29 +108,21 @@ const ReturnedOrdersReportPage: React.FC = () => {
 
   const handleManualAttach = (orderId: string) => {
     setModalOrderId(orderId);
-    setModalAudioUrl('');
-    setModalAudioDate('');
-    setModalAudioNotes('');
     setIsAudioModalOpen(true);
   };
 
-  const submitManualAttach = async () => {
-    if (!modalAudioUrl.trim()) {
+  const submitManualAttach = async (data: { order_id: string; audio_url: string; audio_date: string; notes: string }) => {
+    if (!data.audio_url.trim()) {
       toast.error('ข้อผิดพลาด', 'กรุณาระบุลิงก์ไฟล์เสียง');
       return;
     }
     
     try {
       setIsAudioModalOpen(false);
-      setProcessingAudio(modalOrderId);
+      setProcessingAudio(data.order_id);
       const json = await apiFetch('returned_orders_report/manual-audio', {
         method: 'POST',
-        body: JSON.stringify({ 
-          order_id: modalOrderId, 
-          audio_url: modalAudioUrl,
-          audio_date: modalAudioDate,
-          notes: modalAudioNotes
-        })
+        body: JSON.stringify(data)
       });
       
       if (json && json.ok) {
@@ -152,12 +144,12 @@ const ReturnedOrdersReportPage: React.FC = () => {
     setIsAudioNotesModalOpen(true);
   };
 
-  const submitAudioNotes = async () => {
+  const submitAudioNotes = async (id: number, notes: string) => {
     try {
       setIsAudioNotesModalOpen(false);
       const json = await apiFetch('returned_orders_report/audio-notes', {
         method: 'POST',
-        body: JSON.stringify({ id: audioNotesId, notes: audioNotesText })
+        body: JSON.stringify({ id, notes })
       });
       
       if (json && json.ok) {
@@ -177,12 +169,12 @@ const ReturnedOrdersReportPage: React.FC = () => {
     setIsSummaryModalOpen(true);
   };
 
-  const submitSummary = async () => {
+  const submitSummary = async (orderId: string, summary: string) => {
     try {
       setIsSummaryModalOpen(false);
       const json = await apiFetch('returned_orders_report/summary', {
         method: 'POST',
-        body: JSON.stringify({ order_id: summaryOrderId, summary: summaryText })
+        body: JSON.stringify({ order_id: orderId, summary })
       });
       
       if (json && json.ok) {
@@ -409,126 +401,28 @@ const ReturnedOrdersReportPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Audio Modal */}
-        {isAudioModalOpen && (
-          <Modal title="แนบลิงก์ไฟล์เสียง" onClose={() => setIsAudioModalOpen(false)} size="md">
-            <div className="p-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                ลิงก์ไฟล์เสียงสำหรับออเดอร์ <span className="font-bold text-blue-600">{modalOrderId}</span>
-              </label>
-              <input
-                type="url"
-                value={modalAudioUrl}
-                onChange={e => setModalAudioUrl(e.target.value)}
-                placeholder="https://example.com/audio.mp3"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                autoFocus
-              />
-              
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                วันที่และเวลาของไฟล์เสียง (ไม่บังคับ)
-              </label>
-              <input
-                type="datetime-local"
-                value={modalAudioDate}
-                onChange={e => setModalAudioDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-              />
+        <ManualAudioModal
+          isOpen={isAudioModalOpen}
+          onClose={() => setIsAudioModalOpen(false)}
+          onSubmit={submitManualAttach}
+          orderId={modalOrderId}
+        />
 
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                หมายเหตุเพิ่มเติม (ไม่บังคับ)
-              </label>
-              <textarea
-                value={modalAudioNotes}
-                onChange={e => setModalAudioNotes(e.target.value)}
-                placeholder="เช่น ไฟล์เสียงสั้นเกินไป, ลูกค้าไม่พอใจ ฯลฯ"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                rows={3}
-              />
+        <OrderSummaryModal
+          isOpen={isSummaryModalOpen}
+          onClose={() => setIsSummaryModalOpen(false)}
+          onSubmit={(orderId, summary) => submitSummary(orderId, summary)}
+          orderId={summaryOrderId}
+          initialSummary={summaryText}
+        />
 
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setIsAudioModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={submitManualAttach}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
-
-        {/* Summary Modal */}
-        {isSummaryModalOpen && (
-          <Modal title="ระบุสรุปออเดอร์" onClose={() => setIsSummaryModalOpen(false)} size="md">
-            <div className="p-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                สรุปออเดอร์สำหรับออเดอร์ <span className="font-bold text-blue-600">{summaryOrderId}</span>
-              </label>
-              <textarea
-                value={summaryText}
-                onChange={e => setSummaryText(e.target.value)}
-                placeholder="เช่น หักเงินพนักงาน เนื่องจากผิดกฏการขาย ในวันที่ 2026-07-01..."
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                rows={5}
-                autoFocus
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setIsSummaryModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={submitSummary}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
-
-        {/* Audio Notes Modal */}
-        {isAudioNotesModalOpen && (
-          <Modal title="หมายเหตุไฟล์เสียง" onClose={() => setIsAudioNotesModalOpen(false)} size="md">
-            <div className="p-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                ระบุหมายเหตุเพิ่มเติมสำหรับไฟล์เสียงนี้
-              </label>
-              <textarea
-                value={audioNotesText}
-                onChange={e => setAudioNotesText(e.target.value)}
-                placeholder="เช่น ไฟล์เสียงสั้นเกินไป, ลูกค้าไม่พอใจ, โทรไม่ติด ฯลฯ"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                rows={4}
-                autoFocus
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setIsAudioNotesModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={submitAudioNotes}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
+        <AudioNotesModal
+          isOpen={isAudioNotesModalOpen}
+          onClose={() => setIsAudioNotesModalOpen(false)}
+          onSubmit={(id, notes) => submitAudioNotes(id, notes)}
+          audioLinkId={audioNotesId}
+          initialNotes={audioNotesText}
+        />
     </div>
   );
 };
