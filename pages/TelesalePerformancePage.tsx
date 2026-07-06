@@ -298,6 +298,8 @@ export default function TelesalePerformancePage() {
     const [endDate, setEndDate] = useState(() => {
         return new Date().toISOString().split('T')[0];
     });
+    const [startTime, setStartTime] = useState('00:00');
+    const [endTime, setEndTime] = useState('23:59');
     const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>([]);
     const [dailyUsers, setDailyUsers] = useState<DailyFilterUser[]>([]);
     const [dailyLoading, setDailyLoading] = useState(false);
@@ -431,7 +433,7 @@ export default function TelesalePerformancePage() {
             try {
                 const token = localStorage.getItem('authToken');
                 const API_BASE = resolveApiBasePath();
-                const url = `${API_BASE}/User_DB/telesale_daily_performance.php?start_date=${startDate}&end_date=${endDate}`;
+                const url = `${API_BASE}/User_DB/telesale_daily_performance.php?start_date=${startDate}&end_date=${endDate}&start_time=${startTime}&end_time=${endTime}`;
 
                 const response = await fetch(url, {
                     headers: {
@@ -459,7 +461,7 @@ export default function TelesalePerformancePage() {
         }, 500);
 
         return () => clearTimeout(debounceTimer);
-    }, [startDate, endDate]);
+    }, [startDate, endDate, startTime, endTime]);
 
     // Computed Daily Data
     const filteredDailyRecords = useMemo(() => {
@@ -1257,14 +1259,31 @@ export default function TelesalePerformancePage() {
                                 </>
                             )}
                         </div>
-                        <div className="w-64 bg-white">
-                            <UniversalDateRangePicker
-                                value={{ start: startDate, end: endDate }}
-                                onChange={(val) => {
-                                    setStartDate(val.start);
-                                    setEndDate(val.end);
-                                }}
-                            />
+                        <div className="flex items-center gap-2">
+                            <div className="w-64 bg-white">
+                                <UniversalDateRangePicker
+                                    value={{ start: startDate, end: endDate }}
+                                    onChange={(val) => {
+                                        setStartDate(val.start);
+                                        setEndDate(val.end);
+                                    }}
+                                />
+                            </div>
+                            <div className="flex items-center gap-1 bg-white border border-gray-300 rounded-lg px-2 py-2 h-[42px]">
+                                <input
+                                    type="time"
+                                    value={startTime}
+                                    onChange={(e) => setStartTime(e.target.value)}
+                                    className="border-none bg-transparent text-sm focus:ring-0 p-0 text-gray-700 w-24 text-center"
+                                />
+                                <span className="text-gray-400">-</span>
+                                <input
+                                    type="time"
+                                    value={endTime}
+                                    onChange={(e) => setEndTime(e.target.value)}
+                                    className="border-none bg-transparent text-sm focus:ring-0 p-0 text-gray-700 w-24 text-center"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1333,7 +1352,7 @@ export default function TelesalePerformancePage() {
                             <tbody className="divide-y divide-gray-100">
                                 {filteredDailyRecords.map((ts, idx) => {
                                     const totalOrders = ts.metrics.newCustOrders + ts.metrics.coreCustOrders + ts.metrics.revivalCustOrders + ts.metrics.upsellOrders;
-                                    const combinedSales = ts.metrics.newCustSales + ts.metrics.coreCustSales + ts.metrics.revivalCustSales + ts.metrics.upsellSales;
+                                    const combinedSales = ts.metrics.grossSales - ts.metrics.cancelledSales - ts.metrics.returnedSales;
                                     const closeRate = ts.metrics.totalCalls > 0 ? ((totalOrders / ts.metrics.totalCalls) * 100).toFixed(1) : '0.0';
                                     return (
                                         <tr key={`${ts.userId}-${ts.date}`} className="hover:bg-gray-50 bg-white">
@@ -1380,7 +1399,7 @@ export default function TelesalePerformancePage() {
                             <tbody className="divide-y divide-gray-100 bg-blue-50/30">
                                 {summaryDailyRecords.map((ts, idx) => {
                                     const totalOrders = ts.metrics.newCustOrders + ts.metrics.coreCustOrders + ts.metrics.revivalCustOrders + ts.metrics.upsellOrders;
-                                    const combinedSales = ts.metrics.newCustSales + ts.metrics.coreCustSales + ts.metrics.revivalCustSales + ts.metrics.upsellSales;
+                                    const combinedSales = ts.metrics.grossSales - ts.metrics.cancelledSales - ts.metrics.returnedSales;
                                     const closeRate = ts.metrics.totalCalls > 0 ? ((totalOrders / ts.metrics.totalCalls) * 100).toFixed(1) : '0.0';
                                     return (
                                         <tr key={`sum-${ts.userId}`} className="font-semibold text-gray-800">

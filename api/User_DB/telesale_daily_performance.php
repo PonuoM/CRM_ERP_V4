@@ -36,6 +36,8 @@ try {
     // Get parameters
     $startDate = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d');
     $endDate = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
+    $startTime = isset($_GET['start_time']) && $_GET['start_time'] !== '' ? $_GET['start_time'] . ':00' : '00:00:00';
+    $endTime = isset($_GET['end_time']) && $_GET['end_time'] !== '' ? $_GET['end_time'] . ':59' : '23:59:59';
     
     // Validate dates
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
@@ -78,12 +80,13 @@ try {
         JOIN orders o ON oi.parent_order_id = o.id
         WHERE u.company_id = ? AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%') AND u.status != 'active'
             AND DATE(o.order_date) BETWEEN ? AND ?
+            AND TIME(o.order_date) BETWEEN ? AND ?
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.parent_item_id IS NULL
             $userFilter
     ";
-    $visibleParams = array_merge([$companyId], $userParams, [$companyId, $startDate, $endDate], $userParams);
+    $visibleParams = array_merge([$companyId], $userParams, [$companyId, $startDate, $endDate, $startTime, $endTime], $userParams);
     $stmt = $pdo->prepare($sqlVisibleUsers);
     $stmt->execute($visibleParams);
     $visibleUsersList = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -166,11 +169,12 @@ try {
         JOIN call_import_logs cl ON cl.matched_user_id = u.id
         WHERE u.company_id = ?
             AND DATE(cl.call_date) BETWEEN ? AND ?
+            AND TIME(cl.call_date) BETWEEN ? AND ?
             AND $visibleFilter
         GROUP BY DATE(cl.call_date), u.id
     ";
     $stmt = $pdo->prepare($sqlCalls);
-    $stmt->execute([$companyId, $startDate, $endDate]);
+    $stmt->execute([$companyId, $startDate, $endDate, $startTime, $endTime]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $d = $row['call_day'];
         $uid = $row['user_id'];
@@ -208,13 +212,14 @@ try {
         JOIN users u ON oi.creator_id = u.id
         WHERE o.company_id = ?
             AND DATE(o.order_date) BETWEEN ? AND ?
+            AND TIME(o.order_date) BETWEEN ? AND ?
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.parent_item_id IS NULL
             AND $visibleFilter
         GROUP BY DATE(o.order_date), oi.creator_id
     ";
     $stmt = $pdo->prepare($sqlGrossOrders);
-    $stmt->execute([$companyId, $startDate, $endDate]);
+    $stmt->execute([$companyId, $startDate, $endDate, $startTime, $endTime]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $d = $row['order_day'];
         $uid = $row['user_id'];
@@ -254,6 +259,7 @@ try {
         LEFT JOIN products p ON oi.product_id = p.id
         WHERE o.company_id = ?
             AND DATE(o.order_date) BETWEEN ? AND ?
+            AND TIME(o.order_date) BETWEEN ? AND ?
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.parent_item_id IS NULL
@@ -261,7 +267,7 @@ try {
         GROUP BY DATE(o.order_date), oi.creator_id
     ";
     $stmt = $pdo->prepare($sqlSegmentSales);
-    $stmt->execute([$companyId, $startDate, $endDate]);
+    $stmt->execute([$companyId, $startDate, $endDate, $startTime, $endTime]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $d = $row['order_day'];
         $uid = $row['user_id'];
