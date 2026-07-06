@@ -6,6 +6,7 @@ import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
 
 interface AudioLink {
+  id: number;
   url: string;
   date?: string;
   notes?: string;
@@ -51,6 +52,11 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [summaryOrderId, setSummaryOrderId] = useState<string>('');
   const [summaryText, setSummaryText] = useState<string>('');
+
+  // Audio Notes Modal
+  const [isAudioNotesModalOpen, setIsAudioNotesModalOpen] = useState(false);
+  const [audioNotesId, setAudioNotesId] = useState<number>(0);
+  const [audioNotesText, setAudioNotesText] = useState<string>('');
 
   // Filters
   const [userId, setUserId] = useState<string>('');
@@ -137,6 +143,31 @@ const ReturnedOrdersReportPage: React.FC = () => {
       toast.error('ข้อผิดพลาด', err.message);
     } finally {
       setProcessingAudio(null);
+    }
+  };
+
+  const handleEditAudioNotes = (linkId: number, currentNotes: string) => {
+    setAudioNotesId(linkId);
+    setAudioNotesText(currentNotes || '');
+    setIsAudioNotesModalOpen(true);
+  };
+
+  const submitAudioNotes = async () => {
+    try {
+      setIsAudioNotesModalOpen(false);
+      const json = await apiFetch('returned_orders_report/audio-notes', {
+        method: 'POST',
+        body: JSON.stringify({ id: audioNotesId, notes: audioNotesText })
+      });
+      
+      if (json && json.ok) {
+        toast.success('สำเร็จ', 'บันทึกหมายเหตุไฟล์เสียงเรียบร้อยแล้ว');
+        fetchData();
+      } else {
+        toast.error('ข้อผิดพลาด', json?.message);
+      }
+    } catch (err: any) {
+      toast.error('ข้อผิดพลาด', err.message);
     }
   };
 
@@ -309,17 +340,24 @@ const ReturnedOrdersReportPage: React.FC = () => {
                             {order.audio_links && order.audio_links.length > 0 ? (
                               <div className="flex flex-col gap-3">
                                 {order.audio_links.map((link, i) => (
-                                  <div key={i} className="flex flex-col gap-1 border-b border-gray-100 pb-2 last:border-0 last:pb-0">
-                                    <a 
-                                      href={link.url} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 hover:underline text-sm flex items-center gap-1"
-                                      title="ฟังไฟล์เสียงบน Google Drive"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                                      ไฟล์เสียงที่ {i + 1}
-                                    </a>
+                                  <div key={i} className="flex flex-col gap-1 border-b border-gray-100 pb-2 last:border-0 last:pb-0 group/audio">
+                                    <div className="flex justify-between items-start gap-2">
+                                      <a 
+                                        href={link.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm flex items-center gap-1"
+                                        title="ฟังไฟล์เสียงบน Google Drive"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                        ไฟล์เสียงที่ {i + 1}
+                                      </a>
+                                      {link.id && (
+                                        <button onClick={() => handleEditAudioNotes(link.id, link.notes || '')} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover/audio:opacity-100 transition-opacity flex-shrink-0" title="เพิ่ม/แก้ไขหมายเหตุไฟล์เสียง">
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                        </button>
+                                      )}
+                                    </div>
                                     {link.date && (
                                       <div className="text-xs text-gray-500 flex items-center gap-1">
                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -450,6 +488,39 @@ const ReturnedOrdersReportPage: React.FC = () => {
                 </button>
                 <button
                   onClick={submitSummary}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  บันทึก
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Audio Notes Modal */}
+        {isAudioNotesModalOpen && (
+          <Modal title="หมายเหตุไฟล์เสียง" onClose={() => setIsAudioNotesModalOpen(false)} size="md">
+            <div className="p-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                ระบุหมายเหตุเพิ่มเติมสำหรับไฟล์เสียงนี้
+              </label>
+              <textarea
+                value={audioNotesText}
+                onChange={e => setAudioNotesText(e.target.value)}
+                placeholder="เช่น ไฟล์เสียงสั้นเกินไป, ลูกค้าไม่พอใจ, โทรไม่ติด ฯลฯ"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                rows={4}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setIsAudioNotesModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={submitAudioNotes}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   บันทึก

@@ -114,6 +114,15 @@ try {
                 $summary = $input['summary'] ?? '';
                 $success = $svc->saveOrderSummary($orderId, $summary);
                 json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed to save summary']);
+            } elseif (method() === 'POST' && $id === 'audio-notes') {
+                $input = json_input();
+                $audioId = !empty($input['id']) ? (int)$input['id'] : 0;
+                $notes = $input['notes'] ?? '';
+                if ($audioId) {
+                    $success = $svc->updateAudioNotes($audioId, $notes);
+                    json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed']);
+                }
+                json_response(['ok' => false, 'message' => 'Invalid ID'], 400);
             }
             break;
         case 'promotions':

@@ -86,10 +86,11 @@ class ReturnedOrdersReportService
         $audioLinksByOrder = [];
         if (!empty($orderIds)) {
             $in = str_repeat('?,', count($orderIds) - 1) . '?';
-            $audioStmt = $this->pdo->prepare("SELECT order_id, audio_url, audio_date, notes FROM order_audio_links WHERE order_id IN ($in) ORDER BY created_at ASC");
+            $audioStmt = $this->pdo->prepare("SELECT id, order_id, audio_url, audio_date, notes FROM order_audio_links WHERE order_id IN ($in) ORDER BY created_at ASC");
             $audioStmt->execute($orderIds);
             while ($row = $audioStmt->fetch(PDO::FETCH_ASSOC)) {
                 $audioLinksByOrder[$row['order_id']][] = [
+                    'id' => $row['id'],
                     'url' => $row['audio_url'],
                     'date' => $row['audio_date'],
                     'notes' => $row['notes']
@@ -248,6 +249,15 @@ class ReturnedOrdersReportService
         return $stmt->execute([
             ':summary' => $summary,
             ':order_id' => $orderId
+        ]);
+    }
+
+    public function updateAudioNotes(int $id, string $notes): bool
+    {
+        $stmt = $this->pdo->prepare("UPDATE order_audio_links SET notes = :notes WHERE id = :id");
+        return $stmt->execute([
+            ':notes' => $notes,
+            ':id' => $id
         ]);
     }
 }
