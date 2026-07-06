@@ -27,6 +27,7 @@ interface OrderData {
   cancel_type: string;
   cancel_notes: string;
   admin_resolution_notes?: string;
+  admin_resolution_completed: number;
   cancelled_at: string;
   returned_at: string;
   creator_name: string;
@@ -60,6 +61,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
 
   // Filters
   const [userId, setUserId] = useState<string>('');
+  const [resolutionFilter, setResolutionFilter] = useState<'All' | 'Completed' | 'Pending'>('All');
 
   const fetchData = async () => {
     try {
@@ -67,7 +69,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
       const start = dateRange.start;
       const end = dateRange.end;
       
-      const json = await apiFetch(`returned_orders_report?start_date=${start}&end_date=${end}&status_type=${activeTab}&user_id=${userId}`);
+      const json = await apiFetch(`returned_orders_report?start_date=${start}&end_date=${end}&status_type=${activeTab}&user_id=${userId}&resolution_status=${resolutionFilter}`);
       
       if (json && json.ok) {
         setData(json.data);
@@ -83,7 +85,26 @@ const ReturnedOrdersReportPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, resolutionFilter]);
+
+  const handleToggleCompleted = async (orderId: string, currentStatus: number) => {
+    try {
+      const newStatus = currentStatus === 1 ? 0 : 1;
+      const json = await apiFetch('returned_orders_report/toggle-completed', {
+        method: 'POST',
+        body: JSON.stringify({ order_id: orderId, is_completed: newStatus })
+      });
+      
+      if (json && json.ok) {
+        toast.success('สำเร็จ', 'อัปเดตสถานะเรียบร้อยแล้ว');
+        fetchData();
+      } else {
+        toast.error('ข้อผิดพลาด', json?.message || 'ไม่สามารถอัปเดตสถานะได้');
+      }
+    } catch (err: any) {
+      toast.error('ข้อผิดพลาด', err.message);
+    }
+  };
 
   const handleAutoMatch = async (orderId: string) => {
     try {
@@ -220,11 +241,28 @@ const ReturnedOrdersReportPage: React.FC = () => {
               <div className="flex flex-wrap gap-4 items-end mb-6 bg-gray-50 p-4 rounded-lg">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">ช่วงวันที่</label>
-                  <UniversalDateRangePicker
-                    value={dateRange}
-                    onChange={(update) => setDateRange(update)}
-                  />
-                </div>
+                  <div className="flex gap-4 items-center">
+          <UniversalDateRangePicker 
+            value={dateRange}
+            onChange={(range) => {
+              setDateRange(range);
+              setTimeout(fetchData, 100);
+            }}
+          />
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500 font-medium">สถานะการจัดการ:</span>
+            <select
+              value={resolutionFilter}
+              onChange={e => setResolutionFilter(e.target.value as any)}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value="All">ทั้งหมด</option>
+              <option value="Pending">รอดำเนินการ</option>
+              <option value="Completed">จัดการเรียบร้อยแล้ว</option>
+            </select>
+          </div>
+        </div>
+      </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">รหัสพนักงาน</label>
                   <input 
@@ -291,10 +329,12 @@ const ReturnedOrdersReportPage: React.FC = () => {
                         <td colSpan={7} className="px-4 py-8 text-center text-gray-500">ไม่พบข้อมูลในช่วงเวลานี้</td>
                       </tr>
                     ) : (
-                      data.map((order, idx) => (
-                        <tr key={`${order.order_id}-${idx}`} className="hover:bg-gray-50">
+                      data.map((order, idx) => {
+                        const isCompleted = order.admin_resolution_completed === 1;
+                        return (
+                        <tr key={`${order.order_id}-${idx}`} className={`hover:bg-gray-50 transition-colors ${isCompleted ? 'bg-gray-100 opacity-60' : 'bg-white'}`}>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="font-mono text-sm text-blue-600">{order.order_id}</span>
+                            <span className={`font-mono text-sm ${isCompleted ? 'text-gray-500' : 'text-blue-600'}`}>{order.order_id}</span>
                             <div className="text-xs text-gray-500 mt-1">{order.creator_name}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
@@ -389,10 +429,28 @@ const ReturnedOrdersReportPage: React.FC = () => {
                               >
                                 แนบลิงก์เอง
                               </button>
+                              
+                              <button
+                                onClick={() => handleToggleCompleted(order.order_id, order.admin_resolution_completed)}
+                                className={`mt-2 flex items-center justify-center gap-1 w-full px-3 py-1.5 rounded text-xs font-medium transition-colors border ${
+                                  order.admin_resolution_completed === 1
+                                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                }`}
+                              >
+                                {order.admin_resolution_completed === 1 ? (
+                                  <>
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                    สรุปแล้ว
+                                  </>
+                                ) : (
+                                  'ทำเครื่องหมายว่าเสร็จ'
+                                )}
+                              </button>
                             </div>
                           </td>
                         </tr>
-                      ))
+                      )})
                     )}
                   </tbody>
                 </table>

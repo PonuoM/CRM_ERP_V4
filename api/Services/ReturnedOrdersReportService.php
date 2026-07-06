@@ -11,7 +11,7 @@ class ReturnedOrdersReportService
         $this->pdo = $pdo;
     }
 
-    public function getReportData(string $startDate, string $endDate, ?int $userId, ?int $companyId, string $statusType): array
+    public function getReportData(string $startDate, string $endDate, ?int $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All'): array
     {
         // Allow only Returned or Cancelled
         if (!in_array($statusType, ['Returned', 'Cancelled'])) {
@@ -45,6 +45,12 @@ class ReturnedOrdersReportService
             $where .= " AND o.order_status = 'Cancelled'";
         }
 
+        if ($resolutionStatus === 'Completed') {
+            $where .= " AND o.admin_resolution_completed = 1";
+        } elseif ($resolutionStatus === 'Pending') {
+            $where .= " AND o.admin_resolution_completed = 0";
+        }
+
         $sql = "
             SELECT 
                 o.id AS order_id,
@@ -67,7 +73,8 @@ class ReturnedOrdersReportService
                     WHERE ob.order_id = o.id
                 ) AS returned_at,
                 u.username AS creator_name,
-                o.admin_resolution_notes
+                o.admin_resolution_notes,
+                o.admin_resolution_completed
             FROM orders o
             LEFT JOIN customers c ON o.customer_id = c.customer_id
             LEFT JOIN order_cancellations oc ON o.id = oc.order_id
@@ -258,6 +265,15 @@ class ReturnedOrdersReportService
         return $stmt->execute([
             ':notes' => $notes,
             ':id' => $id
+        ]);
+    }
+
+    public function toggleOrderResolutionComplete(string $orderId, int $isCompleted): bool
+    {
+        $stmt = $this->pdo->prepare("UPDATE orders SET admin_resolution_completed = :status WHERE id = :id");
+        return $stmt->execute([
+            ':status' => $isCompleted,
+            ':id' => $orderId
         ]);
     }
 }

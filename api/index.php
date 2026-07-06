@@ -85,8 +85,9 @@ try {
                     $companyId = $authUser['company_id'] ?? 1;
                 }
                 $statusType = $_GET['status_type'] ?? 'Returned';
+                $resolutionStatus = $_GET['resolution_status'] ?? 'All';
                 try {
-                    $data = $svc->getReportData($startDate, $endDate, $userId, $companyId, $statusType);
+                    $data = $svc->getReportData($startDate, $endDate, $userId, $companyId, $statusType, $resolutionStatus);
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
                 } catch (Exception $e) {
                     json_response(['ok' => false, 'message' => $e->getMessage()], 400);
@@ -123,6 +124,12 @@ try {
                     json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed']);
                 }
                 json_response(['ok' => false, 'message' => 'Invalid ID'], 400);
+            } elseif (method() === 'POST' && $id === 'toggle-completed') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $isCompleted = isset($input['is_completed']) ? (int)$input['is_completed'] : 0;
+                $success = $svc->toggleOrderResolutionComplete($orderId, $isCompleted);
+                json_response(['ok' => $success, 'message' => $success ? 'Updated status successfully' : 'Failed to update status']);
             }
             break;
         case 'promotions':
