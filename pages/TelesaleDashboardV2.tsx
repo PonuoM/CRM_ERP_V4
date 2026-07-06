@@ -7,7 +7,7 @@
  * - Based on last_order_date instead of ownership_expires
  */
 
-import React, { useState, useMemo, useEffect, useDeferredValue, useTransition, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useDeferredValue, useTransition, useCallback, useRef } from "react";
 import { User, Customer, CustomerGrade, ModalType, Tag, Activity, CallHistory, Order as OrderType, Appointment } from "@/types";
 import CustomerTable from "@/components/CustomerTable";
 import RegionFilter from "@/components/RegionFilter";
@@ -581,14 +581,40 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     const deferredQuickFilter = useDeferredValue(quickFilter);
 
     // Appointment Filter using DateRangePicker
-    const [appointmentDateRange, setAppointmentDateRange] = useState<DateRange>({ start: '', end: '' });
+    type UpcomingFilter = "off" | "all" | "1" | "3" | "7";
+    const [upcomingAppointmentFilter, setUpcomingAppointmentFilter] = useState<UpcomingFilter>("off");
+    const [isUpcomingDropdownOpen, setIsUpcomingDropdownOpen] = useState(false);
+    const upcomingDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (upcomingDropdownRef.current && !upcomingDropdownRef.current.contains(event.target as Node)) {
+                setIsUpcomingDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Overdue Appointment Filter (show only customers with overdue appointments)
     const [filterByOverdueAppointment, setFilterByOverdueAppointment] = useState(false);
 
-    // Hide Contacted Filter using DateRangePicker
-    const [hideContactedDateRange, setHideContactedDateRange] = useState<DateRange>({ start: '', end: '' });
+    // Hide Contacted Custom Dropdown Filter
+    type HideContactedFilter = "off" | "all" | "1" | "3" | "7";
+    const [hideContactedFilter, setHideContactedFilter] = useState<HideContactedFilter>("off");
     const [isHideContactedDropdownOpen, setIsHideContactedDropdownOpen] = useState(false);
+    const hideContactedDropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (hideContactedDropdownRef.current && !hideContactedDropdownRef.current.contains(event.target as Node)) {
+                setIsHideContactedDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Advanced Settings Panel toggle
     const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
@@ -600,7 +626,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     const [showContactedDateRange, setShowContactedDateRange] = useState<DateRange>({ start: '', end: '' });
 
     // Check if any filters are active (including search)
-    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || selectedGrades.length > 0 || appointmentDateRange.start !== '' || appointmentDateRange.end !== '' || filterByOverdueAppointment || hideContactedDateRange.start !== '' || hideContactedDateRange.end !== '' || activeSearchTerm || sortByBirthday || showContactedDateRange.start !== '' || showContactedDateRange.end !== '';
+    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || selectedGrades.length > 0 || upcomingAppointmentFilter !== "off" || filterByOverdueAppointment || hideContactedFilter !== "off" || activeSearchTerm || sortByBirthday || showContactedDateRange.start !== '' || showContactedDateRange.end !== '';
 
     // Clear all filters (including search)
     const clearAllFilters = () => {
@@ -609,7 +635,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         setSelectedGrades([]);
         setAppointmentDateRange({ start: '', end: '' });
         setFilterByOverdueAppointment(false);
-        setHideContactedDateRange({ start: '', end: '' });
+        setHideContactedFilter("off");
         setSearchTerm("");
         setActiveSearchTerm("");
         setSortByBirthday(false);
@@ -618,7 +644,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // Reset page when filter/basket changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeBasketKey, selectedRegions, selectedGrades, searchTerm, quickFilter, appointmentDateRange, filterByOverdueAppointment, hideContactedDateRange]);
+    }, [activeBasketKey, selectedRegions, selectedGrades, searchTerm, quickFilter, upcomingAppointmentFilter, filterByOverdueAppointment, hideContactedFilter]);
 
     // Optimize Call History Lookup - Only include calls by CURRENT USER after date_assigned
     // caller field stores full name: "firstName lastName"
@@ -822,11 +848,9 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         // Check if ANY filter is active
         const hasActiveFilter =
             activeSearchTerm ||
-            appointmentDateRange.start !== '' ||
-            appointmentDateRange.end !== '' ||
+            (upcomingAppointmentFilter !== "off") ||
             filterByOverdueAppointment ||
-            hideContactedDateRange.start !== '' || 
-            hideContactedDateRange.end !== '' ||
+            hideContactedFilter !== "off" ||
             deferredSelectedRegions.length > 0 ||
             deferredSelectedTagIds.length > 0 ||
             sortByBirthday ||
@@ -901,19 +925,17 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             }
 
             // Apply Appointment Filter
-            if (appointmentDateRange.start || appointmentDateRange.end) {
-                const s = appointmentDateRange.start ? new Date(appointmentDateRange.start) : null;
-                const e = appointmentDateRange.end ? new Date(appointmentDateRange.end) : null;
-                if (s) s.setHours(0, 0, 0, 0);
-                if (e) e.setHours(23, 59, 59, 999);
-
+            if (upcomingAppointmentFilter !== "off") {
                 filtered = filtered.filter(c => {
                     const appointmentInfo = appointmentInfoMap.get(String(c.id));
-                    if (!appointmentInfo?.hasAppointment || !appointmentInfo.date) return false;
-                    const aptTime = appointmentInfo.date.getTime();
-                    if (s && aptTime < s.getTime()) return false;
-                    if (e && aptTime > e.getTime()) return false;
-                    return true;
+                    if (!appointmentInfo?.hasAppointment) return false;
+                    
+                    if (upcomingAppointmentFilter === "all") {
+                        return appointmentInfo.hasUpcoming;
+                    } else {
+                        const maxDays = parseInt(upcomingAppointmentFilter, 10);
+                        return appointmentInfo.hasUpcoming && appointmentInfo.daysUntil !== undefined && appointmentInfo.daysUntil <= maxDays;
+                    }
                 });
             }
 
@@ -952,27 +974,25 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             }
 
             // Apply Hide Contacted Filter
-            if (hideContactedDateRange.start || hideContactedDateRange.end) {
-                const s = hideContactedDateRange.start ? new Date(hideContactedDateRange.start) : null;
-                const e = hideContactedDateRange.end ? new Date(hideContactedDateRange.end) : null;
-                if (s) s.setHours(0, 0, 0, 0);
-                if (e) e.setHours(23, 59, 59, 999);
-
+            if (hideContactedFilter !== "off") {
                 filtered = filtered.filter(c => {
                     const lastCall = lastCallMap.get(String(c.id));
                     if (!lastCall) return true; // Keep if never called
+                    
+                    if (hideContactedFilter === "all") return false; // Hide all contacted
 
                     const safeDateStr = String(lastCall.date).replace(' ', 'T');
-                    const lastCallDate = new Date(safeDateStr);
-                    const callTime = lastCallDate.getTime();
+                    const callDate = new Date(safeDateStr);
+                    callDate.setHours(0, 0, 0, 0);
                     
-                    if (s && e) {
-                        if (callTime >= s.getTime() && callTime <= e.getTime()) return false;
-                    } else if (s) {
-                        if (callTime >= s.getTime()) return false;
-                    } else if (e) {
-                        if (callTime <= e.getTime()) return false;
-                    }
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    const daysSinceCall = Math.floor((today.getTime() - callDate.getTime()) / (1000 * 60 * 60 * 24));
+                    const maxDays = parseInt(hideContactedFilter, 10);
+                    
+                    if (daysSinceCall <= maxDays) return false; // Hide if called within maxDays
+                    
                     return true;
                 });
             }
@@ -989,7 +1009,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return matches;
-    }, [basketGroups, activeSearchTerm, appointmentDateRange, filterByOverdueAppointment, hideContactedDateRange, deferredSelectedRegions, deferredSelectedTagIds, deferredSelectedGrades, deferredQuickFilter, lastCallMap, appointmentInfoMap, sortByBirthday, showContactedDateRange]);
+    }, [basketGroups, activeSearchTerm, upcomingAppointmentFilter, filterByOverdueAppointment, hideContactedFilter, deferredSelectedRegions, deferredSelectedTagIds, deferredSelectedGrades, deferredQuickFilter, lastCallMap, appointmentInfoMap, sortByBirthday, showContactedDateRange]);
 
     // Count total overdue appointments for display (ONLY for current user's customers)
     const overdueAppointmentCount = useMemo(() => {
@@ -1119,19 +1139,17 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         }
 
         // Apply Appointment Filter
-        if (appointmentDateRange.start || appointmentDateRange.end) {
-            const s = appointmentDateRange.start ? new Date(appointmentDateRange.start) : null;
-            const e = appointmentDateRange.end ? new Date(appointmentDateRange.end) : null;
-            if (s) s.setHours(0, 0, 0, 0);
-            if (e) e.setHours(23, 59, 59, 999);
-
+        if (upcomingAppointmentFilter !== "off") {
             customers = customers.filter(c => {
                 const appointmentInfo = appointmentInfoMap.get(String(c.id));
-                if (!appointmentInfo?.hasAppointment || !appointmentInfo.date) return false;
-                const aptTime = appointmentInfo.date.getTime();
-                if (s && aptTime < s.getTime()) return false;
-                if (e && aptTime > e.getTime()) return false;
-                return true;
+                if (!appointmentInfo?.hasAppointment) return false;
+                
+                if (upcomingAppointmentFilter === "all") {
+                    return appointmentInfo.hasUpcoming;
+                } else {
+                    const maxDays = parseInt(upcomingAppointmentFilter, 10);
+                    return appointmentInfo.hasUpcoming && appointmentInfo.daysUntil !== undefined && appointmentInfo.daysUntil <= maxDays;
+                }
             });
         }
 
@@ -1183,27 +1201,25 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         }
 
         // Apply Hide Contacted Filter
-        if (hideContactedDateRange.start || hideContactedDateRange.end) {
-            const s = hideContactedDateRange.start ? new Date(hideContactedDateRange.start) : null;
-            const e = hideContactedDateRange.end ? new Date(hideContactedDateRange.end) : null;
-            if (s) s.setHours(0, 0, 0, 0);
-            if (e) e.setHours(23, 59, 59, 999);
-
+        if (hideContactedFilter !== "off") {
             customers = customers.filter(c => {
                 const lastCall = lastCallMap.get(String(c.id));
                 if (!lastCall) return true; // Keep if never called
+                
+                if (hideContactedFilter === "all") return false; // Hide all contacted
 
                 const safeDateStr = String(lastCall.date).replace(' ', 'T');
-                const lastCallDate = new Date(safeDateStr);
-                const callTime = lastCallDate.getTime();
+                const callDate = new Date(safeDateStr);
+                callDate.setHours(0, 0, 0, 0);
                 
-                if (s && e) {
-                    if (callTime >= s.getTime() && callTime <= e.getTime()) return false;
-                } else if (s) {
-                    if (callTime >= s.getTime()) return false;
-                } else if (e) {
-                    if (callTime <= e.getTime()) return false;
-                }
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                const daysSinceCall = Math.floor((today.getTime() - callDate.getTime()) / (1000 * 60 * 60 * 24));
+                const maxDays = parseInt(hideContactedFilter, 10);
+                
+                if (daysSinceCall <= maxDays) return false;
+                
                 return true;
             });
         }
@@ -1270,7 +1286,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return customers;
-    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, deferredSelectedGrades, appointmentDateRange, filterByOverdueAppointment, appointmentInfoMap, hideContactedDateRange, sortByBirthday, showContactedDateRange]);
+    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, deferredSelectedGrades, upcomingAppointmentFilter, filterByOverdueAppointment, appointmentInfoMap, hideContactedFilter, sortByBirthday, showContactedDateRange]);
 
     // Manual sync - just refresh to get fresh data from API via App.tsx
     const handleManualSync = () => {
@@ -1368,16 +1384,58 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                         </button>
                     </div>
 
-                    {/* Upcoming Appointments DateRange Filter */}
-                    <div className="flex items-center">
-                        <DateRangePicker
-                            value={appointmentDateRange}
-                            onChange={(range) => {
-                                setFilterByOverdueAppointment(false);
-                                setAppointmentDateRange(range);
-                            }}
-                            placeholder="นัดหมายใกล้ถึง (ทั้งหมด)"
-                        />
+                    {/* Upcoming Appointments Custom Dropdown */}
+                    <div className="relative" ref={upcomingDropdownRef}>
+                        <button
+                            onClick={() => setIsUpcomingDropdownOpen(!isUpcomingDropdownOpen)}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all ${
+                                upcomingAppointmentFilter !== 'off'
+                                ? "bg-blue-50 border-blue-300 text-blue-700"
+                                : "bg-white border-gray-200 text-gray-700 hover:border-gray-300"
+                            }`}
+                        >
+                            <Calendar size={18} />
+                            <span className="font-medium">
+                                {upcomingAppointmentFilter === '1' ? 'นัดหมายภายใน 1 วัน' :
+                                 upcomingAppointmentFilter === '3' ? 'นัดหมายภายใน 3 วัน' :
+                                 upcomingAppointmentFilter === '7' ? 'นัดหมายภายใน 7 วัน' :
+                                 upcomingAppointmentFilter === 'all' ? 'นัดหมายใกล้ถึง (ทุกวัน)' :
+                                 'นัดหมายใกล้ถึง (ไม่กรอง)'}
+                            </span>
+                            <ChevronDown size={16} className={upcomingAppointmentFilter !== 'off' ? "text-blue-500" : "text-gray-400"} />
+                        </button>
+                        
+                        {isUpcomingDropdownOpen && (
+                            <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                                <div className="py-1">
+                                    {[
+                                        { value: 'off', label: '❌ ปิดการกรอง (ดูทั้งหมด)' },
+                                        { value: 'all', label: '📅 นัดหมายใกล้ถึง (ทุกวัน)' },
+                                        { value: '1', label: '🕒 นัดหมายภายใน 1 วัน' },
+                                        { value: '3', label: '🕒 นัดหมายภายใน 3 วัน' },
+                                        { value: '7', label: '🕒 นัดหมายภายใน 7 วัน' }
+                                    ].map((option) => (
+                                        <button
+                                            key={option.value}
+                                            onClick={() => {
+                                                setUpcomingAppointmentFilter(option.value as UpcomingFilter);
+                                                setIsUpcomingDropdownOpen(false);
+                                                if (option.value !== "off") {
+                                                    setFilterByOverdueAppointment(false);
+                                                }
+                                            }}
+                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
+                                                upcomingAppointmentFilter === option.value
+                                                    ? 'bg-blue-50 text-blue-700 font-medium'
+                                                    : 'text-gray-700'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Overdue Appointments Filter Button */}
@@ -1385,7 +1443,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                         onClick={() => {
                             // Mutual exclusivity: clear upcoming when selecting overdue
                             if (!filterByOverdueAppointment) {
-                                setAppointmentDateRange({ start: '', end: '' });
+                                setUpcomingAppointmentFilter("off");
                             }
                             setFilterByOverdueAppointment(!filterByOverdueAppointment);
                         }}
@@ -1401,26 +1459,55 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                         )}
                     </button>
 
-                    {/* Hide Contacted DateRange Filter */}
-                    <div className="flex items-center">
-                        <DateRangePicker
-                            value={hideContactedDateRange}
-                            onChange={(range) => {
-                                setHideContactedDateRange(range);
-                            }}
-                            placeholder="ซ่อนที่โทรแล้ว (ทั้งหมด)"
-                        />
-                    </div>
-
-                    {/* Show Contacted DateRange Filter */}
-                    <div className="flex items-center">
-                        <DateRangePicker
-                            value={showContactedDateRange}
-                            onChange={(range) => {
-                                setShowContactedDateRange(range);
-                            }}
-                            placeholder="แสดงที่โทรแล้ว (ทั้งหมด)"
-                        />
+                    {/* Hide Contacted Filter */}
+                    <div className="relative" ref={hideContactedDropdownRef}>
+                        <button
+                            onClick={() => setIsHideContactedDropdownOpen(!isHideContactedDropdownOpen)}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all ${
+                                hideContactedFilter !== 'off'
+                                ? "bg-purple-50 border-purple-300 text-purple-700"
+                                : "bg-white border-gray-200 text-gray-700 hover:border-gray-300"
+                            }`}
+                        >
+                            <Phone size={18} />
+                            <span className="font-medium">
+                                {hideContactedFilter === '1' ? 'ซ่อนที่โทรแล้ววันนี้' :
+                                 hideContactedFilter === '3' ? 'ซ่อนที่โทรแล้วใน 3 วัน' :
+                                 hideContactedFilter === '7' ? 'ซ่อนที่โทรแล้วใน 7 วัน' :
+                                 hideContactedFilter === 'all' ? 'ซ่อนที่โทรแล้วทั้งหมด' :
+                                 'ซ่อนที่โทรแล้ว (ไม่ซ่อน)'}
+                            </span>
+                            <ChevronDown size={16} className={hideContactedFilter !== 'off' ? "text-purple-500" : "text-gray-400"} />
+                        </button>
+                        
+                        {isHideContactedDropdownOpen && (
+                            <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                                <div className="py-1">
+                                    {[
+                                        { value: 'off', label: '❌ ไม่ซ่อน (แสดงทั้งหมด)' },
+                                        { value: 'all', label: '📞 ซ่อนคนที่เคยโทรแล้ว' },
+                                        { value: '1', label: '🕒 ซ่อนที่โทรแล้ววันนี้' },
+                                        { value: '3', label: '🕒 ซ่อนที่โทรแล้วใน 3 วัน' },
+                                        { value: '7', label: '🕒 ซ่อนที่โทรแล้วใน 7 วัน' }
+                                    ].map((option) => (
+                                        <button
+                                            key={option.value}
+                                            onClick={() => {
+                                                setHideContactedFilter(option.value as HideContactedFilter);
+                                                setIsHideContactedDropdownOpen(false);
+                                            }}
+                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
+                                                hideContactedFilter === option.value
+                                                    ? 'bg-purple-50 text-purple-700 font-medium'
+                                                    : 'text-gray-700'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Sort by Upcoming Birthday Button */}
@@ -1459,7 +1546,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
                         {/* Advanced Settings Dropdown */}
                         {isAdvancedSettingsOpen && (
-                            <div className="absolute right-0 top-full mt-2 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 p-4 min-w-[300px]">
+                            <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 p-4 min-w-[300px] max-w-[90vw]">
                                 <div className="space-y-4">
                                     {/* Region Filter */}
                                     <div>
