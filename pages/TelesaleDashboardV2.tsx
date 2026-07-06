@@ -552,9 +552,9 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         if (searchTerm.trim()) {
             setSelectedRegions([]);
             setSelectedTagIds([]);
-            setAppointmentDateRange({ start: '', end: '' });
+            setUpcomingAppointmentFilter("off");
             setFilterByOverdueAppointment(false);
-            setHideContactedDateRange({ start: '', end: '' });
+            setHideContactedFilter("off");
         }
         setActiveSearchTerm(searchTerm);
     };
@@ -601,8 +601,13 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     const [filterByOverdueAppointment, setFilterByOverdueAppointment] = useState(false);
 
     // Hide Contacted Custom Dropdown Filter
-    type HideContactedFilter = "off" | "all" | "1" | "3" | "7";
+    type HideContactedFilter = "off" | "all" | "1" | "3" | "7" | "custom";
     const [hideContactedFilter, setHideContactedFilter] = useState<HideContactedFilter>("off");
+    const [hideContactedCustomRange, setHideContactedCustomRange] = useState<{start: string, end: string}>({ start: '', end: '' });
+    
+    // Local state for the inputs inside the dropdown before applying
+    const [tempCustomRange, setTempCustomRange] = useState<{start: string, end: string}>({ start: '', end: '' });
+    
     const [isHideContactedDropdownOpen, setIsHideContactedDropdownOpen] = useState(false);
     const hideContactedDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -633,9 +638,10 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         setSelectedRegions([]);
         setSelectedTagIds([]);
         setSelectedGrades([]);
-        setAppointmentDateRange({ start: '', end: '' });
+        setUpcomingAppointmentFilter("off");
         setFilterByOverdueAppointment(false);
         setHideContactedFilter("off");
+        setHideContactedCustomRange({ start: '', end: '' });
         setSearchTerm("");
         setActiveSearchTerm("");
         setSortByBirthday(false);
@@ -644,7 +650,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // Reset page when filter/basket changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeBasketKey, selectedRegions, selectedGrades, searchTerm, quickFilter, upcomingAppointmentFilter, filterByOverdueAppointment, hideContactedFilter]);
+    }, [activeBasketKey, selectedRegions, selectedGrades, searchTerm, quickFilter, upcomingAppointmentFilter, filterByOverdueAppointment, hideContactedFilter, hideContactedCustomRange]);
 
     // Optimize Call History Lookup - Only include calls by CURRENT USER after date_assigned
     // caller field stores full name: "firstName lastName"
@@ -975,24 +981,41 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
             // Apply Hide Contacted Filter
             if (hideContactedFilter !== "off") {
+                const s = hideContactedFilter === 'custom' && hideContactedCustomRange.start ? new Date(hideContactedCustomRange.start) : null;
+                const e = hideContactedFilter === 'custom' && hideContactedCustomRange.end ? new Date(hideContactedCustomRange.end) : null;
+                if (s) s.setHours(0, 0, 0, 0);
+                if (e) e.setHours(23, 59, 59, 999);
+
                 filtered = filtered.filter(c => {
                     const lastCall = lastCallMap.get(String(c.id));
                     if (!lastCall) return true; // Keep if never called
                     
                     if (hideContactedFilter === "all") return false; // Hide all contacted
-
+                    
                     const safeDateStr = String(lastCall.date).replace(' ', 'T');
-                    const callDate = new Date(safeDateStr);
-                    callDate.setHours(0, 0, 0, 0);
+                    const lastCallDate = new Date(safeDateStr);
+                    const callTime = lastCallDate.getTime();
                     
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    
-                    const daysSinceCall = Math.floor((today.getTime() - callDate.getTime()) / (1000 * 60 * 60 * 24));
-                    const maxDays = parseInt(hideContactedFilter, 10);
-                    
-                    if (daysSinceCall <= maxDays) return false; // Hide if called within maxDays
-                    
+                    if (hideContactedFilter === 'custom') {
+                        if (s && e) {
+                            if (callTime >= s.getTime() && callTime <= e.getTime()) return false;
+                        } else if (s) {
+                            if (callTime >= s.getTime()) return false;
+                        } else if (e) {
+                            if (callTime <= e.getTime()) return false;
+                        }
+                    } else {
+                        const callDate = new Date(safeDateStr);
+                        callDate.setHours(0, 0, 0, 0);
+                        
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        
+                        const daysSinceCall = Math.floor((today.getTime() - callDate.getTime()) / (1000 * 60 * 60 * 24));
+                        const maxDays = parseInt(hideContactedFilter, 10);
+                        
+                        if (daysSinceCall <= maxDays) return false;
+                    }
                     return true;
                 });
             }
@@ -1009,7 +1032,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return matches;
-    }, [basketGroups, activeSearchTerm, upcomingAppointmentFilter, filterByOverdueAppointment, hideContactedFilter, deferredSelectedRegions, deferredSelectedTagIds, deferredSelectedGrades, deferredQuickFilter, lastCallMap, appointmentInfoMap, sortByBirthday, showContactedDateRange]);
+    }, [basketGroups, activeSearchTerm, upcomingAppointmentFilter, filterByOverdueAppointment, hideContactedFilter, hideContactedCustomRange, deferredSelectedRegions, deferredSelectedTagIds, deferredSelectedGrades, deferredQuickFilter, lastCallMap, appointmentInfoMap, sortByBirthday, showContactedDateRange]);
 
     // Count total overdue appointments for display (ONLY for current user's customers)
     const overdueAppointmentCount = useMemo(() => {
@@ -1202,6 +1225,11 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
         // Apply Hide Contacted Filter
         if (hideContactedFilter !== "off") {
+            const s = hideContactedFilter === 'custom' && hideContactedCustomRange.start ? new Date(hideContactedCustomRange.start) : null;
+            const e = hideContactedFilter === 'custom' && hideContactedCustomRange.end ? new Date(hideContactedCustomRange.end) : null;
+            if (s) s.setHours(0, 0, 0, 0);
+            if (e) e.setHours(23, 59, 59, 999);
+
             customers = customers.filter(c => {
                 const lastCall = lastCallMap.get(String(c.id));
                 if (!lastCall) return true; // Keep if never called
@@ -1209,16 +1237,29 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 if (hideContactedFilter === "all") return false; // Hide all contacted
 
                 const safeDateStr = String(lastCall.date).replace(' ', 'T');
-                const callDate = new Date(safeDateStr);
-                callDate.setHours(0, 0, 0, 0);
+                const lastCallDate = new Date(safeDateStr);
+                const callTime = lastCallDate.getTime();
                 
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                
-                const daysSinceCall = Math.floor((today.getTime() - callDate.getTime()) / (1000 * 60 * 60 * 24));
-                const maxDays = parseInt(hideContactedFilter, 10);
-                
-                if (daysSinceCall <= maxDays) return false;
+                if (hideContactedFilter === 'custom') {
+                    if (s && e) {
+                        if (callTime >= s.getTime() && callTime <= e.getTime()) return false;
+                    } else if (s) {
+                        if (callTime >= s.getTime()) return false;
+                    } else if (e) {
+                        if (callTime <= e.getTime()) return false;
+                    }
+                } else {
+                    const callDate = new Date(safeDateStr);
+                    callDate.setHours(0, 0, 0, 0);
+                    
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    const daysSinceCall = Math.floor((today.getTime() - callDate.getTime()) / (1000 * 60 * 60 * 24));
+                    const maxDays = parseInt(hideContactedFilter, 10);
+                    
+                    if (daysSinceCall <= maxDays) return false;
+                }
                 
                 return true;
             });
@@ -1227,7 +1268,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         // Sort
         customers = [...customers].sort((a, b) => {
             // If filtering by appointments, sort by appointment date (earliest first)
-            if (appointmentDateRange.start || appointmentDateRange.end) {
+            if (upcomingAppointmentFilter !== "off") {
                 const aInfo = appointmentInfoMap.get(String(a.id));
                 const bInfo = appointmentInfoMap.get(String(b.id));
                 const aDays = aInfo?.daysUntil ?? 9999;
@@ -1286,7 +1327,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return customers;
-    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, deferredSelectedGrades, upcomingAppointmentFilter, filterByOverdueAppointment, appointmentInfoMap, hideContactedFilter, sortByBirthday, showContactedDateRange]);
+    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, deferredSelectedGrades, upcomingAppointmentFilter, filterByOverdueAppointment, appointmentInfoMap, hideContactedFilter, hideContactedCustomRange, sortByBirthday, showContactedDateRange]);
 
     // Manual sync - just refresh to get fresh data from API via App.tsx
     const handleManualSync = () => {
@@ -1462,7 +1503,13 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     {/* Hide Contacted Filter */}
                     <div className="relative" ref={hideContactedDropdownRef}>
                         <button
-                            onClick={() => setIsHideContactedDropdownOpen(!isHideContactedDropdownOpen)}
+                            onClick={() => {
+                                setIsHideContactedDropdownOpen(!isHideContactedDropdownOpen);
+                                // Initialize temp range when opening
+                                if (!isHideContactedDropdownOpen) {
+                                    setTempCustomRange(hideContactedCustomRange);
+                                }
+                            }}
                             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all ${
                                 hideContactedFilter !== 'off'
                                 ? "bg-purple-50 border-purple-300 text-purple-700"
@@ -1475,13 +1522,14 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                                  hideContactedFilter === '3' ? 'ซ่อนที่โทรแล้วใน 3 วัน' :
                                  hideContactedFilter === '7' ? 'ซ่อนที่โทรแล้วใน 7 วัน' :
                                  hideContactedFilter === 'all' ? 'ซ่อนที่โทรแล้วทั้งหมด' :
+                                 hideContactedFilter === 'custom' ? 'ซ่อนที่โทร (กำหนดเอง)' :
                                  'ซ่อนที่โทรแล้ว (ไม่ซ่อน)'}
                             </span>
                             <ChevronDown size={16} className={hideContactedFilter !== 'off' ? "text-purple-500" : "text-gray-400"} />
                         </button>
                         
                         {isHideContactedDropdownOpen && (
-                            <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                            <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
                                 <div className="py-1">
                                     {[
                                         { value: 'off', label: '❌ ไม่ซ่อน (แสดงทั้งหมด)' },
@@ -1494,6 +1542,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                                             key={option.value}
                                             onClick={() => {
                                                 setHideContactedFilter(option.value as HideContactedFilter);
+                                                setHideContactedCustomRange({ start: '', end: '' });
                                                 setIsHideContactedDropdownOpen(false);
                                             }}
                                             className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
@@ -1505,6 +1554,39 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                                             {option.label}
                                         </button>
                                     ))}
+                                    
+                                    <div className="border-t border-gray-100 mt-1 p-3">
+                                        <div className="text-xs text-gray-500 font-medium mb-2 px-1">ระบุช่วงวันที่...</div>
+                                        <div className="space-y-2">
+                                            <div>
+                                                <input 
+                                                    type="date" 
+                                                    className="w-full text-xs p-1.5 border border-gray-200 rounded-lg outline-none focus:border-purple-300" 
+                                                    value={tempCustomRange.start}
+                                                    onChange={(e) => setTempCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                                                />
+                                            </div>
+                                            <div className="text-center text-gray-300 text-xs">ถึง</div>
+                                            <div>
+                                                <input 
+                                                    type="date" 
+                                                    className="w-full text-xs p-1.5 border border-gray-200 rounded-lg outline-none focus:border-purple-300"
+                                                    value={tempCustomRange.end}
+                                                    onChange={(e) => setTempCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                                                />
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    setHideContactedCustomRange(tempCustomRange);
+                                                    setHideContactedFilter("custom");
+                                                    setIsHideContactedDropdownOpen(false);
+                                                }}
+                                                className="w-full mt-2 bg-purple-500 hover:bg-purple-600 text-white text-xs font-medium py-1.5 rounded-lg transition-colors"
+                                            >
+                                                ตกลง
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}
