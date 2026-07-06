@@ -130,6 +130,23 @@ try {
                 $isCompleted = isset($input['is_completed']) ? (int)$input['is_completed'] : 0;
                 $success = $svc->toggleOrderResolutionComplete($orderId, $isCompleted);
                 json_response(['ok' => $success, 'message' => $success ? 'Updated status successfully' : 'Failed to update status']);
+            } elseif (method() === 'POST' && $id === 'update-details') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $summaryNotes = isset($input['admin_resolution_notes']) ? $input['admin_resolution_notes'] : null;
+                $newAudioLinks = $input['new_audio_links'] ?? [];
+                $updatedAudioLinks = $input['updated_audio_links'] ?? [];
+                $deletedAudioIds = $input['deleted_audio_ids'] ?? [];
+                
+                $authUser = get_authenticated_user($pdo);
+                $uId = $authUser ? ($authUser['id'] ?? 0) : 0;
+                
+                if (!$orderId) {
+                    json_response(['ok' => false, 'message' => 'Missing order_id'], 400);
+                }
+                
+                $success = $svc->updateOrderDetails($orderId, $summaryNotes, $newAudioLinks, $updatedAudioLinks, $deletedAudioIds, $uId);
+                json_response(['ok' => $success, 'message' => $success ? 'Updated details successfully' : 'Failed to update details']);
             }
             break;
         case 'promotions':

@@ -276,4 +276,59 @@ class ReturnedOrdersReportService
             ':id' => $orderId
         ]);
     }
+
+    public function updateOrderDetails(string $orderId, ?string $summaryNotes, array $newAudioLinks, array $updatedAudioLinks, array $deletedAudioIds, int $userId): bool
+    {
+        try {
+            $this->pdo->beginTransaction();
+
+            // 1. Update Order Summary
+            if ($summaryNotes !== null) {
+                $stmt = $this->pdo->prepare("UPDATE orders SET admin_resolution_notes = :notes WHERE id = :id");
+                $stmt->execute([':notes' => $summaryNotes, ':id' => $orderId]);
+            }
+
+            // 2. Delete audio links
+            if (!empty($deletedAudioIds)) {
+                $inQuery = implode(',', array_fill(0, count($deletedAudioIds), '?'));
+                $delStmt = $this->pdo->prepare("DELETE FROM order_audio_links WHERE id IN ($inQuery) AND order_id = ?");
+                $delParams = array_merge($deletedAudioIds, [$orderId]);
+                $delStmt->execute($delParams);
+            }
+
+            // 3. Update existing audio links
+            if (!empty($updatedAudioLinks)) {
+                $updStmt = $this->pdo->prepare("UPDATE order_audio_links SET audio_url = :url, audio_date = :adate, notes = :notes WHERE id = :id AND order_id = :order_id");
+                foreach ($updatedAudioLinks as $link) {
+                    $updStmt->execute([
+                        ':url' => $link['url'] ?? '',
+                        ':adate' => !empty($link['date']) ? $link['date'] : null,
+                        ':notes' => !empty($link['notes']) ? $link['notes'] : null,
+                        ':id' => $link['id'],
+                        ':order_id' => $orderId
+                    ]);
+                }
+            }
+
+            // 4. Insert new audio links
+            if (!empty($newAudioLinks)) {
+                $insStmt = $this->pdo->prepare("INSERT INTO order_audio_links (order_id, audio_url, source, created_by, audio_date, notes) VALUES (:order_id, :url, 'manual', :uid, :adate, :notes)");
+                foreach ($newAudioLinks as $link) {
+                    $insStmt->execute([
+                        ':order_id' => $orderId,
+                        ':url' => $link['url'] ?? '',
+                        ':uid' => $userId,
+                        ':adate' => !empty($link['date']) ? $link['date'] : null,
+                        ':notes' => !empty($link['notes']) ? $link['notes'] : null
+                    ]);
+                }
+            }
+
+            $this->pdo->commit();
+            return true;
+        } catch (Exception $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
 }
