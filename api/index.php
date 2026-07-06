@@ -71,6 +71,51 @@ try {
             require_once __DIR__ . '/Controllers/ProductController.php';
             handle_products($pdo, $id);
             break;
+        case 'returned_orders_report':
+            require_once __DIR__ . '/Services/ReturnedOrdersReportService.php';
+            $svc = new ReturnedOrdersReportService($pdo);
+            if (method() === 'GET') {
+                $startDate = $_GET['start_date'] ?? date('Y-m-01');
+                $endDate = $_GET['end_date'] ?? date('Y-m-t');
+                $userId = !empty($_GET['user_id']) ? (int)$_GET['user_id'] : null;
+                $companyId = !empty($_GET['company_id']) ? (int)$_GET['company_id'] : null;
+                // Default to company 1 if not set (or adapt based on auth)
+                if (!$companyId) {
+                    $authUser = get_authenticated_user($pdo);
+                    $companyId = $authUser['company_id'] ?? 1;
+                }
+                $statusType = $_GET['status_type'] ?? 'Returned';
+                try {
+                    $data = $svc->getReportData($startDate, $endDate, $userId, $companyId, $statusType);
+                    json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
+                } catch (Exception $e) {
+                    json_response(['ok' => false, 'message' => $e->getMessage()], 400);
+                }
+            } elseif (method() === 'POST' && $id === 'auto-match') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $authUser = get_authenticated_user($pdo);
+                $uId = $authUser ? ($authUser['id'] ?? 0) : 0;
+                $res = $svc->autoMatchAudio($orderId, $uId);
+                json_response(['ok' => true, 'message' => $res['message'], 'data' => $res]);
+            } elseif (method() === 'POST' && $id === 'manual-audio') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $audioUrl = $input['audio_url'] ?? '';
+                $audioDate = !empty($input['audio_date']) ? $input['audio_date'] : null;
+                $notes = !empty($input['notes']) ? $input['notes'] : null;
+                $authUser = get_authenticated_user($pdo);
+                $uId = $authUser ? ($authUser['id'] ?? 0) : 0;
+                $success = $svc->saveManualAudioLink($orderId, $audioUrl, $uId, $audioDate, $notes);
+                json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed or already exists']);
+            } elseif (method() === 'POST' && $id === 'summary') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $summary = $input['summary'] ?? '';
+                $success = $svc->saveOrderSummary($orderId, $summary);
+                json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed to save summary']);
+            }
+            break;
         case 'promotions':
             require_once __DIR__ . '/Controllers/PromotionController.php';
             handle_promotions($pdo, $id);
