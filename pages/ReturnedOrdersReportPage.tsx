@@ -59,9 +59,9 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const [userId, setUserId] = useState<string>('');
   const [resolutionFilter, setResolutionFilter] = useState<'All' | 'Completed' | 'Pending'>('All');
 
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       let query = `returned_orders_report?status_type=${activeTab}&resolution_status=${resolutionFilter}`;
       if (orderDateRange.start && orderDateRange.end) {
         query += `&order_start_date=${orderDateRange.start}&order_end_date=${orderDateRange.end}`;
@@ -86,7 +86,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
     } catch (err: any) {
       toast.error('ข้อผิดพลาด', err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -104,7 +104,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
       
       if (json && json.ok) {
         toast.success('สำเร็จ', 'อัปเดตสถานะเรียบร้อยแล้ว');
-        fetchData();
+        fetchData(true);
       } else {
         toast.error('ข้อผิดพลาด', json?.message || 'ไม่สามารถอัปเดตสถานะได้');
       }
@@ -123,7 +123,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
       
       if (json && json.ok) {
         toast.success('สำเร็จ', json.message || 'จับคู่ไฟล์เสียงสำเร็จ');
-        fetchData(); // refresh to show new audio
+        fetchData(true); // refresh to show new audio silently
       } else {
         toast.error('ข้อผิดพลาด', json?.message);
       }
@@ -148,7 +148,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
       
       if (json && json.ok) {
         toast.success('สำเร็จ', 'บันทึกข้อมูลเรียบร้อยแล้ว');
-        fetchData();
+        fetchData(true);
       } else {
         toast.error('ข้อผิดพลาด', json?.message);
       }
