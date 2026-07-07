@@ -796,6 +796,7 @@ function handleConfirmQuota(PDO $conn, array $data) {
 
 function handleAllocate(PDO $conn, array $data) {
     $quotaProductId = intval($data['quotaProductId'] ?? 0);
+    $rateScheduleId = intval($data['rateScheduleId'] ?? 0);
     $userId = intval($data['userId'] ?? 0);
     $companyId = intval($data['companyId'] ?? 0);
     $quantity = floatval($data['quantity'] ?? 0);
@@ -820,7 +821,7 @@ function handleAllocate(PDO $conn, array $data) {
 
     $stmt->execute([
         ':qpId' => $quotaProductId ?: null,
-        ':rsId' => null, // Admin manual allocation is not currently tied to rate schedule from UI
+        ':rsId' => $rateScheduleId ?: null,
         ':userId' => $userId,
         ':companyId' => $companyId,
         ':qty' => $quantity,
