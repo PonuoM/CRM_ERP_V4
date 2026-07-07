@@ -45,6 +45,7 @@ interface Order {
   phone: string;
   full_name: string;
   payment_status: string;
+  payment_method: string;
   slip_total: number;
 }
 
@@ -1220,16 +1221,7 @@ const SlipUpload: React.FC = () => {
                         })}
                       </td>
                       <td className="py-3 px-4 text-sm">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${order.payment_status === "จ่ายแล้ว"
-                            ? "bg-green-100 text-green-800"
-                            : order.payment_status === "จ่ายยังไม่ครบ"
-                              ? "bg-orange-100 text-orange-800"
-                              : "bg-yellow-100 text-yellow-800"
-                            }`}
-                        >
-                          {order.payment_status}
-                        </span>
+                        {getPaymentStatusChip(order.payment_status as any, order.payment_method as any)}
                         {order.slip_total > 0 && (
                           <div className="text-xs text-gray-600 mt-1">
                             ชำระแล้ว: ฿

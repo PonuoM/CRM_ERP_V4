@@ -6,6 +6,7 @@ import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
 import ExportTypeModal from '../components/ExportTypeModal';
 import { downloadDataFile } from '../utils/exportUtils';
+import { getPaymentStatusChip } from '../components/OrderTable';
 
 interface StatementRow {
     statement_id: number;
@@ -694,13 +695,7 @@ const AccountingReportPage: React.FC = () => {
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3 text-xs">
-                                                        {row.payment_status && (
-                                                            <span className={`px-2 py-0.5 rounded-full ${row.payment_status === 'Paid' || row.payment_status === 'Approved' ? 'bg-green-100 text-green-800' :
-                                                                'bg-gray-100 text-gray-800'
-                                                                }`}>
-                                                                {row.payment_status}
-                                                            </span>
-                                                        )}
+                                                        {row.payment_status && getPaymentStatusChip(row.payment_status as any, row.payment_method as any)}
                                                     </td>
                                                 </tr>
                                             );
