@@ -1685,7 +1685,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 </>
               ) : (
                 <>
-                  <FileText size={16} /> ส่งออกข้อมูล
+                  <FileText size={16} /> รายงานออเดอร์แบบละเอียด
                 </>
               )}
             </button>
@@ -1784,7 +1784,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={16} className="mr-2" />
-              {activeTab === 'waitingExport' ? `ส่งออกข้อมูล (${selectedIds.length})` : 'ส่งออกข้อมูล'}
+              {activeTab === 'waitingExport' ? `ส่งออกข้อมูลให้ขนส่ง (${selectedIds.length})` : 'ส่งออกข้อมูลให้ขนส่ง'}
             </button>
           )}
           {activeTab === 'waitingExport' && (
