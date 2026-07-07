@@ -42,7 +42,11 @@ interface UserData {
   computed_team?: string;
 }
 
-const ReturnedOrdersReportPage: React.FC = () => {
+interface ReturnedOrdersReportPageProps {
+  currentUser?: any;
+}
+
+const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ currentUser }) => {
   const toast = useToast();
   
   // State
@@ -72,12 +76,14 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   useEffect(() => {
-    apiFetch('users').then(res => {
+    const companyId = currentUser?.companyId || currentUser?.company_id || '';
+    const url = companyId ? `users?companyId=${companyId}` : 'users';
+    apiFetch(url).then(res => {
       if (res && Array.isArray(res)) {
         setUsersList(res);
       }
     });
-  }, []);
+  }, [currentUser]);
 
   const usersWithTeams = useMemo(() => {
     return usersList
