@@ -86,7 +86,7 @@ try {
                 if (empty($orderStartDate)) $orderStartDate = $_GET['start_date'] ?? '';
                 if (empty($orderEndDate)) $orderEndDate = $_GET['end_date'] ?? '';
 
-                $userId = !empty($_GET['user_id']) ? (int)$_GET['user_id'] : null;
+                $userId = !empty($_GET['user_id']) ? $_GET['user_id'] : null;
                 $companyId = !empty($_GET['company_id']) ? (int)$_GET['company_id'] : null;
                 // Default to company 1 if not set (or adapt based on auth)
                 if (!$companyId) {

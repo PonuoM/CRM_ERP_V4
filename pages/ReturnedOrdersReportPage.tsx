@@ -32,6 +32,13 @@ interface OrderData {
   audio_links: AudioLink[];
 }
 
+interface UserData {
+  id: number;
+  first_name: string;
+  last_name: string;
+  role: string;
+}
+
 const ReturnedOrdersReportPage: React.FC = () => {
   const toast = useToast();
   
@@ -55,8 +62,34 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null);
 
+  // Users Data
+  const [usersList, setUsersList] = useState<UserData[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<string>('all');
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
+  useEffect(() => {
+    apiFetch('users').then(res => {
+      if (res && Array.isArray(res)) {
+        setUsersList(res);
+      }
+    });
+  }, []);
+
+  const availableTeams = useMemo(() => {
+    const teams = new Set<string>();
+    usersList.forEach(u => {
+      if (u.role) teams.add(u.role);
+    });
+    return Array.from(teams).sort();
+  }, [usersList]);
+
+  const filteredUserDropdown = useMemo(() => {
+    if (selectedTeam === 'all') return usersList;
+    return usersList.filter(u => u.role === selectedTeam);
+  }, [usersList, selectedTeam]);
+
   // Filters
-  const [userId, setUserId] = useState<string>('');
   const [resolutionFilter, setResolutionFilter] = useState<'All' | 'Completed' | 'Pending'>('All');
   const [audioStatus, setAudioStatus] = useState<'All' | 'has_audio' | 'no_audio'>('All');
   const [reasonKeyword, setReasonKeyword] = useState<string>('');
@@ -75,8 +108,8 @@ const ReturnedOrdersReportPage: React.FC = () => {
       if (actionDateRange.start && actionDateRange.end) {
         query += `&action_start_date=${actionDateRange.start}&action_end_date=${actionDateRange.end}`;
       }
-      if (userId) {
-        query += `&user_id=${userId}`;
+      if (selectedUsers.length > 0) {
+        query += `&user_id=${selectedUsers.join(',')}`;
       }
       if (audioStatus !== 'All') {
         query += `&audio_status=${audioStatus}`;
@@ -294,17 +327,82 @@ const ReturnedOrdersReportPage: React.FC = () => {
                       </select>
                     </div>
 
-                    {/* User ID */}
+                    {/* Team Dropdown */}
                     <div className="flex flex-col gap-1.5 w-full sm:w-[150px]">
-                      <label className="text-sm font-medium text-gray-700">รหัสพนักงาน</label>
-                      <input 
-                        type="text" 
-                        value={userId} 
-                        onChange={e => setUserId(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && fetchData()}
-                        placeholder="รหัสพนักงาน..."
-                        className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                      />
+                      <label className="text-sm font-medium text-gray-700">ทีมขาย</label>
+                      <select
+                          value={selectedTeam}
+                          onChange={(e) => { setSelectedTeam(e.target.value); setSelectedUsers([]); }}
+                          className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      >
+                          <option value="all">ทุกทีม</option>
+                          {availableTeams.map(t => (
+                              <option key={t} value={t}>{t}</option>
+                          ))}
+                      </select>
+                    </div>
+
+                    {/* Employee Dropdown */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[180px]">
+                      <label className="text-sm font-medium text-gray-700">รายชื่อพนักงาน</label>
+                      <div className="relative">
+                          <button
+                              onClick={() => setShowUserDropdown(!showUserDropdown)}
+                              className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white w-full text-left flex justify-between items-center"
+                          >
+                              <span className="truncate max-w-[130px]">
+                                  {selectedUsers.length === 0 
+                                      ? "พนักงานทุกคน" 
+                                      : `เลือกแล้ว ${selectedUsers.length} คน`}
+                              </span>
+                              <span className="text-gray-400 text-xs">▼</span>
+                          </button>
+                          {showUserDropdown && (
+                              <>
+                                  <div className="fixed inset-0 z-40" onClick={() => setShowUserDropdown(false)}></div>
+                                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                                      <div 
+                                          className="px-3 py-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer text-sm"
+                                          onClick={() => setSelectedUsers([])}
+                                      >
+                                          <label className="flex items-center gap-2 cursor-pointer w-full">
+                                              <input 
+                                                  type="checkbox" 
+                                                  checked={selectedUsers.length === 0} 
+                                                  readOnly 
+                                                  className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                              />
+                                              <span>พนักงานทุกคน (All)</span>
+                                          </label>
+                                      </div>
+                                      {filteredUserDropdown.map(u => (
+                                          <div 
+                                              key={u.id}
+                                              className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                              onClick={() => {
+                                                  const idStr = u.id.toString();
+                                                  if (selectedUsers.includes(idStr)) {
+                                                      setSelectedUsers(prev => prev.filter(id => id !== idStr));
+                                                  } else {
+                                                      setSelectedUsers(prev => [...prev, idStr]);
+                                                  }
+                                              }}
+                                          >
+                                              <label className="flex items-center gap-2 cursor-pointer w-full">
+                                                  <input 
+                                                      type="checkbox" 
+                                                      checked={selectedUsers.includes(u.id.toString())} 
+                                                      readOnly 
+                                                      className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                  />
+                                                  <span>{u.first_name} {u.last_name} {u.role ? `[${u.role}]` : ''}</span>
+                                              </label>
+                                          </div>
+                                      ))}
+                                  </div>
+                              </>
+                          )}
+                      </div>
                     </div>
                   </div>
 
