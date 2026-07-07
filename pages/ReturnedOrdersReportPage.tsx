@@ -58,6 +58,9 @@ const ReturnedOrdersReportPage: React.FC = () => {
   // Filters
   const [userId, setUserId] = useState<string>('');
   const [resolutionFilter, setResolutionFilter] = useState<'All' | 'Completed' | 'Pending'>('All');
+  const [audioStatus, setAudioStatus] = useState<'All' | 'has_audio' | 'no_audio'>('All');
+  const [reasonKeyword, setReasonKeyword] = useState<string>('');
+  const [searchKeyword, setSearchKeyword] = useState<string>('');
 
   const fetchData = async (silent = false) => {
     try {
@@ -74,6 +77,15 @@ const ReturnedOrdersReportPage: React.FC = () => {
       }
       if (userId) {
         query += `&user_id=${userId}`;
+      }
+      if (audioStatus !== 'All') {
+        query += `&audio_status=${audioStatus}`;
+      }
+      if (reasonKeyword) {
+        query += `&reason_keyword=${encodeURIComponent(reasonKeyword)}`;
+      }
+      if (searchKeyword) {
+        query += `&search_keyword=${encodeURIComponent(searchKeyword)}`;
       }
       
       const json = await apiFetch(query);
@@ -92,7 +104,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [activeTab, resolutionFilter]);
+  }, [activeTab, resolutionFilter, audioStatus]);
 
   const handleToggleCompleted = async (orderId: string, currentStatus: number) => {
     try {
@@ -211,16 +223,28 @@ const ReturnedOrdersReportPage: React.FC = () => {
                     <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-1 rounded-sm mt-1">ระบบจะดึงข้อมูลเฉพาะช่วงเวลาที่เลือกในทุกๆ วัน</span>
                   </div>
 
-                  {/* Action Date Range */}
+                  {/* Action Details: Date Range & Audio Status */}
                   <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-md shadow-sm">
-                    <label className="text-sm font-semibold text-gray-700 border-b pb-2">วันที่ลงสถานะตีกลับ/ยกเลิก</label>
+                    <label className="text-sm font-semibold text-gray-700 border-b pb-2">ข้อมูลการตีกลับ/ยกเลิก (Action Details)</label>
                     <div className="z-10 mt-1">
                       <UniversalDateRangePicker 
                         value={actionDateRange}
                         allowAllTime={true}
-                        placeholder="ระบุหรือไม่ระบุก็ได้..."
+                        placeholder="วันที่ลงสถานะ (ระบุหรือไม่ระบุก็ได้)..."
                         onChange={(range) => setActionDateRange(range)}
                       />
+                    </div>
+                    <div className="flex flex-col gap-1 mt-1 z-0">
+                      <label className="text-[10px] text-gray-500">สถานะไฟล์เสียง</label>
+                      <select
+                        value={audioStatus}
+                        onChange={e => setAudioStatus(e.target.value as any)}
+                        className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none bg-white"
+                      >
+                        <option value="All">สถานะไฟล์เสียงทั้งหมด</option>
+                        <option value="has_audio">มีไฟล์เสียงแล้ว</option>
+                        <option value="no_audio">ยังไม่มีไฟล์เสียง</option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -228,9 +252,36 @@ const ReturnedOrdersReportPage: React.FC = () => {
                 {/* Bottom Row: Status, User ID, and Search */}
                 <div className="flex flex-wrap items-end justify-between pt-3 border-t border-gray-200 mt-2 gap-4">
                   
-                  <div className="flex flex-wrap items-end gap-4">
+                  <div className="flex flex-wrap items-end gap-3 w-full xl:w-auto flex-1">
+                    
+                    {/* Reason Search */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[220px]">
+                      <label className="text-sm font-medium text-gray-700">ค้นหาสาเหตุ/หมายเหตุ</label>
+                      <input 
+                        type="text" 
+                        value={reasonKeyword} 
+                        onChange={e => setReasonKeyword(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && fetchData()}
+                        placeholder="พิมพ์สาเหตุ..."
+                        className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+
+                    {/* Customer Search */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[220px]">
+                      <label className="text-sm font-medium text-gray-700">ค้นหาลูกค้า/รหัสออเดอร์</label>
+                      <input 
+                        type="text" 
+                        value={searchKeyword} 
+                        onChange={e => setSearchKeyword(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && fetchData()}
+                        placeholder="เบอร์โทร, ชื่อ, รหัส..."
+                        className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+
                     {/* Resolution Status */}
-                    <div className="flex flex-col gap-1.5 w-full sm:w-[200px]">
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[180px]">
                       <label className="text-sm font-medium text-gray-700">สถานะการจัดการ</label>
                       <select
                         value={resolutionFilter}
@@ -244,12 +295,13 @@ const ReturnedOrdersReportPage: React.FC = () => {
                     </div>
 
                     {/* User ID */}
-                    <div className="flex flex-col gap-1.5 w-full sm:w-[200px]">
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[150px]">
                       <label className="text-sm font-medium text-gray-700">รหัสพนักงาน</label>
                       <input 
                         type="text" 
                         value={userId} 
-                        onChange={e => setUserId(e.target.value)} 
+                        onChange={e => setUserId(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && fetchData()}
                         placeholder="รหัสพนักงาน..."
                         className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
                       />

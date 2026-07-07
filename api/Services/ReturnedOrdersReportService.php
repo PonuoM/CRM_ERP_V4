@@ -15,7 +15,8 @@ class ReturnedOrdersReportService
         string $orderStartDate, string $orderEndDate, 
         string $orderStartTime, string $orderEndTime,
         string $actionStartDate, string $actionEndDate,
-        ?int $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All'
+        ?int $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All',
+        string $audioStatus = 'All', string $reasonKeyword = '', string $searchKeyword = ''
     ): array
     {
         // Allow only Returned or Cancelled
@@ -103,6 +104,23 @@ class ReturnedOrdersReportService
             $where .= " AND o.admin_resolution_completed = 1";
         } elseif ($resolutionStatus === 'Pending') {
             $where .= " AND o.admin_resolution_completed = 0";
+        }
+
+        if ($audioStatus === 'has_audio') {
+            $where .= " AND EXISTS (SELECT 1 FROM order_audio_links oal WHERE oal.order_id = o.id)";
+        } elseif ($audioStatus === 'no_audio') {
+            $where .= " AND NOT EXISTS (SELECT 1 FROM order_audio_links oal WHERE oal.order_id = o.id)";
+        }
+
+        if (!empty($reasonKeyword)) {
+            $where .= " AND (ct.label LIKE :reason_keyword OR oc.notes LIKE :reason_keyword)";
+            $params[':reason_keyword'] = '%' . $reasonKeyword . '%';
+        }
+
+        if (!empty($searchKeyword)) {
+            $where .= " AND (c.first_name LIKE :search_keyword OR c.last_name LIKE :search_keyword OR c.phone LIKE :search_keyword OR o.id = :exact_keyword)";
+            $params[':search_keyword'] = '%' . $searchKeyword . '%';
+            $params[':exact_keyword'] = $searchKeyword;
         }
 
         $sql = "
