@@ -183,6 +183,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                   <label className="text-sm font-medium text-gray-700">ช่วงวันที่</label>
                   <UniversalDateRangePicker 
                     value={dateRange}
+                    allowAllTime={false}
                     onChange={(range) => {
                       setDateRange(range);
                       setTimeout(fetchData, 100);
