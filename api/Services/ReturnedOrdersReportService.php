@@ -19,14 +19,22 @@ class ReturnedOrdersReportService
         }
 
         $params = [];
-
-        // Base where clauses
         $where = "1=1";
+        $limitClause = "";
         
         if (!empty($startDate) && !empty($endDate)) {
-            $where .= " AND o.order_date >= :start_date AND o.order_date <= :end_date";
-            $params[':start_date'] = $startDate . ' 00:00:00';
-            $params[':end_date'] = $endDate . ' 23:59:59';
+            $startObj = DateTime::createFromFormat('Y-m-d', $startDate);
+            $endObj = DateTime::createFromFormat('Y-m-d', $endDate);
+            
+            if ($startObj && $endObj && $startObj->format('Y-m-d') === $startDate && $endObj->format('Y-m-d') === $endDate) {
+                $where .= " AND o.order_date >= :start_date AND o.order_date <= :end_date";
+                $params[':start_date'] = $startDate . ' 00:00:00';
+                $params[':end_date'] = $endDate . ' 23:59:59';
+            } else {
+                $limitClause = "LIMIT 500"; // Fallback for invalid date format
+            }
+        } else {
+            $limitClause = "LIMIT 500"; // Performance safety net for empty dates
         }
         
         if ($companyId) {
@@ -85,6 +93,7 @@ class ReturnedOrdersReportService
             LEFT JOIN users u ON o.creator_id = u.id
             WHERE $where
             ORDER BY o.order_date DESC
+            $limitClause
         ";
 
         $stmt = $this->pdo->prepare($sql);

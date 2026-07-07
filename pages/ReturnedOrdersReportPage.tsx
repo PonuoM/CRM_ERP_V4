@@ -58,7 +58,15 @@ const ReturnedOrdersReportPage: React.FC = () => {
       const start = dateRange.start;
       const end = dateRange.end;
       
-      const json = await apiFetch(`returned_orders_report?start_date=${start}&end_date=${end}&status_type=${activeTab}&user_id=${userId}&resolution_status=${resolutionFilter}`);
+      let query = `returned_orders_report?status_type=${activeTab}&resolution_status=${resolutionFilter}`;
+      if (start && end) {
+        query += `&start_date=${start}&end_date=${end}`;
+      }
+      if (userId) {
+        query += `&user_id=${userId}`;
+      }
+      
+      const json = await apiFetch(query);
       
       if (json && json.ok) {
         setData(json.data);
@@ -211,6 +219,13 @@ const ReturnedOrdersReportPage: React.FC = () => {
                   {loading ? 'กำลังค้นหา...' : 'ค้นหา'}
                 </button>
               </div>
+              {/* User Warning for All dates */}
+              {!dateRange.start && (
+                <div className="bg-yellow-50 text-yellow-800 px-4 py-2 rounded-md mb-4 text-sm flex items-start gap-2 border border-yellow-200">
+                  <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <span><strong>คำเตือน:</strong> การค้นหาแบบ "ทั้งหมด" (ไม่ระบุวันที่) จะถูกจำกัดการแสดงผลเพียง <strong>500 รายการล่าสุด</strong> เพื่อป้องกันเซิร์ฟเวอร์ทำงานหนัก หากต้องการดูออเดอร์เก่าๆ หรือทั้งหมดจริงๆ กรุณาระบุช่วงวันที่ครับ</span>
+                </div>
+              )}
 
               {/* Summary */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
