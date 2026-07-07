@@ -37,9 +37,16 @@ const ReturnedOrdersReportPage: React.FC = () => {
   
   // State
   const [activeTab, setActiveTab] = useState<'Returned' | 'Cancelled'>('Returned');
-  const [dateRange, setDateRange] = useState({
+  const [orderDateRange, setOrderDateRange] = useState({
     start: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
     end: format(new Date(), 'yyyy-MM-dd')
+  });
+  const [orderStartTime, setOrderStartTime] = useState('');
+  const [orderEndTime, setOrderEndTime] = useState('');
+
+  const [actionDateRange, setActionDateRange] = useState({
+    start: '',
+    end: ''
   });
   const [data, setData] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,12 +62,15 @@ const ReturnedOrdersReportPage: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const start = dateRange.start;
-      const end = dateRange.end;
-      
       let query = `returned_orders_report?status_type=${activeTab}&resolution_status=${resolutionFilter}`;
-      if (start && end) {
-        query += `&start_date=${start}&end_date=${end}`;
+      if (orderDateRange.start && orderDateRange.end) {
+        query += `&order_start_date=${orderDateRange.start}&order_end_date=${orderDateRange.end}`;
+      }
+      if (orderStartTime && orderEndTime) {
+        query += `&order_start_time=${orderStartTime}&order_end_time=${orderEndTime}`;
+      }
+      if (actionDateRange.start && actionDateRange.end) {
+        query += `&action_start_date=${actionDateRange.start}&action_end_date=${actionDateRange.end}`;
       }
       if (userId) {
         query += `&user_id=${userId}`;
@@ -176,59 +186,83 @@ const ReturnedOrdersReportPage: React.FC = () => {
 
             <div className="p-6">
               {/* Filters */}
-              <div className="flex flex-wrap items-end gap-4 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm">
+              <div className="flex flex-col gap-4 mb-6 bg-gray-50 p-5 rounded-lg border border-gray-200 shadow-sm">
                 
-                {/* Date Range */}
-                <div className="flex flex-col gap-1.5 z-10 w-full md:w-[320px]">
-                  <label className="text-sm font-medium text-gray-700">ช่วงวันที่</label>
-                  <UniversalDateRangePicker 
-                    value={dateRange}
-                    allowAllTime={false}
-                    onChange={(range) => {
-                      setDateRange(range);
-                      setTimeout(fetchData, 100);
-                    }}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Order Date Range & Time Window */}
+                  <div className="flex flex-col gap-2 p-3 bg-white border border-gray-200 rounded-md shadow-sm">
+                    <label className="text-sm font-semibold text-gray-700 border-b pb-2">วันที่สร้างคำสั่งซื้อ (Order Date)</label>
+                    <div className="z-20">
+                      <UniversalDateRangePicker 
+                        value={orderDateRange}
+                        allowAllTime={false}
+                        onChange={(range) => setOrderDateRange(range)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 mt-1">
+                      <label className="text-[10px] text-gray-500">กรองเฉพาะช่วงเวลาของแต่ละวัน</label>
+                      <div className="flex items-center gap-2">
+                        <input type="time" value={orderStartTime} onChange={e => setOrderStartTime(e.target.value)} className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none" />
+                        <span className="text-gray-400 text-xs">ถึง</span>
+                        <input type="time" value={orderEndTime} onChange={e => setOrderEndTime(e.target.value)} className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none" />
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-1 rounded-sm mt-1">ระบบจะดึงข้อมูลเฉพาะช่วงเวลาที่เลือกในทุกๆ วัน</span>
+                  </div>
+
+                  {/* Action Date Range */}
+                  <div className="flex flex-col gap-2 p-3 bg-white border border-gray-200 rounded-md shadow-sm">
+                    <label className="text-sm font-semibold text-gray-700 border-b pb-2">วันที่ลงสถานะตีกลับ/ยกเลิก</label>
+                    <div className="z-10 mt-1">
+                      <UniversalDateRangePicker 
+                        value={actionDateRange}
+                        allowAllTime={true}
+                        placeholder="ระบุหรือไม่ระบุก็ได้..."
+                        onChange={(range) => setActionDateRange(range)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Resolution Status */}
+                  <div className="flex flex-col gap-1.5 justify-end">
+                    <label className="text-sm font-medium text-gray-700">สถานะการจัดการ</label>
+                    <select
+                      value={resolutionFilter}
+                      onChange={e => setResolutionFilter(e.target.value as any)}
+                      className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="All">ทั้งหมด</option>
+                      <option value="Pending">รอดำเนินการ</option>
+                      <option value="Completed">จัดการเรียบร้อยแล้ว</option>
+                    </select>
+                  </div>
+
+                  {/* User ID */}
+                  <div className="flex flex-col gap-1.5 justify-end">
+                    <label className="text-sm font-medium text-gray-700">รหัสพนักงาน</label>
+                    <input 
+                      type="text" 
+                      value={userId} 
+                      onChange={e => setUserId(e.target.value)} 
+                      placeholder="รหัสพนักงาน..."
+                      className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                    />
+                  </div>
                 </div>
 
-                {/* Resolution Status */}
-                <div className="flex flex-col gap-1.5 w-full md:w-[200px]">
-                  <label className="text-sm font-medium text-gray-700">สถานะการจัดการ</label>
-                  <select
-                    value={resolutionFilter}
-                    onChange={e => setResolutionFilter(e.target.value as any)}
-                    className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                <div className="flex justify-end pt-3 border-t border-gray-200 mt-2">
+                  <button
+                    onClick={fetchData}
+                    className="bg-gray-800 text-white px-8 h-[38px] rounded-md hover:bg-gray-700 transition font-medium flex items-center justify-center gap-2 shadow-sm"
+                    disabled={loading}
                   >
-                    <option value="All">ทั้งหมด</option>
-                    <option value="Pending">รอดำเนินการ</option>
-                    <option value="Completed">จัดการเรียบร้อยแล้ว</option>
-                  </select>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    {loading ? 'กำลังค้นหา...' : 'ค้นหาข้อมูล'}
+                  </button>
                 </div>
-
-                {/* User ID */}
-                <div className="flex flex-col gap-1.5 w-full md:w-[200px]">
-                  <label className="text-sm font-medium text-gray-700">รหัสพนักงาน</label>
-                  <input 
-                    type="text" 
-                    value={userId} 
-                    onChange={e => setUserId(e.target.value)} 
-                    placeholder="รหัสพนักงาน..."
-                    className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                  />
-                </div>
-
-                {/* Search Button */}
-                <button
-                  onClick={fetchData}
-                  className="bg-gray-800 text-white px-6 h-[38px] rounded-md hover:bg-gray-700 transition font-medium flex items-center justify-center gap-2 shadow-sm"
-                  disabled={loading}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                  {loading ? 'กำลังค้นหา...' : 'ค้นหา'}
-                </button>
               </div>
               {/* User Warning for All dates */}
-              {!dateRange.start && (
+              {!orderDateRange.start && (
                 <div className="bg-yellow-50 text-yellow-800 px-4 py-2 rounded-md mb-4 text-sm flex items-start gap-2 border border-yellow-200">
                   <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                   <span><strong>คำเตือน:</strong> การค้นหาแบบ "ทั้งหมด" (ไม่ระบุวันที่) จะถูกจำกัดการแสดงผลเพียง <strong>500 รายการล่าสุด</strong> เพื่อป้องกันเซิร์ฟเวอร์ทำงานหนัก หากต้องการดูออเดอร์เก่าๆ หรือทั้งหมดจริงๆ กรุณาระบุช่วงวันที่ครับ</span>
