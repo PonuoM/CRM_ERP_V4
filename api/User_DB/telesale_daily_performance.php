@@ -72,14 +72,14 @@ try {
         SELECT u.id, u.first_name, u.last_name, u.phone, u.supervisor_id, u.role_id, u.role, sup.first_name AS supervisor_name
         FROM users u 
         LEFT JOIN users sup ON u.supervisor_id = sup.id
-        WHERE u.company_id = ? AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%') AND u.status = 'active' $userFilter
+        WHERE u.company_id = ? AND u.role_id IN (3, 6, 7) AND u.status = 'active' $userFilter
         UNION
         SELECT DISTINCT u.id, u.first_name, u.last_name, u.phone, u.supervisor_id, u.role_id, u.role, sup.first_name AS supervisor_name
         FROM users u
         LEFT JOIN users sup ON u.supervisor_id = sup.id
         JOIN order_items oi ON oi.creator_id = u.id
         JOIN orders o ON oi.parent_order_id = o.id
-        WHERE u.company_id = ? AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%') AND u.status != 'active'
+        WHERE u.company_id = ? AND u.role_id IN (3, 6, 7) AND u.status != 'active'
             AND DATE(o.order_date) BETWEEN ? AND ?
             AND TIME(o.order_date) BETWEEN ? AND ?
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
