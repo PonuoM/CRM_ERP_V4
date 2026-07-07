@@ -6,10 +6,14 @@ import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentSt
 import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText, XCircle, RotateCcw } from 'lucide-react';
 import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl, getTabRules, validateOrdersForExport, fetchExportTemplates, getExportOrderIds, batchExportOrders } from '../services/api';
+import useTeamEmployeeFilter from '../hooks/useTeamEmployeeFilter';
+import { filterTeamUsers } from '../utils/filterTeamUsers';
 import { apiFetch } from '../services/api';
 import { listQuotaProducts } from '../services/quotaApi';
 import usePersistentState from '../utils/usePersistentState';
 import Spinner from '../components/Spinner';
+import { formatOrdersRaw } from '../utils/exportOrdersFormat';
+import { downloadDataFile } from '../utils/exportUtils';
 
 interface ManageOrdersPageProps {
   user: User;
@@ -36,6 +40,78 @@ const DateFilterButton: React.FC<{ label: string, value: string, activeValue: st
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500, 9999];
 const SHIPPING_PROVIDERS = ["J&T Express", "Flash Express", "Kerry Express", "Aiport Logistic", "ไปรษณีย์ไทย"];
 
+
+export const mapOrderResponse = (r: any): any => ({
+  id: r.id,
+  customerId: r.customer_id,
+  companyId: r.company_id,
+  creatorId: r.creator_id,
+  orderDate: r.order_date,
+  deliveryDate: r.delivery_date,
+  shippingAddress: {
+    recipientFirstName: r.recipient_first_name || '',
+    recipientLastName: r.recipient_last_name || '',
+    street: r.street || '',
+    subdistrict: r.subdistrict || '',
+    district: r.district || '',
+    province: r.province || '',
+    postalCode: r.postal_code || '',
+  },
+  shippingProvider: r.shipping_provider,
+  shippingCost: Number(r.shipping_cost || 0),
+  billDiscount: Number(r.bill_discount || 0),
+  couponDiscount: Number(r.coupon_discount || 0),
+  totalAmount: Number(r.total_amount || 0),
+  paymentMethod: r.payment_method,
+  paymentStatus: r.payment_status,
+  orderStatus: r.order_status,
+  trackingNumbers: r.tracking_numbers ? r.tracking_numbers.split(',').map((t: string) => t.trim()) : [],
+  amountPaid: r.amount_paid !== undefined && r.amount_paid !== null ? Number(r.amount_paid) : undefined,
+  codAmount: r.cod_amount ? Number(r.cod_amount) : undefined,
+  slipUrl: r.slip_url,
+  salesChannel: r.sales_channel,
+  salesChannelPageId: r.sales_channel_page_id,
+  warehouseId: r.warehouse_id,
+  bankAccountId: r.bank_account_id,
+  transferDate: r.transfer_date,
+  customerType: r.customer_type,
+  customerPhone: r.customer_phone,
+  items: (r.items || []).map((it: any) => ({
+    ...it,
+    id: it.id,
+    productId: it.product_id,
+    quantity: Number(it.quantity ?? 0),
+    pricePerUnit: Number(it.price_per_unit ?? it.price ?? 0),
+    discount: Number(it.discount ?? 0),
+    netTotal: Number(it.net_total ?? it.netTotal ?? 0),
+    creatorId: it.creator_id,
+    isFreebie: Boolean(it.is_freebie),
+    boxNumber: it.box_number,
+    productSku: it.product_sku,
+    productName: it.product_name,
+    productCategory: it.product_category,
+    productReportCategory: it.product_report_category,
+    isPromotionParent: Boolean(it.is_promotion_parent ?? 0),
+    promotionId: it.promotion_id,
+    parentItemId: it.parent_item_id ?? it.parentItemId,
+    basketKeyAtSale: it.basket_key_at_sale,
+  })),
+  slips: r.slips || [],
+  trackingDetails: r.tracking_details || r.trackingDetails || [],
+  boxes: r.boxes || [],
+  reconcileAction: r.reconcile_action,
+  customerInfo: (r.customer_id || r.customer_phone || r.phone) ? {
+    firstName: r.customer_first_name || '',
+    lastName: r.customer_last_name || '',
+    phone: r.phone || r.customer_phone || '',
+    lineId: r.customer_line_id || '',
+    facebookName: r.customer_facebook_name || ''
+  } : undefined,
+  airportDeliveryStatus: r.airport_delivery_status,
+  airportDeliveryDate: r.airport_delivery_date,
+  paymentReceivedDate: r.payment_received_date
+});
+
 const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, products, openModal, onProcessOrders, onCancelOrders, onUpdateShippingProvider }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
@@ -48,6 +124,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [refreshCounter, setRefreshCounter] = useState(0); // For triggering refresh on modal close
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all'); // Always 'all' - payment status filtering is done via advanced filters
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showMoreAdvanced, setShowMoreAdvanced] = useState(false);
   const [showExportHistory, setShowExportHistory] = useState(false);
   const [exportHistory, setExportHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -55,6 +132,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [historyTemplateSelection, setHistoryTemplateSelection] = useState<Record<number, number>>({});
   const [fOrderId, setFOrderId] = useState('');
   const [fTracking, setFTracking] = useState('');
+  const [exportingCsv, setExportingCsv] = useState(false);
   const [fOrderDate, setFOrderDate] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [fDeliveryDate, setFDeliveryDate] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [fPaymentMethod, setFPaymentMethod] = useState<PaymentMethod | ''>('');
@@ -73,6 +151,18 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [afCustomerPhone, setAfCustomerPhone] = useState('');
   // Removed duplicate states
   const [afShop, setAfShop] = useState<string>('');
+
+  // New States for Time and Employee Filter
+  const [fOrderTime, setFOrderTime] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const [afOrderTime, setAfOrderTime] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  
+  const [fSelectedTeam, setFSelectedTeam] = useState<string>('all');
+  const [afSelectedTeam, setAfSelectedTeam] = useState<string>('all');
+  
+  const [fSelectedUsers, setFSelectedUsers] = useState<string[]>([]);
+  const [afSelectedUsers, setAfSelectedUsers] = useState<string[]>([]);
+
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   const [validationModal, setValidationModal] = useState<{ isOpen: boolean; valid: Order[]; invalid: Order[] }>({
     isOpen: false,
@@ -176,6 +266,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [isProcessing, setIsProcessing] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
 
+  const { availableTeams, filteredUsers: filteredUserDropdown } = useTeamEmployeeFilter(users, fSelectedTeam);
+
   // API Data States (Server-Side Pagination)
   const [apiOrders, setApiOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
@@ -207,6 +299,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
         setPayTab('all'); // Always use 'all' - payment status filtering is done via advanced filters
         setShowAdvancedFilters(!!saved.showAdvancedFilters);
+        setShowMoreAdvanced(!!saved.showMoreAdvanced);
         setFOrderId(saved.fOrderId ?? '');
         setFTracking(saved.fTracking ?? '');
         setFOrderDate(saved.fOrderDate ?? { start: '', end: '' });
@@ -216,6 +309,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setFCustomerName(saved.fCustomerName ?? '');
         setFCustomerPhone(saved.fCustomerPhone ?? '');
         setFShop(saved.fShop ?? '');
+        setFOrderTime(saved.fOrderTime ?? { start: '', end: '' });
+        setFSelectedTeam(saved.fSelectedTeam ?? 'all');
+        setFSelectedUsers(saved.fSelectedUsers ?? []);
+
         // Applied values (fallback to edited values if not present)
         setAfOrderId(saved.afOrderId ?? saved.fOrderId ?? '');
         setAfTracking(saved.afTracking ?? saved.fTracking ?? '');
@@ -226,6 +323,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setAfCustomerName(saved.afCustomerName ?? saved.fCustomerName ?? '');
         setAfCustomerPhone(saved.afCustomerPhone ?? saved.fCustomerPhone ?? '');
         setAfShop(saved.afShop ?? saved.fShop ?? '');
+        setAfOrderTime(saved.afOrderTime ?? saved.fOrderTime ?? { start: '', end: '' });
+        setAfSelectedTeam(saved.afSelectedTeam ?? saved.fSelectedTeam ?? 'all');
+        setAfSelectedUsers(saved.afSelectedUsers ?? saved.fSelectedUsers ?? []);
       }
     } catch { }
   }, []);
@@ -237,6 +337,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         dateRange,
         activeTab,
         showAdvancedFilters, // Removed payTab
+        showMoreAdvanced,
         fOrderId,
         fTracking,
         fOrderDate,
@@ -246,6 +347,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         fCustomerName,
         fCustomerPhone,
         fShop,
+        fOrderTime,
+        fSelectedTeam,
+        fSelectedUsers,
         // Applied values
         afOrderId,
         afTracking,
@@ -256,10 +360,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         afCustomerName,
         afCustomerPhone,
         afShop,
+        afOrderTime,
+        afSelectedTeam,
+        afSelectedUsers,
       };
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
     } catch { }
-  }, [activeDatePreset, dateRange, activeTab, showAdvancedFilters, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, fShop, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop]);
+  }, [activeDatePreset, dateRange, activeTab, showAdvancedFilters, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, fShop, fOrderTime, fSelectedTeam, fSelectedUsers, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop, afOrderTime, afSelectedTeam, afSelectedUsers]);
 
   // --- API Fetching Logic ---
 
@@ -285,6 +392,68 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     fetchCounts();
   }, [user?.companyId, refreshCounter]);
 
+  const getOrderQueryParams = (page: number, pageSize: number) => {
+    const getDeliveryDateFilter = () => {
+      if (activeTab !== 'waitingExport') {
+        return { start: undefined, end: undefined };
+      }
+      if (activeDatePreset === 'range') {
+        return {
+          start: dateRange.start || undefined,
+          end: dateRange.end || undefined
+        };
+      }
+      const today = new Date();
+      const formatDate = (d: Date) => d.toISOString().split('T')[0];
+      switch (activeDatePreset) {
+        case 'today': return { start: formatDate(today), end: formatDate(today) };
+        case 'tomorrow':
+          const tmr = new Date(today); tmr.setDate(tmr.getDate() + 1);
+          return { start: formatDate(tmr), end: formatDate(tmr) };
+        case 'next7days':
+          const next7 = new Date(today); next7.setDate(next7.getDate() + 7);
+          return { start: formatDate(today), end: formatDate(next7) };
+        case 'next30days':
+          const next30 = new Date(today); next30.setDate(next30.getDate() + 30);
+          return { start: formatDate(today), end: formatDate(next30) };
+        case 'missed':
+          const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+          return { start: undefined, end: formatDate(yesterday) };
+        case 'all': default: return { start: undefined, end: undefined };
+      }
+    };
+
+    const deliveryFilters = getDeliveryDateFilter();
+
+    return {
+      companyId: user.companyId,
+      page,
+      pageSize,
+      orderId: afOrderId || undefined,
+      trackingNumber: afTracking || undefined,
+      orderDateStart: afOrderDate.start || undefined,
+      orderDateEnd: afOrderDate.end || undefined,
+      orderTimeStart: afOrderTime.start || undefined,
+      orderTimeEnd: afOrderTime.end || undefined,
+      deliveryDateStart: deliveryFilters.start || afDeliveryDate.start || undefined,
+      deliveryDateEnd: deliveryFilters.end || afDeliveryDate.end || undefined,
+      paymentMethod: afPaymentMethod || undefined,
+      paymentStatus: afPaymentStatus || undefined,
+      customerName: afCustomerName || undefined,
+      customerPhone: afCustomerPhone || undefined,
+      shop: afShop || undefined,
+      creatorId: (() => {
+        if (afSelectedUsers.length > 0) return afSelectedUsers.map(id => parseInt(id, 10));
+        if (afSelectedTeam !== 'all') {
+          const teamUsers = filterTeamUsers(users, afSelectedTeam);
+          if (teamUsers.length > 0) return teamUsers.map(u => Number(u.id));
+        }
+        return undefined;
+      })(),
+      tab: activeTab,
+    };
+  };
+
   // Fetch orders from API
   useEffect(() => {
     // Abort previous request if exists
@@ -300,145 +469,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       setLoading(true);
       try {
         // Helper to interpret date presets (local within effect or outside)
-        const getDeliveryDateFilter = () => {
-          // Only apply this specific filter logic for 'waitingExport' tab
-          if (activeTab !== 'waitingExport') {
-            return { start: undefined, end: undefined };
-          }
-
-          if (activeDatePreset === 'range') {
-            return {
-              start: dateRange.start || undefined,
-              end: dateRange.end || undefined
-            };
-          }
-
-          const today = new Date();
-          const formatDate = (d: Date) => d.toISOString().split('T')[0];
-
-          switch (activeDatePreset) {
-            case 'today':
-              return { start: formatDate(today), end: formatDate(today) };
-            case 'tomorrow':
-              const tmr = new Date(today);
-              tmr.setDate(tmr.getDate() + 1);
-              return { start: formatDate(tmr), end: formatDate(tmr) };
-            case 'next7days':
-              const next7 = new Date(today);
-              next7.setDate(next7.getDate() + 7);
-              return { start: formatDate(today), end: formatDate(next7) };
-            case 'next30days':
-              const next30 = new Date(today);
-              next30.setDate(next30.getDate() + 30);
-              return { start: formatDate(today), end: formatDate(next30) };
-            case 'missed':
-              // "Missed" implies delivery date before today
-              const yesterday = new Date(today);
-              yesterday.setDate(yesterday.getDate() - 1);
-              return { start: undefined, end: formatDate(yesterday) };
-            case 'all':
-            default:
-              return { start: undefined, end: undefined };
-          }
-        };
-
-        const deliveryFilters = getDeliveryDateFilter();
-
-        const params: any = {
-          companyId: user.companyId,
-          page: currentPage,
-          pageSize: itemsPerPage,
-          // Advanced Filters
-          orderId: afOrderId || undefined,
-          trackingNumber: afTracking || undefined,
-          orderDateStart: afOrderDate.start || undefined,
-          orderDateEnd: afOrderDate.end || undefined,
-          // Merge explicit delivery date filter (from tab) with advanced filter if needed.
-          // Note: Tab filter (specific date bar) takes precedence if set, or we can merge logic.
-          // Here we assume if 'waitingExport' tab is active, we use its specific bar.
-          // If advanced filter is ALSO used, they might conflict, but advanced filter is 'afDeliveryDate'.
-          // Let's allow the specific bar to override if it has values, or rely on advanced filter if bar is 'all'.
-          deliveryDateStart: deliveryFilters.start || afDeliveryDate.start || undefined,
-          deliveryDateEnd: deliveryFilters.end || afDeliveryDate.end || undefined,
-
-          paymentMethod: afPaymentMethod || undefined,
-          paymentStatus: afPaymentStatus || undefined,
-          customerName: afCustomerName || undefined,
-          customerPhone: afCustomerPhone || undefined,
-          shop: afShop || undefined,
-
-          // Send active tab to backend for specialized filtering logic
-          tab: activeTab,
-        };
-
-        // TODO: Backend currently might not support 'orderStatus' filter directly in listOrders signature (based on TelesaleOrdersPage experience).
-        // If listOrders doesn't support orderStatus, we rely on default fetching or need to update listOrders.
-        // Based on previous task, listOrders supports: orderId, tracking, dates, payment info.
-        // It DOES NOT seem to support `orderStatus` yet based on my memory of listOrders in services/api.ts.
-        // I should check `services/api.ts` to see if I need to add `orderStatus`.
-
+        const params = getOrderQueryParams(currentPage, itemsPerPage);
         const response = await listOrders({ ...params, signal: controller.signal });
 
         if (response.ok) {
-          const mappedOrders = (response.orders || []).map((r: any) => ({
-            id: r.id,
-            customerId: r.customer_id,
-            companyId: r.company_id,
-            creatorId: r.creator_id,
-            orderDate: r.order_date,
-            deliveryDate: r.delivery_date,
-            shippingAddress: {
-              recipientFirstName: r.recipient_first_name || '',
-              recipientLastName: r.recipient_last_name || '',
-              street: r.street || '',
-              subdistrict: r.subdistrict || '',
-              district: r.district || '',
-              province: r.province || '',
-              postalCode: r.postal_code || '',
-            },
-            shippingProvider: r.shipping_provider,
-            shippingCost: Number(r.shipping_cost || 0),
-            billDiscount: Number(r.bill_discount || 0),
-            couponDiscount: Number(r.coupon_discount || 0),
-            totalAmount: Number(r.total_amount || 0),
-            paymentMethod: r.payment_method,
-            paymentStatus: r.payment_status,
-            orderStatus: r.order_status,
-            trackingNumbers: r.tracking_numbers ? r.tracking_numbers.split(',').map((t: string) => t.trim()) : [],
-            amountPaid: r.amount_paid !== undefined && r.amount_paid !== null ? Number(r.amount_paid) : undefined,
-            codAmount: r.cod_amount ? Number(r.cod_amount) : undefined,
-            slipUrl: r.slip_url,
-            salesChannel: r.sales_channel,
-            salesChannelPageId: r.sales_channel_page_id,
-            warehouseId: r.warehouse_id,
-            bankAccountId: r.bank_account_id,
-            transferDate: r.transfer_date,
-            items: (r.items || []).map((it: any) => ({
-              ...it,
-              pricePerUnit: Number(it.price_per_unit ?? it.price ?? 0),
-              quantity: Number(it.quantity ?? 0),
-              discount: Number(it.discount ?? 0),
-              netTotal: Number(it.net_total ?? it.netTotal ?? 0),
-              isPromotionParent: !!(it.is_promotion_parent ?? 0),
-              parentItemId: it.parent_item_id ?? it.parentItemId,
-            })),
-            slips: r.slips || [],
-            trackingDetails: r.tracking_details || r.trackingDetails || [],
-            boxes: r.boxes || [],
-            reconcileAction: r.reconcile_action,
-            // Customer information from API
-            // Use customer_id or phone as trigger, as first_name might be empty for some leads
-            customerInfo: (r.customer_id || r.customer_phone || r.phone) ? {
-              firstName: r.customer_first_name || '',
-              lastName: r.customer_last_name || '',
-              phone: r.phone || r.customer_phone || '',
-              street: r.customer_street || '',
-              subdistrict: r.customer_subdistrict || '',
-              district: r.customer_district || '',
-              province: r.customer_province || '',
-              postalCode: r.customer_postal_code || '',
-            } : undefined,
-          }));
+          const mappedOrders = (response.orders || []).map(mapOrderResponse);
 
 
           setApiOrders(mappedOrders);
@@ -490,7 +525,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     // Add dependencies for date filters logic
     activeDatePreset,
     dateRange.start,
-    dateRange.end
+    dateRange.end,
+    afOrderTime.start,
+    afOrderTime.end,
+    afSelectedTeam,
+    afSelectedUsers,
+    users.length
   ]);
 
   useEffect(() => {
@@ -1364,12 +1404,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       afPaymentMethod,
       afCustomerName,
       afCustomerPhone,
+      afOrderTime.start,
+      afOrderTime.end,
     ];
     let c = baseFields.filter(v => !!v && String(v).trim() !== '').length;
     if (afPaymentStatus && String(afPaymentStatus).trim() !== '') c += 1; // No longer conditional on payTab
     if (afShop && String(afShop).trim() !== '') c += 1;
+    if (afSelectedTeam !== 'all' || afSelectedUsers.length > 0) c += 1;
     return c;
-  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop]);
+  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop, afOrderTime, afSelectedTeam, afSelectedUsers]);
 
   const clearFilters = () => {
     // Reset all filters
@@ -1379,6 +1422,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setFDeliveryDate({ start: '', end: '' });
     setFPaymentMethod('' as any);
     setFPaymentStatus('' as any); // Unconditional reset
+    setFOrderTime({ start: '', end: '' });
+    setFSelectedTeam('all');
+    setFSelectedUsers([]);
     // Reset date presets
     setActiveDatePreset('today'); // Reset to 'today' instead of 'all'
     setDateRange({ start: '', end: '' });
@@ -1395,6 +1441,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setAfCustomerName('');
     setAfCustomerPhone('');
     setAfShop('');
+    setAfOrderTime({ start: '', end: '' });
+    setAfSelectedTeam('all');
+    setAfSelectedUsers([]);
   };
 
   // Apply (Search) advanced filters
@@ -1408,6 +1457,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setAfCustomerName(fCustomerName.trim());
     setAfCustomerPhone(fCustomerPhone.trim());
     setAfShop(fShop.trim());
+    setAfOrderTime({ ...fOrderTime });
+    setAfSelectedTeam(fSelectedTeam);
+    setAfSelectedUsers([...fSelectedUsers]);
     setShowAdvancedFilters(false);
   };
 
@@ -1494,6 +1546,114 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     }
   };
 
+  const handleExportCurrentView = async () => {
+    if (!user?.companyId) return;
+    setExportingCsv(true);
+    try {
+      const params = getOrderQueryParams(1, 15000);
+      const response = await listOrders(params);
+      if (!response.ok) {
+        alert('โหลดข้อมูลล้มเหลว กรุณาลองใหม่อีกครั้ง');
+        return;
+      }
+
+      const rawOrders = response.orders || [];
+      const mappedOrders = rawOrders.map((r: any) => ({
+        id: r.id,
+        customerId: r.customer_id,
+        companyId: r.company_id,
+        creatorId: r.creator_id,
+        orderDate: r.order_date,
+        deliveryDate: r.delivery_date,
+        shippingAddress: {
+          recipientFirstName: r.recipient_first_name || '',
+          recipientLastName: r.recipient_last_name || '',
+          street: r.street || '',
+          subdistrict: r.subdistrict || '',
+          district: r.district || '',
+          province: r.province || '',
+          postalCode: r.postal_code || '',
+        },
+        shippingProvider: r.shipping_provider,
+        shippingCost: Number(r.shipping_cost || 0),
+        billDiscount: Number(r.bill_discount || 0),
+        couponDiscount: Number(r.coupon_discount || 0),
+        totalAmount: Number(r.total_amount || 0),
+        paymentMethod: r.payment_method,
+        paymentStatus: r.payment_status,
+        orderStatus: r.order_status,
+        trackingNumbers: r.tracking_numbers ? r.tracking_numbers.split(',').map((t: string) => t.trim()) : [],
+        customerType: r.customer_type,
+        salesChannel: r.sales_channel,
+        salesChannelPageId: r.sales_channel_page_id,
+        customerPhone: r.customer_phone,
+        items: (r.items || []).map((item: any) => ({
+          id: item.id,
+          productId: item.product_id,
+          quantity: item.quantity,
+          pricePerUnit: item.price_per_unit,
+          discount: item.discount,
+          netTotal: item.net_total,
+          creatorId: item.creator_id,
+          isFreebie: Boolean(item.is_freebie),
+          boxNumber: item.box_number,
+          productSku: item.product_sku,
+          productName: item.product_name,
+          productCategory: item.product_category,
+          productReportCategory: item.product_report_category,
+          isPromotionParent: Boolean(item.is_promotion_parent),
+          promotionId: item.promotion_id,
+          parentItemId: item.parent_item_id,
+          basketKeyAtSale: item.basket_key_at_sale
+        }))
+      }));
+
+      const orderBoxesMap: Record<string, string> = {};
+      const returnedOrderIds = mappedOrders.filter((o: any) => o.orderStatus === 'Returned').map((o: any) => o.id);
+
+      if (returnedOrderIds.length > 0) {
+        for (let i = 0; i < returnedOrderIds.length; i += 100) {
+          const batchIds = returnedOrderIds.slice(i, i + 100);
+          try {
+            const res = await apiFetch(`Orders/get_order_boxes.php?order_ids=${batchIds.join(',')}`);
+            if (res.ok && res.boxes) {
+              res.boxes.forEach((box: any) => {
+                const key = `${box.order_id}-${box.box_number}`;
+                orderBoxesMap[key] = box.return_status;
+              });
+            }
+          } catch (e) {
+            console.error('Failed to fetch order boxes batch', e);
+          }
+        }
+      }
+
+      let pagesToPass: any[] = [];
+      try {
+        const pagesRes = await apiFetch(`pages?companyId=${user.companyId}`);
+        if (pagesRes.ok) {
+           pagesToPass = pagesRes.pages || [];
+        }
+      } catch(e) {}
+
+      const reportData = formatOrdersRaw(
+        mappedOrders,
+        customers,
+        users,
+        pagesToPass,
+        products,
+        orderBoxesMap
+      );
+
+      downloadDataFile(reportData, `export_orders_${activeTab}_${new Date().toISOString().split('T')[0]}`, 'csv');
+    } catch (err) {
+      console.error('Error exporting current view', err);
+      alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล');
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
   const renderPagination = (isTop = false) => {
     if (totalItems === 0 && !loading) return null;
     return (
@@ -1510,6 +1670,26 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               <>แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ</>
             )}
           </div>
+
+          {/* Export Button */}
+          {!loading && isTop && totalItems > 0 && (
+            <button
+              onClick={handleExportCurrentView}
+              disabled={exportingCsv}
+              className="ml-2 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exportingCsv ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                  กำลังส่งออก...
+                </>
+              ) : (
+                <>
+                  <FileText size={16} /> ส่งออกข้อมูล
+                </>
+              )}
+            </button>
+          )}
 
           {/* Cancel button - shows next to loading spinner */}
           {loading && (
@@ -1729,6 +1909,104 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               <label className="block text-xs text-gray-500 mb-1">วันที่ส่ง (ถึง)</label>
               <input type="date" value={fDeliveryDate.end} onChange={e => setFDeliveryDate(v => ({ ...v, end: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
+            
+            <div className="md:col-span-3 pt-2 mt-1 border-t border-gray-100">
+              <label className="flex items-center gap-2 cursor-pointer w-max">
+                <input
+                  type="checkbox"
+                  checked={showMoreAdvanced}
+                  onChange={e => setShowMoreAdvanced(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer w-4 h-4"
+                />
+                <span className="text-sm font-medium text-gray-700">แสดงตัวเลือกขั้นสูงเพิ่มเติม (เวลาสั่งซื้อ, ทีม, พนักงาน)</span>
+              </label>
+            </div>
+            
+            {showMoreAdvanced && (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">เวลาสั่งซื้อ (จาก)</label>
+                  <input type="time" value={fOrderTime.start} onChange={e => setFOrderTime(v => ({ ...v, start: e.target.value }))} className="w-full p-2 border rounded" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">เวลาสั่งซื้อ (ถึง)</label>
+                  <input type="time" value={fOrderTime.end} onChange={e => setFOrderTime(v => ({ ...v, end: e.target.value }))} className="w-full p-2 border rounded" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">กรองตามทีม</label>
+                  <select
+                    value={fSelectedTeam}
+                    onChange={e => {
+                      setFSelectedTeam(e.target.value);
+                      setFSelectedUsers([]);
+                    }}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="all">ทุกทีม</option>
+                    {availableTeams.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="relative">
+                  <label className="block text-xs text-gray-500 mb-1">กรองตามพนักงาน</label>
+                  <button
+                    onClick={() => setShowUserDropdown(v => !v)}
+                    className="w-full p-2 border rounded bg-white text-left flex justify-between items-center"
+                  >
+                    <span className="truncate">
+                      {fSelectedUsers.length === 0
+                        ? "พนักงานทุกคน (ในทีม)"
+                        : `เลือกแล้ว ${fSelectedUsers.length} คน`}
+                    </span>
+                    <span className="text-gray-400 text-xs">▼</span>
+                  </button>
+                  {showUserDropdown && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowUserDropdown(false)}></div>
+                      <div className="absolute top-[100%] left-0 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                        <div
+                          className="px-3 py-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer text-sm"
+                          onClick={() => setFSelectedUsers([])}
+                        >
+                          <label className="flex items-center gap-2 cursor-pointer w-full">
+                            <input
+                              type="checkbox"
+                              checked={fSelectedUsers.length === 0}
+                              readOnly
+                              className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <span>พนักงานทุกคน (All)</span>
+                          </label>
+                        </div>
+                        {filteredUserDropdown.map(u => (
+                          <div
+                            key={u.id}
+                            className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                            onClick={() => {
+                              const idStr = u.id.toString();
+                              setFSelectedUsers(prev =>
+                                prev.includes(idStr) ? prev.filter(id => id !== idStr) : [...prev, idStr]
+                              );
+                            }}
+                          >
+                            <label className="flex items-center gap-2 cursor-pointer w-full">
+                              <input
+                                type="checkbox"
+                                checked={fSelectedUsers.includes(u.id.toString())}
+                                readOnly
+                                className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              />
+                              <span className="truncate">{u.firstName} {u.lastName}</span>
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

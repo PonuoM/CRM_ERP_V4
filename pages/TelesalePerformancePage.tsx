@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import resolveApiBasePath from '@/utils/apiBasePath';
 import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
+import useTeamEmployeeFilter from '../hooks/useTeamEmployeeFilter';
 
 // ==========================================
 // Interfaces
@@ -268,7 +269,7 @@ function SortableHeader({
 // ==========================================
 // Main Component
 // ==========================================
-export default function TelesalePerformancePage() {
+export default function TelesalePerformancePage({ users = [] }: { users?: any[] }) {
     const currentDate = new Date();
     const [year, setYear] = useState(currentDate.getFullYear());
     const [month, setMonth] = useState(currentDate.getMonth() + 1);
@@ -463,14 +464,18 @@ export default function TelesalePerformancePage() {
         return () => clearTimeout(debounceTimer);
     }, [startDate, endDate, startTime, endTime]);
 
+    const { availableTeams, filteredUsers: filteredUserDropdown } = useTeamEmployeeFilter(users, selectedTeam);
+
     // Computed Daily Data
     const filteredDailyRecords = useMemo(() => {
+        const validUserIds = filteredUserDropdown.map(u => u.id.toString());
         return dailyRecords.filter(r => {
-            const matchTeam = selectedTeam === 'all' || r.team === selectedTeam;
-            const matchUser = selectedUsers.length === 0 || selectedUsers.includes(r.userId.toString());
-            return matchTeam && matchUser;
+            const matchUser = selectedUsers.length === 0 
+                ? validUserIds.includes(r.userId.toString()) 
+                : selectedUsers.includes(r.userId.toString());
+            return matchUser;
         }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || a.name.localeCompare(b.name));
-    }, [dailyRecords, selectedTeam, selectedUsers]);
+    }, [dailyRecords, selectedUsers, filteredUserDropdown]);
 
     const summaryDailyRecords = useMemo(() => {
         const summary = new Map<number, DailyRecord>();
@@ -523,8 +528,6 @@ export default function TelesalePerformancePage() {
         });
     }, [filteredDailyRecords]);
 
-    const availableTeams = useMemo(() => Array.from(new Set(dailyUsers.map(u => u.team))), [dailyUsers]);
-    const filteredUserDropdown = useMemo(() => dailyUsers.filter(u => selectedTeam === 'all' || u.team === selectedTeam), [dailyUsers, selectedTeam]);
 
 
     // Sorted telesale details
@@ -1198,7 +1201,7 @@ export default function TelesalePerformancePage() {
                         >
                             <option value="all">ทุกทีม</option>
                             {availableTeams.map(t => (
-                                <option key={t} value={t}>{t}</option>
+                                <option key={t.id} value={t.id}>{t.name}</option>
                             ))}
                         </select>
                         <div className="relative">
@@ -1251,7 +1254,7 @@ export default function TelesalePerformancePage() {
                                                         readOnly 
                                                         className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                     />
-                                                    <span className="truncate">{u.name}</span>
+                                                    <span className="truncate">{u.firstName} {u.lastName}</span>
                                                 </label>
                                             </div>
                                         ))}

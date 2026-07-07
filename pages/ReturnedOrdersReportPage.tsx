@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Calendar, Search, Filter, Headphones, ChevronDown, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
 import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
+import useTeamEmployeeFilter from '../hooks/useTeamEmployeeFilter';
 import { useToast } from '@/components/Toast';
 import Modal from '@/components/Modal';
 import { apiFetch } from '@/services/api';
@@ -44,9 +46,10 @@ interface UserData {
 
 interface ReturnedOrdersReportPageProps {
   currentUser?: any;
+  users?: any[];
 }
 
-const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ currentUser }) => {
+const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ currentUser, users = [] }) => {
   const toast = useToast();
   
   // State
@@ -70,55 +73,11 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null);
 
   // Users Data
-  const [usersList, setUsersList] = useState<UserData[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<string>('all');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
-  useEffect(() => {
-    const companyId = currentUser?.companyId || currentUser?.company_id || '';
-    const url = companyId ? `users?companyId=${companyId}` : 'users';
-    apiFetch(url).then(res => {
-      if (res && Array.isArray(res)) {
-        setUsersList(res);
-      }
-    });
-  }, [currentUser]);
-
-  const usersWithTeams = useMemo(() => {
-    return usersList
-      .filter(u => [3, 6, 7].includes(u.role_id))
-      .map(u => {
-        let team = 'อื่นๆ';
-        if (u.role_id === 3 || (u.role && u.role.toLowerCase().includes('admin page'))) {
-          team = 'ทีม Admin Page';
-        } else if (u.supervisor_id) {
-          const sup = usersList.find(x => x.id === u.supervisor_id);
-          if (sup) {
-            team = 'ทีม ' + sup.first_name;
-          }
-        } else {
-          const isSup = usersList.some(x => x.supervisor_id === u.id);
-          if (isSup) {
-            team = 'ทีม ' + u.first_name;
-          }
-        }
-        return { ...u, computed_team: team };
-      });
-  }, [usersList]);
-
-  const availableTeams = useMemo(() => {
-    const teams = new Set<string>();
-    usersWithTeams.forEach(u => {
-      if (u.computed_team) teams.add(u.computed_team);
-    });
-    return Array.from(teams).sort();
-  }, [usersWithTeams]);
-
-  const filteredUserDropdown = useMemo(() => {
-    if (selectedTeam === 'all') return usersWithTeams;
-    return usersWithTeams.filter(u => u.computed_team === selectedTeam);
-  }, [usersWithTeams, selectedTeam]);
+  const { availableTeams, filteredUsers: filteredUserDropdown } = useTeamEmployeeFilter(users, selectedTeam);
 
   // Filters
   const [resolutionFilter, setResolutionFilter] = useState<'All' | 'Completed' | 'Pending'>('All');
@@ -368,7 +327,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                       >
                           <option value="all">ทุกทีม</option>
                           {availableTeams.map(t => (
-                              <option key={t} value={t}>{t}</option>
+                              <option key={t.id} value={t.id}>{t.name}</option>
                           ))}
                       </select>
                     </div>
@@ -426,7 +385,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                                                       readOnly 
                                                       className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                   />
-                                                  <span>{u.first_name} {u.last_name} {u.computed_team ? `[${u.computed_team}]` : ''}</span>
+                                                  <span>{u.firstName} {u.lastName}</span>
                                               </label>
                                           </div>
                                       ))}

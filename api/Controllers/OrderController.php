@@ -82,6 +82,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $trackingNumber = $_GET['trackingNumber'] ?? null;
                 $orderDateStart = $_GET['orderDateStart'] ?? null;
                 $orderDateEnd = $_GET['orderDateEnd'] ?? null;
+                $orderTimeStart = $_GET['orderTimeStart'] ?? null;
+                $orderTimeEnd = $_GET['orderTimeEnd'] ?? null;
                 $deliveryDateStart = $_GET['deliveryDateStart'] ?? null;
                 $deliveryDateEnd = $_GET['deliveryDateEnd'] ?? null;
                 $paymentMethod = $_GET['paymentMethod'] ?? null;
@@ -165,6 +167,16 @@ function handle_orders(PDO $pdo, ?string $id): void
                 if ($orderDateEnd) {
                     $whereConditions[] = 'o.order_date <= ?';
                     $params[] = $orderDateEnd . ' 23:59:59';
+                }
+
+                if ($orderTimeStart) {
+                    $whereConditions[] = 'TIME(o.order_date) >= ?';
+                    $params[] = $orderTimeStart;
+                }
+
+                if ($orderTimeEnd) {
+                    $whereConditions[] = 'TIME(o.order_date) <= ?';
+                    $params[] = $orderTimeEnd;
                 }
 
                 if ($deliveryDateStart) {
@@ -393,8 +405,14 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
                 if ($creatorId) {
-                    $whereConditions[] = 'o.creator_id = ?';
-                    $params[] = $creatorId;
+                    if (is_array($creatorId)) {
+                        $placeholders = str_repeat('?,', count($creatorId) - 1) . '?';
+                        $whereConditions[] = "o.creator_id IN ($placeholders)";
+                        $params = array_merge($params, $creatorId);
+                    } else {
+                        $whereConditions[] = 'o.creator_id = ?';
+                        $params[] = $creatorId;
+                    }
                 }
 
                 if (!empty($whereConditions)) {

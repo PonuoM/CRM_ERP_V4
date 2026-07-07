@@ -4,7 +4,6 @@ import { apiFetch } from "../services/api";
 import { Calendar, Download, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
 import ExportTypeModal from "../components/ExportTypeModal";
 import { downloadDataFile } from "../utils/exportUtils";
-import { getPaymentStatusChip } from "../components/OrderTable";
 
 interface OrdersReportPageProps {
     currentUser: User;
@@ -228,7 +227,13 @@ const OrdersReportPage: React.FC<OrdersReportPageProps> = ({ currentUser }) => {
                                         <td className="px-2 py-1.5 text-right text-gray-700 font-medium">{formatMoney(order.total_amount)}</td>
                                         <td className="px-2 py-1.5 text-center text-gray-600">{order.payment_method || "-"}</td>
                                         <td className="px-2 py-1.5 text-center">
-                                            {order.payment_status ? getPaymentStatusChip(order.payment_status as any, order.payment_method as any) : <span className="text-gray-400">-</span>}
+                                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${order.payment_status === "Paid" ? "bg-green-100 text-green-700" :
+                                                order.payment_status === "Pending" ? "bg-yellow-100 text-yellow-700" :
+                                                    order.payment_status === "PartialPaid" ? "bg-blue-100 text-blue-700" :
+                                                        "bg-gray-100 text-gray-600"
+                                                }`}>
+                                                {order.payment_status || "-"}
+                                            </span>
                                         </td>
                                         <td className="px-2 py-1.5 text-center">
                                             <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${order.order_status === "Completed" ? "bg-green-100 text-green-700" :
