@@ -37,6 +37,9 @@ interface UserData {
   first_name: string;
   last_name: string;
   role: string;
+  role_id: number;
+  supervisor_id: number | null;
+  computed_team?: string;
 }
 
 const ReturnedOrdersReportPage: React.FC = () => {
@@ -76,18 +79,38 @@ const ReturnedOrdersReportPage: React.FC = () => {
     });
   }, []);
 
-  const availableTeams = useMemo(() => {
-    const teams = new Set<string>();
-    usersList.forEach(u => {
-      if (u.role) teams.add(u.role);
+  const usersWithTeams = useMemo(() => {
+    return usersList.map(u => {
+      let team = 'อื่นๆ';
+      if (u.role_id === 3 || (u.role && u.role.toLowerCase().includes('admin page'))) {
+        team = 'ทีม Admin Page';
+      } else if (u.supervisor_id) {
+        const sup = usersList.find(x => x.id === u.supervisor_id);
+        if (sup) {
+          team = 'ทีม ' + sup.first_name;
+        }
+      } else {
+        const isSup = usersList.some(x => x.supervisor_id === u.id);
+        if (isSup) {
+          team = 'ทีม ' + u.first_name;
+        }
+      }
+      return { ...u, computed_team: team };
     });
-    return Array.from(teams).sort();
   }, [usersList]);
 
+  const availableTeams = useMemo(() => {
+    const teams = new Set<string>();
+    usersWithTeams.forEach(u => {
+      if (u.computed_team) teams.add(u.computed_team);
+    });
+    return Array.from(teams).sort();
+  }, [usersWithTeams]);
+
   const filteredUserDropdown = useMemo(() => {
-    if (selectedTeam === 'all') return usersList;
-    return usersList.filter(u => u.role === selectedTeam);
-  }, [usersList, selectedTeam]);
+    if (selectedTeam === 'all') return usersWithTeams;
+    return usersWithTeams.filter(u => u.computed_team === selectedTeam);
+  }, [usersWithTeams, selectedTeam]);
 
   // Filters
   const [resolutionFilter, setResolutionFilter] = useState<'All' | 'Completed' | 'Pending'>('All');
@@ -395,7 +418,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                                                       readOnly 
                                                       className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                   />
-                                                  <span>{u.first_name} {u.last_name} {u.role ? `[${u.role}]` : ''}</span>
+                                                  <span>{u.first_name} {u.last_name} {u.computed_team ? `[${u.computed_team}]` : ''}</span>
                                               </label>
                                           </div>
                                       ))}
