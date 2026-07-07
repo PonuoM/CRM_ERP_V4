@@ -18,13 +18,16 @@ class ReturnedOrdersReportService
             throw new InvalidArgumentException("Invalid status type");
         }
 
-        $params = [
-            ':start_date' => $startDate . ' 00:00:00',
-            ':end_date' => $endDate . ' 23:59:59'
-        ];
+        $params = [];
 
         // Base where clauses
-        $where = "o.order_date >= :start_date AND o.order_date <= :end_date";
+        $where = "1=1";
+        
+        if (!empty($startDate) && !empty($endDate)) {
+            $where .= " AND o.order_date >= :start_date AND o.order_date <= :end_date";
+            $params[':start_date'] = $startDate . ' 00:00:00';
+            $params[':end_date'] = $endDate . ' 23:59:59';
+        }
         
         if ($companyId) {
             $where .= " AND o.company_id = :company_id";
