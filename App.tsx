@@ -7026,7 +7026,7 @@ const App: React.FC = () => {
       );
     }
     if (activePage === "Special Orders Report") {
-      return <ReturnedOrdersReportPage />;
+      return <ReturnedOrdersReportPage currentUser={currentUser} />;
     }
     if (activePage === "Reports") {
       return (
