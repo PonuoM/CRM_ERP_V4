@@ -80,23 +80,25 @@ const ReturnedOrdersReportPage: React.FC = () => {
   }, []);
 
   const usersWithTeams = useMemo(() => {
-    return usersList.map(u => {
-      let team = 'อื่นๆ';
-      if (u.role_id === 3 || (u.role && u.role.toLowerCase().includes('admin page'))) {
-        team = 'ทีม Admin Page';
-      } else if (u.supervisor_id) {
-        const sup = usersList.find(x => x.id === u.supervisor_id);
-        if (sup) {
-          team = 'ทีม ' + sup.first_name;
+    return usersList
+      .filter(u => [3, 6, 7].includes(u.role_id))
+      .map(u => {
+        let team = 'อื่นๆ';
+        if (u.role_id === 3 || (u.role && u.role.toLowerCase().includes('admin page'))) {
+          team = 'ทีม Admin Page';
+        } else if (u.supervisor_id) {
+          const sup = usersList.find(x => x.id === u.supervisor_id);
+          if (sup) {
+            team = 'ทีม ' + sup.first_name;
+          }
+        } else {
+          const isSup = usersList.some(x => x.supervisor_id === u.id);
+          if (isSup) {
+            team = 'ทีม ' + u.first_name;
+          }
         }
-      } else {
-        const isSup = usersList.some(x => x.supervisor_id === u.id);
-        if (isSup) {
-          team = 'ทีม ' + u.first_name;
-        }
-      }
-      return { ...u, computed_team: team };
-    });
+        return { ...u, computed_team: team };
+      });
   }, [usersList]);
 
   const availableTeams = useMemo(() => {
