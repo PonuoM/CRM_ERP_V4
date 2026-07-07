@@ -75,8 +75,8 @@ try {
             require_once __DIR__ . '/Services/ReturnedOrdersReportService.php';
             $svc = new ReturnedOrdersReportService($pdo);
             if (method() === 'GET') {
-                $startDate = $_GET['start_date'] ?? date('Y-m-01');
-                $endDate = $_GET['end_date'] ?? date('Y-m-t');
+                $startDate = $_GET['start_date'] ?? '';
+                $endDate = $_GET['end_date'] ?? '';
                 $userId = !empty($_GET['user_id']) ? (int)$_GET['user_id'] : null;
                 $companyId = !empty($_GET['company_id']) ? (int)$_GET['company_id'] : null;
                 // Default to company 1 if not set (or adapt based on auth)
