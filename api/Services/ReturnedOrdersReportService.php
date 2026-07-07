@@ -22,19 +22,24 @@ class ReturnedOrdersReportService
         $where = "1=1";
         $limitClause = "";
         
-        if (!empty($startDate) && !empty($endDate)) {
-            $startObj = DateTime::createFromFormat('Y-m-d', $startDate);
-            $endObj = DateTime::createFromFormat('Y-m-d', $endDate);
-            
-            if ($startObj && $endObj && $startObj->format('Y-m-d') === $startDate && $endObj->format('Y-m-d') === $endDate) {
-                $where .= " AND o.order_date >= :start_date AND o.order_date <= :end_date";
-                $params[':start_date'] = $startDate . ' 00:00:00';
-                $params[':end_date'] = $endDate . ' 23:59:59';
-            } else {
-                $limitClause = "LIMIT 500"; // Fallback for invalid date format
+        if (empty($startDate) || empty($endDate)) {
+            throw new InvalidArgumentException("กรุณาระบุช่วงวันที่ (ระบบไม่อนุญาตให้ค้นหาแบบทั้งหมดเพื่อประสิทธิภาพ)");
+        }
+
+        $startObj = DateTime::createFromFormat('Y-m-d', $startDate);
+        $endObj = DateTime::createFromFormat('Y-m-d', $endDate);
+        
+        if ($startObj && $endObj && $startObj->format('Y-m-d') === $startDate && $endObj->format('Y-m-d') === $endDate) {
+            $diff = $startObj->diff($endObj);
+            if ($diff->days > 186) { // ~6 months
+                throw new InvalidArgumentException("กรุณาเลือกช่วงเวลาไม่เกิน 6 เดือน");
             }
+
+            $where .= " AND o.order_date >= :start_date AND o.order_date <= :end_date";
+            $params[':start_date'] = $startDate . ' 00:00:00';
+            $params[':end_date'] = $endDate . ' 23:59:59';
         } else {
-            $limitClause = "LIMIT 500"; // Performance safety net for empty dates
+            throw new InvalidArgumentException("รูปแบบวันที่ไม่ถูกต้อง");
         }
         
         if ($companyId) {
