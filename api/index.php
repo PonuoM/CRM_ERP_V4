@@ -75,8 +75,17 @@ try {
             require_once __DIR__ . '/Services/ReturnedOrdersReportService.php';
             $svc = new ReturnedOrdersReportService($pdo);
             if (method() === 'GET') {
-                $startDate = $_GET['start_date'] ?? '';
-                $endDate = $_GET['end_date'] ?? '';
+                $orderStartDate = $_GET['order_start_date'] ?? '';
+                $orderEndDate = $_GET['order_end_date'] ?? '';
+                $orderStartTime = $_GET['order_start_time'] ?? '';
+                $orderEndTime = $_GET['order_end_time'] ?? '';
+                $actionStartDate = $_GET['action_start_date'] ?? '';
+                $actionEndDate = $_GET['action_end_date'] ?? '';
+
+                // Fallback for old clients
+                if (empty($orderStartDate)) $orderStartDate = $_GET['start_date'] ?? '';
+                if (empty($orderEndDate)) $orderEndDate = $_GET['end_date'] ?? '';
+
                 $userId = !empty($_GET['user_id']) ? (int)$_GET['user_id'] : null;
                 $companyId = !empty($_GET['company_id']) ? (int)$_GET['company_id'] : null;
                 // Default to company 1 if not set (or adapt based on auth)
@@ -87,7 +96,12 @@ try {
                 $statusType = $_GET['status_type'] ?? 'Returned';
                 $resolutionStatus = $_GET['resolution_status'] ?? 'All';
                 try {
-                    $data = $svc->getReportData($startDate, $endDate, $userId, $companyId, $statusType, $resolutionStatus);
+                    $data = $svc->getReportData(
+                        $orderStartDate, $orderEndDate,
+                        $orderStartTime, $orderEndTime,
+                        $actionStartDate, $actionEndDate,
+                        $userId, $companyId, $statusType, $resolutionStatus
+                    );
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
                 } catch (Exception $e) {
                     json_response(['ok' => false, 'message' => $e->getMessage()], 400);

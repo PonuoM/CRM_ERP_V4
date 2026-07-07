@@ -11,7 +11,12 @@ class ReturnedOrdersReportService
         $this->pdo = $pdo;
     }
 
-    public function getReportData(string $startDate, string $endDate, ?int $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All'): array
+    public function getReportData(
+        string $orderStartDate, string $orderEndDate, 
+        string $orderStartTime, string $orderEndTime,
+        string $actionStartDate, string $actionEndDate,
+        ?int $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All'
+    ): array
     {
         // Allow only Returned or Cancelled
         if (!in_array($statusType, ['Returned', 'Cancelled'])) {
@@ -22,24 +27,57 @@ class ReturnedOrdersReportService
         $where = "1=1";
         $limitClause = "";
         
-        if (empty($startDate) || empty($endDate)) {
-            throw new InvalidArgumentException("กรุณาระบุช่วงวันที่ (ระบบไม่อนุญาตให้ค้นหาแบบทั้งหมดเพื่อประสิทธิภาพ)");
-        }
-
-        $startObj = DateTime::createFromFormat('Y-m-d', $startDate);
-        $endObj = DateTime::createFromFormat('Y-m-d', $endDate);
-        
-        if ($startObj && $endObj && $startObj->format('Y-m-d') === $startDate && $endObj->format('Y-m-d') === $endDate) {
-            $diff = $startObj->diff($endObj);
-            if ($diff->days > 186) { // ~6 months
-                throw new InvalidArgumentException("กรุณาเลือกช่วงเวลาไม่เกิน 6 เดือน");
+        // --- Order Date Logic ---
+        if (!empty($orderStartDate) && !empty($orderEndDate)) {
+            $startObj = DateTime::createFromFormat('Y-m-d', $orderStartDate);
+            $endObj = DateTime::createFromFormat('Y-m-d', $orderEndDate);
+            
+            if ($startObj && $endObj && $startObj->format('Y-m-d') === $orderStartDate && $endObj->format('Y-m-d') === $orderEndDate) {
+                // 6-month strict limit enforcement
+                $diff = $startObj->diff($endObj);
+                if ($diff->days > 186) { 
+                    throw new InvalidArgumentException("กรุณาเลือกช่วงเวลาวันที่สร้างคำสั่งซื้อไม่เกิน 6 เดือน");
+                }
+                
+                $where .= " AND o.order_date >= :order_start_date AND o.order_date <= :order_end_date";
+                $params[':order_start_date'] = $orderStartDate . ' 00:00:00';
+                $params[':order_end_date'] = $orderEndDate . ' 23:59:59';
+                
+                // Daily Time Window (Day-parting)
+                if (!empty($orderStartTime) && !empty($orderEndTime)) {
+                    // Basic time format validation (H:i)
+                    if (preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9])$/', $orderStartTime) && 
+                        preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9])$/', $orderEndTime)) {
+                        $where .= " AND TIME(o.order_date) >= :order_start_time AND TIME(o.order_date) <= :order_end_time";
+                        $params[':order_start_time'] = $orderStartTime . ':00';
+                        $params[':order_end_time'] = $orderEndTime . ':59';
+                    } else {
+                        throw new InvalidArgumentException("รูปแบบเวลาไม่ถูกต้อง (ต้องเป็น HH:MM)");
+                    }
+                }
+            } else {
+                $limitClause = "LIMIT 500"; // Fallback for invalid date format
             }
-
-            $where .= " AND o.order_date >= :start_date AND o.order_date <= :end_date";
-            $params[':start_date'] = $startDate . ' 00:00:00';
-            $params[':end_date'] = $endDate . ' 23:59:59';
         } else {
-            throw new InvalidArgumentException("รูปแบบวันที่ไม่ถูกต้อง");
+            // Require order date to prevent full table scan
+            throw new InvalidArgumentException("กรุณาระบุช่วงวันที่สร้างคำสั่งซื้อ (ไม่อนุญาตให้ค้นหาทั้งหมดเพื่อประสิทธิภาพ)");
+        }
+        
+        // --- Action Date Logic (Cancelled or Returned Date) ---
+        if (!empty($actionStartDate) && !empty($actionEndDate)) {
+            $aStartObj = DateTime::createFromFormat('Y-m-d', $actionStartDate);
+            $aEndObj = DateTime::createFromFormat('Y-m-d', $actionEndDate);
+            if ($aStartObj && $aEndObj) {
+                if ($statusType === 'Cancelled') {
+                    $where .= " AND oc.classified_at >= :action_start_date AND oc.classified_at <= :action_end_date";
+                } else {
+                    // For Returned, we use a subquery to find the max return_created_at
+                    $where .= " AND (SELECT MAX(ob.return_created_at) FROM order_boxes ob WHERE ob.order_id = o.id) >= :action_start_date 
+                                AND (SELECT MAX(ob.return_created_at) FROM order_boxes ob WHERE ob.order_id = o.id) <= :action_end_date";
+                }
+                $params[':action_start_date'] = $actionStartDate . ' 00:00:00';
+                $params[':action_end_date'] = $actionEndDate . ' 23:59:59';
+            }
         }
         
         if ($companyId) {
