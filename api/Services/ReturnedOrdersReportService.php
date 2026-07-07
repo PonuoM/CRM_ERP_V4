@@ -15,7 +15,7 @@ class ReturnedOrdersReportService
         string $orderStartDate, string $orderEndDate, 
         string $orderStartTime, string $orderEndTime,
         string $actionStartDate, string $actionEndDate,
-        ?int $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All',
+        ?string $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All',
         string $audioStatus = 'All', string $reasonKeyword = '', string $searchKeyword = ''
     ): array
     {
@@ -86,9 +86,15 @@ class ReturnedOrdersReportService
             $params[':company_id'] = $companyId;
         }
 
-        if ($userId) {
-            $where .= " AND o.creator_id = :user_id";
-            $params[':user_id'] = $userId;
+        if (!empty($userId)) {
+            if (strpos($userId, ',') !== false) {
+                $userIds = array_map('intval', explode(',', $userId));
+                $inClause = implode(',', $userIds);
+                $where .= " AND o.creator_id IN ($inClause)";
+            } else {
+                $where .= " AND o.creator_id = :user_id";
+                $params[':user_id'] = (int)$userId;
+            }
         }
 
         // Filter by status. Note: sometimes order is 'Returned', or it's still 'Completed' but has returned boxes.
