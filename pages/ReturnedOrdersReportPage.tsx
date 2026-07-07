@@ -188,9 +188,10 @@ const ReturnedOrdersReportPage: React.FC = () => {
               {/* Filters */}
               <div className="flex flex-col gap-4 mb-6 bg-gray-50 p-5 rounded-lg border border-gray-200 shadow-sm">
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Top Row: Date Ranges */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {/* Order Date Range & Time Window */}
-                  <div className="flex flex-col gap-2 p-3 bg-white border border-gray-200 rounded-md shadow-sm">
+                  <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-md shadow-sm">
                     <label className="text-sm font-semibold text-gray-700 border-b pb-2">วันที่สร้างคำสั่งซื้อ (Order Date)</label>
                     <div className="z-20">
                       <UniversalDateRangePicker 
@@ -211,7 +212,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                   </div>
 
                   {/* Action Date Range */}
-                  <div className="flex flex-col gap-2 p-3 bg-white border border-gray-200 rounded-md shadow-sm">
+                  <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-md shadow-sm">
                     <label className="text-sm font-semibold text-gray-700 border-b pb-2">วันที่ลงสถานะตีกลับ/ยกเลิก</label>
                     <div className="z-10 mt-1">
                       <UniversalDateRangePicker 
@@ -222,38 +223,43 @@ const ReturnedOrdersReportPage: React.FC = () => {
                       />
                     </div>
                   </div>
-
-                  {/* Resolution Status */}
-                  <div className="flex flex-col gap-1.5 justify-end">
-                    <label className="text-sm font-medium text-gray-700">สถานะการจัดการ</label>
-                    <select
-                      value={resolutionFilter}
-                      onChange={e => setResolutionFilter(e.target.value as any)}
-                      className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                    >
-                      <option value="All">ทั้งหมด</option>
-                      <option value="Pending">รอดำเนินการ</option>
-                      <option value="Completed">จัดการเรียบร้อยแล้ว</option>
-                    </select>
-                  </div>
-
-                  {/* User ID */}
-                  <div className="flex flex-col gap-1.5 justify-end">
-                    <label className="text-sm font-medium text-gray-700">รหัสพนักงาน</label>
-                    <input 
-                      type="text" 
-                      value={userId} 
-                      onChange={e => setUserId(e.target.value)} 
-                      placeholder="รหัสพนักงาน..."
-                      className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                    />
-                  </div>
                 </div>
 
-                <div className="flex justify-end pt-3 border-t border-gray-200 mt-2">
+                {/* Bottom Row: Status, User ID, and Search */}
+                <div className="flex flex-wrap items-end justify-between pt-3 border-t border-gray-200 mt-2 gap-4">
+                  
+                  <div className="flex flex-wrap items-end gap-4">
+                    {/* Resolution Status */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[200px]">
+                      <label className="text-sm font-medium text-gray-700">สถานะการจัดการ</label>
+                      <select
+                        value={resolutionFilter}
+                        onChange={e => setResolutionFilter(e.target.value as any)}
+                        className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="All">ทั้งหมด</option>
+                        <option value="Pending">รอดำเนินการ</option>
+                        <option value="Completed">จัดการเรียบร้อยแล้ว</option>
+                      </select>
+                    </div>
+
+                    {/* User ID */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[200px]">
+                      <label className="text-sm font-medium text-gray-700">รหัสพนักงาน</label>
+                      <input 
+                        type="text" 
+                        value={userId} 
+                        onChange={e => setUserId(e.target.value)} 
+                        placeholder="รหัสพนักงาน..."
+                        className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Search Button */}
                   <button
                     onClick={fetchData}
-                    className="bg-gray-800 text-white px-8 h-[38px] rounded-md hover:bg-gray-700 transition font-medium flex items-center justify-center gap-2 shadow-sm"
+                    className="bg-gray-800 text-white px-8 h-[38px] rounded-md hover:bg-gray-700 transition font-medium flex items-center justify-center gap-2 shadow-sm w-full sm:w-auto"
                     disabled={loading}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
