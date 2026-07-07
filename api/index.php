@@ -95,12 +95,16 @@ try {
                 }
                 $statusType = $_GET['status_type'] ?? 'Returned';
                 $resolutionStatus = $_GET['resolution_status'] ?? 'All';
+                $audioStatus = $_GET['audio_status'] ?? 'All';
+                $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
+                $searchKeyword = trim($_GET['search_keyword'] ?? '');
                 try {
                     $data = $svc->getReportData(
                         $orderStartDate, $orderEndDate,
                         $orderStartTime, $orderEndTime,
                         $actionStartDate, $actionEndDate,
-                        $userId, $companyId, $statusType, $resolutionStatus
+                        $userId, $companyId, $statusType, $resolutionStatus,
+                        $audioStatus, $reasonKeyword, $searchKeyword
                     );
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
                 } catch (Exception $e) {
