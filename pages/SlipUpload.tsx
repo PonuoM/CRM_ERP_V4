@@ -84,6 +84,8 @@ interface SlipItem {
   file: File;
   preview: string;
   amount: string;
+  bank_account_id: string;
+  transfer_date: string;
 }
 
 interface SlipEntry {
@@ -367,6 +369,8 @@ const SlipUpload: React.FC = () => {
             file: processedFile,
             preview: processedUrl,
             amount: defaultAmount,
+            bank_account_id: slipItems.length > 0 ? slipItems[slipItems.length - 1].bank_account_id : "",
+            transfer_date: slipItems.length > 0 ? slipItems[slipItems.length - 1].transfer_date : "",
           });
         } catch (error) {
           console.error("Error processing image:", error);
@@ -376,6 +380,8 @@ const SlipUpload: React.FC = () => {
             file: file,
             preview: URL.createObjectURL(file),
             amount: "0",
+            bank_account_id: slipItems.length > 0 ? slipItems[slipItems.length - 1].bank_account_id : "",
+            transfer_date: slipItems.length > 0 ? slipItems[slipItems.length - 1].transfer_date : "",
           });
         }
       }
@@ -394,10 +400,10 @@ const SlipUpload: React.FC = () => {
     });
   };
 
-  const handleAmountChange = (index: number, value: string) => {
+  const handleSlipItemChange = (index: number, field: keyof SlipItem, value: string) => {
     setSlipItems((prev) => {
       const newItems = [...prev];
-      newItems[index] = { ...newItems[index], amount: value };
+      newItems[index] = { ...newItems[index], [field]: value };
       return newItems;
     });
   };
@@ -424,24 +430,22 @@ const SlipUpload: React.FC = () => {
   };
 
   const handleSlipSubmit = async () => {
-    if (
-      !slipFormData.bank_account_id ||
-      !slipFormData.transfer_date ||
-      slipItems.length === 0
-    ) {
-      showMessage("error", "กรุณากรอกข้อมูลให้ครบถ้วน");
+    if (slipItems.length === 0) {
+      showMessage("error", "กรุณาเลือกรูปสลิปอย่างน้อย 1 รูป");
       return;
     }
 
-    // Validate amounts
-    const hasInvalidAmount = slipItems.some(
+    // Validate amounts, bank_account, transfer_date
+    const hasInvalidItem = slipItems.some(
       (item) =>
         !item.amount ||
         isNaN(parseFloat(item.amount)) ||
-        parseFloat(item.amount) < 0,
+        parseFloat(item.amount) < 0 ||
+        !item.bank_account_id ||
+        !item.transfer_date
     );
-    if (hasInvalidAmount) {
-      showMessage("error", "กรุณาระบุจำนวนเงินให้ถูกต้อง");
+    if (hasInvalidItem) {
+      showMessage("error", "กรุณากรอกข้อมูลสลิปแต่ละรูปให้ครบถ้วนและถูกต้อง (ยอดเงิน, บัญชี, วันเวลา)");
       return;
     }
 
@@ -468,8 +472,8 @@ const SlipUpload: React.FC = () => {
           const insertResult = await createOrderSlipWithPayment({
             orderId: slipFormData.order_id,
             amount: parseFloat(item.amount),
-            bankAccountId: parseInt(slipFormData.bank_account_id),
-            transferDate: slipFormData.transfer_date,
+            bankAccountId: parseInt(item.bank_account_id),
+            transferDate: item.transfer_date,
             url: slipUrl,
             companyId: companyId,
             uploadBy: user.id,
@@ -1295,83 +1299,6 @@ const SlipUpload: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Bank Account */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    บัญชีธนาคารที่รับเงินโอน *
-                  </label>
-                  {loadingBankAccounts ? (
-                    <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm">
-                      กำลังโหลดข้อมูลบัญชี...
-                    </div>
-                  ) : bankAccounts.length > 0 ? (
-                    <select
-                      value={slipFormData.bank_account_id}
-                      onChange={(e) =>
-                        handleSlipFormChange("bank_account_id", e.target.value)
-                      }
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.bank_account_id
-                        ? "border-red-300 bg-red-50"
-                        : "border-gray-300"
-                        }`}
-                    >
-                      <option value="">เลือกบัญชีธนาคาร</option>
-                      {bankAccounts.map((bank) => (
-                        <option key={bank.id} value={bank.id}>
-                          {bank.display_name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm text-red-600">
-                      ไม่พบบัญชีธนาคาร
-                    </div>
-                  )}
-                </div>
-
-                {/* Transfer Date and Time */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      วันที่โอนเงิน *
-                    </label>
-                    <DatePicker
-                      selected={slipFormData.transfer_date ? new Date(slipFormData.transfer_date) : null}
-                      onChange={(date: Date | null) => {
-                        if (date) {
-                          const year = date.getFullYear();
-                          const month = String(date.getMonth() + 1).padStart(2, '0');
-                          const day = String(date.getDate()).padStart(2, '0');
-                          const time = slipFormData.transfer_date.split('T')[1] || '00:00';
-                          handleSlipFormChange("transfer_date", `${year}-${month}-${day}T${time}`);
-                        }
-                      }}
-                      dateFormat="dd/MM/yyyy"
-                      placeholderText="วว/ดด/ปปปป"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
-                        ? "border-red-300 bg-red-50"
-                        : "border-gray-300"
-                        }`}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      เวลา (24 ชม.) *
-                    </label>
-                    <input
-                      type="time"
-                      value={slipFormData.transfer_date.split('T')[1]?.substring(0, 5) || ''}
-                      onChange={(e) => {
-                        const date = slipFormData.transfer_date.split('T')[0] || new Date().toISOString().split('T')[0];
-                        handleSlipFormChange("transfer_date", `${date}T${e.target.value}`);
-                      }}
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
-                        ? "border-red-300 bg-red-50"
-                        : "border-gray-300"
-                        }`}
-                    />
-                  </div>
-                </div>
 
                 {/* Slip Image Upload */}
                 <div>
@@ -1425,7 +1352,7 @@ const SlipUpload: React.FC = () => {
                               />
                             </div>
                             <div className="flex-1 flex flex-col justify-between">
-                              <div className="flex justify-between items-start">
+                              <div className="flex justify-between items-start mb-2">
                                 <div className="text-xs text-gray-500 truncate max-w-[150px]">
                                   {item.file.name}
                                 </div>
@@ -1438,19 +1365,68 @@ const SlipUpload: React.FC = () => {
                                   <AlertCircle className="w-4 h-4" />
                                 </button>
                               </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
-                                  จำนวนเงิน
-                                </label>
-                                <input
-                                  type="number"
-                                  value={item.amount}
-                                  onChange={(e) =>
-                                    handleAmountChange(index, e.target.value)
-                                  }
-                                  placeholder="0.00"
-                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                />
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                                    จำนวนเงิน
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={item.amount}
+                                    onChange={(e) =>
+                                      handleSlipItemChange(index, "amount", e.target.value)
+                                    }
+                                    placeholder="0.00"
+                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">บัญชีธนาคาร</label>
+                                  <select
+                                    value={item.bank_account_id}
+                                    onChange={(e) => handleSlipItemChange(index, "bank_account_id", e.target.value)}
+                                    className={`w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 ${!item.bank_account_id ? "border-red-300 bg-red-50" : "border-gray-300"}`}
+                                  >
+                                    <option value="">เลือกบัญชีธนาคาร</option>
+                                    {bankAccounts.map((bank) => (
+                                      <option key={bank.id} value={bank.id}>
+                                        {bank.display_name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">วันที่โอน</label>
+                                    <DatePicker
+                                      selected={item.transfer_date ? new Date(item.transfer_date) : null}
+                                      onChange={(date: Date | null) => {
+                                        if (date) {
+                                          const year = date.getFullYear();
+                                          const month = String(date.getMonth() + 1).padStart(2, '0');
+                                          const day = String(date.getDate()).padStart(2, '0');
+                                          const time = item.transfer_date.split('T')[1] || '00:00';
+                                          handleSlipItemChange(index, "transfer_date", `${year}-${month}-${day}T${time}`);
+                                        }
+                                      }}
+                                      dateFormat="dd/MM/yyyy"
+                                      placeholderText="วว/ดด/ปปปป"
+                                      className={`w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 ${!item.transfer_date ? "border-red-300 bg-red-50" : "border-gray-300"}`}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">เวลา</label>
+                                    <input
+                                      type="time"
+                                      value={item.transfer_date.split('T')[1]?.substring(0, 5) || ''}
+                                      onChange={(e) => {
+                                        const date = item.transfer_date.split('T')[0] || new Date().toISOString().split('T')[0];
+                                        handleSlipItemChange(index, "transfer_date", `${date}T${e.target.value}`);
+                                      }}
+                                      className={`w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 ${!item.transfer_date ? "border-red-300 bg-red-50" : "border-gray-300"}`}
+                                    />
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </div>

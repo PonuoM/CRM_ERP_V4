@@ -78,6 +78,33 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onCha
   );
 
   // Preset helpers
+  const handleApplyNow = (s: Date | null, e: Date | null) => {
+    if (s === null && e === null) {
+      const newRange = { start: '', end: '' };
+      if (onApply) onApply(newRange);
+      if (onChange) onChange(newRange);
+      setOpen(false);
+      return;
+    }
+    const toLocalISO = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const h = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      const sec = String(d.getSeconds()).padStart(2, '0');
+      return `${y}-${m}-${day}T${h}:${min}:${sec}`;
+    };
+    const sClone = new Date(s!);
+    const eClone = new Date(e!);
+    sClone.setHours(0, 0, 0, 0);
+    eClone.setHours(23, 59, 59, 999);
+    const newRange = { start: toLocalISO(sClone), end: toLocalISO(eClone) };
+    if (onApply) onApply(newRange);
+    if (onChange) onChange(newRange);
+    setOpen(false);
+  };
+
   const applyPreset = (days: number) => {
     const now = new Date();
     const endDate = new Date(now);
@@ -85,20 +112,29 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onCha
     const startDate = new Date(endDate);
     startDate.setDate(startDate.getDate() - (days - 1));
     startDate.setHours(0, 0, 0, 0);
-    setRangeTempStart(new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()));
-    setRangeTempEnd(new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()));
+    const s = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    const e = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+    setRangeTempStart(s);
+    setRangeTempEnd(e);
+    handleApplyNow(s, e);
   };
 
   const applyThisMonth = () => {
     const now = new Date();
-    setRangeTempStart(new Date(now.getFullYear(), now.getMonth(), 1));
-    setRangeTempEnd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    const s = new Date(now.getFullYear(), now.getMonth(), 1);
+    const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    setRangeTempStart(s);
+    setRangeTempEnd(e);
+    handleApplyNow(s, e);
   };
 
   const applyLastMonth = () => {
     const now = new Date();
-    setRangeTempStart(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-    setRangeTempEnd(new Date(now.getFullYear(), now.getMonth(), 0));
+    const s = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const e = new Date(now.getFullYear(), now.getMonth(), 0);
+    setRangeTempStart(s);
+    setRangeTempEnd(e);
+    handleApplyNow(s, e);
   };
 
   // Render a single month calendar grid
@@ -209,7 +245,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply, onCha
           {/* Preset Buttons */}
           <div className="flex flex-wrap gap-1.5 mb-4">
             {[
-              { label: 'ทั้งหมด', fn: () => { setRangeTempStart(null); setRangeTempEnd(null); } },
+              { label: 'ทั้งหมด', fn: () => { setRangeTempStart(null); setRangeTempEnd(null); handleApplyNow(null, null); } },
               { label: 'วันนี้', fn: () => applyPreset(1) },
               { label: 'เมื่อวาน', fn: () => applyPreset(2) },
               { label: '7 วัน', fn: () => applyPreset(7) },
