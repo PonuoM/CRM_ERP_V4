@@ -89,10 +89,12 @@ export async function health(): Promise<{ ok: boolean; status: string }> {
 export async function login(
   username: string,
   password: string,
+  latitude?: number,
+  longitude?: number,
 ): Promise<LoginResponse> {
   return apiFetch("auth/login", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, latitude, longitude }),
   });
 }
 

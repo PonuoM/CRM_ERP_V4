@@ -399,6 +399,20 @@ export default function LoginPage() {
     }
   };
 
+  const fetchLocation = (): Promise<{ lat: number; lng: number } | null> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(null);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+  };
+
   const handleLogin = async () => {
     if (!username || !password) {
       setStatus({ tone: 'error', message: 'Please enter both username and password.' });
@@ -411,9 +425,44 @@ export default function LoginPage() {
     setStatus({ tone: 'idle', message: '' });
 
     try {
-      const res = await login(username, password);
-      if (!res.ok) {
-        throw new Error(res.error || 'Login failed');
+      let lat: number | undefined;
+      let lng: number | undefined;
+
+      // Optimistically check if location is granted
+      if (navigator.permissions && navigator.geolocation) {
+        try {
+          const perm = await navigator.permissions.query({ name: 'geolocation' });
+          if (perm.state === 'granted') {
+            const loc = await fetchLocation();
+            if (loc) {
+              lat = loc.lat;
+              lng = loc.lng;
+            }
+          }
+        } catch (err) {
+            // Ignore permission query error
+        }
+      }
+
+      let res;
+      try {
+        res = await login(username, password, lat, lng);
+      } catch (e: any) {
+        // If location is required, prompt and retry
+        if (e?.data?.error === 'LOCATION_REQUIRED') {
+          setStatus({ tone: 'info', message: 'ระบบกำลังตรวจสอบตำแหน่งของคุณ...' });
+          const loc = await fetchLocation();
+          if (!loc) {
+              throw new Error('กรุณาอนุญาตการเข้าถึงตำแหน่งที่ตั้ง (Location) เพื่อเข้าสู่ระบบ');
+          }
+          res = await login(username, password, loc.lat, loc.lng);
+        } else {
+          throw e; // rethrow if it's some other error
+        }
+      }
+
+      if (!res || !res.ok) {
+        throw new Error(res?.message || res?.error || 'Login failed');
       }
 
       // Success state

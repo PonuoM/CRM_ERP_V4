@@ -839,6 +839,22 @@ function handle_user_pancake_mappings(PDO $pdo, ?string $id): void
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
 }
+function validate_user_location(PDO $pdo, int $companyId, float $lat, float $lng): bool
+{
+    $stmt = $pdo->prepare('
+        SELECT 1 
+        FROM work_locations wl
+        JOIN company_work_locations cwl ON wl.id = cwl.work_location_id
+        WHERE cwl.company_id = ? 
+          AND wl.is_active = 1
+          AND ST_Distance_Sphere(POINT(?, ?), POINT(wl.longitude, wl.latitude)) <= wl.radius_meters
+        LIMIT 1
+    ');
+    // Note: ST_Distance_Sphere POINT takes (longitude, latitude)
+    $stmt->execute([$companyId, $lng, $lat]);
+    return (bool) $stmt->fetch();
+}
+
 function handle_auth(PDO $pdo, ?string $id): void
 {
     if ($id === 'login' && method() === 'POST') {
@@ -865,8 +881,8 @@ function handle_auth(PDO $pdo, ?string $id): void
             json_response(['ok' => false, 'error' => 'MISSING_CREDENTIALS'], 400);
         }
 
-        // Check if user status is active and fetch is_system from roles
-        $stmt = $pdo->prepare('SELECT u.id, u.username, u.password, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, r.is_system FROM users u LEFT JOIN roles r ON u.role = r.name WHERE u.username=? LIMIT 1');
+        // Check if user status is active and fetch is_system, require_geofencing from roles and enable_geofencing from companies
+        $stmt = $pdo->prepare('SELECT u.id, u.username, u.password, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, r.is_system, r.require_geofencing, c.enable_geofencing FROM users u LEFT JOIN roles r ON u.role = r.name LEFT JOIN companies c ON u.company_id = c.id WHERE u.username=? LIMIT 1');
         $stmt->execute([$username]);
         $u = $stmt->fetch();
         if (!$u)
@@ -880,6 +896,18 @@ function handle_auth(PDO $pdo, ?string $id): void
         // Demo: plaintext password match (replace with hashing in production)
         if (!hash_equals((string) $u['password'], (string) $password)) {
             json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS'], 401);
+        }
+
+        // Geo-fencing check
+        if (!empty($u['require_geofencing']) && !empty($u['enable_geofencing'])) {
+            $lat = $in['latitude'] ?? null;
+            $lng = $in['longitude'] ?? null;
+            if ($lat === null || $lng === null) {
+                json_response(['ok' => false, 'error' => 'LOCATION_REQUIRED', 'message' => 'กรุณายืนยันตำแหน่งที่ตั้ง'], 400);
+            }
+            if (!validate_user_location($pdo, (int)$u['company_id'], (float)$lat, (float)$lng)) {
+                json_response(['ok' => false, 'error' => 'OUT_OF_WORK_AREA', 'message' => 'คุณ login นอกระยะพื้นที่ทำงาน'], 403);
+            }
         }
 
         // Update last login and increment login count
