@@ -440,10 +440,11 @@ function handle_orders(PDO $pdo, ?string $id): void
                 if ($creatorId) {
                     if (is_array($creatorId)) {
                         $placeholders = str_repeat('?,', count($creatorId) - 1) . '?';
-                        $whereConditions[] = "o.creator_id IN ($placeholders)";
-                        $params = array_merge($params, $creatorId);
+                        $whereConditions[] = "(o.creator_id IN ($placeholders) OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.parent_order_id = o.id AND oi.creator_id IN ($placeholders)))";
+                        $params = array_merge($params, $creatorId, $creatorId);
                     } else {
-                        $whereConditions[] = 'o.creator_id = ?';
+                        $whereConditions[] = "(o.creator_id = ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.parent_order_id = o.id AND oi.creator_id = ?))";
+                        $params[] = $creatorId;
                         $params[] = $creatorId;
                     }
                 }
