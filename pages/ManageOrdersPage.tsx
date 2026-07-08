@@ -162,6 +162,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [fSelectedUsers, setFSelectedUsers] = useState<string[]>([]);
   const [afSelectedUsers, setAfSelectedUsers] = useState<string[]>([]);
 
+  const [fCreatorCountType, setFCreatorCountType] = useState<string>('all');
+  const [afCreatorCountType, setAfCreatorCountType] = useState<string>('all');
+
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   const [validationModal, setValidationModal] = useState<{ isOpen: boolean; valid: Order[]; invalid: Order[] }>({
@@ -312,6 +315,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setFOrderTime(saved.fOrderTime ?? { start: '', end: '' });
         setFSelectedTeam(saved.fSelectedTeam ?? 'all');
         setFSelectedUsers(saved.fSelectedUsers ?? []);
+        setFCreatorCountType(saved.fCreatorCountType ?? 'all');
 
         // Applied values (fallback to edited values if not present)
         setAfOrderId(saved.afOrderId ?? saved.fOrderId ?? '');
@@ -326,6 +330,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setAfOrderTime(saved.afOrderTime ?? saved.fOrderTime ?? { start: '', end: '' });
         setAfSelectedTeam(saved.afSelectedTeam ?? saved.fSelectedTeam ?? 'all');
         setAfSelectedUsers(saved.afSelectedUsers ?? saved.fSelectedUsers ?? []);
+        setAfCreatorCountType(saved.afCreatorCountType ?? saved.fCreatorCountType ?? 'all');
       }
     } catch { }
   }, []);
@@ -350,6 +355,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         fOrderTime,
         fSelectedTeam,
         fSelectedUsers,
+        fCreatorCountType,
         // Applied values
         afOrderId,
         afTracking,
@@ -363,10 +369,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         afOrderTime,
         afSelectedTeam,
         afSelectedUsers,
+        afCreatorCountType,
       };
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
     } catch { }
-  }, [activeDatePreset, dateRange, activeTab, showAdvancedFilters, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, fShop, fOrderTime, fSelectedTeam, fSelectedUsers, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop, afOrderTime, afSelectedTeam, afSelectedUsers]);
+  }, [activeDatePreset, dateRange, activeTab, showAdvancedFilters, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, fShop, fOrderTime, fSelectedTeam, fSelectedUsers, fCreatorCountType, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop, afOrderTime, afSelectedTeam, afSelectedUsers, afCreatorCountType]);
 
   // --- API Fetching Logic ---
 
@@ -450,6 +457,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         }
         return undefined;
       })(),
+      creatorCountType: afCreatorCountType !== 'all' ? afCreatorCountType : undefined,
       tab: activeTab,
     };
   };
@@ -530,6 +538,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     afOrderTime.end,
     afSelectedTeam,
     afSelectedUsers,
+    afCreatorCountType,
     users.length
   ]);
 
@@ -1411,8 +1420,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     if (afPaymentStatus && String(afPaymentStatus).trim() !== '') c += 1; // No longer conditional on payTab
     if (afShop && String(afShop).trim() !== '') c += 1;
     if (afSelectedTeam !== 'all' || afSelectedUsers.length > 0) c += 1;
+    if (afCreatorCountType !== 'all') c += 1;
     return c;
-  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop, afOrderTime, afSelectedTeam, afSelectedUsers]);
+  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop, afOrderTime, afSelectedTeam, afSelectedUsers, afCreatorCountType]);
 
   const clearFilters = () => {
     // Reset all filters
@@ -1425,6 +1435,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setFOrderTime({ start: '', end: '' });
     setFSelectedTeam('all');
     setFSelectedUsers([]);
+    setFCreatorCountType('all');
     // Reset date presets
     setActiveDatePreset('today'); // Reset to 'today' instead of 'all'
     setDateRange({ start: '', end: '' });
@@ -1444,6 +1455,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setAfOrderTime({ start: '', end: '' });
     setAfSelectedTeam('all');
     setAfSelectedUsers([]);
+    setAfCreatorCountType('all');
   };
 
   // Apply (Search) advanced filters
@@ -1460,6 +1472,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setAfOrderTime({ ...fOrderTime });
     setAfSelectedTeam(fSelectedTeam);
     setAfSelectedUsers([...fSelectedUsers]);
+    setAfCreatorCountType(fCreatorCountType);
     setShowAdvancedFilters(false);
   };
 
@@ -1931,6 +1944,18 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">เวลาสั่งซื้อ (ถึง)</label>
                   <input type="time" value={fOrderTime.end} onChange={e => setFOrderTime(v => ({ ...v, end: e.target.value }))} className="w-full p-2 border rounded" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">ประเภทคำสั่งซื้อ</label>
+                  <select
+                    value={fCreatorCountType}
+                    onChange={e => setFCreatorCountType(e.target.value)}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="all">ทั้งหมด</option>
+                    <option value="multiple">มีมากกว่า 1 คนที่สร้างสินค้า</option>
+                    <option value="single">มีแค่ 1 คนที่สร้างสินค้า</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">กรองตามทีม</label>

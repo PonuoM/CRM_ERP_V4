@@ -97,6 +97,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $orderStatus = $_GET['orderStatus'] ?? null;
                 $manageTab = $_GET['tab'] ?? null;
                 $returnMode = $_GET['returnMode'] ?? null;
+                $creatorCountType = $_GET['creatorCountType'] ?? null;
 
                 // Performance: shipping_provider column is known to exist, skip INFORMATION_SCHEMA query
                 $selectCols = 'o.id, o.customer_id, o.customer_type, o.company_id, o.creator_id, o.order_date, o.delivery_date, 
@@ -203,6 +204,12 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $whereConditions[] = 'o.payment_status = ?';
                         $params[] = $paymentStatus;
                     }
+                }
+
+                if ($creatorCountType === 'single') {
+                    $whereConditions[] = 'o.id IN (SELECT order_id FROM order_items WHERE is_freebie = 0 GROUP BY order_id HAVING COUNT(DISTINCT creator_id) = 1)';
+                } elseif ($creatorCountType === 'multiple') {
+                    $whereConditions[] = 'o.id IN (SELECT order_id FROM order_items WHERE is_freebie = 0 GROUP BY order_id HAVING COUNT(DISTINCT creator_id) > 1)';
                 }
 
                 // Tab-specific filters for ManageOrdersPage

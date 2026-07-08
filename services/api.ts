@@ -782,6 +782,7 @@ export async function listOrders(params: {
   shop?: string;
   tab?: string;
   returnMode?: string;
+  creatorCountType?: string;
   signal?: AbortSignal;
 } = {}): Promise<{
   ok: boolean;
@@ -838,6 +839,7 @@ export async function listOrders(params: {
   if (safeParams.shop) qs.set("shop", safeParams.shop);
   if (safeParams.tab) qs.set("tab", safeParams.tab);
   if (safeParams.returnMode) qs.set("returnMode", safeParams.returnMode);
+  if (safeParams.creatorCountType) qs.set("creatorCountType", safeParams.creatorCountType);
 
   return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`, { signal: safeParams.signal });
 }
