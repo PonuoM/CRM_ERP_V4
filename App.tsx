@@ -101,6 +101,7 @@ import LeadPerformancePage from "./pages/Monitor/LeadPerformancePage";
 import TeamAppointmentsPage from "./pages/Monitor/TeamAppointmentsPage";
 import SalesMonitoringPage from "./pages/Monitor/SalesMonitoringPage";
 import ReportsPage from "./pages/ReportsPage";
+import ReturnedOrdersReportPage from "./pages/ReturnedOrdersReportPage";
 import ProductSalesReportPage from "./pages/ProductSalesReportPage";
 import ProductAnalysisPage from "./pages/ProductAnalysisPage";
 import CustomerDistributionPage from "./pages/CustomerDistributionPage";
@@ -1126,6 +1127,7 @@ const App: React.FC = () => {
           email: r.email,
           phone: r.phone,
           role: r.role as unknown as UserRole,
+          role_id: r.role_id != null ? Number(r.role_id) : undefined,
           companyId: r.company_id,
           teamId:
             typeof r.team_id !== "undefined" && r.team_id !== null
@@ -7028,6 +7030,9 @@ const App: React.FC = () => {
         />
       );
     }
+    if (activePage === "Special Orders Report") {
+      return <ReturnedOrdersReportPage users={users} currentUser={currentUser} />;
+    }
     if (activePage === "Reports") {
       return (
         <ReportsPage
@@ -7421,7 +7426,7 @@ const App: React.FC = () => {
       case "Telesale Performance":
       case "home.telesale_performance":
       case "วิเคราะห์ประสิทธิภาพ Telesale":
-        return <TelesalePerformancePage />;
+        return <TelesalePerformancePage users={users} />;
 
       case "Telesale Callstats":
       case "monitor.callstats":

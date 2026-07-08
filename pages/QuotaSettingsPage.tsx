@@ -86,7 +86,15 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const [allocateValidFrom, setAllocateValidFrom] = useState('');
   const [allocateValidUntil, setAllocateValidUntil] = useState('');
   const [allocateAllProducts, setAllocateAllProducts] = useState(true);
+  const [allocateMode, setAllocateMode] = useState<'shared' | 'per_product'>('shared');
   const [allocateProductIds, setAllocateProductIds] = useState<number[]>([]);
+
+  // Reset allocate mode when opening modal
+  useEffect(() => {
+    if (showAllocateModal) {
+      setAllocateMode(summaryRateId !== 'all' ? 'shared' : 'per_product');
+    }
+  }, [showAllocateModal, summaryRateId]);
 
   // History modal
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -477,30 +485,50 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   // -- Allocation --
   const handleAllocate = async () => {
     if (!allocateTarget || !allocateQuantity) return;
-    // Determine which product IDs to allocate
-    const targetIds = allocateAllProducts
-      ? activeQuotaProducts.map(qp => qp.id)
-      : allocateProductIds;
-    if (targetIds.length === 0) {
-      toast('warning', 'กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
-      return;
-    }
+    
     try {
       const qty = parseFloat(allocateQuantity);
-      const promises = targetIds.map(qpId =>
-        allocateQuota({
-          quotaProductId: qpId,
+
+      if (summaryRateId !== 'all' && allocateMode === 'shared') {
+        // Shared pool allocation
+        await allocateQuota({
+          rateScheduleId: Number(summaryRateId),
           userId: allocateTarget.userId,
           companyId,
           quantity: qty,
           source: 'admin',
-          sourceDetail: allocateNote || 'Admin เพิ่มโควตาเอง',
+          sourceDetail: allocateNote || 'Admin เพิ่มโควตากองกลาง',
           allocatedBy: currentUser.id,
           validFrom: allocateValidFrom || undefined,
           validUntil: allocateValidUntil || undefined,
-        })
-      );
-      await Promise.all(promises);
+        });
+      } else {
+        // Per-product allocation
+        const targetIds = allocateAllProducts
+          ? activeQuotaProducts.map(qp => qp.id)
+          : allocateProductIds;
+        
+        if (targetIds.length === 0) {
+          toast('warning', 'กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
+          return;
+        }
+
+        const promises = targetIds.map(qpId =>
+          allocateQuota({
+            quotaProductId: qpId,
+            rateScheduleId: summaryRateId !== 'all' ? Number(summaryRateId) : undefined,
+            userId: allocateTarget.userId,
+            companyId,
+            quantity: qty,
+            source: 'admin',
+            sourceDetail: allocateNote || 'Admin เพิ่มโควตาเอง',
+            allocatedBy: currentUser.id,
+            validFrom: allocateValidFrom || undefined,
+            validUntil: allocateValidUntil || undefined,
+          })
+        );
+        await Promise.all(promises);
+      }
       setShowAllocateModal(false);
       setAllocateQuantity('');
       setAllocateNote('');
@@ -2058,7 +2086,43 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
               </button>
             </div>
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Allocation Mode (Only if a specific rate is selected) */}
+              {summaryRateId !== 'all' && (
+                <div className="bg-gray-50 border rounded-lg p-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">รูปแบบการแจกโควตา</label>
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="allocateMode"
+                        checked={allocateMode === 'shared'}
+                        onChange={() => setAllocateMode('shared')}
+                        className="mt-0.5 accent-emerald-600"
+                      />
+                      <div>
+                        <span className="block text-sm font-medium text-gray-800">🌐 แจกเข้ากองกลาง (Shared Pool)</span>
+                        <span className="block text-xs text-gray-500">แต้มจะรวมเป็น 1 ก้อน ใช้แชร์ร่วมกันได้ทุกสินค้าในอัตราโควตานี้</span>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="allocateMode"
+                        checked={allocateMode === 'per_product'}
+                        onChange={() => setAllocateMode('per_product')}
+                        className="mt-0.5 accent-emerald-600"
+                      />
+                      <div>
+                        <span className="block text-sm font-medium text-gray-800">📌 แจกเจาะจงรายสินค้า (Per Product)</span>
+                        <span className="block text-xs text-gray-500">แจกแต้มแยกให้แต่ละสินค้า (สร้างหลายแถว)</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {/* Product selection */}
+              {(summaryRateId === 'all' || allocateMode === 'per_product') && (
               <div className="bg-blue-50 rounded-lg p-3">
                 <label className="block text-sm font-medium text-gray-700 mb-2">เลือกสินค้า *</label>
                 <label className="flex items-center gap-2 cursor-pointer mb-2">
@@ -2107,9 +2171,10 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                   </div>
                 )}
               </div>
+              )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนโควตา (ต่อสินค้า) *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนโควตา {allocateMode === 'shared' && summaryRateId !== 'all' ? '(กองกลาง)' : '(ต่อสินค้า)'} *</label>
                 <input
                   type="number"
                   value={allocateQuantity}
@@ -2158,8 +2223,18 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
               </div>
               {/* Summary info */}
               {(() => {
+                if (!allocateQuantity) return null;
+                
+                if (summaryRateId !== 'all' && allocateMode === 'shared') {
+                  return (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-700">
+                      <p>✨ จะสร้าง <strong>1</strong> แถวเข้ากองกลาง (แต้มรวม <strong>{allocateQuantity}</strong> แต้ม แชร์กันใช้ทุกสินค้าในอัตรานี้)</p>
+                    </div>
+                  );
+                }
+
                 const count = allocateAllProducts ? activeQuotaProducts.length : allocateProductIds.length;
-                return count > 0 && allocateQuantity ? (
+                return count > 0 ? (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
                     <p>⚠️ จะสร้าง <strong>{count}</strong> แถว (สินค้าละ <strong>{allocateQuantity}</strong> แต้ม, รวม <strong>{count * parseFloat(allocateQuantity || '0')}</strong> แต้ม)</p>
                   </div>
@@ -2172,7 +2247,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
               </button>
               <button
                 onClick={handleAllocate}
-                disabled={!allocateQuantity || parseFloat(allocateQuantity) <= 0 || (!allocateAllProducts && allocateProductIds.length === 0)}
+                disabled={!allocateQuantity || parseFloat(allocateQuantity) <= 0 || ((summaryRateId === 'all' || allocateMode === 'per_product') && !allocateAllProducts && allocateProductIds.length === 0)}
                 className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
               >
                 เพิ่มโควตา

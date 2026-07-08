@@ -71,6 +71,102 @@ try {
             require_once __DIR__ . '/Controllers/ProductController.php';
             handle_products($pdo, $id);
             break;
+        case 'returned_orders_report':
+            require_once __DIR__ . '/Services/ReturnedOrdersReportService.php';
+            $svc = new ReturnedOrdersReportService($pdo);
+            if (method() === 'GET') {
+                $orderStartDate = $_GET['order_start_date'] ?? '';
+                $orderEndDate = $_GET['order_end_date'] ?? '';
+                $orderStartTime = $_GET['order_start_time'] ?? '';
+                $orderEndTime = $_GET['order_end_time'] ?? '';
+                $actionStartDate = $_GET['action_start_date'] ?? '';
+                $actionEndDate = $_GET['action_end_date'] ?? '';
+
+                // Fallback for old clients
+                if (empty($orderStartDate)) $orderStartDate = $_GET['start_date'] ?? '';
+                if (empty($orderEndDate)) $orderEndDate = $_GET['end_date'] ?? '';
+
+                $userId = !empty($_GET['user_id']) ? $_GET['user_id'] : null;
+                $companyId = !empty($_GET['company_id']) ? (int)$_GET['company_id'] : null;
+                // Default to company 1 if not set (or adapt based on auth)
+                if (!$companyId) {
+                    $authUser = get_authenticated_user($pdo);
+                    $companyId = $authUser['company_id'] ?? 1;
+                }
+                $statusType = $_GET['status_type'] ?? 'Returned';
+                $resolutionStatus = $_GET['resolution_status'] ?? 'All';
+                $audioStatus = $_GET['audio_status'] ?? 'All';
+                $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
+                $searchKeyword = trim($_GET['search_keyword'] ?? '');
+                try {
+                    $data = $svc->getReportData(
+                        $orderStartDate, $orderEndDate,
+                        $orderStartTime, $orderEndTime,
+                        $actionStartDate, $actionEndDate,
+                        $userId, $companyId, $statusType, $resolutionStatus,
+                        $audioStatus, $reasonKeyword, $searchKeyword
+                    );
+                    json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
+                } catch (Exception $e) {
+                    json_response(['ok' => false, 'message' => $e->getMessage()], 400);
+                }
+            } elseif (method() === 'POST' && $id === 'auto-match') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $authUser = get_authenticated_user($pdo);
+                $uId = $authUser ? ($authUser['id'] ?? 0) : 0;
+                $res = $svc->autoMatchAudio($orderId, $uId);
+                json_response(['ok' => true, 'message' => $res['message'], 'data' => $res]);
+            } elseif (method() === 'POST' && $id === 'manual-audio') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $audioUrl = $input['audio_url'] ?? '';
+                $audioDate = !empty($input['audio_date']) ? $input['audio_date'] : null;
+                $notes = !empty($input['notes']) ? $input['notes'] : null;
+                $authUser = get_authenticated_user($pdo);
+                $uId = $authUser ? ($authUser['id'] ?? 0) : 0;
+                $success = $svc->saveManualAudioLink($orderId, $audioUrl, $uId, $audioDate, $notes);
+                json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed or already exists']);
+            } elseif (method() === 'POST' && $id === 'summary') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $summary = $input['summary'] ?? '';
+                $success = $svc->saveOrderSummary($orderId, $summary);
+                json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed to save summary']);
+            } elseif (method() === 'POST' && $id === 'audio-notes') {
+                $input = json_input();
+                $audioId = !empty($input['id']) ? (int)$input['id'] : 0;
+                $notes = $input['notes'] ?? '';
+                if ($audioId) {
+                    $success = $svc->updateAudioNotes($audioId, $notes);
+                    json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed']);
+                }
+                json_response(['ok' => false, 'message' => 'Invalid ID'], 400);
+            } elseif (method() === 'POST' && $id === 'toggle-completed') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $isCompleted = isset($input['is_completed']) ? (int)$input['is_completed'] : 0;
+                $success = $svc->toggleOrderResolutionComplete($orderId, $isCompleted);
+                json_response(['ok' => $success, 'message' => $success ? 'Updated status successfully' : 'Failed to update status']);
+            } elseif (method() === 'POST' && $id === 'update-details') {
+                $input = json_input();
+                $orderId = $input['order_id'] ?? '';
+                $summaryNotes = isset($input['admin_resolution_notes']) ? $input['admin_resolution_notes'] : null;
+                $newAudioLinks = $input['new_audio_links'] ?? [];
+                $updatedAudioLinks = $input['updated_audio_links'] ?? [];
+                $deletedAudioIds = $input['deleted_audio_ids'] ?? [];
+                
+                $authUser = get_authenticated_user($pdo);
+                $uId = $authUser ? ($authUser['id'] ?? 0) : 0;
+                
+                if (!$orderId) {
+                    json_response(['ok' => false, 'message' => 'Missing order_id'], 400);
+                }
+                
+                $success = $svc->updateOrderDetails($orderId, $summaryNotes, $newAudioLinks, $updatedAudioLinks, $deletedAudioIds, $uId);
+                json_response(['ok' => $success, 'message' => $success ? 'Updated details successfully' : 'Failed to update details']);
+            }
+            break;
         case 'promotions':
             require_once __DIR__ . '/Controllers/PromotionController.php';
             handle_promotions($pdo, $id);

@@ -65,7 +65,9 @@ UNIQUE(`order_id, quota_product_id`)
 PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื่อ rate มี `quota_product_id = NULL`
 `sales_per_quota` DECIMAL(12,2) DEFAULT NULL — ยอดขาย/โควตาเฉพาะสินค้านี้ (NULL = ใช้ค่าจาก rate schedule)
 
-> **Shared Pool (โควตากองกลาง):** หาก 1 Rate ผูกกับหลายสินค้า (หลายแถวใน `quota_rate_scope`) ระบบจะถือว่า Rate นั้นเป็น "กองกลาง" สินค้าทุกตัวที่ผูกจะแชร์ยอดโควตาร่วมกัน เวลาแจก/โอน จะแจกเป็น `quota_product_id = NULL` พร้อมกับผูก `rate_schedule_id` ไว้เสมอ
+> **Shared Pool (โควตากองกลาง):** หาก 1 Rate ผูกกับหลายสินค้า (หลายแถวใน `quota_rate_scope`) ระบบจะถือว่า Rate นั้นเป็น "กองกลาง" สินค้าทุกตัวที่ผูกจะแชร์ยอดโควตาร่วมกัน 
+> - **ในฝั่งคำนวณ:** ยอดขายและโควตาจะถูกนำมาคำนวณรวมกัน
+> - **ในฝั่งแจกโควตา:** Admin สามารถเลือกแจกโควตาแบบ **Shared Pool** ได้ โดยระบบจะบันทึก `rate_schedule_id` คู่กับ `quota_product_id = NULL` ทำให้แต้ม 1 ก้อนนั้นสามารถใช้แชร์กันได้ทุกสินค้าใน Rate เดียวกัน
 > **Independent Quota:** หาก 1 Rate ผูกกับสินค้าแค่ 1 ตัว จะทำหน้าที่เสมือนโควตาเฉพาะของสินค้านั้นๆ
 
 > ทุกตาราง soft delete (`deleted_at`) — ทุก SELECT ต้อง `WHERE deleted_at IS NULL`
@@ -181,7 +183,11 @@ PK: `(rate_schedule_id, quota_product_id)` — ใช้เฉพาะเมื
   - State: `rateSelectorOpen` + `rateSelectorRef`
 - **Pending counts:** pre-loaded `⏳ N รอยืนยัน` badge ใน dropdown options
 - **Checkbox + Bulk confirm / Individual confirm:** แสดงเฉพาะ confirm mode + require_confirm=1 (สงวนสิทธิ์ให้ผู้ที่มี `is_system = 1` เท่านั้นที่จะเห็นปุ่มและกดยืนยันได้)
-- **Allocation modal:** เลือกสินค้าเอง (checkbox "สินค้าทั้งหมด" default ติ๊ก / เอาติ๊กออก → toggle ทีละตัว) + จำนวนต่อสินค้า + วันเริ่ม/หมดอายุ + หมายเหตุ + สรุปจำนวนแถว (ไม่ส่ง periodStart/periodEnd)
+- **Allocation modal:** 
+  - **รูปแบบการแจกโควตา:** แอดมินสามารถเลือกได้ 2 แบบ (กรณีเจาะจง Rate)
+    1. **🌐 แจกเข้ากองกลาง (Shared Pool):** แจกแต้มก้อนเดียวเข้า Rate Schedule ใช้แชร์ร่วมกันได้ทุกสินค้า
+    2. **📌 แจกเจาะจงรายสินค้า (Per Product):** แจกแต้มแยกให้แต่ละสินค้า (สร้างหลายแถว)
+  - รองรับการเลือกสินค้าเอง (กรณีเลือกเจาะจงรายสินค้า) + จำนวน + วันเริ่ม/หมดอายุ + หมายเหตุ + สรุปจำนวนแถวที่จะถูกสร้าง
 - **Breakdown modal (👁️):** ประวัติโควตา แสดงรายละเอียดแยกตาม rate + แสดงชื่อสินค้า (`[Product Name]`) และชื่อ Rate อ้างอิงเพื่อป้องกันการสับสนว่าเป็นข้อมูลซ้ำซ้อน
 - **Snapshot ยอดขาย (Audit):** ในโหมดรอยืนยัน เมื่อกดยืนยันโควตา ระบบจะดึงยอดขาย ณ เสี้ยววินาทีนั้นมาเก็บใน `sales_at_allocation` และแสดงตัวเลข `(ยืนยัน: ฿xxx,xxx)` สีเขียวใต้ยอดขาย Real-time ในตารางหลัก + ประวัติ Modal
 **คงเหลือ (conditional):** `>0` green | `=0` gray | `<0` red | expired → gray ขีดฆ่า | before usage → gray

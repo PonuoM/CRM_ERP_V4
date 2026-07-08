@@ -93,3 +93,5 @@
 **Rule 9: UI Components over Native Alerts**
 - **NEVER** use `window.alert`, `window.confirm`, or `window.prompt` for user interactions.
 - **ALWAYS** use custom UI components like `Modal`, `Toast`, or `Alert` provided by the system or design library to maintain a consistent and professional user experience.
+
+

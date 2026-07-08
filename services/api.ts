@@ -769,17 +769,20 @@ export async function listOrders(params: {
   trackingNumber?: string;
   orderDateStart?: string;
   orderDateEnd?: string;
+  orderTimeStart?: string;
+  orderTimeEnd?: string;
   deliveryDateStart?: string;
   deliveryDateEnd?: string;
   paymentMethod?: string;
   paymentStatus?: string | string[];
   customerName?: string;
   customerPhone?: string;
-  creatorId?: number;
+  creatorId?: number | number[];
   orderStatus?: string | string[];
   shop?: string;
   tab?: string;
   returnMode?: string;
+  creatorCountType?: string;
   signal?: AbortSignal;
 } = {}): Promise<{
   ok: boolean;
@@ -804,6 +807,8 @@ export async function listOrders(params: {
   if (safeParams.trackingNumber) qs.set("trackingNumber", safeParams.trackingNumber);
   if (safeParams.orderDateStart) qs.set("orderDateStart", safeParams.orderDateStart);
   if (safeParams.orderDateEnd) qs.set("orderDateEnd", safeParams.orderDateEnd);
+  if (safeParams.orderTimeStart) qs.set("orderTimeStart", safeParams.orderTimeStart);
+  if (safeParams.orderTimeEnd) qs.set("orderTimeEnd", safeParams.orderTimeEnd);
   if (safeParams.deliveryDateStart) qs.set("deliveryDateStart", safeParams.deliveryDateStart);
   if (safeParams.deliveryDateEnd) qs.set("deliveryDateEnd", safeParams.deliveryDateEnd);
   if (safeParams.paymentMethod) qs.set("paymentMethod", safeParams.paymentMethod);
@@ -816,7 +821,13 @@ export async function listOrders(params: {
   }
   if (safeParams.customerName) qs.set("customerName", safeParams.customerName);
   if (safeParams.customerPhone) qs.set("customerPhone", safeParams.customerPhone);
-  if (safeParams.creatorId) qs.set("creatorId", String(safeParams.creatorId));
+  if (safeParams.creatorId) {
+    if (Array.isArray(safeParams.creatorId)) {
+      (safeParams.creatorId as number[]).forEach(id => qs.append("creatorId[]", String(id)));
+    } else {
+      qs.set("creatorId", String(safeParams.creatorId));
+    }
+  }
   if (safeParams.orderStatus) {
     if (Array.isArray(safeParams.orderStatus)) {
       (safeParams.orderStatus as string[]).forEach(s => qs.append("orderStatus[]", s));
@@ -828,6 +839,7 @@ export async function listOrders(params: {
   if (safeParams.shop) qs.set("shop", safeParams.shop);
   if (safeParams.tab) qs.set("tab", safeParams.tab);
   if (safeParams.returnMode) qs.set("returnMode", safeParams.returnMode);
+  if (safeParams.creatorCountType) qs.set("creatorCountType", safeParams.creatorCountType);
 
   return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`, { signal: safeParams.signal });
 }
