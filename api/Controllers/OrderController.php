@@ -207,9 +207,9 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
                 if ($creatorCountType === 'single') {
-                    $whereConditions[] = 'o.id IN (SELECT order_id FROM order_items WHERE is_freebie = 0 GROUP BY order_id HAVING COUNT(DISTINCT creator_id) = 1)';
+                    $whereConditions[] = 'o.id IN (SELECT parent_order_id FROM order_items WHERE is_freebie = 0 GROUP BY parent_order_id HAVING COUNT(DISTINCT creator_id) = 1)';
                 } elseif ($creatorCountType === 'multiple') {
-                    $whereConditions[] = 'o.id IN (SELECT order_id FROM order_items WHERE is_freebie = 0 GROUP BY order_id HAVING COUNT(DISTINCT creator_id) > 1)';
+                    $whereConditions[] = 'o.id IN (SELECT parent_order_id FROM order_items WHERE is_freebie = 0 GROUP BY parent_order_id HAVING COUNT(DISTINCT creator_id) > 1)';
                 }
 
                 // Tab-specific filters for ManageOrdersPage
