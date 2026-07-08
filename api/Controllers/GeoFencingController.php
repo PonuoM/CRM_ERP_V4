@@ -68,7 +68,7 @@ class GeoFencingController
 
         if ($method === 'GET') {
             // Fetch all companies and their geo settings
-            $stmt = $pdo->query('SELECT id, name, prefix, is_active, enable_geofencing FROM companies ORDER BY name ASC');
+            $stmt = $pdo->query('SELECT id, name, enable_geofencing FROM companies ORDER BY name ASC');
             $companies = $stmt->fetchAll();
 
             $stmt = $pdo->query('SELECT company_id, work_location_id FROM company_work_locations');

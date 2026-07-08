@@ -325,7 +325,6 @@ export default function GeoCompanySettingsPage() {
                         <h3 className="text-md font-bold text-gray-800 flex items-center gap-2">
                           {company.name} <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">ID: {company.id}</span>
                         </h3>
-                        <p className="text-sm text-gray-500">Prefix: {company.prefix}</p>
                       </div>
                       
                       <label className="flex items-center cursor-pointer">
