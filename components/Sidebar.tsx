@@ -426,7 +426,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Companies", icon: Briefcase, key: "data.companies" },
         { label: "JST Inventory", icon: Package, key: "data.jst_inventory" },
         { label: "Role Management", icon: Key, key: "data.roles" },
-        { label: "Company Settings", icon: Settings, key: "settings.company" },
+        { label: "Geo Company", icon: Settings, key: "settings.geo_company" },
         { label: "Addresses", icon: MapPin, key: "data.addresses" },
         { label: "Database Management", icon: Database, key: "data.database", allowRule: (u: UserType) => u.role === UserRole.SuperAdmin },
       ]
