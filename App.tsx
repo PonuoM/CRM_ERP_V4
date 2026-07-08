@@ -276,6 +276,7 @@ import CODManagementPage from "./pages/CODManagementPage";
 import AddressManagementPage from "./pages/AddressManagementPage";
 import GoogleSheetImportPage from "./pages/GoogleSheetImportPage";
 import InventoryReportsPage from "./pages/InventoryReportsPage";
+import StockArrivalPlanningPage from "./pages/StockArrivalPlanningPage";
 import Inv2StockOrderPage from "./pages/Inv2StockOrderPage";
 import Inv2ReceivePage from "./pages/Inv2ReceivePage";
 import Inv2DispatchPage from "./pages/Inv2DispatchPage";
@@ -6961,6 +6962,9 @@ const App: React.FC = () => {
     }
     if (activePage === "Warehouse Allocation") {
       return <OrderAllocationPage />;
+    }
+    if (activePage === "แพลนรับสินค้า") {
+      return <StockArrivalPlanningPage currentUser={currentUser} />;
     }
     if (activePage === "Team") {
       if (currentUser.role === UserRole.Supervisor) {

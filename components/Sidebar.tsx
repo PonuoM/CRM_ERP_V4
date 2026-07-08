@@ -357,6 +357,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Warehouse Allocation", icon: FileText, key: "inventory.allocations" },
         { label: "ส่งออกรายงานสต๊อค", icon: BarChart2, key: "inventory.reports" },
         { label: "Active Promotions", icon: BarChart2, key: "inventory.promotions" },
+        { label: "แพลนรับสินค้า", icon: Calendar, key: "inventory.arrival_planning" },
       ]
     },
     {

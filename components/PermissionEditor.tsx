@@ -83,6 +83,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'inventory.allocations', label: 'Warehouse Allocation (จัดสรรคลังสินค้า)' },
             { key: 'inventory.reports', label: 'Inventory Reports (ส่งออกรายงานสต๊อค)' },
             { key: 'inventory.promotions', label: 'Active Promotions (ดูโปรโมชั่นในคลัง)' },
+            { key: 'inventory.arrival_planning', label: 'แพลนรับสินค้า (Stock Arrival Planning)' },
         ]
     },
     'Warehouse V2': {
