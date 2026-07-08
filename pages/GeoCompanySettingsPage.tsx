@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../services/api';
-import { MapPin, Briefcase, Plus, Edit2, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { MapPin, Briefcase, Plus, Edit2, Trash2, CheckCircle, XCircle, Navigation } from 'lucide-react';
 import Modal from '../components/Modal';
 
 interface WorkLocation {
@@ -159,6 +159,29 @@ export default function GeoCompanySettingsPage() {
       alert(e.message || 'Failed to update company');
       fetchData(); // reload on error
     }
+  };
+
+  const handleGetCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setError('เบราว์เซอร์ของคุณไม่รองรับการดึงตำแหน่ง (Geolocation)');
+      return;
+    }
+    
+    setSaving(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocForm(prev => ({
+          ...prev,
+          latitude: position.coords.latitude.toString(),
+          longitude: position.coords.longitude.toString()
+        }));
+        setSaving(false);
+      },
+      (err) => {
+        setSaving(false);
+        setError('ไม่สามารถดึงตำแหน่งปัจจุบันได้ กรุณาอนุญาตให้เข้าถึง Location ก่อนครับ');
+      }
+    );
   };
 
   const renderMapPreview = () => {
@@ -426,6 +449,17 @@ export default function GeoCompanySettingsPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 flex justify-end">
+              <button
+                type="button"
+                onClick={handleGetCurrentLocation}
+                className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors"
+                disabled={saving}
+              >
+                <Navigation size={14} />
+                ดึงพิกัดปัจจุบัน
+              </button>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>
               <input
