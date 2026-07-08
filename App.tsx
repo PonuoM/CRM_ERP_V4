@@ -149,6 +149,7 @@ import ReturnManagementPage from "./pages/ReturnManagementPage";
 import CheckOrderPage from "./pages/CheckOrderPage";
 import InventoryPage from "./pages/jst/InventoryPage";
 import CompanySettingsPage from "./pages/jst/CompanySettingsPage";
+import GeoCompanySettingsPage from "./pages/GeoCompanySettingsPage";
 import SystemUpdatesManagementPage from "./pages/SystemUpdatesManagementPage";
 import SystemUpdatesHistoryPage from "./pages/SystemUpdatesHistoryPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
@@ -7214,6 +7215,9 @@ const App: React.FC = () => {
 
     // Unified Routing - Switch by Page Name instead of Role
     switch (activePage) {
+      case "settings.geo_company":
+      case "Geo Company":
+        return <GeoCompanySettingsPage />;
       case "settings.company":
       case "Company Settings":
       case "ตั้งค่าบริษัท":

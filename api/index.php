@@ -37,6 +37,14 @@ try {
         case 'company_settings':
             handle_company_settings($pdo, $id);
             break;
+        case 'geo_locations':
+            require_once __DIR__ . '/Controllers/GeoFencingController.php';
+            GeoFencingController::handle_geo_locations($pdo, $id);
+            break;
+        case 'geo_companies':
+            require_once __DIR__ . '/Controllers/GeoFencingController.php';
+            GeoFencingController::handle_geo_companies($pdo, $id, $action);
+            break;
         case 'roles':
             require_once __DIR__ . '/roles.php';
             handle_roles($pdo, $id, $action);
