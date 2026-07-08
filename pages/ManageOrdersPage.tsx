@@ -1953,8 +1953,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                     className="w-full p-2 border rounded"
                   >
                     <option value="all">ทั้งหมด</option>
-                    <option value="multiple">มีมากกว่า 1 คนที่สร้างสินค้า</option>
-                    <option value="single">มีแค่ 1 คนที่สร้างสินค้า</option>
+                    <option value="multiple">Upsell</option>
+                    <option value="single">คำสั่งซื้อปกติ</option>
                   </select>
                 </div>
                 <div>
