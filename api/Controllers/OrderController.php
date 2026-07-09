@@ -104,7 +104,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                o.street, o.subdistrict, o.district, o.province, o.postal_code, o.recipient_first_name, o.recipient_last_name,
                                o.shipping_provider';
 
-                $selectCols .= ', o.shipping_cost, o.bill_discount, o.coupon_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
+                $selectCols .= ', o.shipping_cost, o.bill_discount, o.coupon_discount, o.monthly_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
@@ -1673,7 +1673,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 if ($hasShippingProvider) {
                     $columns[] = 'shipping_provider';
                 }
-                $columns = array_merge($columns, ['shipping_cost', 'bill_discount', 'coupon_discount', 'total_amount', 'payment_method', 'payment_status', 'slip_url', 'amount_paid', 'cod_amount', 'order_status', 'notes', 'sales_channel', 'sales_channel_page_id', 'warehouse_id']);
+                $columns = array_merge($columns, ['shipping_cost', 'bill_discount', 'coupon_discount', 'monthly_discount', 'total_amount', 'payment_method', 'payment_status', 'slip_url', 'amount_paid', 'cod_amount', 'order_status', 'notes', 'sales_channel', 'sales_channel_page_id', 'warehouse_id']);
                 $values = [];
                 $placeholders = [];
 
@@ -1889,6 +1889,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $in['shippingCost'] ?? 0,
                     $in['billDiscount'] ?? 0,
                     $in['couponDiscount'] ?? 0,
+                    $in['monthlyDiscount'] ?? 0,
                     $in['totalAmount'] ?? 0,
                     $paymentMethod,
                     $in['paymentStatus'] ?? null,
@@ -2315,6 +2316,9 @@ function handle_orders(PDO $pdo, ?string $id): void
             $couponDiscount = array_key_exists('coupon_discount', $in) ? $in['coupon_discount'] : (array_key_exists('couponDiscount', $in) ? $in['couponDiscount'] : null);
             if ($couponDiscount === '')
                 $couponDiscount = null;
+            $monthlyDiscount = array_key_exists('monthly_discount', $in) ? $in['monthly_discount'] : (array_key_exists('monthlyDiscount', $in) ? $in['monthlyDiscount'] : null);
+            if ($monthlyDiscount === '')
+                $monthlyDiscount = null;
             $deliveryDate = array_key_exists('deliveryDate', $in) ? $in['deliveryDate'] : (array_key_exists('delivery_date', $in) ? $in['delivery_date'] : null);
             if ($deliveryDate === '')
                 $deliveryDate = null;
@@ -2458,13 +2462,13 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 // Build UPDATE SQL - sales_channel_page_id is handled specially based on $forceClearPageId
                 $pageIdSql = $forceClearPageId ? 'sales_channel_page_id=NULL' : 'sales_channel_page_id=COALESCE(?, sales_channel_page_id)';
-                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), ' . $pageIdSql . ', delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount), coupon_discount=COALESCE(?, coupon_discount), customer_type=COALESCE(?, customer_type)';
+                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), ' . $pageIdSql . ', delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount), coupon_discount=COALESCE(?, coupon_discount), monthly_discount=COALESCE(?, monthly_discount), customer_type=COALESCE(?, customer_type)';
 
                 // Build params - only include salesChannelPageId if not force clearing
                 if ($forceClearPageId) {
-                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $couponDiscount, $customerType];
+                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $couponDiscount, $monthlyDiscount, $customerType];
                 } else {
-                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $salesChannelPageId, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $couponDiscount, $customerType];
+                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $salesChannelPageId, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $couponDiscount, $monthlyDiscount, $customerType];
                 }
                 if ($hasShippingProvider) {
                     $updateSql .= ', shipping_provider=COALESCE(?, shipping_provider)';

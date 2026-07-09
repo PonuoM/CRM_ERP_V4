@@ -485,7 +485,7 @@ export default function LoginPage() {
       }, 800);
     } catch (e: any) {
       const message =
-        (e?.data && (e.data.error || e.data.message)) ||
+        (e?.data && (e.data.message || e.data.error)) ||
         e?.message ||
         'Login failed. Please check your credentials.';
       setStatus({ tone: 'error', message });

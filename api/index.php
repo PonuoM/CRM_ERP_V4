@@ -894,16 +894,16 @@ function handle_auth(PDO $pdo, ?string $id): void
         $stmt->execute([$username]);
         $u = $stmt->fetch();
         if (!$u)
-            json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS'], 401);
+            json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS', 'message' => 'ชื่อผู้ใช้งานไม่ถูกต้อง หรือ ไม่มีในระบบ'], 401);
 
         // Check if user is active
         if ($u['status'] !== 'active') {
-            json_response(['ok' => false, 'error' => 'ACCOUNT_INACTIVE', 'message' => 'Your account is not active'], 401);
+            json_response(['ok' => false, 'error' => 'ACCOUNT_INACTIVE', 'message' => 'บัญชีของคุณถูกระงับการใช้งาน'], 401);
         }
 
         // Demo: plaintext password match (replace with hashing in production)
         if (!hash_equals((string) $u['password'], (string) $password)) {
-            json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS'], 401);
+            json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS', 'message' => 'รหัสผ่านไม่ถูกต้อง'], 401);
         }
 
         // Geo-fencing check

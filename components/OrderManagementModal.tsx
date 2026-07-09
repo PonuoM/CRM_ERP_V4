@@ -843,6 +843,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       shippingCost: Number((order as any).shipping_cost ?? order.shippingCost ?? 0),
       billDiscount: Number((order as any).bill_discount ?? order.billDiscount ?? 0),
       couponDiscount: Number((order as any).coupon_discount ?? order.couponDiscount ?? 0),
+      monthlyDiscount: Number((order as any).monthly_discount ?? order.monthlyDiscount ?? 0),
       totalAmount: Number((order as any).total_amount ?? order.totalAmount ?? 0),
       paymentMethod: (order as any).payment_method ?? order.paymentMethod,
       paymentStatus: (order as any).payment_status ?? order.paymentStatus,
@@ -1413,6 +1414,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           shippingCost: Number(r.shipping_cost ?? r.shippingCost ?? prev.shippingCost ?? 0),
           billDiscount: Number(r.bill_discount ?? r.billDiscount ?? prev.billDiscount ?? 0),
           couponDiscount: Number(r.coupon_discount ?? r.couponDiscount ?? prev.couponDiscount ?? 0),
+          monthlyDiscount: Number(r.monthly_discount ?? r.monthlyDiscount ?? prev.monthlyDiscount ?? 0),
           totalAmount: Number(r.total_amount ?? r.totalAmount ?? prev.totalAmount ?? 0),
           amountPaid: Number(r.amount_paid ?? r.amountPaid ?? prev.amountPaid ?? 0),
           codAmount: Number(r.cod_amount ?? r.codAmount ?? prev.codAmount ?? 0),
@@ -2818,7 +2820,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               </span>
             </div>
           )}
-          <div className="flex justify-end mb-2">
+          <div className="flex justify-between items-center mb-2">
+            <div>
+              {(currentOrder.monthlyDiscount || 0) > 0 && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                  <span className="mr-1">🎁</span> ใช้คูปองส่วนลดประจำเดือน ({currentOrder.monthlyDiscount} บาท)
+                </span>
+              )}
+            </div>
             {!isEditing ? (
               <div className="flex space-x-2">
 

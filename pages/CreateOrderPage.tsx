@@ -71,6 +71,7 @@ import { th } from "date-fns/locale";
 import ProductSelectorModal from "../components/ProductSelectorModal";
 
 import resolveApiBasePath from "../utils/apiBasePath";
+import { OrderNoteInput } from "../components/OrderNoteInput";
 
 // ════════════════════════════════════════════════════════════════════════════
 // [B] TYPES & INTERFACES (TransferSlipUpload, UpsellSlip, CreateOrderPageProps, etc.)
@@ -9200,18 +9201,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       })()}
                     </div>
 
-                    <div>
-                      <label className={commonLabelClass}>หมายเหตุ</label>
-
-                      <input
-                        type="text"
-                        value={orderData.notes || ""}
-                        onChange={(e) =>
-                          updateOrderData("notes", e.target.value)
-                        }
-                        className={commonInputClass}
-                      />
-                    </div>
+                    <OrderNoteInput
+                      notes={orderData.notes || ""}
+                      monthlyDiscount={orderData.monthlyDiscount || 0}
+                      onNotesChange={(val) => updateOrderData("notes", val)}
+                      onMonthlyDiscountChange={(val) => updateOrderData("monthlyDiscount", val)}
+                      className={commonInputClass}
+                      labelClassName={commonLabelClass}
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-2">

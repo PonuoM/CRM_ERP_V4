@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getOrder, apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
-import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2, ChevronDown, ChevronRight, CornerDownRight } from 'lucide-react';
+import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2, ChevronDown, ChevronRight, CornerDownRight, Calendar } from 'lucide-react';
 
 export interface StatementContext {
     statementAmount: number;
@@ -188,7 +188,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
                 <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <div>
-                        <h3 className="text-lg font-bold text-gray-800">รายละเอียดออเดอร์ #{orderId}</h3>
+                        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            รายละเอียดออเดอร์ #{orderId}
+                            {((order as any)?.monthly_discount || (order as any)?.monthlyDiscount || 0) > 0 && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                                    <span className="mr-1">🎁</span> ใช้คูปองส่วนลดประจำเดือน ({((order as any)?.monthly_discount || (order as any)?.monthlyDiscount)} บาท)
+                                </span>
+                            )}
+                        </h3>
                     </div>
                     <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full text-gray-500 transition-colors">
                         <X size={20} />
@@ -319,6 +326,32 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                         </div>
                     ) : order ? (
                         <div className="space-y-6">
+                            {/* Order Dates */}
+                            <div className="bg-white p-4 rounded-lg flex items-start gap-3 border border-gray-200">
+                                <Calendar className="text-gray-500 mt-1 flex-shrink-0" size={18} />
+                                <div className="flex-1">
+                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">รายละเอียดคำสั่งซื้อ</div>
+                                    <div className="flex flex-col sm:flex-row sm:gap-8 gap-2 mt-2">
+                                        <div className="flex flex-col">
+                                            <span className="text-xs text-gray-500">วันที่สั่งซื้อ</span>
+                                            <span className="font-medium text-gray-800 text-sm mt-0.5">
+                                                {order.order_date || order.orderDate
+                                                    ? new Date(order.order_date || order.orderDate).toLocaleString("th-TH", { hour12: false })
+                                                    : "-"}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs text-gray-500">วันที่จัดส่ง</span>
+                                            <span className="font-medium text-gray-800 text-sm mt-0.5">
+                                                {order.delivery_date || order.deliveryDate
+                                                    ? new Date(order.delivery_date || order.deliveryDate).toLocaleDateString("th-TH")
+                                                    : "-"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Two-Column: Customer Info & Shipping Address */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {/* Customer Info (customers table) */}
