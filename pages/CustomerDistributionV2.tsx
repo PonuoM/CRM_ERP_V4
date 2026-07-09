@@ -296,7 +296,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     counts[basket.basket_key] = res?.success ? (res.data?.length || 0) : 0;
                 } else {
                     const response = await apiFetch(
-                        `basket_config.php?action=basket_customers&basket_key=${basket.basket_key}&companyId=${currentUser?.companyId}&limit=1`
+                        `basket_config.php?action=basket_customers&basket_key=${basket.basket_key}&companyId=${currentUser?.companyId}&limit=1&t=${Date.now()}`
                     );
                     counts[basket.basket_key] = response?.count || 0;
                 }
@@ -1182,6 +1182,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [bulkTargetAgents, setBulkTargetAgents] = useState<number[]>([]);
     const [bulkTargetSupervisorFilter, setBulkTargetSupervisorFilter] = useState<number | ''>('');
     const [bulkLimit, setBulkLimit] = useState<string>('');
+    const [bulkReclaimDestinationType, setBulkReclaimDestinationType] = useState<'auto' | 'force'>('auto');
+    const [bulkForceBasketKey, setBulkForceBasketKey] = useState<string>('');
 
     // Flexible Transfer Logic
     const [flexTransferModalOpen, setFlexTransferModalOpen] = useState(false);
@@ -1323,6 +1325,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setBulkTargetAgents([]); // Reset target agents
         setBulkTargetSupervisorFilter(''); // Reset supervisor filter
         setBulkLimit(''); // Reset limit
+        setBulkReclaimDestinationType('auto'); // Reset destination type
+        setBulkForceBasketKey(''); // Reset force basket key
         setReclaimModalOpen(true);
     };
 
@@ -1354,6 +1358,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setBulkTargetAgents([]);
         setBulkTargetSupervisorFilter('');
         setBulkLimit('');
+        setBulkReclaimDestinationType('auto');
+        setBulkForceBasketKey('');
         setReclaimModalOpen(true);
     };
 
@@ -1502,18 +1508,31 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         body: JSON.stringify({
                             agent_id: reclaimingAgent.id,
                             baskets: payloadBaskets,
-                            reclaim_mode: bulkFilterType
+                            reclaim_mode: bulkFilterType,
+                            reclaim_destination: bulkReclaimDestinationType,
+                            force_basket_key: bulkReclaimDestinationType === 'force' ? bulkForceBasketKey : null
                         })
                     }
                 );
                 if (result?.error) throw new Error(result.error);
+
+                let toNameDisplay = 'ถังอัตโนมัติ (Linked Pool)';
+                if (bulkReclaimDestinationType === 'force') {
+                    if (bulkForceBasketKey === 'holding_before_redistribute') {
+                        toNameDisplay = 'ถังพักรอแจก';
+                    } else if (bulkForceBasketKey === 'upsell_dis') {
+                        toNameDisplay = 'Upsell (Distribution)';
+                    } else {
+                        toNameDisplay = dashboardBaskets.find(b => b.basket_key === bulkForceBasketKey)?.basket_name || 'ถังกลาง (Pool)';
+                    }
+                }
 
                 setBulkResultModal({
                     isOpen: true,
                     title: 'สรุปผลการดึงคืนลูกค้า',
                     type: 'reclaim',
                     fromAgentName: `${reclaimingAgent.firstName} ${reclaimingAgent.lastName}`,
-                    toName: 'ถังกลาง (Pool)',
+                    toName: toNameDisplay,
                     total: result?.reclaimed || 0,
                     results: result?.results || []
                 });
@@ -1865,6 +1884,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 agents={agents}
                 bulkLimit={bulkLimit}
                 setBulkLimit={setBulkLimit}
+                bulkReclaimDestinationType={bulkReclaimDestinationType}
+                setBulkReclaimDestinationType={setBulkReclaimDestinationType}
+                bulkForceBasketKey={bulkForceBasketKey}
+                setBulkForceBasketKey={setBulkForceBasketKey}
                 handleExecuteBulkAction={handleExecuteBulkAction}
                 reclaiming={reclaiming}
                 transferring={transferring}

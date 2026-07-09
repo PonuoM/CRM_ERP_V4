@@ -347,3 +347,94 @@ Payload: Array
 )
 
 Process Item: StmtId=6325, Type=Order, Amount=8520
+Start 2026-07-02 10:03:39
+Payload: Array
+(
+    [company_id] => 901
+    [user_id] => 9001
+    [bank_account_id] => 901
+    [start_date] => 2026-06-01
+    [end_date] => 2026-06-02
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 90001
+                    [reconcile_type] => Suspense
+                    [confirmed_amount] => 1234.56
+                    [note] => test
+                )
+
+        )
+
+)
+
+Exception: Statement นี้ไม่ได้อยู่ในสิทธิ์ของบริษัทคุณ (อาจถูกโอนให้บริษัทอื่นแล้ว) กรุณารีเฟรชข้อมูล
+Start 2026-07-02 10:03:39
+Payload: Array
+(
+    [company_id] => 901
+    [user_id] => 9001
+    [bank_account_id] => 901
+    [start_date] => 2026-06-01
+    [end_date] => 2026-06-02
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 90001
+                    [reconcile_type] => Suspense
+                    [confirmed_amount] => 1234.56
+                    [note] => test
+                )
+
+        )
+
+)
+
+Process Item: StmtId=90001, Type=Suspense, Amount=1234.56
+Start 2026-07-02 10:34:56
+Payload: Array
+(
+    [company_id] => 902
+    [user_id] => 9001
+    [bank_account_id] => 901
+    [start_date] => 2026-06-01
+    [end_date] => 2026-06-02
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 90001
+                    [reconcile_type] => Suspense
+                    [confirmed_amount] => 1234.56
+                    [note] => test by B
+                )
+
+        )
+
+)
+
+Process Item: StmtId=90001, Type=Suspense, Amount=1234.56
+Start 2026-07-02 10:34:57
+Payload: Array
+(
+    [company_id] => 999
+    [user_id] => 9001
+    [bank_account_id] => 901
+    [start_date] => 2026-06-01
+    [end_date] => 2026-06-02
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 90001
+                    [reconcile_type] => Suspense
+                    [confirmed_amount] => 1234.56
+                )
+
+        )
+
+)
+
+Exception: Bank account not found for this company
