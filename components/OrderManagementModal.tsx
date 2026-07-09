@@ -2818,7 +2818,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               </span>
             </div>
           )}
-          <div className="flex justify-end mb-2">
+          <div className="flex justify-between items-center mb-2">
+            <div>
+              {(currentOrder.monthlyDiscount || 0) > 0 && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                  <span className="mr-1">🎁</span> ใช้คูปองส่วนลดประจำเดือน ({currentOrder.monthlyDiscount} บาท)
+                </span>
+              )}
+            </div>
             {!isEditing ? (
               <div className="flex space-x-2">
 
