@@ -34,7 +34,7 @@ export const OrderNoteInput: React.FC<OrderNoteInputProps> = ({
       {/* Monthly Discount Note */}
       <div>
         <label className={labelClassName}>
-          คูปองส่วนลดประจำเดือน <span className="text-gray-400 text-xs font-normal">(บันทึกเป็นข้อมูลอ้างอิงเท่านั้น)</span>
+          คูปองส่วนลดประจำเดือน
         </label>
         <div className="flex items-center gap-2">
           <input
