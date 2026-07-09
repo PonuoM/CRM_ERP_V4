@@ -249,6 +249,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Daily Monitoring": "ติดตามรายวัน",
     "Lead Performance": "อัตราการปิดการขาย",
     "Team Appointments": "นัดหมายของทีม",
+    "Special Orders Report": "สรุปตีกลับ/ยกเลิก",
     "Sales Monitoring": "ภาพรวมทีมขาย",
     "Telesale Callstats": "ติดตามการโทร",
     "Random Employee List": "สุ่มรายชื่อพนักงาน",
@@ -273,6 +274,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Lead Performance", icon: BarChart2, key: "monitor.lead_performance" },
         { label: "Team Appointments", icon: Calendar, key: "monitor.team_appointments" },
         { label: "Distribution Dashboard", icon: Activity, key: "nav.distribution_dashboard" },
+        { label: "Special Orders Report", icon: BarChart2, key: "reports.special_orders" },
       ]
     },
     {
@@ -385,7 +387,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: BarChart2,
       children: [
         { label: "Reports", icon: BarChart2, key: "reports.reports" }, // Or nav.reports
-        { label: "Special Orders Report", icon: BarChart2, key: "reports.special_orders" },
         { label: "Export History", icon: FileUp, key: "reports.export_history" },
         { label: "Import Export", icon: FileUp, key: "reports.import_export" },
         { label: "Random Employee List", icon: Users, key: "reports.random_employee" },
