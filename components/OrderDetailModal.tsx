@@ -188,7 +188,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
                 <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <div>
-                        <h3 className="text-lg font-bold text-gray-800">รายละเอียดออเดอร์ #{orderId}</h3>
+                        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            รายละเอียดออเดอร์ #{orderId}
+                            {((order as any)?.monthly_discount || (order as any)?.monthlyDiscount || 0) > 0 && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                                    <span className="mr-1">🎁</span> ใช้คูปองส่วนลดประจำเดือน ({((order as any)?.monthly_discount || (order as any)?.monthlyDiscount)} บาท)
+                                </span>
+                            )}
+                        </h3>
                     </div>
                     <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full text-gray-500 transition-colors">
                         <X size={20} />
