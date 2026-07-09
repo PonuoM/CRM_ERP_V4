@@ -655,6 +655,7 @@ export interface Order {
   trackingDetails?: TrackingDetail[];
   boxes?: CodBox[];
   notes?: string;
+  monthlyDiscount?: number;
   warehouseId?: number;
   salesChannel?: string;
   salesChannelPageId?: number;
