@@ -18,6 +18,12 @@ interface CompanyGeo {
   prefix: string;
   enable_geofencing: number;
   work_location_ids: number[];
+  geo_role_ids: number[];
+}
+
+interface Role {
+  id: number;
+  name: string;
 }
 
 export default function GeoCompanySettingsPage() {
@@ -26,6 +32,7 @@ export default function GeoCompanySettingsPage() {
   // Data state
   const [locations, setLocations] = useState<WorkLocation[]>([]);
   const [companies, setCompanies] = useState<CompanyGeo[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modal states
@@ -58,6 +65,7 @@ export default function GeoCompanySettingsPage() {
       ]);
       setLocations(locRes.data || []);
       setCompanies(compRes.data || []);
+      setRoles(compRes.roles || []);
     } catch (e: any) {
       setError(e.message || 'Failed to load data');
     } finally {
@@ -137,20 +145,21 @@ export default function GeoCompanySettingsPage() {
     }
   };
 
-  const handleCompanyUpdate = async (companyId: number, enableGeofencing: number, locationIds: number[]) => {
+  const handleCompanyUpdate = async (companyId: number, enableGeofencing: number, locationIds: number[], roleIds: number[]) => {
     try {
-      await apiFetch(`geo_companies/update`, {
+      await apiFetch('geo_companies/update', {
         method: 'POST',
         body: JSON.stringify({
           company_id: companyId,
           enable_geofencing: enableGeofencing,
-          work_location_ids: locationIds
+          work_location_ids: locationIds,
+          geo_role_ids: roleIds
         })
       });
-      // Update local state for immediate feedback
-      setCompanies(prev => prev.map(c => 
+      // Update local state instead of refetching to be snappier
+      setCompanies(companies.map(c => 
         c.id === companyId 
-          ? { ...c, enable_geofencing: enableGeofencing, work_location_ids: locationIds } 
+          ? { ...c, enable_geofencing: enableGeofencing, work_location_ids: locationIds, geo_role_ids: roleIds } 
           : c
       ));
       setSuccess('Company settings updated');
@@ -357,17 +366,14 @@ export default function GeoCompanySettingsPage() {
                             className="sr-only"
                             checked={company.enable_geofencing === 1}
                             onChange={(e) => {
-                              handleCompanyUpdate(
-                                company.id, 
-                                e.target.checked ? 1 : 0, 
-                                company.work_location_ids
-                              );
+                              handleCompanyUpdate(company.id, e.target.checked ? 1 : 0, company.work_location_ids, company.geo_role_ids);
                             }}
                           />
                           <div className={`block w-14 h-8 rounded-full transition-colors ${company.enable_geofencing ? 'bg-indigo-500' : 'bg-gray-300'}`}></div>
                           <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${company.enable_geofencing ? 'transform translate-x-6' : ''}`}></div>
                         </div>
-                        <div className="ml-3 text-sm font-medium text-gray-700">
+                        <div className="ml-3 text-sm">
+                          <span className="font-semibold text-gray-900 block mb-1">สถานะระบบ Geo-fencing</span>
                           {company.enable_geofencing ? 'เปิดใช้งาน Geo-fencing' : 'ปิดใช้งาน'}
                         </div>
                       </label>
@@ -401,7 +407,7 @@ export default function GeoCompanySettingsPage() {
                                       } else {
                                         newIds = newIds.filter(id => id !== loc.id);
                                       }
-                                      handleCompanyUpdate(company.id, company.enable_geofencing, newIds);
+                                      handleCompanyUpdate(company.id, company.enable_geofencing, newIds, company.geo_role_ids);
                                     }}
                                   />
                                 </div>
@@ -409,6 +415,42 @@ export default function GeoCompanySettingsPage() {
                                   <span className={`font-medium ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}>{loc.name}</span>
                                   <p className={`text-xs mt-1 ${isSelected ? 'text-indigo-700' : 'text-gray-500'}`}>รัศมี: {loc.radius_meters}m</p>
                                 </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <h4 className="text-sm font-medium text-gray-700 mb-3 mt-6">ตำแหน่ง (Roles) ที่บังคับใช้ระบบนี้:</h4>
+                      {roles.length === 0 ? (
+                        <p className="text-sm text-gray-500">ไม่มีข้อมูลตำแหน่งในระบบ</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-3">
+                          {roles.map(role => {
+                            const isRoleSelected = company.geo_role_ids.includes(role.id);
+                            return (
+                              <label
+                                key={role.id}
+                                className={`flex items-center px-3 py-2 border rounded-full cursor-pointer transition-colors text-sm ${
+                                  isRoleSelected ? 'border-indigo-500 bg-indigo-50 text-indigo-700 font-medium' : 'border-gray-200 bg-white hover:border-gray-300 text-gray-700'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="hidden"
+                                  checked={isRoleSelected}
+                                  onChange={(e) => {
+                                    let newRoleIds = [...company.geo_role_ids];
+                                    if (e.target.checked) {
+                                      newRoleIds.push(role.id);
+                                    } else {
+                                      newRoleIds = newRoleIds.filter(id => id !== role.id);
+                                    }
+                                    handleCompanyUpdate(company.id, company.enable_geofencing, company.work_location_ids, newRoleIds);
+                                  }}
+                                />
+                                <span className={`w-3 h-3 rounded-full mr-2 ${isRoleSelected ? 'bg-indigo-500' : 'bg-gray-300'}`}></span>
+                                {role.name}
                               </label>
                             );
                           })}

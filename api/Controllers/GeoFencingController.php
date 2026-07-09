@@ -74,10 +74,14 @@ class GeoFencingController
             $stmt = $pdo->query('SELECT company_id, work_location_id FROM company_work_locations');
             $cwl = $stmt->fetchAll();
 
+            $stmt = $pdo->query('SELECT company_id, role_id FROM company_geo_roles');
+            $cgr = $stmt->fetchAll();
+
             $companyMap = [];
             foreach ($companies as $c) {
                 $c['enable_geofencing'] = (int)$c['enable_geofencing'];
                 $c['work_location_ids'] = [];
+                $c['geo_role_ids'] = [];
                 $companyMap[$c['id']] = $c;
             }
 
@@ -87,7 +91,21 @@ class GeoFencingController
                 }
             }
 
-            json_response(['ok' => true, 'data' => array_values($companyMap)]);
+            foreach ($cgr as $link) {
+                if (isset($companyMap[$link['company_id']])) {
+                    $companyMap[$link['company_id']]['geo_role_ids'][] = (int)$link['role_id'];
+                }
+            }
+
+            // Also fetch available active roles
+            $stmt = $pdo->query('SELECT id, name FROM roles WHERE is_active = 1 ORDER BY name ASC');
+            $roles = $stmt->fetchAll();
+
+            json_response([
+                'ok' => true, 
+                'data' => array_values($companyMap),
+                'roles' => $roles
+            ]);
         } else if ($method === 'POST' && $id === 'update') {
             // Update company settings
             if (!isset($in['company_id'])) {
@@ -113,6 +131,19 @@ class GeoFencingController
                         $insertStmt->execute([$companyId, (int)$locId]);
                     }
                 }
+
+                // Update company_geo_roles mapping
+                $geoRoleIds = $in['geo_role_ids'] ?? [];
+                $stmt = $pdo->prepare('DELETE FROM company_geo_roles WHERE company_id = ?');
+                $stmt->execute([$companyId]);
+
+                if (!empty($geoRoleIds) && is_array($geoRoleIds)) {
+                    $insertRoleStmt = $pdo->prepare('INSERT INTO company_geo_roles (company_id, role_id) VALUES (?, ?)');
+                    foreach ($geoRoleIds as $roleId) {
+                        $insertRoleStmt->execute([$companyId, (int)$roleId]);
+                    }
+                }
+
                 $pdo->commit();
                 json_response(['ok' => true, 'message' => 'Company settings updated']);
             } catch (Exception $e) {
