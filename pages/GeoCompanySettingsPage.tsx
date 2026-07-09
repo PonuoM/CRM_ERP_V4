@@ -424,118 +424,124 @@ export default function GeoCompanySettingsPage() {
       )}
 
       {/* Location Modal */}
-      <Modal 
-        isOpen={isLocModalOpen} 
-        onClose={() => !saving && setIsLocModalOpen(false)}
-        title={editingLoc ? "แก้ไขพื้นที่ทำงาน" : "เพิ่มพื้นที่ทำงานใหม่"}
-      >
-        <form onSubmit={handleSaveLocation} className="space-y-4 min-w-[400px]">
-          {error && (
-            <div className="p-3 bg-red-50 text-red-700 text-sm rounded border border-red-200">
-              {error}
+      {isLocModalOpen && (
+        <Modal 
+          onClose={() => !saving && setIsLocModalOpen(false)}
+          title={editingLoc ? "แก้ไขพื้นที่ทำงาน" : "เพิ่มพื้นที่ทำงานใหม่"}
+          size="lg"
+        >
+          <form onSubmit={handleSaveLocation} className="space-y-5 min-w-[400px]">
+            {error && (
+              <div className="p-4 bg-red-50 text-red-700 text-sm rounded-lg border border-red-200">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">ชื่อเรียกพื้นที่ (Name)</label>
+              <input
+                required
+                type="text"
+                className="w-full border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 px-4 py-3 text-base text-gray-900 transition-shadow"
+                placeholder="e.g. สำนักงานใหญ่ (HQ)"
+                value={locForm.name}
+                onChange={e => setLocForm({...locForm, name: e.target.value})}
+              />
             </div>
-          )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อเรียกพื้นที่ (Name)</label>
-            <input
-              required
-              type="text"
-              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              placeholder="e.g. สำนักงานใหญ่ (HQ)"
-              value={locForm.name}
-              onChange={e => setLocForm({...locForm, name: e.target.value})}
-            />
-          </div>
+            <div className="grid grid-cols-2 gap-5">
+              <div className="col-span-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleGetCurrentLocation}
+                  className="flex items-center gap-2 text-sm font-medium text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors border border-indigo-100 shadow-sm"
+                  disabled={saving}
+                >
+                  <Navigation size={16} />
+                  ดึงพิกัดปัจจุบัน
+                </button>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Latitude</label>
+                <input
+                  required
+                  type="number"
+                  step="any"
+                  className="w-full border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 px-4 py-3 text-base font-mono text-gray-900 transition-shadow"
+                  placeholder="13.7563"
+                  value={locForm.latitude}
+                  onChange={e => setLocForm({...locForm, latitude: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Longitude</label>
+                <input
+                  required
+                  type="number"
+                  step="any"
+                  className="w-full border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 px-4 py-3 text-base font-mono text-gray-900 transition-shadow"
+                  placeholder="100.5018"
+                  value={locForm.longitude}
+                  onChange={e => setLocForm({...locForm, longitude: e.target.value})}
+                />
+              </div>
+            </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 flex justify-end">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">รัศมีที่อนุญาต (เมตร)</label>
+              <input
+                required
+                type="number"
+                min="10"
+                className="w-full border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 px-4 py-3 text-base text-gray-900 transition-shadow"
+                placeholder="100"
+                value={locForm.radius_meters}
+                onChange={e => setLocForm({...locForm, radius_meters: e.target.value})}
+              />
+              <p className="text-sm text-gray-500 mt-2 flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400"></span> แนะนำ 100-500 เมตร (ค่าความคลาดเคลื่อนของ GPS บนมือถือมักจะอยู่ที่ ~20 เมตร)
+              </p>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  checked={locForm.is_active === 1}
+                  onChange={e => setLocForm({...locForm, is_active: e.target.checked ? 1 : 0})}
+                />
+                <span className="ml-3 text-base font-medium text-gray-800">เปิดใช้งาน (Active)</span>
+              </label>
+            </div>
+
+            <div className="mt-6">
+              <p className="block text-sm font-semibold text-gray-700 mb-3">แสดงตัวอย่างแผนที่ (Preview)</p>
+              <div className="shadow-sm rounded-lg overflow-hidden border border-gray-200">
+                {renderMapPreview()}
+              </div>
+            </div>
+
+            <div className="pt-6 flex justify-end gap-3 border-t border-gray-200 mt-8">
               <button
                 type="button"
-                onClick={handleGetCurrentLocation}
-                className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors"
+                onClick={() => setIsLocModalOpen(false)}
+                className="px-6 py-2.5 border border-gray-300 rounded-lg shadow-sm text-base font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
                 disabled={saving}
               >
-                <Navigation size={14} />
-                ดึงพิกัดปัจจุบัน
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                className="px-6 py-2.5 border border-transparent rounded-lg shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 flex items-center justify-center min-w-[120px] transition-colors"
+                disabled={saving}
+              >
+                {saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
               </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>
-              <input
-                required
-                type="number"
-                step="any"
-                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
-                placeholder="13.7563"
-                value={locForm.latitude}
-                onChange={e => setLocForm({...locForm, latitude: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Longitude</label>
-              <input
-                required
-                type="number"
-                step="any"
-                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
-                placeholder="100.5018"
-                value={locForm.longitude}
-                onChange={e => setLocForm({...locForm, longitude: e.target.value})}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">รัศมีที่อนุญาต (เมตร)</label>
-            <input
-              required
-              type="number"
-              min="10"
-              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              placeholder="100"
-              value={locForm.radius_meters}
-              onChange={e => setLocForm({...locForm, radius_meters: e.target.value})}
-            />
-            <p className="text-xs text-gray-500 mt-1">แนะนำ 100-500 เมตร (ค่าความคลาดเคลื่อนของ GPS บนมือถือมักจะอยู่ที่ ~20 เมตร)</p>
-          </div>
-
-          <div>
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                checked={locForm.is_active === 1}
-                onChange={e => setLocForm({...locForm, is_active: e.target.checked ? 1 : 0})}
-              />
-              <span className="ml-2 text-sm text-gray-700">เปิดใช้งาน (Active)</span>
-            </label>
-          </div>
-
-          <div className="mt-4">
-            <p className="block text-sm font-medium text-gray-700 mb-2">แสดงตัวอย่างแผนที่ (Preview)</p>
-            {renderMapPreview()}
-          </div>
-
-          <div className="pt-4 flex justify-end gap-3 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={() => setIsLocModalOpen(false)}
-              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              disabled={saving}
-            >
-              ยกเลิก
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 flex items-center justify-center min-w-[100px]"
-              disabled={saving}
-            >
-              {saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }
