@@ -24,6 +24,10 @@ interface ReclaimModalProps {
     agents: any[];
     bulkLimit: string;
     setBulkLimit: (val: string) => void;
+    bulkReclaimDestinationType: 'auto' | 'force';
+    setBulkReclaimDestinationType: (val: 'auto' | 'force') => void;
+    bulkForceBasketKey: string;
+    setBulkForceBasketKey: (val: string) => void;
     handleExecuteBulkAction: () => void;
     reclaiming: boolean;
     transferring: boolean;
@@ -52,6 +56,10 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
     agents,
     bulkLimit,
     setBulkLimit,
+    bulkReclaimDestinationType,
+    setBulkReclaimDestinationType,
+    bulkForceBasketKey,
+    setBulkForceBasketKey,
     handleExecuteBulkAction,
     reclaiming,
     transferring
@@ -272,6 +280,34 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                                 </div>
                             )}
 
+                            {/* Reclaim Destination (Only for Reclaim) */}
+                            {bulkActionType === 'reclaim' && (
+                                <div className="flex-1 animate-in fade-in slide-in-from-right-4 duration-200">
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">ถังปลายทาง</label>
+                                    <select
+                                        value={bulkReclaimDestinationType}
+                                        onChange={(e) => setBulkReclaimDestinationType(e.target.value as 'auto' | 'force')}
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 mb-2"
+                                    >
+                                        <option value="auto">ตามถังอัตโนมัติ (logic ปัจจุบัน)</option>
+                                        <option value="force">บังคับถัง</option>
+                                    </select>
+                                    {bulkReclaimDestinationType === 'force' && (
+                                        <select
+                                            value={bulkForceBasketKey}
+                                            onChange={(e) => setBulkForceBasketKey(e.target.value)}
+                                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white border-blue-200"
+                                        >
+                                            <option value="">-- เลือกถังปลายทาง --</option>
+                                            {dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis').map(b => (
+                                                <option key={b.basket_key} value={b.basket_key}>{b.basket_name}</option>
+                                            ))}
+                                            <option value="holding_before_redistribute">ถังพักรอแจก</option>
+                                        </select>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Limit Input */}
                             <div className="w-32">
                                 <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">จำนวน / ถัง</label>
@@ -308,6 +344,7 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                                         selectedBaskets.length === 0 || 
                                         !bulkActionType || 
                                         (bulkActionType === 'transfer' && bulkTargetAgents.length === 0) ||
+                                        (bulkActionType === 'reclaim' && bulkReclaimDestinationType === 'force' && !bulkForceBasketKey) ||
                                         reclaiming || transferring
                                     }
                                     className={`px-6 py-2.5 font-medium text-white rounded-lg flex items-center gap-2 shadow-sm transition-all
