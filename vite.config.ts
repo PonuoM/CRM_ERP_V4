@@ -24,6 +24,7 @@ function fixHtmlContentType(): Plugin {
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, '.', '');
   const isDev = command === 'serve';
+  const dirName = path.basename(__dirname); // Get current folder name automatically
   return {
     // Use root base in dev; sub-path in builds (configured in appBasePath.ts)
     base: isDev ? '/' : APP_BASE_PATH,
@@ -35,13 +36,13 @@ export default defineConfig(({ command, mode }) => {
         '/api/uploads': {
           target: 'http://localhost',
           changeOrigin: true,
-          rewrite: (p) => p.replace(/^\/api/, '/CRM_ERP_V4_main/api'),
+          rewrite: (p) => p.replace(/^\/api/, `/${dirName}/api`),
           // Don't rewrite for static files, just proxy them
         },
         '/api': {
           target: 'http://localhost',
           changeOrigin: true,
-          rewrite: (p) => p.replace(/^\/api/, '/CRM_ERP_V4_main/api'),
+          rewrite: (p) => p.replace(/^\/api/, `/${dirName}/api`),
         },
         '/CRM_ERP_V4/api': {
           target: 'http://localhost',
@@ -50,7 +51,7 @@ export default defineConfig(({ command, mode }) => {
         [`${APP_BASE_PATH}api`]: {
           target: 'http://localhost',
           changeOrigin: true,
-          rewrite: (p) => p.replace(new RegExp(`^${APP_BASE_PATH}api`), '/CRM_ERP_V4_main/api'),
+          rewrite: (p) => p.replace(new RegExp(`^${APP_BASE_PATH}api`), `/${dirName}/api`),
         },
         '/onecall': {
           target: 'https://onecallvoicerecord.dtac.co.th',

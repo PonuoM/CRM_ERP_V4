@@ -593,6 +593,8 @@ function handleReclaimCustomers($pdo, $companyId)
     $agentId = $input['agent_id'] ?? null;
     $baskets = $input['baskets'] ?? []; // key => quantity
     $reclaimMode = $input['reclaim_mode'] ?? 'all';
+    $reclaimDestination = $input['reclaim_destination'] ?? 'auto';
+    $forceBasketKey = $input['force_basket_key'] ?? null;
 
     if (!$agentId || empty($baskets)) {
         http_response_code(400);
@@ -627,18 +629,26 @@ function handleReclaimCustomers($pdo, $companyId)
                 continue; // Basket not found
 
             // Determine the target basket (where to move customers)
-            // If linked_basket_key exists, move to that Distribution basket
-            // Otherwise, just unassign them (keep in same basket)
+            // If force_basket_key is set, use it. Otherwise, use linked_basket_key if it exists.
             $targetBasketId = $dashboardBasketId; // Default: keep in same basket
 
-            if ($linkedBasketKey) {
-                // Find the Distribution basket ID from linked_basket_key (Basket config is GLOBAL)
+            if ($reclaimDestination === 'force' && $forceBasketKey) {
                 $linkIdStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
-                $linkIdStmt->execute([$linkedBasketKey]);
+                $linkIdStmt->execute([$forceBasketKey]);
                 $linkedId = $linkIdStmt->fetchColumn();
-
                 if ($linkedId) {
-                    $targetBasketId = $linkedId; // Move to Distribution basket
+                    $targetBasketId = $linkedId;
+                }
+            } else {
+                if ($linkedBasketKey) {
+                    // Find the Distribution basket ID from linked_basket_key (Basket config is GLOBAL)
+                    $linkIdStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
+                    $linkIdStmt->execute([$linkedBasketKey]);
+                    $linkedId = $linkIdStmt->fetchColumn();
+
+                    if ($linkedId) {
+                        $targetBasketId = $linkedId; // Move to Distribution basket
+                    }
                 }
             }
 
