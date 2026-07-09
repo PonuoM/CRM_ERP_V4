@@ -12,6 +12,7 @@ interface UniversalDateRangePickerProps {
   label?: string;
   buttonClassName?: string;
   placeholder?: string;
+  allowAllTime?: boolean;
 }
 
 const formatDate = (dateString?: string) => {
@@ -36,7 +37,8 @@ const UniversalDateRangePicker: React.FC<UniversalDateRangePickerProps> = ({
   onChange,
   label,
   buttonClassName = "w-64 px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between",
-  placeholder = "เลือกช่วงวันที่"
+  placeholder = "เลือกช่วงวันที่",
+  allowAllTime = true
 }) => {
   const [open, setOpen] = useState(false);
   const [start, setStart] = useState(value.start || "");
@@ -60,7 +62,7 @@ const UniversalDateRangePicker: React.FC<UniversalDateRangePickerProps> = ({
 
   const display = useMemo(() => {
     if (!value.start && !value.end) {
-      return placeholder;
+      return allowAllTime ? "ทั้งหมด (All)" : placeholder;
     }
     if (value.start && value.end) {
       return `${formatDate(value.start)} - ${formatDate(value.end)}`;
@@ -143,7 +145,7 @@ const UniversalDateRangePicker: React.FC<UniversalDateRangePickerProps> = ({
         <div className="flex flex-col items-start truncate overflow-hidden">
              {label && <span className="text-[10px] text-gray-400 font-medium leading-none mb-1">{label}</span>}
              <span className={(value.start || value.end) ? "text-gray-700 text-sm font-medium" : "text-gray-500 text-sm"}>
-                {(!value.start && !value.end) ? "ทั้งหมด (All)" : display}
+                {(!value.start && !value.end && allowAllTime) ? "ทั้งหมด (All)" : display}
              </span>
         </div>
         <Calendar className="w-4 h-4 text-gray-400 shrink-0 ml-2" />
@@ -165,9 +167,11 @@ const UniversalDateRangePicker: React.FC<UniversalDateRangePickerProps> = ({
             <div className="border-t border-gray-100 pt-3">
               <p className="text-xs font-semibold text-gray-600 mb-2">เลือกช่วงเวลาด่วน:</p>
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => applyPreset("all")} className="px-2 py-2 text-xs rounded-md bg-green-50 text-green-700 hover:bg-green-100 flex items-center shadow-sm border border-green-100 transition-colors">
-                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span> ทั้งหมด
-                </button>
+                {allowAllTime && (
+                  <button onClick={() => applyPreset("all")} className="px-2 py-2 text-xs rounded-md bg-green-50 text-green-700 hover:bg-green-100 flex items-center shadow-sm border border-green-100 transition-colors">
+                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span> ทั้งหมด
+                  </button>
+                )}
                 <button onClick={() => applyPreset("today")} className="px-2 py-2 text-xs rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center shadow-sm border border-blue-100 transition-colors">
                   <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span> วันนี้
                 </button>

@@ -277,6 +277,7 @@ import CODManagementPage from "./pages/CODManagementPage";
 import AddressManagementPage from "./pages/AddressManagementPage";
 import GoogleSheetImportPage from "./pages/GoogleSheetImportPage";
 import InventoryReportsPage from "./pages/InventoryReportsPage";
+import StockArrivalPlanningPage from "./pages/StockArrivalPlanningPage";
 import Inv2StockOrderPage from "./pages/Inv2StockOrderPage";
 import Inv2ReceivePage from "./pages/Inv2ReceivePage";
 import Inv2DispatchPage from "./pages/Inv2DispatchPage";
@@ -1126,6 +1127,7 @@ const App: React.FC = () => {
           email: r.email,
           phone: r.phone,
           role: r.role as unknown as UserRole,
+          role_id: r.role_id != null ? Number(r.role_id) : undefined,
           companyId: r.company_id,
           teamId:
             typeof r.team_id !== "undefined" && r.team_id !== null
@@ -6963,6 +6965,9 @@ const App: React.FC = () => {
     if (activePage === "Warehouse Allocation") {
       return <OrderAllocationPage />;
     }
+    if (activePage === "แพลนรับสินค้า") {
+      return <StockArrivalPlanningPage currentUser={currentUser} />;
+    }
     if (activePage === "Team") {
       if (currentUser.role === UserRole.Supervisor) {
         return (
@@ -7026,7 +7031,7 @@ const App: React.FC = () => {
       );
     }
     if (activePage === "Special Orders Report") {
-      return <ReturnedOrdersReportPage />;
+      return <ReturnedOrdersReportPage users={users} currentUser={currentUser} />;
     }
     if (activePage === "Reports") {
       return (
@@ -7421,7 +7426,7 @@ const App: React.FC = () => {
       case "Telesale Performance":
       case "home.telesale_performance":
       case "วิเคราะห์ประสิทธิภาพ Telesale":
-        return <TelesalePerformancePage />;
+        return <TelesalePerformancePage users={users} />;
 
       case "Telesale Callstats":
       case "monitor.callstats":

@@ -67,18 +67,19 @@ try {
     $allSegmentKeysIn = implode(',', array_merge($TIER_NEW_KEYS, $TIER_CORE_KEYS, $TIER_REVIVAL_KEYS));
 
     // Visible Users
+    // Visible Users
     $sqlVisibleUsers = "
-        SELECT u.id, u.first_name, u.last_name, u.phone, u.supervisor_id, sup.first_name AS supervisor_name
+        SELECT u.id, u.first_name, u.last_name, u.phone, u.supervisor_id, u.role_id, u.role, sup.first_name AS supervisor_name
         FROM users u 
         LEFT JOIN users sup ON u.supervisor_id = sup.id
-        WHERE u.company_id = ? AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%') AND u.status = 'active' $userFilter
+        WHERE u.company_id = ? AND u.role_id IN (3, 6, 7) AND u.status = 'active' $userFilter
         UNION
-        SELECT DISTINCT u.id, u.first_name, u.last_name, u.phone, u.supervisor_id, sup.first_name AS supervisor_name
+        SELECT DISTINCT u.id, u.first_name, u.last_name, u.phone, u.supervisor_id, u.role_id, u.role, sup.first_name AS supervisor_name
         FROM users u
         LEFT JOIN users sup ON u.supervisor_id = sup.id
         JOIN order_items oi ON oi.creator_id = u.id
         JOIN orders o ON oi.parent_order_id = o.id
-        WHERE u.company_id = ? AND (u.role LIKE '%telesale%' OR u.role LIKE '%admin page%') AND u.status != 'active'
+        WHERE u.company_id = ? AND u.role_id IN (3, 6, 7) AND u.status != 'active'
             AND DATE(o.order_date) BETWEEN ? AND ?
             AND TIME(o.order_date) BETWEEN ? AND ?
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
@@ -102,6 +103,20 @@ try {
         ]);
         exit;
     }
+
+    $resolveTeamName = function($u) use ($visibleUsersList) {
+        if ($u['role_id'] == 3 || stripos($u['role'], 'admin page') !== false) {
+            return 'ทีม Admin Page';
+        }
+        if (!empty($u['supervisor_id']) && !empty($u['supervisor_name'])) {
+            return 'ทีม ' . trim($u['supervisor_name']);
+        }
+        $isSup = in_array($u['id'], array_column($visibleUsersList, 'supervisor_id'));
+        if ($isSup) {
+            return 'ทีม ' . trim($u['first_name']);
+        }
+        return 'อื่นๆ';
+    };
     $visibleIdsIn = implode(',', array_map('intval', $visibleIds));
     $visibleFilter = "u.id IN ($visibleIdsIn)";
 
@@ -120,7 +135,7 @@ try {
             $dailyData[$d][$u['id']] = [
                 'userId' => intval($u['id']),
                 'name' => trim($u['first_name'] . ' ' . $u['last_name']),
-                'team' => $u['supervisor_name'] ? trim($u['supervisor_name']) : 'No Team',
+                'team' => $resolveTeamName($u),
                 'date' => $d,
                 'metrics' => [
                     'totalCalls' => 0,
@@ -295,11 +310,11 @@ try {
     }
 
     // Also send a user list for filtering
-    $usersList = array_map(function($u) {
+    $usersList = array_map(function($u) use ($resolveTeamName) {
         return [
             'id' => $u['id'],
             'name' => trim($u['first_name'] . ' ' . $u['last_name']),
-            'team' => $u['supervisor_name'] ? trim($u['supervisor_name']) : 'No Team'
+            'team' => $resolveTeamName($u)
         ];
     }, $visibleUsersList);
 

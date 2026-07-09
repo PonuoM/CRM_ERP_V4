@@ -369,6 +369,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "สต็อก V2", icon: BarChart3, key: "inv2.stock" },
         { label: "ประวัติ V2", icon: History, key: "inv2.history" },
         { label: "ผูกคลัง V2", icon: FileText, key: "inv2.mapping" },
+        { label: "แพลนรับสินค้า", icon: Calendar, key: "inv2.arrival_planning" },
       ]
     },
     {

@@ -82,6 +82,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $trackingNumber = $_GET['trackingNumber'] ?? null;
                 $orderDateStart = $_GET['orderDateStart'] ?? null;
                 $orderDateEnd = $_GET['orderDateEnd'] ?? null;
+                $orderTimeStart = $_GET['orderTimeStart'] ?? null;
+                $orderTimeEnd = $_GET['orderTimeEnd'] ?? null;
                 $deliveryDateStart = $_GET['deliveryDateStart'] ?? null;
                 $deliveryDateEnd = $_GET['deliveryDateEnd'] ?? null;
                 $paymentMethod = $_GET['paymentMethod'] ?? null;
@@ -95,6 +97,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $orderStatus = $_GET['orderStatus'] ?? null;
                 $manageTab = $_GET['tab'] ?? null;
                 $returnMode = $_GET['returnMode'] ?? null;
+                $creatorCountType = $_GET['creatorCountType'] ?? null;
 
                 // Performance: shipping_provider column is known to exist, skip INFORMATION_SCHEMA query
                 $selectCols = 'o.id, o.customer_id, o.customer_type, o.company_id, o.creator_id, o.order_date, o.delivery_date, 
@@ -167,6 +170,16 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $params[] = $orderDateEnd . ' 23:59:59';
                 }
 
+                if ($orderTimeStart) {
+                    $whereConditions[] = 'TIME(o.order_date) >= ?';
+                    $params[] = $orderTimeStart;
+                }
+
+                if ($orderTimeEnd) {
+                    $whereConditions[] = 'TIME(o.order_date) <= ?';
+                    $params[] = $orderTimeEnd;
+                }
+
                 if ($deliveryDateStart) {
                     $whereConditions[] = 'o.delivery_date >= ?';
                     $params[] = $deliveryDateStart . ' 00:00:00';
@@ -191,6 +204,38 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $whereConditions[] = 'o.payment_status = ?';
                         $params[] = $paymentStatus;
                     }
+                }
+
+                if ($creatorCountType === 'single') {
+                    $whereConditions[] = '
+                        (
+                            NOT EXISTS (
+                                SELECT 1 FROM order_items oi 
+                                WHERE oi.parent_order_id = o.id 
+                                AND oi.creator_id != o.creator_id
+                            )
+                            AND 
+                            (
+                                SELECT COUNT(DISTINCT oi.creator_id) FROM order_items oi 
+                                WHERE oi.parent_order_id = o.id
+                            ) <= 1
+                        )
+                    ';
+                } elseif ($creatorCountType === 'multiple') {
+                    $whereConditions[] = '
+                        (
+                            EXISTS (
+                                SELECT 1 FROM order_items oi 
+                                WHERE oi.parent_order_id = o.id 
+                                AND oi.creator_id != o.creator_id
+                            )
+                            OR 
+                            (
+                                SELECT COUNT(DISTINCT oi.creator_id) FROM order_items oi 
+                                WHERE oi.parent_order_id = o.id
+                            ) > 1
+                        )
+                    ';
                 }
 
                 // Tab-specific filters for ManageOrdersPage
@@ -393,8 +438,15 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
                 if ($creatorId) {
-                    $whereConditions[] = 'o.creator_id = ?';
-                    $params[] = $creatorId;
+                    if (is_array($creatorId)) {
+                        $placeholders = str_repeat('?,', count($creatorId) - 1) . '?';
+                        $whereConditions[] = "(o.creator_id IN ($placeholders) OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.parent_order_id = o.id AND oi.creator_id IN ($placeholders)))";
+                        $params = array_merge($params, $creatorId, $creatorId);
+                    } else {
+                        $whereConditions[] = "(o.creator_id = ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.parent_order_id = o.id AND oi.creator_id = ?))";
+                        $params[] = $creatorId;
+                        $params[] = $creatorId;
+                    }
                 }
 
                 if (!empty($whereConditions)) {

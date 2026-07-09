@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Calendar, Search, Filter, Headphones, ChevronDown, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
 import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
+import useTeamEmployeeFilter from '../hooks/useTeamEmployeeFilter';
 import { useToast } from '@/components/Toast';
 import Modal from '@/components/Modal';
 import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
+import OrderDetailsModal from '@/components/ReturnedOrdersReport/OrderDetailsModal';
 
 interface AudioLink {
+  id: number;
   url: string;
   date?: string;
   notes?: string;
@@ -23,45 +27,91 @@ interface OrderData {
   cancel_type: string;
   cancel_notes: string;
   admin_resolution_notes?: string;
+  admin_resolution_completed: number;
   cancelled_at: string;
   returned_at: string;
   creator_name: string;
   audio_links: AudioLink[];
 }
 
-const ReturnedOrdersReportPage: React.FC = () => {
+interface UserData {
+  id: number;
+  first_name: string;
+  last_name: string;
+  role: string;
+  role_id: number;
+  supervisor_id: number | null;
+  computed_team?: string;
+}
+
+interface ReturnedOrdersReportPageProps {
+  currentUser?: any;
+  users?: any[];
+}
+
+const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ currentUser, users = [] }) => {
   const toast = useToast();
   
   // State
   const [activeTab, setActiveTab] = useState<'Returned' | 'Cancelled'>('Returned');
-  const [dateRange, setDateRange] = useState({
+  const [orderDateRange, setOrderDateRange] = useState({
     start: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
     end: format(new Date(), 'yyyy-MM-dd')
+  });
+  const [orderStartTime, setOrderStartTime] = useState('');
+  const [orderEndTime, setOrderEndTime] = useState('');
+
+  const [actionDateRange, setActionDateRange] = useState({
+    start: '',
+    end: ''
   });
   const [data, setData] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(false);
   const [processingAudio, setProcessingAudio] = useState<string | null>(null);
-  const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
-  const [modalOrderId, setModalOrderId] = useState<string>('');
-  const [modalAudioUrl, setModalAudioUrl] = useState<string>('');
-  const [modalAudioDate, setModalAudioDate] = useState<string>('');
-  const [modalAudioNotes, setModalAudioNotes] = useState<string>('');
 
-  // Summary Modal
-  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
-  const [summaryOrderId, setSummaryOrderId] = useState<string>('');
-  const [summaryText, setSummaryText] = useState<string>('');
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null);
+
+  // Users Data
+  const [selectedTeam, setSelectedTeam] = useState<string>('all');
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
+  const { availableTeams, filteredUsers: filteredUserDropdown } = useTeamEmployeeFilter(users, selectedTeam);
 
   // Filters
-  const [userId, setUserId] = useState<string>('');
+  const [resolutionFilter, setResolutionFilter] = useState<'All' | 'Completed' | 'Pending'>('All');
+  const [audioStatus, setAudioStatus] = useState<'All' | 'has_audio' | 'no_audio'>('All');
+  const [reasonKeyword, setReasonKeyword] = useState<string>('');
+  const [searchKeyword, setSearchKeyword] = useState<string>('');
 
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     try {
-      setLoading(true);
-      const start = dateRange.start;
-      const end = dateRange.end;
+      if (!silent) setLoading(true);
+      let query = `returned_orders_report?status_type=${activeTab}&resolution_status=${resolutionFilter}`;
+      if (orderDateRange.start && orderDateRange.end) {
+        query += `&order_start_date=${orderDateRange.start}&order_end_date=${orderDateRange.end}`;
+      }
+      if (orderStartTime && orderEndTime) {
+        query += `&order_start_time=${orderStartTime}&order_end_time=${orderEndTime}`;
+      }
+      if (actionDateRange.start && actionDateRange.end) {
+        query += `&action_start_date=${actionDateRange.start}&action_end_date=${actionDateRange.end}`;
+      }
+      if (selectedUsers.length > 0) {
+        query += `&user_id=${selectedUsers.join(',')}`;
+      }
+      if (audioStatus !== 'All') {
+        query += `&audio_status=${audioStatus}`;
+      }
+      if (reasonKeyword) {
+        query += `&reason_keyword=${encodeURIComponent(reasonKeyword)}`;
+      }
+      if (searchKeyword) {
+        query += `&search_keyword=${encodeURIComponent(searchKeyword)}`;
+      }
       
-      const json = await apiFetch(`returned_orders_report?start_date=${start}&end_date=${end}&status_type=${activeTab}&user_id=${userId}`);
+      const json = await apiFetch(query);
       
       if (json && json.ok) {
         setData(json.data);
@@ -71,13 +121,32 @@ const ReturnedOrdersReportPage: React.FC = () => {
     } catch (err: any) {
       toast.error('ข้อผิดพลาด', err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, resolutionFilter, audioStatus]);
+
+  const handleToggleCompleted = async (orderId: string, currentStatus: number) => {
+    try {
+      const newStatus = currentStatus === 1 ? 0 : 1;
+      const json = await apiFetch('returned_orders_report/toggle-completed', {
+        method: 'POST',
+        body: JSON.stringify({ order_id: orderId, is_completed: newStatus })
+      });
+      
+      if (json && json.ok) {
+        toast.success('สำเร็จ', 'อัปเดตสถานะเรียบร้อยแล้ว');
+        fetchData(true);
+      } else {
+        toast.error('ข้อผิดพลาด', json?.message || 'ไม่สามารถอัปเดตสถานะได้');
+      }
+    } catch (err: any) {
+      toast.error('ข้อผิดพลาด', err.message);
+    }
+  };
 
   const handleAutoMatch = async (orderId: string) => {
     try {
@@ -89,7 +158,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
       
       if (json && json.ok) {
         toast.success('สำเร็จ', json.message || 'จับคู่ไฟล์เสียงสำเร็จ');
-        fetchData(); // refresh to show new audio
+        fetchData(true); // refresh to show new audio silently
       } else {
         toast.error('ข้อผิดพลาด', json?.message);
       }
@@ -100,63 +169,21 @@ const ReturnedOrdersReportPage: React.FC = () => {
     }
   };
 
-  const handleManualAttach = (orderId: string) => {
-    setModalOrderId(orderId);
-    setModalAudioUrl('');
-    setModalAudioDate('');
-    setModalAudioNotes('');
-    setIsAudioModalOpen(true);
+  const handleOpenDetails = (order: OrderData) => {
+    setSelectedOrder(order);
+    setIsDetailsModalOpen(true);
   };
 
-  const submitManualAttach = async () => {
-    if (!modalAudioUrl.trim()) {
-      toast.error('ข้อผิดพลาด', 'กรุณาระบุลิงก์ไฟล์เสียง');
-      return;
-    }
-    
+  const submitDetails = async (payload: any) => {
     try {
-      setIsAudioModalOpen(false);
-      setProcessingAudio(modalOrderId);
-      const json = await apiFetch('returned_orders_report/manual-audio', {
+      const json = await apiFetch('returned_orders_report/update-details', {
         method: 'POST',
-        body: JSON.stringify({ 
-          order_id: modalOrderId, 
-          audio_url: modalAudioUrl,
-          audio_date: modalAudioDate,
-          notes: modalAudioNotes
-        })
+        body: JSON.stringify(payload)
       });
       
       if (json && json.ok) {
-        toast.success('สำเร็จ', 'แนบไฟล์เสียงเรียบร้อยแล้ว');
-        fetchData();
-      } else {
-        toast.error('ข้อผิดพลาด', json?.message);
-      }
-    } catch (err: any) {
-      toast.error('ข้อผิดพลาด', err.message);
-    } finally {
-      setProcessingAudio(null);
-    }
-  };
-
-  const handleEditSummary = (orderId: string, currentSummary: string) => {
-    setSummaryOrderId(orderId);
-    setSummaryText(currentSummary || '');
-    setIsSummaryModalOpen(true);
-  };
-
-  const submitSummary = async () => {
-    try {
-      setIsSummaryModalOpen(false);
-      const json = await apiFetch('returned_orders_report/summary', {
-        method: 'POST',
-        body: JSON.stringify({ order_id: summaryOrderId, summary: summaryText })
-      });
-      
-      if (json && json.ok) {
-        toast.success('สำเร็จ', 'บันทึกสรุปออเดอร์เรียบร้อยแล้ว');
-        fetchData();
+        toast.success('สำเร็จ', 'บันทึกข้อมูลเรียบร้อยแล้ว');
+        fetchData(true);
       } else {
         toast.error('ข้อผิดพลาด', json?.message);
       }
@@ -194,32 +221,199 @@ const ReturnedOrdersReportPage: React.FC = () => {
 
             <div className="p-6">
               {/* Filters */}
-              <div className="flex flex-wrap gap-4 items-end mb-6 bg-gray-50 p-4 rounded-lg">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ช่วงวันที่</label>
-                  <UniversalDateRangePicker
-                    value={dateRange}
-                    onChange={(update) => setDateRange(update)}
-                  />
+              <div className="flex flex-col gap-4 mb-6 bg-gray-50 p-5 rounded-lg border border-gray-200 shadow-sm">
+                
+                {/* Top Row: Date Ranges */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Order Date Range & Time Window */}
+                  <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-md shadow-sm">
+                    <label className="text-sm font-semibold text-gray-700 border-b pb-2">วันที่สร้างคำสั่งซื้อ (Order Date)</label>
+                    <div className="z-20">
+                      <UniversalDateRangePicker 
+                        value={orderDateRange}
+                        allowAllTime={false}
+                        onChange={(range) => setOrderDateRange(range)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 mt-1">
+                      <label className="text-[10px] text-gray-500">กรองเฉพาะช่วงเวลาของแต่ละวัน</label>
+                      <div className="flex items-center gap-2">
+                        <input type="time" value={orderStartTime} onChange={e => setOrderStartTime(e.target.value)} className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none" />
+                        <span className="text-gray-400 text-xs">ถึง</span>
+                        <input type="time" value={orderEndTime} onChange={e => setOrderEndTime(e.target.value)} className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none" />
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-1 rounded-sm mt-1">ระบบจะดึงข้อมูลเฉพาะช่วงเวลาที่เลือกในทุกๆ วัน</span>
+                  </div>
+
+                  {/* Action Details: Date Range & Audio Status */}
+                  <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-md shadow-sm">
+                    <label className="text-sm font-semibold text-gray-700 border-b pb-2">ข้อมูลการตีกลับ/ยกเลิก (Action Details)</label>
+                    <div className="z-10 mt-1">
+                      <UniversalDateRangePicker 
+                        value={actionDateRange}
+                        allowAllTime={true}
+                        placeholder="วันที่ลงสถานะ (ระบุหรือไม่ระบุก็ได้)..."
+                        onChange={(range) => setActionDateRange(range)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 mt-1 z-0">
+                      <label className="text-[10px] text-gray-500">สถานะไฟล์เสียง</label>
+                      <select
+                        value={audioStatus}
+                        onChange={e => setAudioStatus(e.target.value as any)}
+                        className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none bg-white"
+                      >
+                        <option value="All">สถานะไฟล์เสียงทั้งหมด</option>
+                        <option value="has_audio">มีไฟล์เสียงแล้ว</option>
+                        <option value="no_audio">ยังไม่มีไฟล์เสียง</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">รหัสพนักงาน</label>
-                  <input 
-                    type="text" 
-                    value={userId} 
-                    onChange={e => setUserId(e.target.value)} 
-                    placeholder="รหัสพนักงาน..."
-                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+
+                {/* Bottom Row: Status, User ID, and Search */}
+                <div className="flex flex-wrap items-end justify-between pt-3 border-t border-gray-200 mt-2 gap-4">
+                  
+                  <div className="flex flex-wrap items-end gap-3 w-full xl:w-auto flex-1">
+                    
+                    {/* Reason Search */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[220px]">
+                      <label className="text-sm font-medium text-gray-700">ค้นหาสาเหตุ/หมายเหตุ</label>
+                      <input 
+                        type="text" 
+                        value={reasonKeyword} 
+                        onChange={e => setReasonKeyword(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && fetchData()}
+                        placeholder="พิมพ์สาเหตุ..."
+                        className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+
+                    {/* Customer Search */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[220px]">
+                      <label className="text-sm font-medium text-gray-700">ค้นหาลูกค้า/รหัสออเดอร์</label>
+                      <input 
+                        type="text" 
+                        value={searchKeyword} 
+                        onChange={e => setSearchKeyword(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && fetchData()}
+                        placeholder="เบอร์โทร, ชื่อ, รหัส..."
+                        className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+
+                    {/* Resolution Status */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[180px]">
+                      <label className="text-sm font-medium text-gray-700">สถานะการจัดการ</label>
+                      <select
+                        value={resolutionFilter}
+                        onChange={e => setResolutionFilter(e.target.value as any)}
+                        className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="All">ทั้งหมด</option>
+                        <option value="Pending">รอดำเนินการ</option>
+                        <option value="Completed">จัดการเรียบร้อยแล้ว</option>
+                      </select>
+                    </div>
+
+                    {/* Team Dropdown */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[150px]">
+                      <label className="text-sm font-medium text-gray-700">ทีมขาย</label>
+                      <select
+                          value={selectedTeam}
+                          onChange={(e) => { setSelectedTeam(e.target.value); setSelectedUsers([]); }}
+                          className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      >
+                          <option value="all">ทุกทีม</option>
+                          {availableTeams.map(t => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                      </select>
+                    </div>
+
+                    {/* Employee Dropdown */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[180px]">
+                      <label className="text-sm font-medium text-gray-700">รายชื่อพนักงาน</label>
+                      <div className="relative">
+                          <button
+                              onClick={() => setShowUserDropdown(!showUserDropdown)}
+                              className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white w-full text-left flex justify-between items-center"
+                          >
+                              <span className="truncate max-w-[130px]">
+                                  {selectedUsers.length === 0 
+                                      ? "พนักงานทุกคน" 
+                                      : `เลือกแล้ว ${selectedUsers.length} คน`}
+                              </span>
+                              <span className="text-gray-400 text-xs">▼</span>
+                          </button>
+                          {showUserDropdown && (
+                              <>
+                                  <div className="fixed inset-0 z-40" onClick={() => setShowUserDropdown(false)}></div>
+                                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                                      <div 
+                                          className="px-3 py-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer text-sm"
+                                          onClick={() => setSelectedUsers([])}
+                                      >
+                                          <label className="flex items-center gap-2 cursor-pointer w-full">
+                                              <input 
+                                                  type="checkbox" 
+                                                  checked={selectedUsers.length === 0} 
+                                                  readOnly 
+                                                  className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                              />
+                                              <span>พนักงานทุกคน (All)</span>
+                                          </label>
+                                      </div>
+                                      {filteredUserDropdown.map(u => (
+                                          <div 
+                                              key={u.id}
+                                              className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                              onClick={() => {
+                                                  const idStr = u.id.toString();
+                                                  if (selectedUsers.includes(idStr)) {
+                                                      setSelectedUsers(prev => prev.filter(id => id !== idStr));
+                                                  } else {
+                                                      setSelectedUsers(prev => [...prev, idStr]);
+                                                  }
+                                              }}
+                                          >
+                                              <label className="flex items-center gap-2 cursor-pointer w-full">
+                                                  <input 
+                                                      type="checkbox" 
+                                                      checked={selectedUsers.includes(u.id.toString())} 
+                                                      readOnly 
+                                                      className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                  />
+                                                  <span>{u.firstName} {u.lastName}</span>
+                                              </label>
+                                          </div>
+                                      ))}
+                                  </div>
+                              </>
+                          )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Search Button */}
+                  <button
+                    onClick={fetchData}
+                    className="bg-gray-800 text-white px-8 h-[38px] rounded-md hover:bg-gray-700 transition font-medium flex items-center justify-center gap-2 shadow-sm w-full sm:w-auto"
+                    disabled={loading}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    {loading ? 'กำลังค้นหา...' : 'ค้นหาข้อมูล'}
+                  </button>
                 </div>
-                <button
-                  onClick={fetchData}
-                  className="bg-gray-800 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition"
-                  disabled={loading}
-                >
-                  {loading ? 'กำลังค้นหา...' : 'ค้นหา'}
-                </button>
               </div>
+              {/* User Warning for All dates */}
+              {!orderDateRange.start && (
+                <div className="bg-yellow-50 text-yellow-800 px-4 py-2 rounded-md mb-4 text-sm flex items-start gap-2 border border-yellow-200">
+                  <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <span><strong>คำเตือน:</strong> การค้นหาแบบ "ทั้งหมด" (ไม่ระบุวันที่) จะถูกจำกัดการแสดงผลเพียง <strong>500 รายการล่าสุด</strong> เพื่อป้องกันเซิร์ฟเวอร์ทำงานหนัก หากต้องการดูออเดอร์เก่าๆ หรือทั้งหมดจริงๆ กรุณาระบุช่วงวันที่ครับ</span>
+                </div>
+              )}
 
               {/* Summary */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -268,14 +462,16 @@ const ReturnedOrdersReportPage: React.FC = () => {
                         <td colSpan={7} className="px-4 py-8 text-center text-gray-500">ไม่พบข้อมูลในช่วงเวลานี้</td>
                       </tr>
                     ) : (
-                      data.map((order, idx) => (
-                        <tr key={`${order.order_id}-${idx}`} className="hover:bg-gray-50">
+                      data.map((order, idx) => {
+                        const isCompleted = order.admin_resolution_completed === 1;
+                        return (
+                        <tr key={`${order.order_id}-${idx}`} className={`hover:bg-gray-50 transition-colors ${isCompleted ? 'bg-gray-100 opacity-60' : 'bg-white'}`}>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="font-mono text-sm text-blue-600">{order.order_id}</span>
+                            <span className={`font-mono text-sm ${isCompleted ? 'text-gray-500' : 'text-blue-600'}`}>{order.order_id}</span>
                             <div className="text-xs text-gray-500 mt-1">{order.creator_name}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                            <div><span className="font-medium text-gray-700">สร้าง:</span> {order.order_date?.substring(0,10)}</div>
+                            <div><span className="font-medium text-gray-700">วันที่สั่งซื้อ:</span> {order.order_date?.substring(0,10)}</div>
                             {activeTab === 'Returned' && order.returned_at && (
                               <div className="text-orange-600 mt-1"><span className="font-medium">ตีกลับ:</span> {order.returned_at?.substring(0,10)}</div>
                             )}
@@ -300,7 +496,7 @@ const ReturnedOrdersReportPage: React.FC = () => {
                               <div className="text-gray-600 text-xs whitespace-pre-wrap line-clamp-3" title={order.admin_resolution_notes}>
                                 {order.admin_resolution_notes || <span className="text-gray-400 italic">ไม่มีสรุป</span>}
                               </div>
-                              <button onClick={() => handleEditSummary(order.order_id, order.admin_resolution_notes || '')} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="แก้ไขสรุปออเดอร์">
+                              <button onClick={() => handleOpenDetails(order)} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="จัดการรายละเอียด">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                               </button>
                             </div>
@@ -309,17 +505,24 @@ const ReturnedOrdersReportPage: React.FC = () => {
                             {order.audio_links && order.audio_links.length > 0 ? (
                               <div className="flex flex-col gap-3">
                                 {order.audio_links.map((link, i) => (
-                                  <div key={i} className="flex flex-col gap-1 border-b border-gray-100 pb-2 last:border-0 last:pb-0">
-                                    <a 
-                                      href={link.url} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 hover:underline text-sm flex items-center gap-1"
-                                      title="ฟังไฟล์เสียงบน Google Drive"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                                      ไฟล์เสียงที่ {i + 1}
-                                    </a>
+                                  <div key={i} className="flex flex-col gap-1 border-b border-gray-100 pb-2 last:border-0 last:pb-0 group/audio">
+                                    <div className="flex justify-between items-start gap-2">
+                                      <a 
+                                        href={link.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm flex items-center gap-1"
+                                        title="ฟังไฟล์เสียงบน Google Drive"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                        ไฟล์เสียงที่ {i + 1}
+                                      </a>
+                                      {link.id && (
+                                        <button onClick={() => handleOpenDetails(order)} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover/audio:opacity-100 transition-opacity flex-shrink-0" title="จัดการรายละเอียด">
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                        </button>
+                                      )}
+                                    </div>
                                     {link.date && (
                                       <div className="text-xs text-gray-500 flex items-center gap-1">
                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -353,16 +556,35 @@ const ReturnedOrdersReportPage: React.FC = () => {
                                 {processingAudio === order.order_id ? 'กำลังจับคู่...' : 'จับคู่อัตโนมัติ'}
                               </button>
                               <button 
-                                onClick={() => handleManualAttach(order.order_id)}
+                                onClick={() => handleOpenDetails(order)}
                                 disabled={processingAudio === order.order_id}
-                                className="text-gray-600 hover:text-gray-900 bg-gray-100 px-3 py-1 rounded w-full text-xs disabled:opacity-50"
+                                className="text-gray-600 hover:text-gray-900 bg-gray-100 px-3 py-1 rounded w-full text-xs disabled:opacity-50 flex items-center justify-center gap-1"
                               >
-                                แนบลิงก์เอง
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                จัดการรายละเอียด
+                              </button>
+                              
+                              <button
+                                onClick={() => handleToggleCompleted(order.order_id, order.admin_resolution_completed)}
+                                className={`mt-2 flex items-center justify-center gap-1 w-full px-3 py-1.5 rounded text-xs font-medium transition-colors border ${
+                                  order.admin_resolution_completed === 1
+                                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                }`}
+                              >
+                                {order.admin_resolution_completed === 1 ? (
+                                  <>
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                    สรุปแล้ว
+                                  </>
+                                ) : (
+                                  'ทำเครื่องหมายว่าเสร็จ'
+                                )}
                               </button>
                             </div>
                           </td>
                         </tr>
-                      ))
+                      )})
                     )}
                   </tbody>
                 </table>
@@ -371,93 +593,12 @@ const ReturnedOrdersReportPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Audio Modal */}
-        {isAudioModalOpen && (
-          <Modal title="แนบลิงก์ไฟล์เสียง" onClose={() => setIsAudioModalOpen(false)} size="md">
-            <div className="p-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                ลิงก์ไฟล์เสียงสำหรับออเดอร์ <span className="font-bold text-blue-600">{modalOrderId}</span>
-              </label>
-              <input
-                type="url"
-                value={modalAudioUrl}
-                onChange={e => setModalAudioUrl(e.target.value)}
-                placeholder="https://example.com/audio.mp3"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                autoFocus
-              />
-              
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                วันที่และเวลาของไฟล์เสียง (ไม่บังคับ)
-              </label>
-              <input
-                type="datetime-local"
-                value={modalAudioDate}
-                onChange={e => setModalAudioDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-              />
-
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                หมายเหตุเพิ่มเติม (ไม่บังคับ)
-              </label>
-              <textarea
-                value={modalAudioNotes}
-                onChange={e => setModalAudioNotes(e.target.value)}
-                placeholder="เช่น ไฟล์เสียงสั้นเกินไป, ลูกค้าไม่พอใจ ฯลฯ"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                rows={3}
-              />
-
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setIsAudioModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={submitManualAttach}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
-
-        {/* Summary Modal */}
-        {isSummaryModalOpen && (
-          <Modal title="ระบุสรุปออเดอร์" onClose={() => setIsSummaryModalOpen(false)} size="md">
-            <div className="p-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                สรุปออเดอร์สำหรับออเดอร์ <span className="font-bold text-blue-600">{summaryOrderId}</span>
-              </label>
-              <textarea
-                value={summaryText}
-                onChange={e => setSummaryText(e.target.value)}
-                placeholder="เช่น หักเงินพนักงาน เนื่องจากผิดกฏการขาย ในวันที่ 2026-07-01..."
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                rows={5}
-                autoFocus
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setIsSummaryModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={submitSummary}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
+        <OrderDetailsModal
+          isOpen={isDetailsModalOpen}
+          onClose={() => setIsDetailsModalOpen(false)}
+          onSubmit={submitDetails}
+          orderData={selectedOrder}
+        />
     </div>
   );
 };

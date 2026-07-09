@@ -154,7 +154,8 @@ export async function listQuotaAllocations(params: {
 }
 
 export async function allocateQuota(payload: {
-  quotaProductId: number;
+  quotaProductId?: number;
+  rateScheduleId?: number;
   userId: number;
   companyId: number;
   quantity: number;

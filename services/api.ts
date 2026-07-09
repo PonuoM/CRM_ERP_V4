@@ -769,17 +769,20 @@ export async function listOrders(params: {
   trackingNumber?: string;
   orderDateStart?: string;
   orderDateEnd?: string;
+  orderTimeStart?: string;
+  orderTimeEnd?: string;
   deliveryDateStart?: string;
   deliveryDateEnd?: string;
   paymentMethod?: string;
   paymentStatus?: string | string[];
   customerName?: string;
   customerPhone?: string;
-  creatorId?: number;
+  creatorId?: number | number[];
   orderStatus?: string | string[];
   shop?: string;
   tab?: string;
   returnMode?: string;
+  creatorCountType?: string;
   signal?: AbortSignal;
 } = {}): Promise<{
   ok: boolean;
@@ -804,6 +807,8 @@ export async function listOrders(params: {
   if (safeParams.trackingNumber) qs.set("trackingNumber", safeParams.trackingNumber);
   if (safeParams.orderDateStart) qs.set("orderDateStart", safeParams.orderDateStart);
   if (safeParams.orderDateEnd) qs.set("orderDateEnd", safeParams.orderDateEnd);
+  if (safeParams.orderTimeStart) qs.set("orderTimeStart", safeParams.orderTimeStart);
+  if (safeParams.orderTimeEnd) qs.set("orderTimeEnd", safeParams.orderTimeEnd);
   if (safeParams.deliveryDateStart) qs.set("deliveryDateStart", safeParams.deliveryDateStart);
   if (safeParams.deliveryDateEnd) qs.set("deliveryDateEnd", safeParams.deliveryDateEnd);
   if (safeParams.paymentMethod) qs.set("paymentMethod", safeParams.paymentMethod);
@@ -816,7 +821,13 @@ export async function listOrders(params: {
   }
   if (safeParams.customerName) qs.set("customerName", safeParams.customerName);
   if (safeParams.customerPhone) qs.set("customerPhone", safeParams.customerPhone);
-  if (safeParams.creatorId) qs.set("creatorId", String(safeParams.creatorId));
+  if (safeParams.creatorId) {
+    if (Array.isArray(safeParams.creatorId)) {
+      (safeParams.creatorId as number[]).forEach(id => qs.append("creatorId[]", String(id)));
+    } else {
+      qs.set("creatorId", String(safeParams.creatorId));
+    }
+  }
   if (safeParams.orderStatus) {
     if (Array.isArray(safeParams.orderStatus)) {
       (safeParams.orderStatus as string[]).forEach(s => qs.append("orderStatus[]", s));
@@ -828,6 +839,7 @@ export async function listOrders(params: {
   if (safeParams.shop) qs.set("shop", safeParams.shop);
   if (safeParams.tab) qs.set("tab", safeParams.tab);
   if (safeParams.returnMode) qs.set("returnMode", safeParams.returnMode);
+  if (safeParams.creatorCountType) qs.set("creatorCountType", safeParams.creatorCountType);
 
   return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`, { signal: safeParams.signal });
 }
@@ -1525,6 +1537,92 @@ export async function listWarehouseStocks(params?: {
   if (params?.lotNumber) qs.set("lotNumber", params.lotNumber);
   const query = qs.toString();
   return apiFetch(`warehouse_stocks${query ? `?${query}` : ""}`);
+}
+
+// ==================== Stock Arrival Planning API ====================
+export async function listStockPlans(params?: {
+  month?: number;
+  year?: number;
+  companyId?: number;
+  status?: string;
+  productId?: number;
+  search?: string;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.month) qs.set("month", String(params.month));
+  if (params?.year) qs.set("year", String(params.year));
+  if (params?.companyId) qs.set("companyId", String(params.companyId));
+  if (params?.status) qs.set("status", params.status);
+  if (params?.productId) qs.set("productId", String(params.productId));
+  if (params?.search) qs.set("search", params.search);
+  const query = qs.toString();
+  return apiFetch(`inventory/list_stock_plans.php${query ? `?${query}` : ""}`);
+}
+
+export async function createStockPlan(payload: {
+  company_id?: number;
+  planned_date: string;
+  notes?: string;
+  user_id?: number;
+  items: {
+    product_id: number;
+    planned_qty: number;
+  }[];
+}) {
+  return apiFetch("inventory/create_stock_plan.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function addStockPlanExpectation(payload: {
+  item_id: number;
+  expected_qty: number;
+  expected_date: string;
+  so_number?: string;
+  user_id?: number;
+}) {
+  return apiFetch("inventory/add_stock_plan_expectation.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function recordStockPlanActual(payload: {
+  expectation_id: number;
+  actual_qty: number;
+  actual_date?: string;
+  decision?: "reschedule" | "close_short";
+  new_date?: string;
+  note?: string;
+  user_id?: number;
+}) {
+  return apiFetch("inventory/record_stock_plan_actual.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteStockPlan(id: number, force?: boolean) {
+  return apiFetch("inventory/delete_stock_plan.php", {
+    method: "POST",
+    body: JSON.stringify({ id, force }),
+  });
+}
+
+export async function listTonDivisors(params?: { asOfDate?: string; companyId?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.asOfDate) qs.set("asOfDate", params.asOfDate);
+  if (params?.companyId) qs.set("companyId", String(params.companyId));
+  const query = qs.toString();
+  return apiFetch(`inventory/list_ton_divisors.php${query ? `?${query}` : ""}`);
+}
+
+export async function saveTonDivisor(payload: { product_id: number; divisor: number | null; user_id?: number }) {
+  return apiFetch("inventory/save_ton_divisor.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getProductTotalStock(productId: number) {

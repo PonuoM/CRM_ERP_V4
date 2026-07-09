@@ -415,6 +415,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
                 </th>
               )}
               <th className="px-6 py-3">ORDER ID</th>
+              <th className="px-6 py-3">วันสั่งซื้อ</th>
               <th className="px-6 py-3">ชื่อลูกค้า</th>
               <th className="px-6 py-3 min-w-[140px]">ผู้ขาย</th>
               <th className="px-6 py-3">วันที่ส่ง</th>
@@ -476,6 +477,16 @@ const OrderTable: React.FC<OrderTableProps> = ({
                     </td>
                   )}
                   <td className="px-6 py-4 font-mono text-xs text-gray-600">{order.id}</td>
+                  <td className="px-6 py-4 min-w-[120px]">
+                    {order.orderDate ? (
+                      <>
+                        <div>{new Date(order.orderDate).toLocaleDateString('th-TH')}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {new Date(order.orderDate).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
+                        </div>
+                      </>
+                    ) : '-'}
+                  </td>
                   <td className="px-6 py-4 font-medium text-gray-900">
                     {customer ? (
                       <div>
@@ -492,7 +503,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
                       {isUpsellOrder(order) && <UpsellTag />}
                     </div>
                   </td>
-                  <td className="px-6 py-4">{new Date(order.deliveryDate).toLocaleDateString('th-TH')}</td>
+                  <td className="px-6 py-4">{order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('th-TH') : '-'}</td>
                   <td className="px-6 py-4 font-semibold">฿{actualTotal.toLocaleString()}</td>
                   <td className="px-6 py-4">{getPaymentMethodChip(order.paymentMethod)}</td>
                   <td className="px-6 py-4">
@@ -585,7 +596,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
             })}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={selectable ? (showShippingColumn ? 13 : 12) : (showShippingColumn ? 12 : 11)} className="text-center py-10 text-gray-500">ไม่มีข้อมูลออเดอร์</td>
+                <td colSpan={selectable ? (showShippingColumn ? 14 : 13) : (showShippingColumn ? 13 : 12)} className="text-center py-10 text-gray-500">ไม่มีข้อมูลออเดอร์</td>
               </tr>
             )}
           </tbody>
