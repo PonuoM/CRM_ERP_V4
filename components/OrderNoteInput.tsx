@@ -44,6 +44,7 @@ export const OrderNoteInput: React.FC<OrderNoteInputProps> = ({
               const val = parseFloat(e.target.value);
               onMonthlyDiscountChange(isNaN(val) ? 0 : val);
             }}
+            onWheel={(e) => e.currentTarget.blur()}
             className={className}
             placeholder="กรอกตัวเลขส่วนลด"
             min="0"
