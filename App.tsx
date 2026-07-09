@@ -7216,7 +7216,7 @@ const App: React.FC = () => {
     // Unified Routing - Switch by Page Name instead of Role
     switch (activePage) {
       case "settings.geo_company":
-      case "Geo Company":
+      case "จัดการพื้นที่ทำงาน":
         return <GeoCompanySettingsPage />;
       case "settings.company":
       case "Company Settings":
