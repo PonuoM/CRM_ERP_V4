@@ -20,6 +20,8 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'monitor.callstats', label: 'Telesale Call Stats (ติดตามการโทร)' },
             { key: 'calls.telesale_report', label: 'Telesale Call Report (รายงานการโทร Telesale)' },
             { key: 'monitor.campaign_compare', label: 'Telesale Campaign Compare (แคมเปญรายคน เทียบเดือน)' },
+            { key: 'nav.distribution_dashboard', label: 'Distribution Dashboard (รายงานความเคลื่อนไหว)' },
+            { key: 'reports.special_orders', label: 'Special Orders Report (สรุปตีกลับ/ยกเลิก)' },
         ]
     },
     'Home': {
