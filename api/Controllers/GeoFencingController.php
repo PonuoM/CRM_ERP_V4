@@ -97,6 +97,38 @@ class GeoFencingController
                 }
             }
 
+            // Fetch every active user per company (role resolved the same way the login
+            // check does: joined by name). The client filters by the ticked geo roles,
+            // so newly ticked roles show their members instantly without a refetch.
+            // Includes subordinate count as a hint and the per-user exempt flag so the
+            // UI can let admins exempt individuals (e.g. seniors without subordinates).
+            foreach (array_values($companyMap) as $c) {
+                $companyMap[$c['id']]['geo_members'] = [];
+            }
+            $memberSql = "
+                SELECT u.id, u.username, u.first_name, u.last_name, u.company_id,
+                       r.id AS role_id, r.name AS role_name,
+                       COALESCE(u.exempt_geofencing, 0) AS exempt_geofencing,
+                       (SELECT COUNT(*) FROM users sub
+                          WHERE sub.supervisor_id = u.id AND sub.status = 'active') AS subordinates
+                FROM users u
+                JOIN roles r ON u.role = r.name
+                WHERE u.status = 'active'
+                ORDER BY u.company_id, r.id, subordinates DESC, u.first_name ASC";
+            foreach ($pdo->query($memberSql)->fetchAll() as $m) {
+                if (isset($companyMap[$m['company_id']])) {
+                    $companyMap[$m['company_id']]['geo_members'][] = [
+                        'id' => (int)$m['id'],
+                        'username' => $m['username'],
+                        'name' => trim($m['first_name'] . ' ' . $m['last_name']),
+                        'role_id' => (int)$m['role_id'],
+                        'role_name' => $m['role_name'],
+                        'subordinates' => (int)$m['subordinates'],
+                        'exempt_geofencing' => (int)$m['exempt_geofencing'],
+                    ];
+                }
+            }
+
             // Also fetch available active roles
             $stmt = $pdo->query('SELECT id, name FROM roles WHERE is_active = 1 ORDER BY name ASC');
             $roles = $stmt->fetchAll();
@@ -150,6 +182,16 @@ class GeoFencingController
                 $pdo->rollBack();
                 json_response(['ok' => false, 'error' => 'Database error', 'message' => $e->getMessage()], 500);
             }
+        } else if ($method === 'POST' && $id === 'toggle_exempt') {
+            // Exempt (or re-include) a single user from geo-fencing
+            if (!isset($in['user_id'])) {
+                json_response(['ok' => false, 'error' => 'Missing user_id'], 400);
+            }
+            $userId = (int)$in['user_id'];
+            $exempt = !empty($in['exempt']) ? 1 : 0;
+            $stmt = $pdo->prepare('UPDATE users SET exempt_geofencing = ? WHERE id = ?');
+            $stmt->execute([$exempt, $userId]);
+            json_response(['ok' => true, 'user_id' => $userId, 'exempt_geofencing' => $exempt]);
         } else {
             json_response(['ok' => false, 'error' => 'Method not allowed'], 405);
         }

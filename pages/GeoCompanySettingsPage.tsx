@@ -12,6 +12,16 @@ interface WorkLocation {
   is_active: number;
 }
 
+interface GeoMember {
+  id: number;
+  username: string;
+  name: string;
+  role_id: number;
+  role_name: string;
+  subordinates: number;
+  exempt_geofencing: number;
+}
+
 interface CompanyGeo {
   id: number;
   name: string;
@@ -19,6 +29,7 @@ interface CompanyGeo {
   enable_geofencing: number;
   work_location_ids: number[];
   geo_role_ids: number[];
+  geo_members?: GeoMember[];
 }
 
 interface Role {
@@ -167,6 +178,25 @@ export default function GeoCompanySettingsPage() {
     } catch (e: any) {
       alert(e.message || 'Failed to update company');
       fetchData(); // reload on error
+    }
+  };
+
+  const handleToggleExempt = async (companyId: number, userId: number, exempt: boolean) => {
+    // Optimistic update
+    setCompanies(prev => prev.map(c =>
+      c.id === companyId
+        ? { ...c, geo_members: (c.geo_members || []).map(m =>
+            m.id === userId ? { ...m, exempt_geofencing: exempt ? 1 : 0 } : m) }
+        : c
+    ));
+    try {
+      await apiFetch('geo_companies/toggle_exempt', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId, exempt: exempt ? 1 : 0 })
+      });
+    } catch (e: any) {
+      alert(e.message || 'Failed to update user exemption');
+      fetchData(); // reload on error to resync
     }
   };
 
@@ -456,6 +486,54 @@ export default function GeoCompanySettingsPage() {
                           })}
                         </div>
                       )}
+
+                      {(() => {
+                        // Exemptions are only offered for Supervisor Telesale: other
+                        // geo-fenced roles are blocked 100% with no per-person cases,
+                        // while some supervisors are "seniors" without subordinates
+                        // who are allowed to log in from anywhere.
+                        const members = (company.geo_members || []).filter(m =>
+                          company.geo_role_ids.includes(m.role_id) &&
+                          m.role_name === 'Supervisor Telesale');
+                        if (members.length === 0) return null;
+                        return (
+                          <>
+                            <h4 className="text-sm font-medium text-gray-700 mb-1 mt-6">ยกเว้นเป็นรายคน (เฉพาะ Supervisor Telesale):</h4>
+                            <p className="text-xs text-gray-500 mb-3">ติ๊ก "ยกเว้น" ให้หัวหน้าที่ไม่ต้องเช็คตำแหน่ง เช่น ซีเนียร์ที่ไม่มีลูกน้อง — คนที่ยกเว้นจะล็อกอินจากที่ไหนก็ได้ (ตำแหน่งอื่นบังคับ 100% ไม่มียกเว้น)</p>
+                            <div className="space-y-2">
+                              {members.map(m => (
+                                <div
+                                  key={m.id}
+                                  className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
+                                    m.exempt_geofencing ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white'
+                                  }`}
+                                >
+                                  <div className="text-sm">
+                                    <span className="font-medium text-gray-900">{m.name || m.username}</span>
+                                    <span className="text-xs text-gray-500 ml-2">{m.role_name}</span>
+                                    <span className={`text-xs ml-2 px-1.5 py-0.5 rounded ${
+                                      m.subordinates > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                                    }`}>
+                                      {m.subordinates > 0 ? `มีลูกน้อง ${m.subordinates} คน` : 'ไม่มีลูกน้อง'}
+                                    </span>
+                                  </div>
+                                  <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                                    <span className={`text-xs font-medium ${m.exempt_geofencing ? 'text-amber-700' : 'text-gray-400'}`}>
+                                      {m.exempt_geofencing ? 'ยกเว้นแล้ว' : 'ยกเว้น'}
+                                    </span>
+                                    <input
+                                      type="checkbox"
+                                      className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                                      checked={m.exempt_geofencing === 1}
+                                      onChange={(e) => handleToggleExempt(company.id, m.id, e.target.checked)}
+                                    />
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}

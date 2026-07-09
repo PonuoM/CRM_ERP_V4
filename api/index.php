@@ -890,7 +890,7 @@ function handle_auth(PDO $pdo, ?string $id): void
         }
 
         // Check if user status is active and fetch is_system, require_geofencing from roles and enable_geofencing from companies
-        $stmt = $pdo->prepare('SELECT u.id, u.username, u.password, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, r.is_system, c.enable_geofencing, IF(cgr.role_id IS NOT NULL, 1, 0) as require_geofencing FROM users u LEFT JOIN roles r ON u.role = r.name LEFT JOIN companies c ON u.company_id = c.id LEFT JOIN company_geo_roles cgr ON c.id = cgr.company_id AND r.id = cgr.role_id WHERE u.username=? LIMIT 1');
+        $stmt = $pdo->prepare('SELECT u.id, u.username, u.password, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, u.exempt_geofencing, r.is_system, c.enable_geofencing, IF(cgr.role_id IS NOT NULL, 1, 0) as require_geofencing FROM users u LEFT JOIN roles r ON u.role = r.name LEFT JOIN companies c ON u.company_id = c.id LEFT JOIN company_geo_roles cgr ON c.id = cgr.company_id AND r.id = cgr.role_id WHERE u.username=? LIMIT 1');
         $stmt->execute([$username]);
         $u = $stmt->fetch();
         if (!$u)
@@ -906,8 +906,9 @@ function handle_auth(PDO $pdo, ?string $id): void
             json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS', 'message' => 'รหัสผ่านไม่ถูกต้อง'], 401);
         }
 
-        // Geo-fencing check
-        if (!empty($u['require_geofencing']) && !empty($u['enable_geofencing'])) {
+        // Geo-fencing check (skip when this specific user is exempted, e.g. a senior
+        // Supervisor Telesale without subordinates kept inside the geo-fenced role)
+        if (!empty($u['require_geofencing']) && !empty($u['enable_geofencing']) && empty($u['exempt_geofencing'])) {
             $lat = $in['latitude'] ?? null;
             $lng = $in['longitude'] ?? null;
             if ($lat === null || $lng === null) {
