@@ -3,6 +3,7 @@ import { User } from "../types";
 import { apiFetch } from "../services/api";
 import { Download, Loader2, BarChart3, ChevronDown, ChevronRight, ChevronLeft, Users, HelpCircle } from "lucide-react";
 import ExportTypeModal from "../components/ExportTypeModal";
+import MultiSelectFilter from "../components/MultiSelectFilter";
 import { downloadDataFile } from "../utils/exportUtils";
 
 interface Props { currentUser: User; }
@@ -22,6 +23,7 @@ interface ApiResp {
     has_teams: boolean;
     teams_list: { key: string; name: string }[];
     agents_list: { id: number; label: string; team_key: string }[];
+    segments_list: string[];
     owned: number;
     total: Period | null;
     groups: TeamGroup[];
@@ -30,6 +32,15 @@ interface ApiResp {
 const THAI_MONTHS_SHORT = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 
 const intFmt = (n: number) => (n || 0).toLocaleString("th-TH");
+const METRIC_KEYS: (keyof Metrics)[] = ["names_called", "total_calls", "answered", "missed", "talked", "orders", "sales"];
+const eqMetrics = (x: Metrics, y: Metrics) => METRIC_KEYS.every(k => (x[k] || 0) === (y[k] || 0));
+// When an agent has exactly one segment and it accounts for their entire total (typical when
+// the segment filter is narrowed to one basket), the sub-row would duplicate the agent row —
+// collapse them into one line with the segment name shown as a small tag after the agent name.
+const soleSegmentOf = (ag: AgentRow): SegmentRow | null =>
+    ag.segments.length === 1 && ag.segments[0].owned === ag.owned
+        && eqMetrics(ag.segments[0].a, ag.total.a) && eqMetrics(ag.segments[0].b, ag.total.b)
+        ? ag.segments[0] : null;
 const moneyFmt = (n: number) => new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 const pct = (num: number, den: number) => (den > 0 ? (num / den) * 100 : 0);
 const basketSize = (m: Metrics) => (m.orders > 0 ? m.sales / m.orders : 0);
@@ -124,6 +135,13 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
     const [yearB, setYearB] = useState(now.getFullYear());
     const [agentId, setAgentId] = useState(0);
     const [teamKey, setTeamKey] = useState("");
+    // Segment (basket/campaign) filter — empty = all. Debounced copy drives the fetch so
+    // ticking several checkboxes in the dropdown fires one API call instead of one per tick.
+    const [segNames, setSegNames] = useState<string[]>([]);
+    const [segNamesDebounced, setSegNamesDebounced] = useState<string[]>([]);
+    // Full list of segment names kept from the last successful fetch, so the dropdown
+    // stays populated even while a filtered request is in flight or returns empty groups.
+    const [segmentsList, setSegmentsList] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<ApiResp | null>(null);
     const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
@@ -135,6 +153,11 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
         return [cur, cur - 1, cur - 2];
     }, []);
 
+    useEffect(() => {
+        const t = setTimeout(() => setSegNamesDebounced(segNames), 500);
+        return () => clearTimeout(t);
+    }, [segNames]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -144,15 +167,17 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
             });
             if (agentId > 0) params.set("agent_id", String(agentId));
             else if (teamKey) params.set("team", teamKey);
+            segNamesDebounced.forEach(s => params.append("segments[]", s));
             const res = await apiFetch(`Reports/telesale_campaign_compare.php?${params}`);
             setData(res?.success ? res : null);
+            if (res?.success && Array.isArray(res.segments_list)) setSegmentsList(res.segments_list);
         } catch (e) {
             console.error("Campaign compare fetch error:", e);
             setData(null);
         } finally {
             setLoading(false);
         }
-    }, [monthA, yearA, monthB, yearB, agentId, teamKey]);
+    }, [monthA, yearA, monthB, yearB, agentId, teamKey, segNamesDebounced]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -162,6 +187,14 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
         if (teamKey) return data.agents_list.filter(a => a.team_key === teamKey);
         return data.agents_list;
     }, [data, teamKey]);
+
+    // MultiSelectFilter works with numeric ids -> map segment names to their index in segmentsList
+    const segOptions = useMemo(() => segmentsList.map((s, i) => ({ id: i, label: s })), [segmentsList]);
+    const selectedSegIds = useMemo(
+        () => segNames.map(n => segmentsList.indexOf(n)).filter(i => i >= 0),
+        [segNames, segmentsList]
+    );
+    const handleSegChange = (ids: number[]) => setSegNames(ids.map(i => segmentsList[i]).filter(Boolean));
 
     const toggleTeam = (k: string) => setCollapsedTeams(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
     const toggleAgent = (id: number) => setCollapsedAgents(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -213,8 +246,10 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
         for (const g of data.groups) {
             if (data.has_teams) rows.push(rowOf(`ทีม ${g.team_name}`, g.total, g.owned));
             for (const ag of g.agents) {
-                rows.push(rowOf((data.has_teams ? "  " : "") + ag.label + (ag.is_inactive ? " (ออก)" : ""), ag.total, ag.owned));
-                for (const seg of ag.segments) rows.push(rowOf((data.has_teams ? "    " : "  ") + seg.segment, { a: seg.a, b: seg.b }, seg.owned));
+                const soleSeg = soleSegmentOf(ag);
+                const agLabel = ag.label + (ag.is_inactive ? " (ออก)" : "") + (soleSeg ? ` — ${soleSeg.segment}` : "");
+                rows.push(rowOf((data.has_teams ? "  " : "") + agLabel, ag.total, ag.owned));
+                if (!soleSeg) for (const seg of ag.segments) rows.push(rowOf((data.has_teams ? "    " : "  ") + seg.segment, { a: seg.a, b: seg.b }, seg.owned));
             }
         }
         downloadDataFile(rows, `campaign_compare_${yearA}-${String(monthA).padStart(2, "0")}_vs_${yearB}-${String(monthB).padStart(2, "0")}`, type);
@@ -295,6 +330,20 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
                             <option value={0}>ทุกคน</option>
                             {agentOptions.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                         </select>
+                    </div>
+                    {/* Segment (basket/campaign) filter */}
+                    <div className="flex items-center gap-1">
+                        <span className="text-gray-500 font-medium">ถัง/แคมเปญ:</span>
+                        <div className="w-[200px]">
+                            <MultiSelectFilter
+                                options={segOptions}
+                                selectedIds={selectedSegIds}
+                                onChange={handleSegChange}
+                                placeholder="ค้นหาถัง..."
+                                emptyMeansAllLabel="ทุกถัง"
+                                emptyHint="ไม่เลือก = แสดงทุกถัง"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -383,15 +432,18 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
                                             )}
                                             {!teamCollapsed && g.agents.map(ag => {
                                                 const agentCollapsed = collapsedAgents.has(ag.agent_id);
+                                                const soleSeg = soleSegmentOf(ag);
                                                 return (
                                                     <React.Fragment key={ag.agent_id}>
-                                                        <tr className="bg-white font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100" onClick={() => toggleAgent(ag.agent_id)}>
+                                                        <tr className={`bg-white font-semibold text-gray-700 transition-colors border-b border-gray-100 ${soleSeg ? "" : "hover:bg-gray-50 cursor-pointer"}`}
+                                                            onClick={soleSeg ? undefined : () => toggleAgent(ag.agent_id)}>
                                                             <td className={`px-4 py-3 text-left sticky left-0 bg-white z-20 ${data.has_teams ? 'pl-9' : ''}`} title={ag.name}>
                                                                 <span className="inline-flex items-center gap-2.5">
-                                                                    {agentCollapsed ? <ChevronRight className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
+                                                                    {soleSeg ? <span className="w-3 flex-shrink-0" /> : agentCollapsed ? <ChevronRight className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
                                                                     <Avatar label={ag.label} muted={ag.is_inactive} />
                                                                     <span className={ag.is_inactive ? "text-gray-400" : ""}>{ag.label}</span>
                                                                     {ag.is_inactive && <span className="text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400">ออก</span>}
+                                                                    {soleSeg && <span className="text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 whitespace-nowrap">{soleSeg.segment}</span>}
                                                                 </span>
                                                             </td>
                                                             <OwnedCell n={ag.owned} />
@@ -399,7 +451,7 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
                                                             <DiffCells a={ag.total.a} b={ag.total.b} />
                                                             <MetricCells m={ag.total.a} />
                                                         </tr>
-                                                        {!agentCollapsed && ag.segments.map((seg, si) => (
+                                                        {!agentCollapsed && !soleSeg && ag.segments.map((seg, si) => (
                                                             <tr key={si} className="hover:bg-gray-50/70 text-gray-400 transition-colors border-b border-gray-50">
                                                                 <td className={`px-4 py-2.5 text-left sticky left-0 bg-white z-20 text-[12px] ${data.has_teams ? 'pl-[4.25rem]' : 'pl-14'}`}>{seg.segment}</td>
                                                                 <OwnedCell n={seg.owned} />
