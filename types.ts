@@ -562,6 +562,7 @@ export interface LineItem {
   quantity: number;
   pricePerUnit: number;
   discount: number;
+  monthlyDiscount?: number;
   isFreebie: boolean;
   boxNumber: number;
   productId?: number; // Optional product ID to track products from promotions

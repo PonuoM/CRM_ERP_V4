@@ -41,10 +41,11 @@ export const calculateOrderTotal = (
     const isFreebie = item.isFreebie || item.is_freebie;
     const price = Number(item.pricePerUnit || item.price_per_unit || 0);
     const qty = Number(item.quantity || item.quantity || 0);
-    const disc = Number(item.discount || item.discount || 0);
+    const disc = Number(item.discount || 0);
+    const monthlyDisc = Number(item.monthlyDiscount || item.monthly_discount || 0);
 
     const itemTotal = isFreebie ? 0 : qty * price;
-    const itemDisc = isFreebie ? 0 : disc;
+    const itemDisc = isFreebie ? 0 : disc + monthlyDisc;
 
     // Always add to raw totals
     rawGoodsSum += itemTotal;
