@@ -3671,7 +3671,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                         handleItemChange(index, "monthlyDiscount", undefined);
                                       }
                                     }} 
-                                  /> ใช้ส่วนลด ปจด.
+                                  /> ใช้ส่วนลดประจำเดือน
                                 </label>
                                 {((item as any).monthlyDiscount ?? (item as any).monthly_discount) !== undefined && (
                                   <input
@@ -3689,7 +3689,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                 <span>-฿{itemDisc.toLocaleString()}</span>
                                 {itemMonthlyDisc > 0 && (
                                   <span className="text-[10px] text-purple-600 bg-purple-50 px-1 rounded whitespace-nowrap">
-                                    ปจด. -฿{itemMonthlyDisc.toLocaleString()}
+                                    ประจำเดือน -฿{itemMonthlyDisc.toLocaleString()}
                                   </span>
                                 )}
                               </div>

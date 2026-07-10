@@ -489,7 +489,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                                 <span>{item.discount > 0 ? `-${new Intl.NumberFormat('th-TH').format(item.discount)}` : '-'}</span>
                                                                 {(Number(item.monthly_discount) || Number(item.monthlyDiscount) || 0) > 0 && (
                                                                     <span className="text-[10px] text-purple-600 bg-purple-50 px-1 rounded mt-1 whitespace-nowrap">
-                                                                        ปจด. -{new Intl.NumberFormat('th-TH').format(Number(item.monthly_discount) || Number(item.monthlyDiscount) || 0)}
+                                                                        ประจำเดือน -{new Intl.NumberFormat('th-TH').format(Number(item.monthly_discount) || Number(item.monthlyDiscount) || 0)}
                                                                     </span>
                                                                 )}
                                                             </div>

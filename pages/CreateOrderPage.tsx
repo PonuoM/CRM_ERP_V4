@@ -10272,7 +10272,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                             }));
                                           }
                                         }} 
-                                      /> ใช้ส่วนลด ปจด.
+                                      /> ใช้ส่วนลดประจำเดือน
                                     </label>
                                     {item.monthlyDiscount !== undefined && (
                                       <input
