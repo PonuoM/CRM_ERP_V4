@@ -312,24 +312,27 @@ const OrderSummary: React.FC<{
   const itemsDiscount = useMemo(() => {
     return visibleItems.reduce(
       (acc, item) => acc + (item.isFreebie ? 0 : item.discount || 0),
+      0,
+    );
+  }, [visibleItems]);
 
+  const monthlyDiscountSum = useMemo(() => {
+    return visibleItems.reduce(
+      (acc, item) => acc + (item.isFreebie ? 0 : item.monthlyDiscount || 0),
       0,
     );
   }, [visibleItems]);
 
   const subTotal = useMemo(
-    () => goodsSum - itemsDiscount,
-
-    [goodsSum, itemsDiscount],
+    () => goodsSum - itemsDiscount - monthlyDiscountSum,
+    [goodsSum, itemsDiscount, monthlyDiscountSum],
   );
 
   const billDiscountPercent = Number(orderData.billDiscount || 0);
-
   const billDiscountAmount = (subTotal * billDiscountPercent) / 100;
 
   const totalAmount = useMemo(
     () => subTotal + (orderData.shippingCost || 0) - billDiscountAmount,
-
     [subTotal, orderData.shippingCost, billDiscountAmount],
   );
 
@@ -345,7 +348,6 @@ const OrderSummary: React.FC<{
       <div className="space-y-3 text-sm">
         <div className="flex justify-between text-[#4e7397]">
           <span>ยอดรวมสินค้า</span>
-
           <span className="text-[#0e141b] font-medium">
             ฿{goodsSum.toFixed(2)}
           </span>
@@ -353,11 +355,19 @@ const OrderSummary: React.FC<{
 
         <div className="flex justify-between text-[#4e7397]">
           <span>ส่วนลดรายการสินค้า</span>
-
           <span className="text-red-600 font-medium">
             -฿{itemsDiscount.toFixed(2)}
           </span>
         </div>
+
+        {monthlyDiscountSum > 0 && (
+          <div className="flex justify-between text-purple-600">
+            <span>ส่วนลดประจำเดือน</span>
+            <span className="font-medium">
+              -฿{monthlyDiscountSum.toFixed(2)}
+            </span>
+          </div>
+        )}
 
         <div className="flex justify-between items-center text-[#4e7397]">
           <span>ค่าขนส่ง</span>
@@ -2273,22 +2283,28 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const itemsDiscount = useMemo(
     () =>
       (orderData.items || [])
-
         .filter((it) => !it.parentItemId)
-
         .reduce(
           (acc, item) => acc + (item.isFreebie ? 0 : item.discount || 0),
-
           0,
         ),
+    [orderData.items],
+  );
 
+  const monthlyDiscountSum = useMemo(
+    () =>
+      (orderData.items || [])
+        .filter((it) => !it.parentItemId)
+        .reduce(
+          (acc, item) => acc + (item.isFreebie ? 0 : item.monthlyDiscount || 0),
+          0,
+        ),
     [orderData.items],
   );
 
   const subTotal = useMemo(
-    () => goodsSum - itemsDiscount,
-
-    [goodsSum, itemsDiscount],
+    () => goodsSum - itemsDiscount - monthlyDiscountSum,
+    [goodsSum, itemsDiscount, monthlyDiscountSum],
   );
 
   const billDiscountPercent = useMemo(
@@ -9867,19 +9883,57 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 )}
                               </div>
                               {!isChild && (
-                                <div>
-                                  <label className="block text-xs text-gray-500 mb-1">ส่วนลด</label>
-                                  <input
-                                    type="number"
-                                    value={item.discount || 0}
-                                    min={0}
-                                    onChange={(e) => {
-                                      const val = Number(e.target.value) || 0;
-                                      const base = (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0);
-                                      updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, discount: Math.min(val, base) } : it));
-                                    }}
-                                    className="w-full border rounded px-2 py-1 text-red-600"
-                                  />
+                                <div className="space-y-2">
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-1">ส่วนลด</label>
+                                    <input
+                                      type="number"
+                                      value={item.discount || 0}
+                                      min={0}
+                                      onChange={(e) => {
+                                        const val = Number(e.target.value) || 0;
+                                        const base = (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0);
+                                        updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, discount: Math.min(val, base) } : it));
+                                      }}
+                                      className="w-full border rounded px-2 py-1 text-red-600"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer mb-1">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={item.monthlyDiscount !== undefined} 
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, monthlyDiscount: 0 } : it));
+                                          } else {
+                                            updateOrderData("items", orderData.items?.map(it => {
+                                              if (it.id === item.id) {
+                                                const newIt = { ...it };
+                                                delete newIt.monthlyDiscount;
+                                                return newIt;
+                                              }
+                                              return it;
+                                            }));
+                                          }
+                                        }} 
+                                      /> ใช้ส่วนลดประจำเดือน
+                                    </label>
+                                    {item.monthlyDiscount !== undefined && (
+                                      <input
+                                        type="number"
+                                        value={item.monthlyDiscount || 0}
+                                        min={0}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          const base = (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0) - (Number(item.discount) || 0);
+                                          updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, monthlyDiscount: Math.min(val, base) } : it));
+                                        }}
+                                        className="w-full border rounded px-2 py-1 text-purple-600"
+                                        placeholder="ส่วนลดประจำเดือน"
+                                      />
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -10167,37 +10221,77 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 />
                               </td>
 
-                              <td className="px-3 py-2 text-right text-xs text-red-600">
+                              <td className="px-3 py-2 text-right text-xs text-red-600 align-top">
                                 {isChild ? (
                                   <div className="w-20 text-right pr-1"></div>
                                 ) : (
-                                  <input
-                                    type="number"
-                                    value={item.discount || 0}
-                                    onChange={(e) => {
-                                      const discountValue =
-                                        Number(e.target.value) || 0;
-                                      const baseTotal = item.isFreebie
-                                        ? 0
-                                        : (Number(item.quantity) || 0) *
-                                        (Number(item.pricePerUnit) || 0);
-                                      const clampedDiscount = Math.max(
-                                        0,
-                                        Math.min(discountValue, baseTotal),
-                                      );
+                                  <div className="flex flex-col items-end gap-1">
+                                    <input
+                                      type="number"
+                                      value={item.discount || 0}
+                                      onChange={(e) => {
+                                        const discountValue =
+                                          Number(e.target.value) || 0;
+                                        const baseTotal = item.isFreebie
+                                          ? 0
+                                          : (Number(item.quantity) || 0) *
+                                          (Number(item.pricePerUnit) || 0);
+                                        const clampedDiscount = Math.max(
+                                          0,
+                                          Math.min(discountValue, baseTotal),
+                                        );
 
-                                      updateOrderData(
-                                        "items",
-                                        orderData.items?.map((it) =>
-                                          it.id === item.id
-                                            ? { ...it, discount: clampedDiscount }
-                                            : it,
-                                        ),
-                                      );
-                                    }}
-                                    className="w-20 border rounded px-1 text-right text-red-600"
-                                    min={0}
-                                  />
+                                        updateOrderData(
+                                          "items",
+                                          orderData.items?.map((it) =>
+                                            it.id === item.id
+                                              ? { ...it, discount: clampedDiscount }
+                                              : it,
+                                          ),
+                                        );
+                                      }}
+                                      className="w-20 border rounded px-1 text-right text-red-600"
+                                      min={0}
+                                      title="ส่วนลดปกติ"
+                                    />
+                                    <label className="flex items-center gap-1 text-[10px] text-gray-500 mt-1 cursor-pointer w-full justify-end whitespace-nowrap">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={item.monthlyDiscount !== undefined} 
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, monthlyDiscount: 0 } : it));
+                                          } else {
+                                            updateOrderData("items", orderData.items?.map(it => {
+                                              if (it.id === item.id) {
+                                                const newIt = { ...it };
+                                                delete newIt.monthlyDiscount;
+                                                return newIt;
+                                              }
+                                              return it;
+                                            }));
+                                          }
+                                        }} 
+                                      /> ใช้ส่วนลดประจำเดือน
+                                    </label>
+                                    {item.monthlyDiscount !== undefined && (
+                                      <input
+                                        type="number"
+                                        value={item.monthlyDiscount || 0}
+                                        onChange={(e) => {
+                                          const discountValue = Number(e.target.value) || 0;
+                                          const baseTotal = item.isFreebie
+                                            ? 0
+                                            : (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0) - (Number(item.discount) || 0);
+                                          const clampedDiscount = Math.max(0, Math.min(discountValue, baseTotal));
+                                          updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, monthlyDiscount: clampedDiscount } : it));
+                                        }}
+                                        className="w-20 border rounded px-1 text-right text-purple-600"
+                                        min={0}
+                                        title="ส่วนลดประจำเดือน"
+                                      />
+                                    )}
+                                  </div>
                                 )}
                               </td>
 

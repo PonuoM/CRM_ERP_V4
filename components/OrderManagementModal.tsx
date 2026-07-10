@@ -826,6 +826,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           quantity: Number(it.quantity ?? 0),
           pricePerUnit: Number(it.price_per_unit ?? it.pricePerUnit ?? 0),
           discount: Number(it.discount ?? 0),
+          monthlyDiscount: it.monthlyDiscount !== undefined ? Number(it.monthlyDiscount) : (it.monthly_discount !== undefined ? Number(it.monthly_discount) : undefined),
           isFreebie: !!(it.is_freebie ?? it.isFreebie ?? 0),
           boxNumber: Number(it.box_number ?? it.boxNumber ?? 1),
           creatorId: Number(it.creator_id ?? it.creatorId),
@@ -1445,6 +1446,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               quantity: Number(it.quantity ?? 0),
               pricePerUnit: Number(it.price_per_unit ?? it.pricePerUnit ?? 0),
               discount: Number(it.discount ?? 0),
+              monthlyDiscount: it.monthlyDiscount !== undefined ? Number(it.monthlyDiscount) : (it.monthly_discount !== undefined ? Number(it.monthly_discount) : undefined),
               isFreebie: !!(it.is_freebie ?? it.isFreebie ?? 0),
               boxNumber: Number(it.box_number ?? it.boxNumber ?? 1),
               creatorId: Number(it.creator_id ?? it.creatorId),
@@ -2822,11 +2824,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           )}
           <div className="flex justify-between items-center mb-2">
             <div>
-              {(currentOrder.monthlyDiscount || 0) > 0 && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
-                  <span className="mr-1">🎁</span> ใช้คูปองส่วนลดประจำเดือน ({currentOrder.monthlyDiscount} บาท)
-                </span>
-              )}
+              {(() => {
+                const totalMonthlyDiscount = currentOrder.items?.reduce((sum, item) => sum + (Number(item.monthlyDiscount) || Number((item as any).monthly_discount) || 0), 0) || 0;
+                return totalMonthlyDiscount > 0 ? (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                    <span className="mr-1">🎁</span> ใช้คูปองส่วนลดประจำเดือน ({totalMonthlyDiscount.toLocaleString()} บาท)
+                  </span>
+                ) : null;
+              })()}
             </div>
             {!isEditing ? (
               <div className="flex space-x-2">
@@ -3486,11 +3491,12 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       const itemPrice = Number(item.pricePerUnit ?? (item as any).price_per_unit ?? 0);
                       const itemQty = Number(item.quantity ?? (item as any).quantity ?? 0);
                       const itemDisc = Number(item.discount ?? (item as any).discount ?? 0);
+                      const itemMonthlyDisc = Number((item as any).monthlyDiscount ?? (item as any).monthly_discount ?? 0);
                       const itemName = item.productName || (item as any).product_name || "";
 
                       const itemTotal = isFreebie
                         ? 0
-                        : itemPrice * itemQty - itemDisc;
+                        : itemPrice * itemQty - itemDisc - itemMonthlyDisc;
 
                       // Check if current user is the creator of this item
 
@@ -3638,24 +3644,57 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             )}
                           </td>
 
-                          <td className="px-3 py-2 text-right text-xs text-red-600">
+                          <td className="px-3 py-2 text-right text-xs text-red-600 align-top">
                             {(item as any).parentItemId ? (
                               ""
                             ) : canEditItem ? (
-                              <input
-                                type="number"
-                                value={item.discount ?? (item as any).discount}
-                                onChange={(e) =>
-                                  handleItemChange(
-                                    index,
-                                    "discount",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                className="w-20 border rounded px-1 text-right text-red-600"
-                              />
+                              <div className="flex flex-col items-end gap-1">
+                                <input
+                                  type="number"
+                                  value={item.discount ?? (item as any).discount ?? 0}
+                                  onChange={(e) =>
+                                    handleItemChange(
+                                      index,
+                                      "discount",
+                                      Number(e.target.value),
+                                    )
+                                  }
+                                  className="w-20 border rounded px-1 text-right text-red-600"
+                                  title="ส่วนลดปกติ"
+                                />
+                                <label className="flex items-center gap-1 text-[10px] text-gray-500 mt-1 cursor-pointer w-full justify-end whitespace-nowrap">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={((item as any).monthlyDiscount ?? (item as any).monthly_discount) !== undefined} 
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        handleItemChange(index, "monthlyDiscount", 0);
+                                      } else {
+                                        handleItemChange(index, "monthlyDiscount", undefined);
+                                      }
+                                    }} 
+                                  /> ใช้ส่วนลดประจำเดือน
+                                </label>
+                                {((item as any).monthlyDiscount ?? (item as any).monthly_discount) !== undefined && (
+                                  <input
+                                    type="number"
+                                    value={((item as any).monthlyDiscount ?? (item as any).monthly_discount) || 0}
+                                    onChange={(e) => handleItemChange(index, "monthlyDiscount", Number(e.target.value))}
+                                    className="w-20 border rounded px-1 text-right text-purple-600"
+                                    min={0}
+                                    title="ส่วนลดประจำเดือน"
+                                  />
+                                )}
+                              </div>
                             ) : (
-                              `-฿${itemDisc.toLocaleString()} `
+                              <div className="flex flex-col items-end gap-1">
+                                <span>-฿{itemDisc.toLocaleString()}</span>
+                                {itemMonthlyDisc > 0 && (
+                                  <span className="text-[10px] text-purple-600 bg-purple-50 px-1 rounded whitespace-nowrap">
+                                    ประจำเดือน -฿{itemMonthlyDisc.toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </td>
 
@@ -3673,7 +3712,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                   // Calculate needed discount: (Price * Qty) - NewTotal
                                   const price = Number(item.pricePerUnit || 0);
                                   const qty = Number(item.quantity || 0);
-                                  const newDiscount = Math.max(0, price * qty - newTotal);
+                                  const monthlyDisc = Number((item as any).monthlyDiscount ?? (item as any).monthly_discount ?? 0);
+                                  const newDiscount = Math.max(0, price * qty - newTotal - monthlyDisc);
 
                                   handleItemChange(index, "discount", newDiscount);
                                 }}
