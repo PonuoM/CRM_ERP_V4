@@ -57,8 +57,8 @@ try {
             if (empty($newDate)) {
                 throw new Exception('New date is required to reschedule the remaining quantity');
             }
-            $newExpStmt = $pdo->prepare("INSERT INTO stock_arrival_plan_expectations (item_id, expected_qty, expected_date) VALUES (?, ?, ?)");
-            $newExpStmt->execute([$expectation['item_id'], $shortfall, $newDate]);
+            $newExpStmt = $pdo->prepare("INSERT INTO stock_arrival_plan_expectations (item_id, expected_qty, expected_date, so_number, created_by) VALUES (?, ?, ?, ?, ?)");
+            $newExpStmt->execute([$expectation['item_id'], $shortfall, $newDate, $expectation['so_number'], $userId]);
             $newExpectationId = $pdo->lastInsertId();
         } elseif ($decision === 'close_short') {
             if (empty($note)) {

@@ -22,6 +22,7 @@ try {
     $expectedQty = (int)$input['expected_qty'];
     $expectedDate = $input['expected_date'];
     $soNumber = $input['so_number'] ?? null;
+    $userId = $input['user_id'] ?? null;
 
     $pdo->beginTransaction();
 
@@ -41,8 +42,8 @@ try {
         throw new Exception("จำนวนที่กำหนดวันที่คาดว่าจะเข้าเกินจำนวนที่เหลืออยู่ (เหลือ $remaining)");
     }
 
-    $insertStmt = $pdo->prepare("INSERT INTO stock_arrival_plan_expectations (item_id, expected_qty, expected_date, so_number) VALUES (?, ?, ?, ?)");
-    $insertStmt->execute([$itemId, $expectedQty, $expectedDate, $soNumber]);
+    $insertStmt = $pdo->prepare("INSERT INTO stock_arrival_plan_expectations (item_id, expected_qty, expected_date, so_number, created_by) VALUES (?, ?, ?, ?, ?)");
+    $insertStmt->execute([$itemId, $expectedQty, $expectedDate, $soNumber, $userId]);
     $expectationId = $pdo->lastInsertId();
 
     $pdo->commit();

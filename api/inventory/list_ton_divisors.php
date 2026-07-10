@@ -10,6 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once '../config.php';
+require_once 'stock_plan_company_group.php';
 $pdo = db_connect();
 
 try {
@@ -25,13 +26,14 @@ try {
         $params[] = $asOfDate;
     }
 
-    // Same SKU can exist as separate product rows per company -- scope to the
-    // current company so the settings list doesn't show every company's copy at once
+    // Scope to the current company's collaboration group (e.g. พรีม่าแพสชั่น49 + พรีออนิค see each other's plans)
     $itemsWhere = '1=1';
     $itemsParams = [];
     if ($companyId) {
-        $itemsWhere = 'p.company_id = ?';
-        $itemsParams[] = $companyId;
+        $companyIds = stock_plan_company_ids($companyId);
+        $placeholders = implode(',', array_fill(0, count($companyIds), '?'));
+        $itemsWhere = "p.company_id IN ($placeholders)";
+        $itemsParams = $companyIds;
     }
 
     $sql = "SELECT pr.id AS product_id, pr.sku, pr.name AS product_name, latest.divisor, latest.effective_from
