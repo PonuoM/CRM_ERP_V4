@@ -68,7 +68,7 @@ class GeoFencingController
 
         if ($method === 'GET') {
             // Fetch all companies and their geo settings
-            $stmt = $pdo->query('SELECT id, name, enable_geofencing FROM companies ORDER BY name ASC');
+            $stmt = $pdo->query('SELECT id, name, enable_geofencing, geo_window_start, geo_window_end, geo_window_days, geo_logout_time FROM companies ORDER BY name ASC');
             $companies = $stmt->fetchAll();
 
             $stmt = $pdo->query('SELECT company_id, work_location_id FROM company_work_locations');
@@ -147,11 +147,34 @@ class GeoFencingController
             $enableGeofencing = isset($in['enable_geofencing']) ? (int)$in['enable_geofencing'] : 0;
             $workLocationIds = $in['work_location_ids'] ?? [];
 
+            // Optional geo window (skip-check hours). Only touched when the keys
+            // are present in the payload, so older clients that do not send them
+            // (e.g. when just ticking a role) cannot wipe a saved window.
+            // Empty string clears the value.
+            $winSet = '';
+            $winParams = [];
+            if (array_key_exists('geo_window_start', $in)) {
+                $winSet .= ', geo_window_start = ?';
+                $winParams[] = $in['geo_window_start'] !== '' ? $in['geo_window_start'] : null;
+            }
+            if (array_key_exists('geo_window_end', $in)) {
+                $winSet .= ', geo_window_end = ?';
+                $winParams[] = $in['geo_window_end'] !== '' ? $in['geo_window_end'] : null;
+            }
+            if (array_key_exists('geo_window_days', $in)) {
+                $winSet .= ', geo_window_days = ?';
+                $winParams[] = preg_match('/^[01]{7}$/', (string)$in['geo_window_days']) ? $in['geo_window_days'] : null;
+            }
+            if (array_key_exists('geo_logout_time', $in)) {
+                $winSet .= ', geo_logout_time = ?';
+                $winParams[] = $in['geo_logout_time'] !== '' ? $in['geo_logout_time'] : null;
+            }
+
             $pdo->beginTransaction();
             try {
                 // Update companies table
-                $stmt = $pdo->prepare('UPDATE companies SET enable_geofencing = ? WHERE id = ?');
-                $stmt->execute([$enableGeofencing, $companyId]);
+                $stmt = $pdo->prepare('UPDATE companies SET enable_geofencing = ?' . $winSet . ' WHERE id = ?');
+                $stmt->execute(array_merge([$enableGeofencing], $winParams, [$companyId]));
 
                 // Update company_work_locations mapping
                 $stmt = $pdo->prepare('DELETE FROM company_work_locations WHERE company_id = ?');

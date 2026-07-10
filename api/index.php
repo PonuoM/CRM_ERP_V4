@@ -847,6 +847,33 @@ function handle_user_pancake_mappings(PDO $pdo, ?string $id): void
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
 }
+// Phones always get the GPS check even inside the geo window — they have GPS,
+// so the check costs office users nothing, while a desktop UA is the only kind
+// of device that legitimately cannot provide a location. UA is self-reported
+// ("Desktop site" mode can fake this), so login history stays the audit trail.
+function geo_is_mobile_device(): bool
+{
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    return (bool) preg_match('/Android|iPhone|iPad|Mobile/i', $ua);
+}
+
+// Inside the company's geo window (e.g. Mon-Sat 08:30-18:30) logins skip the
+// location check so office desktops without GPS can sign in. All three fields
+// NULL/empty means no window: the location is checked at every login.
+// geo_window_days: 7 chars of 0/1, index 0 = Monday ... index 6 = Sunday.
+function geo_in_allowed_window(?string $start, ?string $end, ?string $days): bool
+{
+    if (!$start || !$end || !$days) {
+        return false;
+    }
+    $dow = (int) date('N') - 1; // 0 = Monday ... 6 = Sunday
+    if (!isset($days[$dow]) || $days[$dow] !== '1') {
+        return false;
+    }
+    $now = date('H:i:s');
+    return $now >= $start && $now <= $end;
+}
+
 function validate_user_location(PDO $pdo, int $companyId, float $lat, float $lng): bool
 {
     $stmt = $pdo->prepare('
@@ -890,7 +917,7 @@ function handle_auth(PDO $pdo, ?string $id): void
         }
 
         // Check if user status is active and fetch is_system, require_geofencing from roles and enable_geofencing from companies
-        $stmt = $pdo->prepare('SELECT u.id, u.username, u.password, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, u.exempt_geofencing, r.is_system, c.enable_geofencing, IF(cgr.role_id IS NOT NULL, 1, 0) as require_geofencing FROM users u LEFT JOIN roles r ON u.role = r.name LEFT JOIN companies c ON u.company_id = c.id LEFT JOIN company_geo_roles cgr ON c.id = cgr.company_id AND r.id = cgr.role_id WHERE u.username=? LIMIT 1');
+        $stmt = $pdo->prepare('SELECT u.id, u.username, u.password, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, u.exempt_geofencing, r.is_system, c.enable_geofencing, c.geo_window_start, c.geo_window_end, c.geo_window_days, c.geo_logout_time, IF(cgr.role_id IS NOT NULL, 1, 0) as require_geofencing FROM users u LEFT JOIN roles r ON u.role = r.name LEFT JOIN companies c ON u.company_id = c.id LEFT JOIN company_geo_roles cgr ON c.id = cgr.company_id AND r.id = cgr.role_id WHERE u.username=? LIMIT 1');
         $stmt->execute([$username]);
         $u = $stmt->fetch();
         if (!$u)
@@ -906,9 +933,16 @@ function handle_auth(PDO $pdo, ?string $id): void
             json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS', 'message' => 'รหัสผ่านไม่ถูกต้อง'], 401);
         }
 
-        // Geo-fencing check (skip when this specific user is exempted, e.g. a senior
-        // Supervisor Telesale without subordinates kept inside the geo-fenced role)
-        if (!empty($u['require_geofencing']) && !empty($u['enable_geofencing']) && empty($u['exempt_geofencing'])) {
+        // Geo-fencing check. Skipped when:
+        //  - this specific user is exempted (e.g. a senior Supervisor Telesale
+        //    without subordinates kept inside the geo-fenced role), or
+        //  - now is inside the company's geo window (office hours) AND the
+        //    device is a desktop — the window exists for office desktops
+        //    without GPS; phones have GPS so they are checked at all times.
+        $isGeoFenced = !empty($u['require_geofencing']) && !empty($u['enable_geofencing']) && empty($u['exempt_geofencing']);
+        $windowPass = !geo_is_mobile_device()
+            && geo_in_allowed_window($u['geo_window_start'] ?? null, $u['geo_window_end'] ?? null, $u['geo_window_days'] ?? null);
+        if ($isGeoFenced && !$windowPass) {
             $lat = $in['latitude'] ?? null;
             $lng = $in['longitude'] ?? null;
             if ($lat === null || $lng === null) {
@@ -924,9 +958,23 @@ function handle_auth(PDO $pdo, ?string $id): void
             $updateStmt = $pdo->prepare('UPDATE users SET last_login = NOW(), login_count = login_count + 1 WHERE id = ?');
             $updateStmt->execute([$u['id']]);
 
-            // Generate Access Token
+            // Generate Access Token. Geo-fenced users get a token that dies at
+            // the company's daily logout time (e.g. 19:30, so a session opened
+            // at the office cannot be carried home for the evening), falling
+            // back to midnight when unset; everyone else keeps the 30-day token.
             $token = bin2hex(random_bytes(32));
-            $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+            if ($isGeoFenced) {
+                $cut = $u['geo_logout_time'] ?? null; // 'HH:MM:SS'
+                if ($cut) {
+                    $expires = date('H:i:s') < $cut
+                        ? date('Y-m-d') . ' ' . $cut
+                        : date('Y-m-d', strtotime('tomorrow')) . ' ' . $cut;
+                } else {
+                    $expires = date('Y-m-d 00:00:00', strtotime('tomorrow'));
+                }
+            } else {
+                $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+            }
             $pdo->prepare('INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, ?)')->execute([$u['id'], $token, $expires]);
 
             // Optionally record work login when explicitly requested

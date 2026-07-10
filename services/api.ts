@@ -63,13 +63,19 @@ export async function apiFetch(path: string, init?: RequestInit) {
   if (!res.ok) {
     if (res.status === 401) {
       if (typeof window !== "undefined") {
-        console.error("!!! 401 UNAUTHORIZED DETECTED - Auto-logout disabled for debugging !!!");
-        // localStorage.removeItem("sessionUser");
-        // localStorage.removeItem("authToken");
-        // Force reload to trigger index.tsx check
-        // if (!window.location.search.includes('login')) {
-        //   window.location.reload();
-        // }
+        console.error("!!! 401 UNAUTHORIZED DETECTED !!!");
+        // Auto-logout only on a definitive token failure (expired/invalid) while
+        // we actually hold a token — geo-fenced users get tokens that die at
+        // midnight, so without this the app would just silently break the next
+        // morning. Other 401s are left alone (kept from the old debugging state).
+        const tokenDead =
+          data && data.error === "UNAUTHORIZED" &&
+          (data.message === "Token expired" || data.message === "Invalid token");
+        if (tokenDead && token) {
+          localStorage.removeItem("sessionUser");
+          localStorage.removeItem("authToken");
+          window.location.reload();
+        }
       }
     }
     const errMsg =

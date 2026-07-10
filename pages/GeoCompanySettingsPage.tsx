@@ -30,7 +30,13 @@ interface CompanyGeo {
   work_location_ids: number[];
   geo_role_ids: number[];
   geo_members?: GeoMember[];
+  geo_window_start?: string | null; // 'HH:MM:SS'
+  geo_window_end?: string | null;
+  geo_window_days?: string | null; // 7 chars 0/1, index 0 = Monday
+  geo_logout_time?: string | null; // 'HH:MM:SS' daily forced logout, null = midnight
 }
+
+const DAY_LABELS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
 
 interface Role {
   id: number;
@@ -178,6 +184,40 @@ export default function GeoCompanySettingsPage() {
     } catch (e: any) {
       alert(e.message || 'Failed to update company');
       fetchData(); // reload on error
+    }
+  };
+
+  const handleWindowUpdate = async (
+    companyId: number,
+    win: {
+      geo_window_start: string | null;
+      geo_window_end: string | null;
+      geo_window_days: string | null;
+      geo_logout_time: string | null;
+    },
+  ) => {
+    // Optimistic update
+    setCompanies(prev => prev.map(c => (c.id === companyId ? { ...c, ...win } : c)));
+    try {
+      const company = companies.find(c => c.id === companyId);
+      await apiFetch('geo_companies/update', {
+        method: 'POST',
+        body: JSON.stringify({
+          company_id: companyId,
+          enable_geofencing: company?.enable_geofencing ?? 0,
+          work_location_ids: company?.work_location_ids ?? [],
+          geo_role_ids: company?.geo_role_ids ?? [],
+          geo_window_start: win.geo_window_start ?? '',
+          geo_window_end: win.geo_window_end ?? '',
+          geo_window_days: win.geo_window_days ?? '',
+          geo_logout_time: win.geo_logout_time ?? '',
+        }),
+      });
+      setSuccess('บันทึกช่วงเวลาแล้ว');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (e: any) {
+      alert(e.message || 'Failed to update time window');
+      fetchData();
     }
   };
 
@@ -450,6 +490,109 @@ export default function GeoCompanySettingsPage() {
                           })}
                         </div>
                       )}
+
+                      {(() => {
+                        const winStart = (company.geo_window_start || '').slice(0, 5);
+                        const winEnd = (company.geo_window_end || '').slice(0, 5);
+                        const winDays = company.geo_window_days && /^[01]{7}$/.test(company.geo_window_days)
+                          ? company.geo_window_days
+                          : '0000000';
+                        const windowActive = !!(winStart && winEnd && winDays.includes('1'));
+                        const logoutTime = (company.geo_logout_time || '').slice(0, 5);
+                        const save = (s: string, e2: string, d: string, lo: string = logoutTime) =>
+                          handleWindowUpdate(company.id, {
+                            geo_window_start: s || null,
+                            geo_window_end: e2 || null,
+                            geo_window_days: d.includes('1') ? d : null,
+                            geo_logout_time: lo || null,
+                          });
+                        return (
+                          <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                            <h4 className="text-sm font-medium text-gray-700 mb-1">ช่วงเวลาที่ไม่ต้องเช็คตำแหน่ง (เวลาทำงาน — เฉพาะคอมพิวเตอร์):</h4>
+                            <p className="text-xs text-gray-500 mb-3">
+                              ในช่วงเวลา/วันที่เลือก <b>คอมพิวเตอร์</b>ล็อกอินได้โดยไม่เช็คพิกัด (คอมตั้งโต๊ะออฟฟิศไม่มี GPS) —
+                              ส่วน<b>มือถือ/แท็บเล็ต</b>จะถูกเช็คพิกัด GPS ทุกครั้งตลอดเวลา ไม่ว่าช่วงไหน
+                              นอกช่วงเวลานี้ทุกอุปกรณ์ถูกเช็คพิกัด ถ้าไม่ตั้งค่า = เช็คพิกัดตลอดเวลา
+                            </p>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <input
+                                type="time"
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                value={winStart}
+                                onChange={e => save(e.target.value, winEnd, winDays)}
+                              />
+                              <span className="text-sm text-gray-500">ถึง</span>
+                              <input
+                                type="time"
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                value={winEnd}
+                                onChange={e => save(winStart, e.target.value, winDays)}
+                              />
+                              <div className="flex gap-1">
+                                {DAY_LABELS.map((label, i) => {
+                                  const on = winDays[i] === '1';
+                                  return (
+                                    <button
+                                      key={i}
+                                      type="button"
+                                      onClick={() => {
+                                        const d = winDays.split('');
+                                        d[i] = on ? '0' : '1';
+                                        save(winStart, winEnd, d.join(''));
+                                      }}
+                                      className={`w-9 h-9 rounded-full text-xs font-medium border transition-colors ${
+                                        on
+                                          ? 'bg-blue-600 border-blue-600 text-white'
+                                          : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
+                                      }`}
+                                    >
+                                      {label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {windowActive && (
+                                <button
+                                  type="button"
+                                  onClick={() => save('', '', '0000000')}
+                                  className="text-xs text-red-500 hover:text-red-700 underline"
+                                >
+                                  ล้างค่า (เช็คตลอดเวลา)
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-blue-100">
+                              <span className="text-sm font-medium text-gray-700">เวลาบังคับหลุดล็อกอินทุกวัน:</span>
+                              <input
+                                type="time"
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                value={logoutTime}
+                                onChange={e => save(winStart, winEnd, winDays, e.target.value)}
+                              />
+                              <span className="text-xs text-gray-500">
+                                {logoutTime
+                                  ? `ผู้ใช้ที่โดนเช็คพิกัดจะหลุดล็อกอินตอน ${logoutTime} ทุกวัน (login ใหม่หลังเวลานี้ต้องอยู่ออฟฟิศ)`
+                                  : 'ไม่ตั้ง = หลุดตอนเที่ยงคืน (00:00)'}
+                              </span>
+                              {logoutTime && (
+                                <button
+                                  type="button"
+                                  onClick={() => save(winStart, winEnd, winDays, '')}
+                                  className="text-xs text-red-500 hover:text-red-700 underline"
+                                >
+                                  ใช้เที่ยงคืน
+                                </button>
+                              )}
+                            </div>
+                            {windowActive && (
+                              <p className="text-xs text-blue-700 mt-2">
+                                ✓ เปิดใช้: {DAY_LABELS.filter((_, i) => winDays[i] === '1').join(', ')} เวลา {winStart}-{winEnd} คอมพิวเตอร์ล็อกอินได้โดยไม่เช็คพิกัด (มือถือเช็ค GPS เสมอ)
+                                — และผู้ใช้ที่โดนบังคับเช็คพิกัดจะหลุดล็อกอินอัตโนมัติตอน {logoutTime || 'เที่ยงคืน'} ทุกวัน
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       <h4 className="text-sm font-medium text-gray-700 mb-3 mt-6">ตำแหน่ง (Roles) ที่บังคับใช้ระบบนี้:</h4>
                       {roles.length === 0 ? (
