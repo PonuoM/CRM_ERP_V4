@@ -76,15 +76,16 @@ class CronLoggerService {
     }
 
     /**
-     * Queries the DB for the number of customers grouped by their current_basket_key
+     * Queries the DB for the number of customers grouped by assigned_to and current_basket_key
      */
     private function takeCustomerBasketSnapshot(): array {
-        // We get total customers per basket key
-        // Null basket keys are also counted (e.g. leads that haven't been assigned a basket yet)
         $stmt = $this->pdo->query("
-            SELECT IFNULL(current_basket_key, 'unassigned') as basket_key, COUNT(*) as customer_count 
+            SELECT 
+                IFNULL(assigned_to, 'unassigned_user') as user_id,
+                IFNULL(current_basket_key, 'unassigned_basket') as basket_key, 
+                COUNT(*) as customer_count 
             FROM customers 
-            GROUP BY current_basket_key
+            GROUP BY assigned_to, current_basket_key
         ");
         
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -92,8 +93,17 @@ class CronLoggerService {
         $snapshot = [];
         $total = 0;
         foreach ($results as $row) {
-            $snapshot[$row['basket_key']] = (int)$row['customer_count'];
-            $total += (int)$row['customer_count'];
+            $userId = $row['user_id'] === 'unassigned_user' ? 'unassigned_user' : 'user_' . $row['user_id'];
+            $basketKey = $row['basket_key'];
+            $count = (int)$row['customer_count'];
+            
+            if (!isset($snapshot[$userId])) {
+                $snapshot[$userId] = ['__user_total__' => 0];
+            }
+            
+            $snapshot[$userId][$basketKey] = $count;
+            $snapshot[$userId]['__user_total__'] += $count;
+            $total += $count;
         }
         
         // Add a total count for easy reference
