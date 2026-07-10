@@ -1893,7 +1893,6 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $in['shippingCost'] ?? 0,
                     $in['billDiscount'] ?? 0,
                     $in['couponDiscount'] ?? 0,
-                    $in['monthlyDiscount'] ?? 0,
                     $in['totalAmount'] ?? 0,
                     $paymentMethod,
                     $in['paymentStatus'] ?? null,
