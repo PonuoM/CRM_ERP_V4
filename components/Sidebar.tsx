@@ -45,6 +45,7 @@ import {
   BarChart3,
   ShoppingBag,
   Activity,
+  ExternalLink,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -65,6 +66,7 @@ type NavItem = {
   children?: NavItem[];
   allowRule?: (user: UserType) => boolean; // Optional code-level override
   group?: string; // For sorting
+  onSelect?: () => void; // Custom action instead of setActivePage (e.g. external SSO link)
 };
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -275,6 +277,25 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Team Appointments", icon: Calendar, key: "monitor.team_appointments" },
         { label: "Distribution Dashboard", icon: Activity, key: "nav.distribution_dashboard" },
         { label: "Special Orders Report", icon: BarChart2, key: "reports.special_orders" },
+        {
+          label: "รายงาน Dashboard",
+          icon: ExternalLink,
+          // Role whitelist mirrors the Dashboard's own login gate
+          // (Admin Control / Supervisor Telesale / Telesale / Admin Page); SuperAdmin sees everything.
+          allowRule: (u: UserType) => [
+            UserRole.AdminControl,
+            UserRole.Supervisor,
+            UserRole.Telesale,
+            UserRole.Admin,
+            UserRole.SuperAdmin,
+          ].includes(u.role),
+          onSelect: () => {
+            const token = localStorage.getItem("authToken");
+            const base = "https://dashboard.prima49.com/";
+            const url = token ? `${base}?sso_token=${encodeURIComponent(token)}` : base;
+            window.open(url, "_blank", "noopener");
+          },
+        },
       ]
     },
     {
@@ -575,7 +596,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={child.label}
                     onClick={() => {
-                      if (child.key && child.key.startsWith('promo.')) {
+                      if (child.onSelect) {
+                        child.onSelect();
+                      } else if (child.key && child.key.startsWith('promo.')) {
                         setActivePage(child.key);
                       } else {
                         setActivePage(child.label);
