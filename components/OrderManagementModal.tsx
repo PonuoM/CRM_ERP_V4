@@ -3712,7 +3712,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                   // Calculate needed discount: (Price * Qty) - NewTotal
                                   const price = Number(item.pricePerUnit || 0);
                                   const qty = Number(item.quantity || 0);
-                                  const newDiscount = Math.max(0, price * qty - newTotal);
+                                  const monthlyDisc = Number((item as any).monthlyDiscount ?? (item as any).monthly_discount ?? 0);
+                                  const newDiscount = Math.max(0, price * qty - newTotal - monthlyDisc);
 
                                   handleItemChange(index, "discount", newDiscount);
                                 }}
