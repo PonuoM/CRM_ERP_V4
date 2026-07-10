@@ -301,10 +301,11 @@ function calculate_order_item_net_total(array $item): float
     $pricePerUnit = isset($item['pricePerUnit']) ? (float) $item['pricePerUnit'] : (float) ($item['price_per_unit'] ?? 0);
     $pricePerUnit = $pricePerUnit < 0 ? 0.0 : $pricePerUnit;
     $discount = isset($item['discount']) ? (float) $item['discount'] : 0.0;
+    $monthlyDiscount = isset($item['monthlyDiscount']) ? (float) $item['monthlyDiscount'] : (float) ($item['monthly_discount'] ?? 0.0);
     $isFreebie = !empty($item['isFreebie']) || (!empty($item['is_freebie']) && (int) $item['is_freebie'] === 1);
     if ($isFreebie) {
         return 0.0;
     }
-    $net = ($pricePerUnit * $quantity) - $discount;
+    $net = ($pricePerUnit * $quantity) - $discount - $monthlyDiscount;
     return $net > 0 ? $net : 0.0;
 }

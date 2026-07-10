@@ -190,11 +190,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                     <div>
                         <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                             รายละเอียดออเดอร์ #{orderId}
-                            {((order as any)?.monthly_discount || (order as any)?.monthlyDiscount || 0) > 0 && (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
-                                    <span className="mr-1">🎁</span> ใช้คูปองส่วนลดประจำเดือน ({((order as any)?.monthly_discount || (order as any)?.monthlyDiscount)} บาท)
-                                </span>
-                            )}
+                            {(() => {
+                                const totalMonthlyDiscount = order?.items?.reduce((sum: number, item: any) => sum + (Number(item.monthly_discount) || Number(item.monthlyDiscount) || 0), 0) || 0;
+                                return totalMonthlyDiscount > 0 ? (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                                        <span className="mr-1">🎁</span> ใช้คูปองส่วนลดประจำเดือน ({totalMonthlyDiscount.toLocaleString()} บาท)
+                                    </span>
+                                ) : null;
+                            })()}
                         </h3>
                     </div>
                     <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full text-gray-500 transition-colors">
@@ -481,7 +484,16 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                         </td>
                                                         <td className={`px-3 py-2 text-center ${isChild ? 'text-xs text-gray-500' : 'text-sm'}`}>{item.quantity}</td>
                                                         <td className={`px-3 py-2 text-right ${isChild ? 'text-xs text-gray-500' : 'text-sm'}`}>{new Intl.NumberFormat('th-TH').format(item.price_per_unit || item.price || 0)}</td>
-                                                        <td className={`px-3 py-2 text-right ${isChild ? 'text-xs' : 'text-sm'} text-red-500`}>{item.discount > 0 ? `-${new Intl.NumberFormat('th-TH').format(item.discount)}` : '-'}</td>
+                                                        <td className={`px-3 py-2 text-right ${isChild ? 'text-xs' : 'text-sm'} text-red-500 align-top`}>
+                                                            <div className="flex flex-col items-end">
+                                                                <span>{item.discount > 0 ? `-${new Intl.NumberFormat('th-TH').format(item.discount)}` : '-'}</span>
+                                                                {(Number(item.monthly_discount) || Number(item.monthlyDiscount) || 0) > 0 && (
+                                                                    <span className="text-[10px] text-purple-600 bg-purple-50 px-1 rounded mt-1 whitespace-nowrap">
+                                                                        ปจด. -{new Intl.NumberFormat('th-TH').format(Number(item.monthly_discount) || Number(item.monthlyDiscount) || 0)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
                                                         <td className={`px-3 py-2 text-right font-medium ${isChild ? 'text-xs text-gray-500' : 'text-sm'}`}>{new Intl.NumberFormat('th-TH').format(item.net_total || 0)}</td>
                                                         <td className={`px-3 py-2 text-gray-500 ${isChild ? 'text-[11px]' : 'text-sm'}`}>
                                                             {(item.is_freebie === 1 || item.is_freebie === true) ? (

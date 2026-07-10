@@ -104,7 +104,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                o.street, o.subdistrict, o.district, o.province, o.postal_code, o.recipient_first_name, o.recipient_last_name,
                                o.shipping_provider';
 
-                $selectCols .= ', o.shipping_cost, o.bill_discount, o.coupon_discount, o.monthly_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
+                $selectCols .= ', o.shipping_cost, o.bill_discount, o.coupon_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
@@ -503,7 +503,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                     try {
                         $parentPlaceholders = implode(',', array_fill(0, count($orderIds), '?'));
                         $itemSql = "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, 
-                                           oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number, 
+                                           oi.price_per_unit, oi.discount, oi.monthly_discount, oi.net_total, oi.is_freebie, oi.box_number, 
                                            oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
                                            oi.creator_id, oi.parent_order_id, oi.basket_key_at_sale,
                                            p.sku as product_sku,
@@ -1057,8 +1057,8 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                     // Prepare the insert statement for reuse
                     // Dynamically build insert based on column existence
-                    $baseCols = "order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, box_number, parent_item_id, is_promotion_parent, is_freebie, promotion_id, creator_id";
-                    $baseVals = "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
+                    $baseCols = "order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, monthly_discount, net_total, box_number, parent_item_id, is_promotion_parent, is_freebie, promotion_id, creator_id";
+                    $baseVals = "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
 
                     if ($orderBasketKey !== null) {
                         $insertSql = "INSERT INTO order_items ($baseCols, basket_key_at_sale) VALUES ($baseVals, ?)";
@@ -1120,11 +1120,12 @@ function handle_orders(PDO $pdo, ?string $id): void
                             // Child items inherit creator_id from parent; standalone items use their own
                             $itemCreatorId = $parentCreatorForUpdate ?? $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
 
-                            $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=?, promotion_id=?, creator_id=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
+                            $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, monthly_discount=?, net_total=?, box_number=?, is_freebie=?, promotion_id=?, creator_id=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
                             $pdo->prepare($updateSql)->execute([
                                 $item['quantity'] ?? 0,
                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
                                 $item['discount'] ?? 0,
+                                $item['monthlyDiscount'] ?? $item['monthly_discount'] ?? 0,
                                 $netTotal,
                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
                                 $isFreebie ? 1 : 0,
@@ -1159,6 +1160,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $item['quantity'] ?? 0,
                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
                                 $item['discount'] ?? 0,
+                                $item['monthlyDiscount'] ?? $item['monthly_discount'] ?? 0,
                                 $netTotal,
                                 $boxNumber,
                                 null, // parent_item_id
@@ -1204,6 +1206,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $item['quantity'] ?? 0,
                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
                                 $item['discount'] ?? 0,
+                                $item['monthlyDiscount'] ?? $item['monthly_discount'] ?? 0,
                                 $netTotal,
                                 $boxNumber,
                                 null,
@@ -1302,6 +1305,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $item['quantity'] ?? 0,
                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
                                 $item['discount'] ?? 0,
+                                $item['monthlyDiscount'] ?? $item['monthly_discount'] ?? 0,
                                 $netTotal,
                                 $boxNumber,
                                 $resolvedParentId,
@@ -1673,7 +1677,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 if ($hasShippingProvider) {
                     $columns[] = 'shipping_provider';
                 }
-                $columns = array_merge($columns, ['shipping_cost', 'bill_discount', 'coupon_discount', 'monthly_discount', 'total_amount', 'payment_method', 'payment_status', 'slip_url', 'amount_paid', 'cod_amount', 'order_status', 'notes', 'sales_channel', 'sales_channel_page_id', 'warehouse_id']);
+                $columns = array_merge($columns, ['shipping_cost', 'bill_discount', 'coupon_discount', 'total_amount', 'payment_method', 'payment_status', 'slip_url', 'amount_paid', 'cod_amount', 'order_status', 'notes', 'sales_channel', 'sales_channel_page_id', 'warehouse_id']);
                 $values = [];
                 $placeholders = [];
 
@@ -1964,7 +1968,7 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 if (!empty($in['items']) && is_array($in['items'])) {
                     // Two-phase insert to satisfy FK parent_item_id -> order_items(id)
-                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id, basket_key_at_sale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, monthly_discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id, basket_key_at_sale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
 
                     $computeNetValues = function (array $item): array {
                         $quantity = isset($item['quantity']) ? (int) $item['quantity'] : 0;
@@ -1972,14 +1976,16 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $pricePerUnit = isset($item['pricePerUnit']) ? (float) $item['pricePerUnit'] : (float) ($item['price_per_unit'] ?? 0.0);
                         $pricePerUnit = $pricePerUnit < 0 ? 0.0 : $pricePerUnit;
                         $discount = isset($item['discount']) ? (float) $item['discount'] : 0.0;
+                        $monthlyDiscount = isset($item['monthlyDiscount']) ? (float) $item['monthlyDiscount'] : (float) ($item['monthly_discount'] ?? 0.0);
                         $isFreebie = (!empty($item['isFreebie']) || (!empty($item['is_freebie']) && (int) $item['is_freebie'] === 1)) ? 1 : 0;
                         $netTotal = calculate_order_item_net_total([
                             'quantity' => $quantity,
                             'pricePerUnit' => $pricePerUnit,
                             'discount' => $discount,
+                            'monthlyDiscount' => $monthlyDiscount,
                             'isFreebie' => $isFreebie,
                         ]);
-                        return [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie];
+                        return [$quantity, $pricePerUnit, $discount, $monthlyDiscount, $netTotal, $isFreebie];
                     };
 
                     // IMPORTANT: order_items.order_id stores the sub_order_id format (e.g., "251226-00023adminga-3")
@@ -2005,7 +2011,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                         if ($isParent) {
                             $boxNumber = isset($it['boxNumber']) ? (int) $it['boxNumber'] : 1;
                             $orderIdForItem = $getOrderIdForBox($boxNumber);
-                            [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
+                            [$quantity, $pricePerUnit, $discount, $monthlyDiscount, $netTotal, $isFreebie] = $computeNetValues($it);
                             $ins->execute([
                                 $orderIdForItem,
                                 $mainOrderId,
@@ -2014,6 +2020,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $quantity,
                                 $pricePerUnit,
                                 $discount,
+                                $monthlyDiscount,
                                 $netTotal,
                                 $isFreebie,
                                 $boxNumber,
@@ -2038,7 +2045,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                         if (!$isParent && !$hasParent) {
                             $boxNumber = isset($it['boxNumber']) ? (int) $it['boxNumber'] : 1;
                             $orderIdForItem = $getOrderIdForBox($boxNumber);
-                            [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
+                            [$quantity, $pricePerUnit, $discount, $monthlyDiscount, $netTotal, $isFreebie] = $computeNetValues($it);
                             $ins->execute([
                                 $orderIdForItem,
                                 $mainOrderId,
@@ -2047,6 +2054,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $quantity,
                                 $pricePerUnit,
                                 $discount,
+                                $monthlyDiscount,
                                 $netTotal,
                                 $isFreebie,
                                 $boxNumber,
@@ -2316,9 +2324,6 @@ function handle_orders(PDO $pdo, ?string $id): void
             $couponDiscount = array_key_exists('coupon_discount', $in) ? $in['coupon_discount'] : (array_key_exists('couponDiscount', $in) ? $in['couponDiscount'] : null);
             if ($couponDiscount === '')
                 $couponDiscount = null;
-            $monthlyDiscount = array_key_exists('monthly_discount', $in) ? $in['monthly_discount'] : (array_key_exists('monthlyDiscount', $in) ? $in['monthlyDiscount'] : null);
-            if ($monthlyDiscount === '')
-                $monthlyDiscount = null;
             $deliveryDate = array_key_exists('deliveryDate', $in) ? $in['deliveryDate'] : (array_key_exists('delivery_date', $in) ? $in['delivery_date'] : null);
             if ($deliveryDate === '')
                 $deliveryDate = null;
@@ -2462,13 +2467,13 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                 // Build UPDATE SQL - sales_channel_page_id is handled specially based on $forceClearPageId
                 $pageIdSql = $forceClearPageId ? 'sales_channel_page_id=NULL' : 'sales_channel_page_id=COALESCE(?, sales_channel_page_id)';
-                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), ' . $pageIdSql . ', delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount), coupon_discount=COALESCE(?, coupon_discount), monthly_discount=COALESCE(?, monthly_discount), customer_type=COALESCE(?, customer_type)';
+                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), ' . $pageIdSql . ', delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount), coupon_discount=COALESCE(?, coupon_discount), customer_type=COALESCE(?, customer_type)';
 
                 // Build params - only include salesChannelPageId if not force clearing
                 if ($forceClearPageId) {
-                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $couponDiscount, $monthlyDiscount, $customerType];
+                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $couponDiscount, $customerType];
                 } else {
-                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $salesChannelPageId, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $couponDiscount, $monthlyDiscount, $customerType];
+                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $salesChannelPageId, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $couponDiscount, $customerType];
                 }
                 if ($hasShippingProvider) {
                     $updateSql .= ', shipping_provider=COALESCE(?, shipping_provider)';
