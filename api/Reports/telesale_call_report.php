@@ -49,6 +49,7 @@ try {
     $search = isset($_GET['search']) ? trim($_GET['search']) : '';
     $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
     $pageSize = isset($_GET['pageSize']) ? min(10000, max(10, intval($_GET['pageSize']))) : 200;
+    $exportMode = isset($_GET['export']) && $_GET['export'] == '1';
 
     // Date range: inclusive start, exclusive end (on call_history.date)
     $startDate = sprintf('%04d-%02d-01 00:00:00', $year, $month);
@@ -117,21 +118,27 @@ try {
     $baseParams = array_merge([$companyId, $startDate, $endDate], $agentScopeParams, $extraParams);
 
     // Count total
-    $countStmt = $pdo->prepare("SELECT COUNT(*) " . $fromWhere);
-    $countStmt->execute($baseParams);
-    $totalRows = intval($countStmt->fetchColumn());
+    $totalRows = 0;
+    if (!$exportMode) {
+        $countStmt = $pdo->prepare("SELECT COUNT(*) " . $fromWhere);
+        $countStmt->execute($baseParams);
+        $totalRows = intval($countStmt->fetchColumn());
+    }
 
     // Summary: total calls + "ได้คุย" (talked) calls
-    $summaryStmt = $pdo->prepare(
-        "SELECT
-            COUNT(*) AS total_calls,
-            SUM(CASE WHEN ch.status = 'ได้คุย' OR ch.result = 'ได้คุย' THEN 1 ELSE 0 END) AS talked_calls,
-            COUNT(DISTINCT ch.customer_id) AS unique_customers,
-            COUNT(DISTINCT u.id) AS active_agents
-        " . $fromWhere
-    );
-    $summaryStmt->execute($baseParams);
-    $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $summary = [];
+    if (!$exportMode) {
+        $summaryStmt = $pdo->prepare(
+            "SELECT
+                COUNT(*) AS total_calls,
+                SUM(CASE WHEN ch.status = 'ได้คุย' OR ch.result = 'ได้คุย' THEN 1 ELSE 0 END) AS talked_calls,
+                COUNT(DISTINCT ch.customer_id) AS unique_customers,
+                COUNT(DISTINCT u.id) AS active_agents
+            " . $fromWhere
+        );
+        $summaryStmt->execute($baseParams);
+        $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
 
     // Data rows
     $offset = ($page - 1) * $pageSize;
@@ -152,25 +159,34 @@ try {
             ch.customer_id
         " . $fromWhere . "
         ORDER BY ch.date DESC, ch.id DESC
-        LIMIT ? OFFSET ?
     ";
-    $allParams = array_merge($baseParams, [$pageSize, $offset]);
+    
+    if (!$exportMode) {
+        $dataSql .= " LIMIT ? OFFSET ?";
+        $allParams = array_merge($baseParams, [$pageSize, $offset]);
+    } else {
+        $allParams = $baseParams;
+    }
+
     $dataStmt = $pdo->prepare($dataSql);
     $dataStmt->execute($allParams);
     $rows = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Agent dropdown — telesale role 6/7 within the viewer's scope
-    $agentSql = "
-        SELECT u.id, TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS name, u.role_id
-        FROM users u
-        WHERE u.role_id IN (6,7) AND u.company_id = ? AND u.status = 'active'
-        $agentScopeFilter
-        ORDER BY u.first_name, u.last_name
-    ";
-    $agentParams = array_merge([$companyId], $agentScopeParams);
-    $agentStmt = $pdo->prepare($agentSql);
-    $agentStmt->execute($agentParams);
-    $agents = $agentStmt->fetchAll(PDO::FETCH_ASSOC);
+    $agents = [];
+    if (!$exportMode) {
+        $agentSql = "
+            SELECT u.id, TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS name, u.role_id
+            FROM users u
+            WHERE u.role_id IN (6,7) AND u.company_id = ? AND u.status = 'active'
+            $agentScopeFilter
+            ORDER BY u.first_name, u.last_name
+        ";
+        $agentParams = array_merge([$companyId], $agentScopeParams);
+        $agentStmt = $pdo->prepare($agentSql);
+        $agentStmt->execute($agentParams);
+        $agents = $agentStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     json_response([
         'success' => true,
