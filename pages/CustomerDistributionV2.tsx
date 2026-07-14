@@ -4,7 +4,7 @@ import { User, Customer, UserRole } from '../types';
 import {
     Users, Package, Search, ChevronDown, Check, Loader2, AlertCircle,
     RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download, ArrowRight, Filter,
-    Zap, Scale, TrendingUp, Minus, History, CalendarClock
+    Zap, Scale, TrendingUp, Minus, History, CalendarClock, Phone
 } from 'lucide-react';
 import UniversalDateRangePicker, { DateRange } from '../components/UniversalDateRangePicker';
 import resolveApiBasePath from '../utils/apiBasePath';
@@ -81,6 +81,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     );
     const [callDataSource, setCallDataSource] = useState<'db' | 'realtime'>('db');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
+
+    // Called History Filter State
+    const [calledFilterDays, setCalledFilterDays] = useState<string>(''); // '', '30', '60', 'custom'
+    const [calledFilterCustomDays, setCalledFilterCustomDays] = useState<string>('');
+    const [calledFilterMode, setCalledFilterMode] = useState<'include' | 'exclude'>('exclude');
 
     // Distribution Modes State
     type DistributionMode = 'equal' | 'load_balance' | 'performance';
@@ -289,6 +294,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const fetchAllBasketCounts = useCallback(async () => {
         if (baskets.length === 0) return;
 
+        const actualCalledFilterDays = calledFilterDays === 'custom' ? calledFilterCustomDays : calledFilterDays;
+        const calledFilterParams = actualCalledFilterDays ? `&called_filter_days=${actualCalledFilterDays}&called_filter_mode=${calledFilterMode}` : '';
+
         const counts: Record<string, number> = {};
         await Promise.all(baskets.map(async (basket) => {
             try {
@@ -298,7 +306,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     counts[basket.basket_key] = res?.success ? (res.data?.length || 0) : 0;
                 } else {
                     const response = await apiFetch(
-                        `basket_config.php?action=basket_customers&basket_key=${basket.basket_key}&companyId=${currentUser?.companyId}&limit=1&t=${Date.now()}`
+                        `basket_config.php?action=basket_customers&basket_key=${basket.basket_key}&companyId=${currentUser?.companyId}&limit=1&t=${Date.now()}${calledFilterParams}`
                     );
                     counts[basket.basket_key] = response?.count || 0;
                 }
@@ -307,7 +315,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             }
         }));
         setBasketCounts(counts);
-    }, [baskets, currentUser?.companyId]);
+    }, [baskets, currentUser?.companyId, calledFilterDays, calledFilterCustomDays, calledFilterMode]);
 
     // Fetch telesale agents with their basket holdings
     const fetchAgents = useCallback(async () => {
@@ -412,8 +420,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
         setLoadingCustomers(true);
         try {
+            const actualCalledFilterDays = calledFilterDays === 'custom' ? calledFilterCustomDays : calledFilterDays;
+            const calledFilterParams = actualCalledFilterDays ? `&called_filter_days=${actualCalledFilterDays}&called_filter_mode=${calledFilterMode}` : '';
+
             const response = await apiFetch(
-                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=5000`
+                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=5000${calledFilterParams}`
             );
             const data = response?.data || [];
             const mapped = data.map((r: any) => mapCustomerFromApi(r));
@@ -882,8 +893,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 return;
             }
 
+            const actualCalledFilterDays = calledFilterDays === 'custom' ? calledFilterCustomDays : calledFilterDays;
+            const calledFilterParams = actualCalledFilterDays ? `&called_filter_days=${actualCalledFilterDays}&called_filter_mode=${calledFilterMode}` : '';
+
             // Fetch
-            const fetchResult = await apiFetch(`basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=${needyAgents.length}&skip=${skipCount}`);
+            const fetchResult = await apiFetch(`basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=${needyAgents.length}&skip=${skipCount}${calledFilterParams}`);
 
             const newCandidates = fetchResult?.data || [];
             if (newCandidates.length === 0) {
@@ -1806,6 +1820,63 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     </div>
                 )
             }
+
+            {/* Global Filters (Applies to Cards & Distribution) */}
+            <div className="mb-4 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <Phone size={18} className="text-gray-500" />
+                        <span className="text-sm font-medium text-gray-700">ประวัติการโทร:</span>
+                    </div>
+                    
+                    <select 
+                        value={calledFilterDays}
+                        onChange={(e) => setCalledFilterDays(e.target.value)}
+                        className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                        <option value="">ทั้งหมด (ไม่กรอง)</option>
+                        <option value="30">โทรแล้วใน 1 เดือน</option>
+                        <option value="60">โทรแล้วใน 2 เดือน</option>
+                        <option value="custom">กำหนดจำนวนวันเอง...</option>
+                    </select>
+
+                    {calledFilterDays === 'custom' && (
+                        <input 
+                            type="number"
+                            min="1"
+                            value={calledFilterCustomDays}
+                            onChange={(e) => setCalledFilterCustomDays(e.target.value)}
+                            placeholder="จำนวนวัน"
+                            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 w-24 focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    )}
+
+                    {calledFilterDays !== '' && (
+                        <div className="flex items-center gap-2 ml-4 bg-gray-50 px-3 py-1 rounded-lg border border-gray-200">
+                            <label className="flex items-center gap-1 cursor-pointer">
+                                <input 
+                                    type="radio" 
+                                    name="calledMode"
+                                    checked={calledFilterMode === 'exclude'}
+                                    onChange={() => setCalledFilterMode('exclude')}
+                                    className="text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm text-gray-700">ซ่อนคนที่โทรแล้ว</span>
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer ml-3">
+                                <input 
+                                    type="radio" 
+                                    name="calledMode"
+                                    checked={calledFilterMode === 'include'}
+                                    onChange={() => setCalledFilterMode('include')}
+                                    className="text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm text-gray-700">เอาเฉพาะคนที่โทรแล้ว</span>
+                            </label>
+                        </div>
+                    )}
+                </div>
+            </div>
 
             {/* Stats Cards - All Baskets in Grid */}
             <DistributionStatsCards
