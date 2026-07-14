@@ -12,6 +12,16 @@ interface WorkLocation {
   is_active: number;
 }
 
+interface GeoMember {
+  id: number;
+  username: string;
+  name: string;
+  role_id: number;
+  role_name: string;
+  subordinates: number;
+  exempt_geofencing: number;
+}
+
 interface CompanyGeo {
   id: number;
   name: string;
@@ -19,7 +29,14 @@ interface CompanyGeo {
   enable_geofencing: number;
   work_location_ids: number[];
   geo_role_ids: number[];
+  geo_members?: GeoMember[];
+  geo_window_start?: string | null; // 'HH:MM:SS'
+  geo_window_end?: string | null;
+  geo_window_days?: string | null; // 7 chars 0/1, index 0 = Monday
+  geo_logout_time?: string | null; // 'HH:MM:SS' daily forced logout, null = midnight
 }
+
+const DAY_LABELS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
 
 interface Role {
   id: number;
@@ -167,6 +184,59 @@ export default function GeoCompanySettingsPage() {
     } catch (e: any) {
       alert(e.message || 'Failed to update company');
       fetchData(); // reload on error
+    }
+  };
+
+  const handleWindowUpdate = async (
+    companyId: number,
+    win: {
+      geo_window_start: string | null;
+      geo_window_end: string | null;
+      geo_window_days: string | null;
+      geo_logout_time: string | null;
+    },
+  ) => {
+    // Optimistic update
+    setCompanies(prev => prev.map(c => (c.id === companyId ? { ...c, ...win } : c)));
+    try {
+      const company = companies.find(c => c.id === companyId);
+      await apiFetch('geo_companies/update', {
+        method: 'POST',
+        body: JSON.stringify({
+          company_id: companyId,
+          enable_geofencing: company?.enable_geofencing ?? 0,
+          work_location_ids: company?.work_location_ids ?? [],
+          geo_role_ids: company?.geo_role_ids ?? [],
+          geo_window_start: win.geo_window_start ?? '',
+          geo_window_end: win.geo_window_end ?? '',
+          geo_window_days: win.geo_window_days ?? '',
+          geo_logout_time: win.geo_logout_time ?? '',
+        }),
+      });
+      setSuccess('บันทึกช่วงเวลาแล้ว');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (e: any) {
+      alert(e.message || 'Failed to update time window');
+      fetchData();
+    }
+  };
+
+  const handleToggleExempt = async (companyId: number, userId: number, exempt: boolean) => {
+    // Optimistic update
+    setCompanies(prev => prev.map(c =>
+      c.id === companyId
+        ? { ...c, geo_members: (c.geo_members || []).map(m =>
+            m.id === userId ? { ...m, exempt_geofencing: exempt ? 1 : 0 } : m) }
+        : c
+    ));
+    try {
+      await apiFetch('geo_companies/toggle_exempt', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId, exempt: exempt ? 1 : 0 })
+      });
+    } catch (e: any) {
+      alert(e.message || 'Failed to update user exemption');
+      fetchData(); // reload on error to resync
     }
   };
 
@@ -421,6 +491,109 @@ export default function GeoCompanySettingsPage() {
                         </div>
                       )}
 
+                      {(() => {
+                        const winStart = (company.geo_window_start || '').slice(0, 5);
+                        const winEnd = (company.geo_window_end || '').slice(0, 5);
+                        const winDays = company.geo_window_days && /^[01]{7}$/.test(company.geo_window_days)
+                          ? company.geo_window_days
+                          : '0000000';
+                        const windowActive = !!(winStart && winEnd && winDays.includes('1'));
+                        const logoutTime = (company.geo_logout_time || '').slice(0, 5);
+                        const save = (s: string, e2: string, d: string, lo: string = logoutTime) =>
+                          handleWindowUpdate(company.id, {
+                            geo_window_start: s || null,
+                            geo_window_end: e2 || null,
+                            geo_window_days: d.includes('1') ? d : null,
+                            geo_logout_time: lo || null,
+                          });
+                        return (
+                          <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                            <h4 className="text-sm font-medium text-gray-700 mb-1">ช่วงเวลาที่ไม่ต้องเช็คตำแหน่ง (เวลาทำงาน — เฉพาะคอมพิวเตอร์):</h4>
+                            <p className="text-xs text-gray-500 mb-3">
+                              ในช่วงเวลา/วันที่เลือก <b>คอมพิวเตอร์</b>ล็อกอินได้โดยไม่เช็คพิกัด (คอมตั้งโต๊ะออฟฟิศไม่มี GPS) —
+                              ส่วน<b>มือถือ/แท็บเล็ต</b>จะถูกเช็คพิกัด GPS ทุกครั้งตลอดเวลา ไม่ว่าช่วงไหน
+                              นอกช่วงเวลานี้ทุกอุปกรณ์ถูกเช็คพิกัด ถ้าไม่ตั้งค่า = เช็คพิกัดตลอดเวลา
+                            </p>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <input
+                                type="time"
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                value={winStart}
+                                onChange={e => save(e.target.value, winEnd, winDays)}
+                              />
+                              <span className="text-sm text-gray-500">ถึง</span>
+                              <input
+                                type="time"
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                value={winEnd}
+                                onChange={e => save(winStart, e.target.value, winDays)}
+                              />
+                              <div className="flex gap-1">
+                                {DAY_LABELS.map((label, i) => {
+                                  const on = winDays[i] === '1';
+                                  return (
+                                    <button
+                                      key={i}
+                                      type="button"
+                                      onClick={() => {
+                                        const d = winDays.split('');
+                                        d[i] = on ? '0' : '1';
+                                        save(winStart, winEnd, d.join(''));
+                                      }}
+                                      className={`w-9 h-9 rounded-full text-xs font-medium border transition-colors ${
+                                        on
+                                          ? 'bg-blue-600 border-blue-600 text-white'
+                                          : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
+                                      }`}
+                                    >
+                                      {label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {windowActive && (
+                                <button
+                                  type="button"
+                                  onClick={() => save('', '', '0000000')}
+                                  className="text-xs text-red-500 hover:text-red-700 underline"
+                                >
+                                  ล้างค่า (เช็คตลอดเวลา)
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-blue-100">
+                              <span className="text-sm font-medium text-gray-700">เวลาบังคับหลุดล็อกอินทุกวัน:</span>
+                              <input
+                                type="time"
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                value={logoutTime}
+                                onChange={e => save(winStart, winEnd, winDays, e.target.value)}
+                              />
+                              <span className="text-xs text-gray-500">
+                                {logoutTime
+                                  ? `ผู้ใช้ที่โดนเช็คพิกัดจะหลุดล็อกอินตอน ${logoutTime} ทุกวัน (login ใหม่หลังเวลานี้ต้องอยู่ออฟฟิศ)`
+                                  : 'ไม่ตั้ง = หลุดตอนเที่ยงคืน (00:00)'}
+                              </span>
+                              {logoutTime && (
+                                <button
+                                  type="button"
+                                  onClick={() => save(winStart, winEnd, winDays, '')}
+                                  className="text-xs text-red-500 hover:text-red-700 underline"
+                                >
+                                  ใช้เที่ยงคืน
+                                </button>
+                              )}
+                            </div>
+                            {windowActive && (
+                              <p className="text-xs text-blue-700 mt-2">
+                                ✓ เปิดใช้: {DAY_LABELS.filter((_, i) => winDays[i] === '1').join(', ')} เวลา {winStart}-{winEnd} คอมพิวเตอร์ล็อกอินได้โดยไม่เช็คพิกัด (มือถือเช็ค GPS เสมอ)
+                                — และผู้ใช้ที่โดนบังคับเช็คพิกัดจะหลุดล็อกอินอัตโนมัติตอน {logoutTime || 'เที่ยงคืน'} ทุกวัน
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       <h4 className="text-sm font-medium text-gray-700 mb-3 mt-6">ตำแหน่ง (Roles) ที่บังคับใช้ระบบนี้:</h4>
                       {roles.length === 0 ? (
                         <p className="text-sm text-gray-500">ไม่มีข้อมูลตำแหน่งในระบบ</p>
@@ -456,6 +629,54 @@ export default function GeoCompanySettingsPage() {
                           })}
                         </div>
                       )}
+
+                      {(() => {
+                        // Exemptions are only offered for Supervisor Telesale: other
+                        // geo-fenced roles are blocked 100% with no per-person cases,
+                        // while some supervisors are "seniors" without subordinates
+                        // who are allowed to log in from anywhere.
+                        const members = (company.geo_members || []).filter(m =>
+                          company.geo_role_ids.includes(m.role_id) &&
+                          m.role_name === 'Supervisor Telesale');
+                        if (members.length === 0) return null;
+                        return (
+                          <>
+                            <h4 className="text-sm font-medium text-gray-700 mb-1 mt-6">ยกเว้นเป็นรายคน (เฉพาะ Supervisor Telesale):</h4>
+                            <p className="text-xs text-gray-500 mb-3">ติ๊ก "ยกเว้น" ให้หัวหน้าที่ไม่ต้องเช็คตำแหน่ง เช่น ซีเนียร์ที่ไม่มีลูกน้อง — คนที่ยกเว้นจะล็อกอินจากที่ไหนก็ได้ (ตำแหน่งอื่นบังคับ 100% ไม่มียกเว้น)</p>
+                            <div className="space-y-2">
+                              {members.map(m => (
+                                <div
+                                  key={m.id}
+                                  className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
+                                    m.exempt_geofencing ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white'
+                                  }`}
+                                >
+                                  <div className="text-sm">
+                                    <span className="font-medium text-gray-900">{m.name || m.username}</span>
+                                    <span className="text-xs text-gray-500 ml-2">{m.role_name}</span>
+                                    <span className={`text-xs ml-2 px-1.5 py-0.5 rounded ${
+                                      m.subordinates > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                                    }`}>
+                                      {m.subordinates > 0 ? `มีลูกน้อง ${m.subordinates} คน` : 'ไม่มีลูกน้อง'}
+                                    </span>
+                                  </div>
+                                  <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                                    <span className={`text-xs font-medium ${m.exempt_geofencing ? 'text-amber-700' : 'text-gray-400'}`}>
+                                      {m.exempt_geofencing ? 'ยกเว้นแล้ว' : 'ยกเว้น'}
+                                    </span>
+                                    <input
+                                      type="checkbox"
+                                      className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                                      checked={m.exempt_geofencing === 1}
+                                      onChange={(e) => handleToggleExempt(company.id, m.id, e.target.checked)}
+                                    />
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}

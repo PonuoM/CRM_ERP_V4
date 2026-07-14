@@ -33,6 +33,8 @@ interface StockPlanRef {
   planned_date: string;
   notes: string | null;
   company_id: number | null;
+  created_by_name?: string | null;
+  created_at?: string | null;
 }
 
 export interface PendingStockPlanRow {
@@ -55,11 +57,17 @@ export interface StockPlanExpectation {
   actual_date: string | null;
   note: string | null;
   next_expectation_id: number | null;
+  scheduled_by_name?: string | null;
+  scheduled_at?: string | null;
+  confirmed_by_name?: string | null;
+  confirmed_at?: string | null;
   item: StockPlanItemRef;
   plan: StockPlanRef;
 }
 
 export type StockPlanRow = PendingStockPlanRow | StockPlanExpectation;
+
+const shortStamp = (ts?: string | null) => (ts ? ts.slice(0, 16) : '');
 
 interface StockArrivalPlanningPageProps {
   currentUser?: User;
@@ -118,6 +126,14 @@ function buildCalendarMatrix(year: number, month: number): (string | null)[] {
   return cells;
 }
 
+// Keep in sync with api/inventory/stock_plan_company_group.php
+// 1 = พรีม่าแพสชั่น49, 2 = พรีออนิค -- ทำงานร่วมกัน เห็นแพลน/สินค้าร่วมกัน
+const COMPANY_GROUPS: number[][] = [[1, 2]];
+const companyGroupIds = (companyId?: number): number[] => {
+  if (!companyId) return [];
+  return COMPANY_GROUPS.find(g => g.includes(companyId)) ?? [companyId];
+};
+
 const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ currentUser, companyId }) => {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -162,7 +178,43 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
   };
 
   useEffect(() => { loadPlans(); }, [month, year, effectiveCompanyId]);
-  useEffect(() => { listProducts({ companyId: effectiveCompanyId }).then(setProducts).catch(() => setProducts([])); }, [effectiveCompanyId]);
+
+  useEffect(() => {
+    const loadGroupProducts = async () => {
+      try {
+        const ids = companyGroupIds(effectiveCompanyId);
+        const lists = await Promise.all(
+          ids.length > 0 ? ids.map(id => listProducts({ companyId: id })) : [listProducts()]
+        );
+
+        // Same SKU can exist as separate rows under each company in the group --
+        // collapse to ONE canonical entry per SKU (the group's first company wins)
+        // so every new plan references the same product_id and reports aggregate cleanly.
+        const rankOf = (p: any) => {
+          const cid = p.companyId ?? p.company_id;
+          const idx = ids.indexOf(cid);
+          return idx === -1 ? ids.length : idx;
+        };
+        const bySku: Record<string, any> = {};
+        const noSku: any[] = [];
+        const seen = new Set<number>();
+        (lists as any[][]).flat().forEach(p => {
+          if (seen.has(p.id)) return;
+          seen.add(p.id);
+          if (!p.sku) { noSku.push(p); return; }
+          const existing = bySku[p.sku];
+          if (!existing || rankOf(p) < rankOf(existing)) bySku[p.sku] = p;
+        });
+
+        setProducts([...Object.values(bySku), ...noSku]);
+      } catch (err) {
+        console.error('Error loading products:', err);
+        setProducts([]);
+      }
+    };
+    loadGroupProducts();
+  }, [effectiveCompanyId]);
+
   useEffect(() => { loadReportTonDivisors(); }, [month, year, effectiveCompanyId]);
 
   const reportTonDivisorMap = useMemo(() => {
@@ -267,6 +319,15 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
             {row.note && <div className="text-gray-400 italic">"{row.note}"</div>}
           </>
         )}
+        <div className="border-t border-gray-700 mt-1.5 pt-1.5 space-y-0.5 text-[11px] text-gray-400">
+          {row.plan.created_by_name && <div>แพลนโดย {row.plan.created_by_name} · {shortStamp(row.plan.created_at)}</div>}
+          {row.kind === 'expectation' && row.scheduled_by_name && (
+            <div>กำหนดวันโดย {row.scheduled_by_name} · {shortStamp(row.scheduled_at)}</div>
+          )}
+          {row.kind === 'expectation' && row.confirmed_by_name && (
+            <div>ยืนยันโดย {row.confirmed_by_name} · {shortStamp(row.confirmed_at)}</div>
+          )}
+        </div>
       </div>
     );
   };
@@ -363,9 +424,14 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
           {dayPlanGroups.map(group => (
             <div key={group.plan.id} className="border rounded-lg overflow-hidden">
               <div className="flex items-center justify-between bg-gray-50 px-3 py-2 border-b">
-                <span className="text-xs text-gray-500">แพลน #{group.plan.id} · {group.plan.planned_date.slice(0, 10)}{group.plan.notes ? ` · ${group.plan.notes}` : ''}</span>
+                <div className="min-w-0">
+                  <div className="text-xs text-gray-500 truncate">แพลน #{group.plan.id} · {group.plan.planned_date.slice(0, 10)}{group.plan.notes ? ` · ${group.plan.notes}` : ''}</div>
+                  {group.plan.created_by_name && (
+                    <div className="text-[11px] text-gray-400">สร้างโดย {group.plan.created_by_name} · {shortStamp(group.plan.created_at)}</div>
+                  )}
+                </div>
                 {isSuperAdmin && (
-                  <button onClick={() => handleDeletePlan(group.plan.id)} className="text-gray-400 hover:text-red-600" title="ลบแพลน (ฉุกเฉิน)">
+                  <button onClick={() => handleDeletePlan(group.plan.id)} className="shrink-0 text-gray-400 hover:text-red-600" title="ลบแพลน (ฉุกเฉิน)">
                     <Trash2 size={14} />
                   </button>
                 )}
@@ -395,6 +461,12 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
                           {row.actual_qty !== null ? ` · จริง ${row.actual_qty}` : ''}
                         </div>
                         {row.note && <div className="text-xs text-gray-400 mt-1">หมายเหตุ: {row.note}</div>}
+                        {row.scheduled_by_name && (
+                          <div className="text-[11px] text-gray-400 mt-1">กำหนดวันโดย {row.scheduled_by_name} · {shortStamp(row.scheduled_at)}</div>
+                        )}
+                        {row.confirmed_by_name && (
+                          <div className="text-[11px] text-gray-400">ยืนยันโดย {row.confirmed_by_name} · {shortStamp(row.confirmed_at)}</div>
+                        )}
                         {row.status === 'expected' && (
                           <button
                             onClick={() => handleRowAction(row)}
