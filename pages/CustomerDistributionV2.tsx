@@ -62,6 +62,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // UI state
     const [loading, setLoading] = useState(true);
+    const [loadingBasketCounts, setLoadingBasketCounts] = useState(false);
     const [loadingCustomers, setLoadingCustomers] = useState(false);
     const [loadingAgents, setLoadingAgents] = useState(false);
     const [distributing, setDistributing] = useState(false);
@@ -294,6 +295,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const fetchAllBasketCounts = useCallback(async () => {
         if (baskets.length === 0) return;
 
+        setLoadingBasketCounts(true);
         const actualCalledFilterDays = calledFilterDays === 'custom' ? calledFilterCustomDays : calledFilterDays;
         const calledFilterParams = actualCalledFilterDays ? `&called_filter_days=${actualCalledFilterDays}&called_filter_mode=${calledFilterMode}` : '';
 
@@ -315,6 +317,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             }
         }));
         setBasketCounts(counts);
+        setLoadingBasketCounts(false);
     }, [baskets, currentUser?.companyId, calledFilterDays, calledFilterCustomDays, calledFilterMode]);
 
     // Fetch telesale agents with their basket holdings
@@ -1835,8 +1838,13 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                         <option value="">ทั้งหมด (ไม่กรอง)</option>
-                        <option value="30">โทรแล้วใน 1 เดือน</option>
-                        <option value="60">โทรแล้วใน 2 เดือน</option>
+                        <option value="1">เมื่อวาน (1 วัน)</option>
+                        <option value="3">3 วันที่ผ่านมา</option>
+                        <option value="7">สัปดาห์ที่แล้ว (7 วัน)</option>
+                        <option value="14">2 สัปดาห์ที่ผ่านมา (14 วัน)</option>
+                        <option value="30">1 เดือนที่ผ่านมา (30 วัน)</option>
+                        <option value="60">2 เดือนที่ผ่านมา (60 วัน)</option>
+                        <option value="90">3 เดือนที่ผ่านมา (90 วัน)</option>
                         <option value="custom">กำหนดจำนวนวันเอง...</option>
                     </select>
 
@@ -1895,6 +1903,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 forceDistributeHolding={forceDistributeHolding}
                 setForceDistributeHolding={setForceDistributeHolding}
                 setTargetBasket={setTargetBasket}
+                loadingBasketCounts={loadingBasketCounts}
             />
             {/* Section 1: Distribution Settings */}
             {!isHoldingBasketActive && (
