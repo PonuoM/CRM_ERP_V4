@@ -31,7 +31,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $cust = $stmt->fetch();
                     if (!$cust)
                         json_response(['error' => 'NOT_FOUND'], 404);
-                    $tags = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?)');
+                    $tags = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND ct.deleted_at IS NULL AND (ut.user_id IS NULL OR ut.user_id = ?)');
                     $tags->execute([$id, $user['id']]);
                     $cust['tags'] = $tags->fetchAll();
                     json_response($cust);
@@ -655,7 +655,7 @@ function handle_customers(PDO $pdo, ?string $id): void
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
-                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?)');
+                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND ct.deleted_at IS NULL AND (ut.user_id IS NULL OR ut.user_id = ?)');
                             $tagsStmt->execute([$customer['customer_id'], $user['id']]); // Use customer_id
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
@@ -706,7 +706,7 @@ function handle_customers(PDO $pdo, ?string $id): void
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
-                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?)');
+                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND ct.deleted_at IS NULL AND (ut.user_id IS NULL OR ut.user_id = ?)');
                             $tagsStmt->execute([$customer['customer_id'], $user['id']]);
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
@@ -1149,6 +1149,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                                        JOIN customer_tags ct ON ct.tag_id = t.id 
                                        LEFT JOIN user_tags ut ON ut.tag_id = t.id 
                                        WHERE ct.customer_id IN ($placeholders)
+                                       AND ct.deleted_at IS NULL
                                        AND (ut.user_id IS NULL OR ut.user_id = ?)";
                             $tagsStmt = $pdo->prepare($tagsSql);
                             $params = $customerIds;
@@ -1541,7 +1542,7 @@ function handle_customers(PDO $pdo, ?string $id): void
 
                 if ($updatedRow) {
                     // Fetch tags for the updated customer to ensure complete object
-                    $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?)');
+                    $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND ct.deleted_at IS NULL AND (ut.user_id IS NULL OR ut.user_id = ?)');
                     $tagsStmt->execute([$updatedRow['customer_id'], $user['id']]);
                     $updatedRow['tags'] = $tagsStmt->fetchAll();
 

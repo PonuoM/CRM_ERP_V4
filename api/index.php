@@ -3751,18 +3751,24 @@ function handle_customer_tags(PDO $pdo): void
         case 'GET':
             try {
                 $customerId = $_GET['customerId'] ?? null;
-                if ($customerId) {
-                    $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY t.name');
+                $history = $_GET['history'] ?? null;
+
+                if ($history === '1' && $customerId) {
+                    $stmt = $pdo->prepare('SELECT ct.id, ct.customer_id, t.name as tag_name, t.color, ct.created_at, ct.deleted_at, u1.first_name as created_first, u1.last_name as created_last, u2.first_name as deleted_first, u2.last_name as deleted_last FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id LEFT JOIN users u1 ON u1.id = ct.created_by LEFT JOIN users u2 ON u2.id = ct.deleted_by WHERE ct.customer_id=? ORDER BY ct.created_at DESC');
+                    $stmt->execute([$customerId]);
+                    json_response($stmt->fetchAll());
+                } else if ($customerId) {
+                    $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.customer_id=? AND ct.deleted_at IS NULL AND (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY t.name');
                     $stmt->execute([$customerId, $authUserId]);
                     json_response($stmt->fetchAll());
                 } else {
                     // Stream JSON output row-by-row to avoid OOM on large datasets
                     $companyId = $_GET['companyId'] ?? null;
                     if ($companyId) {
-                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id=ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE c.company_id=? AND (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY ct.customer_id, t.name');
+                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id=ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE c.company_id=? AND ct.deleted_at IS NULL AND (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY ct.customer_id, t.name');
                         $stmt->execute([$companyId, $authUserId]);
                     } else {
-                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY ct.customer_id, t.name');
+                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.deleted_at IS NULL AND (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY ct.customer_id, t.name');
                         $stmt->execute([$authUserId]);
                     }
                     // Stream output to avoid loading everything into memory
@@ -3795,8 +3801,12 @@ function handle_customer_tags(PDO $pdo): void
                 $customer = $findStmt->fetch();
 
                 if ($customer) {
-                    $stmt = $pdo->prepare('INSERT IGNORE INTO customer_tags (customer_id, tag_id) VALUES (?, ?)');
-                    $stmt->execute([$customer['customer_id'], $tid]);
+                    $checkStmt = $pdo->prepare('SELECT id FROM customer_tags WHERE customer_id = ? AND tag_id = ? AND deleted_at IS NULL');
+                    $checkStmt->execute([$customer['customer_id'], $tid]);
+                    if (!$checkStmt->fetch()) {
+                        $stmt = $pdo->prepare('INSERT INTO customer_tags (customer_id, tag_id, created_by) VALUES (?, ?, ?)');
+                        $stmt->execute([$customer['customer_id'], $tid, $authUserId]);
+                    }
                     json_response(['ok' => true]);
                 } else {
                     json_response(['error' => 'CUSTOMER_NOT_FOUND', 'message' => "Customer not found: $cid"], 404);
@@ -3811,8 +3821,8 @@ function handle_customer_tags(PDO $pdo): void
                 $tagId = $_GET['tagId'] ?? '';
                 if ($customerId === '' || $tagId === '')
                     json_response(['error' => 'MISSING_PARAMS'], 400);
-                $stmt = $pdo->prepare('DELETE FROM customer_tags WHERE customer_id=? AND tag_id=?');
-                $stmt->execute([$customerId, $tagId]);
+                $stmt = $pdo->prepare('UPDATE customer_tags SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE customer_id=? AND tag_id=? AND deleted_at IS NULL');
+                $stmt->execute([$authUserId, $customerId, $tagId]);
                 json_response(['ok' => true]);
             } catch (Throwable $e) {
                 json_response(['error' => 'DELETE_FAILED', 'message' => $e->getMessage()], 500);
