@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, X, ChevronDown, ChevronUp, CalendarClock } from 'lucide-react';
+import { Loader2, X, ChevronDown, ChevronUp, CalendarClock, Download } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 
 interface CronLog {
@@ -61,6 +61,39 @@ const CronLogModal: React.FC<CronLogModalProps> = ({ isOpen, onClose, companyId 
         });
     };
 
+    const exportCSV = () => {
+        if (!logs.length) return;
+
+        let csvContent = "เวลาที่ดำเนินการ,สถานะ,ยอดโอนย้ายรวม(ทุกบริษัท),ส่วนต่างยอดเข้าถังกลาง(บริษัทคุณ),ยอดถังกลางรวมล่าสุด\n";
+        
+        logs.forEach(log => {
+            const dateStr = formatDate(log.started_at).replace(/,/g, '');
+            const status = log.status.toUpperCase();
+            const diff = log.dist_diff > 0 ? `+${log.dist_diff}` : log.dist_diff;
+            
+            csvContent += `${dateStr},${status},${log.transferred_count},"${diff}",${log.dist_total_after}\n`;
+            
+            if (log.dist_breakdown.length > 0) {
+                csvContent += ",ตะกร้า,ก่อนหน้า,หลังทำ,ส่วนต่าง\n";
+                log.dist_breakdown.forEach(item => {
+                    const itemDiff = item.diff > 0 ? `+${item.diff}` : item.diff;
+                    csvContent += `,${item.basket_name},${item.before},${item.after},"${itemDiff}"\n`;
+                });
+                csvContent += ",,,,\n"; // empty line separator
+            }
+        });
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `cron_execution_logs_company_${companyId}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -79,12 +112,23 @@ const CronLogModal: React.FC<CronLogModalProps> = ({ isOpen, onClose, companyId 
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={exportCSV}
+                            disabled={logs.length === 0 || loading}
+                            className="px-3 py-1.5 text-sm bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 flex items-center gap-1.5 font-medium transition-colors disabled:opacity-50"
+                            title="ดาวน์โหลดเป็น CSV"
+                        >
+                            <Download size={16} />
+                            Export
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Body */}

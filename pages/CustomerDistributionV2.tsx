@@ -4,7 +4,7 @@ import { User, Customer, UserRole } from '../types';
 import {
     Users, Package, Search, ChevronDown, Check, Loader2, AlertCircle,
     RefreshCw, Eye, Database, ArrowRightLeft, Plus, Trash2, Download, ArrowRight, Filter,
-    Zap, Scale, TrendingUp, Minus, History
+    Zap, Scale, TrendingUp, Minus, History, CalendarClock
 } from 'lucide-react';
 import UniversalDateRangePicker, { DateRange } from '../components/UniversalDateRangePicker';
 import resolveApiBasePath from '../utils/apiBasePath';
@@ -1733,7 +1733,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         <History size={16} />
                         ประวัติการแจกงาน
                     </button>
-                    {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.role === 'supervisor') && (
+                    
                         <button
                             onClick={() => setCronLogModalOpen(true)}
                             className="px-4 py-2 text-sm bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 flex items-center gap-2 font-medium transition-colors"
@@ -1742,7 +1742,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             <CalendarClock size={16} />
                             ประวัติ Cron
                         </button>
-                    )}
                     <button
                         onClick={() => setResetModalOpen(true)}
                         className="px-4 py-2 text-sm bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-2 font-medium transition-colors"
