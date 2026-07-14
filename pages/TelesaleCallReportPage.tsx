@@ -396,7 +396,7 @@ const TelesaleCallReportPage: React.FC<TelesaleCallReportPageProps> = ({ current
             if (debouncedSearch) params.set("search", debouncedSearch);
 
             const res = await apiFetch(`Reports/telesale_call_report.php?${params}`);
-            if (!res.ok) throw new Error(res.message || "Failed to fetch export data");
+            if (!res?.success) throw new Error(res?.message || "Failed to fetch export data");
             
             let exportData = res.rows || [];
             
