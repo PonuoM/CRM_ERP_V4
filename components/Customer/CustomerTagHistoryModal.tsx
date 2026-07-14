@@ -34,9 +34,7 @@ const CustomerTagHistoryModal: React.FC<CustomerTagHistoryModalProps> = ({
         const fetchHistory = async () => {
             setLoading(true);
             try {
-                const res = await apiFetch(`customer_tags?history=1&customerId=${customer.id}`);
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || 'Failed to fetch history');
+                const data = await apiFetch(`customer_tags?history=1&customerId=${customer.id}`);
                 if (mounted) {
                     setHistory(data);
                 }
