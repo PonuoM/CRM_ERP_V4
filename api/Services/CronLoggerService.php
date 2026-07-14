@@ -11,8 +11,30 @@ class CronLoggerService {
 
     /**
      * Start the cron log, taking a snapshot of the current basket distribution
+     * @return bool True if started, false if already running (locked)
      */
-    public function start(): void {
+    public function start(): bool {
+        // Request an execution lock to prevent overlapping runs
+        $stmt = $this->pdo->prepare("SELECT GET_LOCK(?, 0)");
+        $stmt->execute(['cron_lock_' . $this->cronName]);
+        $locked = $stmt->fetchColumn();
+        
+        if (!$locked) {
+            return false; // Cron is already running
+        }
+
+        // --- BEST PRACTICE: Self-Healing ---
+        // If we acquired the lock, it means no other instance is currently running.
+        // Therefore, any existing logs stuck in 'running' state are definitely zombies 
+        // (e.g. from a previous script crash or manual cancellation).
+        // Let's mark them as 'failed' to keep the log history clean and accurate.
+        $stmt = $this->pdo->prepare("
+            UPDATE cron_execution_logs 
+            SET status = 'failed', finished_at = NOW() 
+            WHERE cron_name = ? AND status = 'running'
+        ");
+        $stmt->execute([$this->cronName]);
+
         $snapshot = $this->takeCustomerBasketSnapshot();
         
         $stmt = $this->pdo->prepare("
@@ -21,6 +43,7 @@ class CronLoggerService {
         ");
         $stmt->execute([$this->cronName, json_encode($snapshot)]);
         $this->logId = $this->pdo->lastInsertId();
+        return true;
     }
 
     /**
@@ -49,6 +72,14 @@ class CronLoggerService {
             $errorCount, 
             $this->logId
         ]);
+        
+        // Alert if failed or errors occurred
+        if ($status === 'failed' || $errorCount > 0) {
+            require_once __DIR__ . '/MailService.php';
+            MailService::sendCronAlert($this->cronName, $errorCount);
+        }
+        
+        $this->releaseLock();
     }
 
     /**
@@ -73,6 +104,20 @@ class CronLoggerService {
             json_encode($errorData), 
             $this->logId
         ]);
+        
+        // Send email alert with exception details
+        require_once __DIR__ . '/MailService.php';
+        MailService::sendCronAlert($this->cronName, 1, $e->getMessage());
+        
+        $this->releaseLock();
+    }
+    
+    /**
+     * Releases the execution lock
+     */
+    private function releaseLock(): void {
+        $stmt = $this->pdo->prepare("SELECT RELEASE_LOCK(?)");
+        $stmt->execute(['cron_lock_' . $this->cronName]);
     }
 
     /**
@@ -81,33 +126,58 @@ class CronLoggerService {
     private function takeCustomerBasketSnapshot(): array {
         $stmt = $this->pdo->query("
             SELECT 
-                IFNULL(assigned_to, 'unassigned_user') as user_id,
-                IFNULL(current_basket_key, 'unassigned_basket') as basket_key, 
+                c.company_id,
+                IFNULL(c.assigned_to, 'unassigned_user') as user_id,
+                IFNULL(c.current_basket_key, 'unassigned_basket') as basket_key,
+                IFNULL(b.target_page, 'unknown') as target_page,
                 COUNT(*) as customer_count 
-            FROM customers 
-            GROUP BY assigned_to, current_basket_key
+            FROM customers c
+            LEFT JOIN basket_config b ON c.current_basket_key = b.id
+            GROUP BY c.company_id, c.assigned_to, c.current_basket_key, b.target_page
         ");
         
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         $snapshot = [];
         $total = 0;
+        
         foreach ($results as $row) {
+            $companyId = 'company_' . ($row['company_id'] ?: 'unknown');
             $userId = $row['user_id'] === 'unassigned_user' ? 'unassigned_user' : 'user_' . $row['user_id'];
             $basketKey = $row['basket_key'];
+            $targetPage = $row['target_page'];
             $count = (int)$row['customer_count'];
             
-            if (!isset($snapshot[$userId])) {
-                $snapshot[$userId] = ['__user_total__' => 0];
+            if (!isset($snapshot[$companyId])) {
+                $snapshot[$companyId] = [
+                    'distribution_pool' => ['__total__' => 0],
+                    'users' => [],
+                    '__company_total__' => 0
+                ];
             }
             
-            $snapshot[$userId][$basketKey] = $count;
-            $snapshot[$userId]['__user_total__'] += $count;
+            // Track distribution pool (ตะกร้ากลาง) separately for easy reporting
+            if ($targetPage === 'distribution') {
+                if (!isset($snapshot[$companyId]['distribution_pool'][$basketKey])) {
+                    $snapshot[$companyId]['distribution_pool'][$basketKey] = 0;
+                }
+                $snapshot[$companyId]['distribution_pool'][$basketKey] += $count;
+                $snapshot[$companyId]['distribution_pool']['__total__'] += $count;
+            }
+            
+            // Standard tracking by assigned user
+            if (!isset($snapshot[$companyId]['users'][$userId])) {
+                $snapshot[$companyId]['users'][$userId] = ['__user_total__' => 0];
+            }
+            
+            $snapshot[$companyId]['users'][$userId][$basketKey] = $count;
+            $snapshot[$companyId]['users'][$userId]['__user_total__'] += $count;
+            $snapshot[$companyId]['__company_total__'] += $count;
             $total += $count;
         }
         
-        // Add a total count for easy reference
-        $snapshot['__total__'] = $total;
+        // Add a grand total count for easy reference
+        $snapshot['__grand_total__'] = $total;
         
         return $snapshot;
     }
