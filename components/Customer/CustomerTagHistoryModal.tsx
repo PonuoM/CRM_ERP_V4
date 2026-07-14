@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Modal from '../Modal';
 import { Customer } from '../../types';
 import { Loader2, User, Clock, Tag as TagIcon, XCircle, CheckCircle2 } from 'lucide-react';
-import { apiFetch } from '../../utils/api';
+import { apiFetch } from '../../services/api';
 
 interface CustomerTagHistoryModalProps {
     customer: Customer;
