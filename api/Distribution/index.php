@@ -24,6 +24,8 @@ try {
         handleUndoDistribution($pdo, $companyId);
     } elseif ($action === 'cleanup_distribution_details') {
         handleCleanupDistributionDetails($pdo, $companyId);
+    } elseif ($action === 'get_cron_logs') {
+        handleGetCronLogs($pdo, $companyId);
     } else {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid action']);
@@ -562,4 +564,76 @@ function handleCleanupDistributionDetails($pdo, $companyId) {
         'deleted_rows' => $deletedRows,
         'companies_cleaned' => $companiesToClean
     ]);
+}
+
+function handleGetCronLogs($pdo, $companyId) {
+    if (!isset($companyId) || empty($companyId)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Company ID is required']);
+        return;
+    }
+
+    // Role check logic would typically be handled by session middleware,
+    // assuming it is passed or we verify it if needed.
+
+    $limit = $_GET['limit'] ?? 20;
+
+    $stmt = $pdo->prepare("SELECT id, started_at, finished_at, status, snapshot_before, snapshot_after, error_count, transferred_count FROM cron_execution_logs WHERE status = 'success' ORDER BY id DESC LIMIT ?");
+    // Ensure limit is bound as an integer
+    $stmt->bindValue(1, (int)$limit, PDO::PARAM_INT);
+    $stmt->execute();
+    $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $results = [];
+    
+    // Get Basket Names for mapping
+    $basketNames = [];
+    $bStmt = $pdo->query("SELECT id, basket_name FROM basket_config");
+    while ($b = $bStmt->fetch(PDO::FETCH_ASSOC)) {
+        $basketNames[$b['id']] = $b['basket_name'];
+    }
+
+    foreach ($logs as $log) {
+        $before = json_decode($log['snapshot_before'], true);
+        $after = json_decode($log['snapshot_after'], true);
+        $cKey = 'company_' . $companyId;
+        
+        $cBefore = $before[$cKey] ?? [];
+        $cAfter = $after[$cKey] ?? [];
+
+        $cBeforeDist = $cBefore['distribution_pool']['__total__'] ?? 0;
+        $cAfterDist = $cAfter['distribution_pool']['__total__'] ?? 0;
+
+        $distBreakdown = [];
+        $poolKeys = array_unique(array_merge(array_keys($cBefore['distribution_pool'] ?? []), array_keys($cAfter['distribution_pool'] ?? [])));
+        foreach ($poolKeys as $pk) {
+            if ($pk === '__total__') continue;
+            $bk = $cBefore['distribution_pool'][$pk] ?? 0;
+            $ak = $cAfter['distribution_pool'][$pk] ?? 0;
+            if ($bk !== $ak) {
+                $basketName = $basketNames[$pk] ?? "Basket ID: $pk";
+                $distBreakdown[] = [
+                    'basket_key' => $pk,
+                    'basket_name' => $basketName,
+                    'before' => $bk,
+                    'after' => $ak,
+                    'diff' => $ak - $bk
+                ];
+            }
+        }
+
+        // We can safely unset massive JSON objects before sending to frontend
+        $results[] = [
+            'id' => $log['id'],
+            'started_at' => $log['started_at'],
+            'finished_at' => $log['finished_at'],
+            'status' => $log['status'],
+            'transferred_count' => $log['transferred_count'], // Global trans count
+            'dist_diff' => $cAfterDist - $cBeforeDist,
+            'dist_total_after' => $cAfterDist,
+            'dist_breakdown' => $distBreakdown
+        ];
+    }
+
+    echo json_encode(['ok' => true, 'data' => $results]);
 }

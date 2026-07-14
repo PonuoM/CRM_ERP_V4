@@ -28,6 +28,7 @@ import DistributionSettingsPanel from '../components/DistributionV2/Distribution
 import DistributionTelesaleTable from '../components/DistributionV2/DistributionTelesaleTable';
 import DistributionCustomerPreview from '../components/DistributionV2/DistributionCustomerPreview';
 import DistributionReportModal from '../components/DistributionV2/DistributionReportModal';
+import CronLogModal from '../components/DistributionV2/CronLogModal';
 
 import { 
     BasketConfig, 
@@ -168,6 +169,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     // History Modal State
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
     const [isReportModalOpen, setReportModalOpen] = useState(false);
+    const [isCronLogModalOpen, setCronLogModalOpen] = useState(false);
     const [historyData, setHistoryData] = useState<AssignHistory[]>([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [viewingCustomer, setViewingCustomer] = useState<{ name: string, code: string } | null>(null);
@@ -1731,6 +1733,16 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         <History size={16} />
                         ประวัติการแจกงาน
                     </button>
+                    {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.role === 'supervisor') && (
+                        <button
+                            onClick={() => setCronLogModalOpen(true)}
+                            className="px-4 py-2 text-sm bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 flex items-center gap-2 font-medium transition-colors"
+                            title="ประวัติโอนย้ายสิ้นเดือน (Cron)"
+                        >
+                            <CalendarClock size={16} />
+                            ประวัติ Cron
+                        </button>
+                    )}
                     <button
                         onClick={() => setResetModalOpen(true)}
                         className="px-4 py-2 text-sm bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-2 font-medium transition-colors"
@@ -1982,6 +1994,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 onClose={() => setReportModalOpen(false)}
                 setMessage={setMessage}
             />
+            <CronLogModal isOpen={isCronLogModalOpen} onClose={() => setCronLogModalOpen(false)} companyId={currentUser?.companyId} />
         </div >
     );
 };
