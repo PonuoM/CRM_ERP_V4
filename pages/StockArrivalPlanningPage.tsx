@@ -264,19 +264,19 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
     else if (row.status === 'expected') setReconcileTarget(row);
   };
 
+  // Move dayPlanGroups outside to follow Rules of Hooks
+  const dayRows = selectedDay ? (itemsByDay[selectedDay] ?? []) : [];
+  const dayPlanGroups = useMemo(() => {
+    const groups: Record<number, { plan: any; rows: StockPlanRow[] }> = {};
+    dayRows.forEach(row => {
+      if (!groups[row.plan.id]) groups[row.plan.id] = { plan: row.plan, rows: [] };
+      groups[row.plan.id].rows.push(row);
+    });
+    return Object.values(groups);
+  }, [dayRows]);
+
   const renderDayPanel = () => {
     if (!selectedDay) return null;
-    const dayRows = itemsByDay[selectedDay] ?? [];
-    
-    // Group by plan ID
-    const dayPlanGroups = useMemo(() => {
-      const groups: Record<number, { plan: any; rows: StockPlanRow[] }> = {};
-      dayRows.forEach(row => {
-        if (!groups[row.plan.id]) groups[row.plan.id] = { plan: row.plan, rows: [] };
-        groups[row.plan.id].rows.push(row);
-      });
-      return Object.values(groups);
-    }, [dayRows]);
 
     return createPortal(
       <div className="fixed inset-y-0 right-0 w-full sm:w-[420px] bg-white shadow-2xl z-40 flex flex-col border-l">
