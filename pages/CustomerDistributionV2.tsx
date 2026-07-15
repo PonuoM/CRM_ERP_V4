@@ -59,6 +59,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [distributionExportRange, setDistributionExportRange] = useState<DateRange>({ start: '', end: '' });
     const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    const [sessionTag, setSessionTag] = useState<string>('');
+    const [sessionTagsList, setSessionTagsList] = useState<string[]>([]);
 
     // UI state
     const [loading, setLoading] = useState(true);
@@ -247,6 +249,21 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             console.error('Failed to fetch dashboard baskets:', error);
         }
     }, [currentUser?.companyId]);
+
+    const fetchSessionTags = useCallback(async () => {
+        try {
+            const response = await apiFetch(`Distribution/index.php?action=get_session_tags&companyId=${currentUser?.companyId}`);
+            if (response?.ok && response.tags) {
+                setSessionTagsList(response.tags);
+            }
+        } catch (error) {
+            console.error('Failed to fetch session tags:', error);
+        }
+    }, [currentUser?.companyId]);
+
+    useEffect(() => {
+        fetchSessionTags();
+    }, [fetchSessionTags]);
 
     // Fetch Reset Options (Summary)
     const fetchResetOptions = useCallback(async () => {
@@ -970,7 +987,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         distribution_mode: distributionMode,
                         min_call_minutes: hasCallFilterApplied ? parseInt(callThresholdMinutes) : null,
                         strict_duplicate_check: strictDuplicateCheck,
-                        agent_snapshot: agentSnapshot
+                        agent_snapshot: agentSnapshot,
+                        session_tag: sessionTag
                     })
                 }
             );
@@ -1484,7 +1502,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         method: 'POST',
                         body: JSON.stringify({ 
                             transfers,
-                            transfer_mode: bulkFilterType 
+                            transfer_mode: bulkFilterType,
+                            session_tag: sessionTag 
                         })
                     }
                 );
@@ -1983,6 +2002,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 handleExecuteBulkAction={handleExecuteBulkAction}
                 reclaiming={reclaiming}
                 transferring={transferring}
+                sessionTag={sessionTag}
+                setSessionTag={setSessionTag}
+                sessionTagsList={sessionTagsList}
             />
 
 
@@ -2025,6 +2047,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 preview={preview}
                 distributing={distributing}
                 handleExecuteDistribution={handleExecuteDistribution}
+                sessionTag={sessionTag}
+                setSessionTag={setSessionTag}
+                sessionTagsList={sessionTagsList}
             />
 
             {/* Confirmation Modal */}

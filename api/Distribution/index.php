@@ -20,6 +20,8 @@ try {
         handleGetAssignChecks($pdo, $companyId);
     } elseif ($action === 'get_sessions') {
         handleGetSessions($pdo, $companyId);
+    } elseif ($action === 'get_session_tags') {
+        handleGetSessionTags($pdo, $companyId);
     } elseif ($action === 'undo_distribution') {
         handleUndoDistribution($pdo, $companyId);
     } elseif ($action === 'cleanup_distribution_details') {
@@ -190,9 +192,10 @@ function handleDistribute($pdo, $companyId)
             $distributionMode = $input['distribution_mode'] ?? 'Unknown';
             $minCallMinutes = isset($input['min_call_minutes']) ? (int)$input['min_call_minutes'] : null;
             $agentSnapshot = isset($input['agent_snapshot']) ? json_encode($input['agent_snapshot'], JSON_UNESCAPED_UNICODE) : null;
+            $sessionTag = isset($input['session_tag']) && trim($input['session_tag']) !== '' ? trim($input['session_tag']) : null;
             
-            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)");
-            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey]);
+            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, session_tag) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?)");
+            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $sessionTag]);
             $sessionId = $pdo->lastInsertId();
 
             $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");
@@ -371,6 +374,25 @@ function handleGetSessions($pdo, $companyId)
     }
 
     echo json_encode(['ok' => true, 'sessions' => $sessions]);
+}
+
+function handleGetSessionTags($pdo, $companyId) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        http_response_code(405);
+        echo json_encode(['error' => 'GET required']);
+        return;
+    }
+
+    if ($companyId === 'all') {
+        $stmt = $pdo->prepare("SELECT DISTINCT session_tag FROM distribution_sessions WHERE session_tag IS NOT NULL AND session_tag != '' ORDER BY session_tag ASC");
+        $stmt->execute();
+    } else {
+        $stmt = $pdo->prepare("SELECT DISTINCT session_tag FROM distribution_sessions WHERE session_tag IS NOT NULL AND session_tag != '' AND company_id = ? ORDER BY session_tag ASC");
+        $stmt->execute([$companyId]);
+    }
+    
+    $tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    echo json_encode(['ok' => true, 'tags' => $tags]);
 }
 
 function handleUndoDistribution($pdo, $companyId) {

@@ -643,8 +643,10 @@ function handleReclaimCustomers($pdo, $companyId)
         $totalReclaimed = 0;
         $results = [];
         
-        $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket) VALUES (?, ?, 'Bulk Reclaim', NULL, 0, NOW(), NULL, 'Multiple Baskets')");
-        $sessionStmt->execute([$companyId, $triggeredBy]);
+        $sessionTag = isset($input['session_tag']) && trim($input['session_tag']) !== '' ? trim($input['session_tag']) : null;
+        
+        $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, session_tag) VALUES (?, ?, 'Bulk Reclaim', NULL, 0, NOW(), NULL, 'Multiple Baskets', ?)");
+        $sessionStmt->execute([$companyId, $triggeredBy, $sessionTag]);
         $sessionId = $pdo->lastInsertId();
         
         $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");
@@ -972,10 +974,13 @@ function handleTransferCustomers($pdo, $companyId)
 
     $pdo->beginTransaction();
     try {
+        $triggeredBy = $input['triggered_by'] ?? null;
+        $sessionTag = isset($input['session_tag']) && trim($input['session_tag']) !== '' ? trim($input['session_tag']) : null;
+
         set_audit_context($pdo, 'basket_config/transfer');
         
-        $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket) VALUES (?, ?, 'Bulk Transfer', NULL, 0, NOW(), NULL, 'Multiple Baskets')");
-        $sessionStmt->execute([$companyId, $triggeredBy]);
+        $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, session_tag) VALUES (?, ?, 'Bulk Transfer', NULL, 0, NOW(), NULL, 'Multiple Baskets', ?)");
+        $sessionStmt->execute([$companyId, $triggeredBy, $sessionTag]);
         $sessionId = $pdo->lastInsertId();
         
         $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");

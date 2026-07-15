@@ -44,11 +44,13 @@ $sql = "
         u_new.first_name as new_agent_first,
         u_new.last_name as new_agent_last,
         u_trigger.first_name as trigger_first,
-        u_trigger.last_name as trigger_last
+        u_trigger.last_name as trigger_last,
+        ds.session_tag
     FROM basket_transition_log log
     LEFT JOIN customers c ON c.customer_id = log.customer_id
     LEFT JOIN users u_new ON u_new.id = log.assigned_to_new
     LEFT JOIN users u_trigger ON u_trigger.id = log.triggered_by
+    LEFT JOIN distribution_sessions ds ON ds.id = log.session_id
     $where
     ORDER BY log.created_at DESC
 ";
@@ -77,7 +79,7 @@ try {
 
     $headers = [
         'วันที่จ่ายออก', 'รหัสลูกค้า', 'ชื่อลูกค้า', 'นามสกุล', 'เบอร์โทรศัพท์', 
-        'จากตะกร้า', 'ไปตะกร้า', 'ผู้รับงาน (Telesale)', 'ผู้ดำเนินการแจก (Supervisor)'
+        'จากตะกร้า', 'ไปตะกร้า', 'ผู้รับงาน (Telesale)', 'ผู้ดำเนินการแจก (Supervisor)', 'Session Tag'
     ];
     fputcsv($output, $headers);
 
@@ -96,7 +98,8 @@ try {
             $row['from_basket_key'] ?? '-',
             $row['to_basket_key'] ?? '-',
             $newAgentName ?: '-',
-            $triggerName ?: '-'
+            $triggerName ?: '-',
+            $row['session_tag'] ?? '-'
         ];
         fputcsv($output, $exportRow);
     }
