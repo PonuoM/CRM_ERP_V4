@@ -3,6 +3,11 @@ date_default_timezone_set("Asia/Bangkok");
 ini_set('memory_limit', '512M');
 ini_set('max_execution_time', '120');
 
+// Cron Alert Emails
+define('CRON_ALERT_EMAILS', [
+    'watcharaphan.prima@gmail.com'
+]);
+
 // Catch fatal errors (memory limit, timeout) that bypass try-catch
 register_shutdown_function(function () {
   $error = error_get_last();

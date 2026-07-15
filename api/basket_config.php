@@ -346,7 +346,6 @@ function handleBasketCustomers($pdo, $companyId)
 
     $basketId = $config['id'];
 
-    // Query customers who are:
     // 1. In the correct company (companyId from request)
     // 2. Have current_basket_key matching the basket's ID
     // 3. Are NOT assigned to anyone (available for distribution)
@@ -371,6 +370,29 @@ function handleBasketCustomers($pdo, $companyId)
     ";
 
     $params = [$companyId, $basketId];
+
+    // Apply Called Filter if provided
+    $calledFilterDays = isset($_GET['called_filter_days']) && $_GET['called_filter_days'] !== '' ? intval($_GET['called_filter_days']) : null;
+    $calledFilterMode = $_GET['called_filter_mode'] ?? 'exclude';
+
+    if ($calledFilterDays !== null && $calledFilterDays > 0) {
+        if ($calledFilterMode === 'include') {
+            $sql .= " AND EXISTS (
+                SELECT 1 FROM call_history ch 
+                WHERE ch.customer_id = c.customer_id 
+                AND ch.date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            )";
+            $params[] = $calledFilterDays;
+        } else {
+            // Exclude (NOT EXISTS) - Default behavior
+            $sql .= " AND NOT EXISTS (
+                SELECT 1 FROM call_history ch 
+                WHERE ch.customer_id = c.customer_id 
+                AND ch.date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            )";
+            $params[] = $calledFilterDays;
+        }
+    }
 
     // First, get total count WITHOUT limit
     $countSql = "SELECT COUNT(*) as total FROM (" . $sql . ") as subquery";

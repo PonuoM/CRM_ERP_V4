@@ -68,6 +68,13 @@ const formatDate = (iso: string | null): string => {
     return d.toLocaleDateString("th-TH", { day: "2-digit", month: "2-digit", year: "2-digit" });
 };
 
+const formatTime = (iso: string | null): string => {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+};
+
 const formatMoney = (amount: number): string =>
     new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0);
 
@@ -393,6 +400,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
             [...new Set(rows.map(r => getter(r) || '-'))].sort();
         return {
             order_date: [...new Set(rows.map(r => formatDate(r.order_date)))].sort(),
+            order_time: [...new Set(rows.map(r => formatTime(r.order_date)))].sort(),
             order_number: getUnique(r => r.order_number),
             seller_name: [...new Set(rows.map(r => r.seller_name?.trim() || '-'))].sort(),
             customer_type: [...new Set(rows.map(r => getCustomerTypeThai(r.customer_type)))].sort(),
@@ -415,6 +423,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     // Getter functions that produce the display value for each column (must match dropdown values)
     const colGetters: Record<string, (r: SheetRow) => string> = useMemo(() => ({
         order_date: r => formatDate(r.order_date),
+        order_time: r => formatTime(r.order_date),
         order_number: r => r.order_number || '-',
         seller_name: r => r.seller_name?.trim() || '-',
         customer_type: r => getCustomerTypeThai(r.customer_type),
@@ -537,12 +546,12 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     const handleExport = (type: 'csv' | 'xlsx') => {
         const exportRows = hasActiveFilters ? filteredRows : rows;
         const headers = [
-            "วันที่สั่ง", "เลขออเดอร์", "ผู้ขาย", "ประเภทลูกค้า", "ตะกร้าขาย",
+            "วันที่สั่ง", "เวลาที่สั่ง", "เลขออเดอร์", "ผู้ขาย", "ประเภทลูกค้า", "ตะกร้าขาย",
             "ช่องทาง", "การชำระ", "ชื่อลูกค้า", "เบอร์โทร", "จังหวัด",
             "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "ยอดรวม (net)", "วันจัดส่ง", "สถานะ", "เลขพัสดุ"
         ];
         const dataRows = exportRows.map(r => [
-            formatDate(r.order_date), r.order_number, r.seller_name.trim(),
+            formatDate(r.order_date), formatTime(r.order_date), r.order_number, r.seller_name.trim(),
             getCustomerTypeThai(r.customer_type), r.basket_key_at_sale || "-",
             r.sales_channel || "-", getPaymentThai(r.payment_method),
             r.customer_name.trim(), r.customer_phone || "-", r.province || "-",
@@ -558,6 +567,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
     // Column definitions for the filter headers
     const columns = useMemo(() => [
         { key: 'order_date', label: 'วันที่สั่ง', width: 'w-[55px]', align: 'left' as const },
+        { key: 'order_time', label: 'เวลาที่สั่ง', width: 'w-[45px]', align: 'left' as const },
         { key: 'order_number', label: 'เลขออเดอร์', width: 'w-[90px]', align: 'left' as const },
         { key: 'seller_name', label: 'ผู้ขาย', width: 'w-[90px]', align: 'left' as const },
         { key: 'customer_type', label: 'ประเภท', width: 'w-[55px]', align: 'left' as const },
@@ -721,6 +731,7 @@ const SalesSheetPage: React.FC<SalesSheetPageProps> = ({ currentUser }) => {
                                                     }`}
                                             >
                                                 <td className="px-1.5 py-1 text-gray-600 border-r border-gray-100 text-[10px] whitespace-nowrap">{formatDate(row.order_date)}</td>
+                                                <td className="px-1.5 py-1 text-gray-500 border-r border-gray-100 text-[10px] whitespace-nowrap">{formatTime(row.order_date)}</td>
                                                 <td className="px-1.5 py-1 text-blue-600 font-medium border-r border-gray-100 text-[10px] truncate whitespace-nowrap max-w-[90px]" title={row.order_number}>{row.order_number}</td>
                                                 <td className="px-1.5 py-1 text-gray-700 border-r border-gray-100 text-[10px] truncate whitespace-nowrap max-w-[90px]" title={row.seller_name.trim()}>{row.seller_name.trim() || "-"}</td>
                                                 <td className="px-1.5 py-1 text-center border-r border-gray-100 whitespace-nowrap">
