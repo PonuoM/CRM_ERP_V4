@@ -710,7 +710,7 @@ function handleBatchExport($pdo, $companyId)
             dsd.customer_id,
             
             cust.customer_ref_id as customer_code,
-            cust.name as customer_name,
+            CONCAT(cust.first_name, ' ', cust.last_name) as customer_name,
             cust.phone as customer_phone,
             dsd.previous_basket_key,
             dsd.previous_lifecycle_status
