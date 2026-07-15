@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Settings as SettingsIcon, Save, Calendar, CheckSquare, Square, Check, Trash2, Package, CalendarDays, Plus } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Calendar, CheckSquare, Square, Check, Trash2, Package, CalendarDays, Plus, Edit2, X } from 'lucide-react';
 import { ProductSummary, StockPlanRow, TonDivisorRow, formatTon, STATUS_META } from './types';
 import { listStockPlanProducts, saveStockPlanProduct, listFactoryHolidays, saveFactoryHoliday, deleteFactoryHoliday } from '@/services/api';
 import { User } from '@/types';
@@ -88,6 +88,9 @@ const StockPlanSettings: React.FC<StockPlanSettingsProps> = ({
   const [newHolidayLabel, setNewHolidayLabel] = useState('');
   const [savingHoliday, setSavingHoliday] = useState(false);
   const [holidayMsg, setHolidayMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  
+  const [editingHolidayId, setEditingHolidayId] = useState<number | null>(null);
+  const [editingHolidayLabel, setEditingHolidayLabel] = useState('');
 
   const loadHolidays = async () => {
     try {
@@ -118,6 +121,19 @@ const StockPlanSettings: React.FC<StockPlanSettingsProps> = ({
       loadHolidays();
     } catch (err: any) {
       setHolidayMsg({ ok: false, text: err?.data?.error || err?.message || 'บันทึกไม่สำเร็จ' });
+    } finally {
+      setSavingHoliday(false);
+    }
+  };
+
+  const handleUpdateHoliday = async (id: number, dateStr: string) => {
+    setSavingHoliday(true);
+    try {
+      await saveFactoryHoliday({ holiday_date: dateStr, label: editingHolidayLabel.trim() || undefined, user_id: currentUser?.id });
+      setEditingHolidayId(null);
+      loadHolidays();
+    } catch (err) {
+      alert('บันทึกไม่สำเร็จ');
     } finally {
       setSavingHoliday(false);
     }
@@ -354,13 +370,51 @@ const StockPlanSettings: React.FC<StockPlanSettingsProps> = ({
               <div className="divide-y border rounded-lg max-h-[360px] overflow-y-auto">
                 {sortedHolidays.map(h => (
                   <div key={h.id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
-                    <div className="text-sm text-gray-700">
-                      {h.holiday_date.slice(0, 10).split('-').reverse().join('/')}
-                      {h.label && <span className="text-gray-400 text-xs ml-2">({h.label})</span>}
-                    </div>
-                    <button onClick={() => handleDeleteHoliday(h.id)} className="text-gray-400 hover:text-red-600 p-1" title="ลบวันหยุด">
-                      <Trash2 size={14} />
-                    </button>
+                    {editingHolidayId === h.id ? (
+                      <div className="flex items-center gap-2 flex-1 mr-2">
+                        <span className="text-sm text-gray-700 whitespace-nowrap">{h.holiday_date.slice(0, 10).split('-').reverse().join('/')}</span>
+                        <input
+                          type="text"
+                          value={editingHolidayLabel}
+                          onChange={e => setEditingHolidayLabel(e.target.value)}
+                          placeholder="ชื่อวันหยุด"
+                          className="flex-1 border rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                          autoFocus
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleUpdateHoliday(h.id, h.holiday_date.slice(0, 10));
+                            if (e.key === 'Escape') setEditingHolidayId(null);
+                          }}
+                        />
+                        <button onClick={() => handleUpdateHoliday(h.id, h.holiday_date.slice(0, 10))} className="text-blue-600 hover:text-blue-800 p-1" title="บันทึก">
+                          <Check size={16} />
+                        </button>
+                        <button onClick={() => setEditingHolidayId(null)} className="text-gray-400 hover:text-gray-600 p-1" title="ยกเลิก">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-sm text-gray-700">
+                          {h.holiday_date.slice(0, 10).split('-').reverse().join('/')}
+                          {h.label && <span className="text-gray-400 text-xs ml-2">({h.label})</span>}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button 
+                            onClick={() => {
+                              setEditingHolidayId(h.id);
+                              setEditingHolidayLabel(h.label || '');
+                            }} 
+                            className="text-gray-400 hover:text-blue-600 p-1" 
+                            title="แก้ไขชื่อวันหยุด"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button onClick={() => handleDeleteHoliday(h.id)} className="text-gray-400 hover:text-red-600 p-1" title="ลบวันหยุด">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
