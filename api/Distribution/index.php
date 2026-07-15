@@ -24,6 +24,8 @@ try {
         handleUndoDistribution($pdo, $companyId);
     } elseif ($action === 'cleanup_distribution_details') {
         handleCleanupDistributionDetails($pdo, $companyId);
+    } elseif ($action === 'batch_export') {
+        handleBatchExport($pdo, $companyId);
     } elseif ($action === 'get_cron_logs') {
         handleGetCronLogs($pdo, $companyId);
     } else {
@@ -290,15 +292,28 @@ function handleGetSessions($pdo, $companyId)
     $limit = $_GET['limit'] ?? 50;
 
     // Fetch sessions
-    $sessionStmt = $pdo->prepare("
-        SELECT ds.*, u.first_name, u.last_name 
-        FROM distribution_sessions ds
-        LEFT JOIN users u ON ds.distributed_by = u.id
-        WHERE ds.company_id = ?
-        ORDER BY ds.created_at DESC
-        LIMIT " . (int)$limit . "
-    ");
-    $sessionStmt->execute([$companyId]);
+    if ($companyId === 'all') {
+        $sessionStmt = $pdo->prepare("
+            SELECT ds.*, u.first_name, u.last_name, c.name as company_name
+            FROM distribution_sessions ds
+            LEFT JOIN users u ON ds.distributed_by = u.id
+            LEFT JOIN companies c ON ds.company_id = c.id
+            ORDER BY ds.created_at DESC
+            LIMIT " . (int)$limit . "
+        ");
+        $sessionStmt->execute();
+    } else {
+        $sessionStmt = $pdo->prepare("
+            SELECT ds.*, u.first_name, u.last_name, c.name as company_name
+            FROM distribution_sessions ds
+            LEFT JOIN users u ON ds.distributed_by = u.id
+            LEFT JOIN companies c ON ds.company_id = c.id
+            WHERE ds.company_id = ?
+            ORDER BY ds.created_at DESC
+            LIMIT " . (int)$limit . "
+        ");
+        $sessionStmt->execute([$companyId]);
+    }
     $sessions = $sessionStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if (empty($sessions)) {
@@ -636,4 +651,87 @@ function handleGetCronLogs($pdo, $companyId) {
     }
 
     echo json_encode(['ok' => true, 'data' => $results]);
+}
+
+
+/**
+ * Handle Batch Export of Distribution Sessions
+ * GET ?action=batch_export&companyId=all&startDate=...&endDate=...&type=all
+ */
+function handleBatchExport($pdo, $companyId)
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        http_response_code(405);
+        echo json_encode(['error' => 'GET required']);
+        return;
+    }
+
+    $startDate = $_GET['startDate'] ?? null;
+    $endDate = $_GET['endDate'] ?? null;
+    $type = $_GET['type'] ?? 'all';
+
+    if (!$startDate || !$endDate) {
+        http_response_code(400);
+        echo json_encode(['error' => 'startDate and endDate required']);
+        return;
+    }
+
+    // Prepare date filter
+    $start = $startDate . ' 00:00:00';
+    $end = $endDate . ' 23:59:59';
+
+    $params = [$start, $end];
+    $companyFilter = "";
+    
+    if ($companyId !== 'all') {
+        $companyFilter = " AND ds.company_id = ? ";
+        $params[] = $companyId;
+    }
+
+    $typeFilter = "";
+    if ($type === 'distribution') {
+        $typeFilter = " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
+    } else if ($type === 'reclaim') {
+        $typeFilter = " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
+    }
+
+    $sql = "
+        SELECT 
+            ds.id as session_id,
+            ds.created_at,
+            ds.distribution_mode,
+            ds.min_call_minutes,
+            c.name as company_name,
+            u_dist.first_name as distributed_by_first,
+            u_dist.last_name as distributed_by_last,
+            dsd.agent_id,
+            u_agent.first_name as agent_first,
+            u_agent.last_name as agent_last,
+            dsd.customer_id,
+            
+            cust.customer_ref_id as customer_code,
+            cust.name as customer_name,
+            cust.phone as customer_phone,
+            dsd.previous_basket_key,
+            dsd.previous_lifecycle_status
+        FROM distribution_sessions ds
+        JOIN distribution_session_details dsd ON ds.id = dsd.session_id
+        LEFT JOIN companies c ON ds.company_id = c.id
+        LEFT JOIN users u_dist ON ds.distributed_by = u_dist.id
+        LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
+        LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
+        WHERE ds.created_at BETWEEN ? AND ?
+        $companyFilter
+        $typeFilter
+        ORDER BY ds.created_at DESC, ds.id DESC, dsd.id ASC
+    ";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        'ok' => true,
+        'data' => $results
+    ]);
 }

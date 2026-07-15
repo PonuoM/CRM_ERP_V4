@@ -1529,7 +1529,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             baskets: payloadBaskets,
                             reclaim_mode: bulkFilterType,
                             reclaim_destination: bulkReclaimDestinationType,
-                            force_basket_key: bulkReclaimDestinationType === 'force' ? bulkForceBasketKey : null
+                            force_basket_key: bulkReclaimDestinationType === 'force' ? bulkForceBasketKey : null,
+                            triggered_by: currentUser?.id
                         })
                     }
                 );
