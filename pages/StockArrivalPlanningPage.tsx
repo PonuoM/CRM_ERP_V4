@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { User, UserRole } from '@/types';
-import { listStockPlans, listProducts, deleteStockPlan, listTonDivisors, saveTonDivisor, listFactoryHolidays } from '@/services/api';
+import { listStockPlans, listProducts, deleteStockPlan, listTonDivisors, saveTonDivisor, listFactoryHolidays, listStockPlanProducts } from '@/services/api';
 import StockPlanFormModal from '@/components/StockPlanFormModal';
 import StockPlanScheduleModal from '@/components/StockPlanScheduleModal';
 import StockPlanReconcileModal from '@/components/StockPlanReconcileModal';
@@ -107,36 +107,16 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
   }, [month, year, effectiveCompanyId]);
 
   useEffect(() => {
-    const loadGroupProducts = async () => {
+    const loadCatalog = async () => {
       try {
-        const ids = companyGroupIds(effectiveCompanyId);
-        const lists = await Promise.all(
-          ids.length > 0 ? ids.map(id => listProducts({ companyId: id })) : [listProducts()]
-        );
-
-        const rankOf = (p: any) => {
-          const cid = p.companyId ?? p.company_id;
-          const idx = ids.indexOf(cid);
-          return idx === -1 ? ids.length : idx;
-        };
-        const bySku: Record<string, any> = {};
-        const noSku: any[] = [];
-        const seen = new Set<number>();
-        (lists as any[][]).flat().forEach(p => {
-          if (seen.has(p.id)) return;
-          seen.add(p.id);
-          if (!p.sku) { noSku.push(p); return; }
-          const existing = bySku[p.sku];
-          if (!existing || rankOf(p) < rankOf(existing)) bySku[p.sku] = p;
-        });
-
-        setProducts([...Object.values(bySku), ...noSku]);
+        const res = await listStockPlanProducts();
+        setProducts(res?.data ?? []);
       } catch (err) {
-        console.error('Error loading products:', err);
+        console.error('Error loading plan product catalog:', err);
         setProducts([]);
       }
     };
-    if (effectiveCompanyId) loadGroupProducts();
+    if (effectiveCompanyId) loadCatalog();
   }, [effectiveCompanyId]);
 
   const reportTonDivisorMap = useMemo(() => {
