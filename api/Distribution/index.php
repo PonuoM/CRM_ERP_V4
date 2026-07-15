@@ -540,7 +540,7 @@ function handleCleanupDistributionDetails($pdo, $companyId) {
     if (strtolower($user['role']) === 'super_admin') {
         if ($targetCompanyId === 'all') {
             // Get all companies
-            $compStmt = $pdo->query("SELECT id FROM company");
+            $compStmt = $pdo->query("SELECT id FROM companies");
             $companiesToClean = $compStmt->fetchAll(PDO::FETCH_COLUMN);
         } else if (is_numeric($targetCompanyId)) {
             $companiesToClean = [(int)$targetCompanyId];
