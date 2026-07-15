@@ -1626,8 +1626,23 @@ export async function listTonDivisors(params?: { asOfDate?: string; companyId?: 
   return apiFetch(`inventory/list_ton_divisors.php${query ? `?${query}` : ""}`);
 }
 
-export async function saveTonDivisor(payload: { product_id: number; divisor: number | null; user_id?: number }) {
+export async function saveTonDivisor(payload: { product_id: number; divisor: number | null; user_id?: number; effective_from?: string }) {
   return apiFetch("inventory/save_ton_divisor.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getHolidays(params: { month?: number; year?: number; companyId: number }): Promise<{ success: boolean; data: string[] }> {
+  const qs = new URLSearchParams();
+  if (params.month) qs.set("month", String(params.month));
+  if (params.year) qs.set("year", String(params.year));
+  qs.set("companyId", String(params.companyId));
+  return apiFetch(`inventory/holidays.php?${qs.toString()}`);
+}
+
+export async function saveHolidays(payload: { month: number; year: number; companyId: number; dates: string[]; userId?: number }): Promise<{ success: boolean }> {
+  return apiFetch("inventory/holidays.php", {
     method: "POST",
     body: JSON.stringify(payload),
   });

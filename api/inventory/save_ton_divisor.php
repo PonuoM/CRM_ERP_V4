@@ -22,9 +22,10 @@ try {
         throw new Exception('Missing product_id');
     }
 
-    // A change only ever takes effect from the current real-world month onward,
-    // so it never rewrites how already-viewed past months were calculated.
-    $effectiveFrom = date('Y-m-01');
+    // Allow effective_from to be passed from the frontend (for viewing future/past months)
+    // Default to current month if not provided
+    $effectiveFrom = $input['effective_from'] ?? date('Y-m-01');
+
 
     if ($divisor === null || $divisor === '' || (float)$divisor <= 0) {
         // Clear only this month's override; earlier history (if any) keeps applying going forward

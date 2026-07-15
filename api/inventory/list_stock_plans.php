@@ -96,7 +96,13 @@ try {
         $whereClauses = ["1=1"];
         $params = [];
         if ($month && $year) {
-            $whereClauses[] = "MONTH(COALESCE(e.actual_date, e.expected_date)) = ? AND YEAR(COALESCE(e.actual_date, e.expected_date)) = ?";
+            $whereClauses[] = "(
+                (MONTH(COALESCE(e.actual_date, e.expected_date)) = ? AND YEAR(COALESCE(e.actual_date, e.expected_date)) = ?)
+                OR
+                (MONTH(p.planned_date) = ? AND YEAR(p.planned_date) = ?)
+            )";
+            $params[] = $month;
+            $params[] = $year;
             $params[] = $month;
             $params[] = $year;
         }
