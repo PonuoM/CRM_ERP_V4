@@ -9,12 +9,13 @@ import {
   Plus,
   Trash2,
   PackageCheck,
+  Package,
   CalendarPlus,
   Save,
   X,
 } from 'lucide-react';
 import { User, UserRole } from '@/types';
-import { listStockPlans, listProducts, deleteStockPlan, listTonDivisors, saveTonDivisor } from '@/services/api';
+import { listStockPlans, listStockPlanProducts, saveStockPlanProduct, deleteStockPlan, listTonDivisors, saveTonDivisor, listFactoryHolidays, saveFactoryHoliday, deleteFactoryHoliday } from '@/services/api';
 import StockPlanFormModal from '@/components/StockPlanFormModal';
 import StockPlanScheduleModal from '@/components/StockPlanScheduleModal';
 import StockPlanReconcileModal from '@/components/StockPlanReconcileModal';
@@ -126,13 +127,8 @@ function buildCalendarMatrix(year: number, month: number): (string | null)[] {
   return cells;
 }
 
-// Keep in sync with api/inventory/stock_plan_company_group.php
-// 1 = พรีม่าแพสชั่น49, 2 = พรีออนิค -- ทำงานร่วมกัน เห็นแพลน/สินค้าร่วมกัน
-const COMPANY_GROUPS: number[][] = [[1, 2]];
-const companyGroupIds = (companyId?: number): number[] => {
-  if (!companyId) return [];
-  return COMPANY_GROUPS.find(g => g.includes(companyId)) ?? [companyId];
-};
+// สินค้าของแพลนใช้แคตตาล็อกแยกของตัวเอง (stock_arrival_products) ไม่ผูกกับตาราง products หลัก
+// การมองเห็นแพลนข้ามบริษัท (พรีม่าแพสชั่น49 + พรีออนิค) จัดการฝั่ง backend: api/inventory/stock_plan_company_group.php
 
 const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ currentUser, companyId }) => {
   const now = new Date();
@@ -177,45 +173,43 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
     }
   };
 
+  const loadCatalog = async () => {
+    try {
+      const res = await listStockPlanProducts();
+      setProducts(res?.data ?? []);
+    } catch (err) {
+      console.error('Error loading plan product catalog:', err);
+      setProducts([]);
+    }
+  };
+
+  // Load ALL configured holidays (not month-scoped) so the settings list shows everything;
+  // the calendar keys them by full date so current-month rendering still picks up the right ones.
+  const [holidays, setHolidays] = useState<{ id: number; holiday_date: string; label: string | null }[]>([]);
+  const loadHolidays = async () => {
+    try {
+      const res = await listFactoryHolidays();
+      setHolidays(res?.data ?? []);
+    } catch (err) {
+      console.error('Error loading factory holidays:', err);
+    }
+  };
+
+  const [settingsTab, setSettingsTab] = useState<'catalog' | 'holidays' | 'divisor'>('catalog');
+
   useEffect(() => { loadPlans(); }, [month, year, effectiveCompanyId]);
-
-  useEffect(() => {
-    const loadGroupProducts = async () => {
-      try {
-        const ids = companyGroupIds(effectiveCompanyId);
-        const lists = await Promise.all(
-          ids.length > 0 ? ids.map(id => listProducts({ companyId: id })) : [listProducts()]
-        );
-
-        // Same SKU can exist as separate rows under each company in the group --
-        // collapse to ONE canonical entry per SKU (the group's first company wins)
-        // so every new plan references the same product_id and reports aggregate cleanly.
-        const rankOf = (p: any) => {
-          const cid = p.companyId ?? p.company_id;
-          const idx = ids.indexOf(cid);
-          return idx === -1 ? ids.length : idx;
-        };
-        const bySku: Record<string, any> = {};
-        const noSku: any[] = [];
-        const seen = new Set<number>();
-        (lists as any[][]).flat().forEach(p => {
-          if (seen.has(p.id)) return;
-          seen.add(p.id);
-          if (!p.sku) { noSku.push(p); return; }
-          const existing = bySku[p.sku];
-          if (!existing || rankOf(p) < rankOf(existing)) bySku[p.sku] = p;
-        });
-
-        setProducts([...Object.values(bySku), ...noSku]);
-      } catch (err) {
-        console.error('Error loading products:', err);
-        setProducts([]);
-      }
-    };
-    loadGroupProducts();
-  }, [effectiveCompanyId]);
-
+  useEffect(() => { loadCatalog(); }, []);
   useEffect(() => { loadReportTonDivisors(); }, [month, year, effectiveCompanyId]);
+  useEffect(() => { loadHolidays(); }, []);
+  // Safety net: freshly refetch divisors whenever the user lands on report/settings,
+  // so a save made elsewhere (other tab/user) can never leave stale "ยังไม่ตั้งค่า" cells
+  useEffect(() => { if (viewMode === 'report' || viewMode === 'settings') loadReportTonDivisors(); }, [viewMode]);
+
+  const holidayByDay = useMemo(() => {
+    const map: Record<string, { id: number; holiday_date: string; label: string | null }> = {};
+    holidays.forEach(h => { map[h.holiday_date.slice(0, 10)] = h; });
+    return map;
+  }, [holidays]);
 
   const reportTonDivisorMap = useMemo(() => {
     const map: Record<number, number> = {};
@@ -355,13 +349,21 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
           const dayItems = itemsByDay[day] ?? [];
           const isSelected = selectedDay === day;
           const isToday = day === now.toISOString().slice(0, 10);
+          const holiday = holidayByDay[day];
           return (
             <button
               key={idx}
               onClick={() => handleDayClick(day)}
-              className={`min-h-[130px] rounded-lg border p-1.5 text-left align-top hover:border-blue-400 transition-colors ${isSelected ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200'}`}
+              className={`min-h-[130px] rounded-lg border p-1.5 text-left align-top hover:border-blue-400 transition-colors ${isSelected ? 'border-blue-500 ring-1 ring-blue-500' : holiday ? 'border-red-200 bg-red-50/60' : 'border-gray-200'}`}
             >
-              <div className={`text-xs font-semibold ${isToday ? 'text-blue-600' : 'text-gray-600'}`}>{Number(day.slice(8, 10))}</div>
+              <div className="flex items-center justify-between gap-1">
+                <span className={`text-xs font-semibold ${isToday ? 'text-blue-600' : holiday ? 'text-red-500' : 'text-gray-600'}`}>{Number(day.slice(8, 10))}</span>
+                {holiday && (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-600 border border-red-200 truncate" title={holiday.label ?? 'วันหยุดโรงงาน'}>
+                    {holiday.label || 'หยุดโรงงาน'}
+                  </span>
+                )}
+              </div>
               <div className="mt-1 space-y-0.5">
                 {dayItems.slice(0, 5).map((row, i) => {
                   const meta = STATUS_META[rowStatus(row)] ?? STATUS_META.pending;
@@ -403,6 +405,9 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
           <div>
             <h3 className="font-semibold text-gray-800">{selectedDay}</h3>
             <p className="text-xs text-gray-500">รายการแพลน/คาดว่าจะเข้าของวันนี้</p>
+            {holidayByDay[selectedDay] && (
+              <p className="text-xs text-red-600 font-medium mt-0.5">🏭 วันหยุดโรงงาน{holidayByDay[selectedDay].label ? `: ${holidayByDay[selectedDay].label}` : ''}</p>
+            )}
           </div>
           <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600 rounded-full p-1 hover:bg-gray-200">
             <X size={18} />
@@ -547,10 +552,68 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
     </div>
   );
 
-  // ==================== Settings View: per-product ton divisor ====================
+  // ==================== Settings View: per-product ton divisor + catalog management ====================
   const [divisorSearch, setDivisorSearch] = useState('');
   const [divisorDrafts, setDivisorDrafts] = useState<Record<number, string>>({});
   const [savingDivisorFor, setSavingDivisorFor] = useState<number | null>(null);
+  const [newProductSku, setNewProductSku] = useState('');
+  const [newProductName, setNewProductName] = useState('');
+  const [savingNewProduct, setSavingNewProduct] = useState(false);
+  const [newProductMsg, setNewProductMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [newHolidayDate, setNewHolidayDate] = useState('');
+  const [newHolidayLabel, setNewHolidayLabel] = useState('');
+  const [savingHoliday, setSavingHoliday] = useState(false);
+  const [holidayMsg, setHolidayMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const handleAddHoliday = async () => {
+    setHolidayMsg(null);
+    if (!newHolidayDate) {
+      setHolidayMsg({ ok: false, text: 'กรุณาเลือกวันที่' });
+      return;
+    }
+    setSavingHoliday(true);
+    try {
+      await saveFactoryHoliday({ holiday_date: newHolidayDate, label: newHolidayLabel.trim() || undefined, user_id: currentUser?.id });
+      setNewHolidayDate('');
+      setNewHolidayLabel('');
+      setHolidayMsg({ ok: true, text: 'บันทึกวันหยุดเรียบร้อย' });
+      loadHolidays();
+    } catch (err: any) {
+      setHolidayMsg({ ok: false, text: err?.data?.error || err?.message || 'บันทึกไม่สำเร็จ' });
+    } finally {
+      setSavingHoliday(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (id: number) => {
+    try {
+      await deleteFactoryHoliday(id);
+      loadHolidays();
+    } catch (err: any) {
+      alert(err?.data?.error || err?.message || 'ลบไม่สำเร็จ');
+    }
+  };
+
+  const handleAddCatalogProduct = async () => {
+    setNewProductMsg(null);
+    if (!newProductSku.trim() || !newProductName.trim()) {
+      setNewProductMsg({ ok: false, text: 'กรุณาระบุทั้งรหัสสินค้าและชื่อสินค้า' });
+      return;
+    }
+    setSavingNewProduct(true);
+    try {
+      await saveStockPlanProduct({ sku: newProductSku.trim(), name: newProductName.trim(), user_id: currentUser?.id });
+      setNewProductSku('');
+      setNewProductName('');
+      setNewProductMsg({ ok: true, text: 'เพิ่มสินค้าเรียบร้อย ใช้เลือกในฟอร์มเพิ่มแพลนได้ทันที' });
+      loadCatalog();
+    } catch (err: any) {
+      setNewProductMsg({ ok: false, text: err?.data?.error || err?.message || 'บันทึกไม่สำเร็จ' });
+    } finally {
+      setSavingNewProduct(false);
+    }
+  };
 
   const handleSaveDivisor = async (productId: number) => {
     const raw = divisorDrafts[productId];
@@ -593,65 +656,205 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
       return `${p.sku ?? ''} ${p.product_name ?? ''}`.toLowerCase().includes(term);
     });
 
+    const sortedHolidays = [...holidays].sort((a, b) => a.holiday_date.localeCompare(b.holiday_date));
+    const settingsTabs: { key: 'catalog' | 'holidays' | 'divisor'; label: string; icon: React.ElementType }[] = [
+      { key: 'catalog', label: 'แคตตาล็อกสินค้า', icon: Package },
+      { key: 'holidays', label: 'วันหยุดโรงงาน', icon: CalendarDays },
+      { key: 'divisor', label: 'ตั้งค่าตัวหารตัน', icon: SettingsIcon },
+    ];
+
     return (
-      <div className="bg-white rounded-xl border shadow-sm">
-        <div className="p-4 border-b space-y-1">
-          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><SettingsIcon size={15} /> ตั้งค่าตัวหารตัน (สินค้า ÷ ตัวเลข = ตัน)</h3>
-          <p className="text-xs text-gray-400">แสดงเฉพาะรุ่นที่มีคาดว่าจะเข้าในเดือนที่เลือกด้านบน — รุ่นที่เคยตั้งค่าไว้แล้วจะคำนวณยอดตันให้ทันที ถ้าเป็นรุ่นใหม่ให้กรอกตัวหารเอง (เช่น เดิมใน Excel หารด้วย 40 ก็ใส่ 40) การแก้ไขจะมีผลตั้งแต่เดือนปัจจุบันจริงเป็นต้นไปเท่านั้น ไม่กระทบเดือนที่ผ่านมาแล้ว</p>
-          <input
-            type="text"
-            value={divisorSearch}
-            onChange={e => setDivisorSearch(e.target.value)}
-            placeholder="ค้นหาสินค้า..."
-            className="mt-2 w-full max-w-sm border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          />
+      <div className="space-y-4">
+        <div className="flex items-center gap-1 bg-white border rounded-lg p-1 shadow-sm w-fit">
+          {settingsTabs.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setSettingsTab(t.key)}
+              className={`px-3 py-1.5 rounded-md text-sm flex items-center gap-1.5 ${settingsTab === t.key ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              <t.icon size={15} /> {t.label}
+            </button>
+          ))}
         </div>
-        <div className="divide-y max-h-[560px] overflow-y-auto">
-          {filtered.length === 0 && (
-            <div className="text-center py-10 text-gray-400 text-sm">ไม่มีรุ่นที่คาดว่าจะเข้าในเดือนนี้</div>
-          )}
-          {filtered.map(p => {
-            const draft = divisorDrafts[p.product_id];
-            const currentDivisor = reportTonDivisorMap[p.product_id];
-            const displayValue = draft !== undefined ? draft : (currentDivisor !== undefined ? String(currentDivisor) : '');
-            const isDirty = draft !== undefined;
-            const ton = formatTon(p.totalQty, currentDivisor);
-            const arrivals = rowsByProduct[p.product_id] ?? [];
-            return (
-              <div key={p.product_id} className="flex items-center gap-3 px-4 py-2.5">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-800 truncate">{p.sku ? `${p.sku} - ` : ''}{p.product_name ?? p.product_id}</div>
-                  <div className="text-[11px] text-gray-400 truncate">
-                    {arrivals.map(arrivalSummaryText).join('  ·  ')}
-                  </div>
-                </div>
-                <div className="shrink-0 text-xs text-gray-500 w-20 text-right">
-                  {ton !== null ? <span className="font-medium text-gray-700">{ton} ตัน</span> : <span className="text-gray-300">ยังไม่ตั้งค่า</span>}
-                </div>
+
+        {settingsTab === 'catalog' && (
+          <div className="bg-white rounded-xl border shadow-sm p-4">
+            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5 mb-1"><Plus size={15} /> เพิ่มสินค้าใหม่เข้าแคตตาล็อกแพลน</h3>
+            <p className="text-xs text-gray-400 mb-3">สินค้าของระบบแพลนแยกจากรหัสสินค้าหลัก — ถ้ามีของที่สั่งเข้าแต่ไม่มีให้เลือกในฟอร์มเพิ่มแพลน เพิ่มได้ที่นี่เลย</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={newProductSku}
+                onChange={e => setNewProductSku(e.target.value)}
+                placeholder="รหัสสินค้า เช่น PTTM500001"
+                className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                style={{ width: 200 }}
+              />
+              <input
+                type="text"
+                value={newProductName}
+                onChange={e => setNewProductName(e.target.value)}
+                placeholder="ชื่อสินค้า เช่น ซุปเปอร์ไตรโค ขนาด 500 กรัม"
+                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                style={{ minWidth: 240 }}
+              />
+              <button
+                onClick={handleAddCatalogProduct}
+                disabled={savingNewProduct}
+                className="bg-blue-600 text-white text-sm font-medium rounded-lg px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
+              >
+                {savingNewProduct ? 'กำลังบันทึก...' : 'เพิ่มสินค้า'}
+              </button>
+            </div>
+            {newProductMsg && (
+              <p className={`text-xs mt-2 ${newProductMsg.ok ? 'text-green-600' : 'text-red-600'}`}>{newProductMsg.text}</p>
+            )}
+
+            <div className="mt-4 border-t pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-500">สินค้าในแคตตาล็อกทั้งหมด ({products.length} รายการ)</span>
                 <input
                   type="text"
-                  inputMode="decimal"
-                  value={displayValue}
-                  onChange={e => {
-                    const v = e.target.value.replace(/[^0-9.]/g, '');
-                    setDivisorDrafts(prev => ({ ...prev, [p.product_id]: v }));
-                  }}
-                  placeholder="เช่น 40"
-                  style={{ width: 90 }}
-                  className="shrink-0 border rounded-lg px-2 py-1.5 text-sm text-right"
+                  value={catalogSearch}
+                  onChange={e => setCatalogSearch(e.target.value)}
+                  placeholder="ค้นหา..."
+                  className="border rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                  style={{ width: 160 }}
                 />
-                <button
-                  onClick={() => handleSaveDivisor(p.product_id)}
-                  disabled={!isDirty || savingDivisorFor === p.product_id}
-                  className="shrink-0 text-blue-600 hover:text-blue-800 disabled:text-gray-300 p-1.5"
-                  title="บันทึก"
-                >
-                  <Save size={16} />
-                </button>
               </div>
-            );
-          })}
-        </div>
+              <div className="max-h-[460px] overflow-y-auto border rounded-lg divide-y">
+                {products
+                  .filter(p => {
+                    const term = catalogSearch.trim().toLowerCase();
+                    return !term || `${p.sku ?? ''} ${p.name ?? ''}`.toLowerCase().includes(term);
+                  })
+                  .map(p => (
+                    <div key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                      <span className="font-mono text-gray-500 shrink-0" style={{ width: 120 }}>{p.sku}</span>
+                      <span className="text-gray-700 truncate">{p.name}</span>
+                      {p.format_code && <span className="ml-auto shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 border">{p.format_code}</span>}
+                    </div>
+                  ))}
+                {products.length === 0 && (
+                  <div className="text-center py-6 text-gray-400 text-xs">ยังไม่มีสินค้าในแคตตาล็อก</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {settingsTab === 'holidays' && (
+          <div className="bg-white rounded-xl border shadow-sm p-4">
+            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5 mb-1"><CalendarDays size={15} /> วันหยุดโรงงาน</h3>
+            <p className="text-xs text-gray-400 mb-3">วันที่บันทึกไว้จะแสดงเป็นพื้นสีแดงบนหน้าปฏิทิน — ด้านล่างแสดงวันหยุดทั้งหมดที่ตั้งค่าไว้</p>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <input
+                type="date"
+                value={newHolidayDate}
+                onChange={e => setNewHolidayDate(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <input
+                type="text"
+                value={newHolidayLabel}
+                onChange={e => setNewHolidayLabel(e.target.value)}
+                placeholder="ชื่อวันหยุด (ถ้ามี) เช่น หยุดสงกรานต์"
+                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                style={{ minWidth: 200 }}
+              />
+              <button
+                onClick={handleAddHoliday}
+                disabled={savingHoliday}
+                className="bg-blue-600 text-white text-sm font-medium rounded-lg px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
+              >
+                {savingHoliday ? 'กำลังบันทึก...' : 'เพิ่มวันหยุด'}
+              </button>
+            </div>
+            {holidayMsg && (
+              <p className={`text-xs mb-2 ${holidayMsg.ok ? 'text-green-600' : 'text-red-600'}`}>{holidayMsg.text}</p>
+            )}
+            <div className="text-xs font-semibold text-gray-500 mb-2">วันหยุดที่ตั้งค่าไว้ ({sortedHolidays.length} วัน)</div>
+            {sortedHolidays.length === 0 ? (
+              <p className="text-xs text-gray-400">ยังไม่มีวันหยุดที่ตั้งค่า</p>
+            ) : (
+              <div className="divide-y border rounded-lg max-h-[460px] overflow-y-auto">
+                {sortedHolidays.map(h => (
+                  <div key={h.id} className="flex items-center justify-between px-3 py-2">
+                    <div className="text-sm text-gray-700">
+                      {h.holiday_date.slice(0, 10)}
+                      {h.label && <span className="text-gray-400"> · {h.label}</span>}
+                    </div>
+                    <button onClick={() => handleDeleteHoliday(h.id)} className="text-gray-400 hover:text-red-600 p-1" title="ลบวันหยุด">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {settingsTab === 'divisor' && (
+          <div className="bg-white rounded-xl border shadow-sm">
+            <div className="p-4 border-b space-y-1">
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><SettingsIcon size={15} /> ตั้งค่าตัวหารตัน (สินค้า ÷ ตัวเลข = ตัน)</h3>
+              <p className="text-xs text-gray-400">แสดงเฉพาะรุ่นที่มีคาดว่าจะเข้าในเดือนที่เลือกด้านบน ({MONTH_NAMES_TH[month - 1]} {year + 543}) — รุ่นที่เคยตั้งค่าไว้แล้วจะคำนวณยอดตันให้ทันที ถ้าเป็นรุ่นใหม่ให้กรอกตัวหารเอง (เช่น เดิมใน Excel หารด้วย 40 ก็ใส่ 40) การแก้ไขจะมีผลตั้งแต่เดือนปัจจุบันจริงเป็นต้นไปเท่านั้น ไม่กระทบเดือนที่ผ่านมาแล้ว</p>
+              <input
+                type="text"
+                value={divisorSearch}
+                onChange={e => setDivisorSearch(e.target.value)}
+                placeholder="ค้นหาสินค้า..."
+                className="mt-2 w-full max-w-sm border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div className="divide-y max-h-[560px] overflow-y-auto">
+              {filtered.length === 0 && (
+                <div className="text-center py-10 text-gray-400 text-sm">ไม่มีรุ่นที่คาดว่าจะเข้าในเดือนนี้</div>
+              )}
+              {filtered.map(p => {
+                const draft = divisorDrafts[p.product_id];
+                const currentDivisor = reportTonDivisorMap[p.product_id];
+                const displayValue = draft !== undefined ? draft : (currentDivisor !== undefined ? String(currentDivisor) : '');
+                const isDirty = draft !== undefined;
+                const ton = formatTon(p.totalQty, currentDivisor);
+                const arrivals = rowsByProduct[p.product_id] ?? [];
+                return (
+                  <div key={p.product_id} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-gray-800 truncate">{p.sku ? `${p.sku} - ` : ''}{p.product_name ?? p.product_id}</div>
+                      <div className="text-[11px] text-gray-400 truncate">
+                        {arrivals.map(arrivalSummaryText).join('  ·  ')}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-xs text-gray-500 w-20 text-right">
+                      {ton !== null ? <span className="font-medium text-gray-700">{ton} ตัน</span> : <span className="text-gray-300">ยังไม่ตั้งค่า</span>}
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={displayValue}
+                      onChange={e => {
+                        const v = e.target.value.replace(/[^0-9.]/g, '');
+                        setDivisorDrafts(prev => ({ ...prev, [p.product_id]: v }));
+                      }}
+                      placeholder="เช่น 40"
+                      style={{ width: 90 }}
+                      className="shrink-0 border rounded-lg px-2 py-1.5 text-sm text-right"
+                    />
+                    <button
+                      onClick={() => handleSaveDivisor(p.product_id)}
+                      disabled={!isDirty || savingDivisorFor === p.product_id}
+                      className="shrink-0 text-blue-600 hover:text-blue-800 disabled:text-gray-300 p-1.5"
+                      title="บันทึก"
+                    >
+                      <Save size={16} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
