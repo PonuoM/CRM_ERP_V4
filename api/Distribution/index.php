@@ -30,6 +30,8 @@ try {
         handleBatchExport($pdo, $companyId);
     } elseif ($action === 'get_cron_logs') {
         handleGetCronLogs($pdo, $companyId);
+    } elseif ($action === 'update_session_tag') {
+        handleUpdateSessionTag($pdo, $companyId);
     } else {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid action']);
@@ -735,7 +737,9 @@ function handleBatchExport($pdo, $companyId)
             CONCAT(cust.first_name, ' ', cust.last_name) as customer_name,
             cust.phone as customer_phone,
             dsd.previous_basket_key,
-            dsd.previous_lifecycle_status
+            dsd.previous_lifecycle_status,
+            ds.session_tag
+
         FROM distribution_sessions ds
         JOIN distribution_session_details dsd ON ds.id = dsd.session_id
         LEFT JOIN companies c ON ds.company_id = c.id
@@ -756,4 +760,33 @@ function handleBatchExport($pdo, $companyId)
         'ok' => true,
         'data' => $results
     ]);
+}
+
+function handleUpdateSessionTag($pdo, $companyId)
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'POST required']);
+        return;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $sessionId = $input['session_id'] ?? null;
+    $sessionTag = $input['session_tag'] ?? '';
+
+    if (!$sessionId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Session ID is required']);
+        return;
+    }
+
+    $stmt = $pdo->prepare("UPDATE distribution_sessions SET session_tag = ? WHERE id = ? AND company_id = ?");
+    $result = $stmt->execute([$sessionTag, $sessionId, $companyId]);
+
+    if ($result) {
+        echo json_encode(['ok' => true]);
+    } else {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to update session tag']);
+    }
 }

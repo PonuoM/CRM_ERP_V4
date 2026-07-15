@@ -43,6 +43,7 @@ interface DistributionSession {
     agent_snapshot?: AgentSnapshot[];
     session_status?: string;
     company_name?: string;
+    session_tag?: string;
 }
 
 const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpen, onClose, setMessage }) => {
@@ -76,7 +77,9 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const [cleanupTargetCompany, setCleanupTargetCompany] = useState<string>('current');
     const [isCleaning, setIsCleaning] = useState(false);
     
-
+    // Tag Edit State
+    const [editingTagSessionId, setEditingTagSessionId] = useState<number | null>(null);
+    const [editTagValue, setEditTagValue] = useState<string>('');
 
     const toggleExpand = (sessionId: number) => {
         setExpandedSessions(prev => {
@@ -119,6 +122,33 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             setMessage({ type: 'error', text: 'Network error during undo' });
         } finally {
             setIsUndoing(false);
+        }
+    };
+
+    const handleSaveSessionTag = async (sessionId: number) => {
+        try {
+            const currentUserStr = localStorage.getItem('user');
+            const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+            
+            const data = await apiFetch(`Distribution/index.php?action=update_session_tag&companyId=${currentUser?.company_id || 1}`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    session_tag: editTagValue
+                })
+            });
+            
+            if (data.ok) {
+                setMessage({ type: 'success', text: 'อัปเดต Session Tag เรียบร้อยแล้ว' });
+                // Update local state
+                setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, session_tag: editTagValue } : s));
+                setEditingTagSessionId(null);
+            } else {
+                setMessage({ type: 'error', text: data.error || 'Failed to update session tag' });
+            }
+        } catch (error) {
+            console.error(error);
+            setMessage({ type: 'error', text: 'Network error during update' });
         }
     };
 
@@ -614,6 +644,44 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                     <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full border border-orange-200">
                                                         เกณฑ์: ≥{session.min_call_minutes} นาที
                                                     </span>
+                                                )}
+                                                
+                                                {/* Session Tag Inline Edit */}
+                                                {editingTagSessionId === session.id ? (
+                                                    <div className="flex items-center gap-2 ml-2">
+                                                        <input 
+                                                            type="text" 
+                                                            className="text-xs border border-blue-300 rounded px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-500 min-w-[150px]"
+                                                            value={editTagValue}
+                                                            onChange={(e) => setEditTagValue(e.target.value)}
+                                                            placeholder="ระบุ Session Tag"
+                                                            autoFocus
+                                                        />
+                                                        <button 
+                                                            onClick={() => handleSaveSessionTag(session.id)}
+                                                            className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded hover:bg-blue-700"
+                                                        >
+                                                            บันทึก
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => setEditingTagSessionId(null)}
+                                                            className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded hover:bg-gray-300"
+                                                        >
+                                                            ยกเลิก
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 ml-2 group cursor-pointer" onClick={() => {
+                                                        setEditingTagSessionId(session.id);
+                                                        setEditTagValue(session.session_tag || '');
+                                                    }}>
+                                                        <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full border border-gray-200 flex items-center gap-1">
+                                                            {session.session_tag ? `Tag: ${session.session_tag}` : 'ไม่มี Tag'}
+                                                        </span>
+                                                        <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            (คลิกเพื่อแก้ไข)
+                                                        </span>
+                                                    </div>
                                                 )}
                                             </div>
                                             <div className="text-sm text-gray-500 mt-1">
