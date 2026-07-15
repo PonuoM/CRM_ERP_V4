@@ -57,7 +57,7 @@ try {
                        (i.planned_qty - COALESCE(SUM(e.expected_qty), 0)) AS remaining_qty
                 FROM stock_arrival_plan_items i
                 JOIN stock_arrival_plans p ON i.plan_id = p.id
-                JOIN products pr ON i.product_id = pr.id
+                JOIN stock_arrival_products pr ON i.product_id = pr.id
                 LEFT JOIN users uc ON uc.id = p.created_by
                 LEFT JOIN stock_arrival_plan_expectations e ON e.item_id = i.id
                 WHERE $whereSql
@@ -140,7 +140,7 @@ try {
                 FROM stock_arrival_plan_expectations e
                 JOIN stock_arrival_plan_items i ON e.item_id = i.id
                 JOIN stock_arrival_plans p ON i.plan_id = p.id
-                JOIN products pr ON i.product_id = pr.id
+                JOIN stock_arrival_products pr ON i.product_id = pr.id
                 LEFT JOIN users us ON us.id = e.created_by
                 LEFT JOIN users uf ON uf.id = e.confirmed_by
                 LEFT JOIN users uc ON uc.id = p.created_by

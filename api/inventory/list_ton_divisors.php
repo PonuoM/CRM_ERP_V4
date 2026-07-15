@@ -41,7 +41,7 @@ try {
                   FROM stock_arrival_plan_items i
                   JOIN stock_arrival_plans p ON p.id = i.plan_id
                   WHERE $itemsWhere) scoped
-            JOIN products pr ON pr.id = scoped.product_id
+            JOIN stock_arrival_products pr ON pr.id = scoped.product_id
             LEFT JOIN (
                 SELECT product_id, divisor, effective_from FROM (
                     SELECT product_id, divisor, effective_from,

@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { User, UserRole } from '@/types';
-import { listStockPlans, listProducts, deleteStockPlan, listTonDivisors, saveTonDivisor, getHolidays, saveHolidays } from '@/services/api';
+import { listStockPlans, listProducts, deleteStockPlan, listTonDivisors, saveTonDivisor, listFactoryHolidays } from '@/services/api';
 import StockPlanFormModal from '@/components/StockPlanFormModal';
 import StockPlanScheduleModal from '@/components/StockPlanScheduleModal';
 import StockPlanReconcileModal from '@/components/StockPlanReconcileModal';
@@ -87,10 +87,12 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
   };
 
   const loadHolidays = async () => {
-    if (!effectiveCompanyId) return;
     try {
-      const res = await getHolidays({ month, year, companyId: effectiveCompanyId });
-      if (res.success) setHolidays(res.data);
+      const res = await listFactoryHolidays();
+      if (res.data) {
+        // map to string[] for calendar
+        setHolidays(res.data.map((h: any) => h.holiday_date.slice(0, 10)));
+      }
     } catch (err) {
       console.error('Error loading holidays:', err);
     }
@@ -221,19 +223,6 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
     const effectiveFrom = `${year}-${String(month).padStart(2, '0')}-01`;
     await saveTonDivisor({ product_id: productId, divisor, user_id: currentUser?.id, effective_from: effectiveFrom });
     await loadReportTonDivisors();
-  };
-
-  const handleSaveHolidaysAction = async (dates: string[]) => {
-    if (!effectiveCompanyId) return;
-    await saveHolidays({
-      month,
-      year,
-      companyId: effectiveCompanyId,
-      dates,
-      userId: currentUser?.id
-    });
-    await loadHolidays();
-    alert('บันทึกวันหยุดเรียบร้อยแล้ว');
   };
 
   const handleDeletePlan = async (planId: number) => {
@@ -441,13 +430,13 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
           
           {viewMode === 'settings' && (
             <StockPlanSettings
+              currentUser={currentUser}
               productSummaries={productSummaries}
               rows={rows}
               reportDivisorRows={reportDivisorRows}
               reportTonDivisorMap={reportTonDivisorMap}
               onSaveDivisor={handleSaveDivisorAction}
-              holidays={holidays}
-              onSaveHolidays={handleSaveHolidaysAction}
+              onRefreshHolidays={loadHolidays}
               viewedYear={year}
               viewedMonth={month}
             />
