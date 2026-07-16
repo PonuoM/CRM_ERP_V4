@@ -703,7 +703,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                             {sessions.map(session => {
                                 const isExpanded = expandedSessions.has(session.id);
                                 return (
-                                <div key={session.id} className="bg-white border rounded-lg shadow-sm overflow-hidden">
+                                <div key={session.id} className="bg-white border rounded-lg shadow-sm mb-4">
                                     <div className="p-5 flex flex-wrap items-center justify-between gap-4">
                                         <div className="flex-1">
                                             <div className="font-bold text-gray-800 flex items-center gap-2 flex-wrap">
@@ -806,7 +806,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                     </div>
                                     
                                     {isExpanded && (
-                                        <div className="border-t bg-gray-50 p-4">
+                                        <div className="border-t bg-gray-50 p-4 rounded-b-lg">
                                             <div className="overflow-x-auto flex justify-center">
                                                 <table className="w-full max-w-3xl text-sm text-left text-gray-600 bg-white rounded-lg overflow-hidden border">
                                                     <thead className="text-xs text-gray-700 uppercase bg-gray-100 border-b">
