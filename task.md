@@ -1,0 +1,11 @@
+- [x] Implement Retroactive Session Tags
+    - [x] Backend: Add `update_session_tag` action in `api/Distribution/index.php` (already existed, just patched for 'all' companies)
+    - [x] Frontend: Add Edit button in History table in `CustomerDistributionV2.tsx` (already existed in `DistributionReportModal.tsx`)
+    - [x] Frontend: Implement API call and UI state for editing session tag (already existed)
+- [x] Implement Company Filter for Distribution History
+    - [x] Frontend: Add Company dropdown in `CustomerDistributionV2.tsx` for History tab (Super Admin only) (already existed in `DistributionReportModal.tsx`)
+    - [x] Frontend: Update `fetchSessions` to pass the selected `companyId` (already existed)
+- [x] Verification
+    - [x] Verify `update_session_tag` works correctly (Patched to support Super Admin 'all' filter)
+    - [x] Verify Company filter works correctly
+    - [x] Update `walkthrough.md`

@@ -22,6 +22,8 @@ try {
         handleGetSessions($pdo, $companyId);
     } elseif ($action === 'get_session_tags') {
         handleGetSessionTags($pdo, $companyId);
+    } elseif ($action === 'get_basket_options') {
+        handleGetBasketOptions($pdo, $companyId);
     } elseif ($action === 'undo_distribution') {
         handleUndoDistribution($pdo, $companyId);
     } elseif ($action === 'cleanup_distribution_details') {
@@ -82,12 +84,24 @@ function handleDistribute($pdo, $companyId)
             $stmt = $pdo->prepare("SELECT linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = 1");
             $stmt->execute([$sourceBasketKey]);
             $linkedKey = $stmt->fetchColumn();
-            if ($linkedKey) {
-                $stmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
-                $stmt->execute([$linkedKey]);
-                $targetBasketId = $stmt->fetchColumn();
-                $resolvedTargetKey = $linkedKey;
+
+            if (!$linkedKey) {
+                http_response_code(400);
+                echo json_encode(['error' => "การแจกล้มเหลว: หาตะกร้าปลายทางไม่พบ (ไม่ได้ตั้งค่า linked_basket_key สำหรับ '$sourceBasketKey' ในระบบ)"]);
+                return;
             }
+
+            $stmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
+            $stmt->execute([$linkedKey]);
+            $targetBasketId = $stmt->fetchColumn();
+            
+            if (!$targetBasketId) {
+                http_response_code(400);
+                echo json_encode(['error' => "การแจกล้มเหลว: หาตะกร้าปลายทางไม่พบ (ตั้งค่า linked_basket_key = '$linkedKey' ผิดพลาด หรือไม่มีตะกร้านี้อยู่จริง)"]);
+                return;
+            }
+            
+            $resolvedTargetKey = $linkedKey;
         }
     }
 
@@ -162,7 +176,9 @@ function handleDistribute($pdo, $companyId)
             }
 
             // 3. Log with assigned_to_old and assigned_to_new
-            $logStmt->execute([$customerId, $oldBasketKey, $resolvedTargetKey, $oldAssignedTo, $agentId, 'distribute', $triggeredBy, 'Distributed from Distribution V2']);
+            $finalTargetKey = $resolvedTargetKey ?: ($oldBasketKey ?: 'Unknown');
+            $safeOldBasketKey = $oldBasketKey ?: 'Unknown';
+            $logStmt->execute([$customerId, $safeOldBasketKey, $finalTargetKey, $oldAssignedTo, $agentId, 'distribute', $triggeredBy, 'Distributed from Distribution V2']);
 
             // 4. Lazy Cleanup (Check Round Completion)
             $countChecksStmt->execute([$customerId]);
@@ -296,29 +312,64 @@ function handleGetSessions($pdo, $companyId)
 
     $limit = $_GET['limit'] ?? 50;
 
-    // Fetch sessions
-    if ($companyId === 'all') {
-        $sessionStmt = $pdo->prepare("
-            SELECT ds.*, u.first_name, u.last_name, c.name as company_name
-            FROM distribution_sessions ds
-            LEFT JOIN users u ON ds.distributed_by = u.id
-            LEFT JOIN companies c ON ds.company_id = c.id
-            ORDER BY ds.created_at DESC
-            LIMIT " . (int)$limit . "
-        ");
-        $sessionStmt->execute();
-    } else {
-        $sessionStmt = $pdo->prepare("
-            SELECT ds.*, u.first_name, u.last_name, c.name as company_name
-            FROM distribution_sessions ds
-            LEFT JOIN users u ON ds.distributed_by = u.id
-            LEFT JOIN companies c ON ds.company_id = c.id
-            WHERE ds.company_id = ?
-            ORDER BY ds.created_at DESC
-            LIMIT " . (int)$limit . "
-        ");
-        $sessionStmt->execute([$companyId]);
+    
+    $startDate = $_GET['startDate'] ?? null;
+    $endDate = $_GET['endDate'] ?? null;
+    $type = $_GET['type'] ?? 'all';
+    $basketKey = $_GET['basket_key'] ?? 'all';
+    $sessionTag = $_GET['session_tag'] ?? 'all';
+    $basketKey = $_GET['basket_key'] ?? '';
+    $sessionTag = $_GET['session_tag'] ?? '';
+
+    $whereClauses = [];
+    $params = [];
+
+    if ($companyId !== 'all') {
+        $whereClauses[] = "ds.company_id = ?";
+        $params[] = $companyId;
     }
+
+    if ($startDate && $endDate) {
+        $start = $startDate . ' 00:00:00';
+        $end = $endDate . ' 23:59:59';
+        $whereClauses[] = "ds.created_at BETWEEN ? AND ?";
+        $params[] = $start;
+        $params[] = $end;
+    }
+
+    if ($type === 'distribution') {
+        $whereClauses[] = "(ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%')";
+    } else if ($type === 'reclaim') {
+        $whereClauses[] = "(ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%')";
+    }
+
+    if ($basketKey && $basketKey !== 'all') {
+        $whereClauses[] = "EXISTS (SELECT 1 FROM distribution_session_details dsd WHERE dsd.session_id = ds.id AND dsd.previous_basket_key = ?)";
+        $params[] = $basketKey;
+    }
+
+    if ($sessionTag && $sessionTag !== 'all') {
+        $whereClauses[] = "ds.session_tag = ?";
+        $params[] = $sessionTag;
+    }
+
+    $whereSql = "";
+    if (!empty($whereClauses)) {
+        $whereSql = "WHERE " . implode(" AND ", $whereClauses);
+    }
+
+    $sql = "
+        SELECT ds.*, u.first_name, u.last_name, c.name as company_name
+        FROM distribution_sessions ds
+        LEFT JOIN users u ON ds.distributed_by = u.id
+        LEFT JOIN companies c ON ds.company_id = c.id
+        $whereSql
+        ORDER BY ds.created_at DESC
+        LIMIT " . (int)$limit . "
+    ";
+
+    $sessionStmt = $pdo->prepare($sql);
+    $sessionStmt->execute($params);
     $sessions = $sessionStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if (empty($sessions)) {
@@ -693,6 +744,8 @@ function handleBatchExport($pdo, $companyId)
     $startDate = $_GET['startDate'] ?? null;
     $endDate = $_GET['endDate'] ?? null;
     $type = $_GET['type'] ?? 'all';
+    $basketKey = $_GET['basket_key'] ?? 'all';
+    $sessionTag = $_GET['session_tag'] ?? 'all';
 
     if (!$startDate || !$endDate) {
         http_response_code(400);
@@ -717,6 +770,16 @@ function handleBatchExport($pdo, $companyId)
         $typeFilter = " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
     } else if ($type === 'reclaim') {
         $typeFilter = " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
+    }
+
+    if ($basketKey && $basketKey !== 'all') {
+        $typeFilter .= " AND EXISTS (SELECT 1 FROM distribution_session_details _dsd WHERE _dsd.session_id = ds.id AND _dsd.previous_basket_key = ?) ";
+        $params[] = $basketKey;
+    }
+
+    if ($sessionTag && $sessionTag !== 'all') {
+        $typeFilter .= " AND ds.session_tag = ? ";
+        $params[] = $sessionTag;
     }
 
     $sql = "
@@ -782,8 +845,13 @@ function handleUpdateSessionTag($pdo, $companyId)
         return;
     }
 
-    $stmt = $pdo->prepare("UPDATE distribution_sessions SET session_tag = ? WHERE id = ? AND company_id = ?");
-    $result = $stmt->execute([$sessionTag, $sessionId, $companyId]);
+    if ($companyId === 'all') {
+        $stmt = $pdo->prepare("UPDATE distribution_sessions SET session_tag = ? WHERE id = ?");
+        $result = $stmt->execute([$sessionTag, $sessionId]);
+    } else {
+        $stmt = $pdo->prepare("UPDATE distribution_sessions SET session_tag = ? WHERE id = ? AND company_id = ?");
+        $result = $stmt->execute([$sessionTag, $sessionId, $companyId]);
+    }
 
     if ($result) {
         echo json_encode(['ok' => true]);
@@ -791,4 +859,23 @@ function handleUpdateSessionTag($pdo, $companyId)
         http_response_code(500);
         echo json_encode(['error' => 'Failed to update session tag']);
     }
+}
+
+function handleGetBasketOptions($pdo, $companyId) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        http_response_code(405);
+        echo json_encode(['error' => 'GET required']);
+        return;
+    }
+
+    if ($companyId === 'all') {
+        $stmt = $pdo->prepare("SELECT id, basket_key, basket_name FROM basket_config ORDER BY id ASC");
+        $stmt->execute();
+    } else {
+        $stmt = $pdo->prepare("SELECT id, basket_key, basket_name FROM basket_config WHERE company_id = ? ORDER BY id ASC");
+        $stmt->execute([$companyId]);
+    }
+    
+    $baskets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    echo json_encode(['ok' => true, 'baskets' => $baskets]);
 }

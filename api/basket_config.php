@@ -700,14 +700,26 @@ function handleReclaimCustomers($pdo, $companyId)
             // So SET current_basket_key = $targetBasketId
             // WHERE current_basket_key = $dashboardBasketId
 
+            // Find the agent basket ID (because assigned customers are usually in the agent basket)
+            $searchBasketIds = [$dashboardBasketId];
+            if ($linkedBasketKey) {
+                $agentBasketStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
+                $agentBasketStmt->execute([$linkedBasketKey]);
+                $agentBasketId = $agentBasketStmt->fetchColumn();
+                if ($agentBasketId) {
+                    $searchBasketIds[] = $agentBasketId;
+                }
+            }
+
             // First, get the customer IDs that will be affected (for logging)
+            $placeholders = implode(',', array_fill(0, count($searchBasketIds), '?'));
             $selectSql = "
                 SELECT c.customer_id, c.assigned_to FROM customers c
                 WHERE c.company_id = ? 
-                AND c.current_basket_key = ?
+                AND c.current_basket_key IN ($placeholders)
             ";
             
-            $params = [$companyId, $dashboardBasketId];
+            $params = array_merge([$companyId], $searchBasketIds);
             
             if ($agentId === 'all') {
                 $selectSql .= " AND c.assigned_to IS NOT NULL AND c.assigned_to != 0 ";
@@ -751,7 +763,9 @@ function handleReclaimCustomers($pdo, $companyId)
             ";
             $updateStmt = $pdo->prepare($updateSql);
             $updateStmt->execute(array_merge([$targetBasketId], $affectedCustomerIds));
-            $reclaimedCount = $updateStmt->rowCount();
+            
+            // Use count of IDs because rowCount() might return 0 if the row was already identical (e.g. current_basket_key hasn't changed)
+            $reclaimedCount = count($affectedCustomerIds);
             $totalReclaimed += $reclaimedCount;
             
             $results[] = [
@@ -759,27 +773,46 @@ function handleReclaimCustomers($pdo, $companyId)
                 'reclaimed' => $reclaimedCount
             ];
 
-            // Log basket transitions for each customer with assigned_to info (Bulk Insert)
+            // Log basket transitions & insert into distribution_session_details for each customer (Bulk Insert)
             $chunkSize = 1000;
             $chunks = array_chunk($affectedCustomers, $chunkSize);
             
             foreach ($chunks as $chunk) {
                 $logValues = [];
                 $logParams = [];
+                
+                $detailValues = [];
+                $detailParams = [];
+
                 foreach ($chunk as $cust) {
                     $custId = $cust['customer_id'];
                     $oldAgent = $cust['assigned_to'];
                     $triggeredBy = $agentId === 'all' ? $oldAgent : $agentId;
                     
+                    // Transition Log
                     $logValues[] = "(?, ?, ?, ?, NULL, ?, ?, ?, NOW())";
                     array_push($logParams, $custId, $dashboardBasketId, $targetBasketId, $oldAgent, 'reclaim', $triggeredBy, 'Reclaimed from Telesale');
+                    
+                    // Distribution Session Details (so they appear in Export / History)
+                    // The agent who previously owned it is $oldAgent, target agent is NULL because they are reclaimed
+                    // Note: session_details requires agent_id, which we'll record as $oldAgent for tracking whose customer was reclaimed.
+                    $detailValues[] = "(?, ?, ?, ?, ?, ?)";
+                    array_push($detailParams, $sessionId, $oldAgent, $custId, $oldAgent, $dashboardBasketId, 'Assigned');
                 }
                 
+                // 1. Insert into transition log
                 $logSql = "INSERT INTO basket_transition_log 
                     (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) 
                     VALUES " . implode(', ', $logValues);
                 $logStmt = $pdo->prepare($logSql);
                 $logStmt->execute($logParams);
+                
+                // 2. Insert into session details
+                $detailSql = "INSERT INTO distribution_session_details 
+                    (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status)
+                    VALUES " . implode(', ', $detailValues);
+                $detailStmtBatch = $pdo->prepare($detailSql);
+                $detailStmtBatch->execute($detailParams);
             }
         }
 

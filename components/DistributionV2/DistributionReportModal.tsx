@@ -66,7 +66,12 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const [batchExportMode, setBatchExportMode] = useState<'detailed' | 'summary'>('detailed');
     const [isBatchExporting, setIsBatchExporting] = useState(false);
     
-    // Undo State
+    
+    const [filterBasket, setFilterBasket] = useState<string>('all');
+    const [filterTag, setFilterTag] = useState<string>('all');
+    const [baskets, setBaskets] = useState<any[]>([]);
+    const [tags, setTags] = useState<string[]>([]);
+// Undo State
     const [undoTarget, setUndoTarget] = useState<number | null>(null);
     const [undoMode, setUndoMode] = useState<'safe' | 'force'>('safe');
     const [isUndoing, setIsUndoing] = useState(false);
@@ -155,7 +160,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const handleBatchExport = async () => {
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`Distribution/index.php?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}`);
+            const data = await apiFetch(`Distribution/index.php?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag}`);
             if (data.ok && data.data && data.data.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('Batch Export');
@@ -168,7 +173,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         'โหมด (Mode)',
                         'ผู้ทำรายการ',
                         'ตะกร้าต้นทาง (ก่อนดึง)',
-                        'จำนวนรายชื่อ (Count)'
+                        'จำนวนรายชื่อ (Count)',
+                        'จำนวนพนักงาน (Agents)'
                     ];
                     if (isSuperAdmin) {
                         headers.unshift('บริษัท (Company)');
@@ -180,13 +186,17 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                     data.data.forEach((row: any) => {
                         const key = `${row.session_id}_${row.previous_basket_key}`;
                         if (!summaryMap.has(key)) {
-                            summaryMap.set(key, { ...row, count: 0 });
+                            summaryMap.set(key, { ...row, count: 0, agentIds: new Set() });
                         }
                         summaryMap.get(key).count += 1;
+                        if (row.agent_id) {
+                            summaryMap.get(key).agentIds.add(row.agent_id);
+                        }
                     });
                     
                     Array.from(summaryMap.values()).forEach((row: any) => {
-                        let modeText = row.distribution_mode;
+                        let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
+                        let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
                         
                         let basketText = row.previous_basket_name 
@@ -199,7 +209,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                             modeText,
                             `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
                             basketText,
-                            row.count
+                            row.count,
+                            row.agentIds ? row.agentIds.size : 0
                         ];
                         if (isSuperAdmin) {
                             rowData.unshift(row.company_name || '-');
@@ -226,7 +237,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
 
                     data.data.forEach((row: any) => {
                         let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
-                        let modeText = row.distribution_mode;
+                        let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
 
                         let basketText = row.previous_basket_name 
@@ -304,8 +315,21 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             if (isSuperAdmin && companies.length === 0) {
                 fetchCompanies();
             }
+        fetchOptions();
         }
-    }, [isOpen, selectedCompany]);
+    }, [isOpen, selectedCompany, batchStartDate, batchEndDate, batchType, filterBasket, filterTag]);
+
+    const fetchOptions = async () => {
+        try {
+            const tagData = await apiFetch(`Distribution/index.php?action=get_session_tags&companyId=${selectedCompany}`);
+            if (tagData.ok) setTags(tagData.tags || []);
+            
+            const basketData = await apiFetch(`Distribution/index.php?action=get_basket_options&companyId=${selectedCompany}`);
+            if (basketData.ok) setBaskets(basketData.baskets || []);
+        } catch (error) {
+            console.error(error);
+        }
+    };
 
     const fetchCompanies = async () => {
         try {
@@ -321,7 +345,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const fetchSessions = async () => {
         setLoading(true);
         try {
-            const data = await apiFetch(`Distribution/index.php?action=get_sessions&companyId=${selectedCompany}`);
+            const data = await apiFetch(`Distribution/index.php?action=get_sessions&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag}`);
             if (data.ok) {
                 setSessions(data.sessions);
             } else {
@@ -565,6 +589,17 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         window.URL.revokeObjectURL(url);
     };
 
+    const resetFilters = () => {
+        setBatchStartDate('');
+        setBatchEndDate('');
+        setBatchType('all');
+        setFilterBasket('all');
+        setFilterTag('all');
+        if (isSuperAdmin) {
+            setSelectedCompany('all');
+        }
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -574,7 +609,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                 <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
                     <div className="flex items-center gap-2">
                         <History className="text-blue-500" />
-                        <h3 className="text-xl font-bold text-gray-800">ประวัติการแจกงาน (Distribution Report)</h3>
+                        <h3 className="text-xl font-bold text-gray-800">ประวัติการแจกงานและดึงคืน (Distribution & Reclaim Report)</h3>
                     </div>
                     <div className="flex items-center gap-4">
                         {isSystemAdmin && (
@@ -589,35 +624,65 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                     </div>
                 </div>
 
-                {/* Batch Export & Company Filter */}
-                <div className="px-6 py-4 border-b bg-white flex flex-wrap gap-4 items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-blue-800">ส่งออก (Batch) :</span>
-                        <input type="date" className="p-1 border rounded text-sm w-36 bg-gray-50" value={batchStartDate} onChange={(e) => setBatchStartDate(e.target.value)} />
-                        <span className="text-sm text-gray-500">ถึง</span>
-                        <input type="date" className="p-1 border rounded text-sm w-36 bg-gray-50" value={batchEndDate} onChange={(e) => setBatchEndDate(e.target.value)} />
-                        <select className="p-1 border rounded text-sm w-32 bg-gray-50" value={batchType} onChange={(e) => setBatchType(e.target.value)}>
-                            <option value="all">ทุกประเภท</option>
-                            <option value="distribution">เฉพาะแจก</option>
-                            <option value="reclaim">เฉพาะดึงคืน</option>
-                        </select>
-                        <select className="p-1 border rounded text-sm w-36 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as 'detailed' | 'summary')}>
-                            <option value="detailed">แบบละเอียด</option>
-                            <option value="summary">แบบสรุปตามรอบ</option>
-                        </select>
-                        <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-3 py-1 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
-                            {isBatchExporting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />} โหลด
-                        </button>
+                {/* Filter Grid UI */}
+                <div className="px-6 py-4 border-b bg-white">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-base font-semibold text-blue-800">ตัวกรอง / ดาวน์โหลด (Filter / Batch)</span>
+                        {isSuperAdmin && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-gray-700">เลือกบริษัท:</span>
+                                <select value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)} className="p-1.5 border rounded text-sm w-48 bg-gray-50">
+                                    <option value="all">ทุกบริษัท (All)</option>
+                                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
+                        )}
                     </div>
-                    {isSuperAdmin && (
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-700">เลือกบริษัท:</span>
-                            <select value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)} className="p-1 border rounded text-sm w-48 bg-gray-50">
-                                <option value="all">ทุกบริษัท (All)</option>
-                                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">วันที่เริ่มต้น</span>
+                            <input type="date" className="p-1.5 border rounded text-sm bg-gray-50" value={batchStartDate} onChange={(e) => setBatchStartDate(e.target.value)} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">วันที่สิ้นสุด</span>
+                            <input type="date" className="p-1.5 border rounded text-sm bg-gray-50" value={batchEndDate} onChange={(e) => setBatchEndDate(e.target.value)} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">ประเภท</span>
+                            <select className="p-1.5 border rounded text-sm bg-gray-50" value={batchType} onChange={(e) => setBatchType(e.target.value)}>
+                                <option value="all">ทุกประเภท</option>
+                                <option value="distribution">แจกจ่ายลูกค้า</option>
+                                <option value="reclaim">ดึงคืน / โอนย้าย</option>
                             </select>
                         </div>
-                    )}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">ตะกร้าต้นทาง</span>
+                            <select className="p-1.5 border rounded text-sm bg-gray-50" value={filterBasket} onChange={(e) => setFilterBasket(e.target.value)}>
+                                <option value="all">ทุกตะกร้า</option>
+                                {baskets.map(b => <option key={b.id} value={b.basket_key}>{b.basket_name} ({b.basket_key})</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">Session Tag</span>
+                            <select className="p-1.5 border rounded text-sm bg-gray-50" value={filterTag} onChange={(e) => setFilterTag(e.target.value)}>
+                                <option value="all">ทุกแท็ก</option>
+                                {tags.map((t, idx) => <option key={idx} value={t}>{t}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3 mt-4 justify-end">
+                        <button onClick={resetFilters} className="px-4 py-1.5 rounded text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 flex items-center transition-colors">
+                            รีเซ็ตตัวกรอง
+                        </button>
+                        <select className="p-1.5 border rounded text-sm w-48 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as 'detailed' | 'summary')}>
+                            <option value="detailed">แบบละเอียด (Detailed)</option>
+                            <option value="summary">แบบสรุปย่อ (Summary)</option>
+                        </select>
+                        <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-4 py-1.5 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
+                            {isBatchExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} ส่งออกไฟล์
+                        </button>
+                    </div>
                 </div>
 
                 <div className="p-6 overflow-y-auto flex-1 bg-gray-50/50">
@@ -645,9 +710,16 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                         🏢 {session.company_name}
                                                     </span>
                                                 )}
-                                                <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
-                                                    {session.distribution_mode}
-                                                </span>
+                                                {(() => {
+                                                      const isReclaim = session.distribution_mode?.includes('Reclaim') || session.distribution_mode?.includes('Transfer');
+                                                      const tagText = isReclaim ? `ดึงคืน (${session.distribution_mode})` : `แจก (${session.distribution_mode})`;
+                                                      const tagColor = isReclaim ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200';
+                                                      return (
+                                                          <span className={`text-xs px-2 py-0.5 rounded-full border ${tagColor}`}>
+                                                              {tagText}
+                                                          </span>
+                                                      );
+                                                  })()}
                                                 {session.source_basket && (
                                                     <span className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full border border-indigo-200">
                                                         ตะกร้า: {session.source_basket}
@@ -663,13 +735,19 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                 {editingTagSessionId === session.id ? (
                                                     <div className="flex items-center gap-2 ml-2">
                                                         <input 
-                                                            type="text" 
-                                                            className="text-xs border border-blue-300 rounded px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-500 min-w-[150px]"
-                                                            value={editTagValue}
-                                                            onChange={(e) => setEditTagValue(e.target.value)}
-                                                            placeholder="ระบุ Session Tag"
-                                                            autoFocus
-                                                        />
+                                                              type="text" 
+                                                              list="reportTagsList"
+                                                              className="text-xs border border-blue-300 rounded px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-500 min-w-[150px]"
+                                                              value={editTagValue}
+                                                              onChange={(e) => setEditTagValue(e.target.value)}
+                                                              placeholder="ระบุ Session Tag"
+                                                              autoFocus
+                                                          />
+                                                          <datalist id="reportTagsList">
+                                                              {tags.map(tag => (
+                                                                  <option key={tag} value={tag} />
+                                                              ))}
+                                                          </datalist>
                                                         <button 
                                                             onClick={() => handleSaveSessionTag(session.id)}
                                                             className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded hover:bg-blue-700"
