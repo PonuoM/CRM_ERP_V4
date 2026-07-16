@@ -789,11 +789,6 @@ function handleReclaimCustomers($pdo, $companyId)
             $pdo->prepare("DELETE FROM distribution_sessions WHERE id = ?")->execute([$sessionId]);
         }
 
-        if ($totalTransferred > 0) {
-            $pdo->prepare("UPDATE distribution_sessions SET total_customers = ? WHERE id = ?")->execute([$totalTransferred, $sessionId]);
-        } else {
-            $pdo->prepare("DELETE FROM distribution_sessions WHERE id = ?")->execute([$sessionId]);
-        }
 
         $pdo->commit();
 
