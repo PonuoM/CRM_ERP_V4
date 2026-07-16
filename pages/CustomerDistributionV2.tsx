@@ -1052,6 +1052,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
             setMessage({ type: 'success', text: isRetry ? `แจกเพิ่มสำเร็จ ${totalSuccess} รายการ` : `แจกงานสำเร็จ ${totalSuccess} รายการ` });
             setSummaryModalOpen(true);
+            fetchSessionTags();
 
         } catch (error) {
             console.error('Distribution failed:', error);
@@ -1516,6 +1517,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     })
                     .join(', ');
 
+                fetchSessionTags();
                 setBulkResultModal({
                     isOpen: true,
                     title: 'สรุปผลการโอนลูกค้า',
@@ -1566,6 +1568,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     }
                 }
 
+                fetchSessionTags();
                 setBulkResultModal({
                     isOpen: true,
                     title: 'สรุปผลการดึงคืนลูกค้า',

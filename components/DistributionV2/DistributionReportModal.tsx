@@ -149,6 +149,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                 // Update local state
                 setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, session_tag: editTagValue } : s));
                 setEditingTagSessionId(null);
+                // Refresh tag options for datalist
+                fetchOptions();
             } else {
                 setMessage({ type: 'error', text: data.error || 'Failed to update session tag' });
             }
