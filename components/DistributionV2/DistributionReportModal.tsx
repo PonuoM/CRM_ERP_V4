@@ -189,12 +189,16 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         let modeText = row.distribution_mode;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
                         
+                        let basketText = row.previous_basket_name 
+                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
+                            : (row.previous_basket_key || '-');
+
                         let rowData = [
                             `Session #${row.session_id}`,
                             row.created_at,
                             modeText,
                             `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
-                            row.previous_basket_key || '-',
+                            basketText,
                             row.count
                         ];
                         if (isSuperAdmin) {
@@ -225,6 +229,10 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         let modeText = row.distribution_mode;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
 
+                        let basketText = row.previous_basket_name 
+                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
+                            : (row.previous_basket_key || '-');
+
                         let rowData = [
                             `Session #${row.session_id}`,
                             row.created_at,
@@ -234,7 +242,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                             row.customer_code || '-',
                             row.customer_name || '-',
                             row.customer_phone || '-',
-                            row.previous_basket_key || '-'
+                            basketText
                         ];
                         if (isSuperAdmin) {
                             rowData.unshift(row.company_name || '-');
