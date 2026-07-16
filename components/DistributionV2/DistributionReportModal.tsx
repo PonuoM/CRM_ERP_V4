@@ -632,6 +632,11 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                         <div className="flex-1">
                                             <div className="font-bold text-gray-800 flex items-center gap-2 flex-wrap">
                                                 <span>Session #{session.id}</span>
+                                                {isSuperAdmin && session.company_name && selectedCompany === 'all' && (
+                                                    <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
+                                                        🏢 {session.company_name}
+                                                    </span>
+                                                )}
                                                 <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
                                                     {session.distribution_mode}
                                                 </span>
