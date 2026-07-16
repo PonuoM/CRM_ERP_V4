@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import AutocompleteInput from './AutocompleteInput';
 import { Loader2, Download, History, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { apiFetch } from '../../services/api';
@@ -734,20 +735,13 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                 {/* Session Tag Inline Edit */}
                                                 {editingTagSessionId === session.id ? (
                                                     <div className="flex items-center gap-2 ml-2">
-                                                        <input 
-                                                              type="text" 
-                                                              list="reportTagsList"
-                                                              className="text-xs border border-blue-300 rounded px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-500 min-w-[150px]"
+                                                        <AutocompleteInput
                                                               value={editTagValue}
-                                                              onChange={(e) => setEditTagValue(e.target.value)}
-                                                              placeholder="ระบุ Session Tag"
+                                                              onChange={setEditTagValue}
+                                                              options={tags}
+                                                              className="min-w-[200px]"
                                                               autoFocus
                                                           />
-                                                          <datalist id="reportTagsList">
-                                                              {tags.map(tag => (
-                                                                  <option key={tag} value={tag} />
-                                                              ))}
-                                                          </datalist>
                                                         <button 
                                                             onClick={() => handleSaveSessionTag(session.id)}
                                                             className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded hover:bg-blue-700"

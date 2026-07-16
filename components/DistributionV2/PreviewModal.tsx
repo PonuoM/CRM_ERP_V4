@@ -1,4 +1,5 @@
 import React from 'react';
+import AutocompleteInput from './AutocompleteInput';
 import { Loader2, Check, Scale, Zap, TrendingUp, Minus } from 'lucide-react';
 
 interface PreviewModalProps {
@@ -103,19 +104,12 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
                 {/* Session Tag */}
                 <div className="mb-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                     <label className="block text-sm font-semibold text-gray-700 mb-2">ป้ายกำกับเซสชั่น (Session Tag) (ไม่บังคับ)</label>
-                    <input 
-                        type="text" 
-                        list="sessionTags"
-                        className="w-full border-gray-300 rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500" 
-                        placeholder="เช่น แจกรายชื่อต้นเดือน, ลูกค้าเก่าปี 2024..."
+                    <AutocompleteInput
                         value={sessionTag}
-                        onChange={(e) => setSessionTag(e.target.value)}
+                        onChange={setSessionTag}
+                        options={sessionTagsList}
+                        className="w-full"
                     />
-                    <datalist id="sessionTags">
-                        {sessionTagsList.map(tag => (
-                            <option key={tag} value={tag} />
-                        ))}
-                    </datalist>
                     <p className="text-xs text-gray-500 mt-2">พิมพ์เพื่อเพิ่ม Tag ใหม่ หรือเลือกจาก Tag เดิมที่เคยใช้ เพื่อช่วยให้ค้นหาง่ายขึ้นตอนดึงรายงาน</p>
                 </div>
 
