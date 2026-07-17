@@ -3,10 +3,9 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
-require_once '../config.php';
-require_once '../auth_check.php';
-require_once '../audit_logger.php';
+require_once __DIR__ . '/../config.php';
 
+$pdo = db_connect();
 $action = $_GET['action'] ?? '';
 $companyId = $_GET['companyId'] ?? '';
 
