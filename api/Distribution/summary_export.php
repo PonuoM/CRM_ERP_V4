@@ -7,6 +7,9 @@ $pdo = db_connect();
 $companyId = $_GET['companyId'] ?? 1;
 $startDate = $_GET['start_date'] ?? null;
 $endDate = $_GET['end_date'] ?? null;
+$type = $_GET['type'] ?? 'all';
+$basketKey = $_GET['basket_key'] ?? 'all';
+$sessionTag = $_GET['session_tag'] ?? '';
 
 if (!$startDate || !$endDate) {
     http_response_code(400);
@@ -58,6 +61,36 @@ try {
         }
     }
 
+
+    $filterParams = [];
+    $typeFilter = "";
+    if ($type === 'distribution') {
+        $typeFilter = " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
+    } else if ($type === 'reclaim') {
+        $typeFilter = " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
+    }
+
+    $basketFilter = "";
+    if ($basketKey && $basketKey !== 'all') {
+        $basketFilter = " AND EXISTS (SELECT 1 FROM distribution_session_details _dsd WHERE _dsd.session_id = ds.id AND _dsd.previous_basket_key = ?) ";
+        $filterParams[] = $basketKey;
+    }
+
+    $tagFilter = "";
+    if ($sessionTag && $sessionTag !== 'all' && $sessionTag !== '') {
+        // Find tag ID matching this name
+        $stmtTag = $pdo->prepare("SELECT id FROM distribution_tags WHERE tag_name LIKE ? LIMIT 1");
+        $stmtTag->execute(["%$sessionTag%"]);
+        $tagRow = $stmtTag->fetch(PDO::FETCH_ASSOC);
+        if ($tagRow) {
+            $tagFilter = " AND ds.tag_id = ? ";
+            $filterParams[] = $tagRow['id'];
+        } else {
+            // No tag match, guarantee empty result
+            $tagFilter = " AND 1=0 ";
+        }
+    }
+
     // 3. Fetch Received (Distributed to Agents)
     // dsd.agent_id is the receiver.
     // ds.source_basket is the pool basket it came from (we map this to dashboard basket)
@@ -72,9 +105,10 @@ try {
           AND ds.distribution_mode NOT IN ('Bulk Reclaim', 'Bulk Transfer', 'Undo Partial', 'Undo Full')
           AND ds.session_status = 'completed'
           AND ds.created_at BETWEEN ? AND ?
+          $typeFilter $basketFilter $tagFilter
         GROUP BY dsd.agent_id, ds.source_basket
     ");
-    $stmtReceived->execute([$companyId, $startDate, $endDate]);
+    $stmtReceived->execute(array_merge([$companyId, $startDate, $endDate], $filterParams));
     $receivedData = $stmtReceived->fetchAll(PDO::FETCH_ASSOC);
 
     // 4. Fetch Reclaimed (Pulled from Agents)
@@ -92,9 +126,10 @@ try {
           AND ds.distribution_mode = 'Bulk Reclaim'
           AND ds.session_status = 'completed'
           AND ds.created_at BETWEEN ? AND ?
+          $typeFilter $basketFilter $tagFilter
         GROUP BY dsd.agent_id, dsd.previous_basket_key
     ");
-    $stmtReclaimed->execute([$companyId, $startDate, $endDate]);
+    $stmtReclaimed->execute(array_merge([$companyId, $startDate, $endDate], $filterParams));
     $reclaimedData = $stmtReclaimed->fetchAll(PDO::FETCH_ASSOC);
 
     // 5. Build Pivot Matrix

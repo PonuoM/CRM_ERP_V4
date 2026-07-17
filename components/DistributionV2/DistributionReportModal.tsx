@@ -164,7 +164,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const handleExportSummary = async () => {
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`Distribution/summary_export.php?companyId=${selectedCompany}&start_date=${batchStartDate}&end_date=${batchEndDate}`);
+            const data = await apiFetch(`Distribution/summary_export.php?companyId=${selectedCompany}&start_date=${batchStartDate}&end_date=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag}`);
             if (data.ok && data.agents && data.agents.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('CEO Summary Pivot');
@@ -269,6 +269,10 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     };
 
     const handleBatchExport = async () => {
+        if (batchExportMode === 'ceo_pivot' as any) {
+            handleExportSummary();
+            return;
+        }
         setIsBatchExporting(true);
         try {
             const data = await apiFetch(`Distribution/index.php?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag}`);
@@ -796,9 +800,6 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         <button onClick={resetFilters} className="px-4 py-1.5 rounded text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 flex items-center transition-colors">
                             รีเซ็ตตัวกรอง
                         </button>
-                        <button onClick={handleExportSummary} disabled={isBatchExporting} className={`px-4 py-1.5 rounded text-sm text-indigo-700 bg-indigo-50 hover:bg-indigo-100 flex items-center transition-colors font-medium ${isBatchExporting ? 'opacity-50' : ''}`}>
-                            {isBatchExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} CEO Pivot Summary
-                        </button>
                         <select className="p-1.5 border rounded text-sm w-64 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as any)}>
                             <option value="customer">1. Customer level (รายชื่อลูกค้า)</option>
                             <option value="user">2. User level (พนักงานรายรอบ)</option>
@@ -806,6 +807,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                             <option value="agent_overall">4. Agent Overall (สรุปยอดพนักงาน)</option>
                             <option value="basket_overall">5. Source Basket (สรุปตามตะกร้า)</option>
                             <option value="daily_summary">6. Daily Summary (สรุปยอดรายวัน)</option>
+                            <option value="ceo_pivot">7. CEO Pivot Summary (แบบตารางไขว้)</option>
                         </select>
                         <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-4 py-1.5 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
                             {isBatchExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} ส่งออกไฟล์
