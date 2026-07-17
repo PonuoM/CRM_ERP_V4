@@ -1,5 +1,5 @@
 import React from 'react';
-import AutocompleteInput from './AutocompleteInput';
+import SessionTagSelect from './SessionTagSelect';
 import { Loader2, Check, Scale, Zap, TrendingUp, Minus } from 'lucide-react';
 
 interface PreviewModalProps {
@@ -13,9 +13,9 @@ interface PreviewModalProps {
     preview: any[];
     distributing: boolean;
     handleExecuteDistribution: () => void;
-    sessionTag: string;
-    setSessionTag: (val: string) => void;
-    sessionTagsList: string[];
+    sessionTag: number | '';
+    setSessionTag: (val: number | '') => void;
+    sessionTagsList: any[];
 }
 
 const PreviewModal: React.FC<PreviewModalProps> = ({
@@ -104,7 +104,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
                 {/* Session Tag */}
                 <div className="mb-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                     <label className="block text-sm font-semibold text-gray-700 mb-2">ป้ายกำกับเซสชั่น (Session Tag) (ไม่บังคับ)</label>
-                    <AutocompleteInput
+                    <SessionTagSelect
                         value={sessionTag}
                         onChange={setSessionTag}
                         options={sessionTagsList}

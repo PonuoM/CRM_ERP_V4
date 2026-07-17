@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import AutocompleteInput from './AutocompleteInput';
+import SessionTagSelect from './SessionTagSelect';
 import { Loader2, Download, History, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { apiFetch } from '../../services/api';
@@ -69,9 +69,9 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     
     
     const [filterBasket, setFilterBasket] = useState<string>('all');
-    const [filterTag, setFilterTag] = useState<string>('all');
+    const [filterTag, setFilterTag] = useState<number | 'all'>('all');
     const [baskets, setBaskets] = useState<any[]>([]);
-    const [tags, setTags] = useState<string[]>([]);
+    const [tags, setTags] = useState<any[]>([]);
 // Undo State
     const [undoTarget, setUndoTarget] = useState<number | null>(null);
     const [undoMode, setUndoMode] = useState<'safe' | 'force'>('safe');
@@ -85,7 +85,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     
     // Tag Edit State
     const [editingTagSessionId, setEditingTagSessionId] = useState<number | null>(null);
-    const [editTagValue, setEditTagValue] = useState<string>('');
+    const [editTagValue, setEditTagValue] = useState<number | ''>('');
 
     const toggleExpand = (sessionId: number) => {
         setExpandedSessions(prev => {
@@ -749,12 +749,11 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                 {/* Session Tag Inline Edit */}
                                                 {editingTagSessionId === session.id ? (
                                                     <div className="flex items-center gap-2 ml-2">
-                                                        <AutocompleteInput
+                                                        <SessionTagSelect
                                                               value={editTagValue}
                                                               onChange={setEditTagValue}
                                                               options={tags}
                                                               className="min-w-[200px]"
-                                                              autoFocus
                                                           />
                                                         <button 
                                                             onClick={() => handleSaveSessionTag(session.id)}

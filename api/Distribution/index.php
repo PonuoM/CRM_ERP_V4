@@ -210,9 +210,9 @@ function handleDistribute($pdo, $companyId)
             $distributionMode = $input['distribution_mode'] ?? 'Unknown';
             $minCallMinutes = isset($input['min_call_minutes']) ? (int)$input['min_call_minutes'] : null;
             $agentSnapshot = isset($input['agent_snapshot']) ? json_encode($input['agent_snapshot'], JSON_UNESCAPED_UNICODE) : null;
-            $sessionTag = isset($input['session_tag']) && trim($input['session_tag']) !== '' ? trim($input['session_tag']) : null;
+            $tagId = isset($input['tag_id']) && $input['tag_id'] !== '' ? (int)$input['tag_id'] : null;
             
-            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, session_tag) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?)");
+            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, tag_id) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?)");
             $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $sessionTag]);
             $sessionId = $pdo->lastInsertId();
 
@@ -317,9 +317,9 @@ function handleGetSessions($pdo, $companyId)
     $endDate = $_GET['endDate'] ?? null;
     $type = $_GET['type'] ?? 'all';
     $basketKey = $_GET['basket_key'] ?? 'all';
-    $sessionTag = $_GET['session_tag'] ?? 'all';
+    $tagId = $_GET['tag_id'] ?? 'all';
     $basketKey = $_GET['basket_key'] ?? '';
-    $sessionTag = $_GET['session_tag'] ?? '';
+    $tagId = $_GET['tag_id'] ?? '';
 
     $whereClauses = [];
     $params = [];
@@ -349,8 +349,8 @@ function handleGetSessions($pdo, $companyId)
     }
 
     if ($sessionTag && $sessionTag !== 'all') {
-        $whereClauses[] = "ds.session_tag = ?";
-        $params[] = $sessionTag;
+        $whereClauses[] = "ds.tag_id = ?";
+        $params[] = $tagId;
     }
 
     $whereSql = "";
@@ -437,14 +437,14 @@ function handleGetSessionTags($pdo, $companyId) {
     }
 
     if ($companyId === 'all') {
-        $stmt = $pdo->prepare("SELECT DISTINCT session_tag FROM distribution_sessions WHERE session_tag IS NOT NULL AND session_tag != '' ORDER BY session_tag ASC");
+        $stmt = $pdo->prepare("SELECT id, tag_name as session_tag, color FROM distribution_tags ORDER BY tag_name ASC");
         $stmt->execute();
     } else {
-        $stmt = $pdo->prepare("SELECT DISTINCT session_tag FROM distribution_sessions WHERE session_tag IS NOT NULL AND session_tag != '' AND company_id = ? ORDER BY session_tag ASC");
+        $stmt = $pdo->prepare("SELECT id, tag_name as session_tag, color FROM distribution_tags WHERE company_id = ? ORDER BY tag_name ASC");
         $stmt->execute([$companyId]);
     }
     
-    $tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $tags = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['ok' => true, 'tags' => $tags]);
 }
 
@@ -745,7 +745,7 @@ function handleBatchExport($pdo, $companyId)
     $endDate = $_GET['endDate'] ?? null;
     $type = $_GET['type'] ?? 'all';
     $basketKey = $_GET['basket_key'] ?? 'all';
-    $sessionTag = $_GET['session_tag'] ?? 'all';
+    $tagId = $_GET['tag_id'] ?? 'all';
 
     if (!$startDate || !$endDate) {
         http_response_code(400);
@@ -778,8 +778,8 @@ function handleBatchExport($pdo, $companyId)
     }
 
     if ($sessionTag && $sessionTag !== 'all') {
-        $typeFilter .= " AND ds.session_tag = ? ";
-        $params[] = $sessionTag;
+        $typeFilter .= " AND ds.tag_id = ? ";
+        $params[] = $tagId;
     }
 
     $sql = "
@@ -837,7 +837,7 @@ function handleUpdateSessionTag($pdo, $companyId)
 
     $input = json_decode(file_get_contents('php://input'), true);
     $sessionId = $input['session_id'] ?? null;
-    $sessionTag = $input['session_tag'] ?? '';
+    $tagId = isset($input['tag_id']) && $input['tag_id'] !== '' ? (int)$input['tag_id'] : null;
 
     if (!$sessionId) {
         http_response_code(400);
@@ -846,11 +846,11 @@ function handleUpdateSessionTag($pdo, $companyId)
     }
 
     if ($companyId === 'all') {
-        $stmt = $pdo->prepare("UPDATE distribution_sessions SET session_tag = ? WHERE id = ?");
-        $result = $stmt->execute([$sessionTag, $sessionId]);
+        $stmt = $pdo->prepare("UPDATE distribution_sessions SET tag_id = ? WHERE id = ?");
+        $result = $stmt->execute([$tagId, $sessionId]);
     } else {
-        $stmt = $pdo->prepare("UPDATE distribution_sessions SET session_tag = ? WHERE id = ? AND company_id = ?");
-        $result = $stmt->execute([$sessionTag, $sessionId, $companyId]);
+        $stmt = $pdo->prepare("UPDATE distribution_sessions SET tag_id = ? WHERE id = ? AND company_id = ?");
+        $result = $stmt->execute([$tagId, $sessionId, $companyId]);
     }
 
     if ($result) {

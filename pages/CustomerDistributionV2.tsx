@@ -17,6 +17,8 @@ import ExcelJS from 'exceljs';
 import { calculateQuotas } from '../utils/distributionLogic';
 import ConfirmModal from '../components/DistributionV2/ConfirmModal';
 import HistoryModal from '../components/DistributionV2/HistoryModal';
+import SessionTagSelect from '../components/DistributionV2/SessionTagSelect';
+import TagManagementModal from '../components/DistributionV2/TagManagementModal';
 import BulkResultModal from '../components/DistributionV2/BulkResultModal';
 import SummaryModal from '../components/DistributionV2/SummaryModal';
 import ResetModal from '../components/DistributionV2/ResetModal';
@@ -59,8 +61,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [distributionExportRange, setDistributionExportRange] = useState<DateRange>({ start: '', end: '' });
     const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
-    const [sessionTag, setSessionTag] = useState<string>('');
-    const [sessionTagsList, setSessionTagsList] = useState<string[]>([]);
+    const [sessionTag, setSessionTag] = useState<number | ''>('');
+    const [sessionTagsList, setSessionTagsList] = useState<any[]>([]);
 
     // UI state
     const [loading, setLoading] = useState(true);
@@ -176,6 +178,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // History Modal State
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
+    const [tagManagementModalOpen, setTagManagementModalOpen] = useState(false);
     const [isReportModalOpen, setReportModalOpen] = useState(false);
     const [isCronLogModalOpen, setCronLogModalOpen] = useState(false);
     const [historyData, setHistoryData] = useState<AssignHistory[]>([]);
@@ -991,7 +994,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         min_call_minutes: hasCallFilterApplied ? parseInt(callThresholdMinutes) : null,
                         strict_duplicate_check: strictDuplicateCheck,
                         agent_snapshot: agentSnapshot,
-                        session_tag: sessionTag
+                        tag_id: sessionTag === '' ? null : sessionTag
                     })
                 }
             );
@@ -1507,7 +1510,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         body: JSON.stringify({ 
                             transfers,
                             transfer_mode: bulkFilterType,
-                            session_tag: sessionTag 
+                            tag_id: sessionTag === '' ? null : sessionTag 
                         })
                     }
                 );
@@ -1555,7 +1558,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             reclaim_destination: bulkReclaimDestinationType,
                             force_basket_key: bulkReclaimDestinationType === 'force' ? bulkForceBasketKey : null,
                             triggered_by: currentUser?.id,
-                            session_tag: sessionTag
+                            tag_id: sessionTag === '' ? null : sessionTag
                         })
                     }
                 );
@@ -1650,7 +1653,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         agent_id: reclaimingAgent.id,
                         baskets: payloadBaskets,
                         reclaim_mode: unassignedReclaimMode,
-                        session_tag: sessionTag
+                        tag_id: sessionTag === '' ? null : sessionTag
                     })
                 }
             );
