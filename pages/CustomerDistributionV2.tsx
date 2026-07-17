@@ -2074,6 +2074,14 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             <ConfirmModal modalState={confirmModal} onClose={closeConfirmModal} />
 
             {/* History Modal */}
+
+            <TagManagementModal
+                isOpen={tagManagementModalOpen}
+                onClose={() => setTagManagementModalOpen(false)}
+                companyId={currentUser?.companyId || ''}
+                onTagsUpdated={fetchSessionTags}
+            />
+
             <HistoryModal 
                 isOpen={historyModalOpen}
                 onClose={() => setHistoryModalOpen(false)}
