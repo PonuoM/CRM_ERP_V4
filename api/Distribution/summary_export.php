@@ -22,12 +22,12 @@ if (strpos($endDate, ' ') === false) {
 try {
     // 1. Fetch active agents (Telesale and Supervisors)
     $stmtAgents = $pdo->prepare("
-        SELECT id as agent_id, name as agent_name 
+        SELECT id as agent_id, CONCAT(first_name, ' ', last_name) as agent_name 
         FROM users 
         WHERE company_id = ? 
           AND status = 'active' 
           AND (LOWER(role) = 'telesale' OR LOWER(role) LIKE '%supervisor%')
-        ORDER BY name ASC
+        ORDER BY first_name ASC, last_name ASC
     ");
     $stmtAgents->execute([$companyId]);
     $agents = $stmtAgents->fetchAll(PDO::FETCH_ASSOC);
