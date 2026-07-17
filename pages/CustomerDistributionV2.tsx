@@ -444,7 +444,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             const calledFilterParams = actualCalledFilterDays ? `&called_filter_days=${actualCalledFilterDays}&called_filter_mode=${calledFilterMode}` : '';
 
             const response = await apiFetch(
-                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=5000${calledFilterParams}`
+                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=50000${calledFilterParams}`
             );
             const data = response?.data || [];
             const mapped = data.map((r: any) => mapCustomerFromApi(r));
@@ -596,20 +596,23 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         // ═══════════════════════════════════════════
         let conflictMap: Record<string, number[]> = {};
         try {
-            const customerIds = customerPool
-                .map(c => c.customer_id?.toString() || c.id)
-                .slice(0, 5000); // limit to 5000
+            const customerIds = customerPool.map(c => c.customer_id?.toString() || c.id);
 
             if (customerIds.length > 0) {
-                const res = await apiFetch(
-                    `Distribution/index.php?action=get_assign_checks&companyId=${currentUser?.companyId}`,
-                    {
-                        method: 'POST',
-                        body: JSON.stringify({ customer_ids: customerIds })
+                // Chunk the customerIds to prevent API payload/PDO limits
+                const CHUNK_SIZE = 3000;
+                for (let i = 0; i < customerIds.length; i += CHUNK_SIZE) {
+                    const chunk = customerIds.slice(i, i + CHUNK_SIZE);
+                    const res = await apiFetch(
+                        `Distribution/index.php?action=get_assign_checks&companyId=${currentUser?.companyId}`,
+                        {
+                            method: 'POST',
+                            body: JSON.stringify({ customer_ids: chunk })
+                        }
+                    );
+                    if (res?.ok && res.conflicts) {
+                        conflictMap = { ...conflictMap, ...res.conflicts };
                     }
-                );
-                if (res?.ok && res.conflicts) {
-                    conflictMap = res.conflicts;
                 }
             }
         } catch (e) {
