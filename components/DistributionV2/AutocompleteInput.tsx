@@ -13,7 +13,7 @@ interface AutocompleteInputProps {
 const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
     value,
     onChange,
-    options,
+    options = [],
     placeholder = 'ระบุ Session Tag',
     className = '',
     autoFocus = false
