@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getOrder, apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
-import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2, ChevronDown, ChevronRight, CornerDownRight, Calendar } from 'lucide-react';
+import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2, ChevronDown, ChevronRight, CornerDownRight, Calendar, UserCheck } from 'lucide-react';
 
 export interface StatementContext {
     statementAmount: number;
@@ -354,6 +354,29 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                     </div>
                                 </div>
                             </div>
+
+                            {/* ขายแทน (proxy sale): this order is credited to creator_id, but someone else keyed it in */}
+                            {(order.proxy_creator_id || order.proxyCreatorId) && (
+                                <div className="bg-amber-50 p-4 rounded-lg flex items-start gap-3 border border-amber-300">
+                                    <UserCheck className="text-amber-600 mt-1 flex-shrink-0" size={18} />
+                                    <div className="flex-1">
+                                        <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">ขายแทน</div>
+                                        <div className="text-sm text-gray-800">
+                                            ออเดอร์นี้เป็นยอดของ{' '}
+                                            <span className="font-semibold">{order.creator_name || `ID ${order.creator_id}`}</span>
+                                            {' '}แต่ลงให้โดย{' '}
+                                            <span className="font-semibold">
+                                                {order.proxy_creator_name || order.proxyCreatorName || `ID ${order.proxy_creator_id || order.proxyCreatorId}`}
+                                            </span>
+                                        </div>
+                                        {(order.proxy_reason || order.proxyReason) && (
+                                            <div className="text-sm text-gray-600 mt-1">
+                                                เหตุผล: {order.proxy_reason || order.proxyReason}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Two-Column: Customer Info & Shipping Address */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

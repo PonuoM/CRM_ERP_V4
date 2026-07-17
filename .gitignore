@@ -125,3 +125,5 @@ MCP SQL SERVER_Company*.md
 nul
 
 !api/tests/test_monthly_cron.php
+# Playwright MCP throwaway snapshots
+.playwright-mcp/

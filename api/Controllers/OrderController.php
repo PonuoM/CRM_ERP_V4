@@ -107,7 +107,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $selectCols .= ', o.shipping_cost, o.bill_discount, o.coupon_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
-                               o.bank_account_id, o.transfer_date,
+                               o.bank_account_id, o.transfer_date, o.proxy_creator_id, o.proxy_reason,
                                c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone, c.phone as phone,
                                c.street as customer_street, c.subdistrict as customer_subdistrict, c.district as customer_district,
                                c.province as customer_province, c.postal_code as customer_postal_code';
@@ -1520,7 +1520,16 @@ function handle_orders(PDO $pdo, ?string $id): void
                     return;
                 }
 
-                $creatorCheck = $pdo->prepare('SELECT id, status FROM users WHERE id = ?');
+                $creatorCheck = $pdo->prepare('
+                    SELECT u.id, u.status, u.company_id, r.code AS role_code
+                    FROM users u
+                    LEFT JOIN roles r ON (
+                        (u.role_id IS NOT NULL AND r.id = u.role_id) OR
+                        (u.role_id IS NULL AND (r.name = u.role OR r.code = u.role))
+                    )
+                    WHERE u.id = ?
+                    LIMIT 1
+                ');
                 $creatorCheck->execute([$creatorId]);
                 $creatorData = $creatorCheck->fetch(PDO::FETCH_ASSOC);
                 if (!$creatorData) {
@@ -1533,6 +1542,43 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $pdo->rollBack();
                     json_response(['error' => 'CREATOR_USER_INACTIVE', 'message' => 'Creator user is not active: ' . $creatorId], 400);
                     return;
+                }
+
+                // 🛡️ PROXY SALE (ขายแทน) — see migrations/064_add_proxy_sale_to_orders.sql
+                // creator_id decides whose sales and commission this order counts toward, and it
+                // arrives from the client. So filing an order under anyone but yourself requires
+                // orders.proxy_sale.use, and the real author is stamped from the auth token rather
+                // than the payload — a proxy sale can never be pinned on the wrong person.
+                // core/bootstrap.php runs validate_auth() for the orders resource, so a request
+                // this far always carries a live token and $authUser resolves.
+                $authUser = get_authenticated_user($pdo);
+                $proxyCreatorId = null;
+                $proxyReason = null;
+
+                if ($authUser && (int) $authUser['id'] !== (int) $creatorId) {
+                    $actorId = (int) $authUser['id'];
+
+                    if (!user_has_permission($pdo, $actorId, 'orders.proxy_sale', 'use')) {
+                        $pdo->rollBack();
+                        json_response(['error' => 'PROXY_SALE_FORBIDDEN', 'message' => 'ไม่มีสิทธิ์ลงออเดอร์แทนผู้อื่น'], 403);
+                        return;
+                    }
+
+                    if (!in_array($creatorData['role_code'] ?? '', ['telesale', 'supervisor_telesale'], true)) {
+                        $pdo->rollBack();
+                        json_response(['error' => 'PROXY_SALE_INVALID_TARGET', 'message' => 'ขายแทนได้เฉพาะ Telesale และ Supervisor Telesale เท่านั้น'], 400);
+                        return;
+                    }
+
+                    if ((int) $creatorData['company_id'] !== (int) ($authUser['company_id'] ?? 0)) {
+                        $pdo->rollBack();
+                        json_response(['error' => 'PROXY_SALE_CROSS_COMPANY', 'message' => 'ขายแทนข้ามบริษัทไม่ได้'], 400);
+                        return;
+                    }
+
+                    $proxyCreatorId = $actorId;
+                    $reasonInput = trim((string) ($in['proxyReason'] ?? ''));
+                    $proxyReason = $reasonInput !== '' ? mb_substr($reasonInput, 0, 255) : null;
                 }
 
 
@@ -1628,6 +1674,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $hasTransferDate = in_array('transfer_date', $existingColumns);
                 $hasShippingProvider = in_array('shipping_provider', $existingColumns);
                 $hasBasketKeyAtSale = in_array('basket_key_at_sale', $existingColumns);
+                $hasProxySale = in_array('proxy_creator_id', $existingColumns);
 
                 // Fetch current_basket_key from customer for statistics
                 // Smart mapping: distribution baskets (41-45) get mapped to segment keys
@@ -1692,6 +1739,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                 // Add basket_key_at_sale if column exists
                 if ($hasBasketKeyAtSale) {
                     $columns[] = 'basket_key_at_sale';
+                }
+                if ($hasProxySale) {
+                    $columns[] = 'proxy_creator_id';
+                    $columns[] = 'proxy_reason';
                 }
 
                 foreach ($columns as $col) {
@@ -1916,6 +1967,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                 // Add basket_key_at_sale value
                 if ($hasBasketKeyAtSale) {
                     $values[] = $customerBasketKey;
+                }
+                if ($hasProxySale) {
+                    $values[] = $proxyCreatorId;
+                    $values[] = $proxyReason;
                 }
 
                 try {

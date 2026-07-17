@@ -207,6 +207,9 @@ export const mapOrderFromApi = (r: any): Order => {
         customerRefId: r.customer_ref_id ? Number(r.customer_ref_id) : undefined,
         companyId: r.company_id ?? r.companyId,
         creatorId: typeof r.creator_id === "number" ? r.creator_id : Number(r.creator_id) || 0,
+        proxyCreatorId: r.proxy_creator_id ?? r.proxyCreatorId ?? undefined,
+        proxyCreatorName: r.proxy_creator_name ?? r.proxyCreatorName ?? undefined,
+        proxyReason: r.proxy_reason ?? r.proxyReason ?? undefined,
         orderDate: r.order_date ?? r.orderDate,
         deliveryDate: r.delivery_date ?? r.deliveryDate ?? "",
         shippingAddress: {

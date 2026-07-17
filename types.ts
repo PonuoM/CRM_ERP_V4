@@ -635,6 +635,10 @@ export interface Order {
   customerRefId?: number;
   companyId: number;
   creatorId: number;
+  /** ขายแทน: who actually filed this order on behalf of creatorId (undefined = creatorId filed it themselves) */
+  proxyCreatorId?: number;
+  proxyCreatorName?: string;
+  proxyReason?: string;
   orderDate: string;
   deliveryDate: string;
   customerReceivedDate?: string;
