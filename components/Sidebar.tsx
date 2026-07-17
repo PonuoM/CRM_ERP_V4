@@ -45,6 +45,7 @@ import {
   BarChart3,
   ShoppingBag,
   Activity,
+  ExternalLink,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -65,6 +66,7 @@ type NavItem = {
   children?: NavItem[];
   allowRule?: (user: UserType) => boolean; // Optional code-level override
   group?: string; // For sorting
+  onSelect?: () => void; // Custom action instead of setActivePage (e.g. external SSO link)
 };
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -249,6 +251,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Daily Monitoring": "ติดตามรายวัน",
     "Lead Performance": "อัตราการปิดการขาย",
     "Team Appointments": "นัดหมายของทีม",
+    "Special Orders Report": "สรุปตีกลับ/ยกเลิก",
     "Sales Monitoring": "ภาพรวมทีมขาย",
     "Telesale Callstats": "ติดตามการโทร",
     "Random Employee List": "สุ่มรายชื่อพนักงาน",
@@ -273,6 +276,26 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Lead Performance", icon: BarChart2, key: "monitor.lead_performance" },
         { label: "Team Appointments", icon: Calendar, key: "monitor.team_appointments" },
         { label: "Distribution Dashboard", icon: Activity, key: "nav.distribution_dashboard" },
+        { label: "Special Orders Report", icon: BarChart2, key: "reports.special_orders" },
+        {
+          label: "รายงาน Dashboard",
+          icon: ExternalLink,
+          // Role whitelist mirrors the Dashboard's own login gate
+          // (Admin Control / Supervisor Telesale / Telesale / Admin Page); SuperAdmin sees everything.
+          allowRule: (u: UserType) => [
+            UserRole.AdminControl,
+            UserRole.Supervisor,
+            UserRole.Telesale,
+            UserRole.Admin,
+            UserRole.SuperAdmin,
+          ].includes(u.role),
+          onSelect: () => {
+            const token = localStorage.getItem("authToken");
+            const base = "https://dashboard.prima49.com/";
+            const url = token ? `${base}?sso_token=${encodeURIComponent(token)}` : base;
+            window.open(url, "_blank", "noopener");
+          },
+        },
       ]
     },
     {
@@ -385,7 +408,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: BarChart2,
       children: [
         { label: "Reports", icon: BarChart2, key: "reports.reports" }, // Or nav.reports
-        { label: "Special Orders Report", icon: BarChart2, key: "reports.special_orders" },
         { label: "Export History", icon: FileUp, key: "reports.export_history" },
         { label: "Import Export", icon: FileUp, key: "reports.import_export" },
         { label: "Random Employee List", icon: Users, key: "reports.random_employee" },
@@ -427,6 +449,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Companies", icon: Briefcase, key: "data.companies" },
         { label: "JST Inventory", icon: Package, key: "data.jst_inventory" },
         { label: "Role Management", icon: Key, key: "data.roles" },
+        { label: "จัดการพื้นที่ทำงาน", icon: Settings, key: "settings.geo_company" },
         { label: "Addresses", icon: MapPin, key: "data.addresses" },
         { label: "Database Management", icon: Database, key: "data.database", allowRule: (u: UserType) => u.role === UserRole.SuperAdmin },
       ]
@@ -573,7 +596,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={child.label}
                     onClick={() => {
-                      if (child.key && child.key.startsWith('promo.')) {
+                      if (child.onSelect) {
+                        child.onSelect();
+                      } else if (child.key && child.key.startsWith('promo.')) {
                         setActivePage(child.key);
                       } else {
                         setActivePage(child.label);

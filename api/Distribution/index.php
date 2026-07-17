@@ -20,10 +20,18 @@ try {
         handleGetAssignChecks($pdo, $companyId);
     } elseif ($action === 'get_sessions') {
         handleGetSessions($pdo, $companyId);
+    } elseif ($action === 'get_session_tags') {
+        handleGetSessionTags($pdo, $companyId);
     } elseif ($action === 'undo_distribution') {
         handleUndoDistribution($pdo, $companyId);
     } elseif ($action === 'cleanup_distribution_details') {
         handleCleanupDistributionDetails($pdo, $companyId);
+    } elseif ($action === 'batch_export') {
+        handleBatchExport($pdo, $companyId);
+    } elseif ($action === 'get_cron_logs') {
+        handleGetCronLogs($pdo, $companyId);
+    } elseif ($action === 'update_session_tag') {
+        handleUpdateSessionTag($pdo, $companyId);
     } else {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid action']);
@@ -186,9 +194,10 @@ function handleDistribute($pdo, $companyId)
             $distributionMode = $input['distribution_mode'] ?? 'Unknown';
             $minCallMinutes = isset($input['min_call_minutes']) ? (int)$input['min_call_minutes'] : null;
             $agentSnapshot = isset($input['agent_snapshot']) ? json_encode($input['agent_snapshot'], JSON_UNESCAPED_UNICODE) : null;
+            $sessionTag = isset($input['session_tag']) && trim($input['session_tag']) !== '' ? trim($input['session_tag']) : null;
             
-            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)");
-            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey]);
+            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, session_tag) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?)");
+            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $sessionTag]);
             $sessionId = $pdo->lastInsertId();
 
             $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");
@@ -288,15 +297,28 @@ function handleGetSessions($pdo, $companyId)
     $limit = $_GET['limit'] ?? 50;
 
     // Fetch sessions
-    $sessionStmt = $pdo->prepare("
-        SELECT ds.*, u.first_name, u.last_name 
-        FROM distribution_sessions ds
-        LEFT JOIN users u ON ds.distributed_by = u.id
-        WHERE ds.company_id = ?
-        ORDER BY ds.created_at DESC
-        LIMIT " . (int)$limit . "
-    ");
-    $sessionStmt->execute([$companyId]);
+    if ($companyId === 'all') {
+        $sessionStmt = $pdo->prepare("
+            SELECT ds.*, u.first_name, u.last_name, c.name as company_name
+            FROM distribution_sessions ds
+            LEFT JOIN users u ON ds.distributed_by = u.id
+            LEFT JOIN companies c ON ds.company_id = c.id
+            ORDER BY ds.created_at DESC
+            LIMIT " . (int)$limit . "
+        ");
+        $sessionStmt->execute();
+    } else {
+        $sessionStmt = $pdo->prepare("
+            SELECT ds.*, u.first_name, u.last_name, c.name as company_name
+            FROM distribution_sessions ds
+            LEFT JOIN users u ON ds.distributed_by = u.id
+            LEFT JOIN companies c ON ds.company_id = c.id
+            WHERE ds.company_id = ?
+            ORDER BY ds.created_at DESC
+            LIMIT " . (int)$limit . "
+        ");
+        $sessionStmt->execute([$companyId]);
+    }
     $sessions = $sessionStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if (empty($sessions)) {
@@ -354,6 +376,25 @@ function handleGetSessions($pdo, $companyId)
     }
 
     echo json_encode(['ok' => true, 'sessions' => $sessions]);
+}
+
+function handleGetSessionTags($pdo, $companyId) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        http_response_code(405);
+        echo json_encode(['error' => 'GET required']);
+        return;
+    }
+
+    if ($companyId === 'all') {
+        $stmt = $pdo->prepare("SELECT DISTINCT session_tag FROM distribution_sessions WHERE session_tag IS NOT NULL AND session_tag != '' ORDER BY session_tag ASC");
+        $stmt->execute();
+    } else {
+        $stmt = $pdo->prepare("SELECT DISTINCT session_tag FROM distribution_sessions WHERE session_tag IS NOT NULL AND session_tag != '' AND company_id = ? ORDER BY session_tag ASC");
+        $stmt->execute([$companyId]);
+    }
+    
+    $tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    echo json_encode(['ok' => true, 'tags' => $tags]);
 }
 
 function handleUndoDistribution($pdo, $companyId) {
@@ -523,7 +564,7 @@ function handleCleanupDistributionDetails($pdo, $companyId) {
     if (strtolower($user['role']) === 'super_admin') {
         if ($targetCompanyId === 'all') {
             // Get all companies
-            $compStmt = $pdo->query("SELECT id FROM company");
+            $compStmt = $pdo->query("SELECT id FROM companies");
             $companiesToClean = $compStmt->fetchAll(PDO::FETCH_COLUMN);
         } else if (is_numeric($targetCompanyId)) {
             $companiesToClean = [(int)$targetCompanyId];
@@ -562,4 +603,192 @@ function handleCleanupDistributionDetails($pdo, $companyId) {
         'deleted_rows' => $deletedRows,
         'companies_cleaned' => $companiesToClean
     ]);
+}
+
+function handleGetCronLogs($pdo, $companyId) {
+    if (!isset($companyId) || empty($companyId)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Company ID is required']);
+        return;
+    }
+
+    // Role check logic would typically be handled by session middleware,
+    // assuming it is passed or we verify it if needed.
+
+    $limit = $_GET['limit'] ?? 20;
+
+    $stmt = $pdo->prepare("SELECT id, started_at, finished_at, status, snapshot_before, snapshot_after, error_count, transferred_count FROM cron_execution_logs WHERE status = 'success' ORDER BY id DESC LIMIT ?");
+    // Ensure limit is bound as an integer
+    $stmt->bindValue(1, (int)$limit, PDO::PARAM_INT);
+    $stmt->execute();
+    $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $results = [];
+    
+    // Get Basket Names for mapping
+    $basketNames = [];
+    $bStmt = $pdo->query("SELECT id, basket_name FROM basket_config");
+    while ($b = $bStmt->fetch(PDO::FETCH_ASSOC)) {
+        $basketNames[$b['id']] = $b['basket_name'];
+    }
+
+    foreach ($logs as $log) {
+        $before = json_decode($log['snapshot_before'], true);
+        $after = json_decode($log['snapshot_after'], true);
+        $cKey = 'company_' . $companyId;
+        
+        $cBefore = $before[$cKey] ?? [];
+        $cAfter = $after[$cKey] ?? [];
+
+        $cBeforeDist = $cBefore['distribution_pool']['__total__'] ?? 0;
+        $cAfterDist = $cAfter['distribution_pool']['__total__'] ?? 0;
+
+        $distBreakdown = [];
+        $poolKeys = array_unique(array_merge(array_keys($cBefore['distribution_pool'] ?? []), array_keys($cAfter['distribution_pool'] ?? [])));
+        foreach ($poolKeys as $pk) {
+            if ($pk === '__total__') continue;
+            $bk = $cBefore['distribution_pool'][$pk] ?? 0;
+            $ak = $cAfter['distribution_pool'][$pk] ?? 0;
+            if ($bk !== $ak) {
+                $basketName = $basketNames[$pk] ?? "Basket ID: $pk";
+                $distBreakdown[] = [
+                    'basket_key' => $pk,
+                    'basket_name' => $basketName,
+                    'before' => $bk,
+                    'after' => $ak,
+                    'diff' => $ak - $bk
+                ];
+            }
+        }
+
+        // We can safely unset massive JSON objects before sending to frontend
+        $results[] = [
+            'id' => $log['id'],
+            'started_at' => $log['started_at'],
+            'finished_at' => $log['finished_at'],
+            'status' => $log['status'],
+            'transferred_count' => $log['transferred_count'], // Global trans count
+            'dist_diff' => $cAfterDist - $cBeforeDist,
+            'dist_total_after' => $cAfterDist,
+            'dist_breakdown' => $distBreakdown
+        ];
+    }
+
+    echo json_encode(['ok' => true, 'data' => $results]);
+}
+
+
+/**
+ * Handle Batch Export of Distribution Sessions
+ * GET ?action=batch_export&companyId=all&startDate=...&endDate=...&type=all
+ */
+function handleBatchExport($pdo, $companyId)
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        http_response_code(405);
+        echo json_encode(['error' => 'GET required']);
+        return;
+    }
+
+    $startDate = $_GET['startDate'] ?? null;
+    $endDate = $_GET['endDate'] ?? null;
+    $type = $_GET['type'] ?? 'all';
+
+    if (!$startDate || !$endDate) {
+        http_response_code(400);
+        echo json_encode(['error' => 'startDate and endDate required']);
+        return;
+    }
+
+    // Prepare date filter
+    $start = $startDate . ' 00:00:00';
+    $end = $endDate . ' 23:59:59';
+
+    $params = [$start, $end];
+    $companyFilter = "";
+    
+    if ($companyId !== 'all') {
+        $companyFilter = " AND ds.company_id = ? ";
+        $params[] = $companyId;
+    }
+
+    $typeFilter = "";
+    if ($type === 'distribution') {
+        $typeFilter = " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
+    } else if ($type === 'reclaim') {
+        $typeFilter = " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
+    }
+
+    $sql = "
+        SELECT 
+            ds.id as session_id,
+            ds.created_at,
+            ds.distribution_mode,
+            ds.min_call_minutes,
+            c.name as company_name,
+            u_dist.first_name as distributed_by_first,
+            u_dist.last_name as distributed_by_last,
+            dsd.agent_id,
+            u_agent.first_name as agent_first,
+            u_agent.last_name as agent_last,
+            dsd.customer_id,
+            
+            cust.customer_ref_id as customer_code,
+            CONCAT(cust.first_name, ' ', cust.last_name) as customer_name,
+            cust.phone as customer_phone,
+            dsd.previous_basket_key,
+            bc.basket_name as previous_basket_name,
+            dsd.previous_lifecycle_status,
+            ds.session_tag
+
+        FROM distribution_sessions ds
+        JOIN distribution_session_details dsd ON ds.id = dsd.session_id
+        LEFT JOIN companies c ON ds.company_id = c.id
+        LEFT JOIN users u_dist ON ds.distributed_by = u_dist.id
+        LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
+        LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
+        LEFT JOIN basket_config bc ON dsd.previous_basket_key = bc.id
+        WHERE ds.created_at BETWEEN ? AND ?
+        $companyFilter
+        $typeFilter
+        ORDER BY ds.created_at DESC, ds.id DESC, dsd.id ASC
+    ";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        'ok' => true,
+        'data' => $results
+    ]);
+}
+
+function handleUpdateSessionTag($pdo, $companyId)
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'POST required']);
+        return;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $sessionId = $input['session_id'] ?? null;
+    $sessionTag = $input['session_tag'] ?? '';
+
+    if (!$sessionId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Session ID is required']);
+        return;
+    }
+
+    $stmt = $pdo->prepare("UPDATE distribution_sessions SET session_tag = ? WHERE id = ? AND company_id = ?");
+    $result = $stmt->execute([$sessionTag, $sessionId, $companyId]);
+
+    if ($result) {
+        echo json_encode(['ok' => true]);
+    } else {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to update session tag']);
+    }
 }

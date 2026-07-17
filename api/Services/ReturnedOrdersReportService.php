@@ -107,9 +107,9 @@ class ReturnedOrdersReportService
         }
 
         if ($resolutionStatus === 'Completed') {
-            $where .= " AND o.admin_resolution_completed = 1";
+            $where .= " AND COALESCE(oar.is_completed, 0) = 1";
         } elseif ($resolutionStatus === 'Pending') {
-            $where .= " AND o.admin_resolution_completed = 0";
+            $where .= " AND COALESCE(oar.is_completed, 0) = 0";
         }
 
         if ($audioStatus === 'has_audio') {
@@ -151,9 +151,10 @@ class ReturnedOrdersReportService
                     WHERE ob.order_id = o.id
                 ) AS returned_at,
                 u.username AS creator_name,
-                o.admin_resolution_notes,
-                o.admin_resolution_completed
+                oar.resolution_notes AS admin_resolution_notes,
+                COALESCE(oar.is_completed, 0) AS admin_resolution_completed
             FROM orders o
+            LEFT JOIN order_audio_resolutions oar ON o.id = oar.order_id
             LEFT JOIN customers c ON o.customer_id = c.customer_id
             LEFT JOIN order_cancellations oc ON o.id = oc.order_id
             LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
@@ -331,7 +332,11 @@ class ReturnedOrdersReportService
 
     public function saveOrderSummary(string $orderId, string $summary): bool
     {
-        $stmt = $this->pdo->prepare("UPDATE orders SET admin_resolution_notes = :summary WHERE id = :order_id");
+        $stmt = $this->pdo->prepare("
+            INSERT INTO order_audio_resolutions (order_id, resolution_notes) 
+            VALUES (:order_id, :summary)
+            ON DUPLICATE KEY UPDATE resolution_notes = VALUES(resolution_notes)
+        ");
         return $stmt->execute([
             ':summary' => $summary,
             ':order_id' => $orderId
@@ -349,7 +354,11 @@ class ReturnedOrdersReportService
 
     public function toggleOrderResolutionComplete(string $orderId, int $isCompleted): bool
     {
-        $stmt = $this->pdo->prepare("UPDATE orders SET admin_resolution_completed = :status WHERE id = :id");
+        $stmt = $this->pdo->prepare("
+            INSERT INTO order_audio_resolutions (order_id, is_completed) 
+            VALUES (:id, :status)
+            ON DUPLICATE KEY UPDATE is_completed = VALUES(is_completed)
+        ");
         return $stmt->execute([
             ':status' => $isCompleted,
             ':id' => $orderId
@@ -363,7 +372,11 @@ class ReturnedOrdersReportService
 
             // 1. Update Order Summary
             if ($summaryNotes !== null) {
-                $stmt = $this->pdo->prepare("UPDATE orders SET admin_resolution_notes = :notes WHERE id = :id");
+                $stmt = $this->pdo->prepare("
+                    INSERT INTO order_audio_resolutions (order_id, resolution_notes) 
+                    VALUES (:id, :notes)
+                    ON DUPLICATE KEY UPDATE resolution_notes = VALUES(resolution_notes)
+                ");
                 $stmt->execute([':notes' => $summaryNotes, ':id' => $orderId]);
             }
 

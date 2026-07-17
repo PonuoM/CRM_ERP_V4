@@ -16,6 +16,9 @@
       Header always set Access-Control-Allow-Headers "Authorization, Content-Type, Accept"
       Header always set Access-Control-Allow-Credentials "true"
     </FilesMatch>
+    
+    # Allow Geolocation API
+    Header always set Permissions-Policy "geolocation=(self)"
   </IfModule>
 
   # Handle preflight OPTIONS requests

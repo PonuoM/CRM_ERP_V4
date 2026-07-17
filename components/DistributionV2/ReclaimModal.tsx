@@ -24,9 +24,16 @@ interface ReclaimModalProps {
     agents: any[];
     bulkLimit: string;
     setBulkLimit: (val: string) => void;
+    bulkReclaimDestinationType: 'auto' | 'force';
+    setBulkReclaimDestinationType: (val: 'auto' | 'force') => void;
+    bulkForceBasketKey: string;
+    setBulkForceBasketKey: (val: string) => void;
     handleExecuteBulkAction: () => void;
     reclaiming: boolean;
     transferring: boolean;
+    sessionTag: string;
+    setSessionTag: (val: string) => void;
+    sessionTagsList: string[];
 }
 
 const ReclaimModal: React.FC<ReclaimModalProps> = ({
@@ -52,9 +59,16 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
     agents,
     bulkLimit,
     setBulkLimit,
+    bulkReclaimDestinationType,
+    setBulkReclaimDestinationType,
+    bulkForceBasketKey,
+    setBulkForceBasketKey,
     handleExecuteBulkAction,
     reclaiming,
-    transferring
+    transferring,
+    sessionTag,
+    setSessionTag,
+    sessionTagsList
 }) => {
     if (!isOpen || !reclaimingAgent) return null;
 
@@ -272,6 +286,34 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                                 </div>
                             )}
 
+                            {/* Reclaim Destination (Only for Reclaim) */}
+                            {bulkActionType === 'reclaim' && (
+                                <div className="flex-1 animate-in fade-in slide-in-from-right-4 duration-200">
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">ถังปลายทาง</label>
+                                    <select
+                                        value={bulkReclaimDestinationType}
+                                        onChange={(e) => setBulkReclaimDestinationType(e.target.value as 'auto' | 'force')}
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 mb-2"
+                                    >
+                                        <option value="auto">ตามถังอัตโนมัติ (logic ปัจจุบัน)</option>
+                                        <option value="force">บังคับถัง</option>
+                                    </select>
+                                    {bulkReclaimDestinationType === 'force' && (
+                                        <select
+                                            value={bulkForceBasketKey}
+                                            onChange={(e) => setBulkForceBasketKey(e.target.value)}
+                                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white border-blue-200"
+                                        >
+                                            <option value="">-- เลือกถังปลายทาง --</option>
+                                            {dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis').map(b => (
+                                                <option key={b.basket_key} value={b.basket_key}>{b.basket_name}</option>
+                                            ))}
+                                            <option value="holding_before_redistribute">ถังพักรอแจก</option>
+                                        </select>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Limit Input */}
                             <div className="w-32">
                                 <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">จำนวน / ถัง</label>
@@ -284,6 +326,24 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                                     min={1}
                                 />
                             </div>
+                        </div>
+
+                        {/* Session Tag */}
+                        <div className="mt-4 mb-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">ป้ายกำกับเซสชั่น (Session Tag) (ไม่บังคับ)</label>
+                            <input 
+                                type="text" 
+                                list="reclaimSessionTags"
+                                className="w-full border-gray-300 rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 bg-white" 
+                                placeholder="เช่น แจกรายชื่อต้นเดือน, ลูกค้าเก่าปี 2024..."
+                                value={sessionTag}
+                                onChange={(e) => setSessionTag(e.target.value)}
+                            />
+                            <datalist id="reclaimSessionTags">
+                                {sessionTagsList.map(tag => (
+                                    <option key={tag} value={tag} />
+                                ))}
+                            </datalist>
                         </div>
 
                         {/* Execute Row */}
@@ -308,6 +368,7 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                                         selectedBaskets.length === 0 || 
                                         !bulkActionType || 
                                         (bulkActionType === 'transfer' && bulkTargetAgents.length === 0) ||
+                                        (bulkActionType === 'reclaim' && bulkReclaimDestinationType === 'force' && !bulkForceBasketKey) ||
                                         reclaiming || transferring
                                     }
                                     className={`px-6 py-2.5 font-medium text-white rounded-lg flex items-center gap-2 shadow-sm transition-all

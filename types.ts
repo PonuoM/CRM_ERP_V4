@@ -562,6 +562,7 @@ export interface LineItem {
   quantity: number;
   pricePerUnit: number;
   discount: number;
+  monthlyDiscount?: number;
   isFreebie: boolean;
   boxNumber: number;
   productId?: number; // Optional product ID to track products from promotions
@@ -634,6 +635,10 @@ export interface Order {
   customerRefId?: number;
   companyId: number;
   creatorId: number;
+  /** ขายแทน: who actually filed this order on behalf of creatorId (undefined = creatorId filed it themselves) */
+  proxyCreatorId?: number;
+  proxyCreatorName?: string;
+  proxyReason?: string;
   orderDate: string;
   deliveryDate: string;
   customerReceivedDate?: string;
@@ -655,6 +660,7 @@ export interface Order {
   trackingDetails?: TrackingDetail[];
   boxes?: CodBox[];
   notes?: string;
+  monthlyDiscount?: number;
   warehouseId?: number;
   salesChannel?: string;
   salesChannelPageId?: number;

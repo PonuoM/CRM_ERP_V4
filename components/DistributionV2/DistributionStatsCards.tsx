@@ -1,4 +1,5 @@
 import React from 'react';
+import { Loader2 } from 'lucide-react';
 import { BasketConfig } from '../../types/distribution';
 
 interface DistributionStatsCardsProps {
@@ -11,6 +12,7 @@ interface DistributionStatsCardsProps {
     forceDistributeHolding: boolean;
     setForceDistributeHolding: (val: boolean) => void;
     setTargetBasket: (val: string) => void;
+    loadingBasketCounts?: boolean;
 }
 
 const DistributionStatsCards: React.FC<DistributionStatsCardsProps> = ({
@@ -22,7 +24,8 @@ const DistributionStatsCards: React.FC<DistributionStatsCardsProps> = ({
     handleBlockedBasketClick,
     forceDistributeHolding,
     setForceDistributeHolding,
-    setTargetBasket
+    setTargetBasket,
+    loadingBasketCounts = false
 }) => {
     return (
         <>
@@ -52,21 +55,29 @@ const DistributionStatsCards: React.FC<DistributionStatsCardsProps> = ({
                             <p className={`text-[11px] font-medium mb-0.5 truncate ${basket.basket_key === 'block_customer' ? 'text-red-600' : isHolding ? 'text-amber-600' : 'text-gray-500'}`}>
                                 {basket.basket_key === 'block_customer' ? '🚫 ' : isHolding ? '⏳ ' : ''}{basket.basket_name}
                             </p>
-                            <div className={`text-xl font-bold ${isHolding
+                            <div className={`text-xl font-bold flex items-center h-7 ${isHolding
                                 ? (isActive ? 'text-amber-600' : 'text-amber-700')
                                 : (isActive ? 'text-blue-600' : 'text-gray-900')
                                 }`}>
-                                {basketCounts[basket.basket_key]?.toLocaleString() || 0}
+                                {loadingBasketCounts ? (
+                                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                                ) : (
+                                    basketCounts[basket.basket_key]?.toLocaleString() || 0
+                                )}
                             </div>
                         </button>
                     );
                 })}
 
                 {/* Total Card */}
-                <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-3 rounded-xl shadow-md text-white">
+                <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-3 rounded-xl shadow-md text-white flex flex-col justify-center">
                     <p className="text-[11px] font-medium text-green-100 mb-0.5">รวมทั้งหมด</p>
-                    <div className="text-xl font-bold">
-                        {totalInAllBaskets.toLocaleString()}
+                    <div className="text-xl font-bold flex items-center h-7">
+                        {loadingBasketCounts ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        ) : (
+                            totalInAllBaskets.toLocaleString()
+                        )}
                     </div>
                 </div>
             </div>

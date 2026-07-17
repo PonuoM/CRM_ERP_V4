@@ -346,7 +346,6 @@ function handleBasketCustomers($pdo, $companyId)
 
     $basketId = $config['id'];
 
-    // Query customers who are:
     // 1. In the correct company (companyId from request)
     // 2. Have current_basket_key matching the basket's ID
     // 3. Are NOT assigned to anyone (available for distribution)
@@ -371,6 +370,29 @@ function handleBasketCustomers($pdo, $companyId)
     ";
 
     $params = [$companyId, $basketId];
+
+    // Apply Called Filter if provided
+    $calledFilterDays = isset($_GET['called_filter_days']) && $_GET['called_filter_days'] !== '' ? intval($_GET['called_filter_days']) : null;
+    $calledFilterMode = $_GET['called_filter_mode'] ?? 'exclude';
+
+    if ($calledFilterDays !== null && $calledFilterDays > 0) {
+        if ($calledFilterMode === 'include') {
+            $sql .= " AND EXISTS (
+                SELECT 1 FROM call_history ch 
+                WHERE ch.customer_id = c.customer_id 
+                AND ch.date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            )";
+            $params[] = $calledFilterDays;
+        } else {
+            // Exclude (NOT EXISTS) - Default behavior
+            $sql .= " AND NOT EXISTS (
+                SELECT 1 FROM call_history ch 
+                WHERE ch.customer_id = c.customer_id 
+                AND ch.date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            )";
+            $params[] = $calledFilterDays;
+        }
+    }
 
     // First, get total count WITHOUT limit
     $countSql = "SELECT COUNT(*) as total FROM (" . $sql . ") as subquery";
@@ -562,6 +584,18 @@ function handleBulkAssign($pdo, $companyId)
             }
         }
 
+        if ($totalReclaimed > 0) {
+            $pdo->prepare("UPDATE distribution_sessions SET total_customers = ? WHERE id = ?")->execute([$totalReclaimed, $sessionId]);
+        } else {
+            $pdo->prepare("DELETE FROM distribution_sessions WHERE id = ?")->execute([$sessionId]);
+        }
+
+        if ($totalTransferred > 0) {
+            $pdo->prepare("UPDATE distribution_sessions SET total_customers = ? WHERE id = ?")->execute([$totalTransferred, $sessionId]);
+        } else {
+            $pdo->prepare("DELETE FROM distribution_sessions WHERE id = ?")->execute([$sessionId]);
+        }
+
         $pdo->commit();
 
         echo json_encode([
@@ -593,6 +627,9 @@ function handleReclaimCustomers($pdo, $companyId)
     $agentId = $input['agent_id'] ?? null;
     $baskets = $input['baskets'] ?? []; // key => quantity
     $reclaimMode = $input['reclaim_mode'] ?? 'all';
+    $reclaimDestination = $input['reclaim_destination'] ?? 'auto';
+    $forceBasketKey = $input['force_basket_key'] ?? null;
+    $triggeredBy = $input['triggered_by'] ?? null;
 
     if (!$agentId || empty($baskets)) {
         http_response_code(400);
@@ -605,6 +642,15 @@ function handleReclaimCustomers($pdo, $companyId)
         set_audit_context($pdo, 'basket_config/reclaim');
         $totalReclaimed = 0;
         $results = [];
+        
+        $sessionTag = isset($input['session_tag']) && trim($input['session_tag']) !== '' ? trim($input['session_tag']) : null;
+        
+        $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, session_tag) VALUES (?, ?, 'Bulk Reclaim', NULL, 0, NOW(), NULL, 'Multiple Baskets', ?)");
+        $sessionStmt->execute([$companyId, $triggeredBy, $sessionTag]);
+        $sessionId = $pdo->lastInsertId();
+        
+        $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");
+
 
         // We need to map basket_key string to basket_config.id because current_basket_key stores ID
         // Also fetch linked_basket_key to handle customers that were moved to a linked basket
@@ -627,18 +673,26 @@ function handleReclaimCustomers($pdo, $companyId)
                 continue; // Basket not found
 
             // Determine the target basket (where to move customers)
-            // If linked_basket_key exists, move to that Distribution basket
-            // Otherwise, just unassign them (keep in same basket)
+            // If force_basket_key is set, use it. Otherwise, use linked_basket_key if it exists.
             $targetBasketId = $dashboardBasketId; // Default: keep in same basket
 
-            if ($linkedBasketKey) {
-                // Find the Distribution basket ID from linked_basket_key (Basket config is GLOBAL)
+            if ($reclaimDestination === 'force' && $forceBasketKey) {
                 $linkIdStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
-                $linkIdStmt->execute([$linkedBasketKey]);
+                $linkIdStmt->execute([$forceBasketKey]);
                 $linkedId = $linkIdStmt->fetchColumn();
-
                 if ($linkedId) {
-                    $targetBasketId = $linkedId; // Move to Distribution basket
+                    $targetBasketId = $linkedId;
+                }
+            } else {
+                if ($linkedBasketKey) {
+                    // Find the Distribution basket ID from linked_basket_key (Basket config is GLOBAL)
+                    $linkIdStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
+                    $linkIdStmt->execute([$linkedBasketKey]);
+                    $linkedId = $linkIdStmt->fetchColumn();
+
+                    if ($linkedId) {
+                        $targetBasketId = $linkedId; // Move to Distribution basket
+                    }
                 }
             }
 
@@ -728,6 +782,13 @@ function handleReclaimCustomers($pdo, $companyId)
                 $logStmt->execute($logParams);
             }
         }
+
+        if ($totalReclaimed > 0) {
+            $pdo->prepare("UPDATE distribution_sessions SET total_customers = ? WHERE id = ?")->execute([$totalReclaimed, $sessionId]);
+        } else {
+            $pdo->prepare("DELETE FROM distribution_sessions WHERE id = ?")->execute([$sessionId]);
+        }
+
 
         $pdo->commit();
 
@@ -908,9 +969,16 @@ function handleTransferCustomers($pdo, $companyId)
 
     $pdo->beginTransaction();
     try {
+        $triggeredBy = $input['triggered_by'] ?? null;
+        $sessionTag = isset($input['session_tag']) && trim($input['session_tag']) !== '' ? trim($input['session_tag']) : null;
+
         set_audit_context($pdo, 'basket_config/transfer');
-
-
+        
+        $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, session_tag) VALUES (?, ?, 'Bulk Transfer', NULL, 0, NOW(), NULL, 'Multiple Baskets', ?)");
+        $sessionStmt->execute([$companyId, $triggeredBy, $sessionTag]);
+        $sessionId = $pdo->lastInsertId();
+        
+        $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");
 
         $updateStmt = $pdo->prepare("
             UPDATE customers 
@@ -1047,6 +1115,18 @@ function handleTransferCustomers($pdo, $companyId)
                 'basket_key' => $basketKey,
                 'transferred' => $transferredCount
             ];
+        }
+
+        if ($totalReclaimed > 0) {
+            $pdo->prepare("UPDATE distribution_sessions SET total_customers = ? WHERE id = ?")->execute([$totalReclaimed, $sessionId]);
+        } else {
+            $pdo->prepare("DELETE FROM distribution_sessions WHERE id = ?")->execute([$sessionId]);
+        }
+
+        if ($totalTransferred > 0) {
+            $pdo->prepare("UPDATE distribution_sessions SET total_customers = ? WHERE id = ?")->execute([$totalTransferred, $sessionId]);
+        } else {
+            $pdo->prepare("DELETE FROM distribution_sessions WHERE id = ?")->execute([$sessionId]);
         }
 
         $pdo->commit();

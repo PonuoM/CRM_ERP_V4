@@ -63,13 +63,19 @@ export async function apiFetch(path: string, init?: RequestInit) {
   if (!res.ok) {
     if (res.status === 401) {
       if (typeof window !== "undefined") {
-        console.error("!!! 401 UNAUTHORIZED DETECTED - Auto-logout disabled for debugging !!!");
-        // localStorage.removeItem("sessionUser");
-        // localStorage.removeItem("authToken");
-        // Force reload to trigger index.tsx check
-        // if (!window.location.search.includes('login')) {
-        //   window.location.reload();
-        // }
+        console.error("!!! 401 UNAUTHORIZED DETECTED !!!");
+        // Auto-logout only on a definitive token failure (expired/invalid) while
+        // we actually hold a token — geo-fenced users get tokens that die at
+        // midnight, so without this the app would just silently break the next
+        // morning. Other 401s are left alone (kept from the old debugging state).
+        const tokenDead =
+          data && data.error === "UNAUTHORIZED" &&
+          (data.message === "Token expired" || data.message === "Invalid token");
+        if (tokenDead && token) {
+          localStorage.removeItem("sessionUser");
+          localStorage.removeItem("authToken");
+          window.location.reload();
+        }
       }
     }
     const errMsg =
@@ -89,10 +95,12 @@ export async function health(): Promise<{ ok: boolean; status: string }> {
 export async function login(
   username: string,
   password: string,
+  latitude?: number,
+  longitude?: number,
 ): Promise<LoginResponse> {
   return apiFetch("auth/login", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, latitude, longitude }),
   });
 }
 
@@ -1610,6 +1618,39 @@ export async function deleteStockPlan(id: number, force?: boolean) {
   });
 }
 
+export async function listFactoryHolidays(params?: { month?: number; year?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.month) qs.set("month", String(params.month));
+  if (params?.year) qs.set("year", String(params.year));
+  const query = qs.toString();
+  return apiFetch(`inventory/list_factory_holidays.php${query ? `?${query}` : ""}`);
+}
+
+export async function saveFactoryHoliday(payload: { holiday_date: string; label?: string; user_id?: number }) {
+  return apiFetch("inventory/save_factory_holiday.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteFactoryHoliday(id: number) {
+  return apiFetch("inventory/delete_factory_holiday.php", {
+    method: "POST",
+    body: JSON.stringify({ id }),
+  });
+}
+
+export async function listStockPlanProducts() {
+  return apiFetch("inventory/list_stock_plan_products.php");
+}
+
+export async function saveStockPlanProduct(payload: { sku: string; name: string; format_code?: string; user_id?: number }) {
+  return apiFetch("inventory/save_stock_plan_product.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function listTonDivisors(params?: { asOfDate?: string; companyId?: number }) {
   const qs = new URLSearchParams();
   if (params?.asOfDate) qs.set("asOfDate", params.asOfDate);
@@ -1618,8 +1659,23 @@ export async function listTonDivisors(params?: { asOfDate?: string; companyId?: 
   return apiFetch(`inventory/list_ton_divisors.php${query ? `?${query}` : ""}`);
 }
 
-export async function saveTonDivisor(payload: { product_id: number; divisor: number | null; user_id?: number }) {
+export async function saveTonDivisor(payload: { product_id: number; divisor: number | null; user_id?: number; effective_from?: string }) {
   return apiFetch("inventory/save_ton_divisor.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getHolidays(params: { month?: number; year?: number; companyId: number }): Promise<{ success: boolean; data: string[] }> {
+  const qs = new URLSearchParams();
+  if (params.month) qs.set("month", String(params.month));
+  if (params.year) qs.set("year", String(params.year));
+  qs.set("companyId", String(params.companyId));
+  return apiFetch(`inventory/holidays.php?${qs.toString()}`);
+}
+
+export async function saveHolidays(payload: { month: number; year: number; companyId: number; dates: string[]; userId?: number }): Promise<{ success: boolean }> {
+  return apiFetch("inventory/holidays.php", {
     method: "POST",
     body: JSON.stringify(payload),
   });

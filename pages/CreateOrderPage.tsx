@@ -71,6 +71,7 @@ import { th } from "date-fns/locale";
 import ProductSelectorModal from "../components/ProductSelectorModal";
 
 import resolveApiBasePath from "../utils/apiBasePath";
+import { OrderNoteInput } from "../components/OrderNoteInput";
 
 // ════════════════════════════════════════════════════════════════════════════
 // [B] TYPES & INTERFACES (TransferSlipUpload, UpsellSlip, CreateOrderPageProps, etc.)
@@ -208,6 +209,9 @@ interface CreateOrderPageProps {
 
   users: User[];
 
+  /** ขายแทน: may this user file an order on behalf of a Telesale? (permission key orders.proxy_sale) */
+  canProxySale?: boolean;
+
   onSave: (payload: {
     order: Partial<Omit<Order, "id" | "orderDate" | "companyId" | "creatorId">>;
 
@@ -254,6 +258,8 @@ interface CreateOrderPageProps {
     updateCustomerSocials?: boolean;
 
     slipUploads?: (string | SlipUploadPayload)[];
+
+    proxySale?: { onBehalfOfUserId: number; reason?: string };
   }) => Promise<string | undefined>;
 
   onCancel: () => void;
@@ -311,24 +317,27 @@ const OrderSummary: React.FC<{
   const itemsDiscount = useMemo(() => {
     return visibleItems.reduce(
       (acc, item) => acc + (item.isFreebie ? 0 : item.discount || 0),
+      0,
+    );
+  }, [visibleItems]);
 
+  const monthlyDiscountSum = useMemo(() => {
+    return visibleItems.reduce(
+      (acc, item) => acc + (item.isFreebie ? 0 : item.monthlyDiscount || 0),
       0,
     );
   }, [visibleItems]);
 
   const subTotal = useMemo(
-    () => goodsSum - itemsDiscount,
-
-    [goodsSum, itemsDiscount],
+    () => goodsSum - itemsDiscount - monthlyDiscountSum,
+    [goodsSum, itemsDiscount, monthlyDiscountSum],
   );
 
   const billDiscountPercent = Number(orderData.billDiscount || 0);
-
   const billDiscountAmount = (subTotal * billDiscountPercent) / 100;
 
   const totalAmount = useMemo(
     () => subTotal + (orderData.shippingCost || 0) - billDiscountAmount,
-
     [subTotal, orderData.shippingCost, billDiscountAmount],
   );
 
@@ -344,7 +353,6 @@ const OrderSummary: React.FC<{
       <div className="space-y-3 text-sm">
         <div className="flex justify-between text-[#4e7397]">
           <span>ยอดรวมสินค้า</span>
-
           <span className="text-[#0e141b] font-medium">
             ฿{goodsSum.toFixed(2)}
           </span>
@@ -352,11 +360,19 @@ const OrderSummary: React.FC<{
 
         <div className="flex justify-between text-[#4e7397]">
           <span>ส่วนลดรายการสินค้า</span>
-
           <span className="text-red-600 font-medium">
             -฿{itemsDiscount.toFixed(2)}
           </span>
         </div>
+
+        {monthlyDiscountSum > 0 && (
+          <div className="flex justify-between text-purple-600">
+            <span>ส่วนลดประจำเดือน</span>
+            <span className="font-medium">
+              -฿{monthlyDiscountSum.toFixed(2)}
+            </span>
+          </div>
+        )}
 
         <div className="flex justify-between items-center text-[#4e7397]">
           <span>ค่าขนส่ง</span>
@@ -467,6 +483,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   currentUser,
 
   users,
+
+  canProxySale = false,
 
   onSave,
 
@@ -2272,22 +2290,28 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const itemsDiscount = useMemo(
     () =>
       (orderData.items || [])
-
         .filter((it) => !it.parentItemId)
-
         .reduce(
           (acc, item) => acc + (item.isFreebie ? 0 : item.discount || 0),
-
           0,
         ),
+    [orderData.items],
+  );
 
+  const monthlyDiscountSum = useMemo(
+    () =>
+      (orderData.items || [])
+        .filter((it) => !it.parentItemId)
+        .reduce(
+          (acc, item) => acc + (item.isFreebie ? 0 : item.monthlyDiscount || 0),
+          0,
+        ),
     [orderData.items],
   );
 
   const subTotal = useMemo(
-    () => goodsSum - itemsDiscount,
-
-    [goodsSum, itemsDiscount],
+    () => goodsSum - itemsDiscount - monthlyDiscountSum,
+    [goodsSum, itemsDiscount, monthlyDiscountSum],
   );
 
   const billDiscountPercent = useMemo(
@@ -4505,6 +4529,40 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   // ──────────────────────────────────────────────────────────────────────────
+  // ขายแทน (proxy sale) — file this order under another Telesale, e.g. when they are off-site
+  // on a holiday and geofencing blocks them. The order stays theirs (number + creatorId), while
+  // the backend stamps who actually keyed it in.
+  // ──────────────────────────────────────────────────────────────────────────
+  const [isProxySale, setIsProxySale] = useState(false);
+  const [proxyUserId, setProxyUserId] = useState<number | null>(null);
+  const [proxyReason, setProxyReason] = useState("");
+
+  // Mirrors the backend rule in OrderController POST: same company, Telesale roles only.
+  const proxyCandidates = useMemo(
+    () =>
+      users
+        .filter(
+          (u) =>
+            u.id !== currentUser.id &&
+            u.companyId === currentUser.companyId &&
+            (u.role === UserRole.Telesale ||
+              u.role === UserRole.Supervisor),
+        )
+        .sort((a, b) =>
+          `${a.firstName} ${a.lastName}`.localeCompare(
+            `${b.firstName} ${b.lastName}`,
+            "th",
+          ),
+        ),
+    [users, currentUser.id, currentUser.companyId],
+  );
+
+  const proxyTarget = useMemo(
+    () => proxyCandidates.find((u) => u.id === proxyUserId) ?? null,
+    [proxyCandidates, proxyUserId],
+  );
+
+  // ──────────────────────────────────────────────────────────────────────────
   // [E12] NORMAL ORDER — Save Handler (handleSave)
   //     - Validates: address, customer status, delivery date, items, payment, COD, quota
   //     - Builds payload → calls onSave(payload)
@@ -4516,6 +4574,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setIsSaving(true);
 
     try {
+      if (isProxySale && !proxyUserId) {
+        alert("เลือก “ขายแทน” ไว้ กรุณาระบุว่าลงออเดอร์แทนใคร");
+        setIsSaving(false);
+        return;
+      }
+
       // Check for incomplete address fields and list missing ones
       const fieldLabels: Record<string, string> = {
         recipientFirstName: "ชื่อผู้รับ",
@@ -5136,6 +5200,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       (payload as any).customerType = isCreatingNewCustomer
         ? newCustomerType
         : editedCustomerType;
+
+      // ขายแทน: hand the owner to App so the order number and creatorId are filed under them
+      if (isProxySale && proxyUserId) {
+        (payload as any).proxySale = {
+          onBehalfOfUserId: proxyUserId,
+          reason: proxyReason.trim() || undefined,
+        };
+      }
 
       let savedOrderId: string | undefined;
 
@@ -7421,6 +7493,113 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           {/* Left Column: Customer Information & Shipping Address */}
 
           <div className="space-y-4">
+            {/* Section 0: ขายแทน (proxy sale) — visible only with permission orders.proxy_sale */}
+
+            {canProxySale && !isUpsellMode && (
+              <div
+                className={`rounded-lg border p-4 md:p-6 ${isProxySale
+                  ? "bg-amber-50 border-amber-400"
+                  : "bg-white border-gray-300"
+                  }`}
+              >
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isProxySale}
+                    onChange={(e) => {
+                      setIsProxySale(e.target.checked);
+                      if (!e.target.checked) {
+                        setProxyUserId(null);
+                        setProxyReason("");
+                      }
+                    }}
+                    className="mt-1 h-4 w-4 accent-amber-600"
+                    data-testid="proxy-sale-toggle"
+                  />
+
+                  <span>
+                    <span className="block text-base md:text-lg font-semibold text-[#0e141b]">
+                      ขายแทน
+                    </span>
+
+                    <span className="block text-xs md:text-sm text-[#4e7397]">
+                      ลงออเดอร์แทน Telesale คนอื่น — ยอดขายและค่าคอมเข้าที่คนที่ฝากขาย
+                      ระบบจะบันทึกว่าคุณเป็นคนลงให้
+                    </span>
+                  </span>
+                </label>
+
+                {isProxySale && (
+                  <div className="mt-4 space-y-3 md:pl-7">
+                    <div>
+                      <label className="block text-sm font-medium text-[#0e141b] mb-1">
+                        ลงออเดอร์แทนใคร <span className="text-red-500">*</span>
+                      </label>
+
+                      <select
+                        value={proxyUserId ?? ""}
+                        onChange={(e) =>
+                          setProxyUserId(
+                            e.target.value ? Number(e.target.value) : null,
+                          )
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none"
+                        data-testid="proxy-sale-user"
+                      >
+                        <option value="">-- เลือก Telesale --</option>
+
+                        {proxyCandidates.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.firstName} {u.lastName} ({u.username})
+                          </option>
+                        ))}
+                      </select>
+
+                      {proxyCandidates.length === 0 && (
+                        <p className="mt-1 text-xs text-red-600">
+                          ไม่พบ Telesale ในบริษัทนี้
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-[#0e141b] mb-1">
+                        เหตุผล{" "}
+                        <span className="font-normal text-gray-400">
+                          (ไม่บังคับ)
+                        </span>
+                      </label>
+
+                      <input
+                        type="text"
+                        value={proxyReason}
+                        onChange={(e) => setProxyReason(e.target.value)}
+                        maxLength={255}
+                        placeholder="เช่น เทเลติดวันหยุด ลูกค้าโอนเงินแล้ว"
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none"
+                        data-testid="proxy-sale-reason"
+                      />
+                    </div>
+
+                    {proxyTarget && (
+                      <p className="rounded bg-amber-100 px-3 py-2 text-xs text-amber-900">
+                        ออเดอร์นี้จะเป็นของ{" "}
+                        <strong>
+                          {proxyTarget.firstName} {proxyTarget.lastName}
+                        </strong>{" "}
+                        และเลขออเดอร์จะขึ้นชื่อ{" "}
+                        <strong>{proxyTarget.username}</strong> — ระบบจะบันทึกว่า{" "}
+                        <strong>
+                          {currentUser.firstName} {currentUser.lastName}
+                        </strong>{" "}
+                        เป็นผู้ลงแทน
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Section 1: Customer Information */}
 
             {
@@ -9200,18 +9379,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       })()}
                     </div>
 
-                    <div>
-                      <label className={commonLabelClass}>หมายเหตุ</label>
-
-                      <input
-                        type="text"
-                        value={orderData.notes || ""}
-                        onChange={(e) =>
-                          updateOrderData("notes", e.target.value)
-                        }
-                        className={commonInputClass}
-                      />
-                    </div>
+                    <OrderNoteInput
+                      notes={orderData.notes || ""}
+                      monthlyDiscount={orderData.monthlyDiscount || 0}
+                      onNotesChange={(val) => updateOrderData("notes", val)}
+                      onMonthlyDiscountChange={(val) => updateOrderData("monthlyDiscount", val)}
+                      className={commonInputClass}
+                      labelClassName={commonLabelClass}
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-2">
@@ -9870,19 +10045,57 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 )}
                               </div>
                               {!isChild && (
-                                <div>
-                                  <label className="block text-xs text-gray-500 mb-1">ส่วนลด</label>
-                                  <input
-                                    type="number"
-                                    value={item.discount || 0}
-                                    min={0}
-                                    onChange={(e) => {
-                                      const val = Number(e.target.value) || 0;
-                                      const base = (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0);
-                                      updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, discount: Math.min(val, base) } : it));
-                                    }}
-                                    className="w-full border rounded px-2 py-1 text-red-600"
-                                  />
+                                <div className="space-y-2">
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-1">ส่วนลด</label>
+                                    <input
+                                      type="number"
+                                      value={item.discount || 0}
+                                      min={0}
+                                      onChange={(e) => {
+                                        const val = Number(e.target.value) || 0;
+                                        const base = (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0);
+                                        updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, discount: Math.min(val, base) } : it));
+                                      }}
+                                      className="w-full border rounded px-2 py-1 text-red-600"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer mb-1">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={item.monthlyDiscount !== undefined} 
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, monthlyDiscount: 0 } : it));
+                                          } else {
+                                            updateOrderData("items", orderData.items?.map(it => {
+                                              if (it.id === item.id) {
+                                                const newIt = { ...it };
+                                                delete newIt.monthlyDiscount;
+                                                return newIt;
+                                              }
+                                              return it;
+                                            }));
+                                          }
+                                        }} 
+                                      /> ใช้ส่วนลดประจำเดือน
+                                    </label>
+                                    {item.monthlyDiscount !== undefined && (
+                                      <input
+                                        type="number"
+                                        value={item.monthlyDiscount || 0}
+                                        min={0}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          const base = (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0) - (Number(item.discount) || 0);
+                                          updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, monthlyDiscount: Math.min(val, base) } : it));
+                                        }}
+                                        className="w-full border rounded px-2 py-1 text-purple-600"
+                                        placeholder="ส่วนลดประจำเดือน"
+                                      />
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -10170,37 +10383,77 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 />
                               </td>
 
-                              <td className="px-3 py-2 text-right text-xs text-red-600">
+                              <td className="px-3 py-2 text-right text-xs text-red-600 align-top">
                                 {isChild ? (
                                   <div className="w-20 text-right pr-1"></div>
                                 ) : (
-                                  <input
-                                    type="number"
-                                    value={item.discount || 0}
-                                    onChange={(e) => {
-                                      const discountValue =
-                                        Number(e.target.value) || 0;
-                                      const baseTotal = item.isFreebie
-                                        ? 0
-                                        : (Number(item.quantity) || 0) *
-                                        (Number(item.pricePerUnit) || 0);
-                                      const clampedDiscount = Math.max(
-                                        0,
-                                        Math.min(discountValue, baseTotal),
-                                      );
+                                  <div className="flex flex-col items-end gap-1">
+                                    <input
+                                      type="number"
+                                      value={item.discount || 0}
+                                      onChange={(e) => {
+                                        const discountValue =
+                                          Number(e.target.value) || 0;
+                                        const baseTotal = item.isFreebie
+                                          ? 0
+                                          : (Number(item.quantity) || 0) *
+                                          (Number(item.pricePerUnit) || 0);
+                                        const clampedDiscount = Math.max(
+                                          0,
+                                          Math.min(discountValue, baseTotal),
+                                        );
 
-                                      updateOrderData(
-                                        "items",
-                                        orderData.items?.map((it) =>
-                                          it.id === item.id
-                                            ? { ...it, discount: clampedDiscount }
-                                            : it,
-                                        ),
-                                      );
-                                    }}
-                                    className="w-20 border rounded px-1 text-right text-red-600"
-                                    min={0}
-                                  />
+                                        updateOrderData(
+                                          "items",
+                                          orderData.items?.map((it) =>
+                                            it.id === item.id
+                                              ? { ...it, discount: clampedDiscount }
+                                              : it,
+                                          ),
+                                        );
+                                      }}
+                                      className="w-20 border rounded px-1 text-right text-red-600"
+                                      min={0}
+                                      title="ส่วนลดปกติ"
+                                    />
+                                    <label className="flex items-center gap-1 text-[10px] text-gray-500 mt-1 cursor-pointer w-full justify-end whitespace-nowrap">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={item.monthlyDiscount !== undefined} 
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, monthlyDiscount: 0 } : it));
+                                          } else {
+                                            updateOrderData("items", orderData.items?.map(it => {
+                                              if (it.id === item.id) {
+                                                const newIt = { ...it };
+                                                delete newIt.monthlyDiscount;
+                                                return newIt;
+                                              }
+                                              return it;
+                                            }));
+                                          }
+                                        }} 
+                                      /> ใช้ส่วนลดประจำเดือน
+                                    </label>
+                                    {item.monthlyDiscount !== undefined && (
+                                      <input
+                                        type="number"
+                                        value={item.monthlyDiscount || 0}
+                                        onChange={(e) => {
+                                          const discountValue = Number(e.target.value) || 0;
+                                          const baseTotal = item.isFreebie
+                                            ? 0
+                                            : (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0) - (Number(item.discount) || 0);
+                                          const clampedDiscount = Math.max(0, Math.min(discountValue, baseTotal));
+                                          updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, monthlyDiscount: clampedDiscount } : it));
+                                        }}
+                                        className="w-20 border rounded px-1 text-right text-purple-600"
+                                        min={0}
+                                        title="ส่วนลดประจำเดือน"
+                                      />
+                                    )}
+                                  </div>
                                 )}
                               </td>
 

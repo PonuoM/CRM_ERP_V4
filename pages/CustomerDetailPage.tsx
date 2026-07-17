@@ -37,7 +37,9 @@ import {
   ChevronUp,
   Zap,
   Loader2,
+  History,
 } from "lucide-react";
+import CustomerTagHistoryModal from "../components/Customer/CustomerTagHistoryModal";
 import { isSystemCheck } from "@/utils/isSystemCheck";
 import { listRoles, Role } from "@/services/roleApi";
 import APP_BASE_PATH from "../appBasePath";
@@ -172,6 +174,9 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
   // Track order IDs that have upsell items (for immediate badge display)
   const [upsellDoneOrderIds, setUpsellDoneOrderIds] = useState<Set<string>>(new Set());
+
+  // Tag History Modal
+  const [isTagHistoryModalOpen, setIsTagHistoryModalOpen] = useState(false);
 
   const [showAddressManagement, setShowAddressManagement] = useState(false);
   const [selectedOrderIdForDetails, setSelectedOrderIdForDetails] = useState<string | null>(null);
@@ -1015,14 +1020,18 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     ordersPage * ITEMS_PER_PAGE,
   );
 
-  // Filter appointments to show only future follow-ups that are not completed
+  // Show the next scheduled follow-up regardless of how far out (no day cap).
+  // Only keep upcoming, active appointments (not completed / not cancelled);
+  // ascending sort means [0] is the soonest upcoming one.
   const upcomingFollowUps = effectiveAppointments
     .filter((appointment) => {
       const appointmentDate = new Date(appointment.date);
       const now = new Date();
-      const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      // Show appointments that are between now and 7 days from now, and not completed
-      return appointmentDate >= now && appointmentDate <= sevenDaysFromNow && appointment.status !== "เสร็จสิ้น";
+      return (
+        appointmentDate >= now &&
+        appointment.status !== "เสร็จสิ้น" &&
+        appointment.status !== "ยกเลิกการติดตาม"
+      );
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -1902,13 +1911,21 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 );
               })}
             </div>
-            <div className="mt-2">
+            <div className="mt-2 flex gap-2">
               <button
                 onClick={() => openModal("manageTags", customer)}
-                className="w-full bg-white text-gray-700 py-2 px-3 rounded-md text-xs font-medium hover:bg-gray-50 border border-gray-300 border-dashed flex items-center justify-center transition-colors"
+                className="flex-1 bg-white text-gray-700 py-2 px-3 rounded-md text-xs font-medium hover:bg-gray-50 border border-gray-300 border-dashed flex items-center justify-center transition-colors"
               >
                 <TagIcon size={14} className="mr-1.5 text-gray-400" />
                 จัดการ Tag
+              </button>
+              <button
+                onClick={() => setIsTagHistoryModalOpen(true)}
+                className="bg-white text-gray-600 py-2 px-3 rounded-md text-xs font-medium hover:bg-gray-100 border border-gray-200 flex items-center justify-center transition-colors"
+                title="ดูประวัติการจัดการ Tag"
+              >
+                <History size={14} className="mr-1" />
+                ประวัติ
               </button>
             </div>
           </div>
@@ -2038,6 +2055,13 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
           isOpen={true}
           onClose={() => setSelectedOrderIdForDetails(null)}
           orderId={selectedOrderIdForDetails}
+        />
+      )}
+
+      {isTagHistoryModalOpen && (
+        <CustomerTagHistoryModal
+          customer={customer}
+          onClose={() => setIsTagHistoryModalOpen(false)}
         />
       )}
     </div >

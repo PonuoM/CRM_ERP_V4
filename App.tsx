@@ -149,6 +149,7 @@ import ReturnManagementPage from "./pages/ReturnManagementPage";
 import CheckOrderPage from "./pages/CheckOrderPage";
 import InventoryPage from "./pages/jst/InventoryPage";
 import CompanySettingsPage from "./pages/jst/CompanySettingsPage";
+import GeoCompanySettingsPage from "./pages/GeoCompanySettingsPage";
 import SystemUpdatesManagementPage from "./pages/SystemUpdatesManagementPage";
 import SystemUpdatesHistoryPage from "./pages/SystemUpdatesHistoryPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
@@ -1248,6 +1249,9 @@ const App: React.FC = () => {
             customerId: r.customer_id,
             companyId: r.company_id,
             creatorId: typeof r.creator_id === 'number' ? r.creator_id : Number(r.creator_id) || 0,
+            proxyCreatorId: r.proxy_creator_id ?? undefined,
+            proxyCreatorName: r.proxy_creator_name ?? undefined,
+            proxyReason: r.proxy_reason ?? undefined,
             orderDate: r.order_date,
             deliveryDate: r.delivery_date ?? "",
             shippingAddress: {
@@ -1699,6 +1703,9 @@ const App: React.FC = () => {
             customerId: r.customer_id,
             companyId: r.company_id,
             creatorId: typeof r.creator_id === 'number' ? r.creator_id : Number(r.creator_id) || 0,
+            proxyCreatorId: r.proxy_creator_id ?? undefined,
+            proxyCreatorName: r.proxy_creator_name ?? undefined,
+            proxyReason: r.proxy_reason ?? undefined,
             orderDate: r.order_date,
             deliveryDate: r.delivery_date ?? "",
             shippingAddress: {
@@ -3151,6 +3158,7 @@ const App: React.FC = () => {
     slipUploads?: (string | SlipUploadPayload)[];
     bankAccountId?: number;
     transferDate?: string;
+    proxySale?: { onBehalfOfUserId: number; reason?: string };
   }): Promise<string | undefined> => {
     const {
       order: newOrderData,
@@ -3160,6 +3168,7 @@ const App: React.FC = () => {
       slipUploads,
       bankAccountId,
       transferDate,
+      proxySale,
     } = payload;
     const slipUploadsArray = Array.isArray(slipUploads)
       ? slipUploads
@@ -3390,9 +3399,23 @@ const App: React.FC = () => {
       }
     }
 
+    // ขายแทน: the order belongs to the telesale it was filed for, so both the order number and
+    // creatorId use them — sales and commission land on the right person untouched. The backend
+    // stamps proxy_creator_id from the auth token to record who actually keyed it in.
+    const proxyTargetUser = proxySale
+      ? users.find((u) => u.id === proxySale.onBehalfOfUserId)
+      : undefined;
+
+    if (proxySale && !proxyTargetUser) {
+      alert("ไม่พบผู้ใช้ที่เลือกขายแทน กรุณาเลือกใหม่");
+      return;
+    }
+
+    const orderOwner = proxyTargetUser ?? currentUser;
+
     // Generate main order ID
     const mainOrderId = await generateMainOrderId(
-      currentUser,
+      orderOwner,
       currentUser.companyId,
     );
 
@@ -3402,10 +3425,11 @@ const App: React.FC = () => {
         id: mainOrderId,
         customerId: customerIdForOrder,
         companyId: currentUser.companyId,
-        creatorId: currentUser.id,
+        creatorId: orderOwner.id,
         orderDate: toThaiIsoString(new Date()),
         bankAccountId: bankAccountId,
         transferDate: transferDate,
+        ...(proxySale ? { proxyReason: proxySale.reason || undefined } : {}),
       };
 
       // If single slip and no multi-slip support in API yet, use slipUrl for the first one
@@ -3430,7 +3454,10 @@ const App: React.FC = () => {
               customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
               timestamp: new Date().toISOString(),
               type: ActivityType.OrderCreated,
-              description: `สร้างคำสั่งซื้อ ${createdOrderId} สำหรับลูกค้า "${customer.firstName} ${customer.lastName}"`,
+              description: `สร้างคำสั่งซื้อ ${createdOrderId} สำหรับลูกค้า "${customer.firstName} ${customer.lastName}"${proxyTargetUser
+                ? ` (ขายแทน ${proxyTargetUser.firstName} ${proxyTargetUser.lastName})`
+                : ""
+                }`,
               actorName: `${currentUser.firstName} ${currentUser.lastName}`,
             };
 
@@ -3495,6 +3522,9 @@ const App: React.FC = () => {
           customerId: r.customer_id,
           companyId: r.company_id,
           creatorId: typeof r.creator_id === 'number' ? r.creator_id : Number(r.creator_id) || 0,
+          proxyCreatorId: r.proxy_creator_id ?? undefined,
+          proxyCreatorName: r.proxy_creator_name ?? undefined,
+          proxyReason: r.proxy_reason ?? undefined,
           orderDate: r.order_date,
           deliveryDate: r.delivery_date ?? "",
           shippingAddress: {
@@ -7218,6 +7248,9 @@ const App: React.FC = () => {
 
     // Unified Routing - Switch by Page Name instead of Role
     switch (activePage) {
+      case "settings.geo_company":
+      case "จัดการพื้นที่ทำงาน":
+        return <GeoCompanySettingsPage />;
       case "settings.company":
       case "Company Settings":
       case "ตั้งค่าบริษัท":
@@ -7316,6 +7349,9 @@ const App: React.FC = () => {
             warehouses={warehouses}
             currentUser={currentUser}
             users={companyUsers}
+            canProxySale={
+              isSuperAdmin || !!rolePermissions?.["orders.proxy_sale"]?.view
+            }
             onSave={handleCreateOrder}
             onCancel={() => {
               setActivePage(previousPage || "Dashboard");

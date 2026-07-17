@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Order, Customer, ModalType, OrderStatus, PaymentStatus, PaymentMethod, User, UserRole } from '../types';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, UserCheck } from 'lucide-react';
 import { getOrderCancellationsBatch } from '../services/api';
 
 // Upsell tag with orange-red gradient
@@ -14,6 +14,19 @@ const UpsellTag: React.FC = () => {
     >
       <ShoppingCart size={12} className="mr-1.5" />
       UPSell
+    </span>
+  );
+};
+
+// ขายแทน tag — the order counts toward `seller`, but proxyName actually keyed it in
+const ProxySaleTag: React.FC<{ proxyName: string; reason?: string }> = ({ proxyName, reason }) => {
+  return (
+    <span
+      className="inline-flex items-center justify-center px-2 py-1 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300"
+      title={`ขายแทนโดย ${proxyName}${reason ? ` — ${reason}` : ''}`}
+    >
+      <UserCheck size={12} className="mr-1.5" />
+      ขายแทนโดย {proxyName}
     </span>
   );
 };
@@ -501,6 +514,20 @@ const OrderTable: React.FC<OrderTableProps> = ({
                     <div className="flex flex-col gap-1">
                       <span>{seller ? `${seller.firstName} ${seller.lastName}` : '-'}</span>
                       {isUpsellOrder(order) && <UpsellTag />}
+                      {order.proxyCreatorId && (
+                        <ProxySaleTag
+                          proxyName={
+                            order.proxyCreatorName ||
+                            (() => {
+                              const p = users?.find(
+                                (u) => String(u.id) === String(order.proxyCreatorId),
+                              );
+                              return p ? `${p.firstName} ${p.lastName}` : `ID ${order.proxyCreatorId}`;
+                            })()
+                          }
+                          reason={order.proxyReason}
+                        />
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4">{order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('th-TH') : '-'}</td>

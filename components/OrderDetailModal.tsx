@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getOrder, apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
-import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2, ChevronDown, ChevronRight, CornerDownRight } from 'lucide-react';
+import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2, ChevronDown, ChevronRight, CornerDownRight, Calendar, UserCheck } from 'lucide-react';
 
 export interface StatementContext {
     statementAmount: number;
@@ -188,7 +188,17 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
                 <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <div>
-                        <h3 className="text-lg font-bold text-gray-800">รายละเอียดออเดอร์ #{orderId}</h3>
+                        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            รายละเอียดออเดอร์ #{orderId}
+                            {(() => {
+                                const totalMonthlyDiscount = order?.items?.reduce((sum: number, item: any) => sum + (Number(item.monthly_discount) || Number(item.monthlyDiscount) || 0), 0) || 0;
+                                return totalMonthlyDiscount > 0 ? (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                                        <span className="mr-1">🎁</span> ใช้คูปองส่วนลดประจำเดือน ({totalMonthlyDiscount.toLocaleString()} บาท)
+                                    </span>
+                                ) : null;
+                            })()}
+                        </h3>
                     </div>
                     <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full text-gray-500 transition-colors">
                         <X size={20} />
@@ -319,6 +329,55 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                         </div>
                     ) : order ? (
                         <div className="space-y-6">
+                            {/* Order Dates */}
+                            <div className="bg-white p-4 rounded-lg flex items-start gap-3 border border-gray-200">
+                                <Calendar className="text-gray-500 mt-1 flex-shrink-0" size={18} />
+                                <div className="flex-1">
+                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">รายละเอียดคำสั่งซื้อ</div>
+                                    <div className="flex flex-col sm:flex-row sm:gap-8 gap-2 mt-2">
+                                        <div className="flex flex-col">
+                                            <span className="text-xs text-gray-500">วันที่สั่งซื้อ</span>
+                                            <span className="font-medium text-gray-800 text-sm mt-0.5">
+                                                {order.order_date || order.orderDate
+                                                    ? new Date(order.order_date || order.orderDate).toLocaleString("th-TH", { hour12: false })
+                                                    : "-"}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs text-gray-500">วันที่จัดส่ง</span>
+                                            <span className="font-medium text-gray-800 text-sm mt-0.5">
+                                                {order.delivery_date || order.deliveryDate
+                                                    ? new Date(order.delivery_date || order.deliveryDate).toLocaleDateString("th-TH")
+                                                    : "-"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* ขายแทน (proxy sale): this order is credited to creator_id, but someone else keyed it in */}
+                            {(order.proxy_creator_id || order.proxyCreatorId) && (
+                                <div className="bg-amber-50 p-4 rounded-lg flex items-start gap-3 border border-amber-300">
+                                    <UserCheck className="text-amber-600 mt-1 flex-shrink-0" size={18} />
+                                    <div className="flex-1">
+                                        <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">ขายแทน</div>
+                                        <div className="text-sm text-gray-800">
+                                            ออเดอร์นี้เป็นยอดของ{' '}
+                                            <span className="font-semibold">{order.creator_name || `ID ${order.creator_id}`}</span>
+                                            {' '}แต่ลงให้โดย{' '}
+                                            <span className="font-semibold">
+                                                {order.proxy_creator_name || order.proxyCreatorName || `ID ${order.proxy_creator_id || order.proxyCreatorId}`}
+                                            </span>
+                                        </div>
+                                        {(order.proxy_reason || order.proxyReason) && (
+                                            <div className="text-sm text-gray-600 mt-1">
+                                                เหตุผล: {order.proxy_reason || order.proxyReason}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Two-Column: Customer Info & Shipping Address */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {/* Customer Info (customers table) */}
@@ -448,7 +507,16 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                         </td>
                                                         <td className={`px-3 py-2 text-center ${isChild ? 'text-xs text-gray-500' : 'text-sm'}`}>{item.quantity}</td>
                                                         <td className={`px-3 py-2 text-right ${isChild ? 'text-xs text-gray-500' : 'text-sm'}`}>{new Intl.NumberFormat('th-TH').format(item.price_per_unit || item.price || 0)}</td>
-                                                        <td className={`px-3 py-2 text-right ${isChild ? 'text-xs' : 'text-sm'} text-red-500`}>{item.discount > 0 ? `-${new Intl.NumberFormat('th-TH').format(item.discount)}` : '-'}</td>
+                                                        <td className={`px-3 py-2 text-right ${isChild ? 'text-xs' : 'text-sm'} text-red-500 align-top`}>
+                                                            <div className="flex flex-col items-end">
+                                                                <span>{item.discount > 0 ? `-${new Intl.NumberFormat('th-TH').format(item.discount)}` : '-'}</span>
+                                                                {(Number(item.monthly_discount) || Number(item.monthlyDiscount) || 0) > 0 && (
+                                                                    <span className="text-[10px] text-purple-600 bg-purple-50 px-1 rounded mt-1 whitespace-nowrap">
+                                                                        ประจำเดือน -{new Intl.NumberFormat('th-TH').format(Number(item.monthly_discount) || Number(item.monthlyDiscount) || 0)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
                                                         <td className={`px-3 py-2 text-right font-medium ${isChild ? 'text-xs text-gray-500' : 'text-sm'}`}>{new Intl.NumberFormat('th-TH').format(item.net_total || 0)}</td>
                                                         <td className={`px-3 py-2 text-gray-500 ${isChild ? 'text-[11px]' : 'text-sm'}`}>
                                                             {(item.is_freebie === 1 || item.is_freebie === true) ? (

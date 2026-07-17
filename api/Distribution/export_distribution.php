@@ -41,14 +41,20 @@ $sql = "
         c.phone,
         log.from_basket_key,
         log.to_basket_key,
+        bc_from.basket_name as from_basket_name,
+        bc_to.basket_name as to_basket_name,
         u_new.first_name as new_agent_first,
         u_new.last_name as new_agent_last,
         u_trigger.first_name as trigger_first,
-        u_trigger.last_name as trigger_last
+        u_trigger.last_name as trigger_last,
+        ds.session_tag
     FROM basket_transition_log log
     LEFT JOIN customers c ON c.customer_id = log.customer_id
     LEFT JOIN users u_new ON u_new.id = log.assigned_to_new
     LEFT JOIN users u_trigger ON u_trigger.id = log.triggered_by
+    LEFT JOIN distribution_sessions ds ON ds.id = log.session_id
+    LEFT JOIN basket_config bc_from ON log.from_basket_key = bc_from.id
+    LEFT JOIN basket_config bc_to ON log.to_basket_key = bc_to.id
     $where
     ORDER BY log.created_at DESC
 ";
@@ -77,7 +83,7 @@ try {
 
     $headers = [
         'วันที่จ่ายออก', 'รหัสลูกค้า', 'ชื่อลูกค้า', 'นามสกุล', 'เบอร์โทรศัพท์', 
-        'จากตะกร้า', 'ไปตะกร้า', 'ผู้รับงาน (Telesale)', 'ผู้ดำเนินการแจก (Supervisor)'
+        'จากตะกร้า', 'ไปตะกร้า', 'ผู้รับงาน (Telesale)', 'ผู้ดำเนินการแจก (Supervisor)', 'Session Tag'
     ];
     fputcsv($output, $headers);
 
@@ -87,16 +93,20 @@ try {
         $newAgentName = trim(($row['new_agent_first'] ?? '') . ' ' . ($row['new_agent_last'] ?? ''));
         $triggerName = trim(($row['trigger_first'] ?? '') . ' ' . ($row['trigger_last'] ?? ''));
 
+        $fromBasket = $row['from_basket_name'] ? $row['from_basket_name'] . ' (' . $row['from_basket_key'] . ')' : ($row['from_basket_key'] ?? '-');
+        $toBasket = $row['to_basket_name'] ? $row['to_basket_name'] . ' (' . $row['to_basket_key'] . ')' : ($row['to_basket_key'] ?? '-');
+
         $exportRow = [
             $formattedDate,
             $row['customer_id'],
             $row['first_name'] ?? '-',
             $row['last_name'] ?? '-',
             $row['phone'] ?? '-',
-            $row['from_basket_key'] ?? '-',
-            $row['to_basket_key'] ?? '-',
+            $fromBasket,
+            $toBasket,
             $newAgentName ?: '-',
-            $triggerName ?: '-'
+            $triggerName ?: '-',
+            $row['session_tag'] ?? '-'
         ];
         fputcsv($output, $exportRow);
     }

@@ -12,6 +12,9 @@ interface PreviewModalProps {
     preview: any[];
     distributing: boolean;
     handleExecuteDistribution: () => void;
+    sessionTag: string;
+    setSessionTag: (val: string) => void;
+    sessionTagsList: string[];
 }
 
 const PreviewModal: React.FC<PreviewModalProps> = ({
@@ -24,7 +27,10 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
     previewWarning,
     preview,
     distributing,
-    handleExecuteDistribution
+    handleExecuteDistribution,
+    sessionTag,
+    setSessionTag,
+    sessionTagsList
 }) => {
     if (!showPreview) return null;
 
@@ -92,6 +98,26 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
                         {previewWarning}
                     </div>
                 )}
+
+
+                {/* Session Tag */}
+                <div className="mb-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">ป้ายกำกับเซสชั่น (Session Tag) (ไม่บังคับ)</label>
+                    <input 
+                        type="text" 
+                        list="sessionTags"
+                        className="w-full border-gray-300 rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500" 
+                        placeholder="เช่น แจกรายชื่อต้นเดือน, ลูกค้าเก่าปี 2024..."
+                        value={sessionTag}
+                        onChange={(e) => setSessionTag(e.target.value)}
+                    />
+                    <datalist id="sessionTags">
+                        {sessionTagsList.map(tag => (
+                            <option key={tag} value={tag} />
+                        ))}
+                    </datalist>
+                    <p className="text-xs text-gray-500 mt-2">พิมพ์เพื่อเพิ่ม Tag ใหม่ หรือเลือกจาก Tag เดิมที่เคยใช้ เพื่อช่วยให้ค้นหาง่ายขึ้นตอนดึงรายงาน</p>
+                </div>
 
                 {/* Summary Dashboard */}
                 <div className="grid grid-cols-2 gap-4 mb-6">

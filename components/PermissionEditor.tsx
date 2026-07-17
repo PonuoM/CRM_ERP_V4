@@ -20,6 +20,8 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'monitor.callstats', label: 'Telesale Call Stats (ติดตามการโทร)' },
             { key: 'calls.telesale_report', label: 'Telesale Call Report (รายงานการโทร Telesale)' },
             { key: 'monitor.campaign_compare', label: 'Telesale Campaign Compare (แคมเปญรายคน เทียบเดือน)' },
+            { key: 'nav.distribution_dashboard', label: 'Distribution Dashboard (รายงานความเคลื่อนไหว)' },
+            { key: 'reports.special_orders', label: 'Special Orders Report (สรุปตีกลับ/ยกเลิก)' },
         ]
     },
     'Home': {
@@ -43,6 +45,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'nav.manage_customers', label: 'เมนู Manage Customers (แจกรายชื่อ)' },
             { key: 'nav.distribution_v2', label: 'เมนู Distribution V2 (แจกงาน V2)' },
             { key: 'nav.orders', label: 'เมนู Orders (คำสั่งซื้อ)' },
+            { key: 'orders.proxy_sale', label: 'ขายแทน (ลงออเดอร์แทน Telesale คนอื่น)' },
             { key: 'nav.manage_orders', label: 'เมนู Manage Orders (จัดการคำสั่งซื้อ - ขนส่ง)' },
             { key: 'nav.order_tab_settings', label: 'เมนู Order Tab Settings (ตั้งค่าจัดการคำสั่งซื้อ)' },
             { key: 'nav.search', label: 'เมนู Search (ค้นหาข้อมูล)' },

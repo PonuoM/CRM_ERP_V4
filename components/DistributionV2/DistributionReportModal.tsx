@@ -42,12 +42,29 @@ interface DistributionSession {
     details: AgentDetail[];
     agent_snapshot?: AgentSnapshot[];
     session_status?: string;
+    company_name?: string;
+    session_tag?: string;
 }
 
 const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpen, onClose, setMessage }) => {
     const [loading, setLoading] = useState(false);
     const [sessions, setSessions] = useState<DistributionSession[]>([]);
     const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
+    
+    // Check if user is system admin
+    const currentUserStr = localStorage.getItem('user');
+    const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+    const isSystemAdmin = currentUser?.is_system == 1;
+    const isSuperAdmin = currentUser?.role?.toLowerCase() === 'super_admin';
+
+    const [selectedCompany, setSelectedCompany] = useState<string>(isSuperAdmin ? 'all' : (currentUser?.company_id || '1'));
+    const [companies, setCompanies] = useState<any[]>([]);
+    
+    const [batchStartDate, setBatchStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [batchEndDate, setBatchEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [batchType, setBatchType] = useState<string>('all');
+    const [batchExportMode, setBatchExportMode] = useState<'detailed' | 'summary'>('detailed');
+    const [isBatchExporting, setIsBatchExporting] = useState(false);
     
     // Undo State
     const [undoTarget, setUndoTarget] = useState<number | null>(null);
@@ -60,11 +77,9 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const [cleanupTargetCompany, setCleanupTargetCompany] = useState<string>('current');
     const [isCleaning, setIsCleaning] = useState(false);
     
-    // Check if user is system admin
-    const currentUserStr = localStorage.getItem('user');
-    const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
-    const isSystemAdmin = currentUser?.is_system == 1;
-    const isSuperAdmin = currentUser?.role?.toLowerCase() === 'super_admin';
+    // Tag Edit State
+    const [editingTagSessionId, setEditingTagSessionId] = useState<number | null>(null);
+    const [editTagValue, setEditTagValue] = useState<string>('');
 
     const toggleExpand = (sessionId: number) => {
         setExpandedSessions(prev => {
@@ -86,7 +101,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             const currentUserStr = localStorage.getItem('user');
             const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
             
-            const data = await apiFetch('Distribution/index.php?action=undo_distribution&companyId=1', {
+            const data = await apiFetch(`Distribution/index.php?action=undo_distribution&companyId=${currentUser?.company_id || 1}`, {
                 method: 'POST',
                 body: JSON.stringify({
                     session_id: undoTarget,
@@ -107,6 +122,153 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             setMessage({ type: 'error', text: 'Network error during undo' });
         } finally {
             setIsUndoing(false);
+        }
+    };
+
+    const handleSaveSessionTag = async (sessionId: number) => {
+        try {
+            const currentUserStr = localStorage.getItem('user');
+            const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+            
+            const data = await apiFetch(`Distribution/index.php?action=update_session_tag&companyId=${currentUser?.company_id || 1}`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    session_tag: editTagValue
+                })
+            });
+            
+            if (data.ok) {
+                setMessage({ type: 'success', text: 'อัปเดต Session Tag เรียบร้อยแล้ว' });
+                // Update local state
+                setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, session_tag: editTagValue } : s));
+                setEditingTagSessionId(null);
+            } else {
+                setMessage({ type: 'error', text: data.error || 'Failed to update session tag' });
+            }
+        } catch (error) {
+            console.error(error);
+            setMessage({ type: 'error', text: 'Network error during update' });
+        }
+    };
+
+    const handleBatchExport = async () => {
+        setIsBatchExporting(true);
+        try {
+            const data = await apiFetch(`Distribution/index.php?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}`);
+            if (data.ok && data.data && data.data.length > 0) {
+                const workbook = new ExcelJS.Workbook();
+                const worksheet = workbook.addWorksheet('Batch Export');
+
+                if (batchExportMode === 'summary') {
+                    // Summary Mode
+                    let headers = [
+                        'รหัสรอบการแจก (Session ID)',
+                        'เวลา',
+                        'โหมด (Mode)',
+                        'ผู้ทำรายการ',
+                        'ตะกร้าต้นทาง (ก่อนดึง)',
+                        'จำนวนรายชื่อ (Count)'
+                    ];
+                    if (isSuperAdmin) {
+                        headers.unshift('บริษัท (Company)');
+                    }
+                    worksheet.addRow(headers);
+                    
+                    // Group data
+                    const summaryMap = new Map();
+                    data.data.forEach((row: any) => {
+                        const key = `${row.session_id}_${row.previous_basket_key}`;
+                        if (!summaryMap.has(key)) {
+                            summaryMap.set(key, { ...row, count: 0 });
+                        }
+                        summaryMap.get(key).count += 1;
+                    });
+                    
+                    Array.from(summaryMap.values()).forEach((row: any) => {
+                        let modeText = row.distribution_mode;
+                        if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
+                        
+                        let basketText = row.previous_basket_name 
+                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
+                            : (row.previous_basket_key || '-');
+
+                        let rowData = [
+                            `Session #${row.session_id}`,
+                            row.created_at,
+                            modeText,
+                            `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
+                            basketText,
+                            row.count
+                        ];
+                        if (isSuperAdmin) {
+                            rowData.unshift(row.company_name || '-');
+                        }
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else {
+                    // Detailed Mode
+                    let headers = [
+                        'รหัสรอบการแจก (Session ID)',
+                        'เวลา',
+                        'โหมด (Mode)',
+                        'ผู้ทำรายการ',
+                        'Telesale / ผู้รับงาน (เป้าหมาย)',
+                        'รหัสลูกค้า',
+                        'ชื่อลูกค้า',
+                        'เบอร์โทร',
+                        'ตะกร้าต้นทาง (ก่อนดึง)'
+                    ];
+                    if (isSuperAdmin) {
+                        headers.unshift('บริษัท (Company)');
+                    }
+                    worksheet.addRow(headers);
+
+                    data.data.forEach((row: any) => {
+                        let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
+                        let modeText = row.distribution_mode;
+                        if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
+
+                        let basketText = row.previous_basket_name 
+                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
+                            : (row.previous_basket_key || '-');
+
+                        let rowData = [
+                            `Session #${row.session_id}`,
+                            row.created_at,
+                            modeText,
+                            `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
+                            `${row.agent_first || ''} ${row.agent_last || ''} (ID: ${row.agent_id})`,
+                            row.customer_code || '-',
+                            row.customer_name || '-',
+                            row.customer_phone || '-',
+                            basketText
+                        ];
+                        if (isSuperAdmin) {
+                            rowData.unshift(row.company_name || '-');
+                        }
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                }
+
+                const buffer = await workbook.xlsx.writeBuffer();
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = `Distribution_BatchExport_${batchExportMode}_${batchStartDate}_to_${batchEndDate}.xlsx`;
+                anchor.click();
+                window.URL.revokeObjectURL(url);
+                
+                setMessage({ type: 'success', text: `ดาวน์โหลดข้อมูลสำเร็จ (${data.data.length} รายการ)` });
+            } else {
+                setMessage({ type: 'error', text: data.error || 'ไม่พบข้อมูลในช่วงเวลาที่เลือก' });
+            }
+        } catch (error) {
+            console.error(error);
+            setMessage({ type: 'error', text: 'Network error during batch export' });
+        } finally {
+            setIsBatchExporting(false);
         }
     };
 
@@ -139,13 +301,27 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     useEffect(() => {
         if (isOpen) {
             fetchSessions();
+            if (isSuperAdmin && companies.length === 0) {
+                fetchCompanies();
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, selectedCompany]);
+
+    const fetchCompanies = async () => {
+        try {
+            const data = await apiFetch('index.php?action=companies');
+            if (data && Array.isArray(data)) {
+                setCompanies(data);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
 
     const fetchSessions = async () => {
         setLoading(true);
         try {
-            const data = await apiFetch('Distribution/index.php?action=get_sessions&companyId=1');
+            const data = await apiFetch(`Distribution/index.php?action=get_sessions&companyId=${selectedCompany}`);
             if (data.ok) {
                 setSessions(data.sessions);
             } else {
@@ -413,6 +589,37 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                     </div>
                 </div>
 
+                {/* Batch Export & Company Filter */}
+                <div className="px-6 py-4 border-b bg-white flex flex-wrap gap-4 items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-blue-800">ส่งออก (Batch) :</span>
+                        <input type="date" className="p-1 border rounded text-sm w-36 bg-gray-50" value={batchStartDate} onChange={(e) => setBatchStartDate(e.target.value)} />
+                        <span className="text-sm text-gray-500">ถึง</span>
+                        <input type="date" className="p-1 border rounded text-sm w-36 bg-gray-50" value={batchEndDate} onChange={(e) => setBatchEndDate(e.target.value)} />
+                        <select className="p-1 border rounded text-sm w-32 bg-gray-50" value={batchType} onChange={(e) => setBatchType(e.target.value)}>
+                            <option value="all">ทุกประเภท</option>
+                            <option value="distribution">เฉพาะแจก</option>
+                            <option value="reclaim">เฉพาะดึงคืน</option>
+                        </select>
+                        <select className="p-1 border rounded text-sm w-36 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as 'detailed' | 'summary')}>
+                            <option value="detailed">แบบละเอียด</option>
+                            <option value="summary">แบบสรุปตามรอบ</option>
+                        </select>
+                        <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-3 py-1 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
+                            {isBatchExporting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />} โหลด
+                        </button>
+                    </div>
+                    {isSuperAdmin && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-700">เลือกบริษัท:</span>
+                            <select value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)} className="p-1 border rounded text-sm w-48 bg-gray-50">
+                                <option value="all">ทุกบริษัท (All)</option>
+                                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+                </div>
+
                 <div className="p-6 overflow-y-auto flex-1 bg-gray-50/50">
                     {loading ? (
                         <div className="flex flex-col justify-center items-center h-48">
@@ -433,6 +640,11 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                         <div className="flex-1">
                                             <div className="font-bold text-gray-800 flex items-center gap-2 flex-wrap">
                                                 <span>Session #{session.id}</span>
+                                                {isSuperAdmin && session.company_name && selectedCompany === 'all' && (
+                                                    <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
+                                                        🏢 {session.company_name}
+                                                    </span>
+                                                )}
                                                 <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
                                                     {session.distribution_mode}
                                                 </span>
@@ -445,6 +657,44 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                     <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full border border-orange-200">
                                                         เกณฑ์: ≥{session.min_call_minutes} นาที
                                                     </span>
+                                                )}
+                                                
+                                                {/* Session Tag Inline Edit */}
+                                                {editingTagSessionId === session.id ? (
+                                                    <div className="flex items-center gap-2 ml-2">
+                                                        <input 
+                                                            type="text" 
+                                                            className="text-xs border border-blue-300 rounded px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-500 min-w-[150px]"
+                                                            value={editTagValue}
+                                                            onChange={(e) => setEditTagValue(e.target.value)}
+                                                            placeholder="ระบุ Session Tag"
+                                                            autoFocus
+                                                        />
+                                                        <button 
+                                                            onClick={() => handleSaveSessionTag(session.id)}
+                                                            className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded hover:bg-blue-700"
+                                                        >
+                                                            บันทึก
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => setEditingTagSessionId(null)}
+                                                            className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded hover:bg-gray-300"
+                                                        >
+                                                            ยกเลิก
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 ml-2 group cursor-pointer" onClick={() => {
+                                                        setEditingTagSessionId(session.id);
+                                                        setEditTagValue(session.session_tag || '');
+                                                    }}>
+                                                        <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full border border-gray-200 flex items-center gap-1">
+                                                            {session.session_tag ? `Tag: ${session.session_tag}` : 'ไม่มี Tag'}
+                                                        </span>
+                                                        <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            (คลิกเพื่อแก้ไข)
+                                                        </span>
+                                                    </div>
                                                 )}
                                             </div>
                                             <div className="text-sm text-gray-500 mt-1">

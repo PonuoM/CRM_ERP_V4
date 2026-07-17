@@ -144,6 +144,7 @@ try {
                     'missedCalls' => 0,
                     'totalMinutes' => 0,
                     'answerRate' => 0,
+                    'workingHours' => 0,
                     
                     'totalSales' => 0, // ยอดขายสุทธิปกติ (ไม่รวม upsell)
                     'upsellSales' => 0,
@@ -298,6 +299,27 @@ try {
             $m['bioSales'] = floatval($row['bio_sales']);
             $m['fertilizerSales'] = floatval($row['fertilizer_sales']);
             $m['otherSales'] = floatval($row['other_sales']);
+        }
+    }
+
+    // 5. Attendance Data (working hours = attendance_value * 8)
+    $sqlAttendance = "
+        SELECT 
+            DATE(work_date) AS work_day,
+            user_id,
+            SUM(attendance_value) AS working_days
+        FROM user_daily_attendance
+        WHERE DATE(work_date) BETWEEN ? AND ?
+        GROUP BY DATE(work_date), user_id
+    ";
+    $stmt = $pdo->prepare($sqlAttendance);
+    $stmt->execute([$startDate, $endDate]);
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $d = $row['work_day'];
+        $uid = $row['user_id'];
+        if (isset($dailyData[$d][$uid])) {
+            $workingDays = floatval($row['working_days']);
+            $dailyData[$d][$uid]['metrics']['workingHours'] = $workingDays * 8;
         }
     }
 

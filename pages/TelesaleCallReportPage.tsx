@@ -243,6 +243,7 @@ const TelesaleCallReportPage: React.FC<TelesaleCallReportPageProps> = ({ current
     const [summary, setSummary] = useState({ total_calls: 0, talked_calls: 0, unique_customers: 0, active_agents: 0 });
     const [pagination, setPagination] = useState({ page: 1, pageSize: 200, total: 0, totalPages: 0 });
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     // Per-column Excel-style filters (client-side, on loaded rows)
     const [colFilters, setColFilters] = useState<Record<string, Set<string> | null>>({});
@@ -380,21 +381,53 @@ const TelesaleCallReportPage: React.FC<TelesaleCallReportPageProps> = ({ current
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    const handleExport = (type: 'csv' | 'xlsx') => {
-        const exportRows = hasActiveFilters ? sortedRows : rows;
-        const headers = ["วันเวลาโทร", "เบอร์", "ชื่อลูกค้า", "สถานะการโทร", "ผู้โทร", "ผลการโทร", "สถานะถังลูกค้า", "หมายเหตุการโทร"];
-        const dataRows = exportRows.map(r => [
-            formatDateTime(r.call_date),
-            r.customer_phone || "-",
-            r.customer_name?.trim() || "-",
-            r.call_status || "-",
-            r.caller_name?.trim() || "-",
-            r.call_result || "-",
-            r.basket_name || "-",
-            (r.notes || "").replace(/\r?\n/g, " ").trim() || "-",
-        ]);
-        downloadDataFile([headers, ...dataRows], `telesale_call_report_${year}_${String(month).padStart(2, "0")}`, type);
+    const handleExport = async (type: 'csv' | 'xlsx') => {
         setIsExportModalOpen(false);
+        setIsExporting(true);
+        try {
+            const params = new URLSearchParams({
+                month: String(month),
+                year: String(year),
+                export: "1"
+            });
+            if (agentId > 0) params.set("agent_id", String(agentId));
+            if (callStatus) params.set("call_status", callStatus);
+            if (callResult) params.set("call_result", callResult);
+            if (debouncedSearch) params.set("search", debouncedSearch);
+
+            const res = await apiFetch(`Reports/telesale_call_report.php?${params}`);
+            if (!res?.success) throw new Error(res?.message || "Failed to fetch export data");
+            
+            let exportData = res.rows || [];
+            
+            if (hasActiveFilters) {
+                exportData = exportData.filter((r: CallRow) => {
+                    for (const col of Object.keys(colFilters)) {
+                        const allowed = colFilters[col];
+                        if (allowed && !allowed.has(colGetters[col](r))) return false;
+                    }
+                    return true;
+                });
+            }
+
+            const headers = ["วันเวลาโทร", "เบอร์", "ชื่อลูกค้า", "สถานะการโทร", "ผู้โทร", "ผลการโทร", "สถานะถังลูกค้า", "หมายเหตุการโทร"];
+            const dataRows = exportData.map((r: CallRow) => [
+                formatDateTime(r.call_date),
+                r.customer_phone || "-",
+                r.customer_name?.trim() || "-",
+                r.call_status || "-",
+                r.caller_name?.trim() || "-",
+                r.call_result || "-",
+                r.basket_name || "-",
+                (r.notes || "").replace(/\r?\n/g, " ").trim() || "-",
+            ]);
+            downloadDataFile([headers, ...dataRows], `telesale_call_report_${year}_${String(month).padStart(2, "0")}`, type);
+        } catch (err) {
+            console.error("Export error:", err);
+            alert("เกิดข้อผิดพลาดในการดึงข้อมูล Export โปรดลองอีกครั้ง");
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     const columns = useMemo(() => [
@@ -427,10 +460,10 @@ const TelesaleCallReportPage: React.FC<TelesaleCallReportPageProps> = ({ current
                                 <X className="w-3 h-3" />ล้างตัวกรอง ({activeFilterCount})
                             </button>
                         )}
-                        <button onClick={() => setIsExportModalOpen(true)} disabled={rows.length === 0}
+                        <button onClick={() => setIsExportModalOpen(true)} disabled={rows.length === 0 || isExporting}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 disabled:opacity-40 transition-colors">
-                            <Download className="w-3.5 h-3.5" />
-                            {hasActiveFilters ? `ดาวน์โหลด (${sortedRows.length})` : 'ดาวน์โหลด Export'}
+                            {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                            {isExporting ? 'กำลังดึงข้อมูล...' : (hasActiveFilters ? `ดาวน์โหลดแบบมีตัวกรอง` : 'ดาวน์โหลดทั้งหมด')}
                         </button>
                     </div>
                 </div>
