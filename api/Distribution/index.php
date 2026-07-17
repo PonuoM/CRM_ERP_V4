@@ -812,7 +812,7 @@ function handleBatchExport($pdo, $companyId)
         LEFT JOIN users u_dist ON ds.distributed_by = u_dist.id
         LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
         LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
-        LEFT JOIN basket_config bc ON dsd.previous_basket_key = bc.id
+        LEFT JOIN basket_config bc ON dsd.previous_basket_key = bc.basket_key
         WHERE ds.created_at BETWEEN ? AND ?
         $companyFilter
         $typeFilter
