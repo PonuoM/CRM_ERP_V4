@@ -64,7 +64,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const [batchStartDate, setBatchStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [batchEndDate, setBatchEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [batchType, setBatchType] = useState<string>('all');
-    const [batchExportMode, setBatchExportMode] = useState<'detailed' | 'summary'>('detailed');
+    const [batchExportMode, setBatchExportMode] = useState<'customer' | 'user' | 'session'>('customer');
     const [isBatchExporting, setIsBatchExporting] = useState(false);
     
     
@@ -169,15 +169,15 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('Batch Export');
 
-                if (batchExportMode === 'summary') {
-                    // Summary Mode
+                if (batchExportMode === 'session') {
+                    // Session Level
                     let headers = [
-                        'รหัสรอบการแจก (Session ID)',
+                        'รอบแจก (Session ID)',
                         'เวลา',
-                        'โหมด (Mode)',
-                        'ผู้ทำรายการ',
-                        'ตะกร้าต้นทาง (ก่อนดึง)',
-                        'จำนวนรายชื่อ (Count)',
+                        'รูปแบบ (Mode)',
+                        'ผู้ดำเนินการ',
+                        'ตะกร้าต้นทาง (Source Basket)',
+                        'จำนวนลูกค้าที่ได้รับ (Count)',
                         'จำนวนพนักงาน (Agents)'
                     ];
                     if (isSuperAdmin) {
@@ -185,7 +185,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                     }
                     worksheet.addRow(headers);
                     
-                    // Group data
+                    // Group data by session
                     const summaryMap = new Map();
                     data.data.forEach((row: any) => {
                         const key = `${row.session_id}_${row.previous_basket_key}`;
@@ -221,18 +221,68 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         }
                         worksheet.addRow(rowData).font = { size: 10 };
                     });
-                } else {
-                    // Detailed Mode
+                } else if (batchExportMode === 'user') {
+                    // User Level
                     let headers = [
-                        'รหัสรอบการแจก (Session ID)',
+                        'รอบแจก (Session ID)',
                         'เวลา',
-                        'โหมด (Mode)',
-                        'ผู้ทำรายการ',
-                        'Telesale / ผู้รับงาน (เป้าหมาย)',
+                        'รูปแบบ (Mode)',
+                        'ผู้ดำเนินการ',
+                        'พนักงาน (Agent)',
+                        'ตะกร้าต้นทาง (Source Basket)',
+                        'จำนวนลูกค้าที่ได้รับ (Count)'
+                    ];
+                    if (isSuperAdmin) {
+                        headers.unshift('บริษัท (Company)');
+                    }
+                    worksheet.addRow(headers);
+                    
+                    // Group data by session and agent
+                    const userMap = new Map();
+                    data.data.forEach((row: any) => {
+                        const key = `${row.session_id}_${row.agent_id}_${row.previous_basket_key}`;
+                        if (!userMap.has(key)) {
+                            userMap.set(key, { ...row, count: 0 });
+                        }
+                        userMap.get(key).count += 1;
+                    });
+                    
+                    Array.from(userMap.values()).forEach((row: any) => {
+                        let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
+                        let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
+                        if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
+                        
+                        let basketText = row.previous_basket_name 
+                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
+                            : (row.previous_basket_key || '-');
+
+                        let rowData = [
+                            `Session #${row.session_id}`,
+                            row.created_at,
+                            modeText,
+                            `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
+                            `${row.agent_first || ''} ${row.agent_last || ''} (ID: ${row.agent_id})`,
+                            basketText,
+                            row.count
+                        ];
+                        if (isSuperAdmin) {
+                            rowData.unshift(row.company_name || '-');
+                        }
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else {
+                    // Customer Level (Detailed)
+                    let headers = [
+                        'รอบแจก (Session ID)',
+                        'เวลา',
+                        'รูปแบบ (Mode)',
+                        'ผู้ดำเนินการ',
+                        'Telesale / ผู้รับผิดชอบ (เป้าหมาย)',
                         'รหัสลูกค้า',
-                        'ชื่อลูกค้า',
-                        'เบอร์โทร',
-                        'ตะกร้าต้นทาง (ก่อนดึง)'
+                        'ชื่อ-นามสกุลลูกค้า',
+                        'เบอร์โทรศัพท์',
+                        'ตะกร้าต้นทาง (Source Basket)',
+                        'Session Tag'
                     ];
                     if (isSuperAdmin) {
                         headers.unshift('บริษัท (Company)');
@@ -257,7 +307,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                             row.customer_code || '-',
                             row.customer_name || '-',
                             row.customer_phone || '-',
-                            basketText
+                            basketText,
+                            row.session_tag || '-'
                         ];
                         if (isSuperAdmin) {
                             rowData.unshift(row.company_name || '-');
@@ -680,9 +731,10 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         <button onClick={resetFilters} className="px-4 py-1.5 rounded text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 flex items-center transition-colors">
                             รีเซ็ตตัวกรอง
                         </button>
-                        <select className="p-1.5 border rounded text-sm w-48 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as 'detailed' | 'summary')}>
-                            <option value="detailed">แบบละเอียด (Detailed)</option>
-                            <option value="summary">แบบสรุปย่อ (Summary)</option>
+                        <select className="p-1.5 border rounded text-sm w-48 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as 'customer' | 'user' | 'session')}>
+                            <option value="customer">Customer level (แบบรายชื่อละเอียด)</option>
+                            <option value="user">User level (แบบตามพนักงาน)</option>
+                            <option value="session">Session level (แบบตามรอบแจก)</option>
                         </select>
                         <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-4 py-1.5 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
                             {isBatchExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} ส่งออกไฟล์
