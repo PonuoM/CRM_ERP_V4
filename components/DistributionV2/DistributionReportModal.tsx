@@ -131,8 +131,9 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
     };
 
-    const handleSaveSessionTag = async (sessionId: number) => {
+    const handleSaveSessionTag = async (sessionId: number, overrideTagValue?: string) => {
         try {
+            const valueToSave = overrideTagValue !== undefined ? overrideTagValue : editTagValue;
             const currentUserStr = localStorage.getItem('user');
             const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
             
@@ -140,14 +141,14 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                 method: 'POST',
                 body: JSON.stringify({
                     session_id: sessionId,
-                    session_tag: editTagValue
+                    session_tag: valueToSave
                 })
             });
             
             if (data.ok) {
-                setMessage({ type: 'success', text: 'อัปเดต Session Tag เรียบร้อยแล้ว' });
+                setMessage({ type: 'success', text: 'อัปเดต Session Tag เรียบร้อย' });
                 // Update local state
-                setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, session_tag: editTagValue } : s));
+                setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, session_tag: valueToSave } : s));
                 setEditingTagSessionId(null);
                 // Refresh tag options for datalist
                 fetchOptions();
@@ -756,6 +757,14 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                         >
                                                             ยกเลิก
                                                         </button>
+                                                        {session.session_tag && (
+                                                            <button 
+                                                                onClick={() => { setEditTagValue(''); handleSaveSessionTag(session.id, ''); }}
+                                                                className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded hover:bg-red-200"
+                                                            >
+                                                                ลบแท็ก
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div className="flex items-center gap-2 ml-2 group cursor-pointer" onClick={() => {
