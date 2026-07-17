@@ -64,7 +64,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const [batchStartDate, setBatchStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [batchEndDate, setBatchEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [batchType, setBatchType] = useState<string>('all');
-    const [batchExportMode, setBatchExportMode] = useState<'customer' | 'user' | 'session'>('customer');
+    const [batchExportMode, setBatchExportMode] = useState<'customer' | 'user' | 'session' | 'agent_overall' | 'basket_overall' | 'daily_summary'>('customer');
     const [isBatchExporting, setIsBatchExporting] = useState(false);
     
     
@@ -170,149 +170,104 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                 const worksheet = workbook.addWorksheet('Batch Export');
 
                 if (batchExportMode === 'session') {
-                    // Session Level
-                    let headers = [
-                        'รอบแจก (Session ID)',
-                        'เวลา',
-                        'รูปแบบ (Mode)',
-                        'ผู้ดำเนินการ',
-                        'ตะกร้าต้นทาง (Source Basket)',
-                        'จำนวนลูกค้าที่ได้รับ (Count)',
-                        'จำนวนพนักงาน (Agents)'
-                    ];
-                    if (isSuperAdmin) {
-                        headers.unshift('บริษัท (Company)');
-                    }
+                    let headers = ['รอบแจก (Session ID)', 'เวลา', 'รูปแบบ (Mode)', 'ผู้ดำเนินการ', 'ตะกร้าต้นทาง (Source Basket)', 'Session Tag', 'จำนวนลูกค้าทั้งหมด (Count)', 'จำนวนพนักงานที่รับงาน (Agents)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
                     worksheet.addRow(headers);
-                    
-                    // Group data by session
-                    const summaryMap = new Map();
+                    const map = new Map();
                     data.data.forEach((row: any) => {
                         const key = `${row.session_id}_${row.previous_basket_key}`;
-                        if (!summaryMap.has(key)) {
-                            summaryMap.set(key, { ...row, count: 0, agentIds: new Set() });
-                        }
-                        summaryMap.get(key).count += 1;
-                        if (row.agent_id) {
-                            summaryMap.get(key).agentIds.add(row.agent_id);
-                        }
+                        if (!map.has(key)) map.set(key, { ...row, count: 0, agentIds: new Set() });
+                        map.get(key).count += 1;
+                        if (row.agent_id) map.get(key).agentIds.add(row.agent_id);
                     });
-                    
-                    Array.from(summaryMap.values()).forEach((row: any) => {
+                    Array.from(map.values()).forEach((row: any) => {
                         let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
                         let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
-                        
-                        let basketText = row.previous_basket_name 
-                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
-                            : (row.previous_basket_key || '-');
-
-                        let rowData = [
-                            `Session #${row.session_id}`,
-                            row.created_at,
-                            modeText,
-                            `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
-                            basketText,
-                            row.count,
-                            row.agentIds ? row.agentIds.size : 0
-                        ];
-                        if (isSuperAdmin) {
-                            rowData.unshift(row.company_name || '-');
-                        }
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${row.previous_basket_key})` : (row.previous_basket_key || '-');
+                        let rowData = [ `Session #${row.session_id}`, row.created_at, modeText, `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`, basketText, row.session_tag || '-', row.count, row.agentIds ? row.agentIds.size : 0 ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };
                     });
                 } else if (batchExportMode === 'user') {
-                    // User Level
-                    let headers = [
-                        'รอบแจก (Session ID)',
-                        'เวลา',
-                        'รูปแบบ (Mode)',
-                        'ผู้ดำเนินการ',
-                        'พนักงาน (Agent)',
-                        'ตะกร้าต้นทาง (Source Basket)',
-                        'จำนวนลูกค้าที่ได้รับ (Count)'
-                    ];
-                    if (isSuperAdmin) {
-                        headers.unshift('บริษัท (Company)');
-                    }
+                    let headers = ['รอบแจก (Session ID)', 'เวลา', 'รูปแบบ (Mode)', 'ผู้ดำเนินการ', 'Agent ID', 'Agent Name', 'ตะกร้าต้นทาง (Source Basket)', 'จำนวนลูกค้าที่ได้รับ (Count)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
                     worksheet.addRow(headers);
-                    
-                    // Group data by session and agent
-                    const userMap = new Map();
+                    const map = new Map();
                     data.data.forEach((row: any) => {
                         const key = `${row.session_id}_${row.agent_id}_${row.previous_basket_key}`;
-                        if (!userMap.has(key)) {
-                            userMap.set(key, { ...row, count: 0 });
-                        }
-                        userMap.get(key).count += 1;
+                        if (!map.has(key)) map.set(key, { ...row, count: 0 });
+                        map.get(key).count += 1;
                     });
-                    
-                    Array.from(userMap.values()).forEach((row: any) => {
+                    Array.from(map.values()).forEach((row: any) => {
                         let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
                         let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
-                        
-                        let basketText = row.previous_basket_name 
-                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
-                            : (row.previous_basket_key || '-');
-
-                        let rowData = [
-                            `Session #${row.session_id}`,
-                            row.created_at,
-                            modeText,
-                            `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
-                            `${row.agent_first || ''} ${row.agent_last || ''} (ID: ${row.agent_id})`,
-                            basketText,
-                            row.count
-                        ];
-                        if (isSuperAdmin) {
-                            rowData.unshift(row.company_name || '-');
-                        }
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${row.previous_basket_key})` : (row.previous_basket_key || '-');
+                        let rowData = [ `Session #${row.session_id}`, row.created_at, modeText, `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`, row.agent_id || '-', `${row.agent_first || ''} ${row.agent_last || ''}`, basketText, row.count ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else if (batchExportMode === 'agent_overall') {
+                    let headers = ['Agent ID', 'Agent Name', 'จำนวนลูกค้าที่ได้รับทั้งหมดตลอดช่วงเวลา (Total Count)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
+                    worksheet.addRow(headers);
+                    const map = new Map();
+                    data.data.forEach((row: any) => {
+                        if (!row.agent_id) return;
+                        const key = `${row.agent_id}`;
+                        if (!map.has(key)) map.set(key, { agent_id: row.agent_id, agent_first: row.agent_first, agent_last: row.agent_last, company_name: row.company_name, count: 0 });
+                        map.get(key).count += 1;
+                    });
+                    Array.from(map.values()).forEach((row: any) => {
+                        let rowData = [ row.agent_id, `${row.agent_first || ''} ${row.agent_last || ''}`, row.count ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else if (batchExportMode === 'basket_overall') {
+                    let headers = ['รหัสตะกร้าต้นทาง (Basket Key)', 'ชื่อตะกร้าต้นทาง (Basket Name)', 'จำนวนลูกค้าที่ถูกแจกออกไปทั้งหมด (Total Count)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
+                    worksheet.addRow(headers);
+                    const map = new Map();
+                    data.data.forEach((row: any) => {
+                        const key = `${row.previous_basket_key}`;
+                        if (!map.has(key)) map.set(key, { key: row.previous_basket_key, name: row.previous_basket_name, company_name: row.company_name, count: 0 });
+                        map.get(key).count += 1;
+                    });
+                    Array.from(map.values()).forEach((row: any) => {
+                        let rowData = [ row.key || '-', row.name || '-', row.count ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else if (batchExportMode === 'daily_summary') {
+                    let headers = ['วันที่ (Date)', 'จำนวนรอบการแจก (Total Sessions)', 'จำนวนพนักงานที่รับงานรวม (Agents Involved)', 'จำนวนลูกค้าที่ถูกแจกทั้งหมด (Total Customers)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
+                    worksheet.addRow(headers);
+                    const map = new Map();
+                    data.data.forEach((row: any) => {
+                        const date = row.created_at ? row.created_at.split(' ')[0] : 'Unknown Date';
+                        if (!map.has(date)) map.set(date, { date: date, company_name: row.company_name, sessionIds: new Set(), agentIds: new Set(), count: 0 });
+                        map.get(date).sessionIds.add(row.session_id);
+                        if (row.agent_id) map.get(date).agentIds.add(row.agent_id);
+                        map.get(date).count += 1;
+                    });
+                    Array.from(map.values()).forEach((row: any) => {
+                        let rowData = [ row.date, row.sessionIds.size, row.agentIds.size, row.count ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };
                     });
                 } else {
-                    // Customer Level (Detailed)
-                    let headers = [
-                        'รอบแจก (Session ID)',
-                        'เวลา',
-                        'รูปแบบ (Mode)',
-                        'ผู้ดำเนินการ',
-                        'Telesale / ผู้รับผิดชอบ (เป้าหมาย)',
-                        'รหัสลูกค้า',
-                        'ชื่อ-นามสกุลลูกค้า',
-                        'เบอร์โทรศัพท์',
-                        'ตะกร้าต้นทาง (Source Basket)',
-                        'Session Tag'
-                    ];
-                    if (isSuperAdmin) {
-                        headers.unshift('บริษัท (Company)');
-                    }
+                    // Customer Level
+                    let headers = ['รอบแจก (Session ID)', 'เวลา', 'รูปแบบ (Mode)', 'ผู้ดำเนินการ', 'Agent ID', 'Agent Name', 'รหัสลูกค้า', 'ชื่อ-นามสกุลลูกค้า', 'เบอร์โทรศัพท์', 'ตะกร้าต้นทาง (Source Basket)', 'Session Tag'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
                     worksheet.addRow(headers);
-
                     data.data.forEach((row: any) => {
                         let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
                         let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
-
-                        let basketText = row.previous_basket_name 
-                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
-                            : (row.previous_basket_key || '-');
-
-                        let rowData = [
-                            `Session #${row.session_id}`,
-                            row.created_at,
-                            modeText,
-                            `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
-                            `${row.agent_first || ''} ${row.agent_last || ''} (ID: ${row.agent_id})`,
-                            row.customer_code || '-',
-                            row.customer_name || '-',
-                            row.customer_phone || '-',
-                            basketText,
-                            row.session_tag || '-'
-                        ];
-                        if (isSuperAdmin) {
-                            rowData.unshift(row.company_name || '-');
-                        }
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${row.previous_basket_key})` : (row.previous_basket_key || '-');
+                        let rowData = [ `Session #${row.session_id}`, row.created_at, modeText, `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`, row.agent_id || '-', `${row.agent_first || ''} ${row.agent_last || ''}`, row.customer_code || '-', row.customer_name || '-', row.customer_phone || '-', basketText, row.session_tag || '-' ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };
                     });
                 }
@@ -731,10 +686,13 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         <button onClick={resetFilters} className="px-4 py-1.5 rounded text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 flex items-center transition-colors">
                             รีเซ็ตตัวกรอง
                         </button>
-                        <select className="p-1.5 border rounded text-sm w-48 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as 'customer' | 'user' | 'session')}>
-                            <option value="customer">Customer level (แบบรายชื่อละเอียด)</option>
-                            <option value="user">User level (แบบตามพนักงาน)</option>
-                            <option value="session">Session level (แบบตามรอบแจก)</option>
+                        <select className="p-1.5 border rounded text-sm w-64 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as any)}>
+                            <option value="customer">1. Customer level (รายชื่อลูกค้า)</option>
+                            <option value="user">2. User level (พนักงานรายรอบ)</option>
+                            <option value="session">3. Session level (ภาพรวมรอบแจก)</option>
+                            <option value="agent_overall">4. Agent Overall (สรุปยอดพนักงาน)</option>
+                            <option value="basket_overall">5. Source Basket (สรุปตามตะกร้า)</option>
+                            <option value="daily_summary">6. Daily Summary (สรุปยอดรายวัน)</option>
                         </select>
                         <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-4 py-1.5 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
                             {isBatchExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} ส่งออกไฟล์
