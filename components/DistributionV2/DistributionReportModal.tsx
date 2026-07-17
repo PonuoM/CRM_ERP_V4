@@ -406,7 +406,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             const count = detailsMap.get(agent.id) || 0;
             if (count > 0) {
                 receivedAgents.push({ ...agent, count });
-            } else {
+            } else if (agent.isActive !== false) {
+                // Ignore agents who are explicitly inactive AND got 0 customers to keep the report clean
                 failedAgents.push({ ...agent, count: 0 });
             }
         });
