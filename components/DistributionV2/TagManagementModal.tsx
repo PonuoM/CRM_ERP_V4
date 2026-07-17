@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Edit2, Loader2, Save } from 'lucide-react';
 import { apiFetch } from '../../services/api';
+import { useToast } from '../Toast';
 
 interface Tag {
     id: number;
@@ -30,6 +31,7 @@ const TagManagementModal: React.FC<TagManagementModalProps> = ({ isOpen, onClose
     const [tags, setTags] = useState<Tag[]>([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const { toast, confirm: confirmToast } = useToast();
     
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editName, setEditName] = useState('');
@@ -77,11 +79,11 @@ const TagManagementModal: React.FC<TagManagementModalProps> = ({ isOpen, onClose
                 await fetchTags();
                 onTagsUpdated();
             } else {
-                alert(res?.error || 'Failed to create tag');
+                toast('error', 'ข้อผิดพลาด', res?.error || 'Failed to create tag');
             }
         } catch (e) {
             console.error(e);
-            alert('Error creating tag');
+            toast('error', 'ข้อผิดพลาด', 'Error creating tag');
         } finally {
             setSaving(false);
         }
@@ -100,18 +102,19 @@ const TagManagementModal: React.FC<TagManagementModalProps> = ({ isOpen, onClose
                 await fetchTags();
                 onTagsUpdated();
             } else {
-                alert(res?.error || 'Failed to update tag');
+                toast('error', 'ข้อผิดพลาด', res?.error || 'Failed to update tag');
             }
         } catch (e) {
             console.error(e);
-            alert('Error updating tag');
+            toast('error', 'ข้อผิดพลาด', 'Error updating tag');
         } finally {
             setSaving(false);
         }
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('ยืนยันการลบ Tag นี้? ข้อมูลประวัติเก่าๆ ที่เคยใช้ Tag นี้จะไม่แสดงชื่อ Tag อีกต่อไป')) return;
+        const confirmed = await confirmToast({ type: 'warning', title: 'ยืนยันการลบ Tag', message: 'ข้อมูลประวัติเก่าๆ ที่เคยใช้ Tag นี้จะไม่แสดงชื่อ Tag อีกต่อไป', confirmText: 'ยืนยัน', cancelText: 'ยกเลิก' });
+        if (!confirmed) return;
         setSaving(true);
         try {
             const res = await apiFetch(`SessionTags/index.php?action=delete_tag&companyId=${companyId}`, {
@@ -122,11 +125,11 @@ const TagManagementModal: React.FC<TagManagementModalProps> = ({ isOpen, onClose
                 await fetchTags();
                 onTagsUpdated();
             } else {
-                alert(res?.error || 'Failed to delete tag');
+                toast('error', 'ข้อผิดพลาด', res?.error || 'Failed to delete tag');
             }
         } catch (e) {
             console.error(e);
-            alert('Error deleting tag');
+            toast('error', 'ข้อผิดพลาด', 'Error deleting tag');
         } finally {
             setSaving(false);
         }

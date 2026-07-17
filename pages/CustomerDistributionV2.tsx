@@ -31,6 +31,7 @@ import DistributionTelesaleTable from '../components/DistributionV2/Distribution
 import DistributionCustomerPreview from '../components/DistributionV2/DistributionCustomerPreview';
 import DistributionReportModal from '../components/DistributionV2/DistributionReportModal';
 import CronLogModal from '../components/DistributionV2/CronLogModal';
+import { useToast } from '../components/Toast';
 
 import { 
     BasketConfig, 
@@ -46,6 +47,7 @@ interface CustomerDistributionV2Props {
 }
 
 const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ currentUser }) => {
+    const { toast } = useToast();
     // Data
     const [baskets, setBaskets] = useState<BasketConfig[]>([]);
     const [dashboardBaskets, setDashboardBaskets] = useState<BasketConfig[]>([]);
@@ -1717,10 +1719,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 const filename = `distribution_history_${new Date().toISOString().slice(0, 10)}`;
                 downloadDataFile([headers, ...rows], filename, type);
             } else {
-                alert('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
+                toast('error', 'ข้อผิดพลาด', 'ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
             }
         } catch (e: any) {
-            alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + e.message);
+            toast('error', 'ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + e.message);
         } finally {
             setIsExporting(false);
             setIsExportTypeModalOpen(false);
