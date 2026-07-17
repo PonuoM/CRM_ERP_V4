@@ -796,6 +796,9 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         <button onClick={resetFilters} className="px-4 py-1.5 rounded text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 flex items-center transition-colors">
                             รีเซ็ตตัวกรอง
                         </button>
+                        <button onClick={handleExportSummary} disabled={isBatchExporting} className={`px-4 py-1.5 rounded text-sm text-indigo-700 bg-indigo-50 hover:bg-indigo-100 flex items-center transition-colors font-medium ${isBatchExporting ? 'opacity-50' : ''}`}>
+                            {isBatchExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} CEO Pivot Summary
+                        </button>
                         <select className="p-1.5 border rounded text-sm w-64 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as any)}>
                             <option value="customer">1. Customer level (รายชื่อลูกค้า)</option>
                             <option value="user">2. User level (พนักงานรายรอบ)</option>
