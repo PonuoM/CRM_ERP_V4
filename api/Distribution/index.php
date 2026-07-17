@@ -348,7 +348,7 @@ function handleGetSessions($pdo, $companyId)
         $params[] = $basketKey;
     }
 
-    if ($sessionTag && $sessionTag !== 'all') {
+    if ($tagId && $tagId !== 'all') {
         $whereClauses[] = "ds.tag_id = ?";
         $params[] = $tagId;
     }
@@ -359,10 +359,11 @@ function handleGetSessions($pdo, $companyId)
     }
 
     $sql = "
-        SELECT ds.*, u.first_name, u.last_name, c.name as company_name
+        SELECT ds.*, u.first_name, u.last_name, c.name as company_name, dt.tag_name as session_tag, dt.color as tag_color
         FROM distribution_sessions ds
         LEFT JOIN users u ON ds.distributed_by = u.id
         LEFT JOIN companies c ON ds.company_id = c.id
+        LEFT JOIN distribution_tags dt ON ds.tag_id = dt.id
         $whereSql
         ORDER BY ds.created_at DESC
         LIMIT " . (int)$limit . "
@@ -777,7 +778,7 @@ function handleBatchExport($pdo, $companyId)
         $params[] = $basketKey;
     }
 
-    if ($sessionTag && $sessionTag !== 'all') {
+    if ($tagId && $tagId !== 'all') {
         $typeFilter .= " AND ds.tag_id = ? ";
         $params[] = $tagId;
     }
@@ -807,6 +808,7 @@ function handleBatchExport($pdo, $companyId)
         FROM distribution_sessions ds
         JOIN distribution_session_details dsd ON ds.id = dsd.session_id
         LEFT JOIN companies c ON ds.company_id = c.id
+        LEFT JOIN distribution_tags dt ON ds.tag_id = dt.id
         LEFT JOIN users u_dist ON ds.distributed_by = u_dist.id
         LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
         LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
