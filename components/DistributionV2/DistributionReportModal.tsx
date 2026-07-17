@@ -295,7 +295,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
                         let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
-                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${row.previous_basket_key})` : (row.previous_basket_key || '-');
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${displayKey})` : (displayKey || '-');
                         let rowData = [ `Session #${row.session_id}`, row.created_at, modeText, `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`, basketText, row.session_tag || '-', row.count, row.agentIds ? row.agentIds.size : 0 ];
                         if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };
@@ -314,7 +315,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
                         let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
-                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${row.previous_basket_key})` : (row.previous_basket_key || '-');
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${displayKey})` : (displayKey || '-');
                         let rowData = [ `Session #${row.session_id}`, row.created_at, modeText, `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`, row.agent_id || '-', `${row.agent_first || ''} ${row.agent_last || ''}`, basketText, row.count ];
                         if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };
@@ -341,8 +343,9 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                     worksheet.addRow(headers);
                     const map = new Map();
                     data.data.forEach((row: any) => {
-                        const key = `${row.previous_basket_key}`;
-                        if (!map.has(key)) map.set(key, { key: row.previous_basket_key, name: row.previous_basket_name, company_name: row.company_name, count: 0 });
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        const key = `${displayKey}`;
+                        if (!map.has(key)) map.set(key, { key: displayKey, name: row.previous_basket_name, company_name: row.company_name, count: 0 });
                         map.get(key).count += 1;
                     });
                     Array.from(map.values()).forEach((row: any) => {
@@ -376,7 +379,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
                         let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
-                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${row.previous_basket_key})` : (row.previous_basket_key || '-');
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${displayKey})` : (displayKey || '-');
                         let rowData = [ `Session #${row.session_id}`, row.created_at, modeText, `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`, row.agent_id || '-', `${row.agent_first || ''} ${row.agent_last || ''}`, row.customer_code || '-', row.customer_name || '-', row.customer_phone || '-', basketText, row.session_tag || '-' ];
                         if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };

@@ -53,8 +53,8 @@ $sql = "
     LEFT JOIN users u_new ON u_new.id = log.assigned_to_new
     LEFT JOIN users u_trigger ON u_trigger.id = log.triggered_by
     LEFT JOIN distribution_sessions ds ON ds.id = log.session_id
-    LEFT JOIN basket_config bc_from ON log.from_basket_key = bc_from.basket_key
-    LEFT JOIN basket_config bc_to ON log.to_basket_key = bc_to.basket_key
+    LEFT JOIN basket_config bc_from ON (log.from_basket_key = bc_from.basket_key OR log.from_basket_key = bc_from.id)
+    LEFT JOIN basket_config bc_to ON (log.to_basket_key = bc_to.basket_key OR log.to_basket_key = bc_to.id)
     $where
     ORDER BY log.created_at DESC
 ";

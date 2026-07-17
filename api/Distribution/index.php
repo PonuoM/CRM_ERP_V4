@@ -801,6 +801,7 @@ function handleBatchExport($pdo, $companyId)
             CONCAT(cust.first_name, ' ', cust.last_name) as customer_name,
             cust.phone as customer_phone,
             dsd.previous_basket_key,
+            bc.basket_key as real_basket_key,
             bc.basket_name as previous_basket_name,
             dsd.previous_lifecycle_status,
             ds.session_tag
@@ -812,7 +813,7 @@ function handleBatchExport($pdo, $companyId)
         LEFT JOIN users u_dist ON ds.distributed_by = u_dist.id
         LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
         LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
-        LEFT JOIN basket_config bc ON dsd.previous_basket_key = bc.basket_key
+        LEFT JOIN basket_config bc ON (dsd.previous_basket_key = bc.basket_key OR dsd.previous_basket_key = bc.id)
         WHERE ds.created_at BETWEEN ? AND ?
         $companyFilter
         $typeFilter
