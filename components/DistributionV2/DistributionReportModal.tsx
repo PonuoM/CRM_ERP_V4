@@ -675,10 +675,13 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         </div>
                         <div className="flex flex-col gap-1">
                             <span className="text-xs text-gray-500 font-medium">Session Tag</span>
-                            <select className="p-1.5 border rounded text-sm bg-gray-50" value={filterTag} onChange={(e) => setFilterTag(e.target.value)}>
-                                <option value="all">ทุกแท็ก</option>
-                                {tags.map((t, idx) => <option key={idx} value={t}>{t}</option>)}
-                            </select>
+                            <SessionTagSelect
+                                value={filterTag === 'all' ? '' : filterTag}
+                                onChange={(val) => setFilterTag(val === '' ? 'all' : val)}
+                                options={tags}
+                                className="w-full text-sm"
+                                placeholder="ทุกแท็ก"
+                            />
                         </div>
                     </div>
                     
