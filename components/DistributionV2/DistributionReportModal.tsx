@@ -161,6 +161,113 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
     };
 
+    const handleExportSummary = async () => {
+        setIsBatchExporting(true);
+        try {
+            const data = await apiFetch(`Distribution/summary_export.php?companyId=${selectedCompany}&start_date=${batchStartDate}&end_date=${batchEndDate}`);
+            if (data.ok && data.agents && data.agents.length > 0) {
+                const workbook = new ExcelJS.Workbook();
+                const worksheet = workbook.addWorksheet('CEO Summary Pivot');
+
+                // Header styles
+                const headerStyle = {
+                    font: { bold: true, color: { argb: 'FFFFFFFF' } },
+                    alignment: { horizontal: 'center', vertical: 'middle' } as const
+                };
+
+                // Row 1: Agent | Baskets... | Totals
+                const row1 = ['รายชื่อพนักงาน'];
+                const row2 = [''];
+                
+                data.baskets.forEach((b: any) => {
+                    row1.push(`${b.basket_name} (${b.basket_key})`);
+                    row1.push(''); // placeholder for merge
+                    row2.push('รับเข้า');
+                    row2.push('ดึงคืน');
+                });
+                
+                row1.push('ยอดรวม (Totals)', '', '');
+                row2.push('รวมรับเข้า', 'รวมดึงคืน', 'สุทธิ (Net)');
+
+                const headerRow1 = worksheet.addRow(row1);
+                const headerRow2 = worksheet.addRow(row2);
+
+                // Merge and style cells for Row 1
+                let colIdx = 2;
+                data.baskets.forEach((b: any) => {
+                    worksheet.mergeCells(1, colIdx, 1, colIdx + 1);
+                    headerRow1.getCell(colIdx).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B82F6' } }; // Blue
+                    headerRow1.getCell(colIdx).font = headerStyle.font;
+                    headerRow1.getCell(colIdx).alignment = headerStyle.alignment;
+                    
+                    headerRow2.getCell(colIdx).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } }; // Green
+                    headerRow2.getCell(colIdx).font = headerStyle.font;
+                    headerRow2.getCell(colIdx).alignment = headerStyle.alignment;
+                    
+                    headerRow2.getCell(colIdx+1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEF4444' } }; // Red
+                    headerRow2.getCell(colIdx+1).font = headerStyle.font;
+                    headerRow2.getCell(colIdx+1).alignment = headerStyle.alignment;
+                    
+                    colIdx += 2;
+                });
+
+                // Merge and style Totals column
+                worksheet.mergeCells(1, colIdx, 1, colIdx + 2);
+                headerRow1.getCell(colIdx).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8B5CF6' } }; // Purple
+                headerRow1.getCell(colIdx).font = headerStyle.font;
+                headerRow1.getCell(colIdx).alignment = headerStyle.alignment;
+                
+                [colIdx, colIdx+1, colIdx+2].forEach(idx => {
+                    headerRow2.getCell(idx).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B7280' } }; // Gray
+                    headerRow2.getCell(idx).font = headerStyle.font;
+                    headerRow2.getCell(idx).alignment = headerStyle.alignment;
+                });
+                
+                // Merge Agent Name header
+                worksheet.mergeCells('A1:A2');
+                headerRow1.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }; // Dark
+                headerRow1.getCell(1).font = headerStyle.font;
+                headerRow1.getCell(1).alignment = headerStyle.alignment;
+
+                worksheet.getColumn(1).width = 25;
+
+                // Data Rows
+                data.agents.forEach((a: any) => {
+                    const rowData = [a.agent_name];
+                    data.baskets.forEach((b: any) => {
+                        const stats = a.baskets[b.basket_key] || { received: 0, reclaimed: 0 };
+                        rowData.push(stats.received);
+                        rowData.push(stats.reclaimed);
+                    });
+                    rowData.push(a.total_received);
+                    rowData.push(a.total_reclaimed);
+                    rowData.push(a.net);
+                    
+                    worksheet.addRow(rowData);
+                });
+
+                // Download
+                const buffer = await workbook.xlsx.writeBuffer();
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = `CEO_Distribution_Summary_${batchStartDate}_to_${batchEndDate}.xlsx`;
+                anchor.click();
+                window.URL.revokeObjectURL(url);
+                
+                setMessage({ type: 'success', text: `ดาวน์โหลดข้อมูลสรุป CEO สำเร็จ!` });
+            } else {
+                setMessage({ type: 'error', text: data.error || 'ไม่พบข้อมูลในช่วงเวลาที่เลือก' });
+            }
+        } catch (error) {
+            console.error(error);
+            setMessage({ type: 'error', text: 'Network error during CEO summary export' });
+        } finally {
+            setIsBatchExporting(false);
+        }
+    };
+
     const handleBatchExport = async () => {
         setIsBatchExporting(true);
         try {
