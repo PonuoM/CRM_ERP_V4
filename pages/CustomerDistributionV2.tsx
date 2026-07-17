@@ -1554,7 +1554,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             reclaim_mode: bulkFilterType,
                             reclaim_destination: bulkReclaimDestinationType,
                             force_basket_key: bulkReclaimDestinationType === 'force' ? bulkForceBasketKey : null,
-                            triggered_by: currentUser?.id
+                            triggered_by: currentUser?.id,
+                            session_tag: sessionTag
                         })
                     }
                 );
@@ -1648,7 +1649,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     body: JSON.stringify({
                         agent_id: reclaimingAgent.id,
                         baskets: payloadBaskets,
-                        reclaim_mode: unassignedReclaimMode
+                        reclaim_mode: unassignedReclaimMode,
+                        session_tag: sessionTag
                     })
                 }
             );
