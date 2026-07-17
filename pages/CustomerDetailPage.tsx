@@ -1020,14 +1020,18 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     ordersPage * ITEMS_PER_PAGE,
   );
 
-  // Filter appointments to show only future follow-ups that are not completed
+  // Show the next scheduled follow-up regardless of how far out (no day cap).
+  // Only keep upcoming, active appointments (not completed / not cancelled);
+  // ascending sort means [0] is the soonest upcoming one.
   const upcomingFollowUps = effectiveAppointments
     .filter((appointment) => {
       const appointmentDate = new Date(appointment.date);
       const now = new Date();
-      const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      // Show appointments that are between now and 7 days from now, and not completed
-      return appointmentDate >= now && appointmentDate <= sevenDaysFromNow && appointment.status !== "เสร็จสิ้น";
+      return (
+        appointmentDate >= now &&
+        appointment.status !== "เสร็จสิ้น" &&
+        appointment.status !== "ยกเลิกการติดตาม"
+      );
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
