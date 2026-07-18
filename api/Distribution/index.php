@@ -349,8 +349,23 @@ function handleGetSessions($pdo, $companyId)
     }
 
     if ($tagId && $tagId !== 'all') {
-        $whereClauses[] = "ds.tag_id = ?";
-        $params[] = $tagId;
+        $tagParts = explode(',', $tagId);
+        $hasNone = in_array('none', $tagParts);
+        $validTagIds = array_filter(array_map('intval', array_diff($tagParts, ['none'])));
+        
+        $tagConditions = [];
+        if (!empty($validTagIds)) {
+            $placeholders = implode(',', array_fill(0, count($validTagIds), '?'));
+            $tagConditions[] = "ds.tag_id IN ($placeholders)";
+            $params = array_merge($params, $validTagIds);
+        }
+        if ($hasNone) {
+            $tagConditions[] = "ds.tag_id IS NULL";
+        }
+        
+        if (!empty($tagConditions)) {
+            $whereClauses[] = "(" . implode(" OR ", $tagConditions) . ")";
+        }
     }
 
     $whereSql = "";
@@ -779,8 +794,23 @@ function handleBatchExport($pdo, $companyId)
     }
 
     if ($tagId && $tagId !== 'all') {
-        $typeFilter .= " AND ds.tag_id = ? ";
-        $params[] = $tagId;
+        $tagParts = explode(',', $tagId);
+        $hasNone = in_array('none', $tagParts);
+        $validTagIds = array_filter(array_map('intval', array_diff($tagParts, ['none'])));
+        
+        $tagConditions = [];
+        if (!empty($validTagIds)) {
+            $placeholders = implode(',', array_fill(0, count($validTagIds), '?'));
+            $tagConditions[] = "ds.tag_id IN ($placeholders)";
+            $params = array_merge($params, $validTagIds);
+        }
+        if ($hasNone) {
+            $tagConditions[] = "ds.tag_id IS NULL";
+        }
+        
+        if (!empty($tagConditions)) {
+            $typeFilter .= " AND (" . implode(" OR ", $tagConditions) . ") ";
+        }
     }
 
     $sql = "

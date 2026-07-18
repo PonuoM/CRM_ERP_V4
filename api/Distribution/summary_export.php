@@ -78,15 +78,24 @@ try {
 
     $tagFilter = "";
     if ($sessionTag && $sessionTag !== 'all' && $sessionTag !== '') {
-        // Find tag ID matching this name
-        $stmtTag = $pdo->prepare("SELECT id FROM distribution_tags WHERE tag_name LIKE ? LIMIT 1");
-        $stmtTag->execute(["%$sessionTag%"]);
-        $tagRow = $stmtTag->fetch(PDO::FETCH_ASSOC);
-        if ($tagRow) {
-            $tagFilter = " AND ds.tag_id = ? ";
-            $filterParams[] = $tagRow['id'];
+        $tagParts = explode(',', $sessionTag);
+        $hasNone = in_array('none', $tagParts);
+        $validTagIds = array_filter(array_map('intval', array_diff($tagParts, ['none'])));
+        
+        $tagConditions = [];
+        if (!empty($validTagIds)) {
+            $placeholders = implode(',', array_fill(0, count($validTagIds), '?'));
+            $tagConditions[] = "ds.tag_id IN ($placeholders)";
+            $filterParams = array_merge($filterParams, $validTagIds);
+        }
+        if ($hasNone) {
+            $tagConditions[] = "ds.tag_id IS NULL";
+        }
+        
+        if (!empty($tagConditions)) {
+            $tagFilter = " AND (" . implode(" OR ", $tagConditions) . ") ";
         } else {
-            // No tag match, guarantee empty result
+            // Guarantee empty result if some weird string was passed
             $tagFilter = " AND 1=0 ";
         }
     }

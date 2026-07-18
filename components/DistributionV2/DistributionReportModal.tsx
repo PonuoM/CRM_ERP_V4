@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import SessionTagSelect from './SessionTagSelect';
+import MultiSelectFilter from '../MultiSelectFilter';
 import { Loader2, Download, History, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { apiFetch } from '../../services/api';
@@ -69,7 +70,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     
     
     const [filterBasket, setFilterBasket] = useState<string>('all');
-    const [filterTag, setFilterTag] = useState<number | 'all'>('all');
+    const [filterTag, setFilterTag] = useState<number[]>([]);
     const [baskets, setBaskets] = useState<any[]>([]);
     const [tags, setTags] = useState<any[]>([]);
 // Undo State
@@ -167,7 +168,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const handleExportSummary = async () => {
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`Distribution/summary_export.php?companyId=${selectedCompany}&start_date=${batchStartDate}&end_date=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag}`);
+            const data = await apiFetch(`Distribution/summary_export.php?companyId=${selectedCompany}&start_date=${batchStartDate}&end_date=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok && data.agents && data.agents.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('CEO Summary Pivot');
@@ -278,7 +279,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`Distribution/index.php?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag}`);
+            const data = await apiFetch(`Distribution/index.php?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok && data.data && data.data.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('Batch Export');
@@ -473,7 +474,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const fetchSessions = async () => {
         setLoading(true);
         try {
-            const data = await apiFetch(`Distribution/index.php?action=get_sessions&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag}`);
+            const data = await apiFetch(`Distribution/index.php?action=get_sessions&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok) {
                 setSessions(data.sessions);
             } else {
@@ -723,7 +724,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         setBatchEndDate('');
         setBatchType('all');
         setFilterBasket('all');
-        setFilterTag('all');
+        setFilterTag([]);
         if (isSuperAdmin) {
             setSelectedCompany('all');
         }
@@ -793,13 +794,16 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         </div>
                         <div className="flex flex-col gap-1">
                             <span className="text-xs text-gray-500 font-medium">Session Tag</span>
-                            <SessionTagSelect
-                                value={filterTag === 'all' ? '' : filterTag}
-                                onChange={(val) => setFilterTag(val === '' ? 'all' : val)}
-                                options={tags}
-                                className="w-full text-sm"
-                                placeholder="ทุกแท็ก"
-                            />
+                            <div className="w-[200px]">
+                                <MultiSelectFilter
+                                    options={[{ id: -1, label: 'ไม่มี Tag' }, ...tags.map(t => ({ id: t.id, label: t.session_tag }))]}
+                                    selectedIds={filterTag}
+                                    onChange={setFilterTag}
+                                    placeholder="ค้นหา..."
+                                    emptyMeansAllLabel="ทุกแท็ก"
+                                    emptyHint="แสดงทั้งหมด"
+                                />
+                            </div>
                         </div>
                     </div>
                     
