@@ -46,12 +46,12 @@ function attach_next_appointments_to_customers(PDO $pdo, array &$customers): voi
                 SELECT customer_id, MIN(date) as min_date
                 FROM appointments
                 WHERE customer_id IN ($placeholders)
-                  AND status != 'ยกเลิกการติดตาม'
+                  AND status NOT IN ('ยกเลิกการติดตาม', 'เสร็จสิ้น')
                   AND date >= CURDATE()
                 GROUP BY customer_id
             ) upcoming ON a.customer_id = upcoming.customer_id AND a.date = upcoming.min_date
-            WHERE a.status != 'ยกเลิกการติดตาม'
-            
+            WHERE a.status NOT IN ('ยกเลิกการติดตาม', 'เสร็จสิ้น')
+
             UNION ALL
             
             SELECT 
@@ -66,17 +66,17 @@ function attach_next_appointments_to_customers(PDO $pdo, array &$customers): voi
                 SELECT customer_id, MAX(date) as max_date
                 FROM appointments
                 WHERE customer_id IN ($placeholders)
-                  AND status != 'ยกเลิกการติดตาม'
+                  AND status NOT IN ('ยกเลิกการติดตาม', 'เสร็จสิ้น')
                   AND date < CURDATE()
                   AND customer_id NOT IN (
-                      SELECT DISTINCT customer_id FROM appointments 
-                      WHERE customer_id IN ($placeholders) 
-                      AND status != 'ยกเลิกการติดตาม' 
+                      SELECT DISTINCT customer_id FROM appointments
+                      WHERE customer_id IN ($placeholders)
+                      AND status NOT IN ('ยกเลิกการติดตาม', 'เสร็จสิ้น')
                       AND date >= CURDATE()
                   )
                 GROUP BY customer_id
             ) overdue ON a.customer_id = overdue.customer_id AND a.date = overdue.max_date
-            WHERE a.status != 'ยกเลิกการติดตาม'
+            WHERE a.status NOT IN ('ยกเลิกการติดตาม', 'เสร็จสิ้น')
         ";
 
         // Params: customerIds x 3 (for each subquery: upcoming, upcoming_dedup, overdue)

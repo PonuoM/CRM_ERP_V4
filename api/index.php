@@ -2432,6 +2432,19 @@ function get_order(PDO $pdo, string $id): ?array
         }
     }
 
+    // Proxy sale (ขายแทน): who actually keyed this in on behalf of creator_id
+    if (!empty($o['proxy_creator_id'])) {
+        try {
+            $proxyStmt = $pdo->prepare('SELECT first_name, last_name FROM users WHERE id = ?');
+            $proxyStmt->execute([$o['proxy_creator_id']]);
+            $proxyData = $proxyStmt->fetch();
+            if ($proxyData) {
+                $o['proxy_creator_name'] = trim(($proxyData['first_name'] ?? '') . ' ' . ($proxyData['last_name'] ?? ''));
+            }
+        } catch (Throwable $e) { /* ignore */
+        }
+    }
+
     // Fetch items from main order and all sub orders
     // Use parent_order_id to find all items for this order group
     $items = $pdo->prepare("

@@ -185,6 +185,55 @@ function get_authenticated_user(PDO $pdo): ?array
 }
 
 /**
+ * Resolve one effective permission for a user: role_permissions overlaid with user_permission_overrides.
+ * Same resolution order as GET /api/user_permissions/{id}/effective — keep the two in sync.
+ *
+ * ⚠️ KEEP IDENTICAL to the copy in the project-root config.php. host-build.ts deploys root config.php
+ * OVER this file on production, so any helper added here must be added there too or it is undefined live.
+ *
+ * @param string $action 'view' (may see it) or 'use' (may act on it)
+ */
+function user_has_permission(PDO $pdo, int $userId, string $key, string $action = 'use'): bool
+{
+  $stmt = $pdo->prepare('
+      SELECT u.role, rp.data AS role_permissions
+      FROM users u
+      LEFT JOIN roles r ON (
+          (u.role_id IS NOT NULL AND r.id = u.role_id) OR
+          (u.role_id IS NULL AND (r.name = u.role OR r.code = u.role))
+      )
+      LEFT JOIN role_permissions rp ON rp.role = r.code
+      WHERE u.id = ?
+      LIMIT 1
+  ');
+  $stmt->execute([$userId]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if (!$row) {
+    return false;
+  }
+
+  // Super Admin / Developer bypass, matching the frontend and handle_orders GET.
+  if (in_array($row['role'] ?? '', ['Super Admin', 'Developer'], true)) {
+    return true;
+  }
+
+  $data = $row['role_permissions'] ? json_decode($row['role_permissions'], true) : [];
+  // Newer rows are {permissions:{...}, menu_order:[...]}; older rows are a flat key=>value map.
+  $permissions = (isset($data['permissions']) && is_array($data['permissions']))
+    ? $data['permissions']
+    : (is_array($data) ? $data : []);
+
+  $stmt = $pdo->prepare('SELECT permission_value FROM user_permission_overrides WHERE user_id = ? AND permission_key = ?');
+  $stmt->execute([$userId, $key]);
+  $override = $stmt->fetchColumn();
+  if ($override !== false && $override !== null) {
+    $permissions[$key] = json_decode($override, true);
+  }
+
+  return !empty($permissions[$key][$action]);
+}
+
+/**
  * Set audit context for customer_audit_log trigger.
  * Call this BEFORE any UPDATE on `customers` that changes assigned_to or current_basket_key.
  * The MySQL TRIGGER reads @audit_api_source and @audit_user_id session variables.
