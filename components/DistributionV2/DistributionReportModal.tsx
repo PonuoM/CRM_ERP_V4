@@ -141,14 +141,17 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                 method: 'POST',
                 body: JSON.stringify({
                     session_id: sessionId,
-                    session_tag: valueToSave
+                    tag_id: valueToSave
                 })
             });
             
             if (data.ok) {
-                setMessage({ type: 'success', text: 'อัปเดต Session Tag เรียบร้อย' });
-                // Update local state
-                setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, session_tag: valueToSave } : s));
+                setMessage({ type: 'success', text: 'บันทึก Session Tag เรียบร้อยแล้ว' });
+                // Update local state with the actual tag name, not the ID
+                const selectedTagObj = tags.find(t => t.id === Number(valueToSave));
+                const tagName = selectedTagObj ? selectedTagObj.session_tag : (valueToSave ? String(valueToSave) : null);
+                
+                setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, session_tag: tagName } : s));
                 setEditingTagSessionId(null);
                 // Refresh tag options for datalist
                 fetchOptions();
