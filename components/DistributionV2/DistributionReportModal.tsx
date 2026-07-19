@@ -108,7 +108,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             const currentUserStr = localStorage.getItem('user');
             const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
             
-            const data = await apiFetch(`Distribution/index.php?action=undo_distribution&companyId=${currentUser?.companyId || 1}`, {
+            const data = await apiFetch(`distribution_v2?action=undo_distribution`, {
                 method: 'POST',
                 body: JSON.stringify({
                     session_id: undoTarget,
@@ -138,7 +138,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             const currentUserStr = localStorage.getItem('user');
             const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
             
-            const data = await apiFetch(`Distribution/index.php?action=update_session_tag&companyId=${currentUser?.companyId || 1}`, {
+            const data = await apiFetch(`distribution_v2?action=update_session_tag`, {
                 method: 'POST',
                 body: JSON.stringify({
                     session_id: sessionId,
@@ -168,7 +168,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const handleExportSummary = async () => {
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`Distribution/summary_export.php?companyId=${selectedCompany}&start_date=${batchStartDate}&end_date=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
+            const data = await apiFetch(`distribution_export?action=summary_export&companyId=${selectedCompany}&start_date=${batchStartDate}&end_date=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok && data.agents && data.agents.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('CEO Summary Pivot');
@@ -279,7 +279,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`Distribution/index.php?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
+            const data = await apiFetch(`distribution_v2?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok && data.data && data.data.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('Batch Export');
@@ -415,7 +415,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const handleCleanup = async () => {
         setIsCleaning(true);
         try {
-            const data = await apiFetch('Distribution/index.php?action=cleanup_distribution_details', {
+            const data = await apiFetch('distribution_v2?action=cleanup_distribution_details', {
                 method: 'POST',
                 body: JSON.stringify({
                     user_id: currentUser?.id,
@@ -450,10 +450,10 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
 
     const fetchOptions = async () => {
         try {
-            const tagData = await apiFetch(`Distribution/index.php?action=get_session_tags&companyId=${selectedCompany}`);
+            const tagData = await apiFetch(`distribution_v2?action=get_session_tags&companyId=${selectedCompany}`);
             if (tagData.ok) setTags(tagData.tags || []);
             
-            const basketData = await apiFetch(`Distribution/index.php?action=get_basket_options&companyId=${selectedCompany}`);
+            const basketData = await apiFetch(`distribution_v2?action=get_basket_options&companyId=${selectedCompany}`);
             if (basketData.ok) setBaskets(basketData.baskets || []);
         } catch (error) {
             console.error(error);
@@ -474,7 +474,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const fetchSessions = async () => {
         setLoading(true);
         try {
-            const data = await apiFetch(`Distribution/index.php?action=get_sessions&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
+            const data = await apiFetch(`distribution_v2?action=get_sessions&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok) {
                 setSessions(data.sessions);
             } else {

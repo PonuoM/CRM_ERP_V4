@@ -2,6 +2,26 @@
 require_once __DIR__ . '/core/bootstrap.php';
 try {
     switch ($resource) {
+
+        case 'distribution_v2':
+            require_once __DIR__ . '/Controllers/DistributionController.php';
+            if ($action === 'distribute') DistributionController::handleDistribute($pdo);
+            else if ($action === 'get_assign_checks') DistributionController::handleGetAssignChecks($pdo);
+            else if ($action === 'get_sessions') DistributionController::handleGetSessions($pdo);
+            else if ($action === 'get_session_tags') DistributionController::handleGetSessionTags($pdo);
+            else if ($action === 'update_session_tag') DistributionController::handleUpdateSessionTag($pdo);
+            else if ($action === 'get_basket_options') DistributionController::handleGetBasketOptions($pdo);
+            else if ($action === 'undo_distribution') DistributionController::handleUndoDistribution($pdo);
+            else if ($action === 'cleanup_details') DistributionController::handleCleanupDistributionDetails($pdo);
+            break;
+            
+        case 'distribution_export':
+            require_once __DIR__ . '/Controllers/DistributionExportController.php';
+            if ($action === 'batch_export') DistributionExportController::handleBatchExport($pdo);
+            else if ($action === 'summary_export') DistributionExportController::summary_export($pdo);
+            else if ($action === 'get_cron_logs') DistributionExportController::handleGetCronLogs($pdo);
+            break;
+
         case 'distribution_movement':
             require_once __DIR__ . '/Controllers/DistributionReportController.php';
             if ($id === 'stats') {

@@ -257,7 +257,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     const fetchSessionTags = useCallback(async () => {
         try {
-            const response = await apiFetch(`Distribution/index.php?action=get_session_tags&companyId=${currentUser?.companyId}`);
+            const response = await apiFetch(`distribution_v2?action=get_session_tags`);
             if (response?.ok && response.tags) {
                 setSessionTagsList(response.tags);
             }
@@ -609,7 +609,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 for (let i = 0; i < customerIds.length; i += CHUNK_SIZE) {
                     const chunk = customerIds.slice(i, i + CHUNK_SIZE);
                     const res = await apiFetch(
-                        `Distribution/index.php?action=get_assign_checks&companyId=${currentUser?.companyId}`,
+                        `distribution_v2?action=get_assign_checks`,
                         {
                             method: 'POST',
                             body: JSON.stringify({ customer_ids: chunk })
@@ -984,7 +984,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             }));
 
             const result = await apiFetch(
-                `Distribution/index.php?action=distribute&companyId=${currentUser?.companyId}`,
+                `distribution_v2?action=distribute`,
                 {
                     method: 'POST',
                     body: JSON.stringify({

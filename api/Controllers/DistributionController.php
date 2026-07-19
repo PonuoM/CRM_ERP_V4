@@ -1,53 +1,21 @@
-
 <?php
-// api/Distribution/index.php
 
-require_once __DIR__ . '/../config.php';
-// Get database connection
-header('Content-Type: application/json');
-$pdo = db_connect();
+class DistributionController {
 
-$action = $_GET['action'] ?? null;
-$companyId = $_GET['companyId'] ?? 1;
-
-// Schema is now handled manually via schema.sql
-// ensure_distribution_schema($pdo);
-
-try {
-    if ($action === 'distribute') {
-        handleDistribute($pdo, $companyId);
-    } elseif ($action === 'get_assign_checks') {
-        handleGetAssignChecks($pdo, $companyId);
-    } elseif ($action === 'get_sessions') {
-        handleGetSessions($pdo, $companyId);
-    } elseif ($action === 'get_session_tags') {
-        handleGetSessionTags($pdo, $companyId);
-    } elseif ($action === 'get_basket_options') {
-        handleGetBasketOptions($pdo, $companyId);
-    } elseif ($action === 'undo_distribution') {
-        handleUndoDistribution($pdo, $companyId);
-    } elseif ($action === 'cleanup_distribution_details') {
-        handleCleanupDistributionDetails($pdo, $companyId);
-    } elseif ($action === 'batch_export') {
-        handleBatchExport($pdo, $companyId);
-    } elseif ($action === 'get_cron_logs') {
-        handleGetCronLogs($pdo, $companyId);
-    } elseif ($action === 'update_session_tag') {
-        handleUpdateSessionTag($pdo, $companyId);
-    } else {
-        http_response_code(400);
-        echo json_encode(['error' => 'Invalid action']);
-    }
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-}
-
-/**
+    /**
  * Handle bulk customer assignment with Pruning Round Robin logic
  */
-function handleDistribute($pdo, $companyId)
-{
+
+    public static function handleDistribute($pdo) {
+
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+        $companyId = $authUser['company_id'];
+
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
         echo json_encode(['error' => 'POST required']);
@@ -248,15 +216,25 @@ function handleDistribute($pdo, $companyId)
         $pdo->rollBack();
         throw $e;
     }
-}
 
-/**
+    }
+
+    /**
  * Return assign-check history: which agents each customer has been assigned to.
  * GET ?action=get_assign_checks&companyId=1&customer_ids=CUS001,CUS002,...
  * Response: { "ok": true, "conflicts": { "CUS001": [3,5], "CUS002": [1] } }
  */
-function handleGetAssignChecks($pdo, $companyId)
-{
+
+    public static function handleGetAssignChecks($pdo) {
+
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+        $companyId = $authUser['company_id'];
+
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
         echo json_encode(['error' => 'POST required']);
@@ -296,14 +274,24 @@ function handleGetAssignChecks($pdo, $companyId)
         'ok' => true,
         'conflicts' => empty($conflicts) ? new \stdClass() : $conflicts
     ]);
-}
 
-/**
+    }
+
+    /**
  * Return distribution sessions history with details
  * GET ?action=get_sessions&companyId=1
  */
-function handleGetSessions($pdo, $companyId)
-{
+
+    public static function handleGetSessions($pdo) {
+
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+        $companyId = $authUser['company_id'];
+
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         http_response_code(405);
         echo json_encode(['error' => 'GET required']);
@@ -448,9 +436,20 @@ function handleGetSessions($pdo, $companyId)
     }
 
     echo json_encode(['ok' => true, 'sessions' => $sessions]);
-}
 
-function handleGetSessionTags($pdo, $companyId) {
+    }
+
+    
+    public static function handleGetSessionTags($pdo) {
+
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+        $companyId = $authUser['company_id'];
+
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         http_response_code(405);
         echo json_encode(['error' => 'GET required']);
@@ -467,9 +466,20 @@ function handleGetSessionTags($pdo, $companyId) {
     
     $tags = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['ok' => true, 'tags' => $tags]);
-}
 
-function handleUndoDistribution($pdo, $companyId) {
+    }
+
+    
+    public static function handleUndoDistribution($pdo) {
+
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+        $companyId = $authUser['company_id'];
+
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
         echo json_encode(['error' => 'POST required']);
@@ -600,9 +610,20 @@ function handleUndoDistribution($pdo, $companyId) {
         http_response_code(500);
         echo json_encode(['error' => $e->getMessage()]);
     }
-}
 
-function handleCleanupDistributionDetails($pdo, $companyId) {
+    }
+
+    
+    public static function handleCleanupDistributionDetails($pdo) {
+
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+        $companyId = $authUser['company_id'];
+
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
         echo json_encode(['error' => 'POST required']);
@@ -675,198 +696,20 @@ function handleCleanupDistributionDetails($pdo, $companyId) {
         'deleted_rows' => $deletedRows,
         'companies_cleaned' => $companiesToClean
     ]);
-}
 
-function handleGetCronLogs($pdo, $companyId) {
-    if (!isset($companyId) || empty($companyId)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Company ID is required']);
-        return;
     }
 
-    // Role check logic would typically be handled by session middleware,
-    // assuming it is passed or we verify it if needed.
-
-    $limit = $_GET['limit'] ?? 20;
-
-    $stmt = $pdo->prepare("SELECT id, started_at, finished_at, status, snapshot_before, snapshot_after, error_count, transferred_count FROM cron_execution_logs WHERE status = 'success' ORDER BY id DESC LIMIT ?");
-    // Ensure limit is bound as an integer
-    $stmt->bindValue(1, (int)$limit, PDO::PARAM_INT);
-    $stmt->execute();
-    $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $results = [];
     
-    // Get Basket Names for mapping
-    $basketNames = [];
-    $bStmt = $pdo->query("SELECT id, basket_name FROM basket_config");
-    while ($b = $bStmt->fetch(PDO::FETCH_ASSOC)) {
-        $basketNames[$b['id']] = $b['basket_name'];
-    }
+    public static function handleUpdateSessionTag($pdo) {
 
-    foreach ($logs as $log) {
-        $before = json_decode($log['snapshot_before'], true);
-        $after = json_decode($log['snapshot_after'], true);
-        $cKey = 'company_' . $companyId;
-        
-        $cBefore = $before[$cKey] ?? [];
-        $cAfter = $after[$cKey] ?? [];
-
-        $cBeforeDist = $cBefore['distribution_pool']['__total__'] ?? 0;
-        $cAfterDist = $cAfter['distribution_pool']['__total__'] ?? 0;
-
-        $distBreakdown = [];
-        $poolKeys = array_unique(array_merge(array_keys($cBefore['distribution_pool'] ?? []), array_keys($cAfter['distribution_pool'] ?? [])));
-        foreach ($poolKeys as $pk) {
-            if ($pk === '__total__') continue;
-            $bk = $cBefore['distribution_pool'][$pk] ?? 0;
-            $ak = $cAfter['distribution_pool'][$pk] ?? 0;
-            if ($bk !== $ak) {
-                $basketName = $basketNames[$pk] ?? "Basket ID: $pk";
-                $distBreakdown[] = [
-                    'basket_key' => $pk,
-                    'basket_name' => $basketName,
-                    'before' => $bk,
-                    'after' => $ak,
-                    'diff' => $ak - $bk
-                ];
-            }
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
         }
+        $companyId = $authUser['company_id'];
 
-        // We can safely unset massive JSON objects before sending to frontend
-        $results[] = [
-            'id' => $log['id'],
-            'started_at' => $log['started_at'],
-            'finished_at' => $log['finished_at'],
-            'status' => $log['status'],
-            'transferred_count' => $log['transferred_count'], // Global trans count
-            'dist_diff' => $cAfterDist - $cBeforeDist,
-            'dist_total_after' => $cAfterDist,
-            'dist_breakdown' => $distBreakdown
-        ];
-    }
-
-    echo json_encode(['ok' => true, 'data' => $results]);
-}
-
-
-/**
- * Handle Batch Export of Distribution Sessions
- * GET ?action=batch_export&companyId=all&startDate=...&endDate=...&type=all
- */
-function handleBatchExport($pdo, $companyId)
-{
-    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-        http_response_code(405);
-        echo json_encode(['error' => 'GET required']);
-        return;
-    }
-
-    $startDate = $_GET['startDate'] ?? null;
-    $endDate = $_GET['endDate'] ?? null;
-    $type = $_GET['type'] ?? 'all';
-    $basketKey = $_GET['basket_key'] ?? 'all';
-    $tagId = $_GET['tag_id'] ?? 'all';
-
-    if (!$startDate || !$endDate) {
-        http_response_code(400);
-        echo json_encode(['error' => 'startDate and endDate required']);
-        return;
-    }
-
-    // Prepare date filter
-    $start = $startDate . ' 00:00:00';
-    $end = $endDate . ' 23:59:59';
-
-    $params = [$start, $end];
-    $companyFilter = "";
-    
-    if ($companyId !== 'all') {
-        $companyFilter = " AND ds.company_id = ? ";
-        $params[] = $companyId;
-    }
-
-    $typeFilter = "";
-    if ($type === 'distribution') {
-        $typeFilter = " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
-    } else if ($type === 'reclaim') {
-        $typeFilter = " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
-    }
-
-    if ($basketKey && $basketKey !== 'all') {
-        $typeFilter .= " AND EXISTS (SELECT 1 FROM distribution_session_details _dsd WHERE _dsd.session_id = ds.id AND _dsd.previous_basket_key = ?) ";
-        $params[] = $basketKey;
-    }
-
-    if ($tagId && $tagId !== 'all') {
-        $tagParts = explode(',', $tagId);
-        $hasNone = in_array('none', $tagParts);
-        $validTagIds = array_filter(array_map('intval', array_diff($tagParts, ['none'])));
-        
-        $tagConditions = [];
-        if (!empty($validTagIds)) {
-            $placeholders = implode(',', array_fill(0, count($validTagIds), '?'));
-            $tagConditions[] = "ds.tag_id IN ($placeholders)";
-            $params = array_merge($params, $validTagIds);
-        }
-        if ($hasNone) {
-            $tagConditions[] = "ds.tag_id IS NULL";
-        }
-        
-        if (!empty($tagConditions)) {
-            $typeFilter .= " AND (" . implode(" OR ", $tagConditions) . ") ";
-        }
-    }
-
-    $sql = "
-        SELECT 
-            ds.id as session_id,
-            ds.created_at,
-            ds.distribution_mode,
-            ds.min_call_minutes,
-            c.name as company_name,
-            u_dist.first_name as distributed_by_first,
-            u_dist.last_name as distributed_by_last,
-            dsd.agent_id,
-            u_agent.first_name as agent_first,
-            u_agent.last_name as agent_last,
-            dsd.customer_id,
-            
-            cust.customer_ref_id as customer_code,
-            CONCAT(cust.first_name, ' ', cust.last_name) as customer_name,
-            cust.phone as customer_phone,
-            dsd.previous_basket_key,
-            bc.basket_key as real_basket_key,
-            bc.basket_name as previous_basket_name,
-            dsd.previous_lifecycle_status,
-            ds.session_tag
-
-        FROM distribution_sessions ds
-        JOIN distribution_session_details dsd ON ds.id = dsd.session_id
-        LEFT JOIN companies c ON ds.company_id = c.id
-        LEFT JOIN distribution_tags dt ON ds.tag_id = dt.id
-        LEFT JOIN users u_dist ON ds.distributed_by = u_dist.id
-        LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
-        LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
-        LEFT JOIN basket_config bc ON (dsd.previous_basket_key = bc.basket_key OR dsd.previous_basket_key = bc.id)
-        WHERE ds.created_at BETWEEN ? AND ?
-        $companyFilter
-        $typeFilter
-        ORDER BY ds.created_at DESC, ds.id DESC, dsd.id ASC
-    ";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    echo json_encode([
-        'ok' => true,
-        'data' => $results
-    ]);
-}
-
-function handleUpdateSessionTag($pdo, $companyId)
-{
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
         echo json_encode(['error' => 'POST required']);
@@ -897,9 +740,20 @@ function handleUpdateSessionTag($pdo, $companyId)
         http_response_code(500);
         echo json_encode(['error' => 'Failed to update session tag']);
     }
-}
 
-function handleGetBasketOptions($pdo, $companyId) {
+    }
+
+    
+    public static function handleGetBasketOptions($pdo) {
+
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+        $companyId = $authUser['company_id'];
+
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         http_response_code(405);
         echo json_encode(['error' => 'GET required']);
@@ -916,4 +770,7 @@ function handleGetBasketOptions($pdo, $companyId) {
     
     $baskets = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['ok' => true, 'baskets' => $baskets]);
+
+    }
+
 }
