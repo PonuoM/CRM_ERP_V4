@@ -344,7 +344,12 @@ function handleGetSessions($pdo, $companyId)
     }
 
     if ($basketKey && $basketKey !== 'all') {
-        $whereClauses[] = "EXISTS (SELECT 1 FROM distribution_session_details dsd WHERE dsd.session_id = ds.id AND dsd.previous_basket_key = ?)";
+        $whereClauses[] = "EXISTS (
+            SELECT 1 FROM distribution_session_details _dsd 
+            LEFT JOIN basket_config bc ON (_dsd.previous_basket_key = bc.basket_key OR _dsd.previous_basket_key = bc.id)
+            WHERE _dsd.session_id = ds.id AND (bc.basket_key = ? OR bc.id = ?)
+        )";
+        $params[] = $basketKey;
         $params[] = $basketKey;
     }
 

@@ -127,16 +127,17 @@ try {
     $stmtReclaimed = $pdo->prepare("
         SELECT 
             dsd.agent_id,
-            dsd.previous_basket_key as dash_basket,
+            bc.basket_key as dash_basket,
             COUNT(dsd.id) as reclaimed_count
         FROM distribution_session_details dsd
         JOIN distribution_sessions ds ON dsd.session_id = ds.id
+        LEFT JOIN basket_config bc ON (dsd.previous_basket_key = bc.basket_key OR dsd.previous_basket_key = bc.id)
         WHERE ds.company_id = ? 
           AND ds.distribution_mode = 'Bulk Reclaim'
           AND ds.session_status = 'completed'
           AND ds.created_at BETWEEN ? AND ?
           $typeFilter $basketFilter $tagFilter
-        GROUP BY dsd.agent_id, dsd.previous_basket_key
+        GROUP BY dsd.agent_id, bc.basket_key
     ");
     $stmtReclaimed->execute(array_merge([$companyId, $startDate, $endDate], $filterParams));
     $reclaimedData = $stmtReclaimed->fetchAll(PDO::FETCH_ASSOC);
