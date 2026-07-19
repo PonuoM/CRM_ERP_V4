@@ -39,7 +39,7 @@ const CronLogModal: React.FC<CronLogModalProps> = ({ isOpen, onClose, companyId 
     const fetchLogs = async () => {
         setLoading(true);
         try {
-            const res = await apiFetch(`Distribution/index.php?action=get_cron_logs&companyId=${companyId}&limit=20`);
+            const res = await apiFetch(`distribution_export?action=get_cron_logs&companyId=${companyId}&limit=20`);
             if (res.ok) {
                 setLogs(res.data || []);
             }

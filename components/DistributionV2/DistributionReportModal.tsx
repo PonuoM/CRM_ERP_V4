@@ -279,7 +279,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`distribution_v2?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
+            const data = await apiFetch(`distribution_export?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok && data.data && data.data.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('Batch Export');
