@@ -97,7 +97,7 @@ class DistributionExportController {
                 dsd.previous_basket_key,
                 bc.basket_name as previous_basket_name,
                 dsd.previous_lifecycle_status,
-                t.name as session_tag
+                t.tag_name as session_tag
             FROM distribution_sessions ds
             JOIN distribution_session_details dsd ON ds.id = dsd.session_id
             LEFT JOIN companies c ON ds.company_id = c.id
@@ -105,7 +105,7 @@ class DistributionExportController {
             LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
             LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
             LEFT JOIN basket_config bc ON (dsd.previous_basket_key = bc.id OR dsd.previous_basket_key = bc.basket_key)
-            LEFT JOIN system_tags t ON ds.tag_id = t.id
+            LEFT JOIN distribution_tags t ON ds.tag_id = t.id
             WHERE ds.created_at BETWEEN ? AND ?
             $companyFilter
             $typeFilter

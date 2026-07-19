@@ -62,8 +62,22 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const [selectedCompany, setSelectedCompany] = useState<string>(isSuperAdmin ? 'all' : (currentUser?.companyId || '1'));
     const [companies, setCompanies] = useState<any[]>([]);
     
-    const [batchStartDate, setBatchStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-    const [batchEndDate, setBatchEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const getFirstDayOfMonth = () => {
+        const date = new Date();
+        // Shift timezone so it's correct locally
+        date.setHours(date.getHours() + 7);
+        date.setDate(1);
+        return date.toISOString().split('T')[0];
+    };
+
+    const getToday = () => {
+        const date = new Date();
+        date.setHours(date.getHours() + 7);
+        return date.toISOString().split('T')[0];
+    };
+
+    const [batchStartDate, setBatchStartDate] = useState<string>(getFirstDayOfMonth());
+    const [batchEndDate, setBatchEndDate] = useState<string>(getToday());
     const [batchType, setBatchType] = useState<string>('all');
     const [batchExportMode, setBatchExportMode] = useState<'customer' | 'user' | 'session' | 'agent_overall' | 'basket_overall' | 'daily_summary'>('customer');
     const [isBatchExporting, setIsBatchExporting] = useState(false);
