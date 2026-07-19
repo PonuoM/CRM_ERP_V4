@@ -59,7 +59,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const isSystemAdmin = currentUser?.is_system == 1;
     const isSuperAdmin = currentUser?.role?.toLowerCase() === 'super_admin';
 
-    const [selectedCompany, setSelectedCompany] = useState<string>(isSuperAdmin ? 'all' : (currentUser?.company_id || '1'));
+    const [selectedCompany, setSelectedCompany] = useState<string>(isSuperAdmin ? 'all' : (currentUser?.companyId || '1'));
     const [companies, setCompanies] = useState<any[]>([]);
     
     const [batchStartDate, setBatchStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -108,7 +108,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             const currentUserStr = localStorage.getItem('user');
             const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
             
-            const data = await apiFetch(`Distribution/index.php?action=undo_distribution&companyId=${currentUser?.company_id || 1}`, {
+            const data = await apiFetch(`Distribution/index.php?action=undo_distribution&companyId=${currentUser?.companyId || 1}`, {
                 method: 'POST',
                 body: JSON.stringify({
                     session_id: undoTarget,
@@ -138,7 +138,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             const currentUserStr = localStorage.getItem('user');
             const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
             
-            const data = await apiFetch(`Distribution/index.php?action=update_session_tag&companyId=${currentUser?.company_id || 1}`, {
+            const data = await apiFetch(`Distribution/index.php?action=update_session_tag&companyId=${currentUser?.companyId || 1}`, {
                 method: 'POST',
                 body: JSON.stringify({
                     session_id: sessionId,
@@ -419,7 +419,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                 method: 'POST',
                 body: JSON.stringify({
                     user_id: currentUser?.id,
-                    target_company_id: cleanupTargetCompany === 'current' ? currentUser?.company_id : cleanupTargetCompany,
+                    target_company_id: cleanupTargetCompany === 'current' ? currentUser?.companyId : cleanupTargetCompany,
                     months_old: cleanupMonths
                 })
             });
