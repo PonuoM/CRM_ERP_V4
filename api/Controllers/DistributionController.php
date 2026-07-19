@@ -283,7 +283,7 @@ class DistributionController {
  */
 
     public static function handleGetSessions($pdo) {
-
+        header('Content-Type: application/json; charset=utf-8');
         $authUser = get_authenticated_user($pdo);
         if (!$authUser) {
             http_response_code(401);
@@ -305,9 +305,8 @@ class DistributionController {
     $endDate = $_GET['endDate'] ?? null;
     $type = $_GET['type'] ?? 'all';
     $basketKey = $_GET['basket_key'] ?? 'all';
-    $tagId = $_GET['tag_id'] ?? 'all';
-    $basketKey = $_GET['basket_key'] ?? '';
-    $tagId = $_GET['tag_id'] ?? '';
+    $basketKey = $_GET['basket_key'] ?? 'all';
+    $tagId = $_GET['session_tag'] ?? 'all';
 
     $whereClauses = [];
     $params = [];
