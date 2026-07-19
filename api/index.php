@@ -4,22 +4,32 @@ try {
     switch ($resource) {
 
         case 'distribution_v2':
+            $distAction = $_GET['action'] ?? $action;
             require_once __DIR__ . '/Controllers/DistributionController.php';
-            if ($action === 'distribute') DistributionController::handleDistribute($pdo);
-            else if ($action === 'get_assign_checks') DistributionController::handleGetAssignChecks($pdo);
-            else if ($action === 'get_sessions') DistributionController::handleGetSessions($pdo);
-            else if ($action === 'get_session_tags') DistributionController::handleGetSessionTags($pdo);
-            else if ($action === 'update_session_tag') DistributionController::handleUpdateSessionTag($pdo);
-            else if ($action === 'get_basket_options') DistributionController::handleGetBasketOptions($pdo);
-            else if ($action === 'undo_distribution') DistributionController::handleUndoDistribution($pdo);
-            else if ($action === 'cleanup_details') DistributionController::handleCleanupDistributionDetails($pdo);
+            if ($distAction === 'distribute') DistributionController::handleDistribute($pdo);
+            else if ($distAction === 'get_assign_checks') DistributionController::handleGetAssignChecks($pdo);
+            else if ($distAction === 'get_sessions') DistributionController::handleGetSessions($pdo);
+            else if ($distAction === 'get_session_tags') DistributionController::handleGetSessionTags($pdo);
+            else if ($distAction === 'update_session_tag') DistributionController::handleUpdateSessionTag($pdo);
+            else if ($distAction === 'get_basket_options') DistributionController::handleGetBasketOptions($pdo);
+            else if ($distAction === 'undo_distribution') DistributionController::handleUndoDistribution($pdo);
+            else if ($distAction === 'cleanup_details') DistributionController::handleCleanupDistributionDetails($pdo);
+            else {
+                http_response_code(400);
+                echo json_encode(['ok' => false, 'error' => 'INVALID_ACTION', 'message' => "Action '$distAction' is not valid for distribution_v2"]);
+            }
             break;
             
         case 'distribution_export':
+            $distAction = $_GET['action'] ?? $action;
             require_once __DIR__ . '/Controllers/DistributionExportController.php';
-            if ($action === 'batch_export') DistributionExportController::handleBatchExport($pdo);
-            else if ($action === 'summary_export') DistributionExportController::summary_export($pdo);
-            else if ($action === 'get_cron_logs') DistributionExportController::handleGetCronLogs($pdo);
+            if ($distAction === 'batch_export') DistributionExportController::handleBatchExport($pdo);
+            else if ($distAction === 'summary_export') DistributionExportController::summary_export($pdo);
+            else if ($distAction === 'get_cron_logs') DistributionExportController::handleGetCronLogs($pdo);
+            else {
+                http_response_code(400);
+                echo json_encode(['ok' => false, 'error' => 'INVALID_ACTION', 'message' => "Action '$distAction' is not valid for distribution_export"]);
+            }
             break;
 
         case 'distribution_movement':

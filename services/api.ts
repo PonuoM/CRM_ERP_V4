@@ -54,10 +54,21 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
   const text = await res.text();
   let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = null; // non-JSON response
+  
+  if (text.trim() === '') {
+    // If the backend returned 200 OK but absolutely no body, it's likely a silent failure/router mismatch.
+    if (res.ok) {
+        data = { ok: false, error: 'EMPTY_RESPONSE', message: 'API returned an empty 200 OK response (Routing issue?)' };
+        console.warn(`[apiFetch] Empty 200 OK response from ${url}`);
+    } else {
+        data = null;
+    }
+  } else {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null; // non-JSON response
+    }
   }
 
   if (!res.ok) {
