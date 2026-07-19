@@ -4,7 +4,127 @@ class DistributionExportController {
 
 
 
-public static function handleGetCronLogs($pdo) {
+
+    public static function handleBatchExport($pdo) {
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+        $companyId = $_GET['companyId'] ?? $authUser['company_id'];
+        if ($authUser['role'] === 'super_admin' && isset($_GET['companyId']) && $_GET['companyId'] !== 'all') {
+            $companyId = $_GET['companyId'];
+        }
+
+        $startDate = $_GET['startDate'] ?? null;
+        $endDate = $_GET['endDate'] ?? null;
+        $type = $_GET['type'] ?? 'all';
+        $basketKey = $_GET['basket_key'] ?? 'all';
+        $sessionTag = $_GET['session_tag'] ?? '';
+
+        if (!$startDate || !$endDate) {
+            http_response_code(400);
+            echo json_encode(['error' => 'startDate and endDate required']);
+            return;
+        }
+
+        // Prepare date filter
+        $start = $startDate . ' 00:00:00';
+        $end = $endDate . ' 23:59:59';
+
+        $params = [$start, $end];
+        $companyFilter = "";
+        
+        if ($companyId !== 'all') {
+            $companyFilter = " AND ds.company_id = ? ";
+            $params[] = $companyId;
+        }
+
+        $typeFilter = "";
+        if ($type === 'distribution') {
+            $typeFilter = " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
+        } else if ($type === 'reclaim') {
+            $typeFilter = " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
+        }
+
+        $basketFilter = "";
+        if ($basketKey && $basketKey !== 'all') {
+            $basketFilter = " AND EXISTS (SELECT 1 FROM distribution_session_details _dsd WHERE _dsd.session_id = ds.id AND _dsd.previous_basket_key = ?) ";
+            $params[] = $basketKey;
+        }
+
+        $tagFilter = "";
+        if ($sessionTag && $sessionTag !== 'all' && $sessionTag !== '') {
+            $tagParts = explode(',', $sessionTag);
+            $hasNone = in_array('none', $tagParts);
+            $validTagIds = array_filter(array_map('intval', array_diff($tagParts, ['none'])));
+            
+            $tagConditions = [];
+            if (!empty($validTagIds)) {
+                $placeholders = implode(',', array_fill(0, count($validTagIds), '?'));
+                $tagConditions[] = "ds.tag_id IN ($placeholders)";
+                $params = array_merge($params, $validTagIds);
+            }
+            if ($hasNone) {
+                $tagConditions[] = "ds.tag_id IS NULL";
+            }
+            
+            if (!empty($tagConditions)) {
+                $tagFilter = " AND (" . implode(" OR ", $tagConditions) . ") ";
+            } else {
+                $tagFilter = " AND 1=0 ";
+            }
+        }
+
+        $sql = "
+            SELECT 
+                ds.id as session_id,
+                ds.created_at,
+                ds.distribution_mode,
+                ds.min_call_minutes,
+                c.name as company_name,
+                u_dist.first_name as distributed_by_first,
+                u_dist.last_name as distributed_by_last,
+                dsd.agent_id,
+                u_agent.first_name as agent_first,
+                u_agent.last_name as agent_last,
+                dsd.customer_id,
+                
+                cust.customer_ref_id as customer_code,
+                CONCAT(cust.first_name, ' ', cust.last_name) as customer_name,
+                cust.phone as customer_phone,
+                dsd.previous_basket_key,
+                bc.basket_name as previous_basket_name,
+                dsd.previous_lifecycle_status,
+                t.name as session_tag
+            FROM distribution_sessions ds
+            JOIN distribution_session_details dsd ON ds.id = dsd.session_id
+            LEFT JOIN companies c ON ds.company_id = c.id
+            LEFT JOIN users u_dist ON ds.distributed_by = u_dist.id
+            LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
+            LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
+            LEFT JOIN basket_config bc ON (dsd.previous_basket_key = bc.id OR dsd.previous_basket_key = bc.basket_key)
+            LEFT JOIN system_tags t ON ds.tag_id = t.id
+            WHERE ds.created_at BETWEEN ? AND ?
+            $companyFilter
+            $typeFilter
+            $basketFilter
+            $tagFilter
+            ORDER BY ds.created_at DESC, ds.id DESC, dsd.id ASC
+        ";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'ok' => true,
+            'data' => $results
+        ]);
+    }
+
+    public static function handleGetCronLogs($pdo) {
         $authUser = get_authenticated_user($pdo);
         if (!$authUser) {
             http_response_code(401);

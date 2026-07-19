@@ -522,13 +522,14 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         const failStatusText = isCriteriaApplied ? 'หลุดเกณฑ์' : 'ไม่ได้รับรายชื่อ';
 
         const detailsMap = new Map<number, number>();
-        session.details.forEach(d => detailsMap.set(d.agent_id, d.customers.length));
+        session.details.forEach(d => detailsMap.set(Number(d.agent_id), d.customers.length));
 
         const receivedAgents: any[] = [];
         const failedAgents: any[] = [];
 
         snapshot.forEach(agent => {
-            const count = detailsMap.get(agent.id) || 0;
+            const agentId = agent.agent_id || agent.id;
+            const count = detailsMap.get(Number(agentId)) || 0;
             if (count > 0) {
                 receivedAgents.push({ ...agent, count });
             } else if (agent.isActive !== false) {

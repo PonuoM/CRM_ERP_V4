@@ -181,7 +181,7 @@ class DistributionController {
             $tagId = isset($input['tag_id']) && $input['tag_id'] !== '' ? (int)$input['tag_id'] : null;
             
             $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, tag_id) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?)");
-            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $sessionTag]);
+            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $tagId]);
             $sessionId = $pdo->lastInsertId();
 
             $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");
