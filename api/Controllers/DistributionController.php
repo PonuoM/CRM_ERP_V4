@@ -110,67 +110,142 @@ class DistributionController {
     $totalActiveAgents = $totalAgentsStmt->fetchColumn(); // Note: This might need refinement if you only want to count agents eligible for THIS specific basket/campaign
 
     try {
+        $customerIds = array_column($assignments, 'customer_id');
+        $customerIds = array_filter(array_unique($customerIds));
+
+        if (empty($customerIds)) {
+            echo json_encode(['ok' => true, 'message' => 'No valid customers provided']);
+            return;
+        }
+
+        // 1. Bulk Fetch Old Data
+        $inClause = implode(',', array_fill(0, count($customerIds), '?'));
+        $getOldStmt = $pdo->prepare("SELECT customer_id, current_basket_key, assigned_to, lifecycle_status FROM customers WHERE customer_id IN ($inClause)");
+        $getOldStmt->execute($customerIds);
+        $oldDataMap = [];
+        while ($row = $getOldStmt->fetch(PDO::FETCH_ASSOC)) {
+            $oldDataMap[$row['customer_id']] = $row;
+        }
+
+        // 2. Bulk Duplicate Check
+        $existingChecks = [];
+        if ($strictDuplicateCheck) {
+            $checkStmt = $pdo->prepare("SELECT customer_id, user_id FROM customer_assign_check WHERE customer_id IN ($inClause)");
+            $checkStmt->execute($customerIds);
+            while ($row = $checkStmt->fetch(PDO::FETCH_ASSOC)) {
+                $existingChecks[$row['customer_id'] . '_' . $row['user_id']] = true;
+            }
+        }
+
+        $validAssignments = [];
         foreach ($assignments as $assignment) {
             $customerId = $assignment['customer_id'];
             $agentId = $assignment['agent_id'];
 
-            if (!$customerId || !$agentId)
+            if (!$customerId || !$agentId) continue;
+
+            if ($strictDuplicateCheck && isset($existingChecks[$customerId . '_' . $agentId])) {
+                $failedIds[] = $customerId;
                 continue;
-
-            // 1. Check if already assigned in this round
-            if ($strictDuplicateCheck) {
-                $checkStmt->execute([$customerId, $agentId]);
-                if ($checkStmt->fetchColumn()) {
-                    // Already assigned to this agent in current round
-                    $failedIds[] = $customerId;
-                    continue;
-                }
             }
 
-            // 1.5 Get old data before update
-            $getOldStmt->execute([$customerId]);
-            $oldData = $getOldStmt->fetch(PDO::FETCH_ASSOC);
-            $oldBasketKey = $oldData['current_basket_key'] ?? $sourceBasketKey;
-            $oldAssignedTo = $oldData['assigned_to'] ?? null;
-            $oldLifecycle = $oldData['lifecycle_status'] ?? null;
-
-            // 2. Perform Assignment
-            $insertCheckStmt->execute([$customerId, $agentId, $companyId]);
-
-            if ($targetBasketId) {
-                $updateStmt->execute([$agentId, $targetBasketId, $customerId, $companyId]);
-            } else {
-                $updateStmt->execute([$agentId, $customerId, $companyId]);
-            }
-
-            // 3. Log with assigned_to_old and assigned_to_new
-            $finalTargetKey = $resolvedTargetKey ?: ($oldBasketKey ?: 'Unknown');
-            $safeOldBasketKey = $oldBasketKey ?: 'Unknown';
-            $logStmt->execute([$customerId, $safeOldBasketKey, $finalTargetKey, $oldAssignedTo, $agentId, 'distribute', $triggeredBy, 'Distributed from Distribution V2']);
-
-            // 4. Lazy Cleanup (Check Round Completion)
-            $countChecksStmt->execute([$customerId]);
-            $assignedCount = $countChecksStmt->fetchColumn();
-
-            // Logic: If assigned count >= Total Active Agents (or a heuristic limit), reset
-            // Refinement: Ideally, we should count distinct users this customer has been assigned to vs total users.
-            // But checking count in customer_assign_check is sufficient for "Round Robin" completeness.
-            if ($assignedCount >= $totalActiveAgents && $totalActiveAgents > 0) {
-                $resetStmt->execute([$customerId]);
-                $incRoundStmt->execute([$customerId]);
-            }
-
-            $successIds[] = $customerId;
-            $successDetails[] = [
-                'customer_id' => $customerId, 
-                'agent_id' => $agentId,
-                'previous_assigned_to' => $oldAssignedTo,
-                'previous_basket_key' => $oldBasketKey,
-                'previous_lifecycle_status' => $oldLifecycle
+            $validAssignments[] = [
+                'customer_id' => $customerId,
+                'agent_id' => $agentId
             ];
-            if (!isset($agentStats[$agentId]))
-                $agentStats[$agentId] = 0;
+            $successIds[] = $customerId;
+            
+            if (!isset($agentStats[$agentId])) $agentStats[$agentId] = 0;
             $agentStats[$agentId]++;
+        }
+
+        if (!empty($validAssignments)) {
+            $chunkSize = 500;
+            $chunks = array_chunk($validAssignments, $chunkSize);
+
+            foreach ($chunks as $chunk) {
+                // Bulk Insert customer_assign_check
+                $checkPlaceholders = implode(',', array_fill(0, count($chunk), '(?, ?, ?)'));
+                $checkValues = [];
+                foreach ($chunk as $assign) {
+                    $checkValues[] = $assign['customer_id'];
+                    $checkValues[] = $assign['agent_id'];
+                    $checkValues[] = $companyId;
+                }
+                $pdo->prepare("INSERT INTO customer_assign_check (customer_id, user_id, company_id) VALUES $checkPlaceholders")->execute($checkValues);
+
+                // Bulk Update customers using CASE
+                $updateSql = "UPDATE customers SET assigned_to = CASE customer_id ";
+                $updateParams = [];
+                $chunkCustomerIds = [];
+                foreach ($chunk as $assign) {
+                    $updateSql .= " WHEN ? THEN ? ";
+                    $updateParams[] = $assign['customer_id'];
+                    $updateParams[] = $assign['agent_id'];
+                    $chunkCustomerIds[] = $assign['customer_id'];
+                }
+                $updateSql .= " END, date_assigned = NOW(), basket_entered_date = NOW(), lifecycle_status = 'Assigned' ";
+                if ($targetBasketId) {
+                    $updateSql .= ", current_basket_key = ? ";
+                    $updateParams[] = $targetBasketId;
+                }
+                $updateSql .= " WHERE customer_id IN (" . implode(',', array_fill(0, count($chunk), '?')) . ") AND company_id = ?";
+                $updateParams = array_merge($updateParams, $chunkCustomerIds, [$companyId]);
+                $pdo->prepare($updateSql)->execute($updateParams);
+
+                // Bulk Insert Logs and prepare successDetails
+                $logPlaceholders = implode(',', array_fill(0, count($chunk), '(?, ?, ?, ?, ?, ?, ?, ?, NOW())'));
+                $logValues = [];
+                foreach ($chunk as $assign) {
+                    $customerId = $assign['customer_id'];
+                    $agentId = $assign['agent_id'];
+                    $oldData = $oldDataMap[$customerId] ?? [];
+                    
+                    $oldBasketKey = $oldData['current_basket_key'] ?? $sourceBasketKey;
+                    $oldAssignedTo = $oldData['assigned_to'] ?? null;
+                    $oldLifecycle = $oldData['lifecycle_status'] ?? null;
+                    
+                    $finalTargetKey = $resolvedTargetKey ?: ($oldBasketKey ?: 'Unknown');
+                    $safeOldBasketKey = $oldBasketKey ?: 'Unknown';
+
+                    $logValues[] = $customerId;
+                    $logValues[] = $safeOldBasketKey;
+                    $logValues[] = $finalTargetKey;
+                    $logValues[] = $oldAssignedTo;
+                    $logValues[] = $agentId;
+                    $logValues[] = 'distribute';
+                    $logValues[] = $triggeredBy;
+                    $logValues[] = 'Distributed from Distribution V2';
+
+                    $successDetails[] = [
+                        'customer_id' => $customerId, 
+                        'agent_id' => $agentId,
+                        'previous_assigned_to' => $oldAssignedTo,
+                        'previous_basket_key' => $oldBasketKey,
+                        'previous_lifecycle_status' => $oldLifecycle
+                    ];
+                }
+                $pdo->prepare("INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) VALUES $logPlaceholders")->execute($logValues);
+            }
+
+            // Bulk Cleanup Logic (Check Round Completion)
+            $successInClause = implode(',', array_fill(0, count($successIds), '?'));
+            $cleanupStmt = $pdo->prepare("
+                SELECT customer_id 
+                FROM customer_assign_check 
+                WHERE customer_id IN ($successInClause)
+                GROUP BY customer_id 
+                HAVING COUNT(*) >= ?
+            ");
+            $cleanupParams = array_merge($successIds, [$totalActiveAgents]);
+            $cleanupStmt->execute($cleanupParams);
+            $customersToReset = $cleanupStmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!empty($customersToReset) && $totalActiveAgents > 0) {
+                $resetInClause = implode(',', array_fill(0, count($customersToReset), '?'));
+                $pdo->prepare("DELETE FROM customer_assign_check WHERE customer_id IN ($resetInClause)")->execute($customersToReset);
+                $pdo->prepare("UPDATE customers SET current_round = current_round + 1 WHERE customer_id IN ($resetInClause)")->execute($customersToReset);
+            }
         }
 
         // --- Distribution Session Logging ---
@@ -184,16 +259,22 @@ class DistributionController {
             $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $tagId]);
             $sessionId = $pdo->lastInsertId();
 
-            $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");
-            foreach ($successDetails as $detail) {
-                $detailStmt->execute([
-                    $sessionId, 
-                    $detail['agent_id'], 
-                    $detail['customer_id'],
-                    $detail['previous_assigned_to'],
-                    $detail['previous_basket_key'],
-                    $detail['previous_lifecycle_status']
-                ]);
+            // Bulk Insert for better performance
+            $chunkSize = 500;
+            $chunks = array_chunk($successDetails, $chunkSize);
+            foreach ($chunks as $chunk) {
+                $placeholders = implode(',', array_fill(0, count($chunk), '(?, ?, ?, ?, ?, ?)'));
+                $values = [];
+                foreach ($chunk as $detail) {
+                    $values[] = $sessionId;
+                    $values[] = $detail['agent_id'];
+                    $values[] = $detail['customer_id'];
+                    $values[] = $detail['previous_assigned_to'];
+                    $values[] = $detail['previous_basket_key'];
+                    $values[] = $detail['previous_lifecycle_status'];
+                }
+                $bulkStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES $placeholders");
+                $bulkStmt->execute($values);
             }
         }
         // ------------------------------------
@@ -385,53 +466,13 @@ class DistributionController {
         return;
     }
 
-    $sessionIds = array_column($sessions, 'id');
-    $inClause = implode(',', array_fill(0, count($sessionIds), '?'));
-
-    // Fetch details
-    $detailStmt = $pdo->prepare("
-        SELECT dsd.session_id, dsd.agent_id, u.first_name as agent_first, u.last_name as agent_last,
-               c.customer_id, c.customer_ref_id as customer_code, CONCAT(c.first_name, ' ', c.last_name) as customer_name, c.phone as customer_phone
-        FROM distribution_session_details dsd
-        JOIN users u ON dsd.agent_id = u.id
-        JOIN customers c ON dsd.customer_id = c.customer_id
-        WHERE dsd.session_id IN ($inClause)
-    ");
-    $detailStmt->execute($sessionIds);
-    $details = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Group details by session -> agent -> customers
-    $groupedDetails = [];
-    foreach ($details as $d) {
-        $sid = $d['session_id'];
-        $aid = $d['agent_id'];
-        
-        if (!isset($groupedDetails[$sid])) {
-            $groupedDetails[$sid] = [];
-        }
-        if (!isset($groupedDetails[$sid][$aid])) {
-            $groupedDetails[$sid][$aid] = [
-                'agent_id' => $aid,
-                'agent_name' => trim($d['agent_first'] . ' ' . $d['agent_last']),
-                'customers' => []
-            ];
-        }
-        $groupedDetails[$sid][$aid]['customers'][] = [
-            'id' => $d['customer_id'],
-            'code' => $d['customer_code'],
-            'name' => $d['customer_name'],
-            'phone' => $d['customer_phone']
-        ];
-    }
-
-    // Attach to sessions
+    // Attach to sessions without details (Lazy Loading)
     foreach ($sessions as &$s) {
-        $sid = $s['id'];
         $s['distributed_by_name'] = trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''));
         unset($s['first_name'], $s['last_name']);
         
         $s['agent_snapshot'] = isset($s['agent_snapshot']) ? json_decode($s['agent_snapshot'], true) : [];
-        $s['details'] = isset($groupedDetails[$sid]) ? array_values($groupedDetails[$sid]) : [];
+        $s['details'] = []; // Details will be loaded on demand
     }
 
     echo json_encode(['ok' => true, 'sessions' => $sessions]);
@@ -439,6 +480,55 @@ class DistributionController {
     }
 
     
+        public static function handleGetSessionDetails($pdo) {
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+
+        $sessionId = $_GET['session_id'] ?? null;
+        if (!$sessionId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Session ID required']);
+            return;
+        }
+
+        // Fetch details
+        $detailStmt = $pdo->prepare("
+            SELECT dsd.session_id, dsd.agent_id, u.first_name as agent_first, u.last_name as agent_last,
+                   c.customer_id, c.customer_ref_id as customer_code, CONCAT(c.first_name, ' ', c.last_name) as customer_name, c.phone as customer_phone
+            FROM distribution_session_details dsd
+            LEFT JOIN users u ON dsd.agent_id = u.id
+            JOIN customers c ON dsd.customer_id = c.customer_id
+            WHERE dsd.session_id = ?
+        ");
+        $detailStmt->execute([$sessionId]);
+        $details = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $grouped = [];
+        foreach ($details as $d) {
+            $aid = $d['agent_id'] ?? 0;
+            if (!isset($grouped[$aid])) {
+                $grouped[$aid] = [
+                    'agent_id' => $aid,
+                    'agent_name' => trim(($d['agent_first'] ?? '') . ' ' . ($d['agent_last'] ?? '')),
+                    'customers' => []
+                ];
+                if ($aid == 0) $grouped[$aid]['agent_name'] = 'System/None';
+            }
+            $grouped[$aid]['customers'][] = [
+                'id' => $d['customer_id'],
+                'code' => $d['customer_code'],
+                'name' => $d['customer_name'],
+                'phone' => $d['customer_phone']
+            ];
+        }
+
+        echo json_encode(['ok' => true, 'details' => array_values($grouped)]);
+    }
+
     public static function handleGetSessionTags($pdo) {
 
         $authUser = get_authenticated_user($pdo);
@@ -525,66 +615,98 @@ class DistributionController {
         $successIds = [];
         $skippedIds = [];
 
-        // Statements for rollback
-        $updateCustomerStmt = $pdo->prepare("
-            UPDATE customers 
-            SET assigned_to = ?, current_basket_key = ?, lifecycle_status = ? 
-            WHERE customer_id = ?
-        ");
-        
-        $deleteCheckStmt = $pdo->prepare("
-            DELETE FROM customer_assign_check 
-            WHERE customer_id = ? AND user_id = ? AND company_id = ?
-        ");
-
-        $logStmt = $pdo->prepare("
-            INSERT INTO basket_transition_log 
-            (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) 
-            VALUES (?, ?, ?, ?, ?, 'reclaim', ?, ?, NOW())
-        ");
-
+        $validDetails = [];
         foreach ($details as $detail) {
             $customerId = $detail['customer_id'];
-            $agentId = $detail['agent_id'];
-            $prevAssignedTo = $detail['previous_assigned_to'];
-            $prevBasketKey = $detail['previous_basket_key'];
-            $prevLifecycle = $detail['previous_lifecycle_status'] ?? 'New';
-
-            // Check if untouched (Safe mode)
             if ($mode === 'safe') {
                 $sessionTime = strtotime($session['created_at']);
                 $customerUpdateTime = strtotime($detail['customer_updated_at']);
-                
-                // If customer was updated more than 10 seconds after distribution, consider it "touched"
                 if ($customerUpdateTime > $sessionTime + 10) {
                     $skippedIds[] = $customerId;
-                    continue; // Skip this customer
+                    continue;
                 }
             }
-
-            // Perform Rollback
-            $updateCustomerStmt->execute([
-                $prevAssignedTo, 
-                $prevBasketKey, 
-                $prevLifecycle, 
-                $customerId
-            ]);
-
-            // Remove assign check so they can be assigned to this agent again in the future
-            $deleteCheckStmt->execute([$customerId, $agentId, $companyId]);
-
-            // Log the transition (Undo)
-            $logStmt->execute([
-                $customerId, 
-                $session['source_basket'] ?? 'Unknown', 
-                $prevBasketKey, 
-                $agentId, 
-                $prevAssignedTo, 
-                $triggeredBy, 
-                "Undo Distribution Session #{$sessionId} ({$mode} mode)"
-            ]);
-
+            $validDetails[] = $detail;
             $successIds[] = $customerId;
+        }
+
+        if (!empty($validDetails)) {
+            $chunkSize = 500;
+            $chunks = array_chunk($validDetails, $chunkSize);
+
+            foreach ($chunks as $chunk) {
+                // Bulk Update Customers Using CASE
+                $updateSql = "UPDATE customers SET assigned_to = CASE customer_id ";
+                $basketSql = " current_basket_key = CASE customer_id ";
+                $lifecycleSql = " lifecycle_status = CASE customer_id ";
+                
+                $updateParams = [];
+                $customerIdsChunk = [];
+
+                foreach ($chunk as $d) {
+                    $cid = $d['customer_id'];
+                    $customerIdsChunk[] = $cid;
+                    
+                    $updateSql .= " WHEN ? THEN ? ";
+                    $basketSql .= " WHEN ? THEN ? ";
+                    $lifecycleSql .= " WHEN ? THEN ? ";
+                }
+                
+                $updateSql .= " END, ";
+                $basketSql .= " END, ";
+                $lifecycleSql .= " END WHERE customer_id IN (" . implode(',', array_fill(0, count($customerIdsChunk), '?')) . ")";
+
+                $finalSql = $updateSql . $basketSql . $lifecycleSql;
+                
+                foreach ($chunk as $d) {
+                    $updateParams[] = $d['customer_id'];
+                    $updateParams[] = $d['previous_assigned_to'];
+                }
+                foreach ($chunk as $d) {
+                    $updateParams[] = $d['customer_id'];
+                    $updateParams[] = $d['previous_basket_key'];
+                }
+                foreach ($chunk as $d) {
+                    $updateParams[] = $d['customer_id'];
+                    $updateParams[] = $d['previous_lifecycle_status'] ?? 'New';
+                }
+                foreach ($customerIdsChunk as $cid) {
+                    $updateParams[] = $cid;
+                }
+
+                $updateStmt = $pdo->prepare($finalSql);
+                $updateStmt->execute($updateParams);
+
+                // Bulk Delete assign_check
+                $deletePlaceholders = implode(' OR ', array_fill(0, count($chunk), '(customer_id = ? AND user_id = ? AND company_id = ?)'));
+                $deleteValues = [];
+                foreach ($chunk as $d) {
+                    $deleteValues[] = $d['customer_id'];
+                    $deleteValues[] = $d['agent_id'];
+                    $deleteValues[] = $companyId;
+                }
+                $deleteStmt = $pdo->prepare("DELETE FROM customer_assign_check WHERE " . $deletePlaceholders);
+                $deleteStmt->execute($deleteValues);
+
+                // Bulk Insert Transition Logs
+                $logPlaceholders = implode(',', array_fill(0, count($chunk), '(?, ?, ?, ?, ?, \'reclaim\', ?, ?, NOW())'));
+                $logValues = [];
+                foreach ($chunk as $d) {
+                    $logValues[] = $d['customer_id'];
+                    $logValues[] = $session['source_basket'] ?? 'Unknown';
+                    $logValues[] = $d['previous_basket_key'];
+                    $logValues[] = $d['agent_id'];
+                    $logValues[] = $d['previous_assigned_to'];
+                    $logValues[] = $triggeredBy;
+                    $logValues[] = "Undo Distribution Session #{$sessionId} ({$mode} mode)";
+                }
+                $logStmt = $pdo->prepare("
+                    INSERT INTO basket_transition_log 
+                    (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) 
+                    VALUES $logPlaceholders
+                ");
+                $logStmt->execute($logValues);
+            }
         }
 
         // 3. Update session status

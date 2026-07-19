@@ -52,6 +52,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const [loading, setLoading] = useState(false);
     const [sessions, setSessions] = useState<DistributionSession[]>([]);
     const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
+    const [sessionDetails, setSessionDetails] = useState<Record<number, any[]>>({});
     
     // Check if user is system admin
     const currentUserStr = localStorage.getItem('user');
@@ -102,7 +103,21 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const [editingTagSessionId, setEditingTagSessionId] = useState<number | null>(null);
     const [editTagValue, setEditTagValue] = useState<number | ''>('');
 
-    const toggleExpand = (sessionId: number) => {
+    const loadSessionDetails = async (sessionId: number) => {
+        if (sessionDetails[sessionId]) return sessionDetails[sessionId];
+        try {
+            const data = await apiFetch(`distribution_v2?action=get_session_details&session_id=${sessionId}`);
+            if (data.ok) {
+                setSessionDetails(prev => ({ ...prev, [sessionId]: data.details }));
+                return data.details;
+            }
+        } catch (error) {
+            console.error('Failed to load session details', error);
+        }
+        return [];
+    };
+
+    const toggleExpand = async (sessionId: number) => {
         setExpandedSessions(prev => {
             const next = new Set(prev);
             if (next.has(sessionId)) {
@@ -112,6 +127,10 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             }
             return next;
         });
+        
+        if (!expandedSessions.has(sessionId) && !sessionDetails[sessionId]) {
+            await loadSessionDetails(sessionId);
+        }
     };
 
     const handleUndo = async () => {
@@ -509,6 +528,11 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     };
 
     const handleExport = async (session: DistributionSession) => {
+        let details = sessionDetails[session.id] || session.details;
+        if (!details || details.length === 0) {
+            details = await loadSessionDetails(session.id);
+        }
+
         const workbook = new ExcelJS.Workbook();
         
         // ==========================================
@@ -536,7 +560,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         const failStatusText = isCriteriaApplied ? 'หลุดเกณฑ์' : 'ไม่ได้รับรายชื่อ';
 
         const detailsMap = new Map<number, number>();
-        session.details.forEach(d => detailsMap.set(Number(d.agent_id), d.customers.length));
+        details.forEach((d: any) => detailsMap.set(Number(d.agent_id), d.customers.length));
 
         const receivedAgents: any[] = [];
         const failedAgents: any[] = [];
@@ -708,8 +732,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
 
         const datetime = new Date(session.created_at).toLocaleString('th-TH');
 
-        session.details.forEach(agent => {
-            agent.customers.forEach(customer => {
+        details.forEach((agent: any) => {
+            agent.customers.forEach((customer: any) => {
                 wsDetails.addRow({
                     session_id: session.id,
                     datetime: datetime,
@@ -975,8 +999,17 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                             <th className="px-4 py-3 text-right">จำนวนลูกค้าที่ได้รับ</th>
                                                         </tr>
                                                     </thead>
+                                                    {(!sessionDetails[session.id] && !(session.details && session.details.length > 0)) && (
+                                                        <tbody>
+                                                            <tr>
+                                                                <td colSpan={2} className="px-4 py-8 text-center text-gray-500">
+                                                                    กำลังโหลดข้อมูล...
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    )}
                                                     <tbody>
-                                                        {session.details.map((agent, idx) => (
+                                                        {(sessionDetails[session.id] || session.details || []).map((agent: any, idx: number) => (
                                                             <tr key={agent.agent_id} className={`border-b last:border-b-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                                                                 <td className="px-4 py-2 font-medium text-gray-800">
                                                                     {agent.agent_name}
