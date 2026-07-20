@@ -656,6 +656,33 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // caller field stores full name: "firstName lastName"
     const currentUserFullName = `${user.firstName} ${user.lastName || ''}`.trim();
 
+    // Map customerId -> assignment day (local midnight, ms). Used to ignore raw call_history
+    // rows made BEFORE the customer's current assignment (a previous ownership cycle), so the
+    // frontend overlay stays consistent with the backend date_assigned cutoff and doesn't
+    // re-introduce stale "already called" state. Compared at day granularity to match backend
+    // DATE(ch.date) >= DATE(date_assigned).
+    const assignedDayMap = useMemo(() => {
+        const map = new Map<string, number>();
+        localCustomers.forEach(c => {
+            const da = (c as any).dateAssigned || (c as any).date_assigned;
+            if (!da) return;
+            const d = new Date(String(da).replace(' ', 'T'));
+            if (isNaN(d.getTime())) return;
+            d.setHours(0, 0, 0, 0);
+            map.set(String(c.id), d.getTime());
+        });
+        return map;
+    }, [localCustomers]);
+
+    // True when a raw call_history row predates the customer's current assignment (skip it).
+    const isBeforeAssignment = useCallback((customerId: string, callDate: Date): boolean => {
+        const assignedDay = assignedDayMap.get(customerId);
+        if (assignedDay === undefined) return false; // no known assignment date -> keep (matches backend COALESCE)
+        const d = new Date(callDate.getTime());
+        d.setHours(0, 0, 0, 0);
+        return d.getTime() < assignedDay;
+    }, [assignedDayMap]);
+
     const lastCallMap = useMemo(() => {
         const map = new Map<string, CallHistory>();
 
@@ -689,9 +716,12 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     if (callerStr !== currentUserFullName) return;
                 }
 
-                const callDate = new Date(call.date || Date.now());
+                const callDate = new Date(String(call.date || Date.now()).replace(' ', 'T'));
+                // Skip calls from before the current assignment (previous ownership cycle)
+                if (isBeforeAssignment(customerId, callDate)) return;
+
                 const existing = map.get(customerId);
-                const existingDate = existing ? new Date(existing.date || 0) : null;
+                const existingDate = existing ? new Date(String(existing.date || 0).replace(' ', 'T')) : null;
 
                 if (!existing || (existingDate && callDate > existingDate)) {
                     map.set(customerId, call);
@@ -702,7 +732,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         console.log('[DashboardV2] lastCallMap size:', map.size, '(from customer data + call_history)');
 
         return map;
-    }, [calls, currentUserFullName, localCustomers]);
+    }, [calls, currentUserFullName, localCustomers, isBeforeAssignment]);
 
     // Track customers with upcoming appointments and days until appointment
     // PRIORITY: Store UPCOMING (daysUntil >= 0) appointments over overdue ones
@@ -768,6 +798,9 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     const callerStr = call.caller ? String(call.caller).trim() : '';
                     if (callerStr !== currentUserFullName) return;
                 }
+                const callDate = new Date(String(call.date || Date.now()).replace(' ', 'T'));
+                // Skip calls from before the current assignment (previous ownership cycle)
+                if (isBeforeAssignment(customerId, callDate)) return;
                 tempMap.set(customerId, (tempMap.get(customerId) || 0) + 1);
             });
             // Use the higher count (customer-attached is authoritative, but call_history might be more recent)
@@ -777,7 +810,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             });
         }
         return map;
-    }, [calls, currentUserFullName, localCustomers]);
+    }, [calls, currentUserFullName, localCustomers, isBeforeAssignment]);
 
     // Load customers: Fetch from API to get lastCallNote and other joined fields
     // Fallback to propsCustomers if API fails
@@ -812,13 +845,14 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 console.log('[DashboardV2] API returned', customers.length, 'customers');
 
                 if (customers.length > 0) {
-                    const mapped = customers.map((r: any) => mapCustomerFromApi(r));
+                    // Blocked customers must never appear on the telesale dashboard
+                    const mapped = customers.map((r: any) => mapCustomerFromApi(r)).filter(c => !c.isBlocked);
                     console.log('[DashboardV2] First customer lastCallNote:', mapped[0]?.lastCallNote);
                     setLocalCustomers(mapped);
                 } else if (propsCustomers && propsCustomers.length > 0) {
                     // Fallback to propsCustomers if API returns empty
                     console.log('[DashboardV2] Falling back to propsCustomers');
-                    const myCustomers = propsCustomers.filter(c => c.assignedTo === Number(user.id));
+                    const myCustomers = propsCustomers.filter(c => c.assignedTo === Number(user.id) && !c.isBlocked);
                     setLocalCustomers(myCustomers);
                 }
             } catch (err) {
@@ -826,7 +860,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 // Fallback to propsCustomers on error
                 if (propsCustomers && propsCustomers.length > 0) {
                     console.log('[DashboardV2] Error fallback to propsCustomers');
-                    const myCustomers = propsCustomers.filter(c => c.assignedTo === Number(user.id));
+                    const myCustomers = propsCustomers.filter(c => c.assignedTo === Number(user.id) && !c.isBlocked);
                     setLocalCustomers(myCustomers);
                 }
             }
