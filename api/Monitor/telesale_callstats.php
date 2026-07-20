@@ -247,10 +247,76 @@ try {
     // Filter out telesales that have 0 across all baskets if desired?
     // Let's keep them so the supervisor knows they did nothing.
 
+    $finalData = array_values($dataMap);
+
+    // --- Export Logic ---
+    if (isset($_GET['export']) && $_GET['export'] === 'true') {
+        $viewMode = $_GET['view_mode'] ?? 'performance';
+        $agentIdFilter = $_GET['agent_id'] ?? 'all';
+        
+        // Filter agents if needed
+        if ($agentIdFilter !== 'all') {
+            $finalData = array_filter($finalData, function($a) use ($agentIdFilter) {
+                return $a['agent_id'] == $agentIdFilter;
+            });
+        }
+        
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="telesale_callstats_' . $viewMode . '_' . date('Ymd_His') . '.csv"');
+        
+        $output = fopen('php://output', 'w');
+        // Add BOM for Excel UTF-8 support
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        // Build Headers
+        $headers = ['รหัสพนักงาน', 'ชื่อพนักงาน'];
+        foreach ($baskets as $b) {
+            $bName = $b['basket_name'];
+            if ($viewMode === 'performance') {
+                $headers[] = "[{$bName}] รับแจก";
+                $headers[] = "[{$bName}] โทรแล้ว";
+                $headers[] = "[{$bName}] นัดหมาย";
+            } else {
+                $headers[] = "[{$bName}] ในมือ";
+                $headers[] = "[{$bName}] โทรแล้ว";
+                $headers[] = "[{$bName}] นัดหมาย";
+            }
+        }
+        fputcsv($output, $headers);
+        
+        // Build Rows
+        foreach ($finalData as $agent) {
+            $row = [$agent['agent_id'], $agent['agent_name']];
+            foreach ($baskets as $b) {
+                $stat = $agent['stats'][$b['basket_key']] ?? null;
+                if (!$stat) {
+                    $row[] = '0';
+                    $row[] = '0';
+                    $row[] = '0';
+                    continue;
+                }
+                
+                if ($viewMode === 'performance') {
+                    $row[] = $stat['assigned_total'];
+                    $row[] = $stat['called'];
+                    $row[] = $stat['appointments'];
+                } else {
+                    $row[] = $stat['assigned_current'];
+                    $row[] = $stat['called_current'];
+                    $row[] = $stat['appt_current'];
+                }
+            }
+            fputcsv($output, $row);
+        }
+        
+        fclose($output);
+        exit;
+    }
+
     json_response([
         'success' => true,
         'baskets' => $baskets,
-        'data' => array_values($dataMap)
+        'data' => $finalData
     ]);
 
 } catch (Throwable $e) {

@@ -14,6 +14,7 @@ try {
             else if ($distAction === 'get_basket_options') DistributionController::handleGetBasketOptions($pdo);
             else if ($distAction === 'undo_distribution') DistributionController::handleUndoDistribution($pdo);
             else if ($distAction === 'cleanup_details') DistributionController::handleCleanupDistributionDetails($pdo);
+            else if ($distAction === 'get_session_details') DistributionController::handleGetSessionDetails($pdo);
             else {
                 http_response_code(400);
                 echo json_encode(['ok' => false, 'error' => 'INVALID_ACTION', 'message' => "Action '$distAction' is not valid for distribution_v2"]);

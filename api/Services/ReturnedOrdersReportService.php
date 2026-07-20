@@ -133,8 +133,10 @@ class ReturnedOrdersReportService
             SELECT 
                 o.id AS order_id,
                 o.order_date,
+                o.delivery_date AS shipped_date,
                 o.customer_id,
                 CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
+                CONCAT_WS(' ', NULLIF(c.street, ''), NULLIF(c.subdistrict, ''), NULLIF(c.district, ''), NULLIF(c.province, ''), NULLIF(c.postal_code, '')) AS customer_address,
                 c.phone AS customer_phone,
                 IF(o.order_status = 'Returned', 
                     COALESCE((SELECT SUM(ob.cod_amount) FROM order_boxes ob WHERE ob.order_id = o.id), 0), 
@@ -185,8 +187,24 @@ class ReturnedOrdersReportService
             }
         }
 
+        // Fetch order items
+        $itemsByOrder = [];
+        if (!empty($orderIds)) {
+            $in = str_repeat('?,', count($orderIds) - 1) . '?';
+            $itemStmt = $this->pdo->prepare("SELECT parent_order_id as order_id, product_name, quantity, is_freebie FROM order_items WHERE parent_order_id IN ($in) ORDER BY id ASC");
+            $itemStmt->execute($orderIds);
+            while ($row = $itemStmt->fetch(PDO::FETCH_ASSOC)) {
+                $itemsByOrder[$row['order_id']][] = [
+                    'product_name' => $row['product_name'],
+                    'quantity' => (int)$row['quantity'],
+                    'is_freebie' => (int)$row['is_freebie']
+                ];
+            }
+        }
+
         foreach ($results as &$row) {
             $row['audio_links'] = $audioLinksByOrder[$row['order_id']] ?? [];
+            $row['items'] = $itemsByOrder[$row['order_id']] ?? [];
         }
 
         return $results;

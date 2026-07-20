@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Search, Filter, Headphones, ChevronDown, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
+import { Calendar, Search, Filter, Headphones, ChevronDown, CheckCircle2, XCircle, RotateCcw, Copy, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
 import useTeamEmployeeFilter from '../hooks/useTeamEmployeeFilter';
 import { useToast } from '@/components/Toast';
@@ -15,12 +15,20 @@ interface AudioLink {
   notes?: string;
 }
 
+interface OrderItem {
+  product_name: string;
+  quantity: number;
+  is_freebie: number;
+}
+
 interface OrderData {
   order_id: string;
   order_date: string;
   customer_id: number;
   customer_name: string;
   customer_phone: string;
+  customer_address?: string;
+  shipped_date?: string;
   total_amount: number;
   payment_method: string;
   order_status: string;
@@ -32,6 +40,7 @@ interface OrderData {
   returned_at: string;
   creator_name: string;
   audio_links: AudioLink[];
+  items?: OrderItem[];
 }
 
 interface UserData {
@@ -67,6 +76,49 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   });
   const [data, setData] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof OrderData, direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = (key: keyof OrderData) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedData = useMemo(() => {
+    let sortableItems = [...data];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        let aValue = a[sortConfig.key] ?? '';
+        let bValue = b[sortConfig.key] ?? '';
+        
+        if (sortConfig.key === 'total_amount') {
+           aValue = parseFloat(aValue as string || '0');
+           bValue = parseFloat(bValue as string || '0');
+        }
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [data, sortConfig]);
+
+  const renderSortIcon = (key: keyof OrderData) => {
+    if (!sortConfig || sortConfig.key !== key) {
+        return <ArrowUpDown className="w-3.5 h-3.5 inline ml-1 opacity-40 group-hover:opacity-100 transition-opacity" />;
+    }
+    if (sortConfig.direction === 'asc') {
+        return <ArrowUp className="w-3.5 h-3.5 inline ml-1 text-blue-600" />;
+    }
+    return <ArrowDown className="w-3.5 h-3.5 inline ml-1 text-blue-600" />;
+  };
   const [processingAudio, setProcessingAudio] = useState<string | null>(null);
 
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -146,6 +198,73 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
     } catch (err: any) {
       toast.error('ข้อผิดพลาด', err.message);
     }
+  };
+
+  const getOrderStatusThai = (status: string) => {
+    const statusMap: Record<string, string> = {
+      'AwaitingVerification': 'รอตรวจสอบสลิป',
+      'BadDebt': 'หนี้สูญ',
+      'Cancelled': 'ยกเลิกแล้ว',
+      'Confirmed': 'ยืนยันแล้ว',
+      'Delivered': 'จัดส่งสำเร็จ',
+      'Pending': 'รอดำเนินการ',
+      'Picking': 'กำลังจัดสินค้า',
+      'PreApproved': 'รออนุมัติ',
+      'Preparing': 'กำลังเตรียมจัดส่ง',
+      'Returned': 'ตีกลับ',
+      'Shipping': 'กำลังจัดส่ง'
+    };
+    return statusMap[status] || status;
+  };
+
+  const handleCopyOrderData = (order: OrderData) => {
+    let text = `[รายละเอียดออเดอร์]\n`;
+    text += `รหัส: ${order.order_id}\n`;
+    text += `สถานะปัจจุบัน: ${getOrderStatusThai(order.order_status)}\n`;
+    text += `ยอดเงิน: ฿${parseFloat(order.total_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}\n`;
+    text += `วันที่สั่ง: ${order.order_date?.substring(0, 10) || '-'}\n`;
+    text += `วันที่ส่ง: ${order.shipped_date?.substring(0, 10) || '-'}\n`;
+    text += `ที่อยู่: ${order.customer_address || '-'}\n\n`;
+
+    if (order.items && order.items.length > 0) {
+      text += `[รายการสินค้า]\n`;
+      order.items.forEach(item => {
+        text += `- ${item.product_name} (x${item.quantity}) ${item.is_freebie ? '[ของแถม]' : ''}\n`;
+      });
+      text += `\n`;
+    }
+
+    text += `[ลูกค้า]\n`;
+    text += `ชื่อ: ${order.customer_name}\n`;
+    text += `เบอร์: ${order.customer_phone}\n\n`;
+
+    text += `[เหตุผลยกเลิก/ตีกลับ]\n`;
+    text += `ประเภท: ${order.cancel_type || '-'}\n`;
+    text += `หมายเหตุ: ${order.cancel_notes || '-'}\n\n`;
+
+    if (order.admin_resolution_notes) {
+      text += `[สรุปออเดอร์]\n${order.admin_resolution_notes}\n\n`;
+    }
+
+    if (order.audio_links && order.audio_links.length > 0) {
+      text += `[ไฟล์เสียง]\n`;
+      order.audio_links.forEach((link, idx) => {
+        text += `${idx + 1}. ${link.url}\n`;
+        if (link.date) {
+          text += `   เวลาโทร: ${link.date}\n`;
+        }
+        if (link.notes) {
+          text += `   สรุป: ${link.notes}\n`;
+        }
+      });
+      text += `\n`;
+    }
+
+    navigator.clipboard.writeText(text.trim()).then(() => {
+      toast.success('สำเร็จ', 'คัดลอกข้อมูลออเดอร์แล้ว');
+    }).catch(() => {
+      toast.error('ข้อผิดพลาด', 'ไม่สามารถคัดลอกข้อมูลได้');
+    });
   };
 
   const handleAutoMatch = async (orderId: string) => {
@@ -442,11 +561,21 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">รหัสออเดอร์</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">วันที่</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ลูกค้า</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ยอดเงิน</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">เหตุผล</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('order_id')}>
+                        รหัสออเดอร์ {renderSortIcon('order_id')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('order_date')}>
+                        วันที่ {renderSortIcon('order_date')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('customer_name')}>
+                        ลูกค้า {renderSortIcon('customer_name')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('total_amount')}>
+                        ยอดเงิน {renderSortIcon('total_amount')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('cancel_type')}>
+                        เหตุผล {renderSortIcon('cancel_type')}
+                      </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">สรุปออเดอร์</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ไฟล์เสียง</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
@@ -457,12 +586,12 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                       <tr>
                         <td colSpan={7} className="px-4 py-8 text-center text-gray-500">กำลังโหลดข้อมูล...</td>
                       </tr>
-                    ) : data.length === 0 ? (
+                    ) : sortedData.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="px-4 py-8 text-center text-gray-500">ไม่พบข้อมูลในช่วงเวลานี้</td>
                       </tr>
                     ) : (
-                      data.map((order, idx) => {
+                      sortedData.map((order, idx) => {
                         const isCompleted = order.admin_resolution_completed === 1;
                         return (
                         <tr key={`${order.order_id}-${idx}`} className={`hover:bg-gray-50 transition-colors ${isCompleted ? 'bg-gray-100 opacity-60' : 'bg-white'}`}>
@@ -562,6 +691,15 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                 จัดการรายละเอียด
+                              </button>
+                              
+                              <button 
+                                onClick={() => handleCopyOrderData(order)}
+                                className="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1 rounded w-full text-xs flex items-center justify-center gap-1 border border-blue-100 transition-colors"
+                                title="คัดลอกข้อมูลทั้งหมดของออเดอร์นี้"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                คัดลอกข้อมูล
                               </button>
                               
                               <button
