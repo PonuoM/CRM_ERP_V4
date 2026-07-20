@@ -639,6 +639,7 @@ class DistributionController {
                 $updateSql = "UPDATE customers SET assigned_to = CASE customer_id ";
                 $basketSql = " current_basket_key = CASE customer_id ";
                 $lifecycleSql = " lifecycle_status = CASE customer_id ";
+                $dateAssignedSql = " date_assigned = CASE customer_id ";
                 
                 $updateParams = [];
                 $customerIdsChunk = [];
@@ -650,13 +651,20 @@ class DistributionController {
                     $updateSql .= " WHEN ? THEN ? ";
                     $basketSql .= " WHEN ? THEN ? ";
                     $lifecycleSql .= " WHEN ? THEN ? ";
+                    
+                    if (!empty($d['previous_assigned_to'])) {
+                        $dateAssignedSql .= " WHEN ? THEN COALESCE((SELECT created_at FROM customer_audit_log WHERE customer_id = ? AND field_name = 'assigned_to' AND new_value = ? ORDER BY id DESC LIMIT 1), NOW()) ";
+                    } else {
+                        $dateAssignedSql .= " WHEN ? THEN NULL ";
+                    }
                 }
                 
                 $updateSql .= " END, ";
                 $basketSql .= " END, ";
-                $lifecycleSql .= " END WHERE customer_id IN (" . implode(',', array_fill(0, count($customerIdsChunk), '?')) . ")";
+                $lifecycleSql .= " END, ";
+                $dateAssignedSql .= " END WHERE customer_id IN (" . implode(',', array_fill(0, count($customerIdsChunk), '?')) . ")";
 
-                $finalSql = $updateSql . $basketSql . $lifecycleSql;
+                $finalSql = $updateSql . $basketSql . $lifecycleSql . $dateAssignedSql;
                 
                 foreach ($chunk as $d) {
                     $updateParams[] = $d['customer_id'];
@@ -669,6 +677,15 @@ class DistributionController {
                 foreach ($chunk as $d) {
                     $updateParams[] = $d['customer_id'];
                     $updateParams[] = $d['previous_lifecycle_status'] ?? 'New';
+                }
+                foreach ($chunk as $d) {
+                    if (!empty($d['previous_assigned_to'])) {
+                        $updateParams[] = $d['customer_id'];
+                        $updateParams[] = $d['customer_id'];
+                        $updateParams[] = $d['previous_assigned_to'];
+                    } else {
+                        $updateParams[] = $d['customer_id'];
+                    }
                 }
                 foreach ($customerIdsChunk as $cid) {
                     $updateParams[] = $cid;

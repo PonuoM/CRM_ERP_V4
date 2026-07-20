@@ -43,6 +43,8 @@ try {
                 DistributionReportController::get_monthly_summary($pdo);
             } else if ($id === 'time_travel') {
                 DistributionReportController::get_time_travel_snapshot($pdo);
+            } else if ($id === 'export_time_travel_call_stats') {
+                DistributionReportController::export_time_travel_call_stats($pdo);
             }
             break;
         case 'system_updates':

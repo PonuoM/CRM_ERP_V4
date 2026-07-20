@@ -1387,7 +1387,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     'province=COALESCE(?, province)',
                     'company_id=COALESCE(?, company_id)',
                     (array_key_exists('assignedTo', $in) || array_key_exists('assigned_to', $in)) ? 'assigned_to=?' : 'assigned_to=COALESCE(?, assigned_to)',
-                    'date_assigned=COALESCE(?, date_assigned)',
+                    (!empty($assignedTo) && (string) $assignedTo !== (string) $oldAssigned) ? 'date_assigned=COALESCE(?, NOW())' : 'date_assigned=COALESCE(?, date_assigned)',
                     'date_registered=COALESCE(?, date_registered)',
                     'follow_up_date=COALESCE(?, follow_up_date)',
                     'ownership_expires=COALESCE(?, ownership_expires)',

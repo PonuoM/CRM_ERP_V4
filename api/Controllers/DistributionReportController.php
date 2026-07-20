@@ -610,4 +610,124 @@ class DistributionReportController {
             echo json_encode(["ok" => false, "message" => "Database error"]);
         }
     }
+
+    public static function export_time_travel_call_stats($pdo) {
+        $authUser = get_authenticated_user($pdo);
+        if (!$authUser) {
+            http_response_code(401);
+            echo json_encode(["ok" => false, "message" => "Unauthorized"]);
+            return;
+        }
+
+        $company_id = $authUser['company_id'];
+        if (!isset($_GET['target_time'])) {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "message" => "Missing target_time"]);
+            return;
+        }
+        $target_time = $_GET['target_time']; // format 'YYYY-MM-DD HH:mm:ss'
+        
+        try {
+            // Complex SQL to find the state of customers at target_time
+            $sql = "
+            WITH CustomerPool AS (
+                SELECT customer_id, assigned_to as current_assigned_to, date_registered, current_basket_key
+                FROM customers
+                WHERE company_id = :company_id
+                  AND date_registered <= :target_time1
+            ),
+            LogsBefore AS (
+                SELECT 
+                    cal.customer_id,
+                    cal.new_value as assigned_to,
+                    cal.created_at as assignment_time,
+                    ROW_NUMBER() OVER (PARTITION BY cal.customer_id ORDER BY cal.created_at DESC) as rn
+                FROM customer_audit_log cal
+                INNER JOIN CustomerPool cp ON cal.customer_id = cp.customer_id
+                WHERE cal.field_name = 'assigned_to' 
+                  AND cal.created_at <= :target_time2
+            ),
+            LogsAfter AS (
+                SELECT 
+                    cal.customer_id,
+                    cal.old_value as assigned_to,
+                    ROW_NUMBER() OVER (PARTITION BY cal.customer_id ORDER BY cal.created_at ASC) as rn
+                FROM customer_audit_log cal
+                INNER JOIN CustomerPool cp ON cal.customer_id = cp.customer_id
+                WHERE cal.field_name = 'assigned_to' 
+                  AND cal.created_at > :target_time3
+            ),
+            HistoricalState AS (
+                SELECT 
+                    cp.customer_id,
+                    COALESCE(la.assigned_to, cp.current_assigned_to) as historical_assigned_to,
+                    COALESCE(lb.assignment_time, cp.date_registered) as historical_assignment_time,
+                    cp.current_basket_key
+                FROM CustomerPool cp
+                LEFT JOIN LogsAfter la ON cp.customer_id = la.customer_id AND la.rn = 1
+                LEFT JOIN LogsBefore lb ON cp.customer_id = lb.customer_id AND lb.rn = 1
+            ),
+            CallStats AS (
+                SELECT 
+                    hs.customer_id,
+                    hs.historical_assigned_to as assigned_to,
+                    hs.historical_assignment_time as assignment_time,
+                    hs.current_basket_key,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM call_history ch 
+                        WHERE ch.customer_id = hs.customer_id 
+                          AND ch.date >= hs.historical_assignment_time
+                          AND ch.date <= :target_time4
+                    ) THEN 1 ELSE 0 END as has_call,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM appointments a 
+                        WHERE a.customer_id = hs.customer_id 
+                          AND a.created_at >= hs.historical_assignment_time
+                          AND a.created_at <= :target_time5
+                    ) THEN 1 ELSE 0 END as has_appointment
+                FROM HistoricalState hs
+                WHERE hs.historical_assigned_to > 0
+            )
+            SELECT 
+                cs.assigned_to,
+                u.first_name,
+                u.last_name,
+                u.status,
+                bc.basket_name,
+                COUNT(*) as total_held,
+                SUM(CASE WHEN has_call = 0 AND has_appointment = 0 THEN 1 ELSE 0 END) as not_called,
+                SUM(CASE WHEN has_call = 1 AND has_appointment = 0 THEN 1 ELSE 0 END) as called_no_appt,
+                SUM(CASE WHEN has_call = 1 AND has_appointment = 1 THEN 1 ELSE 0 END) as called_and_appt,
+                SUM(CASE WHEN has_call = 0 AND has_appointment = 1 THEN 1 ELSE 0 END) as appt_no_call
+            FROM CallStats cs
+            LEFT JOIN users u ON cs.assigned_to = u.id
+            LEFT JOIN basket_config bc ON (cs.current_basket_key = bc.basket_key OR cs.current_basket_key = bc.id)
+            GROUP BY cs.assigned_to, u.first_name, u.last_name, u.status, bc.basket_name
+            ORDER BY u.first_name ASC
+            ";
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                ':target_time1' => $target_time,
+                ':target_time2' => $target_time,
+                ':target_time3' => $target_time,
+                ':target_time4' => $target_time,
+                ':target_time5' => $target_time,
+                ':company_id' => $company_id
+            ]);
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Fetch all users to support "Everyone" option
+            $usersStmt = $pdo->prepare("SELECT id, first_name, last_name, status FROM users WHERE company_id = :company_id");
+            $usersStmt->execute([':company_id' => $company_id]);
+            $allUsers = $usersStmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode(["ok" => true, "data" => $results, "allUsers" => $allUsers]);
+            
+        } catch (Exception $e) {
+            error_log("Error in export_time_travel_call_stats: " . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(["ok" => false, "message" => "Database error"]);
+        }
+    }
 }
