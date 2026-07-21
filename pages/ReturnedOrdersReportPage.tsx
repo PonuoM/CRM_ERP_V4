@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Search, Filter, Headphones, ChevronDown, CheckCircle2, XCircle, RotateCcw, Copy, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Calendar, Search, Filter, Headphones, ChevronDown, CheckCircle2, XCircle, RotateCcw, Copy, ArrowUp, ArrowDown, ArrowUpDown, Download } from 'lucide-react';
 import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
 import useTeamEmployeeFilter from '../hooks/useTeamEmployeeFilter';
 import { useToast } from '@/components/Toast';
 import Modal from '@/components/Modal';
+import ExportTypeModal from '@/components/ExportTypeModal';
+import { downloadDataFile } from '@/utils/exportUtils';
 import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
 import OrderDetailsModal from '@/components/ReturnedOrdersReport/OrderDetailsModal';
@@ -78,6 +80,8 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   const [data, setData] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: keyof OrderData, direction: 'asc' | 'desc' } | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleSort = (key: keyof OrderData) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -110,6 +114,49 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
     }
     return sortableItems;
   }, [data, sortConfig]);
+
+  const executeExport = (type: 'csv' | 'xlsx') => {
+    if (sortedData.length === 0) return;
+    setIsExporting(true);
+
+    try {
+      const exportData = sortedData.map(order => {
+        let audioString = '';
+        if (order.audio_links && order.audio_links.length > 0) {
+          audioString = `มีไฟล์เสียง (${order.audio_links.length} ไฟล์)`;
+        } else {
+          audioString = '-';
+        }
+
+        return {
+          'รหัสออเดอร์': order.order_id,
+          'วันที่สั่งซื้อ': order.order_date,
+          'วันที่ตีกลับ/ยกเลิก': order.returned_at || order.cancelled_at || '-',
+          'พนักงานขาย': order.creator_name,
+          'ลูกค้า': order.customer_name,
+          'เบอร์โทร': order.customer_phone,
+          'ที่อยู่': order.customer_address || '-',
+          'ยอดทั้งออเดอร์': parseFloat(order.total_amount as any || 0),
+          'ยอดตีกลับ': parseFloat(order.returned_amount as any || 0),
+          'ช่องทางชำระเงิน': order.payment_method,
+          'สถานะ': order.order_status,
+          'ประเภทการยกเลิก/ตีกลับ': order.cancel_type || '-',
+          'หมายเหตุเพิ่มเติม': order.cancel_notes || '-',
+          'สรุปออเดอร์ (แอดมิน)': order.admin_resolution_notes || '-',
+          'สถานะตรวจไฟล์เสียง': audioString
+        };
+      });
+
+      const filename = `returned_orders_${activeTab}`;
+      downloadDataFile(exportData, filename, type);
+    } catch (e) {
+      console.error(e);
+      toast.error('ข้อผิดพลาด', 'ไม่สามารถส่งออกไฟล์ได้');
+    } finally {
+      setIsExporting(false);
+      setIsExportModalOpen(false);
+    }
+  };
 
   const renderSortIcon = (key: keyof OrderData) => {
     if (!sortConfig || sortConfig.key !== key) {
@@ -322,6 +369,14 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
     <div className="flex-1 flex flex-col overflow-hidden h-full">
         <header className="flex justify-between items-center p-4 bg-white border-b shadow-sm">
           <h1 className="text-2xl font-semibold">รายงานออเดอร์ตีกลับและยกเลิก</h1>
+          <button 
+            onClick={() => setIsExportModalOpen(true)}
+            disabled={data.length === 0 || loading || isExporting}
+            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Download size={16} />
+            {isExporting ? 'กำลังส่งออก...' : 'ส่งออกข้อมูล'}
+          </button>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -748,6 +803,13 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
             </div>
           </div>
         </div>
+
+        <ExportTypeModal
+          isOpen={isExportModalOpen}
+          onClose={() => !isExporting && setIsExportModalOpen(false)}
+          onConfirm={executeExport}
+          isExporting={isExporting}
+        />
 
         <OrderDetailsModal
           isOpen={isDetailsModalOpen}
