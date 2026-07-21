@@ -94,7 +94,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
         let aValue = a[sortConfig.key] ?? '';
         let bValue = b[sortConfig.key] ?? '';
         
-        if (sortConfig.key === 'total_amount') {
+        if (sortConfig.key === 'total_amount' || sortConfig.key === 'returned_amount') {
            aValue = parseFloat(aValue as string || '0');
            bValue = parseFloat(bValue as string || '0');
         }
