@@ -731,6 +731,40 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     });
   };
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // ขายแทน (proxy sale) — file this order under another Telesale, e.g. when they are off-site
+  // on a holiday and geofencing blocks them. The order stays theirs (number + creatorId), while
+  // the backend stamps who actually keyed it in.
+  // ──────────────────────────────────────────────────────────────────────────
+  const [isProxySale, setIsProxySale] = useState(false);
+  const [proxyUserId, setProxyUserId] = useState<number | null>(null);
+  const [proxyReason, setProxyReason] = useState("");
+
+  // Mirrors the backend rule in OrderController POST: same company, Telesale roles only.
+  const proxyCandidates = useMemo(
+    () =>
+      users
+        .filter(
+          (u) =>
+            u.id !== currentUser.id &&
+            u.companyId === currentUser.companyId &&
+            (u.role === UserRole.Telesale ||
+              u.role === UserRole.Supervisor),
+        )
+        .sort((a, b) =>
+          `${a.firstName} ${a.lastName}`.localeCompare(
+            `${b.firstName} ${b.lastName}`,
+            "th",
+          ),
+        ),
+    [users, currentUser.id, currentUser.companyId],
+  );
+
+  const proxyTarget = useMemo(
+    () => proxyCandidates.find((u) => u.id === proxyUserId) ?? null,
+    [proxyCandidates, proxyUserId],
+  );
+
   // 🎫 QUOTA SYSTEM (Dynamic Evaluation)
   const [quotaProductsList, setQuotaProductsList] = useState<any[]>([]);
   const [quotaDetails, setQuotaDetails] = useState<any[]>([]);
@@ -746,9 +780,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         const activeQps = qps.filter((q: any) => q.isActive);
         if (activeQps.length === 0 || cancelled) return;
         
+        const effectiveUserId = (isProxySale && proxyUserId) ? proxyUserId : currentUser.id;
+        
         const details = await getUserQuotaDetail({ 
             companyId: currentUser.companyId, 
-            userId: currentUser.id, 
+            userId: effectiveUserId, 
             rateScheduleId: 'all' 
         });
 
@@ -759,7 +795,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
-  }, [currentUser?.companyId, currentUser?.id]);
+  }, [currentUser?.companyId, currentUser?.id, isProxySale, proxyUserId]);
 
   // Dynamically calculate remaining quota by RateSchedule ID (subtracting cart items)
   const dynamicQuotaRemainingByRate = useMemo(() => {
@@ -4529,38 +4565,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   // ──────────────────────────────────────────────────────────────────────────
-  // ขายแทน (proxy sale) — file this order under another Telesale, e.g. when they are off-site
-  // on a holiday and geofencing blocks them. The order stays theirs (number + creatorId), while
-  // the backend stamps who actually keyed it in.
+  // ขายแทน (proxy sale) — logic moved up to QUOTA SYSTEM section to support dynamic quota 
   // ──────────────────────────────────────────────────────────────────────────
-  const [isProxySale, setIsProxySale] = useState(false);
-  const [proxyUserId, setProxyUserId] = useState<number | null>(null);
-  const [proxyReason, setProxyReason] = useState("");
-
-  // Mirrors the backend rule in OrderController POST: same company, Telesale roles only.
-  const proxyCandidates = useMemo(
-    () =>
-      users
-        .filter(
-          (u) =>
-            u.id !== currentUser.id &&
-            u.companyId === currentUser.companyId &&
-            (u.role === UserRole.Telesale ||
-              u.role === UserRole.Supervisor),
-        )
-        .sort((a, b) =>
-          `${a.firstName} ${a.lastName}`.localeCompare(
-            `${b.firstName} ${b.lastName}`,
-            "th",
-          ),
-        ),
-    [users, currentUser.id, currentUser.companyId],
-  );
-
-  const proxyTarget = useMemo(
-    () => proxyCandidates.find((u) => u.id === proxyUserId) ?? null,
-    [proxyCandidates, proxyUserId],
-  );
 
   // ──────────────────────────────────────────────────────────────────────────
   // [E12] NORMAL ORDER — Save Handler (handleSave)
@@ -4743,7 +4749,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           }
 
           // Check remaining for each quota product
-          const details = await getUserQuotaDetail({ companyId: currentUser.companyId, userId: currentUser.id, rateScheduleId: 'all' });
+          const effectiveUserId = (isProxySale && proxyUserId) ? proxyUserId : currentUser.id;
+          const details = await getUserQuotaDetail({ companyId: currentUser.companyId, userId: effectiveUserId, rateScheduleId: 'all' });
 
           // Simulate quota deduction for shared quotas
           const simulatedRates = details.map(d => ({
