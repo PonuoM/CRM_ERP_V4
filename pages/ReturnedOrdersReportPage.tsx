@@ -17,13 +17,13 @@ interface AudioLink {
   notes?: string;
 }
 
-interface OrderItem {
+export interface OrderItem {
   product_name: string;
   quantity: number;
   is_freebie: number;
 }
 
-interface OrderData {
+export interface OrderData {
   order_id: string;
   order_date: string;
   customer_id: number;
