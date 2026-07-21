@@ -30,6 +30,7 @@ interface OrderData {
   customer_address?: string;
   shipped_date?: string;
   total_amount: number;
+  returned_amount?: number;
   payment_method: string;
   order_status: string;
   cancel_type: string;
@@ -221,7 +222,8 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
     let text = `[รายละเอียดออเดอร์]\n`;
     text += `รหัส: ${order.order_id}\n`;
     text += `สถานะปัจจุบัน: ${getOrderStatusThai(order.order_status)}\n`;
-    text += `ยอดเงิน: ฿${parseFloat(order.total_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}\n`;
+    text += `ยอดทั้งออเดอร์: ฿${parseFloat(order.total_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}\n`;
+    text += `ยอดตีกลับ: ฿${parseFloat(order.returned_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}\n`;
     text += `วันที่สั่ง: ${order.order_date?.substring(0, 10) || '-'}\n`;
     text += `วันที่ส่ง: ${order.shipped_date?.substring(0, 10) || '-'}\n`;
     text += `ที่อยู่: ${order.customer_address || '-'}\n\n`;
@@ -314,6 +316,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   // Summary calc
   const totalOrders = data.length;
   const totalAmount = data.reduce((sum, item) => sum + parseFloat(item.total_amount as any || 0), 0);
+  const totalReturnedAmount = data.reduce((sum, item) => sum + parseFloat(item.returned_amount as any || 0), 0);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
@@ -547,11 +550,20 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                 </div>
                 <div className="bg-white border rounded-lg p-4 flex items-center justify-between shadow-sm">
                   <div>
-                    <p className="text-sm text-gray-500 font-medium">ยอดเงินรวม</p>
-                    <p className="text-3xl font-bold text-green-600">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                    <p className="text-sm text-gray-500 font-medium">ยอดเงินรวมทั้งออเดอร์</p>
+                    <p className="text-3xl font-bold text-gray-700">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                   </div>
-                  <div className="p-3 rounded-full bg-green-100 text-green-600">
+                  <div className="p-3 rounded-full bg-gray-100 text-gray-600">
                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  </div>
+                </div>
+                <div className="bg-white border rounded-lg p-4 flex items-center justify-between shadow-sm">
+                  <div>
+                    <p className="text-sm text-gray-500 font-medium">ยอดตีกลับรวม</p>
+                    <p className="text-3xl font-bold text-red-600">฿{totalReturnedAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                  </div>
+                  <div className="p-3 rounded-full bg-red-100 text-red-600">
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>
                   </div>
                 </div>
               </div>
@@ -571,7 +583,10 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                         ลูกค้า {renderSortIcon('customer_name')}
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('total_amount')}>
-                        ยอดเงิน {renderSortIcon('total_amount')}
+                        ยอดทั้งออเดอร์ {renderSortIcon('total_amount')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('returned_amount')}>
+                        ยอดตีกลับ {renderSortIcon('returned_amount')}
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('cancel_type')}>
                         เหตุผล {renderSortIcon('cancel_type')}
@@ -615,6 +630,9 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
                             ฿{parseFloat(order.total_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
                             <div className="text-xs font-normal text-gray-500 mt-1">{order.payment_method}</div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-red-600 font-medium">
+                            ฿{parseFloat(order.returned_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
                           </td>
                           <td className="px-4 py-3 text-sm">
                             <div className="font-medium text-gray-800">{order.cancel_type || '-'}</div>
