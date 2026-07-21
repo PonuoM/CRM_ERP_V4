@@ -162,6 +162,61 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
     }
   };
 
+  const executeExportUserSummary = async (type: 'csv' | 'xlsx' = 'csv') => {
+    setIsExporting(true);
+    try {
+      let query = `export_user_summary?resolution_status=${resolutionFilter}`;
+      if (orderDateRange.start && orderDateRange.end) {
+        query += `&order_start_date=${orderDateRange.start}&order_end_date=${orderDateRange.end}`;
+      }
+      if (orderStartTime && orderEndTime) {
+        query += `&order_start_time=${orderStartTime}&order_end_time=${orderEndTime}`;
+      }
+      if (actionDateRange.start && actionDateRange.end) {
+        query += `&action_start_date=${actionDateRange.start}&action_end_date=${actionDateRange.end}`;
+      }
+      if (selectedUsers.length > 0) {
+        query += `&user_id=${selectedUsers.join(',')}`;
+      }
+      if (audioStatus !== 'All') {
+        query += `&audio_status=${audioStatus}`;
+      }
+      if (reasonKeyword) {
+        query += `&reason_keyword=${encodeURIComponent(reasonKeyword)}`;
+      }
+      if (searchKeyword) {
+        query += `&search_keyword=${encodeURIComponent(searchKeyword)}`;
+      }
+
+      const json = await apiFetch(query);
+      if (json && json.ok) {
+        const summaryData = json.data;
+        if (summaryData.length === 0) {
+           toast.error('ไม่พบข้อมูล', 'ไม่มีข้อมูลสรุปสำหรับช่วงเวลานี้');
+           return;
+        }
+
+        const exportData = summaryData.map((row: any) => ({
+          'ชื่อพนักงาน': row.creator_name || '-',
+          'จำนวนตีกลับ': parseInt(row.returned_count || '0'),
+          'จำนวนยกเลิก': parseInt(row.cancelled_count || '0'),
+          'ยอดตีกลับ': parseFloat(row.returned_amount || '0'),
+          'ยอดยกเลิก': parseFloat(row.cancelled_amount || '0')
+        }));
+
+        const filename = `returned_summary_by_user`;
+        downloadDataFile(exportData, filename, type);
+      } else {
+        toast.error('ข้อผิดพลาด', json?.message || 'ไม่สามารถดึงข้อมูลสรุปได้');
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast.error('ข้อผิดพลาด', e.message || 'ไม่สามารถส่งออกไฟล์ได้');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const renderSortIcon = (key: keyof OrderData) => {
     if (!sortConfig || sortConfig.key !== key) {
         return <ArrowUpDown className="w-3.5 h-3.5 inline ml-1 opacity-40 group-hover:opacity-100 transition-opacity" />;

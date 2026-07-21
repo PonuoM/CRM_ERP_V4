@@ -151,6 +151,35 @@ try {
                 } catch (Exception $e) {
                     json_response(['ok' => false, 'message' => $e->getMessage()], 400);
                 }
+            } elseif (method() === 'GET' && $id === 'export_user_summary') {
+                $orderStartDate = $_GET['order_start_date'] ?? '';
+                $orderEndDate = $_GET['order_end_date'] ?? '';
+                $orderStartTime = $_GET['order_start_time'] ?? '';
+                $orderEndTime = $_GET['order_end_time'] ?? '';
+                $actionStartDate = $_GET['action_start_date'] ?? '';
+                $actionEndDate = $_GET['action_end_date'] ?? '';
+                $userId = !empty($_GET['user_id']) ? $_GET['user_id'] : null;
+                $companyId = !empty($_GET['company_id']) ? (int)$_GET['company_id'] : null;
+                if (!$companyId) {
+                    $authUser = get_authenticated_user($pdo);
+                    $companyId = $authUser['company_id'] ?? 1;
+                }
+                $resolutionStatus = $_GET['resolution_status'] ?? 'All';
+                $audioStatus = $_GET['audio_status'] ?? 'All';
+                $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
+                $searchKeyword = trim($_GET['search_keyword'] ?? '');
+                try {
+                    $data = $svc->getUserSummaryData(
+                        $orderStartDate, $orderEndDate,
+                        $orderStartTime, $orderEndTime,
+                        $actionStartDate, $actionEndDate,
+                        $userId, $companyId, $resolutionStatus,
+                        $audioStatus, $reasonKeyword, $searchKeyword
+                    );
+                    json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
+                } catch (Exception $e) {
+                    json_response(['ok' => false, 'message' => $e->getMessage()], 400);
+                }
             } elseif (method() === 'POST' && $id === 'auto-match') {
                 $input = json_input();
                 $orderId = $input['order_id'] ?? '';
