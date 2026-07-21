@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { formatFullThaiAddress } from "../utils/addressFormatter";
 import {
   Order,
   OrderStatus,
@@ -2660,37 +2661,22 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     };
 
     const recipientFirst = sanitize(address?.recipientFirstName);
-
     const recipientLast = sanitize(address?.recipientLastName);
+    
+    let prefix = "";
+    if (recipientFirst || recipientLast) {
+      prefix = `ที่อยู่จัดส่ง: ${[recipientFirst, recipientLast].filter(Boolean).join(" ").trim()} `;
+    }
 
-    const street = sanitize(address?.street);
+    const formattedAddress = formatFullThaiAddress(
+      sanitize(address?.street),
+      sanitize(address?.subdistrict),
+      sanitize(address?.district),
+      sanitize(address?.province),
+      sanitize(address?.postalCode)
+    );
 
-    const subdistrict = sanitize(address?.subdistrict);
-
-    const district = sanitize(address?.district);
-
-    const province = sanitize(address?.province);
-
-    const postalCode = sanitize(address?.postalCode);
-
-    const parts: string[] = [];
-
-    if (recipientFirst || recipientLast)
-      parts.push(
-        `ที่อยู่จัดส่ง: ${[recipientFirst, recipientLast].filter(Boolean).join(" ").trim()} `,
-      );
-
-    if (street) parts.push(street);
-
-    if (subdistrict) parts.push(subdistrict);
-
-    if (district) parts.push(district);
-
-    if (province) parts.push(province);
-
-    if (postalCode) parts.push(postalCode);
-
-    return parts.length > 0 ? parts.join(", ") : "-";
+    return prefix + (formattedAddress !== "-" ? formattedAddress : "");
   };
 
   // Totals derived from items minus discounts plus shipping

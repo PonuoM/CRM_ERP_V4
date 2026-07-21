@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Order, Customer, Product, WarehouseStock, StockMovement, PaymentMethod, PaymentStatus, OrderStatus, User, Page } from '../types';
 import { calculateCustomerGrade } from '@/utils/customerGrade';
+import { formatThaiAddressPart } from '../utils/addressFormatter';
 import { apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
 import APP_BASE_PATH from '../appBasePath';
@@ -860,9 +861,9 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'ชื่อลูกค้า': isFirstRow ? (`${r.customer_first_name || ''} ${r.customer_last_name || ''}`.trim() || '-') : '',
             'เบอร์โทร': isFirstRow ? (r.customer_phone || '-') : '',
             'ที่อยู่': isFirstRow ? (r.shipping_street || '-') : '',
-            'แขวง/ตำบล': isFirstRow ? (r.shipping_subdistrict || '-') : '',
-            'เขต/อำเภอ': isFirstRow ? (r.shipping_district || '-') : '',
-            'จังหวัด': isFirstRow ? (r.shipping_province || '-') : '',
+            'แขวง/ตำบล': isFirstRow ? (formatThaiAddressPart(r.shipping_subdistrict || '', 'subdistrict', r.shipping_province || '') || '-') : '',
+            'เขต/อำเภอ': isFirstRow ? (formatThaiAddressPart(r.shipping_district || '', 'district', r.shipping_province || '') || '-') : '',
+            'จังหวัด': isFirstRow ? (formatThaiAddressPart(r.shipping_province || '', 'province', r.shipping_province || '') || '-') : '',
             'รหัสไปรษณีย์': isFirstRow ? (r.shipping_postal_code || '-') : '',
             'Tracking No.': isFirstRow ? (r.tracking_number || '-') : '',
             'สถานะตีกลับ': statusThai[r.return_status] || r.return_status || '-',
