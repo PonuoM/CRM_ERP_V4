@@ -138,9 +138,9 @@ class ReturnedOrdersReportService
                 CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
                 CONCAT_WS(' ', NULLIF(c.street, ''), NULLIF(c.subdistrict, ''), NULLIF(c.district, ''), NULLIF(c.province, ''), NULLIF(c.postal_code, '')) AS customer_address,
                 c.phone AS customer_phone,
-                o.total_amount AS total_amount,
+                COALESCE(NULLIF(o.cod_amount, 0), o.total_amount) AS total_amount,
                 IF(o.order_status = 'Cancelled',
-                    o.total_amount,
+                    COALESCE(NULLIF(o.cod_amount, 0), o.total_amount),
                     COALESCE((SELECT SUM(ob.cod_amount) FROM order_boxes ob WHERE ob.order_id = o.id AND ob.return_status IS NOT NULL), 0)
                 ) AS returned_amount,
                 o.payment_method,
