@@ -66,9 +66,14 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   
   // State
   const [activeTab, setActiveTab] = useState<'Returned' | 'Cancelled'>('Returned');
-  const [orderDateRange, setOrderDateRange] = useState({
-    start: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
-    end: format(new Date(), 'yyyy-MM-dd')
+  const [orderDateRange, setOrderDateRange] = useState(() => {
+    const now = new Date();
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    return {
+      start: format(lastMonth, 'yyyy-MM-dd'),
+      end: format(endOfLastMonth, 'yyyy-MM-dd')
+    };
   });
   const [orderStartTime, setOrderStartTime] = useState('');
   const [orderEndTime, setOrderEndTime] = useState('');
