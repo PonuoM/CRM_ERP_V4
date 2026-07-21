@@ -248,6 +248,12 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     try {
       const rates = await listRateSchedules(companyId);
       setAllRateSchedules(rates);
+      if (rates.length > 0 && summaryRateId === 'all') {
+        // Set default to the newest rate schedule (max ID or first if ordered by newest)
+        // Usually listRateSchedules returns ordered by effectiveDate DESC or ID DESC
+        const latestRate = rates.reduce((prev: any, current: any) => (prev.id > current.id) ? prev : current);
+        setSummaryRateId(latestRate.id);
+      }
     } catch (e) {
       console.error('Failed to load all rates', e);
     }
