@@ -121,11 +121,14 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
 
     try {
       const exportData = sortedData.map(order => {
-        let audioString = '';
+        let audioString = '-';
         if (order.audio_links && order.audio_links.length > 0) {
-          audioString = `มีไฟล์เสียง (${order.audio_links.length} ไฟล์)`;
-        } else {
-          audioString = '-';
+          audioString = order.audio_links.map((a, idx) => `${idx + 1}. ${a.url}`).join('\n');
+        }
+
+        let itemsString = '-';
+        if (order.items && order.items.length > 0) {
+          itemsString = order.items.map((i, idx) => `${idx + 1}. ${i.product_name} x${i.quantity}${i.is_freebie ? ' (แถม)' : ''}`).join('\n');
         }
 
         return {
@@ -136,6 +139,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           'ลูกค้า': order.customer_name,
           'เบอร์โทร': order.customer_phone,
           'ที่อยู่': order.customer_address || '-',
+          'สินค้า': itemsString,
           'ยอดทั้งออเดอร์': parseFloat(order.total_amount as any || 0),
           'ยอดตีกลับ': parseFloat(order.returned_amount as any || 0),
           'ช่องทางชำระเงิน': order.payment_method,
@@ -143,7 +147,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           'ประเภทการยกเลิก/ตีกลับ': order.cancel_type || '-',
           'หมายเหตุเพิ่มเติม': order.cancel_notes || '-',
           'สรุปออเดอร์ (แอดมิน)': order.admin_resolution_notes || '-',
-          'สถานะตรวจไฟล์เสียง': audioString
+          'ลิงก์ไฟล์เสียง': audioString
         };
       });
 
