@@ -10,7 +10,8 @@ import {
   listQuotaProducts, createQuotaProduct, createQuotaProductWithNew, updateQuotaProduct,
   listRateSchedules, createRateSchedule, updateRateSchedule, deleteRateSchedule, getActiveRate,
   getQuotaSummary, allocateQuota, transferQuota, listQuotaAllocations, confirmQuota,
-  getSummaryByRate, bulkConfirmQuota, getUserQuotaDetail, getPendingCounts, getUsageBreakdown,
+  getSummaryByRate, bulkConfirmQuota, getUserQuotaDetail, getPendingCounts, getUsageBreakdown, cancelAllocation,
+  getUserAllocationBreakdown,
 } from '../services/quotaApi';
 import type { UserQuotaDetailItem } from '../services/quotaApi';
 import { listProducts } from '../services/api';
@@ -26,6 +27,14 @@ interface QuotaSettingsPageProps {
 
 const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, products: propProducts }) => {
   const { toast } = useToast();
+
+  const companyId = currentUser.companyId;
+  const isTelesale = currentUser.role_id === 7 || currentUser.role === 'Telesale';
+  const isSupervisor = currentUser.role_id === 6 || currentUser.role === 'Supervisor Telesale';
+  const isViewOnlyRole = isTelesale;
+  const isSystemAdmin = (currentUser as any)?.is_system === 1 || (currentUser as any)?.is_system === true || (currentUser as any)?.isSystem === true;
+  const isRestrictedRole = (isTelesale || isSupervisor) && !isSystemAdmin;
+
   // ============ State ============
   const [activeTab, setActiveTab] = useState<'products' | 'rates' | 'summary'>('products');
   const [loading, setLoading] = useState(false);
@@ -87,14 +96,42 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const [allocateValidUntil, setAllocateValidUntil] = useState('');
   const [allocateAllProducts, setAllocateAllProducts] = useState(true);
   const [allocateMode, setAllocateMode] = useState<'shared' | 'per_product'>('shared');
+  const [allocateAction, setAllocateAction] = useState<'add' | 'deduct'>('add');
   const [allocateProductIds, setAllocateProductIds] = useState<number[]>([]);
+  const [deductBreakdown, setDeductBreakdown] = useState<Array<{ quotaProductId: number | null; label: string; totalAllocated: number }>>([]);
+  const [deductAmounts, setDeductAmounts] = useState<Record<string, string>>({});
+  const [deductBreakdownLoading, setDeductBreakdownLoading] = useState(false);
 
   // Reset allocate mode when opening modal
   useEffect(() => {
     if (showAllocateModal) {
       setAllocateMode(summaryRateId !== 'all' ? 'shared' : 'per_product');
+      setAllocateQuantity('');
+      setAllocateNote('');
+      setAllocateValidFrom('');
+      setAllocateValidUntil('');
+      setAllocateAllProducts(true);
+      setAllocateProductIds([]);
+      setAllocateAction('add');
+      setDeductAmounts({});
     }
   }, [showAllocateModal, summaryRateId]);
+
+  // Load deduct breakdown when in deduct mode
+  useEffect(() => {
+    if (showAllocateModal && allocateAction === 'deduct' && allocateTarget && summaryRateId !== 'all') {
+      setDeductBreakdownLoading(true);
+      getUserAllocationBreakdown(companyId, allocateTarget.userId, Number(summaryRateId))
+        .then(data => {
+          setDeductBreakdown(data);
+          const initial: Record<string, string> = {};
+          data.forEach(b => initial[String(b.quotaProductId)] = '');
+          setDeductAmounts(initial);
+        })
+        .catch(e => console.error('Failed to load deduct breakdown', e))
+        .finally(() => setDeductBreakdownLoading(false));
+    }
+  }, [showAllocateModal, allocateAction, allocateTarget, summaryRateId, companyId]);
 
   // History modal
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -124,13 +161,6 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
   const [transferTargetId, setTransferTargetId] = useState<number | ''>('');
   const [transferQuantity, setTransferQuantity] = useState('');
   const [transferNote, setTransferNote] = useState('');
-
-  const companyId = currentUser.companyId;
-  const isTelesale = currentUser.role_id === 7 || currentUser.role === 'Telesale';
-  const isSupervisor = currentUser.role_id === 6 || currentUser.role === 'Supervisor Telesale';
-  const isViewOnlyRole = isTelesale;
-  const isSystemAdmin = (currentUser as any)?.is_system === 1 || (currentUser as any)?.is_system === true || (currentUser as any)?.isSystem === true;
-  const isRestrictedRole = (isTelesale || isSupervisor) && !isSystemAdmin;
 
   // ============ Load Data ============
   const loadQuotaProducts = useCallback(async () => {
@@ -252,7 +282,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
         // Set default to the newest rate schedule (max ID or first if ordered by newest)
         // Usually listRateSchedules returns ordered by effectiveDate DESC or ID DESC
         const latestRate = rates.reduce((prev: any, current: any) => (prev.id > current.id) ? prev : current);
-        setSummaryRateId(latestRate.id);
+        setSummaryRateId(Number(latestRate.id));
       }
     } catch (e) {
       console.error('Failed to load all rates', e);
@@ -268,16 +298,24 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
     }
   };
 
+  const summaryRequestIdRef = React.useRef(0);
   const loadSummaryByRateId = async (rateId: number | 'all') => {
+    const currentRequestId = ++summaryRequestIdRef.current;
     setLoading(true);
     setSelectedUserIds([]);
     try {
       const data = await getSummaryByRate(companyId, rateId);
-      setSummaryData(data);
+      if (summaryRequestIdRef.current === currentRequestId) {
+        setSummaryData(data);
+      }
     } catch (e) {
-      console.error('Failed to load summary by rate', e);
+      if (summaryRequestIdRef.current === currentRequestId) {
+        console.error('Failed to load summary by rate', e);
+      }
     } finally {
-      setLoading(false);
+      if (summaryRequestIdRef.current === currentRequestId) {
+        setLoading(false);
+      }
     }
   };
 
@@ -490,54 +528,85 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
 
   // -- Allocation --
   const handleAllocate = async () => {
-    if (!allocateTarget || !allocateQuantity) return;
+    if (!allocateTarget) return;
     
     try {
-      const qty = parseFloat(allocateQuantity);
-
-      if (summaryRateId !== 'all' && allocateMode === 'shared') {
-        // Shared pool allocation
-        await allocateQuota({
-          rateScheduleId: Number(summaryRateId),
-          userId: allocateTarget.userId,
-          companyId,
-          quantity: qty,
-          source: 'admin',
-          sourceDetail: allocateNote || 'Admin เพิ่มโควตากองกลาง',
-          allocatedBy: currentUser.id,
-          validFrom: allocateValidFrom || undefined,
-          validUntil: allocateValidUntil || undefined,
-        });
-      } else {
-        // Per-product allocation
-        const targetIds = allocateAllProducts
-          ? activeQuotaProducts.map(qp => qp.id)
-          : allocateProductIds;
-        
-        if (targetIds.length === 0) {
-          toast('warning', 'กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
+      if (allocateAction === 'deduct' && summaryRateId !== 'all') {
+        const promises = [];
+        for (const [qpIdStr, qtyStr] of Object.entries(deductAmounts)) {
+          const qty = parseFloat(qtyStr);
+          if (qty > 0) {
+            const qpId = qpIdStr === 'null' ? undefined : Number(qpIdStr);
+            promises.push(allocateQuota({
+              quotaProductId: qpId,
+              rateScheduleId: Number(summaryRateId),
+              userId: allocateTarget.userId,
+              companyId,
+              quantity: -qty,
+              source: 'admin',
+              sourceDetail: allocateNote || 'Admin ลดโควตา (ปรับปรุงยอด)',
+              allocatedBy: currentUser.id,
+              validFrom: allocateValidFrom || undefined,
+              validUntil: allocateValidUntil || undefined,
+            }));
+          }
+        }
+        if (promises.length === 0) {
+          toast('warning', 'กรุณาระบุจำนวนแต้มที่ต้องการหักอย่างน้อย 1 รายการ');
           return;
         }
+        await Promise.all(promises);
+      } else {
+        if (!allocateQuantity) return;
+        const parsedQty = parseFloat(allocateQuantity);
+        const qty = allocateAction === 'deduct' ? -parsedQty : parsedQty;
 
-        const promises = targetIds.map(qpId =>
-          allocateQuota({
-            quotaProductId: qpId,
-            rateScheduleId: summaryRateId !== 'all' ? Number(summaryRateId) : undefined,
+        if (summaryRateId !== 'all' && allocateMode === 'shared') {
+          // Shared pool allocation
+          await allocateQuota({
+            rateScheduleId: Number(summaryRateId),
             userId: allocateTarget.userId,
             companyId,
             quantity: qty,
             source: 'admin',
-            sourceDetail: allocateNote || 'Admin เพิ่มโควตาเอง',
+            sourceDetail: allocateNote || (allocateAction === 'deduct' ? 'Admin ลดโควตากองกลาง' : 'Admin เพิ่มโควตากองกลาง'),
             allocatedBy: currentUser.id,
             validFrom: allocateValidFrom || undefined,
             validUntil: allocateValidUntil || undefined,
-          })
-        );
-        await Promise.all(promises);
+          });
+        } else {
+          // Per-product allocation
+          const targetIds = allocateAllProducts
+            ? activeQuotaProducts.map(qp => qp.id)
+            : allocateProductIds;
+          
+          if (targetIds.length === 0) {
+            toast('warning', 'กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
+            return;
+          }
+
+          const promises = targetIds.map(qpId =>
+            allocateQuota({
+              quotaProductId: qpId,
+              rateScheduleId: summaryRateId !== 'all' ? Number(summaryRateId) : undefined,
+              userId: allocateTarget.userId,
+              companyId,
+              quantity: qty,
+              source: 'admin',
+              sourceDetail: allocateNote || (allocateAction === 'deduct' ? 'Admin ลดโควตาเอง' : 'Admin เพิ่มโควตาเอง'),
+              allocatedBy: currentUser.id,
+              validFrom: allocateValidFrom || undefined,
+              validUntil: allocateValidUntil || undefined,
+            })
+          );
+          await Promise.all(promises);
+        }
       }
+      
       setShowAllocateModal(false);
       setAllocateQuantity('');
       setAllocateNote('');
+      setAllocateAction('add');
       setAllocateValidFrom('');
       setAllocateValidUntil('');
       setAllocateAllProducts(true);
@@ -617,6 +686,7 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
         toUserId: Number(transferTargetId),
         companyId,
         quantity: qty,
+        rateScheduleId: summaryRateId !== 'all' ? Number(summaryRateId) : undefined,
         sourceDetail: transferNote,
         allocatedBy: currentUser.id,
       });
@@ -2086,166 +2156,242 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
             <div className="p-5 border-b flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-800">เพิ่มโควตาให้ {allocateTarget.userName}</h3>
+              <h3 className="text-lg font-semibold text-gray-800">จัดการโควตาให้ {allocateTarget.userName}</h3>
               <button onClick={() => setShowAllocateModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
-              {/* Allocation Mode (Only if a specific rate is selected) */}
-              {summaryRateId !== 'all' && (
-                <div className="bg-gray-50 border rounded-lg p-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">รูปแบบการแจกโควตา</label>
-                  <div className="space-y-2">
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input 
-                        type="radio" 
-                        name="allocateMode"
-                        checked={allocateMode === 'shared'}
-                        onChange={() => setAllocateMode('shared')}
-                        className="mt-0.5 accent-emerald-600"
-                      />
-                      <div>
-                        <span className="block text-sm font-medium text-gray-800">🌐 แจกเข้ากองกลาง (Shared Pool)</span>
-                        <span className="block text-xs text-gray-500">แต้มจะรวมเป็น 1 ก้อน ใช้แชร์ร่วมกันได้ทุกสินค้าในอัตราโควตานี้</span>
-                      </div>
-                    </label>
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input 
-                        type="radio" 
-                        name="allocateMode"
-                        checked={allocateMode === 'per_product'}
-                        onChange={() => setAllocateMode('per_product')}
-                        className="mt-0.5 accent-emerald-600"
-                      />
-                      <div>
-                        <span className="block text-sm font-medium text-gray-800">📌 แจกเจาะจงรายสินค้า (Per Product)</span>
-                        <span className="block text-xs text-gray-500">แจกแต้มแยกให้แต่ละสินค้า (สร้างหลายแถว)</span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              )}
+              {/* Action Type */}
+              <div className="flex border rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setAllocateAction('add')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                    allocateAction === 'add'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  [+] เพิ่มโควตา
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAllocateAction('deduct')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                    allocateAction === 'deduct'
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  [-] ลดโควตา
+                </button>
+              </div>
 
-              {/* Product selection */}
-              {(summaryRateId === 'all' || allocateMode === 'per_product') && (
-              <div className="bg-blue-50 rounded-lg p-3">
-                <label className="block text-sm font-medium text-gray-700 mb-2">เลือกสินค้า *</label>
-                <label className="flex items-center gap-2 cursor-pointer mb-2">
-                  <input
-                    type="checkbox"
-                    checked={allocateAllProducts}
-                    onChange={e => {
-                      setAllocateAllProducts(e.target.checked);
-                      if (e.target.checked) setAllocateProductIds([]);
-                    }}
-                    className="accent-emerald-600 w-4 h-4"
-                  />
-                  <span className="text-sm text-emerald-700 font-medium">สินค้าทั้งหมด ({activeQuotaProducts.length} รายการ)</span>
-                </label>
-                {allocateAllProducts ? (
-                  <div className="flex flex-wrap gap-1">
-                    {activeQuotaProducts.map(qp => (
-                      <span key={qp.id} className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                        {qp.displayName}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {activeQuotaProducts.map(qp => {
-                      const selected = allocateProductIds.includes(qp.id);
-                      return (
-                        <button
-                          key={qp.id}
-                          type="button"
-                          onClick={() => {
-                            setAllocateProductIds(prev =>
-                              selected ? prev.filter(id => id !== qp.id) : [...prev, qp.id]
-                            );
-                          }}
-                          className={`text-xs px-2.5 py-1.5 rounded-full border transition-colors ${
-                            selected
-                              ? 'bg-emerald-600 text-white border-emerald-600'
-                              : 'border-dashed border-emerald-300 text-emerald-600 hover:bg-emerald-50'
-                          }`}
-                        >
-                          {selected ? '✓ ' : '+ '}{qp.displayName}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนโควตา {allocateMode === 'shared' && summaryRateId !== 'all' ? '(กองกลาง)' : '(ต่อสินค้า)'} *</label>
-                <input
-                  type="number"
-                  value={allocateQuantity}
-                  onChange={e => setAllocateQuantity(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  min="1"
-                  placeholder="จำนวน"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    <Calendar size={14} className="inline mr-1" />
-                    วันเริ่มต้น
-                  </label>
-                  <input
-                    type="date"
-                    value={allocateValidFrom}
-                    onChange={e => setAllocateValidFrom(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    <Clock size={14} className="inline mr-1" />
-                    วันหมดอายุ
-                  </label>
-                  <input
-                    type="date"
-                    value={allocateValidUntil}
-                    onChange={e => setAllocateValidUntil(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-gray-400 -mt-2">* หากไม่กำหนดวันหมดอายุ โควตาจะใช้งานได้ตลอด</p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
-                <textarea
-                  value={allocateNote}
-                  onChange={e => setAllocateNote(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  rows={2}
-                  placeholder="เช่น โบนัสจากกิจกรรม..."
-                />
-              </div>
-              {/* Summary info */}
-              {(() => {
-                if (!allocateQuantity) return null;
-                
-                if (summaryRateId !== 'all' && allocateMode === 'shared') {
-                  return (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-700">
-                      <p>✨ จะสร้าง <strong>1</strong> แถวเข้ากองกลาง (แต้มรวม <strong>{allocateQuantity}</strong> แต้ม แชร์กันใช้ทุกสินค้าในอัตรานี้)</p>
+              {/* Dynamic UI based on Action */}
+              {(allocateAction === 'add' || summaryRateId === 'all') ? (
+                <>
+                  {/* Allocation Mode (Only if a specific rate is selected) */}
+                  {summaryRateId !== 'all' && (
+                    <div className="bg-gray-50 border rounded-lg p-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">รูปแบบการแจกโควตา</label>
+                      <div className="space-y-2">
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input 
+                            type="radio" 
+                            name="allocateMode"
+                            checked={allocateMode === 'shared'}
+                            onChange={() => setAllocateMode('shared')}
+                            className="mt-0.5 accent-emerald-600"
+                          />
+                          <div>
+                            <span className="block text-sm font-medium text-gray-800">🌐 แจกเข้ากองกลาง (Shared Pool)</span>
+                            <span className="block text-xs text-gray-500">แต้มจะรวมเป็น 1 ก้อน ใช้แชร์ร่วมกันได้ทุกสินค้าในอัตราโควตานี้</span>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input 
+                            type="radio" 
+                            name="allocateMode"
+                            checked={allocateMode === 'per_product'}
+                            onChange={() => setAllocateMode('per_product')}
+                            className="mt-0.5 accent-emerald-600"
+                          />
+                          <div>
+                            <span className="block text-sm font-medium text-gray-800">📌 แจกเจาะจงรายสินค้า (Per Product)</span>
+                            <span className="block text-xs text-gray-500">แจกแต้มแยกให้แต่ละสินค้า (สร้างหลายแถว)</span>
+                          </div>
+                        </label>
+                      </div>
                     </div>
-                  );
-                }
+                  )}
 
-                const count = allocateAllProducts ? activeQuotaProducts.length : allocateProductIds.length;
-                return count > 0 ? (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
-                    <p>⚠️ จะสร้าง <strong>{count}</strong> แถว (สินค้าละ <strong>{allocateQuantity}</strong> แต้ม, รวม <strong>{count * parseFloat(allocateQuantity || '0')}</strong> แต้ม)</p>
+                  {/* Product selection */}
+                  {(summaryRateId === 'all' || allocateMode === 'per_product') && (
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">เลือกสินค้า *</label>
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                      <input
+                        type="checkbox"
+                        checked={allocateAllProducts}
+                        onChange={e => {
+                          setAllocateAllProducts(e.target.checked);
+                          if (e.target.checked) setAllocateProductIds([]);
+                        }}
+                        className="accent-emerald-600 w-4 h-4"
+                      />
+                      <span className="text-sm text-emerald-700 font-medium">สินค้าทั้งหมด ({activeQuotaProducts.length} รายการ)</span>
+                    </label>
+                    {allocateAllProducts ? (
+                      <div className="flex flex-wrap gap-1">
+                        {activeQuotaProducts.map(qp => (
+                          <span key={qp.id} className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                            {qp.displayName}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {activeQuotaProducts.map(qp => {
+                          const selected = allocateProductIds.includes(qp.id);
+                          return (
+                            <button
+                              key={qp.id}
+                              type="button"
+                              onClick={() => {
+                                setAllocateProductIds(prev =>
+                                  selected ? prev.filter(id => id !== qp.id) : [...prev, qp.id]
+                                );
+                              }}
+                              className={`text-xs px-2.5 py-1.5 rounded-full border transition-colors ${
+                                selected
+                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                  : 'border-dashed border-emerald-300 text-emerald-600 hover:bg-emerald-50'
+                              }`}
+                            >
+                              {selected ? '✓ ' : '+ '}{qp.displayName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                ) : null;
-              })()}
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนโควตา {allocateMode === 'shared' && summaryRateId !== 'all' ? '(กองกลาง)' : '(ต่อสินค้า)'} *</label>
+                    <input
+                      type="number"
+                      value={allocateQuantity}
+                      onChange={e => setAllocateQuantity(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      min="1"
+                      placeholder="จำนวน"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <Calendar size={14} className="inline mr-1" />
+                        วันเริ่มต้น
+                      </label>
+                      <input
+                        type="date"
+                        value={allocateValidFrom}
+                        onChange={e => setAllocateValidFrom(e.target.value)}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <Clock size={14} className="inline mr-1" />
+                        วันหมดอายุ
+                      </label>
+                      <input
+                        type="date"
+                        value={allocateValidUntil}
+                        onChange={e => setAllocateValidUntil(e.target.value)}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 -mt-2">* หากไม่กำหนดวันหมดอายุ โควตาจะใช้งานได้ตลอด</p>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+                    <textarea
+                      value={allocateNote}
+                      onChange={e => setAllocateNote(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      rows={2}
+                      placeholder="เช่น โบนัสจากกิจกรรม..."
+                    />
+                  </div>
+                  {/* Summary info */}
+                  {(() => {
+                    if (!allocateQuantity) return null;
+                    
+                    if (summaryRateId !== 'all' && allocateMode === 'shared') {
+                      return (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-700">
+                          <p>✨ จะสร้าง <strong>1</strong> แถวเข้ากองกลาง (แต้มรวม <strong>{allocateQuantity}</strong> แต้ม แชร์กันใช้ทุกสินค้าในอัตรานี้)</p>
+                        </div>
+                      );
+                    }
+
+                    const count = allocateAllProducts ? activeQuotaProducts.length : allocateProductIds.length;
+                    return count > 0 ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+                        <p>⚠️ จะสร้าง <strong>{count}</strong> แถว (สินค้าละ <strong>{allocateQuantity}</strong> แต้ม, รวม <strong>{count * parseFloat(allocateQuantity || '0')}</strong> แต้ม)</p>
+                      </div>
+                    ) : null;
+                  })()}
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-800">
+                    <p className="font-semibold mb-1">ยอดโควตาที่ได้รับ (Gross Quota)</p>
+                    <p className="text-xs">กรุณาระบุจำนวนแต้มที่ต้องการหักออกในช่องของแต่ละแหล่งที่มา</p>
+                  </div>
+                  {deductBreakdownLoading ? (
+                    <div className="py-4 text-center text-sm text-gray-500">กำลังโหลดข้อมูล...</div>
+                  ) : deductBreakdown.length === 0 ? (
+                    <div className="py-4 text-center text-sm text-gray-500 border rounded-lg bg-gray-50">พนักงานยังไม่ได้รับโควตาในรอบบิลนี้</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {deductBreakdown.map(b => (
+                        <div key={b.quotaProductId === null ? 'null' : b.quotaProductId} className="flex items-center justify-between border rounded-lg p-3">
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{b.label}</p>
+                            <p className="text-xs text-gray-500">มียอดที่ได้รับรวม: <span className="font-semibold text-emerald-600">{b.totalAllocated}</span> แต้ม</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500">หักออก:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max={b.totalAllocated}
+                              value={deductAmounts[String(b.quotaProductId)] || ''}
+                              onChange={e => setDeductAmounts({...deductAmounts, [String(b.quotaProductId)]: e.target.value})}
+                              className="w-20 border rounded-lg px-2 py-1 text-sm text-center font-semibold text-rose-600"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+                    <textarea
+                      value={allocateNote}
+                      onChange={e => setAllocateNote(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      rows={2}
+                      placeholder="เช่น ปรับลดยอดที่ได้รับผิด..."
+                    />
+                  </div>
+                </div>
+              )}
             </div>
             <div className="p-5 border-t flex justify-end gap-3">
               <button onClick={() => setShowAllocateModal(false)} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
@@ -2253,10 +2399,16 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
               </button>
               <button
                 onClick={handleAllocate}
-                disabled={!allocateQuantity || parseFloat(allocateQuantity) <= 0 || ((summaryRateId === 'all' || allocateMode === 'per_product') && !allocateAllProducts && allocateProductIds.length === 0)}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+                disabled={
+                  (allocateAction === 'add' || summaryRateId === 'all') 
+                    ? (!allocateQuantity || isNaN(parseFloat(allocateQuantity)) || parseFloat(allocateQuantity) <= 0 || ((summaryRateId === 'all' || allocateMode === 'per_product') && !allocateAllProducts && allocateProductIds.length === 0))
+                    : (!Object.values(deductAmounts).some(v => parseFloat(v) > 0))
+                }
+                className={`px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 ${
+                  allocateAction === 'deduct' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
               >
-                เพิ่มโควตา
+                ยืนยันการ{allocateAction === 'add' ? 'เพิ่ม' : 'ลด'}โควตา
               </button>
             </div>
           </div>
@@ -2315,6 +2467,26 @@ const QuotaSettingsPage: React.FC<QuotaSettingsPageProps> = ({ currentUser, prod
                             {alloc.valid_until && new Date(alloc.valid_until) < new Date() && (
                               <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">หมดอายุ</span>
                             )}
+                          </div>
+                        )}
+                        {['transfer', 'admin', 'system'].includes(alloc.source) && (alloc.source !== 'transfer' || alloc.quantity < 0) && (
+                          <div className="mt-2">
+                            <button
+                              onClick={async () => {
+                                if (!window.confirm('คุณต้องการยกเลิกรายการโควตานี้ใช่หรือไม่?')) return;
+                                try {
+                                  await cancelAllocation({ allocationId: alloc.id, companyId });
+                                  toast('success', 'ยกเลิกรายการโควตาสำเร็จ');
+                                  handleViewHistory(historyUser); // reload history
+                                  loadSummaryByRateId(summaryRateId); // reload summary
+                                } catch (e) {
+                                  toast('error', 'Error: ' + (e as Error).message);
+                                }
+                              }}
+                              className="text-xs text-rose-600 hover:text-rose-700 font-medium border border-rose-200 bg-rose-50 px-2 py-1 rounded"
+                            >
+                              ยกเลิกรายการ
+                            </button>
                           </div>
                         )}
                       </div>
