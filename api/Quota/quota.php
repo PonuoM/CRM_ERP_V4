@@ -58,6 +58,9 @@ try {
             case 'usage_breakdown':
                 handleUsageBreakdown($conn);
                 break;
+            case 'user_allocation_breakdown':
+                handleUserAllocationBreakdown($conn);
+                break;
             default:
                 json_response(['error' => 'Unknown action: ' . $action], 400);
         }
@@ -89,6 +92,12 @@ try {
                 break;
             case 'transfer_quota':
                 handleTransferQuota($conn, $data);
+                break;
+            case 'cancel_allocation':
+                handleCancelAllocation($conn, $data);
+                break;
+            case 'user_allocation_breakdown':
+                handleUserAllocationBreakdown($conn);
                 break;
             case 'use_quota':
                 handleUseQuota($conn, $data);
@@ -808,8 +817,8 @@ function handleAllocate(PDO $conn, array $data) {
     $validFrom = $data['validFrom'] ?? null;
     $validUntil = $data['validUntil'] ?? null;
 
-    if (!$userId || !$companyId || $quantity <= 0) {
-        json_response(['error' => 'userId, companyId, quantity (>0) required'], 400);
+    if (!$userId || !$companyId || $quantity == 0) {
+        json_response(['error' => 'userId, companyId, quantity (!=0) required'], 400);
     }
 
     $stmt = $conn->prepare("
@@ -839,6 +848,7 @@ function handleAllocate(PDO $conn, array $data) {
 
 function handleTransferQuota(PDO $conn, array $data) {
     $quotaProductId = intval($data['quotaProductId'] ?? 0);
+    $rateScheduleId = intval($data['rateScheduleId'] ?? 0);
     $fromUserId = intval($data['fromUserId'] ?? 0);
     $toUserId = intval($data['toUserId'] ?? 0);
     $companyId = intval($data['companyId'] ?? 0);
@@ -854,13 +864,23 @@ function handleTransferQuota(PDO $conn, array $data) {
         $conn->beginTransaction();
 
         // [Validation] ตรวจสอบยอดโควตาคงเหลือของ fromUserId ในบริษัท และจัดสรรยอดโอนตาม quota_product_id
-        $stmtRates = $conn->prepare("
+        $sqlRates = "
             SELECT DISTINCT qrs.*, scope.quota_product_id FROM quota_rate_schedules qrs
             JOIN quota_rate_scope scope ON scope.rate_schedule_id = qrs.id
             JOIN quota_products qp ON qp.id = scope.quota_product_id AND qp.company_id = :companyId AND qp.deleted_at IS NULL
             WHERE qrs.deleted_at IS NULL
-        ");
-        $stmtRates->execute([':companyId' => $companyId]);
+        ";
+        if ($rateScheduleId > 0) {
+            $sqlRates .= " AND qrs.id = :rsId ";
+        }
+        $sqlRates .= " ORDER BY qrs.effective_date DESC, qrs.id DESC";
+
+        $stmtRates = $conn->prepare($sqlRates);
+        $params = [':companyId' => $companyId];
+        if ($rateScheduleId > 0) {
+            $params[':rsId'] = $rateScheduleId;
+        }
+        $stmtRates->execute($params);
         $ratesForCompany = $stmtRates->fetchAll(PDO::FETCH_ASSOC);
 
         $uniqueRates = [];
@@ -936,6 +956,65 @@ function handleTransferQuota(PDO $conn, array $data) {
     } catch (Exception $e) {
         $conn->rollBack();
         json_response(['error' => 'Transfer failed: ' . $e->getMessage()], 500);
+    }
+}
+
+function handleCancelAllocation(PDO $conn, array $data) {
+    $allocationId = intval($data['allocationId'] ?? 0);
+    $companyId = intval($data['companyId'] ?? 0);
+
+    if (!$allocationId || !$companyId) {
+        json_response(['error' => 'allocationId, companyId required'], 400);
+    }
+
+    try {
+        $conn->beginTransaction();
+
+        $stmt = $conn->prepare("SELECT * FROM quota_allocations WHERE id = :id AND company_id = :companyId AND deleted_at IS NULL");
+        $stmt->execute([':id' => $allocationId, ':companyId' => $companyId]);
+        $alloc = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$alloc) {
+            throw new Exception("ไม่พบรายการโควตานี้");
+        }
+        if (!in_array($alloc['source'], ['transfer', 'admin', 'system'])) {
+            throw new Exception("ไม่สามารถยกเลิกรายการประเภทนี้ได้");
+        }
+
+        $pairId = null;
+        if ($alloc['source'] === 'transfer') {
+            // Find the paired transaction (created within ~5 seconds, same source_detail or opposite quantity)
+            $stmtPair = $conn->prepare("
+                SELECT id FROM quota_allocations 
+                WHERE source = 'transfer' 
+                AND company_id = :companyId 
+                AND id != :id 
+                AND quantity = :oppQty 
+                AND ABS(TIMESTAMPDIFF(SECOND, created_at, :createdAt)) <= 5
+                AND deleted_at IS NULL
+                LIMIT 1
+            ");
+            $stmtPair->execute([
+                ':companyId' => $companyId,
+                ':id' => $alloc['id'],
+                ':oppQty' => -$alloc['quantity'],
+                ':createdAt' => $alloc['created_at']
+            ]);
+            $pairId = $stmtPair->fetchColumn();
+        }
+
+        $updateStmt = $conn->prepare("UPDATE quota_allocations SET deleted_at = NOW() WHERE id = :id");
+        $updateStmt->execute([':id' => $alloc['id']]);
+
+        if ($pairId) {
+            $updateStmt->execute([':id' => $pairId]);
+        }
+
+        $conn->commit();
+        json_response(['success' => true]);
+    } catch (Exception $e) {
+        $conn->rollBack();
+        json_response(['error' => $e->getMessage()], 400);
     }
 }
 
@@ -1366,6 +1445,56 @@ function handleSummaryByRate(PDO $conn) {
 /**
  * Per-user quota detail: returns per-rate breakdown for a single user.
  */
+function handleUserAllocationBreakdown(PDO $conn) {
+    $companyId = intval($_GET['companyId'] ?? 0);
+    $userId = intval($_GET['userId'] ?? 0);
+    $rateScheduleId = intval($_GET['rateScheduleId'] ?? 0);
+
+    if (!$companyId || !$userId || !$rateScheduleId) {
+        json_response(['error' => 'companyId, userId, rateScheduleId required'], 400);
+    }
+
+    $stmt = $conn->prepare("
+        SELECT 
+            a.quota_product_id, 
+            COALESCE(SUM(a.quantity), 0) AS total_allocated,
+            qp.display_name,
+            p.name AS product_name
+        FROM quota_allocations a
+        LEFT JOIN quota_products qp ON qp.id = a.quota_product_id
+        LEFT JOIN products p ON p.id = qp.product_id
+        WHERE a.user_id = :uid 
+          AND a.rate_schedule_id = :rid 
+          AND a.company_id = :cid 
+          AND a.deleted_at IS NULL
+          AND (a.valid_from IS NULL OR a.valid_from <= CURDATE())
+          AND (a.valid_until IS NULL OR a.valid_until >= CURDATE())
+        GROUP BY a.quota_product_id
+    ");
+    $stmt->execute([':uid' => $userId, ':rid' => $rateScheduleId, ':cid' => $companyId]);
+    $res = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Format output
+    $buckets = [];
+    foreach ($res as $r) {
+        $qpId = $r['quota_product_id'] ? intval($r['quota_product_id']) : null;
+        $label = 'กองกลาง (Shared Pool)';
+        if ($qpId) {
+            $label = $r['display_name'] ?: $r['product_name'] ?: "Product ID: $qpId";
+        }
+        $buckets[] = [
+            'quotaProductId' => $qpId,
+            'label' => $label,
+            'totalAllocated' => floatval($r['total_allocated'])
+        ];
+    }
+    
+    // Filter out buckets with <= 0 total_allocated to keep UI clean
+    $buckets = array_values(array_filter($buckets, function($b) { return $b['totalAllocated'] > 0; }));
+
+    json_response(['data' => $buckets]);
+}
+
 function handleUserQuotaDetail(PDO $conn) {
     $companyId = intval($_GET['companyId'] ?? 0);
     $userId = intval($_GET['userId'] ?? 0);
