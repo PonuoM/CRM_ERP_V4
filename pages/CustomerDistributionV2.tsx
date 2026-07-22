@@ -79,15 +79,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [showPreview, setShowPreview] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
-    // Call Threshold Filter State
-    const [callFilterStartDate, setCallFilterStartDate] = useState<string>(
-        new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]
-    );
-    const [callFilterEndDate, setCallFilterEndDate] = useState<string>(
-        new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]
-    );
-    const [callDataSource, setCallDataSource] = useState<'db' | 'realtime'>('db');
-    const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
+
 
     // Called History Filter State
     const [calledFilterDays, setCalledFilterDays] = useState<string>(''); // '', '30', '60', 'custom'
@@ -402,42 +394,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
     }, [currentUser?.companyId]);
 
-    // Fetch call minutes dynamically
-    const fetchCallMinutes = useCallback(async () => {
-        if (!agents || agents.length === 0) return;
-        
-        setLoadingCallMinutes(true);
-        try {
-            const agentIds = agents.map(a => a.id).join(',');
-            const actionEndpoint = callDataSource === 'realtime' ? 'get_realtime_call_minutes' : 'get_call_minutes';
-            
-            const response = await apiFetch(
-                `customers?action=${actionEndpoint}&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}`
-            );
-            
-            if (response?.agents) {
-                setAgents(prev => prev.map(agent => ({
-                    ...agent,
-                    callMinutes: response.agents[agent.id] || 0
-                })));
-            } else if (response?.error) {
-                setMessage({ type: 'error', text: response.error });
-            }
-        } catch (error: any) {
-            console.error('Failed to fetch call minutes:', error);
-            setMessage({ type: 'error', text: `Failed to fetch call minutes: ${error.message}` });
-        } finally {
-            setLoadingCallMinutes(false);
-        }
-    }, [agents.length, callFilterStartDate, callFilterEndDate, currentUser?.companyId, callDataSource]);
-
-    // Effect to trigger fetchCallMinutes when dates change or agents are loaded
-    useEffect(() => {
-        if (agents.length > 0) {
-            fetchCallMinutes();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [callFilterStartDate, callFilterEndDate, agents.length, callDataSource]);
 
     // Fetch customers for active basket
     const fetchCustomers = useCallback(async () => {
