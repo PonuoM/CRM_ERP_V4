@@ -17,6 +17,8 @@ import ExcelJS from 'exceljs';
 import { calculateQuotas } from '../utils/distributionLogic';
 import ConfirmModal from '../components/DistributionV2/ConfirmModal';
 import HistoryModal from '../components/DistributionV2/HistoryModal';
+import SessionTagSelect from '../components/DistributionV2/SessionTagSelect';
+import TagManagementModal from '../components/DistributionV2/TagManagementModal';
 import BulkResultModal from '../components/DistributionV2/BulkResultModal';
 import SummaryModal from '../components/DistributionV2/SummaryModal';
 import ResetModal from '../components/DistributionV2/ResetModal';
@@ -29,6 +31,7 @@ import DistributionTelesaleTable from '../components/DistributionV2/Distribution
 import DistributionCustomerPreview from '../components/DistributionV2/DistributionCustomerPreview';
 import DistributionReportModal from '../components/DistributionV2/DistributionReportModal';
 import CronLogModal from '../components/DistributionV2/CronLogModal';
+import { useToast } from '../components/Toast';
 
 import { 
     BasketConfig, 
@@ -44,6 +47,7 @@ interface CustomerDistributionV2Props {
 }
 
 const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ currentUser }) => {
+    const { toast } = useToast();
     // Data
     const [baskets, setBaskets] = useState<BasketConfig[]>([]);
     const [dashboardBaskets, setDashboardBaskets] = useState<BasketConfig[]>([]);
@@ -59,8 +63,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [distributionExportRange, setDistributionExportRange] = useState<DateRange>({ start: '', end: '' });
     const [isExportTypeModalOpen, setIsExportTypeModalOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
-    const [sessionTag, setSessionTag] = useState<string>('');
-    const [sessionTagsList, setSessionTagsList] = useState<string[]>([]);
+    const [sessionTag, setSessionTag] = useState<number | ''>('');
+    const [sessionTagsList, setSessionTagsList] = useState<any[]>([]);
 
     // UI state
     const [loading, setLoading] = useState(true);
@@ -75,15 +79,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [showPreview, setShowPreview] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
-    // Call Threshold Filter State
-    const [callFilterStartDate, setCallFilterStartDate] = useState<string>(
-        new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]
-    );
-    const [callFilterEndDate, setCallFilterEndDate] = useState<string>(
-        new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]
-    );
-    const [callDataSource, setCallDataSource] = useState<'db' | 'realtime'>('db');
-    const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
+
 
     // Called History Filter State
     const [calledFilterDays, setCalledFilterDays] = useState<string>(''); // '', '30', '60', 'custom'
@@ -176,6 +172,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     // History Modal State
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
+    const [tagManagementModalOpen, setTagManagementModalOpen] = useState(false);
     const [isReportModalOpen, setReportModalOpen] = useState(false);
     const [isCronLogModalOpen, setCronLogModalOpen] = useState(false);
     const [historyData, setHistoryData] = useState<AssignHistory[]>([]);
@@ -252,7 +249,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     const fetchSessionTags = useCallback(async () => {
         try {
-            const response = await apiFetch(`Distribution/index.php?action=get_session_tags&companyId=${currentUser?.companyId}`);
+            const response = await apiFetch(`distribution_v2?action=get_session_tags`);
             if (response?.ok && response.tags) {
                 setSessionTagsList(response.tags);
             }
@@ -397,42 +394,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
     }, [currentUser?.companyId]);
 
-    // Fetch call minutes dynamically
-    const fetchCallMinutes = useCallback(async () => {
-        if (!agents || agents.length === 0) return;
-        
-        setLoadingCallMinutes(true);
-        try {
-            const agentIds = agents.map(a => a.id).join(',');
-            const actionEndpoint = callDataSource === 'realtime' ? 'get_realtime_call_minutes' : 'get_call_minutes';
-            
-            const response = await apiFetch(
-                `customers?action=${actionEndpoint}&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}`
-            );
-            
-            if (response?.agents) {
-                setAgents(prev => prev.map(agent => ({
-                    ...agent,
-                    callMinutes: response.agents[agent.id] || 0
-                })));
-            } else if (response?.error) {
-                setMessage({ type: 'error', text: response.error });
-            }
-        } catch (error: any) {
-            console.error('Failed to fetch call minutes:', error);
-            setMessage({ type: 'error', text: `Failed to fetch call minutes: ${error.message}` });
-        } finally {
-            setLoadingCallMinutes(false);
-        }
-    }, [agents.length, callFilterStartDate, callFilterEndDate, currentUser?.companyId, callDataSource]);
-
-    // Effect to trigger fetchCallMinutes when dates change or agents are loaded
-    useEffect(() => {
-        if (agents.length > 0) {
-            fetchCallMinutes();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [callFilterStartDate, callFilterEndDate, agents.length, callDataSource]);
 
     // Fetch customers for active basket
     const fetchCustomers = useCallback(async () => {
@@ -444,7 +405,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             const calledFilterParams = actualCalledFilterDays ? `&called_filter_days=${actualCalledFilterDays}&called_filter_mode=${calledFilterMode}` : '';
 
             const response = await apiFetch(
-                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=5000${calledFilterParams}`
+                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=50000${calledFilterParams}`
             );
             const data = response?.data || [];
             const mapped = data.map((r: any) => mapCustomerFromApi(r));
@@ -596,20 +557,23 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         // ═══════════════════════════════════════════
         let conflictMap: Record<string, number[]> = {};
         try {
-            const customerIds = customerPool
-                .map(c => c.customer_id?.toString() || c.id)
-                .slice(0, 5000); // limit to 5000
+            const customerIds = customerPool.map(c => c.customer_id?.toString() || c.id);
 
             if (customerIds.length > 0) {
-                const res = await apiFetch(
-                    `Distribution/index.php?action=get_assign_checks&companyId=${currentUser?.companyId}`,
-                    {
-                        method: 'POST',
-                        body: JSON.stringify({ customer_ids: customerIds })
+                // Chunk the customerIds to prevent API payload/PDO limits
+                const CHUNK_SIZE = 3000;
+                for (let i = 0; i < customerIds.length; i += CHUNK_SIZE) {
+                    const chunk = customerIds.slice(i, i + CHUNK_SIZE);
+                    const res = await apiFetch(
+                        `distribution_v2?action=get_assign_checks`,
+                        {
+                            method: 'POST',
+                            body: JSON.stringify({ customer_ids: chunk })
+                        }
+                    );
+                    if (res?.ok && res.conflicts) {
+                        conflictMap = { ...conflictMap, ...res.conflicts };
                     }
-                );
-                if (res?.ok && res.conflicts) {
-                    conflictMap = res.conflicts;
                 }
             }
         } catch (e) {
@@ -976,7 +940,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             }));
 
             const result = await apiFetch(
-                `Distribution/index.php?action=distribute&companyId=${currentUser?.companyId}`,
+                `distribution_v2?action=distribute`,
                 {
                     method: 'POST',
                     body: JSON.stringify({
@@ -988,7 +952,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         min_call_minutes: hasCallFilterApplied ? parseInt(callThresholdMinutes) : null,
                         strict_duplicate_check: strictDuplicateCheck,
                         agent_snapshot: agentSnapshot,
-                        session_tag: sessionTag
+                        tag_id: sessionTag === '' ? null : sessionTag
                     })
                 }
             );
@@ -1052,6 +1016,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
             setMessage({ type: 'success', text: isRetry ? `แจกเพิ่มสำเร็จ ${totalSuccess} รายการ` : `แจกงานสำเร็จ ${totalSuccess} รายการ` });
             setSummaryModalOpen(true);
+            fetchSessionTags();
 
         } catch (error) {
             console.error('Distribution failed:', error);
@@ -1503,7 +1468,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         body: JSON.stringify({ 
                             transfers,
                             transfer_mode: bulkFilterType,
-                            session_tag: sessionTag 
+                            tag_id: sessionTag === '' ? null : sessionTag 
                         })
                     }
                 );
@@ -1516,6 +1481,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     })
                     .join(', ');
 
+                fetchSessionTags();
                 setBulkResultModal({
                     isOpen: true,
                     title: 'สรุปผลการโอนลูกค้า',
@@ -1549,7 +1515,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             reclaim_mode: bulkFilterType,
                             reclaim_destination: bulkReclaimDestinationType,
                             force_basket_key: bulkReclaimDestinationType === 'force' ? bulkForceBasketKey : null,
-                            triggered_by: currentUser?.id
+                            triggered_by: currentUser?.id,
+                            tag_id: sessionTag === '' ? null : sessionTag
                         })
                     }
                 );
@@ -1566,6 +1533,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     }
                 }
 
+                fetchSessionTags();
                 setBulkResultModal({
                     isOpen: true,
                     title: 'สรุปผลการดึงคืนลูกค้า',
@@ -1642,7 +1610,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     body: JSON.stringify({
                         agent_id: reclaimingAgent.id,
                         baskets: payloadBaskets,
-                        reclaim_mode: unassignedReclaimMode
+                        reclaim_mode: unassignedReclaimMode,
+                        tag_id: sessionTag === '' ? null : sessionTag
                     })
                 }
             );
@@ -1706,10 +1675,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 const filename = `distribution_history_${new Date().toISOString().slice(0, 10)}`;
                 downloadDataFile([headers, ...rows], filename, type);
             } else {
-                alert('ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
+                toast('error', 'ข้อผิดพลาด', 'ไม่สามารถดึงข้อมูลได้: ' + (result.error || 'Unknown error'));
             }
         } catch (e: any) {
-            alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + e.message);
+            toast('error', 'ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + e.message);
         } finally {
             setIsExporting(false);
             setIsExportTypeModalOpen(false);
@@ -1779,6 +1748,13 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             <CalendarClock size={16} />
                             ประวัติ Cron
                         </button>
+                    <button
+                        onClick={() => setTagManagementModalOpen(true)}
+                        className="px-4 py-2 text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 flex items-center gap-2 font-medium transition-colors"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>
+                        จัดการ Tag Session
+                    </button>
                     <button
                         onClick={() => setResetModalOpen(true)}
                         className="px-4 py-2 text-sm bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-2 font-medium transition-colors"
@@ -2056,6 +2032,14 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             <ConfirmModal modalState={confirmModal} onClose={closeConfirmModal} />
 
             {/* History Modal */}
+
+            <TagManagementModal
+                isOpen={tagManagementModalOpen}
+                onClose={() => setTagManagementModalOpen(false)}
+                companyId={currentUser?.companyId || ''}
+                onTagsUpdated={fetchSessionTags}
+            />
+
             <HistoryModal 
                 isOpen={historyModalOpen}
                 onClose={() => setHistoryModalOpen(false)}

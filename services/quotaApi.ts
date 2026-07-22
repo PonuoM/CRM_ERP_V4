@@ -178,12 +178,23 @@ export async function transferQuota(payload: {
   toUserId: number;
   companyId: number;
   quantity: number;
+  rateScheduleId?: number;
   sourceDetail?: string;
   allocatedBy?: number;
 }): Promise<{ success: boolean; id?: number }> {
   return apiFetch(QUOTA_API, {
     method: 'POST',
     body: JSON.stringify({ action: 'transfer_quota', ...payload }),
+  });
+}
+
+export async function cancelAllocation(payload: {
+  allocationId: number;
+  companyId: number;
+}): Promise<{ success: boolean }> {
+  return apiFetch(QUOTA_API, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'cancel_allocation', ...payload }),
   });
 }
 
@@ -245,6 +256,17 @@ export async function calculateUserQuota(
     `${QUOTA_API}?action=calculate&quotaProductId=${quotaProductId}&userId=${userId}`,
   );
   return res.data;
+}
+
+export async function getUserAllocationBreakdown(
+  companyId: number,
+  userId: number,
+  rateScheduleId: number
+): Promise<Array<{ quotaProductId: number | null; label: string; totalAllocated: number }>> {
+  const res = await apiFetch(
+    `${QUOTA_API}?action=user_allocation_breakdown&companyId=${companyId}&userId=${userId}&rateScheduleId=${rateScheduleId}`
+  );
+  return res.data || [];
 }
 
 export async function getQuotaSummary(

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { formatFullThaiAddress } from '../utils/addressFormatter';
 import { getOrder, apiFetch } from '../services/api';
 import resolveApiBasePath from '../utils/apiBasePath';
 import { X, User, MapPin, Box, Image as ImageIcon, Pencil, Save, Loader2, ChevronDown, ChevronRight, CornerDownRight, Calendar, UserCheck } from 'lucide-react';
@@ -406,14 +407,13 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                             <span className="font-medium">เบอร์โทรรับสาย:</span> {order.recipient_phone || order.phone || order.customer_phone || '-'}
                                         </div>
                                         <div className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                                            {[
-                                                order.recipient_address,
-                                                order.street,
+                                            {formatFullThaiAddress(
+                                                order.recipient_address || order.street,
                                                 order.subdistrict,
                                                 order.district,
                                                 order.province,
                                                 order.postal_code
-                                            ].filter(Boolean).join(' ') || "ไม่ได้ระบุที่อยู่"}
+                                            ) || "ไม่ได้ระบุที่อยู่"}
                                         </div>
                                     </div>
                                 </div>

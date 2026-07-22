@@ -45,6 +45,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     });
     const [callFilterEndDate, setCallFilterEndDate] = useState<string>(() => {
         const d = new Date();
+        d.setDate(d.getDate() - 1);
         return d.toISOString().split('T')[0];
     });
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
@@ -77,7 +78,8 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
             if (response?.agents) {
                 setAgents(prev => prev.map(agent => ({
                     ...agent,
-                    callMinutes: response.agents[agent.id] || 0
+                    callMinutes: response.agents[agent.id] || 0,
+                    attendanceValue: response.attendance && response.attendance[agent.id] !== undefined ? response.attendance[agent.id] : 0
                 })));
             } else if (response?.error) {
                 setMessage({ type: 'error', text: response.error });
@@ -307,6 +309,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                 </th>
                                 <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
                                 <th className="p-3 text-center font-medium text-gray-600">เวลาโทร (สายรับ)</th>
+                                <th className="p-3 text-center font-medium text-gray-600">เวลาทำงาน</th>
                                 <th className="p-3 text-center font-medium text-gray-600">Action</th>
                                 <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
                                 {dashboardBaskets.map(basket => (
@@ -359,6 +362,11 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                                     {agent.callMinutes !== undefined ? `${Math.floor(agent.callMinutes)} นาที` : '-'}
                                                 </span>
                                             )}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                            <span className="font-semibold text-gray-700">
+                                                {agent.attendanceValue !== undefined ? `${agent.attendanceValue * 8} ชม.` : '-'}
+                                            </span>
                                         </td>
                                         <td className="p-3 text-center">
                                             <button

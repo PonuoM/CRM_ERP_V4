@@ -161,21 +161,35 @@ function attach_call_status_to_customers(PDO $pdo, array &$customers): void
 
         // Step 2: Query call_history for all customers
         $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
-        // Group by both caller_id and caller text to support legacy data
+        // Group by both caller_id and caller text to support legacy data.
+        //
+        // IMPORTANT: Only count calls made ON/AFTER the customer's current date_assigned.
+        // Otherwise, when a customer is returned to the pool and later re-assigned to the
+        // SAME owner, calls from the previous ownership cycle would still be counted, making
+        // the customer look "already called" in the current cycle. That inflates the
+        // "contacted" count and corrupts the "hide contacted" / remaining-to-call numbers.
+        // (Same date_assigned cutoff pattern already used in CustomerController counts.)
+        // call_history.date and customers.date_assigned are both stored in Asia/Bangkok
+        // local time (see api/config.php date_default_timezone_set), so compare DATE() directly.
+        // COALESCE guards the ~1% of assigned rows with a NULL date_assigned (fall back to
+        // counting all calls, preserving the previous behaviour for those records).
         $callSql = "
-            SELECT 
-                customer_id,
-                caller_id,
-                caller,
-                MAX(date) as last_call_date,
+            SELECT
+                ch.customer_id,
+                ch.caller_id,
+                ch.caller,
+                MAX(ch.date) as last_call_date,
                 COUNT(*) as call_count,
-                (SELECT result FROM call_history ch2 
-                 WHERE ch2.customer_id = call_history.customer_id 
-                   AND (ch2.caller_id = call_history.caller_id OR (call_history.caller_id IS NULL AND ch2.caller = call_history.caller))
+                (SELECT ch2.result FROM call_history ch2
+                 WHERE ch2.customer_id = ch.customer_id
+                   AND (ch2.caller_id = ch.caller_id OR (ch.caller_id IS NULL AND ch2.caller = ch.caller))
+                   AND DATE(ch2.date) >= DATE(COALESCE((SELECT c2.date_assigned FROM customers c2 WHERE c2.customer_id = ch.customer_id), '1970-01-01'))
                  ORDER BY ch2.date DESC LIMIT 1) as last_call_result
-            FROM call_history
-            WHERE customer_id IN ($placeholders)
-            GROUP BY customer_id, caller_id, caller
+            FROM call_history ch
+            INNER JOIN customers c ON c.customer_id = ch.customer_id
+            WHERE ch.customer_id IN ($placeholders)
+              AND DATE(ch.date) >= DATE(COALESCE(c.date_assigned, '1970-01-01'))
+            GROUP BY ch.customer_id, ch.caller_id, ch.caller
         ";
 
         $callStmt = $pdo->prepare($callSql);

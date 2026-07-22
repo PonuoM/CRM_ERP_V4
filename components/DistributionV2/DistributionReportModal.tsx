@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import SessionTagSelect from './SessionTagSelect';
+import MultiSelectFilter from '../MultiSelectFilter';
 import { Loader2, Download, History, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { apiFetch } from '../../services/api';
@@ -50,6 +52,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const [loading, setLoading] = useState(false);
     const [sessions, setSessions] = useState<DistributionSession[]>([]);
     const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
+    const [sessionDetails, setSessionDetails] = useState<Record<number, any[]>>({});
     
     // Check if user is system admin
     const currentUserStr = localStorage.getItem('user');
@@ -57,16 +60,35 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const isSystemAdmin = currentUser?.is_system == 1;
     const isSuperAdmin = currentUser?.role?.toLowerCase() === 'super_admin';
 
-    const [selectedCompany, setSelectedCompany] = useState<string>(isSuperAdmin ? 'all' : (currentUser?.company_id || '1'));
+    const [selectedCompany, setSelectedCompany] = useState<string>(isSuperAdmin ? 'all' : (currentUser?.companyId || '1'));
     const [companies, setCompanies] = useState<any[]>([]);
     
-    const [batchStartDate, setBatchStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-    const [batchEndDate, setBatchEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const getFirstDayOfMonth = () => {
+        const date = new Date();
+        // Shift timezone so it's correct locally
+        date.setHours(date.getHours() + 7);
+        date.setDate(1);
+        return date.toISOString().split('T')[0];
+    };
+
+    const getToday = () => {
+        const date = new Date();
+        date.setHours(date.getHours() + 7);
+        return date.toISOString().split('T')[0];
+    };
+
+    const [batchStartDate, setBatchStartDate] = useState<string>(getFirstDayOfMonth());
+    const [batchEndDate, setBatchEndDate] = useState<string>(getToday());
     const [batchType, setBatchType] = useState<string>('all');
-    const [batchExportMode, setBatchExportMode] = useState<'detailed' | 'summary'>('detailed');
+    const [batchExportMode, setBatchExportMode] = useState<'customer' | 'user' | 'session' | 'agent_overall' | 'basket_overall' | 'daily_summary'>('customer');
     const [isBatchExporting, setIsBatchExporting] = useState(false);
     
-    // Undo State
+    
+    const [filterBasket, setFilterBasket] = useState<string>('all');
+    const [filterTag, setFilterTag] = useState<number[]>([]);
+    const [baskets, setBaskets] = useState<any[]>([]);
+    const [tags, setTags] = useState<any[]>([]);
+// Undo State
     const [undoTarget, setUndoTarget] = useState<number | null>(null);
     const [undoMode, setUndoMode] = useState<'safe' | 'force'>('safe');
     const [isUndoing, setIsUndoing] = useState(false);
@@ -79,9 +101,23 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     
     // Tag Edit State
     const [editingTagSessionId, setEditingTagSessionId] = useState<number | null>(null);
-    const [editTagValue, setEditTagValue] = useState<string>('');
+    const [editTagValue, setEditTagValue] = useState<number | ''>('');
 
-    const toggleExpand = (sessionId: number) => {
+    const loadSessionDetails = async (sessionId: number) => {
+        if (sessionDetails[sessionId]) return sessionDetails[sessionId];
+        try {
+            const data = await apiFetch(`distribution_v2?action=get_session_details&session_id=${sessionId}`);
+            if (data.ok) {
+                setSessionDetails(prev => ({ ...prev, [sessionId]: data.details }));
+                return data.details;
+            }
+        } catch (error) {
+            console.error('Failed to load session details', error);
+        }
+        return [];
+    };
+
+    const toggleExpand = async (sessionId: number) => {
         setExpandedSessions(prev => {
             const next = new Set(prev);
             if (next.has(sessionId)) {
@@ -91,6 +127,10 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             }
             return next;
         });
+        
+        if (!expandedSessions.has(sessionId) && !sessionDetails[sessionId]) {
+            await loadSessionDetails(sessionId);
+        }
     };
 
     const handleUndo = async () => {
@@ -101,7 +141,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             const currentUserStr = localStorage.getItem('user');
             const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
             
-            const data = await apiFetch(`Distribution/index.php?action=undo_distribution&companyId=${currentUser?.company_id || 1}`, {
+            const data = await apiFetch(`distribution_v2?action=undo_distribution`, {
                 method: 'POST',
                 body: JSON.stringify({
                     session_id: undoTarget,
@@ -125,24 +165,30 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
     };
 
-    const handleSaveSessionTag = async (sessionId: number) => {
+    const handleSaveSessionTag = async (sessionId: number, overrideTagValue?: string) => {
         try {
+            const valueToSave = overrideTagValue !== undefined ? overrideTagValue : editTagValue;
             const currentUserStr = localStorage.getItem('user');
             const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
             
-            const data = await apiFetch(`Distribution/index.php?action=update_session_tag&companyId=${currentUser?.company_id || 1}`, {
+            const data = await apiFetch(`distribution_v2?action=update_session_tag`, {
                 method: 'POST',
                 body: JSON.stringify({
                     session_id: sessionId,
-                    session_tag: editTagValue
+                    tag_id: valueToSave
                 })
             });
             
             if (data.ok) {
-                setMessage({ type: 'success', text: 'อัปเดต Session Tag เรียบร้อยแล้ว' });
-                // Update local state
-                setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, session_tag: editTagValue } : s));
+                setMessage({ type: 'success', text: 'บันทึก Session Tag เรียบร้อยแล้ว' });
+                // Update local state with the actual tag name, not the ID
+                const selectedTagObj = tags.find(t => t.id === Number(valueToSave));
+                const tagName = selectedTagObj ? selectedTagObj.session_tag : (valueToSave ? String(valueToSave) : null);
+                
+                setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, session_tag: tagName } : s));
                 setEditingTagSessionId(null);
+                // Refresh tag options for datalist
+                fetchOptions();
             } else {
                 setMessage({ type: 'error', text: data.error || 'Failed to update session tag' });
             }
@@ -152,101 +198,228 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
     };
 
-    const handleBatchExport = async () => {
+    const handleExportSummary = async () => {
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`Distribution/index.php?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}`);
+            const data = await apiFetch(`distribution_export?action=summary_export&companyId=${selectedCompany}&start_date=${batchStartDate}&end_date=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
+            if (data.ok && data.agents && data.agents.length > 0) {
+                const workbook = new ExcelJS.Workbook();
+                const worksheet = workbook.addWorksheet('CEO Summary Pivot');
+
+                // Header styles
+                const headerStyle = {
+                    font: { bold: true, color: { argb: 'FFFFFFFF' } },
+                    alignment: { horizontal: 'center', vertical: 'middle' } as const
+                };
+
+                // Row 1: Agent | Baskets... | Totals
+                const row1 = ['รายชื่อพนักงาน'];
+                const row2 = [''];
+                
+                data.baskets.forEach((b: any) => {
+                    row1.push(`${b.basket_name} (${b.basket_key})`);
+                    row1.push(''); // placeholder for merge
+                    row2.push('รับเข้า');
+                    row2.push('ดึงคืน');
+                });
+                
+                row1.push('ยอดรวม (Totals)', '', '');
+                row2.push('รวมรับเข้า', 'รวมดึงคืน', 'สุทธิ (Net)');
+
+                const headerRow1 = worksheet.addRow(row1);
+                const headerRow2 = worksheet.addRow(row2);
+
+                // Merge and style cells for Row 1
+                let colIdx = 2;
+                data.baskets.forEach((b: any) => {
+                    worksheet.mergeCells(1, colIdx, 1, colIdx + 1);
+                    headerRow1.getCell(colIdx).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B82F6' } }; // Blue
+                    headerRow1.getCell(colIdx).font = headerStyle.font;
+                    headerRow1.getCell(colIdx).alignment = headerStyle.alignment;
+                    
+                    headerRow2.getCell(colIdx).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } }; // Green
+                    headerRow2.getCell(colIdx).font = headerStyle.font;
+                    headerRow2.getCell(colIdx).alignment = headerStyle.alignment;
+                    
+                    headerRow2.getCell(colIdx+1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEF4444' } }; // Red
+                    headerRow2.getCell(colIdx+1).font = headerStyle.font;
+                    headerRow2.getCell(colIdx+1).alignment = headerStyle.alignment;
+                    
+                    colIdx += 2;
+                });
+
+                // Merge and style Totals column
+                worksheet.mergeCells(1, colIdx, 1, colIdx + 2);
+                headerRow1.getCell(colIdx).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8B5CF6' } }; // Purple
+                headerRow1.getCell(colIdx).font = headerStyle.font;
+                headerRow1.getCell(colIdx).alignment = headerStyle.alignment;
+                
+                [colIdx, colIdx+1, colIdx+2].forEach(idx => {
+                    headerRow2.getCell(idx).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B7280' } }; // Gray
+                    headerRow2.getCell(idx).font = headerStyle.font;
+                    headerRow2.getCell(idx).alignment = headerStyle.alignment;
+                });
+                
+                // Merge Agent Name header
+                worksheet.mergeCells('A1:A2');
+                headerRow1.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }; // Dark
+                headerRow1.getCell(1).font = headerStyle.font;
+                headerRow1.getCell(1).alignment = headerStyle.alignment;
+
+                worksheet.getColumn(1).width = 25;
+
+                // Data Rows
+                data.agents.forEach((a: any) => {
+                    const rowData = [a.agent_name];
+                    data.baskets.forEach((b: any) => {
+                        const stats = a.baskets[b.basket_key] || { received: 0, reclaimed: 0 };
+                        rowData.push(stats.received);
+                        rowData.push(stats.reclaimed);
+                    });
+                    rowData.push(a.total_received);
+                    rowData.push(a.total_reclaimed);
+                    rowData.push(a.net);
+                    
+                    worksheet.addRow(rowData);
+                });
+
+                // Download
+                const buffer = await workbook.xlsx.writeBuffer();
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = `CEO_Distribution_Summary_${batchStartDate}_to_${batchEndDate}.xlsx`;
+                anchor.click();
+                window.URL.revokeObjectURL(url);
+                
+                setMessage({ type: 'success', text: `ดาวน์โหลดข้อมูลสรุป CEO สำเร็จ!` });
+            } else {
+                setMessage({ type: 'error', text: data.error || 'ไม่พบข้อมูลในช่วงเวลาที่เลือก' });
+            }
+        } catch (error) {
+            console.error(error);
+            setMessage({ type: 'error', text: 'Network error during CEO summary export' });
+        } finally {
+            setIsBatchExporting(false);
+        }
+    };
+
+    const handleBatchExport = async () => {
+        if (batchExportMode === 'ceo_pivot' as any) {
+            handleExportSummary();
+            return;
+        }
+        setIsBatchExporting(true);
+        try {
+            const data = await apiFetch(`distribution_export?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok && data.data && data.data.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('Batch Export');
 
-                if (batchExportMode === 'summary') {
-                    // Summary Mode
-                    let headers = [
-                        'รหัสรอบการแจก (Session ID)',
-                        'เวลา',
-                        'โหมด (Mode)',
-                        'ผู้ทำรายการ',
-                        'ตะกร้าต้นทาง (ก่อนดึง)',
-                        'จำนวนรายชื่อ (Count)'
-                    ];
-                    if (isSuperAdmin) {
-                        headers.unshift('บริษัท (Company)');
-                    }
+                if (batchExportMode === 'session') {
+                    let headers = ['รอบแจก (Session ID)', 'เวลา', 'รูปแบบ (Mode)', 'ผู้ดำเนินการ', 'ตะกร้าต้นทาง (Source Basket)', 'Session Tag', 'จำนวนลูกค้าทั้งหมด (Count)', 'จำนวนพนักงานที่รับงาน (Agents)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
                     worksheet.addRow(headers);
-                    
-                    // Group data
-                    const summaryMap = new Map();
+                    const map = new Map();
                     data.data.forEach((row: any) => {
                         const key = `${row.session_id}_${row.previous_basket_key}`;
-                        if (!summaryMap.has(key)) {
-                            summaryMap.set(key, { ...row, count: 0 });
-                        }
-                        summaryMap.get(key).count += 1;
+                        if (!map.has(key)) map.set(key, { ...row, count: 0, agentIds: new Set() });
+                        map.get(key).count += 1;
+                        if (row.agent_id) map.get(key).agentIds.add(row.agent_id);
                     });
-                    
-                    Array.from(summaryMap.values()).forEach((row: any) => {
-                        let modeText = row.distribution_mode;
+                    Array.from(map.values()).forEach((row: any) => {
+                        let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
+                        let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
-                        
-                        let basketText = row.previous_basket_name 
-                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
-                            : (row.previous_basket_key || '-');
-
-                        let rowData = [
-                            `Session #${row.session_id}`,
-                            row.created_at,
-                            modeText,
-                            `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
-                            basketText,
-                            row.count
-                        ];
-                        if (isSuperAdmin) {
-                            rowData.unshift(row.company_name || '-');
-                        }
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${displayKey})` : (displayKey || '-');
+                        let rowData = [ `Session #${row.session_id}`, row.created_at, modeText, `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`, basketText, row.session_tag || '-', row.count, row.agentIds ? row.agentIds.size : 0 ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else if (batchExportMode === 'user') {
+                    let headers = ['รอบแจก (Session ID)', 'เวลา', 'รูปแบบ (Mode)', 'ผู้ดำเนินการ', 'Agent ID', 'Agent Name', 'ตะกร้าต้นทาง (Source Basket)', 'จำนวนลูกค้าที่ได้รับ (Count)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
+                    worksheet.addRow(headers);
+                    const map = new Map();
+                    data.data.forEach((row: any) => {
+                        const key = `${row.session_id}_${row.agent_id}_${row.previous_basket_key}`;
+                        if (!map.has(key)) map.set(key, { ...row, count: 0 });
+                        map.get(key).count += 1;
+                    });
+                    Array.from(map.values()).forEach((row: any) => {
+                        let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
+                        let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
+                        if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${displayKey})` : (displayKey || '-');
+                        let rowData = [ `Session #${row.session_id}`, row.created_at, modeText, `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`, row.agent_id || '-', `${row.agent_first || ''} ${row.agent_last || ''}`, basketText, row.count ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else if (batchExportMode === 'agent_overall') {
+                    let headers = ['Agent ID', 'Agent Name', 'จำนวนลูกค้าที่ได้รับทั้งหมดตลอดช่วงเวลา (Total Count)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
+                    worksheet.addRow(headers);
+                    const map = new Map();
+                    data.data.forEach((row: any) => {
+                        if (!row.agent_id) return;
+                        const key = `${row.agent_id}`;
+                        if (!map.has(key)) map.set(key, { agent_id: row.agent_id, agent_first: row.agent_first, agent_last: row.agent_last, company_name: row.company_name, count: 0 });
+                        map.get(key).count += 1;
+                    });
+                    Array.from(map.values()).forEach((row: any) => {
+                        let rowData = [ row.agent_id, `${row.agent_first || ''} ${row.agent_last || ''}`, row.count ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else if (batchExportMode === 'basket_overall') {
+                    let headers = ['รหัสตะกร้าต้นทาง (Basket Key)', 'ชื่อตะกร้าต้นทาง (Basket Name)', 'จำนวนลูกค้าที่ถูกแจกออกไปทั้งหมด (Total Count)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
+                    worksheet.addRow(headers);
+                    const map = new Map();
+                    data.data.forEach((row: any) => {
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        const key = `${displayKey}`;
+                        if (!map.has(key)) map.set(key, { key: displayKey, name: row.previous_basket_name, company_name: row.company_name, count: 0 });
+                        map.get(key).count += 1;
+                    });
+                    Array.from(map.values()).forEach((row: any) => {
+                        let rowData = [ row.key || '-', row.name || '-', row.count ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else if (batchExportMode === 'daily_summary') {
+                    let headers = ['วันที่ (Date)', 'จำนวนรอบการแจก (Total Sessions)', 'จำนวนพนักงานที่รับงานรวม (Agents Involved)', 'จำนวนลูกค้าที่ถูกแจกทั้งหมด (Total Customers)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
+                    worksheet.addRow(headers);
+                    const map = new Map();
+                    data.data.forEach((row: any) => {
+                        const date = row.created_at ? row.created_at.split(' ')[0] : 'Unknown Date';
+                        if (!map.has(date)) map.set(date, { date: date, company_name: row.company_name, sessionIds: new Set(), agentIds: new Set(), count: 0 });
+                        map.get(date).sessionIds.add(row.session_id);
+                        if (row.agent_id) map.get(date).agentIds.add(row.agent_id);
+                        map.get(date).count += 1;
+                    });
+                    Array.from(map.values()).forEach((row: any) => {
+                        let rowData = [ row.date, row.sessionIds.size, row.agentIds.size, row.count ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };
                     });
                 } else {
-                    // Detailed Mode
-                    let headers = [
-                        'รหัสรอบการแจก (Session ID)',
-                        'เวลา',
-                        'โหมด (Mode)',
-                        'ผู้ทำรายการ',
-                        'Telesale / ผู้รับงาน (เป้าหมาย)',
-                        'รหัสลูกค้า',
-                        'ชื่อลูกค้า',
-                        'เบอร์โทร',
-                        'ตะกร้าต้นทาง (ก่อนดึง)'
-                    ];
-                    if (isSuperAdmin) {
-                        headers.unshift('บริษัท (Company)');
-                    }
+                    // Customer Level
+                    let headers = ['รอบแจก (Session ID)', 'เวลา', 'รูปแบบ (Mode)', 'ผู้ดำเนินการ', 'Agent ID', 'Agent Name', 'รหัสลูกค้า', 'ชื่อ-นามสกุลลูกค้า', 'เบอร์โทรศัพท์', 'ตะกร้าต้นทาง (Source Basket)', 'Session Tag'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
                     worksheet.addRow(headers);
-
                     data.data.forEach((row: any) => {
                         let isReclaimOrTransfer = row.distribution_mode?.includes('Reclaim') || row.distribution_mode?.includes('Transfer');
-                        let modeText = row.distribution_mode;
+                        let modeText = isReclaimOrTransfer ? `ดึงคืน (${row.distribution_mode})` : `แจก (${row.distribution_mode})`;
                         if (row.distribution_mode === 'Performance') modeText += ` (>= ${row.min_call_minutes} นาที)`;
-
-                        let basketText = row.previous_basket_name 
-                            ? `${row.previous_basket_name} (${row.previous_basket_key})`
-                            : (row.previous_basket_key || '-');
-
-                        let rowData = [
-                            `Session #${row.session_id}`,
-                            row.created_at,
-                            modeText,
-                            `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`,
-                            `${row.agent_first || ''} ${row.agent_last || ''} (ID: ${row.agent_id})`,
-                            row.customer_code || '-',
-                            row.customer_name || '-',
-                            row.customer_phone || '-',
-                            basketText
-                        ];
-                        if (isSuperAdmin) {
-                            rowData.unshift(row.company_name || '-');
-                        }
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${displayKey})` : (displayKey || '-');
+                        let rowData = [ `Session #${row.session_id}`, row.created_at, modeText, `${row.distributed_by_first || ''} ${row.distributed_by_last || 'System'}`, row.agent_id || '-', `${row.agent_first || ''} ${row.agent_last || ''}`, row.customer_code || '-', row.customer_name || '-', row.customer_phone || '-', basketText, row.session_tag || '-' ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };
                     });
                 }
@@ -275,11 +448,11 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const handleCleanup = async () => {
         setIsCleaning(true);
         try {
-            const data = await apiFetch('Distribution/index.php?action=cleanup_distribution_details', {
+            const data = await apiFetch('distribution_v2?action=cleanup_distribution_details', {
                 method: 'POST',
                 body: JSON.stringify({
                     user_id: currentUser?.id,
-                    target_company_id: cleanupTargetCompany === 'current' ? currentUser?.company_id : cleanupTargetCompany,
+                    target_company_id: cleanupTargetCompany === 'current' ? currentUser?.companyId : cleanupTargetCompany,
                     months_old: cleanupMonths
                 })
             });
@@ -304,8 +477,21 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
             if (isSuperAdmin && companies.length === 0) {
                 fetchCompanies();
             }
+        fetchOptions();
         }
-    }, [isOpen, selectedCompany]);
+    }, [isOpen, selectedCompany, batchStartDate, batchEndDate, batchType, filterBasket, filterTag]);
+
+    const fetchOptions = async () => {
+        try {
+            const tagData = await apiFetch(`distribution_v2?action=get_session_tags&companyId=${selectedCompany}`);
+            if (tagData.ok) setTags(tagData.tags || []);
+            
+            const basketData = await apiFetch(`distribution_v2?action=get_basket_options&companyId=${selectedCompany}`);
+            if (basketData.ok) setBaskets(basketData.baskets || []);
+        } catch (error) {
+            console.error(error);
+        }
+    };
 
     const fetchCompanies = async () => {
         try {
@@ -321,7 +507,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     const fetchSessions = async () => {
         setLoading(true);
         try {
-            const data = await apiFetch(`Distribution/index.php?action=get_sessions&companyId=${selectedCompany}`);
+            const data = await apiFetch(`distribution_v2?action=get_sessions&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok) {
                 setSessions(data.sessions);
             } else {
@@ -342,6 +528,11 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
     };
 
     const handleExport = async (session: DistributionSession) => {
+        let details = sessionDetails[session.id] || session.details;
+        if (!details || details.length === 0) {
+            details = await loadSessionDetails(session.id);
+        }
+
         const workbook = new ExcelJS.Workbook();
         
         // ==========================================
@@ -369,16 +560,18 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         const failStatusText = isCriteriaApplied ? 'หลุดเกณฑ์' : 'ไม่ได้รับรายชื่อ';
 
         const detailsMap = new Map<number, number>();
-        session.details.forEach(d => detailsMap.set(d.agent_id, d.customers.length));
+        details.forEach((d: any) => detailsMap.set(Number(d.agent_id), d.customers.length));
 
         const receivedAgents: any[] = [];
         const failedAgents: any[] = [];
 
         snapshot.forEach(agent => {
-            const count = detailsMap.get(agent.id) || 0;
+            const agentId = agent.agent_id || agent.id;
+            const count = detailsMap.get(Number(agentId)) || 0;
             if (count > 0) {
                 receivedAgents.push({ ...agent, count });
-            } else {
+            } else if (agent.isActive !== false) {
+                // Ignore agents who are explicitly inactive AND got 0 customers to keep the report clean
                 failedAgents.push({ ...agent, count: 0 });
             }
         });
@@ -539,8 +732,8 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
 
         const datetime = new Date(session.created_at).toLocaleString('th-TH');
 
-        session.details.forEach(agent => {
-            agent.customers.forEach(customer => {
+        details.forEach((agent: any) => {
+            agent.customers.forEach((customer: any) => {
                 wsDetails.addRow({
                     session_id: session.id,
                     datetime: datetime,
@@ -565,6 +758,17 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         window.URL.revokeObjectURL(url);
     };
 
+    const resetFilters = () => {
+        setBatchStartDate('');
+        setBatchEndDate('');
+        setBatchType('all');
+        setFilterBasket('all');
+        setFilterTag([]);
+        if (isSuperAdmin) {
+            setSelectedCompany('all');
+        }
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -574,7 +778,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                 <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
                     <div className="flex items-center gap-2">
                         <History className="text-blue-500" />
-                        <h3 className="text-xl font-bold text-gray-800">ประวัติการแจกงาน (Distribution Report)</h3>
+                        <h3 className="text-xl font-bold text-gray-800">ประวัติการแจกงานและดึงคืน (Distribution & Reclaim Report)</h3>
                     </div>
                     <div className="flex items-center gap-4">
                         {isSystemAdmin && (
@@ -589,35 +793,76 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                     </div>
                 </div>
 
-                {/* Batch Export & Company Filter */}
-                <div className="px-6 py-4 border-b bg-white flex flex-wrap gap-4 items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-blue-800">ส่งออก (Batch) :</span>
-                        <input type="date" className="p-1 border rounded text-sm w-36 bg-gray-50" value={batchStartDate} onChange={(e) => setBatchStartDate(e.target.value)} />
-                        <span className="text-sm text-gray-500">ถึง</span>
-                        <input type="date" className="p-1 border rounded text-sm w-36 bg-gray-50" value={batchEndDate} onChange={(e) => setBatchEndDate(e.target.value)} />
-                        <select className="p-1 border rounded text-sm w-32 bg-gray-50" value={batchType} onChange={(e) => setBatchType(e.target.value)}>
-                            <option value="all">ทุกประเภท</option>
-                            <option value="distribution">เฉพาะแจก</option>
-                            <option value="reclaim">เฉพาะดึงคืน</option>
-                        </select>
-                        <select className="p-1 border rounded text-sm w-36 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as 'detailed' | 'summary')}>
-                            <option value="detailed">แบบละเอียด</option>
-                            <option value="summary">แบบสรุปตามรอบ</option>
-                        </select>
-                        <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-3 py-1 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
-                            {isBatchExporting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />} โหลด
-                        </button>
+                {/* Filter Grid UI */}
+                <div className="px-6 py-4 border-b bg-white">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-base font-semibold text-blue-800">ตัวกรอง / ดาวน์โหลด (Filter / Batch)</span>
+                        {isSuperAdmin && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-gray-700">เลือกบริษัท:</span>
+                                <select value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)} className="p-1.5 border rounded text-sm w-48 bg-gray-50">
+                                    <option value="all">ทุกบริษัท (All)</option>
+                                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
+                        )}
                     </div>
-                    {isSuperAdmin && (
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-700">เลือกบริษัท:</span>
-                            <select value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)} className="p-1 border rounded text-sm w-48 bg-gray-50">
-                                <option value="all">ทุกบริษัท (All)</option>
-                                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">วันที่เริ่มต้น</span>
+                            <input type="date" className="p-1.5 border rounded text-sm bg-gray-50" value={batchStartDate} onChange={(e) => setBatchStartDate(e.target.value)} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">วันที่สิ้นสุด</span>
+                            <input type="date" className="p-1.5 border rounded text-sm bg-gray-50" value={batchEndDate} onChange={(e) => setBatchEndDate(e.target.value)} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">ประเภท</span>
+                            <select className="p-1.5 border rounded text-sm bg-gray-50" value={batchType} onChange={(e) => setBatchType(e.target.value)}>
+                                <option value="all">ทุกประเภท</option>
+                                <option value="distribution">แจกจ่ายลูกค้า</option>
+                                <option value="reclaim">ดึงคืน / โอนย้าย</option>
                             </select>
                         </div>
-                    )}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">ตะกร้าต้นทาง</span>
+                            <select className="p-1.5 border rounded text-sm bg-gray-50" value={filterBasket} onChange={(e) => setFilterBasket(e.target.value)}>
+                                <option value="all">ทุกตะกร้า</option>
+                                {baskets.map(b => <option key={b.id} value={b.basket_key}>{b.basket_name} ({b.basket_key})</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500 font-medium">Session Tag</span>
+                            <div className="w-[200px]">
+                                <MultiSelectFilter
+                                    options={[{ id: -1, label: 'ไม่มี Tag' }, ...tags.map(t => ({ id: t.id, label: t.session_tag }))]}
+                                    selectedIds={filterTag}
+                                    onChange={setFilterTag}
+                                    placeholder="ค้นหา..."
+                                    emptyMeansAllLabel="ทุกแท็ก"
+                                    emptyHint="แสดงทั้งหมด"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3 mt-4 justify-end">
+                        <button onClick={resetFilters} className="px-4 py-1.5 rounded text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 flex items-center transition-colors">
+                            รีเซ็ตตัวกรอง
+                        </button>
+                        <select className="p-1.5 border rounded text-sm w-64 bg-blue-50 text-blue-800" value={batchExportMode} onChange={(e) => setBatchExportMode(e.target.value as any)}>
+                            <option value="customer">1. Customer level (รายชื่อลูกค้า)</option>
+                            <option value="user">2. User level (พนักงานรายรอบ)</option>
+                            <option value="session">3. Session level (ภาพรวมรอบแจก)</option>
+                            <option value="agent_overall">4. Agent Overall (สรุปยอดพนักงาน)</option>
+                            <option value="basket_overall">5. Source Basket (สรุปตามตะกร้า)</option>
+                            <option value="daily_summary">6. Daily Summary (สรุปยอดรายวัน)</option>
+                            <option value="ceo_pivot">7. CEO Pivot Summary (แบบตารางไขว้)</option>
+                        </select>
+                        <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-4 py-1.5 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
+                            {isBatchExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} ส่งออกไฟล์
+                        </button>
+                    </div>
                 </div>
 
                 <div className="p-6 overflow-y-auto flex-1 bg-gray-50/50">
@@ -635,7 +880,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                             {sessions.map(session => {
                                 const isExpanded = expandedSessions.has(session.id);
                                 return (
-                                <div key={session.id} className="bg-white border rounded-lg shadow-sm overflow-hidden">
+                                <div key={session.id} className="bg-white border rounded-lg shadow-sm mb-4">
                                     <div className="p-5 flex flex-wrap items-center justify-between gap-4">
                                         <div className="flex-1">
                                             <div className="font-bold text-gray-800 flex items-center gap-2 flex-wrap">
@@ -645,9 +890,16 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                         🏢 {session.company_name}
                                                     </span>
                                                 )}
-                                                <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
-                                                    {session.distribution_mode}
-                                                </span>
+                                                {(() => {
+                                                      const isReclaim = session.distribution_mode?.includes('Reclaim') || session.distribution_mode?.includes('Transfer');
+                                                      const tagText = isReclaim ? `ดึงคืน (${session.distribution_mode})` : `แจก (${session.distribution_mode})`;
+                                                      const tagColor = isReclaim ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200';
+                                                      return (
+                                                          <span className={`text-xs px-2 py-0.5 rounded-full border ${tagColor}`}>
+                                                              {tagText}
+                                                          </span>
+                                                      );
+                                                  })()}
                                                 {session.source_basket && (
                                                     <span className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full border border-indigo-200">
                                                         ตะกร้า: {session.source_basket}
@@ -662,14 +914,12 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                 {/* Session Tag Inline Edit */}
                                                 {editingTagSessionId === session.id ? (
                                                     <div className="flex items-center gap-2 ml-2">
-                                                        <input 
-                                                            type="text" 
-                                                            className="text-xs border border-blue-300 rounded px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-500 min-w-[150px]"
-                                                            value={editTagValue}
-                                                            onChange={(e) => setEditTagValue(e.target.value)}
-                                                            placeholder="ระบุ Session Tag"
-                                                            autoFocus
-                                                        />
+                                                        <SessionTagSelect
+                                                              value={editTagValue}
+                                                              onChange={setEditTagValue}
+                                                              options={tags}
+                                                              className="min-w-[200px]"
+                                                          />
                                                         <button 
                                                             onClick={() => handleSaveSessionTag(session.id)}
                                                             className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded hover:bg-blue-700"
@@ -682,6 +932,14 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                         >
                                                             ยกเลิก
                                                         </button>
+                                                        {session.session_tag && (
+                                                            <button 
+                                                                onClick={() => { setEditTagValue(''); handleSaveSessionTag(session.id, ''); }}
+                                                                className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded hover:bg-red-200"
+                                                            >
+                                                                ลบแท็ก
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div className="flex items-center gap-2 ml-2 group cursor-pointer" onClick={() => {
@@ -732,7 +990,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                     </div>
                                     
                                     {isExpanded && (
-                                        <div className="border-t bg-gray-50 p-4">
+                                        <div className="border-t bg-gray-50 p-4 rounded-b-lg">
                                             <div className="overflow-x-auto flex justify-center">
                                                 <table className="w-full max-w-3xl text-sm text-left text-gray-600 bg-white rounded-lg overflow-hidden border">
                                                     <thead className="text-xs text-gray-700 uppercase bg-gray-100 border-b">
@@ -741,8 +999,17 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                             <th className="px-4 py-3 text-right">จำนวนลูกค้าที่ได้รับ</th>
                                                         </tr>
                                                     </thead>
+                                                    {(!sessionDetails[session.id] && !(session.details && session.details.length > 0)) && (
+                                                        <tbody>
+                                                            <tr>
+                                                                <td colSpan={2} className="px-4 py-8 text-center text-gray-500">
+                                                                    กำลังโหลดข้อมูล...
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    )}
                                                     <tbody>
-                                                        {session.details.map((agent, idx) => (
+                                                        {(sessionDetails[session.id] || session.details || []).map((agent: any, idx: number) => (
                                                             <tr key={agent.agent_id} className={`border-b last:border-b-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                                                                 <td className="px-4 py-2 font-medium text-gray-800">
                                                                     {agent.agent_name}

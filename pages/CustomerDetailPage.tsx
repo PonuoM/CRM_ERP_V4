@@ -39,6 +39,7 @@ import {
   Loader2,
   History,
 } from "lucide-react";
+import { formatFullThaiAddress } from "../utils/addressFormatter";
 import CustomerTagHistoryModal from "../components/Customer/CustomerTagHistoryModal";
 import { isSystemCheck } from "@/utils/isSystemCheck";
 import { listRoles, Role } from "@/services/roleApi";
@@ -837,8 +838,14 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   };
 
   const formatAddress = (address: Customer["address"]) => {
-    if (!address || !address.street) return "-";
-    return `${address.street}, ต.${address.subdistrict}, อ.${address.district}, จ.${address.province} ${address.postalCode}`;
+    if (!address) return "-";
+    return formatFullThaiAddress(
+      address.street,
+      address.subdistrict,
+      address.district,
+      address.province,
+      address.postalCode
+    );
   };
 
 

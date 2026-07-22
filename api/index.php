@@ -2,6 +2,37 @@
 require_once __DIR__ . '/core/bootstrap.php';
 try {
     switch ($resource) {
+
+        case 'distribution_v2':
+            $distAction = $_GET['action'] ?? $action;
+            require_once __DIR__ . '/Controllers/DistributionController.php';
+            if ($distAction === 'distribute') DistributionController::handleDistribute($pdo);
+            else if ($distAction === 'get_assign_checks') DistributionController::handleGetAssignChecks($pdo);
+            else if ($distAction === 'get_sessions') DistributionController::handleGetSessions($pdo);
+            else if ($distAction === 'get_session_tags') DistributionController::handleGetSessionTags($pdo);
+            else if ($distAction === 'update_session_tag') DistributionController::handleUpdateSessionTag($pdo);
+            else if ($distAction === 'get_basket_options') DistributionController::handleGetBasketOptions($pdo);
+            else if ($distAction === 'undo_distribution') DistributionController::handleUndoDistribution($pdo);
+            else if ($distAction === 'cleanup_details') DistributionController::handleCleanupDistributionDetails($pdo);
+            else if ($distAction === 'get_session_details') DistributionController::handleGetSessionDetails($pdo);
+            else {
+                http_response_code(400);
+                echo json_encode(['ok' => false, 'error' => 'INVALID_ACTION', 'message' => "Action '$distAction' is not valid for distribution_v2"]);
+            }
+            break;
+            
+        case 'distribution_export':
+            $distAction = $_GET['action'] ?? $action;
+            require_once __DIR__ . '/Controllers/DistributionExportController.php';
+            if ($distAction === 'batch_export') DistributionExportController::handleBatchExport($pdo);
+            else if ($distAction === 'summary_export') DistributionExportController::summary_export($pdo);
+            else if ($distAction === 'get_cron_logs') DistributionExportController::handleGetCronLogs($pdo);
+            else {
+                http_response_code(400);
+                echo json_encode(['ok' => false, 'error' => 'INVALID_ACTION', 'message' => "Action '$distAction' is not valid for distribution_export"]);
+            }
+            break;
+
         case 'distribution_movement':
             require_once __DIR__ . '/Controllers/DistributionReportController.php';
             if ($id === 'stats') {
@@ -12,6 +43,8 @@ try {
                 DistributionReportController::get_monthly_summary($pdo);
             } else if ($id === 'time_travel') {
                 DistributionReportController::get_time_travel_snapshot($pdo);
+            } else if ($id === 'export_time_travel_call_stats') {
+                DistributionReportController::export_time_travel_call_stats($pdo);
             }
             break;
         case 'system_updates':
@@ -112,6 +145,35 @@ try {
                         $orderStartTime, $orderEndTime,
                         $actionStartDate, $actionEndDate,
                         $userId, $companyId, $statusType, $resolutionStatus,
+                        $audioStatus, $reasonKeyword, $searchKeyword
+                    );
+                    json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
+                } catch (Exception $e) {
+                    json_response(['ok' => false, 'message' => $e->getMessage()], 400);
+                }
+            } elseif (method() === 'GET' && $id === 'export_user_summary') {
+                $orderStartDate = $_GET['order_start_date'] ?? '';
+                $orderEndDate = $_GET['order_end_date'] ?? '';
+                $orderStartTime = $_GET['order_start_time'] ?? '';
+                $orderEndTime = $_GET['order_end_time'] ?? '';
+                $actionStartDate = $_GET['action_start_date'] ?? '';
+                $actionEndDate = $_GET['action_end_date'] ?? '';
+                $userId = !empty($_GET['user_id']) ? $_GET['user_id'] : null;
+                $companyId = !empty($_GET['company_id']) ? (int)$_GET['company_id'] : null;
+                if (!$companyId) {
+                    $authUser = get_authenticated_user($pdo);
+                    $companyId = $authUser['company_id'] ?? 1;
+                }
+                $resolutionStatus = $_GET['resolution_status'] ?? 'All';
+                $audioStatus = $_GET['audio_status'] ?? 'All';
+                $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
+                $searchKeyword = trim($_GET['search_keyword'] ?? '');
+                try {
+                    $data = $svc->getUserSummaryData(
+                        $orderStartDate, $orderEndDate,
+                        $orderStartTime, $orderEndTime,
+                        $actionStartDate, $actionEndDate,
+                        $userId, $companyId, $resolutionStatus,
                         $audioStatus, $reasonKeyword, $searchKeyword
                     );
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);

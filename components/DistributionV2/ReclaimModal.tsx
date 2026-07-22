@@ -1,4 +1,5 @@
 import React from 'react';
+import SessionTagSelect from './SessionTagSelect';
 import { Loader2 } from 'lucide-react';
 
 interface ReclaimModalProps {
@@ -31,9 +32,9 @@ interface ReclaimModalProps {
     handleExecuteBulkAction: () => void;
     reclaiming: boolean;
     transferring: boolean;
-    sessionTag: string;
-    setSessionTag: (val: string) => void;
-    sessionTagsList: string[];
+    sessionTag: number | '';
+    setSessionTag: (val: number | '') => void;
+    sessionTagsList: any[];
 }
 
 const ReclaimModal: React.FC<ReclaimModalProps> = ({
@@ -331,19 +332,12 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                         {/* Session Tag */}
                         <div className="mt-4 mb-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                             <label className="block text-sm font-semibold text-gray-700 mb-2">ป้ายกำกับเซสชั่น (Session Tag) (ไม่บังคับ)</label>
-                            <input 
-                                type="text" 
-                                list="reclaimSessionTags"
-                                className="w-full border-gray-300 rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 bg-white" 
-                                placeholder="เช่น แจกรายชื่อต้นเดือน, ลูกค้าเก่าปี 2024..."
+                            <SessionTagSelect
                                 value={sessionTag}
-                                onChange={(e) => setSessionTag(e.target.value)}
+                                onChange={setSessionTag}
+                                options={sessionTagsList}
                             />
-                            <datalist id="reclaimSessionTags">
-                                {sessionTagsList.map(tag => (
-                                    <option key={tag} value={tag} />
-                                ))}
-                            </datalist>
+                            
                         </div>
 
                         {/* Execute Row */}

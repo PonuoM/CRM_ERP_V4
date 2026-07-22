@@ -188,6 +188,9 @@ function get_authenticated_user(PDO $pdo): ?array
  * Resolve one effective permission for a user: role_permissions overlaid with user_permission_overrides.
  * Same resolution order as GET /api/user_permissions/{id}/effective — keep the two in sync.
  *
+ * ⚠️ KEEP IDENTICAL to the copy in the project-root config.php. host-build.ts deploys root config.php
+ * OVER this file on production, so any helper added here must be added there too or it is undefined live.
+ *
  * @param string $action 'view' (may see it) or 'use' (may act on it)
  */
 function user_has_permission(PDO $pdo, int $userId, string $key, string $action = 'use'): bool

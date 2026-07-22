@@ -1,5 +1,26 @@
 <?php
 class OrderExportService {
+
+    private static function formatThaiAddressPart(string $partName, string $value, string $provinceContext): string {
+        $isBkk = (mb_strpos($provinceContext, 'กรุงเทพ') !== false || mb_strpos($provinceContext, 'กทม') !== false);
+        $cleanValue = preg_replace('/^(ต\.|ตำบล|แขวง|อ\.|อำเภอ|เขต|จ\.|จังหวัด)\s*/iu', '', trim($value));
+        
+        if ($cleanValue === '' || $cleanValue === '-') return '-';
+
+        $prefix = '';
+        if ($partName === 'subdistrict') {
+            $prefix = $isBkk ? 'แขวง' : 'ตำบล';
+        } elseif ($partName === 'district') {
+            $prefix = $isBkk ? 'เขต' : 'อำเภอ';
+        } elseif ($partName === 'province') {
+            $prefix = 'จังหวัด';
+            if (in_array($cleanValue, ['กรุงเทพ', 'กรุงเทพมหานคร', 'กทม', 'กทม.'])) {
+                return 'กรุงเทพมหานคร';
+            }
+        }
+        return $prefix . $cleanValue;
+    }
+
     public static function getRegionMap(): array {
         return [
             'กรุงเทพมหานคร' => 'ภาคกลาง', 'นนทบุรี' => 'ภาคกลาง', 'ปทุมธานี' => 'ภาคกลาง',
@@ -257,9 +278,9 @@ class OrderExportService {
             $row['page_name'] ?? '-',
             $row['payment_method'] ?? '-',
             $row['street'] ?? '-',
-            $row['subdistrict'] ?? '-',
-            $row['district'] ?? '-',
-            $province ?: '-',
+            self::formatThaiAddressPart('subdistrict', $row['subdistrict'] ?? '', $province),
+            self::formatThaiAddressPart('district', $row['district'] ?? '', $province),
+            self::formatThaiAddressPart('province', $province, $province),
             $row['postal_code'] ?? '-',
             $region,
             $productCode,

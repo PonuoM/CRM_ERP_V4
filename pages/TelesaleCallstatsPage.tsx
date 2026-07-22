@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Inbox, PhoneCall, CalendarCheck, CalendarDays, BarChart4, Loader2, Activity, Clock, Calendar } from 'lucide-react';
+import { Inbox, PhoneCall, CalendarCheck, CalendarDays, BarChart4, Loader2, Activity, Clock, Calendar, Download } from 'lucide-react';
 import resolveApiBasePath from '@/utils/apiBasePath';
 import DateRangePicker, { DateRange } from '@/components/DateRangePicker';
 
@@ -32,6 +32,7 @@ const TelesaleCallstatsPage: React.FC = () => {
     const [baskets, setBaskets] = useState<BasketDef[]>([]);
     const [agents, setAgents] = useState<AgentData[]>([]);
     const [selectedAgentId, setSelectedAgentId] = useState<number | 'all'>('all');
+    const [isExporting, setIsExporting] = useState(false);
 
     const filteredAgents = useMemo(() => {
         if (selectedAgentId === 'all') return agents;
@@ -47,6 +48,37 @@ const TelesaleCallstatsPage: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [drilldownCounts, setDrilldownCounts] = useState({ total_all: 0, total_called: 0, total_appt: 0 });
+
+
+    const handleExport = async () => {
+        setIsExporting(true);
+        try {
+            const token = localStorage.getItem("authToken");
+            let url = `${apiBase}/Monitor/telesale_callstats.php?export=true&filter=${filter}&view_mode=${viewMode}&agent_id=${selectedAgentId}`;
+            if (filter === 'custom' && customDateRange.start && customDateRange.end) {
+                url += `&start_date=${encodeURIComponent(customDateRange.start)}&end_date=${encodeURIComponent(customDateRange.end)}`;
+            }
+            
+            const res = await fetch(url, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            if (!res.ok) throw new Error("Export failed");
+            
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `telesale_callstats_${viewMode}_${new Date().getTime()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error("Failed to export data", error);
+            alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล");
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     useEffect(() => {
         if (filter === 'custom') {
@@ -155,6 +187,15 @@ const TelesaleCallstatsPage: React.FC = () => {
 
                     <div className="flex flex-col gap-3 items-end">
                         <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
+                            <button
+                                onClick={handleExport}
+                                disabled={isExporting || loading || filteredAgents.length === 0}
+                                className="px-4 py-1.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 bg-white shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isExporting ? <Loader2 className="w-4 h-4 animate-spin text-slate-500" /> : <Download className="w-4 h-4 text-slate-500" />}
+                                Export CSV
+                            </button>
+
                             {/* Agent Selector */}
                             <select
                                 value={selectedAgentId}

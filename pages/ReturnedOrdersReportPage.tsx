@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Search, Filter, Headphones, ChevronDown, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
+import { Calendar, Search, Filter, Headphones, ChevronDown, CheckCircle2, XCircle, RotateCcw, Copy, ArrowUp, ArrowDown, ArrowUpDown, Download } from 'lucide-react';
 import UniversalDateRangePicker from '@/components/UniversalDateRangePicker';
 import useTeamEmployeeFilter from '../hooks/useTeamEmployeeFilter';
 import { useToast } from '@/components/Toast';
 import Modal from '@/components/Modal';
+import ExportTypeModal from '@/components/ExportTypeModal';
+import { downloadDataFile } from '@/utils/exportUtils';
 import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
 import OrderDetailsModal from '@/components/ReturnedOrdersReport/OrderDetailsModal';
@@ -15,13 +17,22 @@ interface AudioLink {
   notes?: string;
 }
 
-interface OrderData {
+export interface OrderItem {
+  product_name: string;
+  quantity: number;
+  is_freebie: number;
+}
+
+export interface OrderData {
   order_id: string;
   order_date: string;
   customer_id: number;
   customer_name: string;
   customer_phone: string;
+  customer_address?: string;
+  shipped_date?: string;
   total_amount: number;
+  returned_amount?: number;
   payment_method: string;
   order_status: string;
   cancel_type: string;
@@ -32,6 +43,7 @@ interface OrderData {
   returned_at: string;
   creator_name: string;
   audio_links: AudioLink[];
+  items?: OrderItem[];
 }
 
 interface UserData {
@@ -54,9 +66,14 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   
   // State
   const [activeTab, setActiveTab] = useState<'Returned' | 'Cancelled'>('Returned');
-  const [orderDateRange, setOrderDateRange] = useState({
-    start: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
-    end: format(new Date(), 'yyyy-MM-dd')
+  const [orderDateRange, setOrderDateRange] = useState(() => {
+    const now = new Date();
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    return {
+      start: format(lastMonth, 'yyyy-MM-dd'),
+      end: format(endOfLastMonth, 'yyyy-MM-dd')
+    };
   });
   const [orderStartTime, setOrderStartTime] = useState('');
   const [orderEndTime, setOrderEndTime] = useState('');
@@ -67,6 +84,153 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   });
   const [data, setData] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof OrderData, direction: 'asc' | 'desc' } | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleSort = (key: keyof OrderData) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedData = useMemo(() => {
+    let sortableItems = [...data];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        let aValue = a[sortConfig.key] ?? '';
+        let bValue = b[sortConfig.key] ?? '';
+        
+        if (sortConfig.key === 'total_amount' || sortConfig.key === 'returned_amount') {
+           aValue = parseFloat(aValue as string || '0');
+           bValue = parseFloat(bValue as string || '0');
+        }
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [data, sortConfig]);
+
+  const executeExport = (type: 'csv' | 'xlsx') => {
+    if (sortedData.length === 0) return;
+    setIsExporting(true);
+
+    try {
+      const exportData = sortedData.map(order => {
+        let audioString = '-';
+        if (order.audio_links && order.audio_links.length > 0) {
+          audioString = order.audio_links.map((a, idx) => `${idx + 1}. ${a.url}`).join('\n');
+        }
+
+        let itemsString = '-';
+        if (order.items && order.items.length > 0) {
+          itemsString = order.items.map((i, idx) => `${idx + 1}. ${i.product_name} x${i.quantity}${i.is_freebie ? ' (แถม)' : ''}`).join('\n');
+        }
+
+        return {
+          'รหัสออเดอร์': order.order_id,
+          'วันที่สั่งซื้อ': order.order_date,
+          'วันที่ตีกลับ/ยกเลิก': order.returned_at || order.cancelled_at || '-',
+          'พนักงานขาย': order.creator_name,
+          'ลูกค้า': order.customer_name,
+          'เบอร์โทร': order.customer_phone,
+          'ที่อยู่': order.customer_address || '-',
+          'สินค้า': itemsString,
+          'ยอดทั้งออเดอร์': parseFloat(order.total_amount as any || 0),
+          'ยอดตีกลับ': parseFloat(order.returned_amount as any || 0),
+          'ช่องทางชำระเงิน': order.payment_method,
+          'สถานะ': order.order_status,
+          'ประเภทการยกเลิก/ตีกลับ': order.cancel_type || '-',
+          'หมายเหตุเพิ่มเติม': order.cancel_notes || '-',
+          'สรุปออเดอร์ (แอดมิน)': order.admin_resolution_notes || '-',
+          'ลิงก์ไฟล์เสียง': audioString
+        };
+      });
+
+      const filename = `returned_orders_${activeTab}`;
+      downloadDataFile(exportData, filename, type);
+    } catch (e) {
+      console.error(e);
+      toast.error('ข้อผิดพลาด', 'ไม่สามารถส่งออกไฟล์ได้');
+    } finally {
+      setIsExporting(false);
+      setIsExportModalOpen(false);
+    }
+  };
+
+  const executeExportUserSummary = async (type: 'csv' | 'xlsx' = 'csv') => {
+    setIsExporting(true);
+    try {
+      let query = `export_user_summary?resolution_status=${resolutionFilter}`;
+      if (orderDateRange.start && orderDateRange.end) {
+        query += `&order_start_date=${orderDateRange.start}&order_end_date=${orderDateRange.end}`;
+      }
+      if (orderStartTime && orderEndTime) {
+        query += `&order_start_time=${orderStartTime}&order_end_time=${orderEndTime}`;
+      }
+      if (actionDateRange.start && actionDateRange.end) {
+        query += `&action_start_date=${actionDateRange.start}&action_end_date=${actionDateRange.end}`;
+      }
+      if (selectedUsers.length > 0) {
+        query += `&user_id=${selectedUsers.join(',')}`;
+      }
+      if (audioStatus !== 'All') {
+        query += `&audio_status=${audioStatus}`;
+      }
+      if (reasonKeyword) {
+        query += `&reason_keyword=${encodeURIComponent(reasonKeyword)}`;
+      }
+      if (searchKeyword) {
+        query += `&search_keyword=${encodeURIComponent(searchKeyword)}`;
+      }
+
+      const json = await apiFetch(query);
+      if (json && json.ok) {
+        const summaryData = json.data;
+        if (summaryData.length === 0) {
+           toast.error('ไม่พบข้อมูล', 'ไม่มีข้อมูลสรุปสำหรับช่วงเวลานี้');
+           return;
+        }
+
+        const exportData = summaryData.map((row: any) => ({
+          'ชื่อพนักงาน': row.creator_name || '-',
+          'จำนวนตีกลับ': parseInt(row.returned_count || '0'),
+          'จำนวนยกเลิก': parseInt(row.cancelled_count || '0'),
+          'ยอดตีกลับ': parseFloat(row.returned_amount || '0'),
+          'ยอดยกเลิก': parseFloat(row.cancelled_amount || '0')
+        }));
+
+        const filename = `returned_summary_by_user`;
+        downloadDataFile(exportData, filename, type);
+      } else {
+        toast.error('ข้อผิดพลาด', json?.message || 'ไม่สามารถดึงข้อมูลสรุปได้');
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast.error('ข้อผิดพลาด', e.message || 'ไม่สามารถส่งออกไฟล์ได้');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const renderSortIcon = (key: keyof OrderData) => {
+    if (!sortConfig || sortConfig.key !== key) {
+        return <ArrowUpDown className="w-3.5 h-3.5 inline ml-1 opacity-40 group-hover:opacity-100 transition-opacity" />;
+    }
+    if (sortConfig.direction === 'asc') {
+        return <ArrowUp className="w-3.5 h-3.5 inline ml-1 text-blue-600" />;
+    }
+    return <ArrowDown className="w-3.5 h-3.5 inline ml-1 text-blue-600" />;
+  };
   const [processingAudio, setProcessingAudio] = useState<string | null>(null);
 
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -148,6 +312,74 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
     }
   };
 
+  const getOrderStatusThai = (status: string) => {
+    const statusMap: Record<string, string> = {
+      'AwaitingVerification': 'รอตรวจสอบสลิป',
+      'BadDebt': 'หนี้สูญ',
+      'Cancelled': 'ยกเลิกแล้ว',
+      'Confirmed': 'ยืนยันแล้ว',
+      'Delivered': 'จัดส่งสำเร็จ',
+      'Pending': 'รอดำเนินการ',
+      'Picking': 'กำลังจัดสินค้า',
+      'PreApproved': 'รออนุมัติ',
+      'Preparing': 'กำลังเตรียมจัดส่ง',
+      'Returned': 'ตีกลับ',
+      'Shipping': 'กำลังจัดส่ง'
+    };
+    return statusMap[status] || status;
+  };
+
+  const handleCopyOrderData = (order: OrderData) => {
+    let text = `[รายละเอียดออเดอร์]\n`;
+    text += `รหัส: ${order.order_id}\n`;
+    text += `สถานะปัจจุบัน: ${getOrderStatusThai(order.order_status)}\n`;
+    text += `ยอดทั้งออเดอร์: ฿${parseFloat(order.total_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}\n`;
+    text += `ยอดตีกลับ: ฿${parseFloat(order.returned_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}\n`;
+    text += `วันที่สั่ง: ${order.order_date?.substring(0, 10) || '-'}\n`;
+    text += `วันที่ส่ง: ${order.shipped_date?.substring(0, 10) || '-'}\n`;
+    text += `ที่อยู่: ${order.customer_address || '-'}\n\n`;
+
+    if (order.items && order.items.length > 0) {
+      text += `[รายการสินค้า]\n`;
+      order.items.forEach(item => {
+        text += `- ${item.product_name} (x${item.quantity}) ${item.is_freebie ? '[ของแถม]' : ''}\n`;
+      });
+      text += `\n`;
+    }
+
+    text += `[ลูกค้า]\n`;
+    text += `ชื่อ: ${order.customer_name}\n`;
+    text += `เบอร์: ${order.customer_phone}\n\n`;
+
+    text += `[เหตุผลยกเลิก/ตีกลับ]\n`;
+    text += `ประเภท: ${order.cancel_type || '-'}\n`;
+    text += `หมายเหตุ: ${order.cancel_notes || '-'}\n\n`;
+
+    if (order.admin_resolution_notes) {
+      text += `[สรุปออเดอร์]\n${order.admin_resolution_notes}\n\n`;
+    }
+
+    if (order.audio_links && order.audio_links.length > 0) {
+      text += `[ไฟล์เสียง]\n`;
+      order.audio_links.forEach((link, idx) => {
+        text += `${idx + 1}. ${link.url}\n`;
+        if (link.date) {
+          text += `   เวลาโทร: ${link.date}\n`;
+        }
+        if (link.notes) {
+          text += `   สรุป: ${link.notes}\n`;
+        }
+      });
+      text += `\n`;
+    }
+
+    navigator.clipboard.writeText(text.trim()).then(() => {
+      toast.success('สำเร็จ', 'คัดลอกข้อมูลออเดอร์แล้ว');
+    }).catch(() => {
+      toast.error('ข้อผิดพลาด', 'ไม่สามารถคัดลอกข้อมูลได้');
+    });
+  };
+
   const handleAutoMatch = async (orderId: string) => {
     try {
       setProcessingAudio(orderId);
@@ -195,11 +427,20 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   // Summary calc
   const totalOrders = data.length;
   const totalAmount = data.reduce((sum, item) => sum + parseFloat(item.total_amount as any || 0), 0);
+  const totalReturnedAmount = data.reduce((sum, item) => sum + parseFloat(item.returned_amount as any || 0), 0);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
         <header className="flex justify-between items-center p-4 bg-white border-b shadow-sm">
           <h1 className="text-2xl font-semibold">รายงานออเดอร์ตีกลับและยกเลิก</h1>
+          <button 
+            onClick={() => setIsExportModalOpen(true)}
+            disabled={data.length === 0 || loading || isExporting}
+            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Download size={16} />
+            {isExporting ? 'กำลังส่งออก...' : 'ส่งออกข้อมูล'}
+          </button>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -428,11 +669,20 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                 </div>
                 <div className="bg-white border rounded-lg p-4 flex items-center justify-between shadow-sm">
                   <div>
-                    <p className="text-sm text-gray-500 font-medium">ยอดเงินรวม</p>
-                    <p className="text-3xl font-bold text-green-600">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                    <p className="text-sm text-gray-500 font-medium">ยอดเงินรวมทั้งออเดอร์</p>
+                    <p className="text-3xl font-bold text-gray-700">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                   </div>
-                  <div className="p-3 rounded-full bg-green-100 text-green-600">
+                  <div className="p-3 rounded-full bg-gray-100 text-gray-600">
                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  </div>
+                </div>
+                <div className="bg-white border rounded-lg p-4 flex items-center justify-between shadow-sm">
+                  <div>
+                    <p className="text-sm text-gray-500 font-medium">ยอดตีกลับรวม</p>
+                    <p className="text-3xl font-bold text-red-600">฿{totalReturnedAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                  </div>
+                  <div className="p-3 rounded-full bg-red-100 text-red-600">
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>
                   </div>
                 </div>
               </div>
@@ -442,11 +692,24 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">รหัสออเดอร์</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">วันที่</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ลูกค้า</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ยอดเงิน</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">เหตุผล</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('order_id')}>
+                        รหัสออเดอร์ {renderSortIcon('order_id')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('order_date')}>
+                        วันที่ {renderSortIcon('order_date')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('customer_name')}>
+                        ลูกค้า {renderSortIcon('customer_name')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('total_amount')}>
+                        ยอดทั้งออเดอร์ {renderSortIcon('total_amount')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('returned_amount')}>
+                        ยอดตีกลับ {renderSortIcon('returned_amount')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('cancel_type')}>
+                        เหตุผล {renderSortIcon('cancel_type')}
+                      </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">สรุปออเดอร์</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ไฟล์เสียง</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
@@ -457,12 +720,12 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                       <tr>
                         <td colSpan={7} className="px-4 py-8 text-center text-gray-500">กำลังโหลดข้อมูล...</td>
                       </tr>
-                    ) : data.length === 0 ? (
+                    ) : sortedData.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="px-4 py-8 text-center text-gray-500">ไม่พบข้อมูลในช่วงเวลานี้</td>
                       </tr>
                     ) : (
-                      data.map((order, idx) => {
+                      sortedData.map((order, idx) => {
                         const isCompleted = order.admin_resolution_completed === 1;
                         return (
                         <tr key={`${order.order_id}-${idx}`} className={`hover:bg-gray-50 transition-colors ${isCompleted ? 'bg-gray-100 opacity-60' : 'bg-white'}`}>
@@ -486,6 +749,9 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
                             ฿{parseFloat(order.total_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
                             <div className="text-xs font-normal text-gray-500 mt-1">{order.payment_method}</div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-red-600 font-medium">
+                            ฿{parseFloat(order.returned_amount as any || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
                           </td>
                           <td className="px-4 py-3 text-sm">
                             <div className="font-medium text-gray-800">{order.cancel_type || '-'}</div>
@@ -564,6 +830,15 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                                 จัดการรายละเอียด
                               </button>
                               
+                              <button 
+                                onClick={() => handleCopyOrderData(order)}
+                                className="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1 rounded w-full text-xs flex items-center justify-center gap-1 border border-blue-100 transition-colors"
+                                title="คัดลอกข้อมูลทั้งหมดของออเดอร์นี้"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                คัดลอกข้อมูล
+                              </button>
+                              
                               <button
                                 onClick={() => handleToggleCompleted(order.order_id, order.admin_resolution_completed)}
                                 className={`mt-2 flex items-center justify-center gap-1 w-full px-3 py-1.5 rounded text-xs font-medium transition-colors border ${
@@ -592,6 +867,13 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
             </div>
           </div>
         </div>
+
+        <ExportTypeModal
+          isOpen={isExportModalOpen}
+          onClose={() => !isExporting && setIsExportModalOpen(false)}
+          onConfirm={executeExport}
+          isExporting={isExporting}
+        />
 
         <OrderDetailsModal
           isOpen={isDetailsModalOpen}

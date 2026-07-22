@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '@/components/Modal';
 
+import { OrderData } from '../../pages/ReturnedOrdersReportPage';
+
 export interface AudioLink {
   id: number;
   url: string;
@@ -8,17 +10,11 @@ export interface AudioLink {
   notes: string;
 }
 
-interface OrderDataProps {
-  order_id: string;
-  admin_resolution_notes?: string;
-  audio_links: AudioLink[];
-}
-
 interface OrderDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: any) => Promise<void>;
-  orderData: OrderDataProps | null;
+  orderData: OrderData | null;
 }
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ isOpen, onClose, onSubmit, orderData }) => {
@@ -29,13 +25,16 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ isOpen, onClose, 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
+
   useEffect(() => {
     if (isOpen && orderData) {
       setSummary(orderData.admin_resolution_notes || '');
-      setLinks(orderData.audio_links || []);
+      setLinks((orderData.audio_links as any) || []);
       setNewLinks([]);
       setDeletedIds([]);
       setIsDirty(false);
+      setShowConfirmClose(false);
     }
   }, [isOpen, orderData]);
 
@@ -45,11 +44,20 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ isOpen, onClose, 
 
   const handleClose = () => {
     if (isDirty) {
-      if (!window.confirm('คุณมีข้อมูลที่ยังไม่ได้บันทึก ต้องการปิดหน้าต่างนี้ใช่หรือไม่?')) {
-        return;
-      }
+      setShowConfirmClose(true);
+      return;
     }
     onClose();
+  };
+
+  const confirmForceClose = () => {
+    setShowConfirmClose(false);
+    setIsDirty(false);
+    onClose();
+  };
+
+  const cancelClose = () => {
+    setShowConfirmClose(false);
   };
 
   const handleSubmit = async () => {
@@ -102,6 +110,138 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ isOpen, onClose, 
 
   const removeNewLink = (uid: string) => {
     setNewLinks(prev => prev.filter(l => l.id !== uid));
+  };
+
+  const generateMarkdown = () => {
+    if (!orderData) return '';
+    const md = `# รายงานวิเคราะห์ไฟล์เสียง: ออเดอร์ ${orderData.customer_name || '-'}
+
+> [!WARNING]
+> **ประเด็นข้อผิดพลาดที่พบในการทำงาน / สรุปจากแอดมิน:**
+> ${summary.replace(/\n/g, '\n> ')}
+
+## ข้อมูลลูกค้าและออเดอร์
+- **ชื่อลูกค้า:** ${orderData.customer_name || '-'}
+- **เบอร์โทรศัพท์:** ${orderData.customer_phone || '-'}
+- **รหัสออเดอร์:** ${orderData.order_id}
+- **สถานะการตีกลับ/ยกเลิก:** ${orderData.cancel_type || '-'}
+- **สินค้า:** ${orderData.items && orderData.items.length > 0 ? orderData.items.map(i => `${i.product_name} x${i.quantity}${i.is_freebie ? ' (แถม)' : ''}`).join(', ') : '-'}
+
+---
+
+## ⏱️ หลักฐานจากไฟล์เสียง (Timeline)
+
+${[...links, ...newLinks].map((l, i) => `### ลิงก์ที่ ${i + 1}
+📞 วันที่บันทึก: ${l.date || '-'}
+🎧 ${l.url}
+* **รายละเอียด:** ${l.notes || '-'}`).join('\n\n')}
+`;
+    return md;
+  };
+
+  const exportToMD = () => {
+    const md = generateMarkdown();
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `case_summary_${orderData?.order_id}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportToPDF = () => {
+    if (!orderData) return;
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    
+    let itemsStr = '-';
+    if (orderData.items && orderData.items.length > 0) {
+      itemsStr = '<ul>' + orderData.items.map(i => `<li>${i.product_name} x${i.quantity}${i.is_freebie ? ' (แถม)' : ''}</li>`).join('') + '</ul>';
+    }
+
+    let audioStr = '';
+    const allLinks = [...links, ...newLinks];
+    if (allLinks.length > 0) {
+      audioStr = allLinks.map((l, i) => `
+        <div class="audio-link">
+          <h4>ลิงก์ที่ ${i + 1}</h4>
+          <ul>
+            <li><strong>วันที่บันทึก:</strong> ${l.date || '-'}</li>
+            <li><strong>ลิงก์:</strong> <a href="${l.url}">${l.url}</a></li>
+            <li><strong>รายละเอียด:</strong> ${l.notes || '-'}</li>
+          </ul>
+        </div>
+      `).join('');
+    } else {
+      audioStr = '<p>-</p>';
+    }
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>รายงานออเดอร์ - ${orderData.customer_name}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap');
+            body { font-family: 'Sarabun', sans-serif; padding: 20px; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; }
+            h1 { font-size: 24px; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+            h2 { font-size: 18px; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+            h4 { margin: 0 0 10px 0; font-size: 16px; }
+            .warning { background: #fff3cd; color: #856404; padding: 15px; border-left: 4px solid #ffeeba; margin-bottom: 30px; border-radius: 4px; }
+            .warning strong { display: block; margin-bottom: 5px; }
+            .section { margin-bottom: 20px; }
+            ul { margin: 0; padding-left: 20px; }
+            li { margin-bottom: 5px; }
+            .audio-link { margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 4px; border: 1px solid #eee; }
+            .audio-link ul { list-style: none; padding: 0; }
+            a { color: #0056b3; text-decoration: none; word-break: break-all; }
+            
+            @media print {
+              body { padding: 0; }
+              .warning { border: 1px solid #ffeeba; }
+              .audio-link { page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>รายงานวิเคราะห์ไฟล์เสียง: ออเดอร์ ${orderData.customer_name || '-'}</h1>
+          <div class="warning">
+             <strong>ประเด็นข้อผิดพลาดที่พบในการทำงาน / สรุปจากแอดมิน:</strong>
+             ${summary.replace(/\n/g, '<br/>') || '-'}
+          </div>
+          <div class="section">
+             <h2>ข้อมูลลูกค้าและออเดอร์</h2>
+             <ul>
+               <li><strong>ชื่อลูกค้า:</strong> ${orderData.customer_name || '-'}</li>
+               <li><strong>เบอร์โทรศัพท์:</strong> ${orderData.customer_phone || '-'}</li>
+               <li><strong>รหัสออเดอร์:</strong> ${orderData.order_id}</li>
+               <li><strong>สถานะการตีกลับ/ยกเลิก:</strong> ${orderData.cancel_type || '-'}</li>
+             </ul>
+             <h3>สินค้า</h3>
+             ${itemsStr}
+          </div>
+          
+          <div class="section">
+             <h2>หลักฐานจากไฟล์เสียง (Timeline)</h2>
+             ${audioStr}
+          </div>
+        </body>
+      </html>
+    `;
+    
+    iframe.contentDocument?.open();
+    iframe.contentDocument?.write(htmlContent);
+    iframe.contentDocument?.close();
+    
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1000);
+    }, 500);
   };
 
   if (!isOpen || !orderData) return null;
@@ -235,31 +375,60 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ isOpen, onClose, 
       </div>
       
       {/* Footer */}
-      <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 rounded-b-lg">
-        <button
-          onClick={handleClose}
-          disabled={isSubmitting}
-          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-        >
-          ยกเลิก
-        </button>
-        <button
-          onClick={handleSubmit}
-          disabled={isSubmitting}
-          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium flex items-center gap-2"
-        >
-          {isSubmitting ? (
-            <>
-              <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              กำลังบันทึก...
-            </>
+      <div className="p-4 border-t bg-gray-50 flex justify-between items-center rounded-b-lg">
+        <div className="flex gap-2">
+          <button
+            onClick={exportToMD}
+            className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+            MD
+          </button>
+          <button
+            onClick={exportToPDF}
+            className="px-3 py-1.5 text-sm bg-red-100 text-red-600 rounded hover:bg-red-200 font-medium flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+            PDF
+          </button>
+        </div>
+        
+        <div className="flex gap-2">
+          {showConfirmClose ? (
+            <div className="flex items-center gap-2 bg-yellow-50 px-3 py-1.5 rounded-md border border-yellow-200">
+              <span className="text-sm text-yellow-700 font-medium">ยังไม่ได้บันทึก ยืนยันปิด?</span>
+              <button onClick={cancelClose} className="px-2 py-1 text-xs bg-white border border-gray-300 rounded text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+              <button onClick={confirmForceClose} className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600">ปิด</button>
+            </div>
           ) : (
-            'บันทึกข้อมูล'
+            <>
+              <button
+                onClick={handleClose}
+                disabled={isSubmitting}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+              >
+                ปิด
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium flex items-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    กำลังบันทึก...
+                  </>
+                ) : (
+                  'บันทึกข้อมูล'
+                )}
+              </button>
+            </>
           )}
-        </button>
+        </div>
       </div>
     </Modal>
   );
