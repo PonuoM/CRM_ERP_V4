@@ -25,6 +25,7 @@ export interface AgentWithBaskets extends User {
     roleId?: number;
     callMinutes?: number;
     supervisorId?: number;
+    attendanceValue?: number;
 }
 
 export interface ResetCandidate {
