@@ -196,8 +196,20 @@ function handle_customers(PDO $pdo, ?string $id): void
                     foreach ($agentMinutes as $id => $seconds) {
                         $agentMinutes[$id] = round($seconds / 60, 1);
                     }
+                    // Get Attendance Data
+                    $attSql = "SELECT user_id, SUM(attendance_value) as total_attendance FROM user_daily_attendance WHERE work_date >= ? AND work_date <= ? AND user_id IN ($placeholders) GROUP BY user_id";
+                    $attStmt = $pdo->prepare($attSql);
+                    $attStmt->execute(array_merge([$startDateStr, $endDateStr], $agentIds));
+                    $attRows = $attStmt->fetchAll(PDO::FETCH_ASSOC);
+                    $attendanceData = [];
+                    foreach ($agentIds as $aId) {
+                        $attendanceData[$aId] = 0;
+                    }
+                    foreach ($attRows as $row) {
+                        $attendanceData[(string)$row['user_id']] = (float)$row['total_attendance'];
+                    }
 
-                    json_response(['agents' => $agentMinutes]);
+                    json_response(['agents' => $agentMinutes, 'attendance' => $attendanceData]);
                 } elseif (isset($_GET['action']) && $_GET['action'] === 'get_call_minutes') {
                     // Get total answered call minutes for specified agents within a date range
                     $companyId = $_GET['companyId'] ?? null;
@@ -242,8 +254,20 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $agentsData[$aId] = (float) $row['total_minutes'];
                         }
                     }
+                    // Get Attendance Data
+                    $attSql = "SELECT user_id, SUM(attendance_value) as total_attendance FROM user_daily_attendance WHERE work_date >= ? AND work_date <= ? AND user_id IN ($placeholders) GROUP BY user_id";
+                    $attStmt = $pdo->prepare($attSql);
+                    $attStmt->execute($params);
+                    $attRows = $attStmt->fetchAll(PDO::FETCH_ASSOC);
+                    $attendanceData = [];
+                    foreach ($agentIds as $aId) {
+                        $attendanceData[$aId] = 0;
+                    }
+                    foreach ($attRows as $row) {
+                        $attendanceData[(string)$row['user_id']] = (float)$row['total_attendance'];
+                    }
 
-                    json_response(['agents' => $agentsData]);
+                    json_response(['agents' => $agentsData, 'attendance' => $attendanceData]);
 
                 } elseif (isset($_GET['action']) && $_GET['action'] === 'count_by_baskets') {
                     // Count customers by basket for specific agent(s)
