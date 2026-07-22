@@ -48,7 +48,7 @@ const UniversalDateRangePicker: React.FC<UniversalDateRangePickerProps> = ({
   useEffect(() => {
     setStart(value.start || "");
     setEnd(value.end || "");
-  }, [value]);
+  }, [value.start, value.end]);
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
