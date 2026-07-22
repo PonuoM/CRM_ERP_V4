@@ -25,7 +25,7 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
             } else {
                 $companyId = $_GET['companyId'] ?? null;
                 $status = $_GET['status'] ?? null;
-                $sql = 'SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, u.created_at, u.updated_at, u.last_login, u.login_count, r.is_system, uda.attendance_value FROM users u LEFT JOIN roles r ON u.role = r.name LEFT JOIN user_daily_attendance uda ON u.id = uda.user_id AND uda.work_date = CURDATE()';
+                $sql = 'SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.phone, u.role, u.role_id, u.company_id, u.team_id, u.supervisor_id, u.status, u.created_at, u.updated_at, u.last_login, u.login_count, r.is_system FROM users u LEFT JOIN roles r ON u.role = r.name';
                 $params = [];
                 $conditions = [];
 

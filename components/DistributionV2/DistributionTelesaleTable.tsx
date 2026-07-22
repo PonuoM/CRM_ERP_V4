@@ -79,7 +79,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                 setAgents(prev => prev.map(agent => ({
                     ...agent,
                     callMinutes: response.agents[agent.id] || 0,
-                    attendanceValue: response.attendance && response.attendance[agent.id] !== undefined ? response.attendance[agent.id] : agent.attendanceValue
+                    attendanceValue: response.attendance && response.attendance[agent.id] !== undefined ? response.attendance[agent.id] : 0
                 })));
             } else if (response?.error) {
                 setMessage({ type: 'error', text: response.error });

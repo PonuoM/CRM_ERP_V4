@@ -357,7 +357,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     customTags: u.customTags || [],
                     basketCounts: {},
                     totalCustomers: 0,
-                    attendanceValue: parseFloat(u.attendance_value) || 0,
                 })) as AgentWithBaskets[];
 
             if (telesales.length > 0) {
