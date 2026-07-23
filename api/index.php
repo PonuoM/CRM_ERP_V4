@@ -711,6 +711,19 @@ try {
             
             json_response(array_merge(['ok' => true], $result));
             break;
+        case 'jst_warehouses':
+            require_once __DIR__ . '/Services/JstErpService.php';
+            $user = get_authenticated_user($pdo);
+            if (!$user) {
+                json_response(['error' => 'UNAUTHORIZED'], 401);
+            }
+            $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
+            $companyId = isset($_GET['companyId']) && $isSuperAdmin ? (int)$_GET['companyId'] : (int)$user['company_id'];
+            
+            $service = new JstErpService($pdo, $companyId);
+            $warehouses = $service->getWarehouses();
+            json_response(['ok' => true, 'data' => $warehouses]);
+            break;
         case 'jst_sync_info':
             $user = get_authenticated_user($pdo);
             if (!$user) {

@@ -36,8 +36,11 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
     const [customerName, setCustomerName] = useState("");
     const [phone, setPhone] = useState("");
 
-    // Amount Range
-    const [amountRange, setAmountRange] = useState<{ min: string; max: string }>({ min: "", max: "" });
+    // Amount Range - Initialize directly from initialParams (Best Practice)
+    const [amountRange, setAmountRange] = useState<{ min: string; max: string }>(() => ({
+        min: initialParams?.amount?.toString() || "",
+        max: initialParams?.amount?.toString() || ""
+    }));
 
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
@@ -48,41 +51,50 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
     const [bankAccountId, setBankAccountId] = useState("all");
     const [ignorePaymentStatus, setIgnorePaymentStatus] = useState(false);
 
+    // AbortController for network cancellation (Best Practice)
+    const abortControllerRef = React.useRef<AbortController | null>(null);
+
+    // Fetch initial data on mount
     useEffect(() => {
-        if (isOpen && initialParams) {
-            if (initialParams.amount) {
-                // Pre-fill exact amount range
-                setAmountRange({
-                    min: initialParams.amount.toString(),
-                    max: initialParams.amount.toString()
-                });
-            }
+        if (!isOpen) return;
 
-            // Fetch Bank Accounts
-            const fetchBanks = async () => {
-                try {
-                    const apiBase = resolveApiBasePath();
-                    const token = localStorage.getItem("authToken");
-                    const headers: any = {};
-                    if (token) headers["Authorization"] = `Bearer ${token}`;
-                    const res = await fetch(`${apiBase}/Bank_DB/get_bank_accounts.php?company_id=${initialParams.companyId}`, { headers });
-                    const data = await res.json();
-                    if (data.success) {
-                        setBankAccounts(data.data);
-                    }
-                } catch (err) {
-                    console.error("Failed to fetch banks", err);
+        // Fetch Bank Accounts
+        const fetchBanks = async () => {
+            try {
+                const apiBase = resolveApiBasePath();
+                const token = localStorage.getItem("authToken");
+                const headers: any = {};
+                if (token) headers["Authorization"] = `Bearer ${token}`;
+                const res = await fetch(`${apiBase}/Bank_DB/get_bank_accounts.php?company_id=${initialParams?.companyId}`, { headers });
+                const data = await res.json();
+                if (data.success) {
+                    setBankAccounts(data.data);
                 }
-            };
-            fetchBanks();
+            } catch (err) {
+                console.error("Failed to fetch banks", err);
+            }
+        };
+        
+        fetchBanks();
+        handleSearch(1);
 
-            // Trigger search immediately
-            handleSearch(1);
-        }
-    }, [isOpen, initialParams]);
+        // Cleanup function to cancel any pending requests when modal closes
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]); // Intentionally run only on mount/open
 
     const handleSearch = async (page: number = 1) => {
         if (!initialParams?.companyId) return;
+
+        // Cancel previous request if still pending
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
 
         setLoading(true);
         try {
@@ -154,7 +166,10 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
 
             const res = await fetch(
                 `${apiBase}/Slip_DB/list_company_slips.php?${params.toString()}`,
-                { headers }
+                { 
+                    headers,
+                    signal: abortControllerRef.current.signal
+                }
             );
             const data = await res.json();
 
@@ -175,9 +190,13 @@ const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
                 setOrders([]);
                 setTotalCount(0);
             }
-        } catch (error) {
+            setLoading(false);
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                // Request was cancelled intentionally, do not log or change state
+                return;
+            }
             console.error("Search failed", error);
-        } finally {
             setLoading(false);
         }
     };
