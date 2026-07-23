@@ -3039,6 +3039,11 @@ export async function fetchJstInventory(params: JstInventoryParams = {}): Promis
   return apiFetch(`jst_inventory?${queryParams.toString()}`);
 }
 
+export async function fetchJstWarehouses(companyId?: number): Promise<any> {
+  const queryParams = new URLSearchParams();
+  if (companyId) queryParams.append('companyId', companyId.toString());
+  return apiFetch(`jst_warehouses?${queryParams.toString()}`);
+}
 export async function getJstSyncInfo() {
   return apiFetch("jst_sync_info");
 }

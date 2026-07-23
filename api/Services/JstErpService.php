@@ -290,6 +290,13 @@ class JstErpService {
         }
     }
 
+    public function getWarehouses() {
+        $sql = "SELECT DISTINCT warehouse_name FROM jst_inventory WHERE company_id = ? AND warehouse_name IS NOT NULL ORDER BY warehouse_name";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([$this->companyId]);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
     public function getInventoryPaginated($params) {
         $page = isset($params['page']) ? max(1, (int)$params['page']) : 1;
         $limit = isset($params['limit']) ? (int)$params['limit'] : 50;
@@ -311,9 +318,13 @@ class JstErpService {
             $bindings[] = $searchLike;
         }
 
-        if ($warehouse !== 'all' && !$grouped) {
-            $where[] = "warehouse_name = ?";
-            $bindings[] = $warehouse;
+        if ($warehouse !== 'all' && $warehouse !== '' && !$grouped) {
+            $whArray = array_map('trim', explode(',', $warehouse));
+            $whPlaceholders = implode(',', array_fill(0, count($whArray), '?'));
+            $where[] = "warehouse_name IN ($whPlaceholders)";
+            foreach ($whArray as $wh) {
+                $bindings[] = $wh;
+            }
         }
 
         if ($lowStock) {
@@ -364,9 +375,13 @@ class JstErpService {
                 
                 $whBindings = array_merge([$this->companyId], $skuIds);
                 
-                if ($warehouse !== 'all') {
-                    $whSql .= " AND warehouse_name = ?";
-                    $whBindings[] = $warehouse;
+                if ($warehouse !== 'all' && $warehouse !== '') {
+                    $whArray = array_map('trim', explode(',', $warehouse));
+                    $whPlaceholders = implode(',', array_fill(0, count($whArray), '?'));
+                    $whSql .= " AND warehouse_name IN ($whPlaceholders)";
+                    foreach ($whArray as $wh) {
+                        $whBindings[] = $wh;
+                    }
                 }
                 
                 $whStmt = $this->pdo->prepare($whSql);
