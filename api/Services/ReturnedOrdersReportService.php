@@ -119,13 +119,17 @@ class ReturnedOrdersReportService
         }
 
         if (!empty($reasonKeyword)) {
-            $where .= " AND (ct.label LIKE :reason_keyword OR oc.notes LIKE :reason_keyword)";
-            $params[':reason_keyword'] = '%' . $reasonKeyword . '%';
+            $where .= " AND (ct.label LIKE :reason_keyword_label OR oc.notes LIKE :reason_keyword_notes)";
+            $params[':reason_keyword_label'] = '%' . $reasonKeyword . '%';
+            $params[':reason_keyword_notes'] = '%' . $reasonKeyword . '%';
         }
 
         if (!empty($searchKeyword)) {
-            $where .= " AND (c.first_name LIKE :search_keyword OR c.last_name LIKE :search_keyword OR c.phone LIKE :search_keyword OR o.id = :exact_keyword)";
-            $params[':search_keyword'] = '%' . $searchKeyword . '%';
+            $where .= " AND (c.first_name LIKE :search_fname OR c.last_name LIKE :search_lname OR c.phone LIKE :search_phone OR o.id = :exact_keyword)";
+            $searchPattern = '%' . $searchKeyword . '%';
+            $params[':search_fname'] = $searchPattern;
+            $params[':search_lname'] = $searchPattern;
+            $params[':search_phone'] = $searchPattern;
             $params[':exact_keyword'] = $searchKeyword;
         }
 
@@ -300,13 +304,17 @@ class ReturnedOrdersReportService
         }
 
         if (!empty($reasonKeyword)) {
-            $where .= " AND (ct.label LIKE :reason_keyword OR oc.notes LIKE :reason_keyword)";
-            $params[':reason_keyword'] = '%' . $reasonKeyword . '%';
+            $where .= " AND (ct.label LIKE :reason_keyword_label OR oc.notes LIKE :reason_keyword_notes)";
+            $params[':reason_keyword_label'] = '%' . $reasonKeyword . '%';
+            $params[':reason_keyword_notes'] = '%' . $reasonKeyword . '%';
         }
 
         if (!empty($searchKeyword)) {
-            $where .= " AND (c.first_name LIKE :search_keyword OR c.last_name LIKE :search_keyword OR c.phone LIKE :search_keyword OR o.id = :exact_keyword)";
-            $params[':search_keyword'] = '%' . $searchKeyword . '%';
+            $where .= " AND (c.first_name LIKE :search_fname OR c.last_name LIKE :search_lname OR c.phone LIKE :search_phone OR o.id = :exact_keyword)";
+            $searchPattern = '%' . $searchKeyword . '%';
+            $params[':search_fname'] = $searchPattern;
+            $params[':search_lname'] = $searchPattern;
+            $params[':search_phone'] = $searchPattern;
             $params[':exact_keyword'] = $searchKeyword;
         }
 
