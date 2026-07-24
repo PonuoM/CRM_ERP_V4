@@ -127,7 +127,7 @@ class OrderExportService {
             'ค่าจัดส่ง (ต่อบิล)', 'ส่วนลดท้ายบิล', 'คูปองส่วนลด', 'ยอดรวมเฉพาะสินค้า', 'ยอดรวมทั้งบิล', 'ยอดรวมรายคน',
             'หมายเลขกล่อง', 'หมายเลขติดตาม',
             'วันที่จัดส่ง Airport', 'สถานะจาก Airport',
-            'สถานะออเดอร์', 'สถานะการชำระเงิน',
+            'สถานะออเดอร์', 'หมายเหตุยกเลิก/ตีกลับ', 'สถานะการชำระเงิน',
             'สถานะสลิป', 'วันที่รับเงิน', 'ตะกร้าขาย', 'สาเหตุยอดไม่ตรง'
         ];
         
@@ -231,9 +231,14 @@ class OrderExportService {
         // สถานะออเดอร์ — enrich with box return_status for Returned orders
         $orderStatus = $row['order_status'] ?? '';
         $boxNumber = $row['box_number'] ?? 1;
+        $reasonNote = '-';
+
         if ($orderStatus === 'Returned') {
             $boxKey = $orderId . '-' . $boxNumber;
-            $returnStatus = $lookups['boxes'][$boxKey] ?? '__NONE__';
+            $boxData = $lookups['boxes'][$boxKey] ?? null;
+            $returnStatus = $boxData ? $boxData['status'] : '__NONE__';
+            $reasonNote = ($boxData && $boxData['note']) ? $boxData['note'] : '-';
+            
             $returnStatusThai = [
                 'returning' => 'กำลังตีกลับ', 'returned' => 'สภาพดี',
                 'good' => 'สภาพดี', 'damaged' => 'ชำรุด', 'lost' => 'ตีกลับสูญหาย'
@@ -245,10 +250,11 @@ class OrderExportService {
             }
             $orderStatusDisplay = "ตีกลับ (กล่อง {$boxNumber} : {$statusText})";
         } elseif ($orderStatus === 'Cancelled') {
-            $cancelReason = $lookups['cancellations'][$orderId] ?? null;
+            $cancelData = $lookups['cancellations'][$orderId] ?? null;
             $orderStatusDisplay = $statusThai[$orderStatus] ?? $orderStatus ?: '-';
-            if ($cancelReason) {
-                $orderStatusDisplay .= " ({$cancelReason})";
+            if ($cancelData) {
+                $orderStatusDisplay .= " ({$cancelData['label']})";
+                $reasonNote = $cancelData['notes'] ?: '-';
             }
         } else {
             $orderStatusDisplay = $statusThai[$orderStatus] ?? $orderStatus ?: '-';
@@ -304,6 +310,7 @@ class OrderExportService {
             $airportDeliveryDate ? date('d/m/Y', strtotime($airportDeliveryDate)) : '-',
             $airportDeliveryStatus,
             $orderStatusDisplay,
+            $reasonNote,
             $paymentComparison,
             $slipStatus,
             $paymentReceivedDate ? date('d/m/Y', strtotime($paymentReceivedDate)) : '-',
