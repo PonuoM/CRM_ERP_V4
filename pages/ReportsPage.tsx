@@ -156,8 +156,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     lost: number;
   } | null>(null);
   const [isReturnLoading, setIsReturnLoading] = useState(false);
-  // Map: "orderId-boxNumber" => return_status (e.g. 'good', 'damaged', 'lost', null)
-  const [orderBoxesMap, setOrderBoxesMap] = useState<Record<string, string | null>>({});
+  // Map: "orderId-boxNumber" => { return_status, return_note }
+  const [orderBoxesMap, setOrderBoxesMap] = useState<Record<string, { return_status: string | null; return_note: string | null }>>({});
   const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
 
   // Commission report state
@@ -327,7 +327,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             .map(o => o.id);
           if (returnedOrderIds.length > 0) {
             // Batch fetch in chunks of 100
-            const boxMap: Record<string, string | null> = {};
+            const boxMap: Record<string, { return_status: string | null; return_note: string | null }> = {};
             for (let i = 0; i < returnedOrderIds.length; i += 100) {
               const chunk = returnedOrderIds.slice(i, i + 100);
               const idsParam = chunk.join(',');
@@ -335,7 +335,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               const boxes = boxRes?.boxes || boxRes?.data || [];
               boxes.forEach((b: any) => {
                 const key = `${b.order_id}-${b.box_number}`;
-                boxMap[key] = b.return_status || null;
+                boxMap[key] = { return_status: b.return_status || null, return_note: b.return_note || null };
               });
             }
             setOrderBoxesMap(boxMap);
@@ -770,7 +770,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       users || [],
       pages || [],
       products || [],
-      orderBoxesMap as Record<string, string>
+      orderBoxesMap as Record<string, any>
     );
 
 

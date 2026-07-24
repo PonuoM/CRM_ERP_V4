@@ -110,12 +110,15 @@ function handle_orders(PDO $pdo, ?string $id): void
                                o.bank_account_id, o.transfer_date, o.proxy_creator_id, o.proxy_reason,
                                c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone, c.phone as phone,
                                c.street as customer_street, c.subdistrict as customer_subdistrict, c.district as customer_district,
-                               c.province as customer_province, c.postal_code as customer_postal_code';
+                               c.province as customer_province, c.postal_code as customer_postal_code,
+                               ct.label as cancellation_type, oc.notes as cancellation_notes';
 
                 $sql = "SELECT $selectCols
                         FROM orders o
                         LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id
-                        LEFT JOIN customers c ON o.customer_id = c.customer_id";
+                        LEFT JOIN customers c ON o.customer_id = c.customer_id
+                        LEFT JOIN order_cancellations oc ON o.id = oc.order_id
+                        LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id";
 
                 $params = [];
                 $whereConditions = [];
