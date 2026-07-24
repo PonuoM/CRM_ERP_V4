@@ -17,7 +17,8 @@ class ReturnedOrdersReportService
         string $actionStartDate, string $actionEndDate,
         ?string $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All',
         string $audioStatus = 'All', string $reasonKeyword = '', string $searchKeyword = '',
-        string $returnStatusFilter = 'All', string $cancellationTypeFilter = 'All'
+        string $returnStatusFilter = 'All', string $cancellationTypeFilter = 'All',
+        string $orderTagsFilter = ''
     ): array
     {
         // Allow only Returned or Cancelled
@@ -143,6 +144,16 @@ class ReturnedOrdersReportService
             $params[':exact_keyword'] = $searchKeyword;
         }
 
+        if (!empty($orderTagsFilter)) {
+            $tagIds = array_map('intval', explode(',', $orderTagsFilter));
+            $tagIds = array_filter($tagIds);
+            if (!empty($tagIds)) {
+                $tagPlaceholders = implode(',', $tagIds);
+                // Need to match ALL selected tags or ANY? Usually ANY is fine, but for tags ANY is standard.
+                $where .= " AND EXISTS (SELECT 1 FROM order_tag_assignments ota WHERE ota.order_id = o.id AND ota.deleted_at IS NULL AND ota.tag_id IN ($tagPlaceholders))";
+            }
+        }
+
         $sql = "
             SELECT 
                 o.id AS order_id,
@@ -222,9 +233,31 @@ class ReturnedOrdersReportService
             }
         }
 
+        // Fetch order tags
+        $tagsByOrder = [];
+        if (!empty($orderIds)) {
+            $in = str_repeat('?,', count($orderIds) - 1) . '?';
+            $tagStmt = $this->pdo->prepare("
+                SELECT ota.order_id, t.id, t.name, t.color, t.type 
+                FROM order_tag_assignments ota
+                JOIN order_tags t ON ota.tag_id = t.id
+                WHERE ota.order_id IN ($in) AND ota.deleted_at IS NULL
+            ");
+            $tagStmt->execute($orderIds);
+            while ($row = $tagStmt->fetch(PDO::FETCH_ASSOC)) {
+                $tagsByOrder[$row['order_id']][] = [
+                    'id' => (int)$row['id'],
+                    'name' => $row['name'],
+                    'color' => $row['color'],
+                    'type' => $row['type']
+                ];
+            }
+        }
+
         foreach ($results as &$row) {
             $row['audio_links'] = $audioLinksByOrder[$row['order_id']] ?? [];
             $row['items'] = $itemsByOrder[$row['order_id']] ?? [];
+            $row['tags'] = $tagsByOrder[$row['order_id']] ?? [];
         }
 
         return $results;
@@ -236,7 +269,8 @@ class ReturnedOrdersReportService
         string $actionStartDate, string $actionEndDate,
         ?string $userId, ?int $companyId, string $resolutionStatus = 'All',
         string $audioStatus = 'All', string $reasonKeyword = '', string $searchKeyword = '',
-        string $returnStatusFilter = 'All', string $cancellationTypeFilter = 'All'
+        string $returnStatusFilter = 'All', string $cancellationTypeFilter = 'All',
+        string $orderTagsFilter = ''
     ): array
     {
         $params = [];
@@ -346,6 +380,15 @@ class ReturnedOrdersReportService
             $params[':exact_keyword'] = $searchKeyword;
         }
 
+        if (!empty($orderTagsFilter)) {
+            $tagIds = array_map('intval', explode(',', $orderTagsFilter));
+            $tagIds = array_filter($tagIds);
+            if (!empty($tagIds)) {
+                $tagPlaceholders = implode(',', $tagIds);
+                $where .= " AND EXISTS (SELECT 1 FROM order_tag_assignments ota WHERE ota.order_id = o.id AND ota.deleted_at IS NULL AND ota.tag_id IN ($tagPlaceholders))";
+            }
+        }
+
         $sql = "
             SELECT 
                 CONCAT(u.first_name, ' ', u.last_name) AS creator_name,
@@ -384,6 +427,227 @@ class ReturnedOrdersReportService
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    
+    public function getTagStatisticsData(
+        string $orderStartDate, string $orderEndDate, 
+        string $orderStartTime, string $orderEndTime,
+        string $actionStartDate, string $actionEndDate,
+        ?string $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All',
+        string $audioStatus = 'All', string $reasonKeyword = '', string $searchKeyword = '',
+        string $returnStatusFilter = 'All', string $cancellationTypeFilter = 'All',
+        string $orderTagsFilter = ''
+    ): array
+    {
+
+        // Allow only Returned or Cancelled
+        if (!in_array($statusType, ['Returned', 'Cancelled'])) {
+            throw new InvalidArgumentException("Invalid status type");
+        }
+
+        $params = [];
+        $where = "1=1";
+        $limitClause = "";
+        
+        // --- Order Date Logic ---
+        if (!empty($orderStartDate) && !empty($orderEndDate)) {
+            $startObj = DateTime::createFromFormat('Y-m-d', $orderStartDate);
+            $endObj = DateTime::createFromFormat('Y-m-d', $orderEndDate);
+            
+            if ($startObj && $endObj && $startObj->format('Y-m-d') === $orderStartDate && $endObj->format('Y-m-d') === $orderEndDate) {
+                // 6-month strict limit enforcement
+                $diff = $startObj->diff($endObj);
+                if ($diff->days > 186) { 
+                    throw new InvalidArgumentException("กรุณาเลือกช่วงเวลาวันที่สร้างคำสั่งซื้อไม่เกิน 6 เดือน");
+                }
+                
+                $where .= " AND o.order_date >= :order_start_date AND o.order_date <= :order_end_date";
+                $params[':order_start_date'] = $orderStartDate . ' 00:00:00';
+                $params[':order_end_date'] = $orderEndDate . ' 23:59:59';
+                
+                // Daily Time Window (Day-parting)
+                if (!empty($orderStartTime) && !empty($orderEndTime)) {
+                    // Basic time format validation (H:i)
+                    if (preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9])$/', $orderStartTime) && 
+                        preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9])$/', $orderEndTime)) {
+                        $where .= " AND TIME(o.order_date) >= :order_start_time AND TIME(o.order_date) <= :order_end_time";
+                        $params[':order_start_time'] = $orderStartTime . ':00';
+                        $params[':order_end_time'] = $orderEndTime . ':59';
+                    } else {
+                        throw new InvalidArgumentException("รูปแบบเวลาไม่ถูกต้อง (ต้องเป็น HH:MM)");
+                    }
+                }
+            } else {
+                $limitClause = "LIMIT 500"; // Fallback for invalid date format
+            }
+        } else {
+            // Require order date to prevent full table scan
+            throw new InvalidArgumentException("กรุณาระบุช่วงวันที่สร้างคำสั่งซื้อ (ไม่อนุญาตให้ค้นหาทั้งหมดเพื่อประสิทธิภาพ)");
+        }
+        
+        // --- Action Date Logic (Cancelled or Returned Date) ---
+        if (!empty($actionStartDate) && !empty($actionEndDate)) {
+            $aStartObj = DateTime::createFromFormat('Y-m-d', $actionStartDate);
+            $aEndObj = DateTime::createFromFormat('Y-m-d', $actionEndDate);
+            if ($aStartObj && $aEndObj) {
+                if ($statusType === 'Cancelled') {
+                    $where .= " AND oc.classified_at >= :action_start_date AND oc.classified_at <= :action_end_date";
+                } else {
+                    // For Returned, we use a subquery to find the max return_created_at
+                    $where .= " AND (SELECT MAX(ob.return_created_at) FROM order_boxes ob WHERE ob.order_id = o.id) >= :action_start_date 
+                                AND (SELECT MAX(ob.return_created_at) FROM order_boxes ob WHERE ob.order_id = o.id) <= :action_end_date";
+                }
+                $params[':action_start_date'] = $actionStartDate . ' 00:00:00';
+                $params[':action_end_date'] = $actionEndDate . ' 23:59:59';
+            }
+        }
+        
+        if ($companyId) {
+            $where .= " AND o.company_id = :company_id";
+            $params[':company_id'] = $companyId;
+        }
+
+        if (!empty($userId)) {
+            if (strpos($userId, ',') !== false) {
+                $userIds = array_map('intval', explode(',', $userId));
+                $inClause = implode(',', $userIds);
+                $where .= " AND o.creator_id IN ($inClause)";
+            } else {
+                $where .= " AND o.creator_id = :user_id";
+                $params[':user_id'] = (int)$userId;
+            }
+        }
+
+        // Filter by status. Note: sometimes order is 'Returned', or it's still 'Completed' but has returned boxes.
+        // For 'Returned', we check order_status = 'Returned' OR exists a returned box.
+        // For 'Cancelled', we just check order_status = 'Cancelled'.
+        if ($statusType === 'Returned') {
+            if ($returnStatusFilter !== 'All') {
+                $where .= " AND EXISTS (SELECT 1 FROM order_boxes obF WHERE obF.order_id = o.id AND obF.return_status = :return_status_filter)";
+                $params[':return_status_filter'] = $returnStatusFilter;
+            } else {
+                $where .= " AND (o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob2 WHERE ob2.order_id = o.id AND ob2.return_status IS NOT NULL))";
+            }
+        } else {
+            $where .= " AND o.order_status = 'Cancelled'";
+            if ($cancellationTypeFilter !== 'All') {
+                $where .= " AND oc.cancellation_type_id = :cancel_type_filter";
+                $params[':cancel_type_filter'] = $cancellationTypeFilter;
+            }
+        }
+
+        if ($resolutionStatus === 'Completed') {
+            $where .= " AND COALESCE(oar.is_completed, 0) = 1";
+        } elseif ($resolutionStatus === 'Pending') {
+            $where .= " AND COALESCE(oar.is_completed, 0) = 0";
+        }
+
+        if ($audioStatus === 'has_audio') {
+            $where .= " AND EXISTS (SELECT 1 FROM order_audio_links oal WHERE oal.order_id = o.id)";
+        } elseif ($audioStatus === 'no_audio') {
+            $where .= " AND NOT EXISTS (SELECT 1 FROM order_audio_links oal WHERE oal.order_id = o.id)";
+        }
+
+        if (!empty($reasonKeyword)) {
+            $where .= " AND (ct.label LIKE :reason_keyword_label OR oc.notes LIKE :reason_keyword_notes)";
+            $params[':reason_keyword_label'] = '%' . $reasonKeyword . '%';
+            $params[':reason_keyword_notes'] = '%' . $reasonKeyword . '%';
+        }
+
+        if (!empty($searchKeyword)) {
+            $where .= " AND (c.first_name LIKE :search_fname OR c.last_name LIKE :search_lname OR c.phone LIKE :search_phone OR o.id = :exact_keyword)";
+            $searchPattern = '%' . $searchKeyword . '%';
+            $params[':search_fname'] = $searchPattern;
+            $params[':search_lname'] = $searchPattern;
+            $params[':search_phone'] = $searchPattern;
+            $params[':exact_keyword'] = $searchKeyword;
+        }
+
+        if (!empty($orderTagsFilter)) {
+            $tagIds = array_map('intval', explode(',', $orderTagsFilter));
+            $tagIds = array_filter($tagIds);
+            if (!empty($tagIds)) {
+                $tagPlaceholders = implode(',', $tagIds);
+                // Need to match ALL selected tags or ANY? Usually ANY is fine, but for tags ANY is standard.
+                $where .= " AND EXISTS (SELECT 1 FROM order_tag_assignments ota WHERE ota.order_id = o.id AND ota.deleted_at IS NULL AND ota.tag_id IN ($tagPlaceholders))";
+            }
+        }
+
+        
+        // Summary Query
+        $summarySql = "
+            SELECT 
+                ot.id AS tag_id,
+                ot.name AS tag_name,
+                ot.type AS tag_type,
+                ot.color AS tag_color,
+                COUNT(DISTINCT o.id) AS order_count,
+                SUM(
+                    CASE 
+                        WHEN o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob6 WHERE ob6.order_id = o.id AND ob6.return_status IS NOT NULL) 
+                        THEN COALESCE((SELECT SUM(ob7.cod_amount) FROM order_boxes ob7 WHERE ob7.order_id = o.id AND ob7.return_status IS NOT NULL), 0)
+                        WHEN o.order_status = 'Cancelled' 
+                        THEN COALESCE(NULLIF(o.cod_amount, 0), o.total_amount)
+                        ELSE 0 
+                    END
+                ) AS total_amount
+            FROM orders o
+            LEFT JOIN users u ON o.creator_id = u.id
+            LEFT JOIN order_audio_resolutions oar ON o.id = oar.order_id
+            LEFT JOIN customers c ON o.customer_id = c.customer_id
+            LEFT JOIN order_cancellations oc ON o.id = oc.order_id
+            LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
+            JOIN order_tag_assignments ota ON o.id = ota.order_id AND ota.deleted_at IS NULL
+            JOIN order_tags ot ON ota.tag_id = ot.id
+            WHERE $where
+            GROUP BY ot.id, ot.name, ot.type, ot.color
+            ORDER BY order_count DESC, total_amount DESC
+        ";
+        
+        $summaryStmt = $this->pdo->prepare($summarySql);
+        $summaryStmt->execute($params);
+        $summary = $summaryStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Details Query
+        $detailsSql = "
+            SELECT 
+                o.id AS order_id,
+                o.order_date,
+                CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
+                o.order_status,
+                ot.name AS tag_name,
+                ot.type AS tag_type,
+                CASE 
+                    WHEN o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob6 WHERE ob6.order_id = o.id AND ob6.return_status IS NOT NULL) 
+                    THEN COALESCE((SELECT SUM(ob7.cod_amount) FROM order_boxes ob7 WHERE ob7.order_id = o.id AND ob7.return_status IS NOT NULL), 0)
+                    WHEN o.order_status = 'Cancelled' 
+                    THEN COALESCE(NULLIF(o.cod_amount, 0), o.total_amount)
+                    ELSE 0 
+                END AS total_amount,
+                CONCAT(u2.first_name, ' ', u2.last_name) AS assigned_by,
+                ota.created_at AS assigned_at
+            FROM orders o
+            LEFT JOIN users u ON o.creator_id = u.id
+            LEFT JOIN order_audio_resolutions oar ON o.id = oar.order_id
+            LEFT JOIN customers c ON o.customer_id = c.customer_id
+            LEFT JOIN order_cancellations oc ON o.id = oc.order_id
+            LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
+            JOIN order_tag_assignments ota ON o.id = ota.order_id AND ota.deleted_at IS NULL
+            JOIN order_tags ot ON ota.tag_id = ot.id
+            LEFT JOIN users u2 ON ota.created_by = u2.id
+            WHERE $where
+            ORDER BY o.order_date DESC, o.id DESC
+        ";
+
+        $detailsStmt = $this->pdo->prepare($detailsSql);
+        $detailsStmt->execute($params);
+        $details = $detailsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            'summary' => $summary,
+            'details' => $details
+        ];
     }
 
     public function autoMatchAudio(string $orderId, int $userId): array

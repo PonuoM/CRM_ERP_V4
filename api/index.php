@@ -189,6 +189,41 @@ try {
                 } catch (Exception $e) {
                     json_response(['ok' => false, 'message' => $e->getMessage()], 400);
                 }
+            } elseif (method() === 'GET' && $id === 'export_tag_stats') {
+                $orderStartDate = $_GET['order_start_date'] ?? '';
+                $orderEndDate = $_GET['order_end_date'] ?? '';
+                $orderStartTime = $_GET['order_start_time'] ?? '';
+                $orderEndTime = $_GET['order_end_time'] ?? '';
+                $actionStartDate = $_GET['action_start_date'] ?? '';
+                $actionEndDate = $_GET['action_end_date'] ?? '';
+                $userId = !empty($_GET['user_id']) ? $_GET['user_id'] : null;
+                $companyId = !empty($_GET['company_id']) ? (int)$_GET['company_id'] : null;
+                if (!$companyId) {
+                    $authUser = get_authenticated_user($pdo);
+                    $companyId = $authUser['company_id'] ?? 1;
+                }
+                $statusType = $_GET['status_type'] ?? 'Returned';
+                $resolutionStatus = $_GET['resolution_status'] ?? 'All';
+                $audioStatus = $_GET['audio_status'] ?? 'All';
+                $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
+                $searchKeyword = trim($_GET['search_keyword'] ?? '');
+                $returnStatusFilter = $_GET['return_status_filter'] ?? 'All';
+                $cancellationTypeFilter = $_GET['cancellation_type_filter'] ?? 'All';
+                $orderTagsFilter = $_GET['order_tags_filter'] ?? '';
+                try {
+                    $data = $svc->getTagStatisticsData(
+                        $orderStartDate, $orderEndDate,
+                        $orderStartTime, $orderEndTime,
+                        $actionStartDate, $actionEndDate,
+                        $userId, $companyId, $statusType, $resolutionStatus,
+                        $audioStatus, $reasonKeyword, $searchKeyword,
+                        $returnStatusFilter, $cancellationTypeFilter,
+                        $orderTagsFilter
+                    );
+                    json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
+                } catch (Exception $e) {
+                    json_response(['ok' => false, 'message' => $e->getMessage()], 400);
+                }
             } elseif (method() === 'POST' && $id === 'auto-match') {
                 $input = json_input();
                 $orderId = $input['order_id'] ?? '';
@@ -635,6 +670,14 @@ try {
             break;
         case 'activities':
             handle_activities($pdo, $id);
+            break;
+        case 'order_tags':
+            require_once __DIR__ . '/Controllers/OrderTagController.php';
+            OrderTagController::handleOrderTags($pdo);
+            break;
+        case 'order_tag_assignments':
+            require_once __DIR__ . '/Controllers/OrderTagController.php';
+            OrderTagController::handleOrderTagAssignments($pdo);
             break;
         case 'customer_logs':
             handle_customer_logs($pdo, $id);

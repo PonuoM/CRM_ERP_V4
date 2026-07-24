@@ -5,10 +5,13 @@ import useTeamEmployeeFilter from '../hooks/useTeamEmployeeFilter';
 import { useToast } from '@/components/Toast';
 import Modal from '@/components/Modal';
 import ExportTypeModal from '@/components/ExportTypeModal';
-import { downloadDataFile } from '@/utils/exportUtils';
+import { downloadDataFile, downloadMultiSheetExcel } from '@/utils/exportUtils';
 import { apiFetch } from '@/services/api';
 import { format } from 'date-fns';
 import OrderDetailsModal from '@/components/ReturnedOrdersReport/OrderDetailsModal';
+import OrderDetailModal from '@/components/OrderDetailModal';
+import OrderTagManagementModal from '@/components/OrderTagManagementModal';
+import { Tag } from '../types';
 
 interface AudioLink {
   id: number;
@@ -45,6 +48,7 @@ export interface OrderData {
   creator_team: string;
   audio_links: AudioLink[];
   items?: OrderItem[];
+  tags?: Tag[];
 }
 
 interface UserData {
@@ -122,7 +126,10 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   }, [data, sortConfig]);
 
   const executeExport = (type: 'csv' | 'xlsx') => {
-    if (sortedData.length === 0) return;
+    if (sortedData.length === 0) {
+      setIsExportModalOpen(false);
+      return;
+    }
     setIsExporting(true);
 
     try {
@@ -172,7 +179,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   const executeExportUserSummary = async (type: 'csv' | 'xlsx' = 'csv') => {
     setIsExporting(true);
     try {
-      let query = `export_user_summary?resolution_status=${resolutionFilter}`;
+      let query = `returned_orders_report/export_user_summary?resolution_status=${resolutionFilter}`;
       if (orderDateRange.start && orderDateRange.end) {
         query += `&order_start_date=${orderDateRange.start}&order_end_date=${orderDateRange.end}`;
       }
@@ -225,6 +232,90 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
     }
   };
 
+  const executeExportTagStats = async (type: 'csv' | 'xlsx' = 'xlsx') => {
+    setIsExporting(true);
+    try {
+      let query = `returned_orders_report/export_tag_stats?status_type=${activeTab}&resolution_status=${resolutionFilter}`;
+      if (orderDateRange.start && orderDateRange.end) {
+        query += `&order_start_date=${orderDateRange.start}&order_end_date=${orderDateRange.end}`;
+      }
+      if (orderStartTime && orderEndTime) {
+        query += `&order_start_time=${orderStartTime}&order_end_time=${orderEndTime}`;
+      }
+      if (actionDateRange.start && actionDateRange.end) {
+        query += `&action_start_date=${actionDateRange.start}&action_end_date=${actionDateRange.end}`;
+      }
+      if (selectedUsers.length > 0) {
+        query += `&user_id=${selectedUsers.join(',')}`;
+      }
+      if (audioStatus !== 'All') {
+        query += `&audio_status=${audioStatus}`;
+      }
+      if (reasonKeyword) {
+        query += `&reason_keyword=${encodeURIComponent(reasonKeyword)}`;
+      }
+      if (searchKeyword) {
+        query += `&search_keyword=${encodeURIComponent(searchKeyword)}`;
+      }
+      if (returnStatusFilter !== 'All') {
+        query += `&return_status_filter=${returnStatusFilter}`;
+      }
+      if (cancelStatusFilter !== 'All') {
+        query += `&cancellation_type_filter=${cancelStatusFilter}`;
+      }
+      if (orderTagsFilter) {
+        query += `&order_tags_filter=${orderTagsFilter}`; // Note: Backend expects order_tags_filter
+      }
+
+      const json = await apiFetch(query);
+      if (json && json.ok && json.data) {
+        const { summary, details } = json.data;
+        
+        // Format Summary
+        const summaryData = summary.map((row: any) => ({
+          'ป้ายกำกับ': row.tag_name,
+          'ประเภทป้าย': row.tag_type === 'SYSTEM' ? 'ระบบ' : 'ส่วนตัว',
+          'จำนวนออเดอร์': parseInt(row.order_count),
+          'ยอดเงินรวม': parseFloat(row.total_amount)
+        }));
+
+        // Format Details
+        const detailsData = details.map((row: any) => ({
+          'รหัสออเดอร์': row.order_id,
+          'วันที่สั่งซื้อ': row.order_date,
+          'ป้ายกำกับ': row.tag_name,
+          'ประเภทป้าย': row.tag_type === 'SYSTEM' ? 'ระบบ' : 'ส่วนตัว',
+          'ลูกค้า': row.customer_name,
+          'สถานะออเดอร์': getOrderStatusThai(row.order_status),
+          'ยอดเงิน': parseFloat(row.total_amount),
+          'แปะป้ายโดย': row.assigned_by || 'ระบบ',
+          'วันที่แปะป้าย': row.assigned_at
+        }));
+
+        const filename = `tag_statistics_${activeTab}`;
+        downloadMultiSheetExcel([
+          { name: 'สรุปสถิติ', data: summaryData },
+          { name: 'รายละเอียดออเดอร์', data: detailsData }
+        ], filename);
+      } else {
+        toast.error('ข้อผิดพลาด', json?.message || 'ไม่สามารถส่งออกข้อมูลสถิติได้');
+      }
+    } catch (err: any) {
+      toast.error('ข้อผิดพลาด', err.message || 'เกิดข้อผิดพลาดในการดึงข้อมูล');
+    } finally {
+      setIsExporting(false);
+      setIsExportModalOpen(false);
+    }
+  };
+
+  const handleExportSubmit = (type: 'csv' | 'xlsx', mode: 'orders' | 'tags') => {
+    if (mode === 'tags') {
+      executeExportTagStats(type);
+    } else {
+      executeExport(type);
+    }
+  };
+
   const renderSortIcon = (key: keyof OrderData) => {
     if (!sortConfig || sortConfig.key !== key) {
         return <ArrowUpDown className="w-3.5 h-3.5 inline ml-1 opacity-40 group-hover:opacity-100 transition-opacity" />;
@@ -238,6 +329,9 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
 
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null);
+
+  const [isOrderDetailModalOpen, setIsOrderDetailModalOpen] = useState(false);
+  const [selectedOrderIdForModal, setSelectedOrderIdForModal] = useState<string | null>(null);
 
   // Users Data
   const [selectedTeam, setSelectedTeam] = useState<string>('all');
@@ -254,6 +348,11 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   const [reasonKeyword, setReasonKeyword] = useState<string>('');
   const [searchKeyword, setSearchKeyword] = useState<string>('');
 
+  const [availableOrderTags, setAvailableOrderTags] = useState<Tag[]>([]);
+  const [orderTagsFilter, setOrderTagsFilter] = useState<string>(''); // comma separated tag ids
+  const [isOrderTagModalOpen, setIsOrderTagModalOpen] = useState(false);
+  const [selectedOrderForTag, setSelectedOrderForTag] = useState<OrderData | null>(null);
+
   useEffect(() => {
     const fetchCancelOptions = async () => {
       try {
@@ -266,7 +365,29 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
       }
     };
     fetchCancelOptions();
-  }, []);
+
+    const fetchOrderTags = async () => {
+      try {
+        const [sysRes, usrRes] = await Promise.all([
+          apiFetch('order_tags?type=SYSTEM', { method: 'GET' }),
+          apiFetch(`order_tags?type=USER&userId=${currentUser?.id}`, { method: 'GET' })
+        ]);
+        const tags = [];
+        if (sysRes?.ok && Array.isArray(sysRes.data)) tags.push(...sysRes.data);
+        else if (Array.isArray(sysRes)) tags.push(...sysRes); // fallback if it directly returns array
+
+        if (usrRes?.ok && Array.isArray(usrRes.data)) tags.push(...usrRes.data);
+        else if (Array.isArray(usrRes)) tags.push(...usrRes);
+        
+        setAvailableOrderTags(tags);
+      } catch (err) {
+        console.error('Failed to fetch order tags', err);
+      }
+    };
+    if (currentUser?.id) {
+        fetchOrderTags();
+    }
+  }, [currentUser?.id]);
 
   const fetchData = async (silent = false) => {
     try {
@@ -298,6 +419,9 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
       }
       if (cancelStatusFilter !== 'All') {
         query += `&cancellation_type_filter=${cancelStatusFilter}`;
+      }
+      if (orderTagsFilter) {
+        query += `&orderTagsFilter=${orderTagsFilter}`;
       }
       
       const json = await apiFetch(query);
@@ -603,6 +727,21 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                       </div>
                     )}
 
+                    {/* Order Tags Filter */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-[180px]">
+                      <label className="text-sm font-medium text-gray-700">ป้ายกำกับออเดอร์</label>
+                      <select
+                        value={orderTagsFilter}
+                        onChange={e => setOrderTagsFilter(e.target.value)}
+                        className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="">ทั้งหมด</option>
+                        {availableOrderTags.map(tag => (
+                          <option key={tag.id} value={tag.id}>{tag.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* Resolution Status */}
                     <div className="flex flex-col gap-1.5 w-full sm:w-[180px]">
                       <label className="text-sm font-medium text-gray-700">สถานะการจัดการ</label>
@@ -769,6 +908,9 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-100 transition-colors" onClick={() => handleSort('cancel_type')}>
                         เหตุผล {renderSortIcon('cancel_type')}
                       </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
+                        ป้ายกำกับ
+                      </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">สรุปออเดอร์</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ไฟล์เสียง</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
@@ -777,11 +919,11 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                   <tbody className="bg-white divide-y divide-gray-200">
                     {loading ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-gray-500">กำลังโหลดข้อมูล...</td>
+                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">กำลังโหลดข้อมูล...</td>
                       </tr>
                     ) : sortedData.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-gray-500">ไม่พบข้อมูลในช่วงเวลานี้</td>
+                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">ไม่พบข้อมูลในช่วงเวลานี้</td>
                       </tr>
                     ) : (
                       sortedData.map((order, idx) => {
@@ -789,7 +931,15 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                         return (
                         <tr key={`${order.order_id}-${idx}`} className={`hover:bg-gray-50 transition-colors ${isCompleted ? 'bg-gray-100 opacity-60' : 'bg-white'}`}>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={`font-mono text-sm ${isCompleted ? 'text-gray-500' : 'text-blue-600'}`}>{order.order_id}</span>
+                            <span 
+                              className={`font-mono text-sm cursor-pointer hover:underline ${isCompleted ? 'text-gray-500' : 'text-blue-600'}`}
+                              onClick={() => {
+                                setSelectedOrderIdForModal(order.order_id);
+                                setIsOrderDetailModalOpen(true);
+                              }}
+                            >
+                              {order.order_id}
+                            </span>
                             <div className="text-xs text-gray-500 mt-1">{order.creator_name}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
@@ -815,6 +965,33 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                           <td className="px-4 py-3 text-sm">
                             <div className="font-medium text-gray-800">{order.cancel_type || '-'}</div>
                             <div className="text-gray-500 text-xs mt-1 max-w-xs truncate" title={order.cancel_notes}>{order.cancel_notes}</div>
+                          </td>
+                          <td className="px-4 py-3 max-w-[150px]">
+                            <div className="flex flex-wrap gap-1 items-center">
+                              {order.tags && order.tags.length > 0 ? order.tags.map(tag => {
+                                const tagColor = tag.color || '#9333EA';
+                                const bgColor = tagColor.startsWith('#') ? tagColor : `#${tagColor}`;
+                                return (
+                                  <span 
+                                    key={tag.id} 
+                                    className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-sm truncate max-w-[80px]"
+                                    style={{ backgroundColor: bgColor, color: '#fff' }}
+                                    title={tag.name}
+                                  >
+                                    {tag.name}
+                                  </span>
+                                );
+                              }) : null}
+                              <button
+                                onClick={() => {
+                                  setSelectedOrderForTag(order);
+                                  setIsOrderTagModalOpen(true);
+                                }}
+                                className="text-[10px] text-gray-500 hover:text-blue-600 border border-dashed border-gray-300 rounded-sm px-1.5 py-0.5 whitespace-nowrap bg-gray-50 hover:bg-blue-50 transition-colors"
+                              >
+                                + ป้าย
+                              </button>
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-sm max-w-[200px]">
                             <div className="flex justify-between items-start gap-2 group">
@@ -930,7 +1107,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
         <ExportTypeModal
           isOpen={isExportModalOpen}
           onClose={() => !isExporting && setIsExportModalOpen(false)}
-          onConfirm={executeExport}
+          onConfirm={handleExportSubmit}
           isExporting={isExporting}
         />
 
@@ -940,6 +1117,25 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           onSubmit={submitDetails}
           orderData={selectedOrder}
         />
+
+        <OrderDetailModal
+          isOpen={isOrderDetailModalOpen}
+          onClose={() => setIsOrderDetailModalOpen(false)}
+          orderId={selectedOrderIdForModal}
+        />
+
+        {isOrderTagModalOpen && selectedOrderForTag && (
+          <OrderTagManagementModal
+            orderId={selectedOrderForTag.order_id}
+            assignedTags={selectedOrderForTag.tags || []}
+            currentUser={currentUser}
+            onClose={() => {
+              setIsOrderTagModalOpen(false);
+              setSelectedOrderForTag(null);
+            }}
+            onTagsUpdated={() => fetchData(true)}
+          />
+        )}
     </div>
   );
 };
