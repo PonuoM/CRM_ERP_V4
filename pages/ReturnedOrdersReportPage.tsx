@@ -42,6 +42,7 @@ export interface OrderData {
   cancelled_at: string;
   returned_at: string;
   creator_name: string;
+  creator_team: string;
   audio_links: AudioLink[];
   items?: OrderItem[];
 }
@@ -141,6 +142,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           'วันที่สั่งซื้อ': order.order_date,
           'วันที่ตีกลับ/ยกเลิก': order.returned_at || order.cancelled_at || '-',
           'พนักงานขาย': order.creator_name,
+          'ชื่อทีม': order.creator_team || '-',
           'ลูกค้า': order.customer_name,
           'เบอร์โทร': order.customer_phone,
           'ที่อยู่': order.customer_address || '-',
@@ -203,6 +205,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
 
         const exportData = summaryData.map((row: any) => ({
           'ชื่อพนักงาน': row.creator_name || '-',
+          'ชื่อทีม': row.creator_team || '-',
           'จำนวนตีกลับ': parseInt(row.returned_count || '0'),
           'จำนวนยกเลิก': parseInt(row.cancelled_count || '0'),
           'ยอดตีกลับ': parseFloat(row.returned_amount || '0'),
