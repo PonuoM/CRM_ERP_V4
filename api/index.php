@@ -2516,6 +2516,25 @@ function get_order(PDO $pdo, string $id): ?array
         }
     }
 
+    // Fetch cancellation details
+    if ($o['order_status'] === 'Cancelled') {
+        try {
+            $cancelStmt = $pdo->prepare('
+                SELECT ct.label as cancellation_type, oc.notes as cancellation_notes
+                FROM order_cancellations oc
+                LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
+                WHERE oc.order_id = ?
+            ');
+            $cancelStmt->execute([$mainOrderId]);
+            $cancelData = $cancelStmt->fetch();
+            if ($cancelData) {
+                $o['cancellation_type'] = $cancelData['cancellation_type'];
+                $o['cancellation_notes'] = $cancelData['cancellation_notes'];
+            }
+        } catch (Throwable $e) { /* ignore */
+        }
+    }
+
     // Proxy sale (ขายแทน): who actually keyed this in on behalf of creator_id
     if (!empty($o['proxy_creator_id'])) {
         try {
