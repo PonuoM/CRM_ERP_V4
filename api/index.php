@@ -115,7 +115,10 @@ try {
         case 'returned_orders_report':
             require_once __DIR__ . '/Services/ReturnedOrdersReportService.php';
             $svc = new ReturnedOrdersReportService($pdo);
-            if (method() === 'GET') {
+            if (method() === 'GET' && $id === 'filter_options') {
+                $stmt = $pdo->query("SELECT id, label FROM cancellation_types WHERE is_active = 1 ORDER BY sort_order ASC, id ASC");
+                json_response(['ok' => true, 'data' => ['cancellation_types' => $stmt->fetchAll(PDO::FETCH_ASSOC)]]);
+            } elseif (method() === 'GET' && empty($id)) {
                 $orderStartDate = $_GET['order_start_date'] ?? '';
                 $orderEndDate = $_GET['order_end_date'] ?? '';
                 $orderStartTime = $_GET['order_start_time'] ?? '';
@@ -139,13 +142,16 @@ try {
                 $audioStatus = $_GET['audio_status'] ?? 'All';
                 $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
                 $searchKeyword = trim($_GET['search_keyword'] ?? '');
+                $returnStatusFilter = $_GET['return_status_filter'] ?? 'All';
+                $cancellationTypeFilter = $_GET['cancellation_type_filter'] ?? 'All';
                 try {
                     $data = $svc->getReportData(
                         $orderStartDate, $orderEndDate,
                         $orderStartTime, $orderEndTime,
                         $actionStartDate, $actionEndDate,
                         $userId, $companyId, $statusType, $resolutionStatus,
-                        $audioStatus, $reasonKeyword, $searchKeyword
+                        $audioStatus, $reasonKeyword, $searchKeyword,
+                        $returnStatusFilter, $cancellationTypeFilter
                     );
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
                 } catch (Exception $e) {
@@ -168,13 +174,16 @@ try {
                 $audioStatus = $_GET['audio_status'] ?? 'All';
                 $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
                 $searchKeyword = trim($_GET['search_keyword'] ?? '');
+                $returnStatusFilter = $_GET['return_status_filter'] ?? 'All';
+                $cancellationTypeFilter = $_GET['cancellation_type_filter'] ?? 'All';
                 try {
                     $data = $svc->getUserSummaryData(
                         $orderStartDate, $orderEndDate,
                         $orderStartTime, $orderEndTime,
                         $actionStartDate, $actionEndDate,
                         $userId, $companyId, $resolutionStatus,
-                        $audioStatus, $reasonKeyword, $searchKeyword
+                        $audioStatus, $reasonKeyword, $searchKeyword,
+                        $returnStatusFilter, $cancellationTypeFilter
                     );
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
                 } catch (Exception $e) {
