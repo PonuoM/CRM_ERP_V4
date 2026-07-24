@@ -38,7 +38,7 @@ try {
     $orderIds = array_slice($orderIds, 0, 500);
 
     $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
-    $sql = "SELECT order_id, box_number, sub_order_id, return_status
+    $sql = "SELECT order_id, box_number, sub_order_id, return_status, return_note
             FROM order_boxes
             WHERE order_id IN ($placeholders)
             ORDER BY order_id, box_number";
