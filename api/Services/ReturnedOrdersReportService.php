@@ -157,7 +157,8 @@ class ReturnedOrdersReportService
                     FROM order_boxes ob 
                     WHERE ob.order_id = o.id
                 ) AS returned_at,
-                u.username AS creator_name,
+                CONCAT(u.first_name, ' ', u.last_name) AS creator_name,
+                u.role AS creator_team,
                 oar.resolution_notes AS admin_resolution_notes,
                 COALESCE(oar.is_completed, 0) AS admin_resolution_completed
             FROM orders o
@@ -320,7 +321,8 @@ class ReturnedOrdersReportService
 
         $sql = "
             SELECT 
-                u.username AS creator_name,
+                CONCAT(u.first_name, ' ', u.last_name) AS creator_name,
+                u.role AS creator_team,
                 SUM(CASE WHEN o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob5 WHERE ob5.order_id = o.id AND ob5.return_status IS NOT NULL) THEN 1 ELSE 0 END) AS returned_count,
                 SUM(CASE WHEN o.order_status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelled_count,
                 SUM(
@@ -344,8 +346,8 @@ class ReturnedOrdersReportService
             LEFT JOIN order_cancellations oc ON o.id = oc.order_id
             LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
             WHERE $where
-            GROUP BY u.id, u.username
-            ORDER BY u.username ASC
+            GROUP BY u.id, u.first_name, u.last_name, u.role
+            ORDER BY u.first_name ASC, u.last_name ASC
         ";
 
         $stmt = $this->pdo->prepare($sql);
