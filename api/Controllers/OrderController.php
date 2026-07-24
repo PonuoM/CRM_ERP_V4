@@ -2862,8 +2862,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $currentStatus = strtoupper((string) ($updatedOrder['order_status'] ?? $previousStatus));
                     $currentPaymentMethod = (string) ($updatedOrder['payment_method'] ?? $existingOrder['payment_method'] ?? '');
 
-                    // Special handling for Claim and FreeGift
-                    if ($currentPaymentMethod === 'Claim' || $currentPaymentMethod === 'FreeGift') {
+                    // Special handling for Claim, FreeGift, and DiscountCoupon
+                    if ($currentPaymentMethod === 'Claim' || $currentPaymentMethod === 'FreeGift' || $currentPaymentMethod === 'DiscountCoupon') {
                         $autoCompleteStmt = $pdo->prepare('UPDATE orders SET order_status = ?, payment_status = ?, amount_paid = 0 WHERE id = ?');
                         $autoCompleteStmt->execute(['Delivered', 'Approved', $id]);
 
