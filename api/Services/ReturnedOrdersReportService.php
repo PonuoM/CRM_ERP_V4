@@ -16,7 +16,8 @@ class ReturnedOrdersReportService
         string $orderStartTime, string $orderEndTime,
         string $actionStartDate, string $actionEndDate,
         ?string $userId, ?int $companyId, string $statusType, string $resolutionStatus = 'All',
-        string $audioStatus = 'All', string $reasonKeyword = '', string $searchKeyword = ''
+        string $audioStatus = 'All', string $reasonKeyword = '', string $searchKeyword = '',
+        string $returnStatusFilter = 'All', string $cancellationTypeFilter = 'All'
     ): array
     {
         // Allow only Returned or Cancelled
@@ -101,9 +102,18 @@ class ReturnedOrdersReportService
         // For 'Returned', we check order_status = 'Returned' OR exists a returned box.
         // For 'Cancelled', we just check order_status = 'Cancelled'.
         if ($statusType === 'Returned') {
-            $where .= " AND (o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob2 WHERE ob2.order_id = o.id AND ob2.return_status IS NOT NULL))";
+            if ($returnStatusFilter !== 'All') {
+                $where .= " AND EXISTS (SELECT 1 FROM order_boxes obF WHERE obF.order_id = o.id AND obF.return_status = :return_status_filter)";
+                $params[':return_status_filter'] = $returnStatusFilter;
+            } else {
+                $where .= " AND (o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob2 WHERE ob2.order_id = o.id AND ob2.return_status IS NOT NULL))";
+            }
         } else {
             $where .= " AND o.order_status = 'Cancelled'";
+            if ($cancellationTypeFilter !== 'All') {
+                $where .= " AND oc.cancellation_type_id = :cancel_type_filter";
+                $params[':cancel_type_filter'] = $cancellationTypeFilter;
+            }
         }
 
         if ($resolutionStatus === 'Completed') {
@@ -225,7 +235,8 @@ class ReturnedOrdersReportService
         string $orderStartTime, string $orderEndTime,
         string $actionStartDate, string $actionEndDate,
         ?string $userId, ?int $companyId, string $resolutionStatus = 'All',
-        string $audioStatus = 'All', string $reasonKeyword = '', string $searchKeyword = ''
+        string $audioStatus = 'All', string $reasonKeyword = '', string $searchKeyword = '',
+        string $returnStatusFilter = 'All', string $cancellationTypeFilter = 'All'
     ): array
     {
         $params = [];
@@ -293,8 +304,20 @@ class ReturnedOrdersReportService
             }
         }
 
-        // Must be either returned or cancelled
-        $where .= " AND (o.order_status = 'Cancelled' OR o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob4 WHERE ob4.order_id = o.id AND ob4.return_status IS NOT NULL))";
+        // Status logic for User Summary Filter
+        if ($returnStatusFilter !== 'All') {
+            $where .= " AND EXISTS (SELECT 1 FROM order_boxes obS WHERE obS.order_id = o.id AND obS.return_status = :return_status_filter)";
+            $params[':return_status_filter'] = $returnStatusFilter;
+        }
+        if ($cancellationTypeFilter !== 'All') {
+            $where .= " AND oc.cancellation_type_id = :cancel_type_filter";
+            $params[':cancel_type_filter'] = $cancellationTypeFilter;
+        }
+
+        if ($returnStatusFilter === 'All' && $cancellationTypeFilter === 'All') {
+            // Must be either returned or cancelled
+            $where .= " AND (o.order_status = 'Cancelled' OR o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob4 WHERE ob4.order_id = o.id AND ob4.return_status IS NOT NULL))";
+        }
 
         if ($resolutionStatus === 'Completed') {
             $where .= " AND COALESCE(oar.is_completed, 0) = 1";

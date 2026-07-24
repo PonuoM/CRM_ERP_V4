@@ -246,11 +246,27 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
 
   const { availableTeams, filteredUsers: filteredUserDropdown } = useTeamEmployeeFilter(users, selectedTeam);
 
-  // Filters
   const [resolutionFilter, setResolutionFilter] = useState<'All' | 'Completed' | 'Pending'>('All');
+  const [returnStatusFilter, setReturnStatusFilter] = useState<string>('All');
+  const [cancelStatusFilter, setCancelStatusFilter] = useState<string>('All');
+  const [cancellationOptions, setCancellationOptions] = useState<{id: number, label: string}[]>([]);
   const [audioStatus, setAudioStatus] = useState<'All' | 'has_audio' | 'no_audio'>('All');
   const [reasonKeyword, setReasonKeyword] = useState<string>('');
   const [searchKeyword, setSearchKeyword] = useState<string>('');
+
+  useEffect(() => {
+    const fetchCancelOptions = async () => {
+      try {
+        const json = await apiFetch('returned_orders_report/filter_options');
+        if (json?.ok && json?.data?.cancellation_types) {
+          setCancellationOptions(json.data.cancellation_types);
+        }
+      } catch (err) {
+        console.error('Failed to fetch cancellation options', err);
+      }
+    };
+    fetchCancelOptions();
+  }, []);
 
   const fetchData = async (silent = false) => {
     try {
@@ -276,6 +292,12 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
       }
       if (searchKeyword) {
         query += `&search_keyword=${encodeURIComponent(searchKeyword)}`;
+      }
+      if (returnStatusFilter !== 'All') {
+        query += `&return_status_filter=${returnStatusFilter}`;
+      }
+      if (cancelStatusFilter !== 'All') {
+        query += `&cancellation_type_filter=${cancelStatusFilter}`;
       }
       
       const json = await apiFetch(query);
@@ -546,6 +568,40 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                         className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
                       />
                     </div>
+
+                    {/* Return/Cancel Status Filter */}
+                    {activeTab === 'Returned' && (
+                      <div className="flex flex-col gap-1.5 w-full sm:w-[180px]">
+                        <label className="text-sm font-medium text-gray-700">สถานะสินค้าตีกลับ</label>
+                        <select
+                          value={returnStatusFilter}
+                          onChange={e => setReturnStatusFilter(e.target.value)}
+                          className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="All">ทั้งหมด</option>
+                          <option value="good">สภาพดี</option>
+                          <option value="damaged">ชำรุด</option>
+                          <option value="returning">กำลังตีกลับ</option>
+                          <option value="returned">ตีกลับสำเร็จ</option>
+                          <option value="lost">สูญหาย</option>
+                        </select>
+                      </div>
+                    )}
+                    {activeTab === 'Cancelled' && (
+                      <div className="flex flex-col gap-1.5 w-full sm:w-[180px]">
+                        <label className="text-sm font-medium text-gray-700">ประเภทการยกเลิก</label>
+                        <select
+                          value={cancelStatusFilter}
+                          onChange={e => setCancelStatusFilter(e.target.value)}
+                          className="border border-gray-300 rounded-md px-3 h-[38px] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="All">ทั้งหมด</option>
+                          {cancellationOptions.map(opt => (
+                            <option key={opt.id} value={opt.id.toString()}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
                     {/* Resolution Status */}
                     <div className="flex flex-col gap-1.5 w-full sm:w-[180px]">
