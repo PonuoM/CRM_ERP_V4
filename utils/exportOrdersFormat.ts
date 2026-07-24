@@ -327,11 +327,11 @@ export function formatOrdersRaw(
           'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
           'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
           'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || '', order.id, item.boxNumber || 1),
+          'หมายเหตุยกเลิก/ตีกลับ': getReasonNote(order.id, item.boxNumber),
           'สถานะการชำระเงิน': getPaymentComparisonStatus(),
           'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
           'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
           'ตะกร้าขาย': (item as any).basketKeyAtSale || '-',
-          'หมายเหตุยกเลิก/ตีกลับ': getReasonNote(order.id, item.boxNumber),
           'สาเหตุยอดไม่ตรง': '-'
         });
       });
@@ -375,11 +375,11 @@ export function formatOrdersRaw(
         'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
         'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
         'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || '', order.id, 1),
+        'หมายเหตุยกเลิก/ตีกลับ': getReasonNote(order.id, 1),
         'สถานะการชำระเงิน': getPaymentComparisonStatus(),
         'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
         'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
         'ตะกร้าขาย': '-',
-        'หมายเหตุยกเลิก/ตีกลับ': getReasonNote(order.id, 1),
         'สาเหตุยอดไม่ตรง': '-'
       });
     }
