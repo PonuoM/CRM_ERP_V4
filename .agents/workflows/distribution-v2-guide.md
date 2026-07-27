@@ -18,7 +18,7 @@ description: คู่มืออธิบายการทำงานแล�
 ### 🧩 Component ย่อย (The Modules)
 แยกการทำงานตามหน้าต่าง (UI Sections) ไปไว้ที่ `components/DistributionV2/`:
 1. **`DistributionFilterForm.tsx`**: จัดการเรื่องการค้นหาและฟิลเตอร์ลูกค้า (วันเวลา, แท็ก, สินค้า, ฯลฯ)
-2. **`DistributionTelesaleTable.tsx`**: จัดการตารางรายชื่อพนักงาน, การแสดงผล **"เวลาทำงาน (Working Hours)"** ของพนักงานในวันปัจจุบันแบบ Real-time (ดึงจาก `user_daily_attendance`), การเช็คเวลาโทร (ตั้งค่าเริ่มต้นตัวกรองเวลาโทรเป็น "เมื่อวาน - เมื่อวาน"), ระบบเลือกตัวพนักงานและกรองด้วย Supervisor
+2. **`DistributionTelesaleTable.tsx`**: จัดการตารางรายชื่อพนักงาน, การแสดงผล **"เวลาทำงาน (Working Hours)"** ของพนักงานในวันปัจจุบันแบบ Real-time (ดึงจาก `user_daily_attendance`), การเช็คเวลาโทร (เลือกวันที่และกรองด้วยกะเวลาโทรได้ เช่น กะปกติ 09:00-18:00 หรือ กะวันเสาร์ 09:00-16:30), ระบบเลือกตัวพนักงานและกรองด้วย Supervisor
 3. **`DistributionTargetSection.tsx`**: จัดการหน้าต่างตั้งค่าการแจกงาน (เป้าหมาย, เลือกโหมด Equal/Load Balance/Performance)
 4. **`DistributionPreviewModal.tsx`**: แสดง Modal ตัวอย่างลูกค้าที่จะถูกแจกและคำเตือนเรื่องรายชื่อซ้ำซ้อน
 

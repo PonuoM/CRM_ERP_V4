@@ -48,6 +48,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
         d.setDate(d.getDate() - 1);
         return d.toISOString().split('T')[0];
     });
+    const [callFilterShift, setCallFilterShift] = useState<string>('09:00-18:00');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
 
     const selectAllRef = useRef<HTMLInputElement>(null);
@@ -70,9 +71,10 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
         try {
             const agentIds = agents.map(a => a.id).join(',');
             const actionEndpoint = callDataSource === 'realtime' ? 'get_realtime_call_minutes' : 'get_call_minutes';
+            const [startTime, endTime] = callFilterShift.split('-');
             
             const response = await apiFetch(
-                `customers?action=${actionEndpoint}&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}`
+                `customers?action=${actionEndpoint}&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}&start_time=${startTime}&end_time=${endTime}`
             );
             
             if (response?.agents) {
@@ -97,7 +99,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
             fetchCallMinutes();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [callFilterStartDate, callFilterEndDate, agents.length, callDataSource]);
+    }, [callFilterStartDate, callFilterEndDate, callFilterShift, agents.length, callDataSource]);
 
     const filteredAgents = useMemo(() => {
         let displayAgents = agents;
@@ -234,6 +236,20 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                         }}
                         className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
                     />
+                </div>
+                <div>
+                    <label className="block text-xs font-semibold text-orange-800 mb-1">กะเวลาทำงาน</label>
+                    <select
+                        value={callFilterShift}
+                        onChange={(e) => {
+                            setCallFilterShift(e.target.value);
+                            setHasCallFilterApplied(false);
+                        }}
+                        className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 bg-white"
+                    >
+                        <option value="09:00-18:00">ปกติ (09:00 - 18:00)</option>
+                        <option value="09:00-16:30">วันเสาร์ (09:00 - 16:30)</option>
+                    </select>
                 </div>
                 <div>
                     <label className="block text-xs font-semibold text-orange-800 mb-1">เกณฑ์เวลาโทร (นาที)</label>
