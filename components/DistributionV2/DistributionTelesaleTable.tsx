@@ -49,6 +49,8 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
         return d.toISOString().split('T')[0];
     });
     const [callFilterShift, setCallFilterShift] = useState<string>('09:00-18:00');
+    const [customStartTime, setCustomStartTime] = useState<string>('00:00');
+    const [customEndTime, setCustomEndTime] = useState<string>('23:59');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
 
     const selectAllRef = useRef<HTMLInputElement>(null);
@@ -71,7 +73,13 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
         try {
             const agentIds = agents.map(a => a.id).join(',');
             const actionEndpoint = callDataSource === 'realtime' ? 'get_realtime_call_minutes' : 'get_call_minutes';
-            const [startTime, endTime] = callFilterShift.split('-');
+            let startTime, endTime;
+            if (callFilterShift === 'custom') {
+                startTime = customStartTime;
+                endTime = customEndTime;
+            } else {
+                [startTime, endTime] = callFilterShift.split('-');
+            }
             
             const response = await apiFetch(
                 `customers?action=${actionEndpoint}&assignedTo=${agentIds}&companyId=${currentUser?.companyId}&start_date=${callFilterStartDate}&end_date=${callFilterEndDate}&start_time=${startTime}&end_time=${endTime}`
@@ -92,14 +100,14 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
         } finally {
             setLoadingCallMinutes(false);
         }
-    }, [agents.length, callFilterStartDate, callFilterEndDate, currentUser?.companyId, callDataSource, setAgents, setMessage]);
+    }, [agents.length, callFilterStartDate, callFilterEndDate, currentUser?.companyId, callDataSource, setAgents, setMessage, callFilterShift, customStartTime, customEndTime]);
 
     useEffect(() => {
         if (agents.length > 0) {
             fetchCallMinutes();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [callFilterStartDate, callFilterEndDate, callFilterShift, agents.length, callDataSource]);
+    }, [callFilterStartDate, callFilterEndDate, callFilterShift, customStartTime, customEndTime, agents.length, callDataSource]);
 
     const filteredAgents = useMemo(() => {
         let displayAgents = agents;
@@ -249,8 +257,37 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                     >
                         <option value="09:00-18:00">ปกติ (09:00 - 18:00)</option>
                         <option value="09:00-16:30">วันเสาร์ (09:00 - 16:30)</option>
+                        <option value="custom">กำหนดเอง (Custom)</option>
                     </select>
                 </div>
+                {callFilterShift === 'custom' && (
+                    <>
+                        <div>
+                            <label className="block text-xs font-semibold text-orange-800 mb-1">เวลาเริ่มต้น</label>
+                            <input
+                                type="time"
+                                value={customStartTime}
+                                onChange={(e) => {
+                                    setCustomStartTime(e.target.value);
+                                    setHasCallFilterApplied(false);
+                                }}
+                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-orange-800 mb-1">เวลาสิ้นสุด</label>
+                            <input
+                                type="time"
+                                value={customEndTime}
+                                onChange={(e) => {
+                                    setCustomEndTime(e.target.value);
+                                    setHasCallFilterApplied(false);
+                                }}
+                                className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500"
+                            />
+                        </div>
+                    </>
+                )}
                 <div>
                     <label className="block text-xs font-semibold text-orange-800 mb-1">เกณฑ์เวลาโทร (นาที)</label>
                     <input
