@@ -31,10 +31,8 @@ class OrderTagController {
 
                 if ($type === 'SYSTEM') {
                     $where[] = "type = 'SYSTEM'";
-                } else if ($type === 'USER' && $targetUserId) {
+                } else if ($type === 'USER') {
                     $where[] = "type = 'USER'";
-                    $where[] = "created_by = ?";
-                    $params[] = $targetUserId;
                 }
 
                 $sql = 'SELECT * FROM order_tags';
@@ -60,14 +58,7 @@ class OrderTagController {
                 }
 
                 if ($type === 'USER') {
-                    // Check quota
-                    $stmt = $pdo->prepare('SELECT COUNT(*) FROM order_tags WHERE type = ? AND created_by = ?');
-                    $stmt->execute(['USER', $userId]);
-                    $count = (int)$stmt->fetchColumn();
-                    if ($count >= 10) {
-                        json_response(['error' => 'TAG_LIMIT_REACHED', 'message' => 'คุณสร้างป้ายกำกับส่วนตัวครบ 10 ป้ายแล้ว (ลบของเดิมก่อน)'], 400);
-                        return;
-                    }
+                    // Quota removed: unlimited tags for company
                 }
 
                 $stmt = $pdo->prepare('INSERT INTO order_tags (company_id, name, type, color, created_by) VALUES (?, ?, ?, ?, ?)');
@@ -112,8 +103,8 @@ class OrderTagController {
                     return;
                 }
 
-                if ($tag['type'] === 'USER' && $tag['created_by'] != $userId) {
-                    json_response(['error' => 'FORBIDDEN', 'message' => 'Not your tag'], 403);
+                if ($companyId && $tag['company_id'] != $companyId) {
+                    json_response(['error' => 'FORBIDDEN', 'message' => 'Not your company tag'], 403);
                     return;
                 }
 
@@ -137,8 +128,8 @@ class OrderTagController {
                     return;
                 }
 
-                if ($tag['type'] === 'USER' && $tag['created_by'] != $userId) {
-                    json_response(['error' => 'FORBIDDEN'], 403);
+                if ($companyId && $tag['company_id'] != $companyId) {
+                    json_response(['error' => 'FORBIDDEN', 'message' => 'Not your company tag'], 403);
                     return;
                 }
 

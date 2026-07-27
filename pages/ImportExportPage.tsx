@@ -525,8 +525,10 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
 
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<number | null>(null);
+  const [selectedBasketId, setSelectedBasketId] = useState<string | null>(null);
   const [pages, setPages] = useState<{ id: number; name: string; platform?: string }[]>([]);
   const [platforms, setPlatforms] = useState<{ id: number; name: string }[]>([]);
+  const [baskets, setBaskets] = useState<{ id: number; basket_key: string; basket_name: string; target_page: string }[]>([]);
 
   const filteredPages = useMemo(() => {
     if (!selectedPlatform) return pages;
@@ -540,6 +542,13 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
 
     apiFetch('platforms').then((data) => {
       if (Array.isArray(data)) setPlatforms(data);
+    }).catch(console.error);
+
+    apiFetch('basket_config.php').then((data) => {
+      if (Array.isArray(data)) {
+        // Filter only distribution baskets
+        setBaskets(data.filter(b => b.target_page === 'distribution' || b.target_page === 'distribution_v2'));
+      }
     }).catch(console.error);
   }, []);
 
@@ -601,7 +610,8 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
             body: JSON.stringify({ 
               rows: salesRows,
               salesChannel: selectedPlatform,
-              salesChannelPageId: selectedPageId
+              salesChannelPageId: selectedPageId,
+              basketId: selectedBasketId
             })
           }) as ImportResultSummary;
 
@@ -757,6 +767,22 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
                     {filteredPages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-xs font-medium text-gray-700 mb-1">ตะกร้าปลายทาง (Distribution Basket)</label>
+                <select
+                  value={selectedBasketId || ""}
+                  onChange={(e) => setSelectedBasketId(e.target.value || null)}
+                  className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">-- ลงตะกร้า Default (ถ้ามี) หรือตะกร้าเดิม --</option>
+                  {baskets.map(b => (
+                    <option key={b.id} value={b.basket_key}>
+                      {b.basket_name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex items-center gap-3 mb-4">

@@ -65,6 +65,7 @@ $totalRows = count($rows);
 // Handle optional channel selection
 $salesChannel = sanitize_value($input['salesChannel'] ?? null);
 $salesChannelPageId = sanitize_value($input['salesChannelPageId'] ?? null);
+$basketId = sanitize_value($input['basketId'] ?? null);
 if ($salesChannelPageId !== null) {
     $salesChannelPageId = (int)$salesChannelPageId;
 }
@@ -246,8 +247,15 @@ try {
         customer_ref_id, first_name, last_name, phone, email, 
         street, subdistrict, district, province, postal_code,
         company_id, assigned_to, date_assigned, date_registered, ownership_expires,
-        lifecycle_status, behavioral_status, grade, total_purchases
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'New', 'Cold', 'Standard', 0)");
+        lifecycle_status, behavioral_status, grade, total_purchases,
+        current_basket_key, basket_entered_date, original_source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Cold', 'Standard', 0, ?, ?, ?)");
+    
+    $stmtUpdCustomerBasket = $pdo->prepare("UPDATE customers SET 
+        current_basket_key = ?, 
+        basket_entered_date = ?, 
+        lifecycle_status = ?
+        WHERE customer_id = ?");
     
     $stmtInsOrder = $pdo->prepare("INSERT INTO orders (
         id, customer_id, company_id, creator_id,
@@ -287,11 +295,31 @@ try {
         $customerPk = null;
         if (isset($existingCustomers[$phone])) {
             $customerPk = $existingCustomers[$phone]['customer_id'];
+            if ($basketId) {
+                if ($basketId === 'marketplace_dis') {
+                    $summary['notes'][] = "ลูกค้ารายเดิม {$phone} มีในระบบอยู่แล้ว จะไม่ถูกย้ายไปถัง Marketplace";
+                } else {
+                    // Update existing customer's basket if basketId is provided and not marketplace_dis
+                    $stmtUpdCustomerBasket->execute([
+                        $basketId,
+                        $nowStr,
+                        'Assigned',
+                        $customerPk
+                    ]);
+                    $summary['updatedCustomers']++;
+                }
+            }
         } else {
             // Create customer
             $firstName = sanitize_value($first['customerFirstName'] ?? null) ?: 'Customer';
             $lastName = sanitize_value($first['customerLastName'] ?? null) ?: '';
             $refId = "CUS-{$phone}-{$user['company_id']}";
+            
+            $lifecycleStatus = $basketId ? 'Assigned' : 'New';
+            $finalOriginalSource = null;
+            if ($basketId === 'marketplace_dis') {
+                $finalOriginalSource = $salesChannel ?: 'Marketplace';
+            }
             
             $stmtInsCustomer->execute([
                 $refId, $firstName, $lastName, $phone, sanitize_value($first['customerEmail'] ?? null),
@@ -300,7 +328,11 @@ try {
                 sanitize_value($first['district'] ?? null),
                 sanitize_value($first['province'] ?? null),
                 sanitize_value($first['postalCode'] ?? null),
-                $user['company_id'], null, $nowStr, $nowStr, null
+                $user['company_id'], null, $nowStr, $nowStr, null,
+                $lifecycleStatus,
+                $basketId,
+                $basketId ? $nowStr : null,
+                $finalOriginalSource
             ]);
             $customerPk = $pdo->lastInsertId();
             $existingCustomers[$phone] = ['customer_id' => $customerPk];

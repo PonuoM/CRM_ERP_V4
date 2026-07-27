@@ -48,7 +48,7 @@ const OrderTagManagementModal: React.FC<OrderTagManagementModalProps> = ({
     try {
       const [sysRes, usrRes] = await Promise.all([
         apiFetch('order_tags?type=SYSTEM'),
-        apiFetch(`order_tags?type=USER&userId=${currentUser?.id}`)
+        apiFetch(`order_tags?type=USER`)
       ]);
       if (Array.isArray(sysRes)) setSystemTags(sysRes);
       if (Array.isArray(usrRes)) setUserTags(usrRes);
@@ -130,12 +130,12 @@ const OrderTagManagementModal: React.FC<OrderTagManagementModalProps> = ({
     try {
       const data = await apiFetch('order_tags', {
         method: 'POST',
-        body: JSON.stringify({ name: newTagName, type: 'USER', userId: currentUser?.id })
+        body: JSON.stringify({ name: newTagName, type: 'USER' })
       });
       if (data.ok) {
         setNewTagName('');
         setUserTags([...userTags, data.tag]);
-        toast.success('สำเร็จ', 'สร้างป้ายกำกับส่วนตัวสำเร็จ');
+        toast.success('สำเร็จ', 'สร้างป้ายกำกับสำเร็จ');
       } else {
         toast.error('ข้อผิดพลาด', data.message || data.error || 'Failed to create tag');
       }
@@ -270,7 +270,7 @@ const OrderTagManagementModal: React.FC<OrderTagManagementModalProps> = ({
         </div>
 
         <div className="border-t pt-4">
-          <h4 className="font-semibold text-gray-800 mb-2">สร้างป้ายกำกับส่วนตัว</h4>
+          <h4 className="font-semibold text-gray-800 mb-2">สร้างป้ายกำกับเพิ่มเติม (ระดับบริษัท)</h4>
           <div className="flex items-center space-x-2">
             <input 
               type="text" 
@@ -289,12 +289,12 @@ const OrderTagManagementModal: React.FC<OrderTagManagementModalProps> = ({
               สร้างป้าย
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-2">คุณสามารถสร้างป้ายส่วนตัวได้สูงสุด 10 ป้าย (เหลือ {10 - userTags.length} ป้าย)</p>
+
         </div>
 
         {userTags.length > 0 && (
           <div className="border-t pt-4">
-            <h4 className="font-semibold text-gray-800 mb-3">จัดการป้ายกำกับส่วนตัว</h4>
+            <h4 className="font-semibold text-gray-800 mb-3">จัดการป้ายกำกับ (ระดับบริษัท)</h4>
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {userTags.map((tag) => {
                 const isEditing = editingTagId === tag.id;
