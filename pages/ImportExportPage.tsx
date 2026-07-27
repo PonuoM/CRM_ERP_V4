@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import {
   User,
   Customer,
@@ -525,8 +525,13 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
 
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<number | null>(null);
-  const [pages, setPages] = useState<{ id: number; name: string }[]>([]);
+  const [pages, setPages] = useState<{ id: number; name: string; platform?: string }[]>([]);
   const [platforms, setPlatforms] = useState<{ id: number; name: string }[]>([]);
+
+  const filteredPages = useMemo(() => {
+    if (!selectedPlatform) return pages;
+    return pages.filter(p => p.platform === selectedPlatform);
+  }, [pages, selectedPlatform]);
 
   useEffect(() => {
     apiFetch('pages').then((data) => {
@@ -749,7 +754,7 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
                     className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
                   >
                     <option value="">-- ไม่ระบุ --</option>
-                    {pages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {filteredPages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
               </div>

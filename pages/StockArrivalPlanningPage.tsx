@@ -11,7 +11,9 @@ import {
   PackageCheck,
   CalendarPlus,
   X,
+  Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { User, UserRole } from '@/types';
 import { listStockPlans, listProducts, deleteStockPlan, listTonDivisors, saveTonDivisor, listFactoryHolidays, listStockPlanProducts } from '@/services/api';
 import StockPlanFormModal from '@/components/StockPlanFormModal';
@@ -216,6 +218,47 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
     }
   };
 
+  const exportToExcel = () => {
+    const summaryData = productSummaries.map(p => ({
+      'รหัสสินค้า (SKU)': p.sku,
+      'ชื่อสินค้า (Product Name)': p.product_name,
+      'จำนวนที่วางแผนทั้งหมด (Total Planned)': p.totalQty,
+      'จำนวนที่รับเข้าแล้ว (Received)': p.receivedQty,
+      'จำนวนคงค้าง (Outstanding)': Math.max(p.totalQty - p.receivedQty, 0)
+    }));
+
+    const rawData = rows.map(r => {
+      const statusText = STATUS_META[rowStatus(r)]?.label || r.status || r.kind;
+      const originalPlannedDate = r.plan.planned_date ? r.plan.planned_date.slice(0, 10) : '';
+      const expectedDate = r.kind === 'expectation' && r.expected_date ? r.expected_date.slice(0, 10) : '';
+      const actualDate = r.kind === 'expectation' && r.actual_date ? r.actual_date.slice(0, 10) : '';
+
+      return {
+        'รหัสแพลน (Plan ID)': r.plan.id,
+        'วันที่แพลนรับเข้า (Planned Date)': originalPlannedDate,
+        'วันที่เลื่อนแพลน/คาดว่าจะเข้า (Expected Date)': expectedDate,
+        'วันที่ได้รับเข้าจริง (Actual Date)': actualDate,
+        'รหัสสินค้า (SKU)': r.item.sku,
+        'ชื่อสินค้า (Product Name)': r.item.product_name,
+        'สถานะ (Status)': statusText,
+        'จำนวนที่คาดว่าจะเข้า (Expected Qty)': r.kind === 'pending' ? r.item.planned_qty : r.expected_qty,
+        'จำนวนที่รับจริง (Actual Qty)': r.kind === 'expectation' ? (r.actual_qty ?? '') : '',
+        'หมายเหตุ (Remarks)': r.note || '',
+        'ผู้สร้างแพลน (Created By)': r.plan.created_by_name || ''
+      };
+    });
+
+    const wb = XLSX.utils.book_new();
+    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+    const wsRaw = XLSX.utils.json_to_sheet(rawData);
+
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+    XLSX.utils.book_append_sheet(wb, wsRaw, "Raw Data");
+
+    const fileName = `Stock_Arrival_Plan_${year}_${String(month).padStart(2, '0')}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
   const productLabel = (row: StockPlanRow) => `${row.item.sku ?? row.item.product_id} ${row.item.product_name ?? ''}`.trim();
 
   const renderStatusBadge = (status: string) => {
@@ -343,12 +386,20 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
           <h1 className="text-xl font-bold text-gray-800">แพลนรับสินค้า</h1>
           <p className="text-sm text-gray-500">วางแผนสินค้าเข้าคลังรายเดือน และตรวจสอบของจริงเทียบกับแพลน</p>
         </div>
-        <button
-          onClick={() => setFormDate(null)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 hover:bg-blue-700 font-medium shadow-sm"
-        >
-          <Plus size={18} /> เพิ่มแพลน
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportToExcel}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 hover:bg-green-700 font-medium shadow-sm"
+          >
+            <Download size={18} /> Export Excel
+          </button>
+          <button
+            onClick={() => setFormDate(null)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 hover:bg-blue-700 font-medium shadow-sm"
+          >
+            <Plus size={18} /> เพิ่มแพลน
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

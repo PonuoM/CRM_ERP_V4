@@ -115,7 +115,10 @@ try {
         case 'returned_orders_report':
             require_once __DIR__ . '/Services/ReturnedOrdersReportService.php';
             $svc = new ReturnedOrdersReportService($pdo);
-            if (method() === 'GET') {
+            if (method() === 'GET' && $id === 'filter_options') {
+                $stmt = $pdo->query("SELECT id, label FROM cancellation_types WHERE is_active = 1 ORDER BY sort_order ASC, id ASC");
+                json_response(['ok' => true, 'data' => ['cancellation_types' => $stmt->fetchAll(PDO::FETCH_ASSOC)]]);
+            } elseif (method() === 'GET' && empty($id)) {
                 $orderStartDate = $_GET['order_start_date'] ?? '';
                 $orderEndDate = $_GET['order_end_date'] ?? '';
                 $orderStartTime = $_GET['order_start_time'] ?? '';
@@ -139,13 +142,16 @@ try {
                 $audioStatus = $_GET['audio_status'] ?? 'All';
                 $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
                 $searchKeyword = trim($_GET['search_keyword'] ?? '');
+                $returnStatusFilter = $_GET['return_status_filter'] ?? 'All';
+                $cancellationTypeFilter = $_GET['cancellation_type_filter'] ?? 'All';
                 try {
                     $data = $svc->getReportData(
                         $orderStartDate, $orderEndDate,
                         $orderStartTime, $orderEndTime,
                         $actionStartDate, $actionEndDate,
                         $userId, $companyId, $statusType, $resolutionStatus,
-                        $audioStatus, $reasonKeyword, $searchKeyword
+                        $audioStatus, $reasonKeyword, $searchKeyword,
+                        $returnStatusFilter, $cancellationTypeFilter
                     );
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
                 } catch (Exception $e) {
@@ -168,13 +174,51 @@ try {
                 $audioStatus = $_GET['audio_status'] ?? 'All';
                 $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
                 $searchKeyword = trim($_GET['search_keyword'] ?? '');
+                $returnStatusFilter = $_GET['return_status_filter'] ?? 'All';
+                $cancellationTypeFilter = $_GET['cancellation_type_filter'] ?? 'All';
                 try {
                     $data = $svc->getUserSummaryData(
                         $orderStartDate, $orderEndDate,
                         $orderStartTime, $orderEndTime,
                         $actionStartDate, $actionEndDate,
                         $userId, $companyId, $resolutionStatus,
-                        $audioStatus, $reasonKeyword, $searchKeyword
+                        $audioStatus, $reasonKeyword, $searchKeyword,
+                        $returnStatusFilter, $cancellationTypeFilter
+                    );
+                    json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
+                } catch (Exception $e) {
+                    json_response(['ok' => false, 'message' => $e->getMessage()], 400);
+                }
+            } elseif (method() === 'GET' && $id === 'export_tag_stats') {
+                $orderStartDate = $_GET['order_start_date'] ?? '';
+                $orderEndDate = $_GET['order_end_date'] ?? '';
+                $orderStartTime = $_GET['order_start_time'] ?? '';
+                $orderEndTime = $_GET['order_end_time'] ?? '';
+                $actionStartDate = $_GET['action_start_date'] ?? '';
+                $actionEndDate = $_GET['action_end_date'] ?? '';
+                $userId = !empty($_GET['user_id']) ? $_GET['user_id'] : null;
+                $companyId = !empty($_GET['company_id']) ? (int)$_GET['company_id'] : null;
+                if (!$companyId) {
+                    $authUser = get_authenticated_user($pdo);
+                    $companyId = $authUser['company_id'] ?? 1;
+                }
+                $statusType = $_GET['status_type'] ?? 'Returned';
+                $resolutionStatus = $_GET['resolution_status'] ?? 'All';
+                $audioStatus = $_GET['audio_status'] ?? 'All';
+                $reasonKeyword = trim($_GET['reason_keyword'] ?? '');
+                $searchKeyword = trim($_GET['search_keyword'] ?? '');
+                $returnStatusFilter = $_GET['return_status_filter'] ?? 'All';
+                $cancellationTypeFilter = $_GET['cancellation_type_filter'] ?? 'All';
+                $orderTagsFilter = $_GET['order_tags_filter'] ?? '';
+                try {
+                    $data = $svc->getTagStatisticsData(
+                        $orderStartDate, $orderEndDate,
+                        $orderStartTime, $orderEndTime,
+                        $actionStartDate, $actionEndDate,
+                        $userId, $companyId, $statusType, $resolutionStatus,
+                        $audioStatus, $reasonKeyword, $searchKeyword,
+                        $returnStatusFilter, $cancellationTypeFilter,
+                        $orderTagsFilter
                     );
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
                 } catch (Exception $e) {
@@ -627,6 +671,14 @@ try {
         case 'activities':
             handle_activities($pdo, $id);
             break;
+        case 'order_tags':
+            require_once __DIR__ . '/Controllers/OrderTagController.php';
+            OrderTagController::handleOrderTags($pdo);
+            break;
+        case 'order_tag_assignments':
+            require_once __DIR__ . '/Controllers/OrderTagController.php';
+            OrderTagController::handleOrderTagAssignments($pdo);
+            break;
         case 'customer_logs':
             handle_customer_logs($pdo, $id);
             break;
@@ -710,6 +762,19 @@ try {
             $result['sync_info'] = $syncInfo;
             
             json_response(array_merge(['ok' => true], $result));
+            break;
+        case 'jst_warehouses':
+            require_once __DIR__ . '/Services/JstErpService.php';
+            $user = get_authenticated_user($pdo);
+            if (!$user) {
+                json_response(['error' => 'UNAUTHORIZED'], 401);
+            }
+            $isSuperAdmin = ($user['role'] === 'Super Admin' || $user['role'] === 'Developer');
+            $companyId = isset($_GET['companyId']) && $isSuperAdmin ? (int)$_GET['companyId'] : (int)$user['company_id'];
+            
+            $service = new JstErpService($pdo, $companyId);
+            $warehouses = $service->getWarehouses();
+            json_response(['ok' => true, 'data' => $warehouses]);
             break;
         case 'jst_sync_info':
             $user = get_authenticated_user($pdo);
@@ -2489,6 +2554,25 @@ function get_order(PDO $pdo, string $id): ?array
             $userData = $userStmt->fetch();
             if ($userData) {
                 $o['creator_name'] = trim(($userData['first_name'] ?? '') . ' ' . ($userData['last_name'] ?? ''));
+            }
+        } catch (Throwable $e) { /* ignore */
+        }
+    }
+
+    // Fetch cancellation details
+    if ($o['order_status'] === 'Cancelled') {
+        try {
+            $cancelStmt = $pdo->prepare('
+                SELECT ct.label as cancellation_type, oc.notes as cancellation_notes
+                FROM order_cancellations oc
+                LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
+                WHERE oc.order_id = ?
+            ');
+            $cancelStmt->execute([$mainOrderId]);
+            $cancelData = $cancelStmt->fetch();
+            if ($cancelData) {
+                $o['cancellation_type'] = $cancelData['cancellation_type'];
+                $o['cancellation_notes'] = $cancelData['cancellation_notes'];
             }
         } catch (Throwable $e) { /* ignore */
         }
@@ -6741,7 +6825,7 @@ function handle_sync_tracking($pdo)
         // Update shipping_provider and statuses with GUARD for already-approved payments
         // GUARD: If payment_status is already 'Approved' or 'Paid', don't downgrade to PreApproved
         // and auto-complete to Delivered (payment confirmed + tracking = done)
-        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN payment_status IN ('Approved', 'Paid') THEN payment_status WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') AND payment_status IN ('Approved', 'Paid') THEN 'Delivered' WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
+        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN payment_status IN ('Approved', 'Paid') THEN payment_status WHEN payment_method IN ('Claim', 'FreeGift', 'DiscountCoupon') THEN 'Approved' WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, amount_paid = CASE WHEN payment_method IN ('Claim', 'FreeGift', 'DiscountCoupon') THEN 0 ELSE amount_paid END, order_status = CASE WHEN payment_method IN ('Claim', 'FreeGift', 'DiscountCoupon') THEN 'Delivered' WHEN order_status IN ('Preparing', 'Picking') AND payment_status IN ('Approved', 'Paid') THEN 'Delivered' WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
 
         // Box lookup logic is now handled by resolve_main_order_id
 

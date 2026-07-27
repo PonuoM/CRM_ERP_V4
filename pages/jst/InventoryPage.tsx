@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Package, Search, RefreshCw, AlertCircle, Loader2, Settings, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { fetchJstInventory } from '@/services/api';
+import { fetchJstInventory, fetchJstWarehouses } from '@/services/api';
+import MultiSelectFilter from '@/components/MultiSelectFilter';
 import CompanySettingsPage from './CompanySettingsPage';
 import * as XLSX from 'xlsx';
 
@@ -44,16 +45,25 @@ export default function InventoryPage() {
   const [syncInfo, setSyncInfo] = useState<{time: string | null, source: string}>({time: null, source: 'Unknown'});
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedWarehouse, setSelectedWarehouse] = useState<string>('all');
+  const [warehouseOptions, setWarehouseOptions] = useState<{id: number, label: string}[]>([]);
+  const [selectedWarehouseIds, setSelectedWarehouseIds] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState<'inventory' | 'inventory_grouped' | 'settings'>('inventory_grouped');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'sku_id', direction: 'asc' });
 
-  // List of warehouses should ideally come from backend, but since we don't have a specific endpoint, 
-  // we could hardcode standard ones or leave it as a simple string input. For now, let's keep basic standard ones or 'all'.
-  // We'll provide a fixed list since we can't extract them from all pages without loading them all.
-  const predefinedWarehouses = ['คลังสินค้าหลัก', 'คลังสินค้าสำรอง', 'คลังสินค้าออนไลน์'];
+  useEffect(() => {
+    fetchJstWarehouses().then(res => {
+      if (res && res.ok && res.data) {
+        setWarehouseOptions(res.data.map((wh: string, idx: number) => ({ id: idx, label: wh })));
+      }
+    }).catch(console.error);
+  }, []);
+
+  const warehouseParam = useMemo(() => {
+    if (selectedWarehouseIds.length === 0 || selectedWarehouseIds.length === warehouseOptions.length) return 'all';
+    return selectedWarehouseIds.map(id => warehouseOptions.find(o => o.id === id)?.label).filter(Boolean).join(',');
+  }, [selectedWarehouseIds, warehouseOptions]);
 
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -92,7 +102,7 @@ export default function InventoryPage() {
         page: currentPage,
         limit,
         search: searchTerm,
-        warehouse: selectedWarehouse,
+        warehouse: warehouseParam,
         low_stock: showLowStockOnly,
         sort_key: sortConfig.key,
         sort_dir: sortConfig.direction,
@@ -121,7 +131,7 @@ export default function InventoryPage() {
     if (activeTab === 'inventory' || activeTab === 'inventory_grouped') {
       loadInventory(false);
     }
-  }, [activeTab, currentPage, limit, selectedWarehouse, showLowStockOnly, sortConfig]);
+  }, [activeTab, currentPage, limit, warehouseParam, showLowStockOnly, sortConfig]);
 
   // Debounced search
   useEffect(() => {
@@ -141,7 +151,7 @@ export default function InventoryPage() {
       const res = await fetchJstInventory({
         export: true,
         search: searchTerm,
-        warehouse: selectedWarehouse,
+        warehouse: warehouseParam,
         low_stock: showLowStockOnly,
         sort_key: sortConfig.key,
         sort_dir: sortConfig.direction,
@@ -309,16 +319,19 @@ export default function InventoryPage() {
                 />
               </div>
               <div className="flex items-center gap-2 flex-1 sm:flex-none">
-                <select
-                  value={selectedWarehouse}
-                  onChange={(e) => { setSelectedWarehouse(e.target.value); setCurrentPage(1); }}
-                  className="px-4 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white flex-1"
-                >
-                  <option value="all">ทุกคลังสินค้า</option>
-                  {predefinedWarehouses.map((wh) => (
-                    <option key={wh} value={wh}>{wh}</option>
-                  ))}
-                </select>
+                <div className="flex-1 min-w-[200px] z-50">
+                  <MultiSelectFilter
+                    options={warehouseOptions}
+                    selectedIds={selectedWarehouseIds}
+                    onChange={(ids) => {
+                      setSelectedWarehouseIds(ids);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="ค้นหาคลังสินค้า..."
+                    emptyMeansAllLabel="ทุกคลังสินค้า"
+                    emptyHint="ไม่เลือก = ดูข้อมูลทุกคลังสินค้า"
+                  />
+                </div>
                 <select
                   value={limit}
                   onChange={(e) => { setLimit(Number(e.target.value)); setCurrentPage(1); }}

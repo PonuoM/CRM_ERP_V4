@@ -561,6 +561,21 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                                     'bg-blue-100 text-blue-800'
                                         }`}>
                                         {statusThai[order.order_status] || order.order_status}
+                                        {order.order_status === 'Cancelled' && order.cancellation_type && ` (${order.cancellation_type})`}
+                                        {order.order_status === 'Returned' && order.boxes && (() => {
+                                            const statuses = Array.from(new Set(order.boxes.filter((b: any) => b.return_status).map((b: any) => b.return_status)));
+                                            if (statuses.length > 0) {
+                                                const returnStatusThai: Record<string, string> = {
+                                                    'good': 'สภาพดี',
+                                                    'damaged': 'ชำรุด',
+                                                    'returning': 'กำลังตีกลับ',
+                                                    'returned': 'ตีกลับสำเร็จ',
+                                                    'lost': 'สูญหาย'
+                                                };
+                                                return ` (${statuses.map((s: any) => returnStatusThai[s] || s).join(', ')})`;
+                                            }
+                                            return '';
+                                        })()}
                                     </span>
                                 </div>
                             </div>

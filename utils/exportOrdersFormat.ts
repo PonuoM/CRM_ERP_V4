@@ -87,7 +87,8 @@ export function formatOrdersRaw(
 
       if (status === 'Returned' && orderId && boxNumber !== undefined) {
         const key = `${orderId}-${boxNumber}`;
-        const returnStatus = orderBoxesMap[key];
+        const returnData = orderBoxesMap[key];
+        const returnStatus = returnData ? returnData.return_status : null;
         const returnStatusThai: { [key: string]: string } = {
           returning: 'กำลังตีกลับ', returned: 'สภาพดี', good: 'สภาพดี',
           damaged: 'ชำรุด', lost: 'ตีกลับสูญหาย'
@@ -95,8 +96,25 @@ export function formatOrdersRaw(
         const statusText = returnStatus ? (returnStatusThai[returnStatus] || returnStatus) : 'ไม่ถูกตีกลับ';
         return `ตีกลับ (กล่อง ${boxNumber} : ${statusText})`;
       }
+      if (status === 'Cancelled') {
+        const type = (order as any).cancellationType || 'ยังไม่ระบุเหตุผล';
+        return `ยกเลิก (${type})`;
+      }
       return base;
     };
+
+    const getReasonNote = (orderId?: string, boxNumber?: number) => {
+      if (order.orderStatus === 'Cancelled') {
+        return (order as any).cancellationNotes || '-';
+      }
+      if (order.orderStatus === 'Returned' && orderId && boxNumber !== undefined) {
+        const key = `${orderId}-${boxNumber}`;
+        const returnData = orderBoxesMap[key];
+        return (returnData && returnData.return_note) ? returnData.return_note : '-';
+      }
+      return '-';
+    };
+
 
     const getSeller = (itemCreatorId?: number) => {
       const creatorId = itemCreatorId ?? order.creatorId;
@@ -309,6 +327,7 @@ export function formatOrdersRaw(
           'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
           'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
           'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || '', order.id, item.boxNumber || 1),
+          'หมายเหตุยกเลิก/ตีกลับ': getReasonNote(order.id, item.boxNumber),
           'สถานะการชำระเงิน': getPaymentComparisonStatus(),
           'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
           'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',
@@ -356,6 +375,7 @@ export function formatOrdersRaw(
         'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
         'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
         'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || '', order.id, 1),
+        'หมายเหตุยกเลิก/ตีกลับ': getReasonNote(order.id, 1),
         'สถานะการชำระเงิน': getPaymentComparisonStatus(),
         'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด'),
         'วันที่รับเงิน': (order as any).paymentReceivedDate ? new Date((order as any).paymentReceivedDate).toLocaleDateString('th-TH-u-ca-gregory') : '-',

@@ -245,13 +245,13 @@ try {
         try {
             foreach ($chunks as $chunk) {
                 $ph = implode(',', array_fill(0, count($chunk), '?'));
-                $bStmt = $pdo->prepare("SELECT order_id, box_number, return_status
+                $bStmt = $pdo->prepare("SELECT order_id, box_number, return_status, return_note
                      FROM order_boxes
                      WHERE order_id IN ($ph) AND return_status IS NOT NULL");
                 $bStmt->execute($chunk);
                 foreach ($bStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                     $key = $r['order_id'] . '-' . $r['box_number'];
-                    $lookups['boxes'][$key] = $r['return_status'];
+                    $lookups['boxes'][$key] = ['status' => $r['return_status'], 'note' => $r['return_note']];
                 }
             }
         } catch (Throwable $e) {}
@@ -259,13 +259,13 @@ try {
         try {
             foreach ($chunks as $chunk) {
                 $ph = implode(',', array_fill(0, count($chunk), '?'));
-                $canStmt = $pdo->prepare("SELECT oc.order_id, ct.label
+                $canStmt = $pdo->prepare("SELECT oc.order_id, ct.label, oc.notes
                      FROM order_cancellations oc
                      INNER JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
                      WHERE oc.order_id IN ($ph)");
                 $canStmt->execute($chunk);
                 foreach ($canStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                    $lookups['cancellations'][$r['order_id']] = $r['label'];
+                    $lookups['cancellations'][$r['order_id']] = ['label' => $r['label'], 'notes' => $r['notes']];
                 }
             }
         } catch (Throwable $e) {}
