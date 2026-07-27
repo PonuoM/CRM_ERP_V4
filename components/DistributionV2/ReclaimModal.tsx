@@ -71,6 +71,15 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
     setSessionTag,
     sessionTagsList
 }) => {
+    React.useEffect(() => {
+        if (bulkActionType === 'reclaim') {
+            setSelectedBaskets(prev => prev.filter(key => {
+                const b = dashboardBaskets.find(bk => bk.basket_key === key);
+                return b && b.linked_basket_key;
+            }));
+        }
+    }, [bulkActionType, dashboardBaskets, setSelectedBaskets]);
+
     if (!isOpen || !reclaimingAgent) return null;
 
     return (
@@ -96,12 +105,12 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                             <input 
                                 type="checkbox" 
                                 checked={
-                                    dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0).length > 0 &&
-                                    selectedBaskets.length === dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0).length
+                                    dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0 && !(bulkActionType === 'reclaim' && !b.linked_basket_key)).length > 0 &&
+                                    selectedBaskets.length === dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0 && !(bulkActionType === 'reclaim' && !b.linked_basket_key)).length
                                 }
                                 onChange={(e) => {
                                     if (e.target.checked) {
-                                        setSelectedBaskets(dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0).map(b => b.basket_key));
+                                        setSelectedBaskets(dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0 && !(bulkActionType === 'reclaim' && !b.linked_basket_key)).map(b => b.basket_key));
                                     } else {
                                         setSelectedBaskets([]);
                                     }
@@ -116,12 +125,14 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                         const currentHolding = reclaimingAgent.basketCounts?.[basket.basket_key] || 0;
                         const isEmpty = currentHolding === 0;
                         const isSelected = selectedBaskets.includes(basket.basket_key);
+                        const isReclaimBlocked = bulkActionType === 'reclaim' && !basket.linked_basket_key;
+                        const isDisabled = isEmpty || isReclaimBlocked;
 
                         return (
                             <label 
                                 key={basket.basket_key} 
                                 className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                                    isEmpty 
+                                    isDisabled 
                                         ? 'opacity-50 bg-gray-50 border-transparent cursor-not-allowed' 
                                         : isSelected 
                                             ? 'bg-blue-50/50 border-blue-500 shadow-sm' 
@@ -131,7 +142,7 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                                 <div className="flex items-center justify-center pt-0.5">
                                     <input 
                                         type="checkbox" 
-                                        disabled={isEmpty}
+                                        disabled={isDisabled}
                                         checked={isSelected}
                                         onChange={(e) => {
                                             if (e.target.checked) {
@@ -143,8 +154,13 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                                         className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 transition-colors"
                                     />
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 relative">
                                     <div className="font-semibold text-gray-800">{basket.basket_name}</div>
+                                    {isReclaimBlocked && (
+                                        <div className="text-[10px] text-red-500 font-semibold mt-1">
+                                            ⚠️ ไม่สามารถดึงคืนได้ (ไม่มีถังผูก)
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-4 text-right">
                                     {!isEmpty && (

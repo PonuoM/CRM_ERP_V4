@@ -41,6 +41,8 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $assignedTo = $_GET['assignedTo'] ?? '';
                     $startDateStr = $_GET['start_date'] ?? null;
                     $endDateStr = $_GET['end_date'] ?? null;
+                    $startTimeStr = $_GET['start_time'] ?? '00:00';
+                    $endTimeStr = $_GET['end_time'] ?? '23:59';
 
                     if (!$companyId || !$assignedTo || !$startDateStr || !$endDateStr) {
                         json_response(['error' => 'Missing parameters'], 400);
@@ -127,12 +129,14 @@ function handle_customers(PDO $pdo, ?string $id): void
                     }
 
                     // 4. Fetch Recordings
-                    $formatDateForOneCall = function($dateStr, $isEnd) {
+                    $formatDateForOneCall = function($dateStr, $isEnd) use ($startTimeStr, $endTimeStr) {
                         $d = new DateTime($dateStr, new DateTimeZone('Asia/Bangkok'));
                         if ($isEnd) {
-                            $d->setTime(23, 59, 59);
+                            $timeParts = explode(':', $endTimeStr);
+                            $d->setTime((int)$timeParts[0], (int)$timeParts[1], 59);
                         } else {
-                            $d->setTime(0, 0, 0);
+                            $timeParts = explode(':', $startTimeStr);
+                            $d->setTime((int)$timeParts[0], (int)$timeParts[1], 0);
                         }
                         $d->modify('-7 hours'); // Convert to UTC
                         return $d->format('Ymd_His');
@@ -216,6 +220,14 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $assignedToParam = $_GET['assignedTo'] ?? null;
                     $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-1 day'));
                     $endDate = $_GET['end_date'] ?? date('Y-m-d', strtotime('-1 day'));
+                    $startTime = $_GET['start_time'] ?? '00:00';
+                    $endTime = $_GET['end_time'] ?? '23:59';
+                    
+                    if (strlen($startTime) == 5) $startTime .= ':00';
+                    if (strlen($endTime) == 5) $endTime .= ':59';
+                    
+                    $startDateTime = "$startDate $startTime";
+                    $endDateTime = "$endDate $endTime";
 
                     if (!$companyId || !$assignedToParam) {
                         json_response(['error' => 'companyId and assignedTo required'], 400);
@@ -233,12 +245,14 @@ function handle_customers(PDO $pdo, ?string $id): void
                         SELECT matched_user_id, SUM(TIME_TO_SEC(duration)) / 60 as total_minutes 
                         FROM call_import_logs 
                         WHERE call_date >= ? AND call_date <= ? 
+                          AND CONCAT(call_date, ' ', IFNULL(start_time, '00:00:00')) >= ?
+                          AND CONCAT(call_date, ' ', IFNULL(start_time, '00:00:00')) <= ?
                           AND status = 1 
                           AND matched_user_id IN ($placeholders)
                         GROUP BY matched_user_id
                     ";
 
-                    $params = array_merge([$startDate, $endDate], $agentIds);
+                    $params = array_merge([$startDate, $endDate, $startDateTime, $endDateTime], $agentIds);
                     $stmt = $pdo->prepare($sql);
                     $stmt->execute($params);
                     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -257,7 +271,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     // Get Attendance Data
                     $attSql = "SELECT user_id, SUM(attendance_value) as total_attendance FROM user_daily_attendance WHERE work_date >= ? AND work_date <= ? AND user_id IN ($placeholders) GROUP BY user_id";
                     $attStmt = $pdo->prepare($attSql);
-                    $attStmt->execute($params);
+                    $attStmt->execute(array_merge([$startDate, $endDate], $agentIds));
                     $attRows = $attStmt->fetchAll(PDO::FETCH_ASSOC);
                     $attendanceData = [];
                     foreach ($agentIds as $aId) {

@@ -1010,8 +1010,6 @@ function handleTransferCustomers($pdo, $companyId)
         $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, tag_id) VALUES (?, ?, 'Bulk Transfer', NULL, 0, NOW(), NULL, 'Multiple Baskets', ?)");
         $sessionStmt->execute([$companyId, $triggeredBy, $tagId]);
         $sessionId = $pdo->lastInsertId();
-        
-        $detailStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES (?, ?, ?, ?, ?, ?)");
 
         $updateStmt = $pdo->prepare("
             UPDATE customers 
@@ -1063,7 +1061,7 @@ function handleTransferCustomers($pdo, $companyId)
 
             // Select customers to transfer (Dynamic to support 'all' agents)
             $selectSql = "
-                SELECT c.customer_id, c.previous_assigned_to, c.assigned_to as current_agent 
+                SELECT c.customer_id, c.previous_assigned_to, c.assigned_to as current_agent, c.lifecycle_status 
                 FROM customers c
                 WHERE c.company_id = ? 
                 AND c.current_basket_key = ?
@@ -1124,6 +1122,10 @@ function handleTransferCustomers($pdo, $companyId)
                 foreach ($chunks as $chunk) {
                     $logValues = [];
                     $logParams = [];
+                    
+                    $detailValues = [];
+                    $detailParams = [];
+                    
                     foreach ($chunk as $cust) {
                         $custId = $cust['customer_id'];
                         $oldAgent = $cust['current_agent'];
@@ -1131,6 +1133,9 @@ function handleTransferCustomers($pdo, $companyId)
                         
                         $logValues[] = "(?, ?, ?, ?, ?, ?, ?, ?, NOW())";
                         array_push($logParams, $custId, $basketKey, $basketKey, $oldAgent, $toAgentId, 'transfer', $triggeredBy, "Transferred from agent $oldAgent to agent $toAgentId");
+                        
+                        $detailValues[] = "(?, ?, ?, ?, ?, ?)";
+                        array_push($detailParams, $sessionId, $toAgentId, $custId, $oldAgent, $basketKey, $cust['lifecycle_status'] ?? 'Assigned');
                     }
                     
                     $logSql = "INSERT INTO basket_transition_log 
@@ -1138,6 +1143,12 @@ function handleTransferCustomers($pdo, $companyId)
                         VALUES " . implode(', ', $logValues);
                     $bulkLogStmt = $pdo->prepare($logSql);
                     $bulkLogStmt->execute($logParams);
+                    
+                    $detailSql = "INSERT INTO distribution_session_details 
+                        (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status)
+                        VALUES " . implode(', ', $detailValues);
+                    $detailStmtBatch = $pdo->prepare($detailSql);
+                    $detailStmtBatch->execute($detailParams);
                 }
             }
 
@@ -1148,12 +1159,6 @@ function handleTransferCustomers($pdo, $companyId)
                 'basket_key' => $basketKey,
                 'transferred' => $transferredCount
             ];
-        }
-
-        if ($totalReclaimed > 0) {
-            $pdo->prepare("UPDATE distribution_sessions SET total_customers = ? WHERE id = ?")->execute([$totalReclaimed, $sessionId]);
-        } else {
-            $pdo->prepare("DELETE FROM distribution_sessions WHERE id = ?")->execute([$sessionId]);
         }
 
         if ($totalTransferred > 0) {
