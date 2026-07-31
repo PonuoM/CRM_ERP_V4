@@ -312,7 +312,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`distribution_export?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
+            const data = await apiFetch(`distribution_export?action=batch_export&export_mode=${batchExportMode}&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok && data.data && data.data.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('Batch Export');
@@ -404,6 +404,29 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                     });
                     Array.from(map.values()).forEach((row: any) => {
                         let rowData = [ row.date, row.sessionIds.size, row.agentIds.size, row.count ];
+                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
+                        worksheet.addRow(rowData).font = { size: 10 };
+                    });
+                } else if (batchExportMode === 'session_performance') {
+                    let headers = ['รอบแจก (Session ID)', 'เวลาแจก (Session Date)', 'Agent ID', 'Agent Name', 'ตะกร้าต้นทาง (Source Basket)', 'Session Tag', 'จำนวนลูกค้าที่ได้รับ (Total Customers)', 'ยังไม่โทร (Not Called)', 'โทรแล้ว/ไม่นัด (Called No Appt)', 'โทร+นัด (Called & Appt)', 'นัด/ไม่โทร (Appt No Call)'];
+                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
+                    worksheet.addRow(headers);
+                    data.data.forEach((row: any) => {
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${displayKey})` : (displayKey || '-');
+                        let rowData = [
+                            `Session #${row.session_id}`, 
+                            row.created_at, 
+                            row.agent_id || '-', 
+                            `${row.agent_first || ''} ${row.agent_last || ''}`, 
+                            basketText, 
+                            row.session_tag || '-', 
+                            row.total_assigned || 0,
+                            row.total_not_called || 0,
+                            row.total_called_no_appt || 0,
+                            row.total_called_and_appt || 0,
+                            row.total_appt_no_call || 0
+                        ];
                         if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };
                     });
