@@ -432,15 +432,33 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         if (!agentData.stats[basketText]) {
                             agentData.stats[basketText] = { total: 0, not_called: 0, called_no_appt: 0, called_and_appt: 0, appt_no_call: 0 };
                         }
+                        if (!agentData.stats['[รวมทุกตะกร้า]']) {
+                            agentData.stats['[รวมทุกตะกร้า]'] = { total: 0, not_called: 0, called_no_appt: 0, called_and_appt: 0, appt_no_call: 0 };
+                        }
 
-                        agentData.stats[basketText].total += Number(row.total_assigned || 0);
-                        agentData.stats[basketText].not_called += Number(row.total_not_called || 0);
-                        agentData.stats[basketText].called_no_appt += Number(row.total_called_no_appt || 0);
-                        agentData.stats[basketText].called_and_appt += Number(row.total_called_and_appt || 0);
-                        agentData.stats[basketText].appt_no_call += Number(row.total_appt_no_call || 0);
+                        let totalAssigned = Number(row.total_assigned || 0);
+                        let totalNotCalled = Number(row.total_not_called || 0);
+                        let totalCalledNoAppt = Number(row.total_called_no_appt || 0);
+                        let totalCalledAndAppt = Number(row.total_called_and_appt || 0);
+                        let totalApptNoCall = Number(row.total_appt_no_call || 0);
+
+                        agentData.stats[basketText].total += totalAssigned;
+                        agentData.stats[basketText].not_called += totalNotCalled;
+                        agentData.stats[basketText].called_no_appt += totalCalledNoAppt;
+                        agentData.stats[basketText].called_and_appt += totalCalledAndAppt;
+                        agentData.stats[basketText].appt_no_call += totalApptNoCall;
+
+                        agentData.stats['[รวมทุกตะกร้า]'].total += totalAssigned;
+                        agentData.stats['[รวมทุกตะกร้า]'].not_called += totalNotCalled;
+                        agentData.stats['[รวมทุกตะกร้า]'].called_no_appt += totalCalledNoAppt;
+                        agentData.stats['[รวมทุกตะกร้า]'].called_and_appt += totalCalledAndAppt;
+                        agentData.stats['[รวมทุกตะกร้า]'].appt_no_call += totalApptNoCall;
                     });
 
                     const baskets = Array.from(basketsSet).sort();
+                    if (baskets.length > 0) {
+                        baskets.push('[รวมทุกตะกร้า]');
+                    }
                     
                     // 2. Build Headers
                     let header1 = isSuperAdmin ? ['บริษัท (Company)', 'รายชื่อพนักงาน'] : ['รายชื่อพนักงาน'];
