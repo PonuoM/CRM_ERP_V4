@@ -41,11 +41,11 @@ class DistributionExportController {
             $params[] = $companyId;
         }
 
-        $typeFilter = "";
+        $typeFilter = " AND ds.session_status != 'undo_full' ";
         if ($type === 'distribution') {
-            $typeFilter = " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
+            $typeFilter .= " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
         } else if ($type === 'reclaim') {
-            $typeFilter = " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
+            $typeFilter .= " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
         }
 
         $basketFilter = "";
