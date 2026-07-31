@@ -101,14 +101,24 @@ try {
         // Realtime Mode: Look at current basket only
         
         // 1. Get Counts for all tabs
+        // 1. Get Counts for all tabs
         $countQuery = "
+            WITH Base AS (
+                SELECT 
+                    c.customer_id,
+                    (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) as has_called,
+                    (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) as has_appt
+                FROM customers c
+                WHERE c.assigned_to = ? AND c.company_id = ?
+                  AND (c.current_basket_key = ? OR c.current_basket_key = ?)
+            )
             SELECT 
                 COUNT(*) as total_all,
-                SUM(CASE WHEN (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) > 0 THEN 1 ELSE 0 END) as total_called,
-                SUM(CASE WHEN (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) > 0 THEN 1 ELSE 0 END) as total_appt
-            FROM customers c
-            WHERE c.assigned_to = ? AND c.company_id = ?
-              AND (c.current_basket_key = ? OR c.current_basket_key = ?)
+                SUM(CASE WHEN has_called = 0 AND has_appt = 0 THEN 1 ELSE 0 END) as total_not_called,
+                SUM(CASE WHEN has_called > 0 AND has_appt = 0 THEN 1 ELSE 0 END) as total_called_no_appt,
+                SUM(CASE WHEN has_called > 0 AND has_appt > 0 THEN 1 ELSE 0 END) as total_called_and_appt,
+                SUM(CASE WHEN has_called = 0 AND has_appt > 0 THEN 1 ELSE 0 END) as total_appt_no_call
+            FROM Base
         ";
         $stmt = $pdo->prepare($countQuery);
         $stmt->execute([$agentId, $companyId, $basketKey, (string)$basketId]);
@@ -116,34 +126,43 @@ try {
         if ($countsRaw) {
             $counts = [
                 'total_all' => (int)$countsRaw['total_all'],
-                'total_called' => (int)$countsRaw['total_called'],
-                'total_appt' => (int)$countsRaw['total_appt']
+                'total_not_called' => (int)$countsRaw['total_not_called'],
+                'total_called_no_appt' => (int)$countsRaw['total_called_no_appt'],
+                'total_called_and_appt' => (int)$countsRaw['total_called_and_appt'],
+                'total_appt_no_call' => (int)$countsRaw['total_appt_no_call']
             ];
         }
 
         // 2. Fetch paginated data based on tab
         $query = "
-            SELECT 
-                c.customer_id,
-                c.first_name,
-                c.last_name,
-                c.phone,
-                c.assigned_to,
-                c.current_basket_key,
-                (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) as call_count,
-                (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) as appt_count
-            FROM customers c
-            WHERE c.assigned_to = ? AND c.company_id = ?
-              AND (c.current_basket_key = ? OR c.current_basket_key = ?)
+            WITH Base AS (
+                SELECT 
+                    c.customer_id,
+                    c.first_name,
+                    c.last_name,
+                    c.phone,
+                    c.assigned_to,
+                    c.current_basket_key,
+                    (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) as call_count,
+                    (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) as appt_count
+                FROM customers c
+                WHERE c.assigned_to = ? AND c.company_id = ?
+                  AND (c.current_basket_key = ? OR c.current_basket_key = ?)
+            )
+            SELECT * FROM Base WHERE 1=1
         ";
         
-        if ($tab === 'called') {
-            $query .= " AND (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.caller_id = c.assigned_to AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) > 0";
-        } elseif ($tab === 'appt') {
-            $query .= " AND (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) > 0";
+        if ($tab === 'not_called') {
+            $query .= " AND call_count = 0 AND appt_count = 0";
+        } elseif ($tab === 'called_no_appt') {
+            $query .= " AND call_count > 0 AND appt_count = 0";
+        } elseif ($tab === 'called_and_appt') {
+            $query .= " AND call_count > 0 AND appt_count > 0";
+        } elseif ($tab === 'appt_no_call') {
+            $query .= " AND call_count = 0 AND appt_count > 0";
         }
         
-        $query .= " ORDER BY c.customer_id DESC LIMIT ? OFFSET ?";
+        $query .= " ORDER BY customer_id DESC LIMIT ? OFFSET ?";
         
         $stmt = $pdo->prepare($query);
         $stmt->bindValue(1, $agentId, PDO::PARAM_INT);
@@ -192,13 +211,23 @@ try {
         $cohortBaseQuery .= " )";
         
         // 1. Get Counts for all tabs
+        // 1. Get Counts for all tabs
         $countQuery = $cohortBaseQuery . "
+            , Base AS (
+                SELECT 
+                    co.customer_id,
+                    (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) as has_called,
+                    (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) as has_appt
+                FROM Cohort co
+                WHERE (co.historical_basket_key = ? OR co.historical_basket_key = ?)
+            )
             SELECT 
                 COUNT(*) as total_all,
-                SUM(CASE WHEN (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) > 0 THEN 1 ELSE 0 END) as total_called,
-                SUM(CASE WHEN (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) > 0 THEN 1 ELSE 0 END) as total_appt
-            FROM Cohort co
-            WHERE (co.historical_basket_key = ? OR co.historical_basket_key = ?)
+                SUM(CASE WHEN has_called = 0 AND has_appt = 0 THEN 1 ELSE 0 END) as total_not_called,
+                SUM(CASE WHEN has_called > 0 AND has_appt = 0 THEN 1 ELSE 0 END) as total_called_no_appt,
+                SUM(CASE WHEN has_called > 0 AND has_appt > 0 THEN 1 ELSE 0 END) as total_called_and_appt,
+                SUM(CASE WHEN has_called = 0 AND has_appt > 0 THEN 1 ELSE 0 END) as total_appt_no_call
+            FROM Base
         ";
         $paramsCount = array_merge($paramsCohort, [$basketKey, (string)$basketId]);
         $stmt = $pdo->prepare($countQuery);
@@ -207,34 +236,43 @@ try {
         if ($countsRaw) {
             $counts = [
                 'total_all' => (int)$countsRaw['total_all'],
-                'total_called' => (int)$countsRaw['total_called'],
-                'total_appt' => (int)$countsRaw['total_appt']
+                'total_not_called' => (int)$countsRaw['total_not_called'],
+                'total_called_no_appt' => (int)$countsRaw['total_called_no_appt'],
+                'total_called_and_appt' => (int)$countsRaw['total_called_and_appt'],
+                'total_appt_no_call' => (int)$countsRaw['total_appt_no_call']
             ];
         }
 
         // 2. Fetch paginated data based on tab
         $dataQuery = $cohortBaseQuery . "
-            SELECT 
-                co.customer_id,
-                c.first_name,
-                c.last_name,
-                c.phone,
-                co.assigned_to,
-                co.historical_basket_key,
-                (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) as call_count,
-                (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) as appt_count
-            FROM Cohort co
-            JOIN customers c ON co.customer_id = c.customer_id
-            WHERE (co.historical_basket_key = ? OR co.historical_basket_key = ?)
+            , Base AS (
+                SELECT 
+                    co.customer_id,
+                    c.first_name,
+                    c.last_name,
+                    c.phone,
+                    co.assigned_to,
+                    co.historical_basket_key,
+                    (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) as call_count,
+                    (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) as appt_count
+                FROM Cohort co
+                JOIN customers c ON co.customer_id = c.customer_id
+                WHERE (co.historical_basket_key = ? OR co.historical_basket_key = ?)
+            )
+            SELECT * FROM Base WHERE 1=1
         ";
         
-        if ($tab === 'called') {
-            $dataQuery .= " AND (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) > 0";
-        } elseif ($tab === 'appt') {
-            $dataQuery .= " AND (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) > 0";
+        if ($tab === 'not_called') {
+            $dataQuery .= " AND call_count = 0 AND appt_count = 0";
+        } elseif ($tab === 'called_no_appt') {
+            $dataQuery .= " AND call_count > 0 AND appt_count = 0";
+        } elseif ($tab === 'called_and_appt') {
+            $dataQuery .= " AND call_count > 0 AND appt_count > 0";
+        } elseif ($tab === 'appt_no_call') {
+            $dataQuery .= " AND call_count = 0 AND appt_count > 0";
         }
         
-        $dataQuery .= " ORDER BY co.customer_id DESC LIMIT ? OFFSET ?";
+        $dataQuery .= " ORDER BY customer_id DESC LIMIT ? OFFSET ?";
         
         $stmt = $pdo->prepare($dataQuery);
         $paramIdx = 1;
@@ -262,9 +300,11 @@ try {
         ];
     }
 
-    $totalRecords = $counts['total_all'];
-    if ($tab === 'called') $totalRecords = $counts['total_called'];
-    if ($tab === 'appt') $totalRecords = $counts['total_appt'];
+    $totalRecords = $counts['total_all'] ?? 0;
+    if ($tab === 'not_called') $totalRecords = $counts['total_not_called'] ?? 0;
+    if ($tab === 'called_no_appt') $totalRecords = $counts['total_called_no_appt'] ?? 0;
+    if ($tab === 'called_and_appt') $totalRecords = $counts['total_called_and_appt'] ?? 0;
+    if ($tab === 'appt_no_call') $totalRecords = $counts['total_appt_no_call'] ?? 0;
     
     $totalPages = ceil($totalRecords / $limit);
 

@@ -36,7 +36,14 @@ function normalize_request_date(?string $raw): ?string
     $mth = (int) $m[2];
     $yRaw = (int) $m[3];
     if ($yRaw < 100) {
-      $yRaw += 2000;
+      $currentYear2Digit = (int)date('y');
+      if ($yRaw > ($currentYear2Digit + 10)) {
+        // Assume Buddhist year (e.g., 69)
+        $yRaw = (2500 + $yRaw) - 543;
+      } else {
+        // Assume AD (e.g., 26 -> 2026)
+        $yRaw += 2000;
+      }
     } elseif ($yRaw > 2500) {
       // Convert Buddhist years
       $yRaw -= 543;
