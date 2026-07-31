@@ -326,6 +326,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
     return <ArrowDown className="w-3.5 h-3.5 inline ml-1 text-blue-600" />;
   };
   const [processingAudio, setProcessingAudio] = useState<string | null>(null);
+  const [processingAi, setProcessingAi] = useState<string | null>(null);
 
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null);
@@ -547,6 +548,50 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
       toast.error('ข้อผิดพลาด', err.message);
     } finally {
       setProcessingAudio(null);
+    }
+  };
+
+  const handleSummarizeAI = async (order: any) => {
+    if (!order.audio_links || order.audio_links.length === 0) {
+      toast.error('ไม่พบไฟล์เสียงสำหรับออเดอร์นี้');
+      return;
+    }
+    
+    setProcessingAi(order.order_id);
+    try {
+      const type = order.cancel_type ? 'cancelled' : 'returned';
+      
+      let successCount = 0;
+      for (let i = 0; i < order.audio_links.length; i++) {
+        const link = order.audio_links[i];
+        if (!link.id) continue;
+        
+        toast.info(`กำลังวิเคราะห์ไฟล์ที่ ${i + 1}/${order.audio_links.length}...`);
+        
+        const response = await apiFetch('summarize_order_audio', {
+          method: 'POST',
+          body: JSON.stringify({ 
+            order_id: order.order_id, 
+            type,
+            audio_link_id: link.id
+          })
+        });
+        
+        if (response.ok) {
+          successCount++;
+        } else {
+          toast.error(`ไฟล์ที่ ${i + 1} ผิดพลาด: ${response.message || 'เกิดข้อผิดพลาดจาก AI'}`);
+        }
+      }
+      
+      if (successCount > 0) {
+        toast.success(`สรุปผลสำเร็จ ${successCount}/${order.audio_links.length} ไฟล์`);
+        fetchData(true);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'เกิดข้อผิดพลาดในการประมวลผล AI');
+    } finally {
+      setProcessingAi(null);
     }
   };
 
@@ -837,7 +882,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
 
                   {/* Search Button */}
                   <button
-                    onClick={fetchData}
+                    onClick={() => fetchData()}
                     className="bg-gray-800 text-white px-8 h-[38px] rounded-md hover:bg-gray-700 transition font-medium flex items-center justify-center gap-2 shadow-sm w-full sm:w-auto"
                     disabled={loading}
                   >
@@ -1064,6 +1109,15 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                 จัดการรายละเอียด
+                              </button>
+                              
+                              <button 
+                                onClick={() => handleSummarizeAI(order)}
+                                disabled={processingAi === order.order_id || !order.audio_links || order.audio_links.length === 0}
+                                className="text-purple-600 hover:text-purple-900 bg-purple-50 px-3 py-1 rounded w-full text-xs disabled:opacity-50 flex items-center justify-center gap-1 transition-colors"
+                                title="สรุปเนื้อหาไฟล์เสียงด้วย AI"
+                              >
+                                {processingAi === order.order_id ? 'กำลังสรุป...' : '✨ สรุปด้วย AI'}
                               </button>
                               
                               <button 
