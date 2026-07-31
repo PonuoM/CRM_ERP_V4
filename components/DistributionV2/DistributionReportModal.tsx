@@ -408,28 +408,103 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         worksheet.addRow(rowData).font = { size: 10 };
                     });
                 } else if (batchExportMode === 'session_performance') {
-                    let headers = ['รอบแจก (Session ID)', 'เวลาแจก (Session Date)', 'Agent ID', 'Agent Name', 'ตะกร้าต้นทาง (Source Basket)', 'Session Tag', 'จำนวนลูกค้าที่ได้รับ (Total Customers)', 'ยังไม่โทร (Not Called)', 'โทรแล้ว/ไม่นัด (Called No Appt)', 'โทร+นัด (Called & Appt)', 'นัด/ไม่โทร (Appt No Call)'];
-                    if (isSuperAdmin) headers.unshift('บริษัท (Company)');
-                    worksheet.addRow(headers);
+                    // 1. Gather all unique baskets and group data by Agent
+                    const basketsSet = new Set<string>();
+                    const agentMap = new Map<number, any>();
+
                     data.data.forEach((row: any) => {
                         let displayKey = row.real_basket_key || row.previous_basket_key;
-                        let basketText = row.previous_basket_name ? `${row.previous_basket_name} (${displayKey})` : (displayKey || '-');
-                        let rowData = [
-                            `Session #${row.session_id}`, 
-                            row.created_at, 
-                            row.agent_id || '-', 
-                            `${row.agent_first || ''} ${row.agent_last || ''}`, 
-                            basketText, 
-                            row.session_tag || '-', 
-                            row.total_assigned || 0,
-                            row.total_not_called || 0,
-                            row.total_called_no_appt || 0,
-                            row.total_called_and_appt || 0,
-                            row.total_appt_no_call || 0
-                        ];
-                        if (isSuperAdmin) rowData.unshift(row.company_name || '-');
-                        worksheet.addRow(rowData).font = { size: 10 };
+                        let basketText = row.previous_basket_name ? `[${row.previous_basket_name}]` : `[${displayKey || 'ไม่ทราบ'}]`;
+                        basketsSet.add(basketText);
+
+                        if (!row.agent_id) return;
+                        
+                        if (!agentMap.has(row.agent_id)) {
+                            agentMap.set(row.agent_id, {
+                                agent_id: row.agent_id,
+                                agent_name: `${row.agent_first || ''} ${row.agent_last || ''}`.trim() || 'System',
+                                company_name: row.company_name,
+                                stats: {}
+                            });
+                        }
+
+                        let agentData = agentMap.get(row.agent_id);
+                        if (!agentData.stats[basketText]) {
+                            agentData.stats[basketText] = { total: 0, not_called: 0, called_no_appt: 0, called_and_appt: 0, appt_no_call: 0 };
+                        }
+
+                        agentData.stats[basketText].total += Number(row.total_assigned || 0);
+                        agentData.stats[basketText].not_called += Number(row.total_not_called || 0);
+                        agentData.stats[basketText].called_no_appt += Number(row.total_called_no_appt || 0);
+                        agentData.stats[basketText].called_and_appt += Number(row.total_called_and_appt || 0);
+                        agentData.stats[basketText].appt_no_call += Number(row.total_appt_no_call || 0);
                     });
+
+                    const baskets = Array.from(basketsSet).sort();
+                    
+                    // 2. Build Headers
+                    let header1 = isSuperAdmin ? ['บริษัท (Company)', 'รายชื่อพนักงาน'] : ['รายชื่อพนักงาน'];
+                    let header2 = isSuperAdmin ? ['', ''] : [''];
+
+                    baskets.forEach(basket => {
+                        header1.push(basket, '', '', '', ''); // 1 header spanning 5 cols
+                        header2.push('ในมือ', 'ยังไม่โทร', 'โทรแล้วไม่นัดหมาย', 'โทรแล้วนัดหมาย', 'นัดหมายแล้วไม่มีโทร');
+                    });
+
+                    let row1 = worksheet.addRow(header1);
+                    let row2 = worksheet.addRow(header2);
+
+                    // Style Headers
+                    row1.font = { bold: true, size: 10 };
+                    row1.alignment = { horizontal: 'center', vertical: 'middle' };
+                    row2.font = { bold: true, size: 10 };
+                    row2.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                    // Merge and Color Cells
+                    let startColIndex = isSuperAdmin ? 3 : 2;
+                    // Colors to loop through for baskets
+                    const colors = ['FFFFCC', 'CCFFCC', 'FFCCCC', 'CCCCFF', 'FFCCFF', 'CCFFFF', 'FFE5CC', 'E5FFCC'];
+                    
+                    baskets.forEach((basket, i) => {
+                        let endColIndex = startColIndex + 4;
+                        worksheet.mergeCells(1, startColIndex, 1, endColIndex);
+                        
+                        let bgColor = colors[i % colors.length];
+                        
+                        // Apply background color to row 1
+                        let topCell = worksheet.getCell(1, startColIndex);
+                        topCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                        
+                        // Apply background color to row 2 sub-headers
+                        for(let c = startColIndex; c <= endColIndex; c++) {
+                            let subCell = worksheet.getCell(2, c);
+                            subCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                        }
+                        
+                        startColIndex += 5;
+                    });
+
+                    // 3. Fill Agent Rows
+                    Array.from(agentMap.values()).sort((a, b) => a.agent_name.localeCompare(b.agent_name)).forEach(agent => {
+                        let rowData: any[] = [];
+                        if (isSuperAdmin) rowData.push(agent.company_name || '-');
+                        rowData.push(agent.agent_name);
+                        
+                        baskets.forEach(basket => {
+                            let s = agent.stats[basket] || { total: 0, not_called: 0, called_no_appt: 0, called_and_appt: 0, appt_no_call: 0 };
+                            rowData.push(s.total, s.not_called, s.called_no_appt, s.called_and_appt, s.appt_no_call);
+                        });
+                        
+                        let dataRow = worksheet.addRow(rowData);
+                        dataRow.font = { size: 10 };
+                        // Center align stats
+                        for(let c = isSuperAdmin ? 3 : 2; c <= rowData.length; c++) {
+                            dataRow.getCell(c).alignment = { horizontal: 'right' };
+                        }
+                    });
+
+                    // Freeze Panes
+                    worksheet.views = [{ state: 'frozen', xSplit: isSuperAdmin ? 2 : 1, ySplit: 2 }];
                 } else {
                     // Customer Level
                     let headers = ['รอบแจก (Session ID)', 'เวลา', 'รูปแบบ (Mode)', 'ผู้ดำเนินการ', 'Agent ID', 'Agent Name', 'รหัสลูกค้า', 'ชื่อ-นามสกุลลูกค้า', 'เบอร์โทรศัพท์', 'ตะกร้าต้นทาง (Source Basket)', 'Session Tag'];
