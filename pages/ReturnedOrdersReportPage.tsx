@@ -956,7 +956,19 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm font-medium text-gray-900">{order.customer_name}</div>
+                            <div className="text-sm font-medium text-gray-900">
+                              <a 
+                                href="#" 
+                                onClick={(e) => { 
+                                  e.preventDefault(); 
+                                  window.open(`${window.location.origin}${window.location.pathname}?page=Dashboard+V2&customerId=${order.customer_id}`, '_blank'); 
+                                }}
+                                className="text-blue-600 hover:text-blue-800 hover:underline"
+                                title="เปิดแท็บใหม่ไปยังรายละเอียดลูกค้า"
+                              >
+                                {order.customer_name}
+                              </a>
+                            </div>
                             <div className="text-sm text-gray-500">{order.customer_phone}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
