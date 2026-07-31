@@ -881,6 +881,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                             <option value="basket_overall">5. Source Basket (สรุปตามตะกร้า)</option>
                             <option value="daily_summary">6. Daily Summary (สรุปยอดรายวัน)</option>
                             <option value="ceo_pivot">7. CEO Pivot Summary (แบบตารางไขว้)</option>
+                            <option value="session_performance">8. สถิติการโทรรายบุคคล (Call Stats)</option>
                         </select>
                         <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-4 py-1.5 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
                             {isBatchExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} ส่งออกไฟล์
