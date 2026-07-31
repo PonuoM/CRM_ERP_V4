@@ -144,6 +144,7 @@ try {
                 $searchKeyword = trim($_GET['search_keyword'] ?? '');
                 $returnStatusFilter = $_GET['return_status_filter'] ?? 'All';
                 $cancellationTypeFilter = $_GET['cancellation_type_filter'] ?? 'All';
+                $orderTagsFilter = $_GET['orderTagsFilter'] ?? $_GET['order_tags_filter'] ?? '';
                 try {
                     $data = $svc->getReportData(
                         $orderStartDate, $orderEndDate,
@@ -151,7 +152,8 @@ try {
                         $actionStartDate, $actionEndDate,
                         $userId, $companyId, $statusType, $resolutionStatus,
                         $audioStatus, $reasonKeyword, $searchKeyword,
-                        $returnStatusFilter, $cancellationTypeFilter
+                        $returnStatusFilter, $cancellationTypeFilter,
+                        $orderTagsFilter
                     );
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
                 } catch (Exception $e) {
