@@ -184,7 +184,10 @@ class ReturnedOrdersReportService
                     ELSE COALESCE(CONCAT(sup.first_name, ' ', sup.last_name), '-')
                 END AS creator_team,
                 oar.resolution_notes AS admin_resolution_notes,
-                COALESCE(oar.is_completed, 0) AS admin_resolution_completed
+                COALESCE(oar.is_completed, 0) AS admin_resolution_completed,
+                COALESCE(oar.is_new_order_created, 0) AS is_new_order_created,
+                COALESCE(oar.is_partially_returned, 0) AS is_partially_returned,
+                oar.new_order_id
             FROM orders o
             LEFT JOIN order_audio_resolutions oar ON o.id = oar.order_id
             LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -810,6 +813,30 @@ class ReturnedOrdersReportService
         ]);
     }
 
+    public function checkOrderExists(string $orderId): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT 1 FROM orders WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => $orderId]);
+        return (bool)$stmt->fetchColumn();
+    }
+
+    public function getCustomerRecentOrders(string $customerId, string $excludeOrderId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT id AS order_id, order_date AS date, order_status AS status 
+            FROM orders 
+            WHERE customer_id = :customer_id 
+              AND id != :exclude_id 
+            ORDER BY order_date DESC 
+            LIMIT 10
+        ");
+        $stmt->execute([
+            ':customer_id' => $customerId,
+            ':exclude_id' => $excludeOrderId
+        ]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
     public function toggleOrderResolutionComplete(string $orderId, int $isCompleted): bool
     {
         $stmt = $this->pdo->prepare("
@@ -823,20 +850,36 @@ class ReturnedOrdersReportService
         ]);
     }
 
-    public function updateOrderDetails(string $orderId, ?string $summaryNotes, array $newAudioLinks, array $updatedAudioLinks, array $deletedAudioIds, int $userId): bool
+    public function updateOrderDetails(string $orderId, ?string $summaryNotes, array $newAudioLinks, array $updatedAudioLinks, array $deletedAudioIds, int $userId, int $isNewOrderCreated = 0, int $isPartiallyReturned = 0, ?string $newOrderId = null): bool
     {
+        if ($isNewOrderCreated === 1 && !empty($newOrderId)) {
+            if (!$this->checkOrderExists($newOrderId)) {
+                throw new Exception("Order ID '{$newOrderId}' ไม่มีอยู่ในระบบ กรุณาตรวจสอบอีกครั้ง");
+            }
+        } elseif ($isNewOrderCreated === 0) {
+            $newOrderId = null; // Clear if not checked
+        }
+
         try {
             $this->pdo->beginTransaction();
 
-            // 1. Update Order Summary
-            if ($summaryNotes !== null) {
-                $stmt = $this->pdo->prepare("
-                    INSERT INTO order_audio_resolutions (order_id, resolution_notes) 
-                    VALUES (:id, :notes)
-                    ON DUPLICATE KEY UPDATE resolution_notes = VALUES(resolution_notes)
-                ");
-                $stmt->execute([':notes' => $summaryNotes, ':id' => $orderId]);
-            }
+            // 1. Update Order Summary and Checkboxes
+            $stmt = $this->pdo->prepare("
+                INSERT INTO order_audio_resolutions (order_id, resolution_notes, is_new_order_created, is_partially_returned, new_order_id) 
+                VALUES (:id, :notes, :is_new, :is_partial, :new_order_id)
+                ON DUPLICATE KEY UPDATE 
+                    resolution_notes = VALUES(resolution_notes),
+                    is_new_order_created = VALUES(is_new_order_created),
+                    is_partially_returned = VALUES(is_partially_returned),
+                    new_order_id = VALUES(new_order_id)
+            ");
+            $stmt->execute([
+                ':id' => $orderId,
+                ':notes' => $summaryNotes,
+                ':is_new' => $isNewOrderCreated,
+                ':is_partial' => $isPartiallyReturned,
+                ':new_order_id' => $newOrderId
+            ]);
 
             // 2. Delete audio links
             if (!empty($deletedAudioIds)) {

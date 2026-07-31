@@ -247,6 +247,14 @@ try {
                 $summary = $input['summary'] ?? '';
                 $success = $svc->saveOrderSummary($orderId, $summary);
                 json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed to save summary']);
+            } elseif (method() === 'GET' && $id === 'customer-orders') {
+                $customerId = $_GET['customer_id'] ?? '';
+                $excludeId = $_GET['exclude'] ?? '';
+                if (!$customerId) {
+                    json_response(['ok' => false, 'message' => 'Missing customer_id'], 400);
+                }
+                $orders = $svc->getCustomerRecentOrders($customerId, $excludeId);
+                json_response(['ok' => true, 'data' => $orders]);
             } elseif (method() === 'POST' && $id === 'audio-notes') {
                 $input = json_input();
                 $audioId = !empty($input['id']) ? (int)$input['id'] : 0;
@@ -270,6 +278,10 @@ try {
                 $updatedAudioLinks = $input['updated_audio_links'] ?? [];
                 $deletedAudioIds = $input['deleted_audio_ids'] ?? [];
                 
+                $isNewOrderCreated = isset($input['is_new_order_created']) ? (int)$input['is_new_order_created'] : 0;
+                $isPartiallyReturned = isset($input['is_partially_returned']) ? (int)$input['is_partially_returned'] : 0;
+                $newOrderId = !empty($input['new_order_id']) ? $input['new_order_id'] : null;
+                
                 $authUser = get_authenticated_user($pdo);
                 $uId = $authUser ? ($authUser['id'] ?? 0) : 0;
                 
@@ -277,8 +289,12 @@ try {
                     json_response(['ok' => false, 'message' => 'Missing order_id'], 400);
                 }
                 
-                $success = $svc->updateOrderDetails($orderId, $summaryNotes, $newAudioLinks, $updatedAudioLinks, $deletedAudioIds, $uId);
-                json_response(['ok' => $success, 'message' => $success ? 'Updated details successfully' : 'Failed to update details']);
+                try {
+                    $success = $svc->updateOrderDetails($orderId, $summaryNotes, $newAudioLinks, $updatedAudioLinks, $deletedAudioIds, $uId, $isNewOrderCreated, $isPartiallyReturned, $newOrderId);
+                    json_response(['ok' => $success, 'message' => $success ? 'Updated details successfully' : 'Failed to update details']);
+                } catch (Exception $e) {
+                    json_response(['ok' => false, 'message' => $e->getMessage()], 400);
+                }
             }
             break;
         case 'promotions':
