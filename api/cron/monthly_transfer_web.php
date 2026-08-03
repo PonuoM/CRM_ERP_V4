@@ -24,6 +24,11 @@ if ($inputKey !== $SECRET_KEY) {
     die("Access Denied. Invalid key.\n");
 }
 
+if (php_sapi_name() === 'cli') {
+    // Parse CLI arguments (e.g., dryrun=1 company=1) into $_GET
+    parse_str(implode('&', array_slice($argv, 1)), $_GET);
+}
+
 // ========================
 // Skip authentication for cron jobs (use secret key instead)
 // ========================
