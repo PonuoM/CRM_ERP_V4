@@ -18,7 +18,7 @@ header('Content-Type: text/plain; charset=utf-8');
 // ========================
 $SECRET_KEY = 'basket_transfer_2026_secret';
 
-$inputKey = $_GET['key'] ?? '';
+$inputKey = php_sapi_name() === 'cli' ? $SECRET_KEY : ($_GET['key'] ?? '');
 if ($inputKey !== $SECRET_KEY) {
     http_response_code(403);
     die("Access Denied. Invalid key.\n");
@@ -27,6 +27,7 @@ if ($inputKey !== $SECRET_KEY) {
 // ========================
 // Skip authentication for cron jobs (use secret key instead)
 // ========================
+echo "HELLO WORLD\n";
 define('SKIP_AUTH', true);
 
 require_once __DIR__ . '/../config.php';
@@ -184,7 +185,7 @@ foreach ($companies as $companyId) {
             // Extending holding time by appointments and sales threshold, capped at $maxTotalDays
             $customersStmt = $pdo->prepare("
                 SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
-                       c.current_basket_key, c.distribution_count,
+                       c.current_basket_key, c.distribution_count, c.original_source,
                        DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
                        DATEDIFF(NOW(), c.last_order_date) as days_since_order,
                        COALESCE((
@@ -225,18 +226,28 @@ foreach ($companies as $companyId) {
                   AND DATEDIFF(NOW(), c.last_order_date) >= ?
                 $limitClause
             ");
-            $customersStmt->execute([
-                $maxExtendAppts, $maxExtendAppts, // For SELECT valid_appointments
-                $companyId, $basketId, 
-                $maxTotalDays, $failDays, $maxExtendAppts, $maxExtendAppts, $extendDaysPerAppt, // For WHERE clause
-                $salesThreshold, $salesRewardDays, $failDays
-            ]);
+            try {
+                $basketIdStr = (string)$config['id'];
+                $params = [
+                    $maxExtendAppts, $maxExtendAppts, // For SELECT valid_appointments
+                    $companyId, $basketIdStr, 
+                    $maxTotalDays, $failDays, $maxExtendAppts, $maxExtendAppts, $extendDaysPerAppt, // For WHERE clause
+                    $salesThreshold, $salesRewardDays, $failDays
+                ];
+                echo "QUERY: " . $customersStmt->queryString . "\n";
+                echo "PARAMS: " . json_encode($params) . "\n";
+                echo "BasketKey: [" . $basketKey . "] length: " . strlen($basketKey) . "\n";
+                $customersStmt->execute($params);
+            } catch (\Throwable $e) {
+                echo "DB ERROR (Dynamic): " . $e->getMessage() . "\n";
+            }
             echo "Using dynamic retention: +$extendDaysPerAppt days/appt (Max: $maxExtendAppts appts), +$salesRewardDays days/sales>=$salesThreshold (Max: $maxTotalDays)\n";
+
         } else {
             // Standard query (fast)
             $customersStmt = $pdo->prepare("
                 SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
-                       c.current_basket_key, c.distribution_count,
+                       c.current_basket_key, c.distribution_count, c.original_source,
                        DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
                        DATEDIFF(NOW(), c.last_order_date) as days_since_order,
                        0 as valid_appointments,
@@ -249,11 +260,17 @@ foreach ($companies as $companyId) {
                   AND DATEDIFF(NOW(), c.last_order_date) >= ?
                 $limitClause
             ");
-            $customersStmt->execute([$companyId, $basketId, $failDays, $failDays]);
+            $basketIdStr = (string)$config['id'];
+            $customersStmt->execute([$companyId, $basketIdStr, $failDays, $failDays]);
         }
+        
+        echo "DEBUG PARAMS: company=$companyId, basket=$basketKey, maxTotalDays=$maxTotalDays, failDays=$failDays, maxExtendAppts=$maxExtendAppts, extendDaysPerAppt=$extendDaysPerAppt, salesThreshold=$salesThreshold, salesReward=$salesRewardDays\n";
+
+
         
         $customers = $customersStmt->fetchAll(PDO::FETCH_ASSOC);
         
+
         echo "Found " . count($customers) . " customers exceeding $failDays days\n";
         
         if (count($customers) === 0) {
@@ -335,6 +352,40 @@ foreach ($companies as $companyId) {
                         $totalErrors++;
                         $processed++;
                         continue;
+                    }
+                }
+            }
+            
+            // MARKETPLACE CUSTOM LOGIC OVERRIDE
+            $isMarketplace = false;
+            if (!empty($customer['original_source'])) {
+                $isMarketplace = true;
+            }
+
+            if ($isMarketplace) {
+                // Rule 4: If failing from 'find_new_owner_dash' or 'personal_last_chance' (Basket 40)
+                if ($basketKey === 'find_new_owner_dash' || $basketKey === 'personal_last_chance') {
+                    $targetBasketKey = 'marketplace_dis';
+                    $matchedBy = 'marketplace_override_find_new_owner';
+                }
+                
+                // Rule 5: If failing from 'marketplace_dash', check aging
+                if ($basketKey === 'marketplace_dash') {
+                    if ($daysSinceOrder > 1095) {
+                        $targetBasketKey = 'ancient';
+                        $matchedBy = 'marketplace_override_ancient';
+                    } elseif ($daysSinceOrder > 365) {
+                        $targetBasketKey = 'mid_1_3y';
+                        $matchedBy = 'marketplace_override_1_3y';
+                    } elseif ($daysSinceOrder > 270) {
+                        $targetBasketKey = 'mid_9_12m';
+                        $matchedBy = 'marketplace_override_9_12m';
+                    } elseif ($daysSinceOrder > 180) {
+                        $targetBasketKey = 'mid_6_9m';
+                        $matchedBy = 'marketplace_override_6_9m';
+                    } else {
+                        $targetBasketKey = 'marketplace_dis';
+                        $matchedBy = 'marketplace_override_normal_fail';
                     }
                 }
             }

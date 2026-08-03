@@ -129,19 +129,26 @@ try {
             SELECT customer_id, assigned_to, current_basket_key, date_assigned
             FROM customers
             WHERE assigned_to IN ($userIdsStr) AND company_id = ?
+        ),
+        CustomerActivity AS (
+            SELECT 
+                C.customer_id,
+                C.assigned_to,
+                C.current_basket_key,
+                (SELECT COUNT(*) FROM call_history CH WHERE CH.customer_id = C.customer_id AND CH.caller_id = C.assigned_to AND CH.date >= COALESCE(C.date_assigned, '1970-01-01')) as call_count,
+                (SELECT COUNT(*) FROM appointments A WHERE A.customer_id = C.customer_id AND A.created_by = C.assigned_to AND A.created_at >= COALESCE(C.date_assigned, '1970-01-01')) as appt_count
+            FROM CurrentCustomers C
         )
         SELECT 
-            C.assigned_to, 
-            C.current_basket_key, 
-            COUNT(DISTINCT C.customer_id) as cnt,
-            COUNT(DISTINCT CH.customer_id) as called_current,
-            COUNT(DISTINCT A.customer_id) as appt_current
-        FROM CurrentCustomers C
-        LEFT JOIN call_history CH 
-            ON C.customer_id = CH.customer_id AND C.assigned_to = CH.caller_id AND CH.date >= COALESCE(C.date_assigned, '1970-01-01')
-        LEFT JOIN appointments A 
-            ON C.customer_id = A.customer_id AND C.assigned_to = A.created_by AND A.created_at >= COALESCE(C.date_assigned, '1970-01-01')
-        GROUP BY C.assigned_to, C.current_basket_key
+            assigned_to, 
+            current_basket_key, 
+            COUNT(customer_id) as cnt,
+            SUM(CASE WHEN call_count = 0 AND appt_count = 0 THEN 1 ELSE 0 END) as not_called_current,
+            SUM(CASE WHEN call_count > 0 AND appt_count = 0 THEN 1 ELSE 0 END) as called_no_appt_current,
+            SUM(CASE WHEN call_count > 0 AND appt_count > 0 THEN 1 ELSE 0 END) as called_and_appt_current,
+            SUM(CASE WHEN call_count = 0 AND appt_count > 0 THEN 1 ELSE 0 END) as appt_no_call_current
+        FROM CustomerActivity
+        GROUP BY assigned_to, current_basket_key
     ";
     $stmt = $pdo->prepare($currentAssignedQuery);
     $stmt->execute([$companyId]);
@@ -213,8 +220,10 @@ try {
         foreach ($baskets as $b) {
             $dataMap[$t['id']]['stats'][$b['basket_key']] = [
                 'assigned_current' => 0,
-                'called_current' => 0,
-                'appt_current' => 0,
+                'not_called_current' => 0,
+                'called_no_appt_current' => 0,
+                'called_and_appt_current' => 0,
+                'appt_no_call_current' => 0,
                 'assigned_total' => 0,
                 'called' => 0,
                 'appointments' => 0
@@ -228,8 +237,10 @@ try {
         $basketKey = $idToKeyMap[$row['current_basket_key']] ?? null;
         if ($basketKey && isset($dataMap[$agentId]['stats'][$basketKey])) {
             $dataMap[$agentId]['stats'][$basketKey]['assigned_current'] = (int)$row['cnt'];
-            $dataMap[$agentId]['stats'][$basketKey]['called_current'] = (int)$row['called_current'];
-            $dataMap[$agentId]['stats'][$basketKey]['appt_current'] = (int)$row['appt_current'];
+            $dataMap[$agentId]['stats'][$basketKey]['not_called_current'] = (int)$row['not_called_current'];
+            $dataMap[$agentId]['stats'][$basketKey]['called_no_appt_current'] = (int)$row['called_no_appt_current'];
+            $dataMap[$agentId]['stats'][$basketKey]['called_and_appt_current'] = (int)$row['called_and_appt_current'];
+            $dataMap[$agentId]['stats'][$basketKey]['appt_no_call_current'] = (int)$row['appt_no_call_current'];
         }
     }
 
@@ -278,8 +289,10 @@ try {
                 $headers[] = "[{$bName}] นัดหมาย";
             } else {
                 $headers[] = "[{$bName}] ในมือ";
-                $headers[] = "[{$bName}] โทรแล้ว";
-                $headers[] = "[{$bName}] นัดหมาย";
+                $headers[] = "[{$bName}] ยังไม่โทร";
+                $headers[] = "[{$bName}] โทรแล้วไม่นัด";
+                $headers[] = "[{$bName}] โทรและนัด";
+                $headers[] = "[{$bName}] นัดแต่ไม่โทร";
             }
         }
         fputcsv($output, $headers);
@@ -290,9 +303,11 @@ try {
             foreach ($baskets as $b) {
                 $stat = $agent['stats'][$b['basket_key']] ?? null;
                 if (!$stat) {
-                    $row[] = '0';
-                    $row[] = '0';
-                    $row[] = '0';
+                    if ($viewMode === 'performance') {
+                        $row = array_merge($row, ['0', '0', '0']);
+                    } else {
+                        $row = array_merge($row, ['0', '0', '0', '0', '0']);
+                    }
                     continue;
                 }
                 
@@ -302,8 +317,10 @@ try {
                     $row[] = $stat['appointments'];
                 } else {
                     $row[] = $stat['assigned_current'];
-                    $row[] = $stat['called_current'];
-                    $row[] = $stat['appt_current'];
+                    $row[] = $stat['not_called_current'];
+                    $row[] = $stat['called_no_appt_current'];
+                    $row[] = $stat['called_and_appt_current'];
+                    $row[] = $stat['appt_no_call_current'];
                 }
             }
             fputcsv($output, $row);

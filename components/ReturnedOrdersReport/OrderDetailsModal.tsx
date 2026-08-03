@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '@/components/Modal';
+import { Search, ChevronDown } from 'lucide-react';
+import { apiFetch } from '@/services/api';
 
 import { OrderData } from '../../pages/ReturnedOrdersReportPage';
 
@@ -25,6 +27,12 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ isOpen, onClose, 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
+  const [isNewOrderCreated, setIsNewOrderCreated] = useState(false);
+  const [isPartiallyReturned, setIsPartiallyReturned] = useState(false);
+  const [newOrderId, setNewOrderId] = useState('');
+  const [suggestedOrders, setSuggestedOrders] = useState<any[]>([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
 
   useEffect(() => {
@@ -33,8 +41,28 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ isOpen, onClose, 
       setLinks((orderData.audio_links as any) || []);
       setNewLinks([]);
       setDeletedIds([]);
+      setIsNewOrderCreated(!!orderData.is_new_order_created);
+      setIsPartiallyReturned(!!orderData.is_partially_returned);
+      setNewOrderId(orderData.new_order_id || '');
       setIsDirty(false);
       setShowConfirmClose(false);
+
+      if (orderData.customer_id) {
+        const fetchSuggestions = async () => {
+          setIsLoadingSuggestions(true);
+          try {
+            const json = await apiFetch(`returned_orders_report/customer-orders?customer_id=${orderData.customer_id}&exclude=${orderData.order_id}`);
+            if (json.ok) {
+              setSuggestedOrders(json.data || []);
+            }
+          } catch (e) {
+            console.error(e);
+          }
+          setIsLoadingSuggestions(false);
+        };
+        // Defer fetch to prevent blocking modal animation
+        setTimeout(fetchSuggestions, 150);
+      }
     }
   }, [isOpen, orderData]);
 
@@ -69,6 +97,9 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ isOpen, onClose, 
       const payload = {
         order_id: orderData.order_id,
         admin_resolution_notes: summary,
+        is_new_order_created: isNewOrderCreated ? 1 : 0,
+        is_partially_returned: isPartiallyReturned ? 1 : 0,
+        new_order_id: isNewOrderCreated ? newOrderId : null,
         new_audio_links: newLinks,
         updated_audio_links: links, // Existing links with possible edits
         deleted_audio_ids: deletedIds
@@ -125,6 +156,8 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ isOpen, onClose, 
 - **เบอร์โทรศัพท์:** ${orderData.customer_phone || '-'}
 - **รหัสออเดอร์:** ${orderData.order_id}
 - **สถานะการตีกลับ/ยกเลิก:** ${orderData.cancel_type || '-'}
+- **สร้างคำสั่งซื้อใหม่แล้ว:** ${isNewOrderCreated ? `ใช่ ${newOrderId ? `(Order ID: ${newOrderId})` : ''}` : 'ไม่ใช่'}
+- **ตีกลับบางกล่อง:** ${isPartiallyReturned ? 'ใช่' : 'ไม่ใช่'}
 - **สินค้า:** ${orderData.items && orderData.items.length > 0 ? orderData.items.map(i => `${i.product_name} x${i.quantity}${i.is_freebie ? ' (แถม)' : ''}`).join(', ') : '-'}
 
 ---
@@ -218,6 +251,8 @@ ${[...links, ...newLinks].map((l, i) => `### ลิงก์ที่ ${i + 1}
                <li><strong>เบอร์โทรศัพท์:</strong> ${orderData.customer_phone || '-'}</li>
                <li><strong>รหัสออเดอร์:</strong> ${orderData.order_id}</li>
                <li><strong>สถานะการตีกลับ/ยกเลิก:</strong> ${orderData.cancel_type || '-'}</li>
+               <li><strong>สร้างคำสั่งซื้อใหม่แล้ว:</strong> ${isNewOrderCreated ? `ใช่ ${newOrderId ? `(Order ID: ${newOrderId})` : ''}` : 'ไม่ใช่'}</li>
+               <li><strong>ตีกลับบางกล่อง:</strong> ${isPartiallyReturned ? 'ใช่' : 'ไม่ใช่'}</li>
              </ul>
              <h3>สินค้า</h3>
              ${itemsStr}
@@ -252,7 +287,88 @@ ${[...links, ...newLinks].map((l, i) => `### ลิงก์ที่ ${i + 1}
         
         {/* 1. สรุปออเดอร์ */}
         <section className="mb-6">
-          <h3 className="text-sm font-bold text-gray-800 mb-2 border-b pb-1">1. สรุปเคสคำสั่งซื้อ</h3>
+          <h3 className="text-sm font-bold text-gray-800 mb-3 border-b pb-1">1. สรุปเคสคำสั่งซื้อ</h3>
+          
+          <div className="flex flex-wrap gap-4 mb-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isNewOrderCreated}
+                onChange={(e) => { setIsNewOrderCreated(e.target.checked); markDirty(); }}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+              />
+              <span className="text-sm text-gray-700 font-medium">สร้างคำสั่งซื้อใหม่แล้ว</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPartiallyReturned}
+                onChange={(e) => { setIsPartiallyReturned(e.target.checked); markDirty(); }}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+              />
+              <span className="text-sm text-gray-700 font-medium">ตีกลับบางกล่อง</span>
+            </label>
+          </div>
+
+          {isNewOrderCreated && (
+            <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-md">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Order ID ใหม่
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search size={16} className="text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  value={newOrderId}
+                  onChange={(e) => {
+                    setNewOrderId(e.target.value);
+                    setIsDropdownOpen(true);
+                    markDirty();
+                  }}
+                  onFocus={() => setIsDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
+                  placeholder="ค้นหาหรือพิมพ์ Order ID"
+                  className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                  <ChevronDown size={16} className="text-gray-400" />
+                </div>
+                
+                {isDropdownOpen && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {isLoadingSuggestions ? (
+                      <div className="px-4 py-2 text-sm text-gray-500 text-center">กำลังโหลดข้อมูล...</div>
+                    ) : suggestedOrders.length > 0 ? (
+                      <ul>
+                        {suggestedOrders.map((sOrder) => (
+                          <li
+                            key={sOrder.order_id}
+                            onMouseDown={() => {
+                              setNewOrderId(sOrder.order_id);
+                              setIsDropdownOpen(false);
+                              markDirty();
+                            }}
+                            className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0"
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium text-gray-800">{sOrder.order_id}</span>
+                              <span className="text-xs text-gray-500">{sOrder.date ? sOrder.date.substring(0,10) : ''}</span>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">{sOrder.status}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="px-4 py-2 text-sm text-gray-500 text-center">ไม่พบประวัติออเดอร์ (คุณสามารถพิมพ์ Order ID ใหม่ได้เลย)</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <textarea
             value={summary}
             onChange={e => { setSummary(e.target.value); markDirty(); }}
@@ -394,22 +510,14 @@ ${[...links, ...newLinks].map((l, i) => `### ลิงก์ที่ ${i + 1}
         </div>
         
         <div className="flex gap-2">
-          {showConfirmClose ? (
-            <div className="flex items-center gap-2 bg-yellow-50 px-3 py-1.5 rounded-md border border-yellow-200">
-              <span className="text-sm text-yellow-700 font-medium">ยังไม่ได้บันทึก ยืนยันปิด?</span>
-              <button onClick={cancelClose} className="px-2 py-1 text-xs bg-white border border-gray-300 rounded text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-              <button onClick={confirmForceClose} className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600">ปิด</button>
-            </div>
-          ) : (
-            <>
-              <button
-                onClick={handleClose}
-                disabled={isSubmitting}
-                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-              >
-                ปิด
-              </button>
-              <button
+          <button
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+          >
+            ปิด
+          </button>
+          <button
                 onClick={handleSubmit}
                 disabled={isSubmitting}
                 className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium flex items-center gap-2"
@@ -426,10 +534,32 @@ ${[...links, ...newLinks].map((l, i) => `### ลิงก์ที่ ${i + 1}
                   'บันทึกข้อมูล'
                 )}
               </button>
-            </>
-          )}
         </div>
       </div>
+
+      {/* Confirm Close Modal Overlay */}
+      {showConfirmClose && (
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-auto animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">ยืนยันการปิดหน้าต่าง?</h3>
+            <p className="text-sm text-gray-600 mb-6">คุณมีการแก้ไขข้อมูลที่ยังไม่ได้บันทึก หากปิดหน้าต่างตอนนี้ ข้อมูลที่แก้ไขไว้จะสูญหาย</p>
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={cancelClose} 
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button 
+                onClick={confirmForceClose} 
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors shadow-sm"
+              >
+                ยืนยันปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 };

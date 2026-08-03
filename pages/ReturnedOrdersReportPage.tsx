@@ -623,6 +623,8 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
   const totalAmount = data.reduce((sum, item) => sum + parseFloat(item.total_amount as any || 0), 0);
   const totalReturnedAmount = data.reduce((sum, item) => sum + parseFloat(item.returned_amount as any || 0), 0);
 
+  // Component Render
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
         <header className="flex justify-between items-center p-4 bg-white border-b shadow-sm">
@@ -962,16 +964,18 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {loading ? (
-                      <tr>
-                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">กำลังโหลดข้อมูล...</td>
-                      </tr>
-                    ) : sortedData.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">ไม่พบข้อมูลในช่วงเวลานี้</td>
-                      </tr>
-                    ) : (
-                      sortedData.map((order, idx) => {
+                    {useMemo(() => {
+                      if (loading) return (
+                        <tr>
+                          <td colSpan={10} className="px-4 py-8 text-center text-gray-500">กำลังโหลดข้อมูล...</td>
+                        </tr>
+                      );
+                      if (sortedData.length === 0) return (
+                        <tr>
+                          <td colSpan={10} className="px-4 py-8 text-center text-gray-500">ไม่พบข้อมูลในช่วงเวลานี้</td>
+                        </tr>
+                      );
+                      return sortedData.map((order, idx) => {
                         const isCompleted = order.admin_resolution_completed === 1;
                         return (
                         <tr key={`${order.order_id}-${idx}`} className={`hover:bg-gray-50 transition-colors ${isCompleted ? 'bg-gray-100 opacity-60' : 'bg-white'}`}>
@@ -997,7 +1001,19 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm font-medium text-gray-900">{order.customer_name}</div>
+                            <div className="text-sm font-medium text-gray-900">
+                              <a 
+                                href="#" 
+                                onClick={(e) => { 
+                                  e.preventDefault(); 
+                                  window.open(`${window.location.origin}${window.location.pathname}?page=Dashboard+V2&customerId=${order.customer_id}`, '_blank'); 
+                                }}
+                                className="text-blue-600 hover:text-blue-800 hover:underline"
+                                title="เปิดแท็บใหม่ไปยังรายละเอียดลูกค้า"
+                              >
+                                {order.customer_name}
+                              </a>
+                            </div>
                             <div className="text-sm text-gray-500">{order.customer_phone}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
@@ -1010,6 +1026,26 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                           <td className="px-4 py-3 text-sm">
                             <div className="font-medium text-gray-800">{order.cancel_type || '-'}</div>
                             <div className="text-gray-500 text-xs mt-1 max-w-xs truncate" title={order.cancel_notes}>{order.cancel_notes}</div>
+                            {!!order.is_new_order_created && (
+                              <div className="mt-1 flex items-center text-xs">
+                                <span className="text-gray-500 mr-1">ออเดอร์ใหม่:</span>
+                                {order.new_order_id ? (
+                                  <a
+                                    href="#"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      window.open(`${window.location.origin}${window.location.pathname}?page=Dashboard+V2&orderId=${order.new_order_id}`, '_blank');
+                                    }}
+                                    className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                                    title="เปิดแท็บใหม่ไปยังออเดอร์ใหม่"
+                                  >
+                                    {order.new_order_id}
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-800 font-medium">สร้างแล้ว</span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-3 max-w-[150px]">
                             <div className="flex flex-wrap gap-1 items-center">
@@ -1149,8 +1185,9 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                             </div>
                           </td>
                         </tr>
-                      )})
-                    )}
+                      );
+                    });
+                  }, [loading, sortedData, activeTab, processingAudio])}
                   </tbody>
                 </table>
               </div>

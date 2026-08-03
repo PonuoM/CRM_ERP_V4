@@ -312,7 +312,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
         }
         setIsBatchExporting(true);
         try {
-            const data = await apiFetch(`distribution_export?action=batch_export&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
+            const data = await apiFetch(`distribution_export?action=batch_export&export_mode=${batchExportMode}&companyId=${selectedCompany}&startDate=${batchStartDate}&endDate=${batchEndDate}&type=${batchType}&basket_key=${filterBasket}&session_tag=${filterTag.length > 0 ? filterTag.map(id => id === -1 ? 'none' : id).join(',') : 'all'}`);
             if (data.ok && data.data && data.data.length > 0) {
                 const workbook = new ExcelJS.Workbook();
                 const worksheet = workbook.addWorksheet('Batch Export');
@@ -407,6 +407,122 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                         if (isSuperAdmin) rowData.unshift(row.company_name || '-');
                         worksheet.addRow(rowData).font = { size: 10 };
                     });
+                } else if (batchExportMode === 'session_performance') {
+                    // 1. Gather all unique baskets and group data by Agent
+                    const basketsSet = new Set<string>();
+                    const agentMap = new Map<number, any>();
+
+                    data.data.forEach((row: any) => {
+                        let displayKey = row.real_basket_key || row.previous_basket_key;
+                        let basketText = row.previous_basket_name ? `[${row.previous_basket_name}]` : `[${displayKey || 'ไม่ทราบ'}]`;
+                        basketsSet.add(basketText);
+
+                        if (!row.agent_id) return;
+                        
+                        if (!agentMap.has(row.agent_id)) {
+                            agentMap.set(row.agent_id, {
+                                agent_id: row.agent_id,
+                                agent_name: `${row.agent_first || ''} ${row.agent_last || ''}`.trim() || 'System',
+                                company_name: row.company_name,
+                                stats: {}
+                            });
+                        }
+
+                        let agentData = agentMap.get(row.agent_id);
+                        if (!agentData.stats[basketText]) {
+                            agentData.stats[basketText] = { total: 0, not_called: 0, called_no_appt: 0, called_and_appt: 0, appt_no_call: 0 };
+                        }
+                        if (!agentData.stats['[รวมทุกตะกร้า]']) {
+                            agentData.stats['[รวมทุกตะกร้า]'] = { total: 0, not_called: 0, called_no_appt: 0, called_and_appt: 0, appt_no_call: 0 };
+                        }
+
+                        let totalAssigned = Number(row.total_assigned || 0);
+                        let totalNotCalled = Number(row.total_not_called || 0);
+                        let totalCalledNoAppt = Number(row.total_called_no_appt || 0);
+                        let totalCalledAndAppt = Number(row.total_called_and_appt || 0);
+                        let totalApptNoCall = Number(row.total_appt_no_call || 0);
+
+                        agentData.stats[basketText].total += totalAssigned;
+                        agentData.stats[basketText].not_called += totalNotCalled;
+                        agentData.stats[basketText].called_no_appt += totalCalledNoAppt;
+                        agentData.stats[basketText].called_and_appt += totalCalledAndAppt;
+                        agentData.stats[basketText].appt_no_call += totalApptNoCall;
+
+                        agentData.stats['[รวมทุกตะกร้า]'].total += totalAssigned;
+                        agentData.stats['[รวมทุกตะกร้า]'].not_called += totalNotCalled;
+                        agentData.stats['[รวมทุกตะกร้า]'].called_no_appt += totalCalledNoAppt;
+                        agentData.stats['[รวมทุกตะกร้า]'].called_and_appt += totalCalledAndAppt;
+                        agentData.stats['[รวมทุกตะกร้า]'].appt_no_call += totalApptNoCall;
+                    });
+
+                    const baskets = Array.from(basketsSet).sort();
+                    if (baskets.length > 0) {
+                        baskets.push('[รวมทุกตะกร้า]');
+                    }
+                    
+                    // 2. Build Headers
+                    let header1 = isSuperAdmin ? ['บริษัท (Company)', 'รายชื่อพนักงาน'] : ['รายชื่อพนักงาน'];
+                    let header2 = isSuperAdmin ? ['', ''] : [''];
+
+                    baskets.forEach(basket => {
+                        header1.push(basket, '', '', '', ''); // 1 header spanning 5 cols
+                        header2.push('ในมือ', 'ยังไม่โทร', 'โทรแล้วไม่นัดหมาย', 'โทรแล้วนัดหมาย', 'นัดหมายแล้วไม่มีโทร');
+                    });
+
+                    let row1 = worksheet.addRow(header1);
+                    let row2 = worksheet.addRow(header2);
+
+                    // Style Headers
+                    row1.font = { bold: true, size: 10 };
+                    row1.alignment = { horizontal: 'center', vertical: 'middle' };
+                    row2.font = { bold: true, size: 10 };
+                    row2.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                    // Merge and Color Cells
+                    let startColIndex = isSuperAdmin ? 3 : 2;
+                    // Colors to loop through for baskets
+                    const colors = ['FFFFCC', 'CCFFCC', 'FFCCCC', 'CCCCFF', 'FFCCFF', 'CCFFFF', 'FFE5CC', 'E5FFCC'];
+                    
+                    baskets.forEach((basket, i) => {
+                        let endColIndex = startColIndex + 4;
+                        worksheet.mergeCells(1, startColIndex, 1, endColIndex);
+                        
+                        let bgColor = colors[i % colors.length];
+                        
+                        // Apply background color to row 1
+                        let topCell = worksheet.getCell(1, startColIndex);
+                        topCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                        
+                        // Apply background color to row 2 sub-headers
+                        for(let c = startColIndex; c <= endColIndex; c++) {
+                            let subCell = worksheet.getCell(2, c);
+                            subCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                        }
+                        
+                        startColIndex += 5;
+                    });
+
+                    // 3. Fill Agent Rows
+                    Array.from(agentMap.values()).sort((a, b) => a.agent_name.localeCompare(b.agent_name)).forEach(agent => {
+                        let rowData: any[] = [];
+                        if (isSuperAdmin) rowData.push(agent.company_name || '-');
+                        rowData.push(agent.agent_name);
+                        
+                        baskets.forEach(basket => {
+                            let s = agent.stats[basket] || { total: 0, not_called: 0, called_no_appt: 0, called_and_appt: 0, appt_no_call: 0 };
+                            rowData.push(s.total, s.not_called, s.called_no_appt, s.called_and_appt, s.appt_no_call);
+                        });
+                        
+                        let dataRow = worksheet.addRow(rowData);
+                        dataRow.font = { size: 10 };
+                        // Center align stats
+                        for(let c = isSuperAdmin ? 3 : 2; c <= rowData.length; c++) {
+                            dataRow.getCell(c).alignment = { horizontal: 'right' };
+                        }
+                    });
+
+                    // Freeze Panes
+                    worksheet.views = [{ state: 'frozen', xSplit: isSuperAdmin ? 2 : 1, ySplit: 2 }];
                 } else {
                     // Customer Level
                     let headers = ['รอบแจก (Session ID)', 'เวลา', 'รูปแบบ (Mode)', 'ผู้ดำเนินการ', 'Agent ID', 'Agent Name', 'รหัสลูกค้า', 'ชื่อ-นามสกุลลูกค้า', 'เบอร์โทรศัพท์', 'ตะกร้าต้นทาง (Source Basket)', 'Session Tag'];
@@ -858,6 +974,7 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                             <option value="basket_overall">5. Source Basket (สรุปตามตะกร้า)</option>
                             <option value="daily_summary">6. Daily Summary (สรุปยอดรายวัน)</option>
                             <option value="ceo_pivot">7. CEO Pivot Summary (แบบตารางไขว้)</option>
+                            <option value="session_performance">8. สถิติการโทรรายบุคคล (Call Stats)</option>
                         </select>
                         <button onClick={handleBatchExport} disabled={isBatchExporting} className={`px-4 py-1.5 rounded text-sm text-white flex items-center ${isBatchExporting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
                             {isBatchExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} ส่งออกไฟล์

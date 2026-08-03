@@ -265,6 +265,7 @@ try {
                 $searchKeyword = trim($_GET['search_keyword'] ?? '');
                 $returnStatusFilter = $_GET['return_status_filter'] ?? 'All';
                 $cancellationTypeFilter = $_GET['cancellation_type_filter'] ?? 'All';
+                $orderTagsFilter = $_GET['orderTagsFilter'] ?? $_GET['order_tags_filter'] ?? '';
                 try {
                     $data = $svc->getReportData(
                         $orderStartDate, $orderEndDate,
@@ -272,7 +273,8 @@ try {
                         $actionStartDate, $actionEndDate,
                         $userId, $companyId, $statusType, $resolutionStatus,
                         $audioStatus, $reasonKeyword, $searchKeyword,
-                        $returnStatusFilter, $cancellationTypeFilter
+                        $returnStatusFilter, $cancellationTypeFilter,
+                        $orderTagsFilter
                     );
                     json_response(['ok' => true, 'message' => 'Success', 'data' => $data]);
                 } catch (Exception $e) {
@@ -368,6 +370,14 @@ try {
                 $summary = $input['summary'] ?? '';
                 $success = $svc->saveOrderSummary($orderId, $summary);
                 json_response(['ok' => $success, 'message' => $success ? 'Saved successfully' : 'Failed to save summary']);
+            } elseif (method() === 'GET' && $id === 'customer-orders') {
+                $customerId = $_GET['customer_id'] ?? '';
+                $excludeId = $_GET['exclude'] ?? '';
+                if (!$customerId) {
+                    json_response(['ok' => false, 'message' => 'Missing customer_id'], 400);
+                }
+                $orders = $svc->getCustomerRecentOrders($customerId, $excludeId);
+                json_response(['ok' => true, 'data' => $orders]);
             } elseif (method() === 'POST' && $id === 'audio-notes') {
                 $input = json_input();
                 $audioId = !empty($input['id']) ? (int)$input['id'] : 0;
@@ -391,6 +401,10 @@ try {
                 $updatedAudioLinks = $input['updated_audio_links'] ?? [];
                 $deletedAudioIds = $input['deleted_audio_ids'] ?? [];
                 
+                $isNewOrderCreated = isset($input['is_new_order_created']) ? (int)$input['is_new_order_created'] : 0;
+                $isPartiallyReturned = isset($input['is_partially_returned']) ? (int)$input['is_partially_returned'] : 0;
+                $newOrderId = !empty($input['new_order_id']) ? $input['new_order_id'] : null;
+                
                 $authUser = get_authenticated_user($pdo);
                 $uId = $authUser ? ($authUser['id'] ?? 0) : 0;
                 
@@ -398,8 +412,12 @@ try {
                     json_response(['ok' => false, 'message' => 'Missing order_id'], 400);
                 }
                 
-                $success = $svc->updateOrderDetails($orderId, $summaryNotes, $newAudioLinks, $updatedAudioLinks, $deletedAudioIds, $uId);
-                json_response(['ok' => $success, 'message' => $success ? 'Updated details successfully' : 'Failed to update details']);
+                try {
+                    $success = $svc->updateOrderDetails($orderId, $summaryNotes, $newAudioLinks, $updatedAudioLinks, $deletedAudioIds, $uId, $isNewOrderCreated, $isPartiallyReturned, $newOrderId);
+                    json_response(['ok' => $success, 'message' => $success ? 'Updated details successfully' : 'Failed to update details']);
+                } catch (Exception $e) {
+                    json_response(['ok' => false, 'message' => $e->getMessage()], 400);
+                }
             }
             break;
         case 'promotions':
@@ -1870,6 +1888,105 @@ function ensure_cod_schema(PDO $pdo): void
     }
 }
 
+function recalculate_order_financials(PDO $pdo, $orderId, $apiSource = 'index/slip_update', $userId = null) {
+    if (!$orderId) return;
+
+    set_audit_context($pdo, $apiSource, $userId);
+
+    $checkOrdStmt = $pdo->prepare("SELECT total_amount, amount_paid, payment_status, order_status, payment_method, cod_amount FROM orders WHERE id = ?");
+    $checkOrdStmt->execute([$orderId]);
+    $orderRow = $checkOrdStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$orderRow) return;
+
+    $orderTotal = (float)($orderRow['total_amount'] ?? 0);
+    $oldAmountPaid = $orderRow['amount_paid'] !== null ? (float)$orderRow['amount_paid'] : 0.0;
+    $oldPaymentStatus = (string)($orderRow['payment_status'] ?? '');
+    $oldOrderStatus = (string)($orderRow['order_status'] ?? '');
+    $paymentMethod = (string)($orderRow['payment_method'] ?? '');
+    $oldCodAmount = $orderRow['cod_amount'] !== null ? (float)$orderRow['cod_amount'] : 0.0;
+
+    $slipSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_slips WHERE order_id = ?");
+    $slipSumStmt->execute([$orderId]);
+    $slipTotal = (float)$slipSumStmt->fetchColumn();
+
+    $codSumStmt = $pdo->prepare("
+        SELECT COALESCE(SUM(cr.cod_amount), 0) 
+        FROM cod_records cr
+        WHERE cr.order_id = ? OR cr.order_id LIKE ?
+    ");
+    $codSumStmt->execute([$orderId, $orderId . '-%']);
+    $codTotal = (float)$codSumStmt->fetchColumn();
+
+    $newAmountPaid = min($orderTotal, $slipTotal + $codTotal);
+    
+    $newExpectedCod = $oldCodAmount;
+    if ($paymentMethod === 'COD') {
+        $newExpectedCod = max(0, $orderTotal - $slipTotal);
+    }
+    
+    $newPaymentStatus = $oldPaymentStatus;
+    $newOrderStatus = $oldOrderStatus;
+    $threshold = $orderTotal * 0.95;
+    if ($newAmountPaid <= 0) {
+        $newPaymentStatus = 'Unpaid';
+        if (in_array($oldOrderStatus, ['PreApproved', 'Delivered', 'Confirmed'], true)) {
+            $trackStmt = $pdo->prepare("SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
+            $trackStmt->execute([$orderId, $orderId]);
+            $hasTracking = (int) $trackStmt->fetchColumn();
+            if ($hasTracking > 0) {
+                $newOrderStatus = 'Shipping';
+            }
+        }
+    } elseif ($newAmountPaid >= $threshold) {
+        // Keep current statuses
+    } else {
+        $newPaymentStatus = 'Unpaid';
+        if (in_array($oldOrderStatus, ['PreApproved', 'Delivered', 'Confirmed'], true)) {
+            $trackStmt = $pdo->prepare("SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
+            $trackStmt->execute([$orderId, $orderId]);
+            $hasTracking = (int) $trackStmt->fetchColumn();
+            if ($hasTracking > 0) {
+                $newOrderStatus = 'Shipping';
+            }
+        }
+    }
+
+    $updStmt = $pdo->prepare("
+        UPDATE orders
+        SET amount_paid = ?, payment_status = ?, order_status = ?, cod_amount = ?
+        WHERE id = ?
+    ");
+    $updStmt->execute([$newAmountPaid, $newPaymentStatus, $newOrderStatus, $newExpectedCod, $orderId]);
+    
+    if ($paymentMethod === 'COD' && abs($oldCodAmount - $newExpectedCod) > 0.005) {
+        $boxCountStmt = $pdo->prepare("SELECT id FROM order_boxes WHERE order_id = ?");
+        $boxCountStmt->execute([$orderId]);
+        $boxes = $boxCountStmt->fetchAll(PDO::FETCH_ASSOC);
+        if (count($boxes) === 1) {
+            $pdo->prepare("UPDATE order_boxes SET cod_amount = ? WHERE id = ?")
+                ->execute([$newExpectedCod, $boxes[0]['id']]);
+        }
+    }
+
+    $logStmt = $pdo->prepare("
+        INSERT INTO order_audit_log (order_id, field_name, old_value, new_value, api_source, changed_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, NOW())
+    ");
+    if (abs($oldAmountPaid - $newAmountPaid) > 0.005) {
+        $logStmt->execute([$orderId, 'amount_paid', (string)$oldAmountPaid, (string)$newAmountPaid, $apiSource, $userId]);
+    }
+    if ($oldPaymentStatus !== $newPaymentStatus) {
+        $logStmt->execute([$orderId, 'payment_status', $oldPaymentStatus, $newPaymentStatus, $apiSource, $userId]);
+    }
+    if ($oldOrderStatus !== $newOrderStatus) {
+        $logStmt->execute([$orderId, 'order_status', $oldOrderStatus, $newOrderStatus, $apiSource, $userId]);
+    }
+    if (abs($oldCodAmount - $newExpectedCod) > 0.005) {
+        $logStmt->execute([$orderId, 'cod_amount', (string)$oldCodAmount, (string)$newExpectedCod, $apiSource, $userId]);
+    }
+}
+
 function handle_order_slips(PDO $pdo, ?string $id): void
 {
     ensure_order_slips_table($pdo);
@@ -2019,9 +2136,17 @@ function handle_order_slips(PDO $pdo, ?string $id): void
             $sql = 'INSERT INTO order_slips (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')';
             $st = $pdo->prepare($sql);
             $st->execute($values);
+            $newSlipId = $pdo->lastInsertId();
+
+            if ($orderId) {
+                $authUser = get_authenticated_user($pdo);
+                $userId = $authUser ? (int) $authUser['id'] : null;
+                recalculate_order_financials($pdo, $orderId, 'index/slip_post', $userId);
+            }
+
             json_response([
                 'ok' => true,
-                'id' => $pdo->lastInsertId(),
+                'id' => $newSlipId,
                 'url' => $url,
                 'uploaded_by' => $uploadedBy,
                 'uploaded_by_name' => $uploadedByName,
@@ -2075,6 +2200,17 @@ function handle_order_slips(PDO $pdo, ?string $id): void
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
 
+            // Fetch orderId to recalculate financials
+            $getOrderStmt = $pdo->prepare("SELECT order_id FROM order_slips WHERE id = ?");
+            $getOrderStmt->execute([$id]);
+            $orderId = $getOrderStmt->fetchColumn();
+
+            if ($orderId) {
+                $authUser = get_authenticated_user($pdo);
+                $userId = $authUser ? (int) $authUser['id'] : null;
+                recalculate_order_financials($pdo, $orderId, 'index/slip_patch', $userId);
+            }
+
             json_response(['ok' => true]);
             break;
         case 'DELETE':
@@ -2110,97 +2246,9 @@ function handle_order_slips(PDO $pdo, ?string $id): void
                 $pdo->prepare('DELETE FROM order_slips WHERE id=?')->execute([$id]);
 
                 if ($orderId) {
-                    // ดึงข้อมูลผู้ใช้เพื่อใช้เขียน log
                     $authUser = get_authenticated_user($pdo);
                     $userId = $authUser ? (int) $authUser['id'] : null;
-
-                    set_audit_context($pdo, 'index/slip_delete', $userId);
-
-                    $checkOrdStmt = $pdo->prepare("SELECT total_amount, amount_paid, payment_status, order_status FROM orders WHERE id = ?");
-                    $checkOrdStmt->execute([$orderId]);
-                    $orderRow = $checkOrdStmt->fetch(PDO::FETCH_ASSOC);
-
-                    if ($orderRow) {
-                        $orderTotal = (float) ($orderRow['total_amount'] ?? 0);
-                        $oldAmountPaid = $orderRow['amount_paid'] !== null ? (float) $orderRow['amount_paid'] : 0.0;
-                        $oldPaymentStatus = (string) ($orderRow['payment_status'] ?? '');
-                        $oldOrderStatus = (string) ($orderRow['order_status'] ?? '');
-
-                        // นับสลิปที่เหลือ
-                        $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
-                        $countSlipStmt->execute([$orderId]);
-                        $remainingSlips = (int) $countSlipStmt->fetchColumn();
-
-                        // หายอดเงิน COD จาก cod_records
-                        $codSumStmt = $pdo->prepare("
-                            SELECT COALESCE(SUM(cr.cod_amount), 0) 
-                            FROM cod_records cr
-                            WHERE cr.order_id = ? OR cr.order_id LIKE ?
-                        ");
-                        $codSumStmt->execute([$orderId, $orderId . '-%']);
-                        $codTotal = (float) $codSumStmt->fetchColumn();
-
-                        // recalc amount_paid จาก slips ที่เหลือ + cod_amount
-                        $slipSumStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_slips WHERE order_id = ?");
-                        $slipSumStmt->execute([$orderId]);
-                        $remainingSlipTotal = (float) $slipSumStmt->fetchColumn();
-
-                        $newAmountPaid = min($orderTotal, $remainingSlipTotal + $codTotal);
-                        $newPaymentStatus = $oldPaymentStatus;
-                        $newOrderStatus = $oldOrderStatus;
-
-                        $threshold = $orderTotal * 0.95;
-                        if ($newAmountPaid <= 0) {
-                            $newPaymentStatus = 'Unpaid';
-                            if (in_array($oldOrderStatus, ['PreApproved', 'Delivered', 'Confirmed'], true)) {
-                                $trackStmt = $pdo->prepare("SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
-                                $trackStmt->execute([$orderId, $orderId]);
-                                $hasTracking = (int) $trackStmt->fetchColumn();
-                                if ($hasTracking > 0) {
-                                    $newOrderStatus = 'Shipping';
-                                }
-                            }
-                        } elseif ($newAmountPaid >= $threshold) {
-                            // Keep current statuses
-                            $newPaymentStatus = $oldPaymentStatus;
-                            $newOrderStatus = $oldOrderStatus;
-                        } else {
-                            // Below 95% — revert to Unpaid + Shipping
-                            $newPaymentStatus = 'Unpaid';
-                            if (in_array($oldOrderStatus, ['PreApproved', 'Delivered', 'Confirmed'], true)) {
-                                $trackStmt = $pdo->prepare("SELECT COUNT(*) FROM order_tracking_numbers WHERE parent_order_id = ? OR order_id = ?");
-                                $trackStmt->execute([$orderId, $orderId]);
-                                $hasTracking = (int) $trackStmt->fetchColumn();
-                                if ($hasTracking > 0) {
-                                    $newOrderStatus = 'Shipping';
-                                }
-                            }
-                        }
-
-                        // ทำการอัปเดตคำสั่งซื้อ
-                        $updStmt = $pdo->prepare("
-                            UPDATE orders
-                            SET amount_paid = ?, payment_status = ?, order_status = ?
-                            WHERE id = ?
-                        ");
-                        $updStmt->execute([$newAmountPaid, $newPaymentStatus, $newOrderStatus, $orderId]);
-
-                        // บันทึกประวัติการเปลี่ยนแปลงลงตาราง order_audit_log (จุด B)
-                        $logStmt = $pdo->prepare("
-                            INSERT INTO order_audit_log (order_id, field_name, old_value, new_value, api_source, changed_by, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, NOW())
-                        ");
-
-                        if (abs($oldAmountPaid - $newAmountPaid) > 0.005) {
-                            $logStmt->execute([$orderId, 'amount_paid', (string)$oldAmountPaid, (string)$newAmountPaid, 'index/slip_delete', $userId]);
-                        }
-                        if ($oldPaymentStatus !== $newPaymentStatus) {
-                            $logStmt->execute([$orderId, 'payment_status', $oldPaymentStatus, $newPaymentStatus, 'index/slip_delete', $userId]);
-                        }
-                        if ($oldOrderStatus !== $newOrderStatus) {
-                            $logStmt->execute([$orderId, 'order_status', $oldOrderStatus, $newOrderStatus, 'index/slip_delete', $userId]);
-                        }
-                    }
+                    recalculate_order_financials($pdo, $orderId, 'index/slip_delete', $userId);
                 }
                 
                 $pdo->commit();

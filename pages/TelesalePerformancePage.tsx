@@ -315,9 +315,13 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
     const [visibleCols, setVisibleCols] = useState({
         kpi_calls: true,
         kpi_minutes: true,
+        kpi_avgDailyMinutes: true,
         kpi_connected: true,
+        kpi_avgConnected: true,
         kpi_talked: true,
+        kpi_avgTalked: true,
         kpi_missed: true,
+        kpi_avgMissed: true,
         kpi_answerRate: true,
         kpi_workingHours: true,
         kpi_newCust: true,
@@ -1302,9 +1306,13 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                     <div className="flex flex-wrap gap-2 mb-3">
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_calls} onChange={e => setVisibleCols(p => ({...p, kpi_calls: e.target.checked}))} /> สายที่โทร</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_minutes} onChange={e => setVisibleCols(p => ({...p, kpi_minutes: e.target.checked}))} /> นาที</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_avgDailyMinutes} onChange={e => setVisibleCols(p => ({...p, kpi_avgDailyMinutes: e.target.checked}))} /> โทรเฉลี่ย/วัน</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_connected} onChange={e => setVisibleCols(p => ({...p, kpi_connected: e.target.checked}))} /> รับสาย</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_avgConnected} onChange={e => setVisibleCols(p => ({...p, kpi_avgConnected: e.target.checked}))} /> รับสาย(เฉลี่ย)</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_talked} onChange={e => setVisibleCols(p => ({...p, kpi_talked: e.target.checked}))} /> ได้คุย(≥30s)</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_avgTalked} onChange={e => setVisibleCols(p => ({...p, kpi_avgTalked: e.target.checked}))} /> ได้คุย(เฉลี่ย)</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_missed} onChange={e => setVisibleCols(p => ({...p, kpi_missed: e.target.checked}))} /> ไม่ได้รับ</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_avgMissed} onChange={e => setVisibleCols(p => ({...p, kpi_avgMissed: e.target.checked}))} /> ไม่ได้รับ(เฉลี่ย)</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_answerRate} onChange={e => setVisibleCols(p => ({...p, kpi_answerRate: e.target.checked}))} /> %รับสาย</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_workingHours} onChange={e => setVisibleCols(p => ({...p, kpi_workingHours: e.target.checked}))} /> เวลาทำงาน</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_newCust} onChange={e => setVisibleCols(p => ({...p, kpi_newCust: e.target.checked}))} /> ลูกค้าใหม่</label>
@@ -1343,9 +1351,13 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                                     <th className="px-2 py-2 text-left font-medium sticky left-[80px] bg-gray-100 border-r border-gray-200">ชื่อ</th>
                                     {visibleCols.kpi_calls && <th className="px-2 py-2 text-center font-medium">สายที่โทร</th>}
                                     {visibleCols.kpi_minutes && <th className="px-2 py-2 text-center font-medium">นาทีที่โทร</th>}
+                                    {visibleCols.kpi_avgDailyMinutes && <th className="px-2 py-2 text-center font-medium text-blue-800">โทรเฉลี่ย/วัน</th>}
                                     {visibleCols.kpi_connected && <th className="px-2 py-2 text-center font-medium">รับสาย</th>}
+                                    {visibleCols.kpi_avgConnected && <th className="px-2 py-2 text-center font-medium text-emerald-800">รับสาย(เฉลี่ย)</th>}
                                     {visibleCols.kpi_talked && <th className="px-2 py-2 text-center font-medium">ได้คุย(≥30s)</th>}
+                                    {visibleCols.kpi_avgTalked && <th className="px-2 py-2 text-center font-medium text-indigo-800">ได้คุย(เฉลี่ย)</th>}
                                     {visibleCols.kpi_missed && <th className="px-2 py-2 text-center font-medium">ไม่ได้รับ</th>}
+                                    {visibleCols.kpi_avgMissed && <th className="px-2 py-2 text-center font-medium text-red-800">ไม่ได้รับ(เฉลี่ย)</th>}
                                     {visibleCols.kpi_answerRate && <th className="px-2 py-2 text-center font-medium">%รับ</th>}
                                     {visibleCols.kpi_workingHours && <th className="px-2 py-2 text-center font-medium">เวลาทำงาน</th>}
                                     
@@ -1370,9 +1382,13 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                                             <td className="px-2 py-2 font-medium text-gray-800 whitespace-nowrap sticky left-[80px] bg-white border-r border-gray-100">{ts.name}</td>
                                             {visibleCols.kpi_calls && <td className="px-2 py-2 text-center">{ts.metrics.totalCalls || '-'}</td>}
                                             {visibleCols.kpi_minutes && <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes > 0 ? ts.metrics.totalMinutes.toFixed(0) : '-'}</td>}
+                                            {visibleCols.kpi_avgDailyMinutes && <td className="px-2 py-2 text-center text-gray-400 bg-gray-50/50">-</td>}
                                             {visibleCols.kpi_connected && <td className="px-2 py-2 text-center text-emerald-600">{ts.metrics.connectedCalls || '-'}</td>}
+                                            {visibleCols.kpi_avgConnected && <td className="px-2 py-2 text-center text-gray-400 bg-gray-50/50">-</td>}
                                             {visibleCols.kpi_talked && <td className="px-2 py-2 text-center">{ts.metrics.talkedCalls || '-'}</td>}
+                                            {visibleCols.kpi_avgTalked && <td className="px-2 py-2 text-center text-gray-400 bg-gray-50/50">-</td>}
                                             {visibleCols.kpi_missed && <td className="px-2 py-2 text-center text-red-500">{ts.metrics.missedCalls || '-'}</td>}
+                                            {visibleCols.kpi_avgMissed && <td className="px-2 py-2 text-center text-gray-400 bg-gray-50/50">-</td>}
                                             {visibleCols.kpi_answerRate && <td className="px-2 py-2 text-center">{ts.metrics.answerRate != null ? `${ts.metrics.answerRate.toFixed(1)}%` : '-'}</td>}
                                             {visibleCols.kpi_workingHours && <td className="px-2 py-2 text-center text-blue-600 font-medium">{ts.metrics.workingHours > 0 ? `${ts.metrics.workingHours.toFixed(1)} ชม.` : '-'}</td>}
                                             
@@ -1394,9 +1410,13 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                                     <th className="px-2 py-2 text-left font-medium sticky left-[80px] bg-gray-100 border-r border-gray-200">ตามพนักงาน</th>
                                     {visibleCols.kpi_calls && <th className="px-2 py-2 text-center"></th>}
                                     {visibleCols.kpi_minutes && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_avgDailyMinutes && <th className="px-2 py-2 text-center"></th>}
                                     {visibleCols.kpi_connected && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_avgConnected && <th className="px-2 py-2 text-center"></th>}
                                     {visibleCols.kpi_talked && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_avgTalked && <th className="px-2 py-2 text-center"></th>}
                                     {visibleCols.kpi_missed && <th className="px-2 py-2 text-center"></th>}
+                                    {visibleCols.kpi_avgMissed && <th className="px-2 py-2 text-center"></th>}
                                     {visibleCols.kpi_answerRate && <th className="px-2 py-2 text-center"></th>}
                                     {visibleCols.kpi_workingHours && <th className="px-2 py-2 text-center"></th>}
                                     {visibleCols.kpi_newCust && <th className="px-2 py-2 text-center"></th>}
@@ -1413,15 +1433,42 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                                     const totalOrders = ts.metrics.newCustOrders + ts.metrics.coreCustOrders + ts.metrics.revivalCustOrders + ts.metrics.upsellOrders;
                                     const combinedSales = ts.metrics.grossSales - ts.metrics.cancelledSales - ts.metrics.returnedSales;
                                     const closeRate = ts.metrics.totalCalls > 0 ? ((totalOrders / ts.metrics.totalCalls) * 100).toFixed(1) : '0.0';
+                                    
+                                    let avgCallTimeContent;
+                                    let avgConnectedContent: React.ReactNode = '-';
+                                    let avgTalkedContent: React.ReactNode = '-';
+                                    let avgMissedContent: React.ReactNode = '-';
+
+                                    if (ts.metrics.workingHours > 0) {
+                                        const workingDays = ts.metrics.workingHours / 8;
+                                        avgCallTimeContent = <span className="text-blue-800 font-bold bg-blue-100 px-2 py-1 rounded">{(ts.metrics.totalMinutes / workingDays).toFixed(0)}</span>;
+                                        avgConnectedContent = <span className="text-emerald-800 font-bold bg-emerald-100 px-2 py-1 rounded">{(ts.metrics.connectedCalls / workingDays).toFixed(0)}</span>;
+                                        avgTalkedContent = <span className="text-indigo-800 font-bold bg-indigo-100 px-2 py-1 rounded">{(ts.metrics.talkedCalls / workingDays).toFixed(0)}</span>;
+                                        avgMissedContent = <span className="text-red-800 font-bold bg-red-100 px-2 py-1 rounded">{(ts.metrics.missedCalls / workingDays).toFixed(0)}</span>;
+                                    } else {
+                                        if (ts.metrics.totalMinutes > 0) {
+                                            avgCallTimeContent = <span className="text-red-500 font-bold flex items-center justify-center gap-1" title="มีการโทร แต่ไม่มีบันทึกเวลาทำงาน">⚠️ 0</span>;
+                                        } else {
+                                            avgCallTimeContent = '-';
+                                        }
+                                        if (ts.metrics.connectedCalls > 0) avgConnectedContent = <span className="text-red-500 font-bold flex items-center justify-center gap-1" title="มีการรับสาย แต่ไม่มีบันทึกเวลาทำงาน">⚠️ 0</span>;
+                                        if (ts.metrics.talkedCalls > 0) avgTalkedContent = <span className="text-red-500 font-bold flex items-center justify-center gap-1" title="มีการได้คุย แต่ไม่มีบันทึกเวลาทำงาน">⚠️ 0</span>;
+                                        if (ts.metrics.missedCalls > 0) avgMissedContent = <span className="text-red-500 font-bold flex items-center justify-center gap-1" title="มีการไม่รับสาย แต่ไม่มีบันทึกเวลาทำงาน">⚠️ 0</span>;
+                                    }
+
                                     return (
                                         <tr key={`sum-${ts.userId}`} className="font-semibold text-gray-800">
                                             <td className="px-2 py-2 sticky left-0 bg-blue-50 border-r border-blue-100">{ts.date}</td>
                                             <td className="px-2 py-2 sticky left-[80px] bg-blue-50 border-r border-blue-100">{ts.name}</td>
                                             {visibleCols.kpi_calls && <td className="px-2 py-2 text-center">{ts.metrics.totalCalls || '-'}</td>}
                                             {visibleCols.kpi_minutes && <td className="px-2 py-2 text-center">{ts.metrics.totalMinutes > 0 ? ts.metrics.totalMinutes.toFixed(0) : '-'}</td>}
+                                            {visibleCols.kpi_avgDailyMinutes && <td className="px-2 py-2 text-center bg-blue-50/50">{avgCallTimeContent}</td>}
                                             {visibleCols.kpi_connected && <td className="px-2 py-2 text-center text-emerald-600">{ts.metrics.connectedCalls || '-'}</td>}
+                                            {visibleCols.kpi_avgConnected && <td className="px-2 py-2 text-center bg-emerald-50/50">{avgConnectedContent}</td>}
                                             {visibleCols.kpi_talked && <td className="px-2 py-2 text-center">{ts.metrics.talkedCalls || '-'}</td>}
+                                            {visibleCols.kpi_avgTalked && <td className="px-2 py-2 text-center bg-indigo-50/50">{avgTalkedContent}</td>}
                                             {visibleCols.kpi_missed && <td className="px-2 py-2 text-center text-red-500">{ts.metrics.missedCalls || '-'}</td>}
+                                            {visibleCols.kpi_avgMissed && <td className="px-2 py-2 text-center bg-red-50/50">{avgMissedContent}</td>}
                                             {visibleCols.kpi_answerRate && <td className="px-2 py-2 text-center">{ts.metrics.answerRate != null ? `${ts.metrics.answerRate.toFixed(1)}%` : '-'}</td>}
                                             {visibleCols.kpi_workingHours && <td className="px-2 py-2 text-center text-blue-700 font-bold">{ts.metrics.workingHours > 0 ? `${ts.metrics.workingHours.toFixed(1)} ชม.` : '-'}</td>}
                                             {visibleCols.kpi_newCust && <td className="px-2 py-2 text-center border-l border-gray-100">{ts.metrics.newCustOrders || '-'}</td>}

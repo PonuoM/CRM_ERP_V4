@@ -4043,10 +4043,39 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
             </div>
           </InfoCard>
 
-          {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
+          {(showInputs || currentOrder.paymentMethod === PaymentMethod.Transfer ||
             currentOrder.paymentMethod === PaymentMethod.PayAfter ||
             currentOrder.paymentMethod === PaymentMethod.COD) && (
               <InfoCard icon={CreditCard} title="การชำระเงิน">
+                {showInputs && (
+                  <div className="mb-6 pb-6 border-b border-gray-200">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      วิธีชำระเงิน
+                    </label>
+                    <select
+                      value={currentOrder.paymentMethod || ""}
+                      onChange={(e) => {
+                        setCurrentOrder(prev => ({ ...prev, paymentMethod: e.target.value as PaymentMethod }));
+                      }}
+                      disabled={currentOrder.orderStatus !== OrderStatus.Pending}
+                      className={`w-full max-w-sm p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm ${currentOrder.orderStatus !== OrderStatus.Pending ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                    >
+                      <option value="">-- เลือกวิธีชำระเงิน --</option>
+                      <option value={PaymentMethod.Transfer}>โอนเงิน</option>
+                      <option value={PaymentMethod.COD}>เก็บเงินปลายทาง (COD)</option>
+                      <option value={PaymentMethod.PayAfter}>วางบิล / เก็บเงินทีหลัง</option>
+                      <option value={PaymentMethod.Claim}>เคลมสินค้า (Claim)</option>
+                      <option value={PaymentMethod.FreeGift}>สินค้าของแถม (Free Gift)</option>
+                      <option value={PaymentMethod.DiscountCoupon}>คูปองส่วนลด / แลกแต้ม</option>
+                    </select>
+                    {currentOrder.orderStatus !== OrderStatus.Pending && (
+                      <p className="text-xs text-red-500 mt-2">
+                        ไม่สามารถเปลี่ยนวิธีชำระเงินได้เนื่องจากออเดอร์ถูกส่งต่อไปแล้ว (ต้องเป็นสถานะรอดึงข้อมูล)
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
                   currentOrder.paymentMethod === PaymentMethod.PayAfter ||
                   currentOrder.paymentMethod === PaymentMethod.COD) && (

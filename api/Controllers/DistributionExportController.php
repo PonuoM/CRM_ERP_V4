@@ -41,11 +41,11 @@ class DistributionExportController {
             $params[] = $companyId;
         }
 
-        $typeFilter = "";
+        $typeFilter = " AND ds.session_status != 'undo_full' ";
         if ($type === 'distribution') {
-            $typeFilter = " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
+            $typeFilter .= " AND (ds.distribution_mode NOT LIKE '%Reclaim%' AND ds.distribution_mode NOT LIKE '%Transfer%') ";
         } else if ($type === 'reclaim') {
-            $typeFilter = " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
+            $typeFilter .= " AND (ds.distribution_mode LIKE '%Reclaim%' OR ds.distribution_mode LIKE '%Transfer%') ";
         }
 
         $basketFilter = "";
@@ -77,42 +77,102 @@ class DistributionExportController {
             }
         }
 
-        $sql = "
-            SELECT 
-                ds.id as session_id,
-                ds.created_at,
-                ds.distribution_mode,
-                ds.min_call_minutes,
-                c.name as company_name,
-                u_dist.first_name as distributed_by_first,
-                u_dist.last_name as distributed_by_last,
-                dsd.agent_id,
-                u_agent.first_name as agent_first,
-                u_agent.last_name as agent_last,
-                dsd.customer_id,
-                
-                cust.customer_ref_id as customer_code,
-                CONCAT(cust.first_name, ' ', cust.last_name) as customer_name,
-                cust.phone as customer_phone,
-                dsd.previous_basket_key,
-                bc.basket_name as previous_basket_name,
-                dsd.previous_lifecycle_status,
-                t.tag_name as session_tag
-            FROM distribution_sessions ds
-            JOIN distribution_session_details dsd ON ds.id = dsd.session_id
-            LEFT JOIN companies c ON ds.company_id = c.id
-            LEFT JOIN users u_dist ON ds.distributed_by = u_dist.id
-            LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
-            LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
-            LEFT JOIN basket_config bc ON (dsd.previous_basket_key = bc.id OR dsd.previous_basket_key = bc.basket_key)
-            LEFT JOIN distribution_tags t ON ds.tag_id = t.id
-            WHERE ds.created_at BETWEEN ? AND ?
-            $companyFilter
-            $typeFilter
-            $basketFilter
-            $tagFilter
-            ORDER BY ds.created_at DESC, ds.id DESC, dsd.id ASC
-        ";
+        $exportMode = $_GET['export_mode'] ?? 'customer';
+
+        if ($exportMode === 'session_performance') {
+            $sql = "
+                WITH SessionData AS (
+                    SELECT 
+                        ds.id as session_id,
+                        ds.created_at,
+                        c.name as company_name,
+                        dsd.agent_id,
+                        u_agent.first_name as agent_first,
+                        u_agent.last_name as agent_last,
+                        dsd.previous_basket_key,
+                        bc.basket_name as previous_basket_name,
+                        t.tag_name as session_tag,
+                        dsd.customer_id,
+                        (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = dsd.customer_id AND ch.caller_id = dsd.agent_id AND ch.date >= ds.created_at) as has_called,
+                        (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = dsd.customer_id AND a.created_by = dsd.agent_id AND a.created_at >= ds.created_at) as has_appt
+                    FROM distribution_sessions ds
+                    JOIN distribution_session_details dsd ON ds.id = dsd.session_id
+                    LEFT JOIN companies c ON ds.company_id = c.id
+                    LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
+                    LEFT JOIN basket_config bc ON (dsd.previous_basket_key = bc.id OR dsd.previous_basket_key = bc.basket_key)
+                    LEFT JOIN distribution_tags t ON ds.tag_id = t.id
+                    WHERE ds.created_at BETWEEN ? AND ?
+                    $companyFilter
+                    $typeFilter
+                    $basketFilter
+                    $tagFilter
+                )
+                SELECT 
+                    session_id,
+                    created_at,
+                    company_name,
+                    agent_id,
+                    agent_first,
+                    agent_last,
+                    previous_basket_key,
+                    previous_basket_name,
+                    session_tag,
+                    COUNT(customer_id) as total_assigned,
+                    SUM(CASE WHEN has_called = 0 AND has_appt = 0 THEN 1 ELSE 0 END) as total_not_called,
+                    SUM(CASE WHEN has_called > 0 AND has_appt = 0 THEN 1 ELSE 0 END) as total_called_no_appt,
+                    SUM(CASE WHEN has_called > 0 AND has_appt > 0 THEN 1 ELSE 0 END) as total_called_and_appt,
+                    SUM(CASE WHEN has_called = 0 AND has_appt > 0 THEN 1 ELSE 0 END) as total_appt_no_call
+                FROM SessionData
+                GROUP BY 
+                    session_id, 
+                    created_at, 
+                    company_name, 
+                    agent_id, 
+                    agent_first, 
+                    agent_last, 
+                    previous_basket_key, 
+                    previous_basket_name, 
+                    session_tag
+                ORDER BY created_at DESC, session_id DESC, agent_id ASC
+            ";
+        } else {
+            $sql = "
+                SELECT 
+                    ds.id as session_id,
+                    ds.created_at,
+                    ds.distribution_mode,
+                    ds.min_call_minutes,
+                    c.name as company_name,
+                    u_dist.first_name as distributed_by_first,
+                    u_dist.last_name as distributed_by_last,
+                    dsd.agent_id,
+                    u_agent.first_name as agent_first,
+                    u_agent.last_name as agent_last,
+                    dsd.customer_id,
+                    
+                    cust.customer_ref_id as customer_code,
+                    CONCAT(cust.first_name, ' ', cust.last_name) as customer_name,
+                    cust.phone as customer_phone,
+                    dsd.previous_basket_key,
+                    bc.basket_name as previous_basket_name,
+                    dsd.previous_lifecycle_status,
+                    t.tag_name as session_tag
+                FROM distribution_sessions ds
+                JOIN distribution_session_details dsd ON ds.id = dsd.session_id
+                LEFT JOIN companies c ON ds.company_id = c.id
+                LEFT JOIN users u_dist ON ds.distributed_by = u_dist.id
+                LEFT JOIN users u_agent ON dsd.agent_id = u_agent.id
+                LEFT JOIN customers cust ON dsd.customer_id = cust.customer_id
+                LEFT JOIN basket_config bc ON (dsd.previous_basket_key = bc.id OR dsd.previous_basket_key = bc.basket_key)
+                LEFT JOIN distribution_tags t ON ds.tag_id = t.id
+                WHERE ds.created_at BETWEEN ? AND ?
+                $companyFilter
+                $typeFilter
+                $basketFilter
+                $tagFilter
+                ORDER BY ds.created_at DESC, ds.id DESC, dsd.id ASC
+            ";
+        }
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);

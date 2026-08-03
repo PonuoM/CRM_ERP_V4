@@ -5,8 +5,10 @@ import DateRangePicker, { DateRange } from '@/components/DateRangePicker';
 
 interface BasketStat {
     assigned_current: number;
-    called_current: number;
-    appt_current: number;
+    not_called_current: number;
+    called_no_appt_current: number;
+    called_and_appt_current: number;
+    appt_no_call_current: number;
     assigned_total: number;
     called: number;
     appointments: number;
@@ -44,10 +46,10 @@ const TelesaleCallstatsPage: React.FC = () => {
     const [drilldownData, setDrilldownData] = useState<any[]>([]);
     const [isLoadingDrilldown, setIsLoadingDrilldown] = useState(false);
     const [modalContext, setModalContext] = useState({ agentId: 0, agentName: '', basketKey: '', basketName: '' });
-    const [modalTab, setModalTab] = useState<'all' | 'called' | 'appt'>('all');
+    const [modalTab, setModalTab] = useState<'all' | 'not_called' | 'called_no_appt' | 'called_and_appt' | 'appt_no_call'>('all');
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const [drilldownCounts, setDrilldownCounts] = useState({ total_all: 0, total_called: 0, total_appt: 0 });
+    const [drilldownCounts, setDrilldownCounts] = useState({ total_all: 0, total_not_called: 0, total_called_no_appt: 0, total_called_and_appt: 0, total_appt_no_call: 0 });
 
 
     const handleExport = async () => {
@@ -148,7 +150,7 @@ const TelesaleCallstatsPage: React.FC = () => {
         fetchDrilldown(agentId, basketKey, 'all', 1);
     };
 
-    const handleTabChange = (tab: 'all' | 'called' | 'appt') => {
+    const handleTabChange = (tab: 'all' | 'not_called' | 'called_no_appt' | 'called_and_appt' | 'appt_no_call') => {
         setModalTab(tab);
         setCurrentPage(1);
         fetchDrilldown(modalContext.agentId, modalContext.basketKey, tab, 1);
@@ -365,32 +367,44 @@ const TelesaleCallstatsPage: React.FC = () => {
                                                                     onClick={() => handleCellClick(agent.agent_id, agent.agent_name, basket.basket_key, basket.basket_name)}
                                                                     className="bg-blue-50/30 rounded-2xl p-3 border border-blue-100/50 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:ring-2 hover:ring-blue-200 transition-all duration-300 cursor-pointer"
                                                                 >
-                                                                    <div className="grid grid-cols-3 gap-2 text-center divide-x divide-blue-200/50">
+                                                                    <div className="grid grid-cols-5 gap-1 text-center divide-x divide-blue-200/50">
                                                                         {/* Assigned Current */}
                                                                         <div className="flex flex-col items-center justify-center group/item py-1" title="ลูกค้าในมือ (ปัจจุบัน)">
-                                                                            <Inbox className="w-4 h-4 text-blue-300 mb-1 group-hover/item:text-blue-600 transition-colors" />
-                                                                            <span className="font-bold text-blue-900 text-lg leading-none">{stat.assigned_current}</span>
-                                                                            <span className="text-[10px] text-blue-500 font-medium mt-1">ในมือ</span>
+                                                                            <Inbox className="w-3.5 h-3.5 text-blue-300 mb-1 group-hover/item:text-blue-600 transition-colors" />
+                                                                            <span className="font-bold text-blue-900 text-base leading-none">{stat.assigned_current}</span>
+                                                                            <span className="text-[9px] text-blue-500 font-medium mt-1 truncate w-full px-1">ในมือ</span>
                                                                         </div>
-                                                                        {/* Called Current */}
-                                                                        <div className="flex flex-col items-center justify-center group/item py-1" title="จากลูกค้าในมือ โทรไปแล้วกี่คน">
-                                                                            <PhoneCall className="w-4 h-4 text-blue-300 mb-1 group-hover/item:text-green-500 transition-colors" />
-                                                                            <span className="font-bold text-blue-800 text-lg leading-none">{stat.called_current}</span>
-                                                                            <span className="text-[10px] text-blue-500 font-medium mt-1">โทรแล้ว</span>
+                                                                        {/* Not Called Current */}
+                                                                        <div className="flex flex-col items-center justify-center group/item py-1" title="ยังไม่โทร">
+                                                                            <PhoneCall className="w-3.5 h-3.5 text-slate-300 mb-1 group-hover/item:text-slate-500 transition-colors" />
+                                                                            <span className="font-bold text-slate-700 text-base leading-none">{stat.not_called_current}</span>
+                                                                            <span className="text-[9px] text-slate-500 font-medium mt-1 truncate w-full px-1">ยังไม่โทร</span>
                                                                         </div>
-                                                                        {/* Appts Current */}
-                                                                        <div className="flex flex-col items-center justify-center group/item py-1" title="จากลูกค้าในมือ นัดหมายได้กี่คน">
-                                                                            <CalendarCheck className="w-4 h-4 text-blue-300 mb-1 group-hover/item:text-amber-500 transition-colors" />
-                                                                            <span className="font-bold text-blue-800 text-lg leading-none">{stat.appt_current}</span>
-                                                                            <span className="text-[10px] text-blue-500 font-medium mt-1">นัดหมาย</span>
+                                                                        {/* Called No Appt */}
+                                                                        <div className="flex flex-col items-center justify-center group/item py-1" title="โทรแล้วไม่นัด">
+                                                                            <PhoneCall className="w-3.5 h-3.5 text-blue-300 mb-1 group-hover/item:text-green-500 transition-colors" />
+                                                                            <span className="font-bold text-blue-800 text-base leading-none">{stat.called_no_appt_current}</span>
+                                                                            <span className="text-[9px] text-blue-500 font-medium mt-1 truncate w-full px-1">โทร/ไม่นัด</span>
+                                                                        </div>
+                                                                        {/* Called And Appt */}
+                                                                        <div className="flex flex-col items-center justify-center group/item py-1" title="โทรและนัด">
+                                                                            <CalendarCheck className="w-3.5 h-3.5 text-blue-300 mb-1 group-hover/item:text-emerald-500 transition-colors" />
+                                                                            <span className="font-bold text-blue-800 text-base leading-none">{stat.called_and_appt_current}</span>
+                                                                            <span className="text-[9px] text-blue-500 font-medium mt-1 truncate w-full px-1">โทร+นัด</span>
+                                                                        </div>
+                                                                        {/* Appt No Call */}
+                                                                        <div className="flex flex-col items-center justify-center group/item py-1" title="นัดแต่ไม่โทร">
+                                                                            <CalendarDays className="w-3.5 h-3.5 text-red-300 mb-1 group-hover/item:text-red-500 transition-colors" />
+                                                                            <span className="font-bold text-red-800 text-base leading-none">{stat.appt_no_call_current}</span>
+                                                                            <span className="text-[9px] text-red-500 font-medium mt-1 truncate w-full px-1">นัด/ไม่โทร</span>
                                                                         </div>
                                                                     </div>
                                                                     
                                                                     {stat.assigned_current > 0 && (
-                                                                        <div className="mt-3 h-1.5 w-full bg-blue-100 rounded-full overflow-hidden" title={`โทรแล้ว ${Math.round((stat.called_current / stat.assigned_current) * 100)}% ของลูกค้าในมือ`}>
+                                                                        <div className="mt-3 h-1.5 w-full bg-blue-100 rounded-full overflow-hidden" title={`โทรแล้ว ${Math.round(((stat.called_no_appt_current + stat.called_and_appt_current) / stat.assigned_current) * 100)}% ของลูกค้าในมือ`}>
                                                                             <div 
                                                                                 className="h-full bg-blue-500 rounded-full transition-all duration-700 ease-out"
-                                                                                style={{ width: `${Math.min(100, (stat.called_current / stat.assigned_current) * 100)}%` }}
+                                                                                style={{ width: `${Math.min(100, ((stat.called_no_appt_current + stat.called_and_appt_current) / stat.assigned_current) * 100)}%` }}
                                                                             ></div>
                                                                         </div>
                                                                     )}
@@ -462,16 +476,28 @@ const TelesaleCallstatsPage: React.FC = () => {
                                                 ทั้งหมด ({drilldownCounts.total_all})
                                             </button>
                                             <button 
-                                                onClick={() => handleTabChange('called')}
-                                                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${modalTab === 'called' ? 'border-green-500 text-green-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                                                onClick={() => handleTabChange('not_called')}
+                                                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${modalTab === 'not_called' ? 'border-slate-500 text-slate-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                                             >
-                                                <PhoneCall className="w-3.5 h-3.5" /> โทรแล้ว ({drilldownCounts.total_called})
+                                                ยังไม่โทร ({drilldownCounts.total_not_called || 0})
                                             </button>
                                             <button 
-                                                onClick={() => handleTabChange('appt')}
-                                                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${modalTab === 'appt' ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                                                onClick={() => handleTabChange('called_no_appt')}
+                                                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${modalTab === 'called_no_appt' ? 'border-green-500 text-green-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                                             >
-                                                <CalendarCheck className="w-3.5 h-3.5" /> นัดหมาย ({drilldownCounts.total_appt})
+                                                <PhoneCall className="w-3.5 h-3.5" /> โทรแล้วไม่นัด ({drilldownCounts.total_called_no_appt || 0})
+                                            </button>
+                                            <button 
+                                                onClick={() => handleTabChange('called_and_appt')}
+                                                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${modalTab === 'called_and_appt' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                                            >
+                                                <CalendarCheck className="w-3.5 h-3.5" /> โทรและนัด ({drilldownCounts.total_called_and_appt || 0})
+                                            </button>
+                                            <button 
+                                                onClick={() => handleTabChange('appt_no_call')}
+                                                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${modalTab === 'appt_no_call' ? 'border-red-500 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                                            >
+                                                <CalendarDays className="w-3.5 h-3.5" /> นัดแต่ไม่โทร ({drilldownCounts.total_appt_no_call || 0})
                                             </button>
                                         </div>
                                         

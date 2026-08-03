@@ -172,6 +172,20 @@ try {
     }
 
     // 1. Call Data
+    $callTimeCondition = "AND TIME(cl.call_date) BETWEEN ? AND ?";
+    $callParams = [$companyId, $startDate, $endDate, $startTime, $endTime];
+
+    // If UI time filter is default, use dynamic business hours filtering
+    if ($startTime === '00:00' && $endTime === '23:59') {
+        $callTimeCondition = "
+            AND (
+                (DAYOFWEEK(cl.call_date) IN (2,3,4,5,6) AND TIME(cl.call_date) BETWEEN '09:00:00' AND '18:00:00')
+                OR (DAYOFWEEK(cl.call_date) IN (1,7) AND TIME(cl.call_date) BETWEEN '09:00:00' AND '16:30:00')
+            )
+        ";
+        $callParams = [$companyId, $startDate, $endDate];
+    }
+
     $sqlCalls = "
         SELECT 
             DATE(cl.call_date) AS call_day,
@@ -185,12 +199,12 @@ try {
         JOIN call_import_logs cl ON cl.matched_user_id = u.id
         WHERE u.company_id = ?
             AND DATE(cl.call_date) BETWEEN ? AND ?
-            AND TIME(cl.call_date) BETWEEN ? AND ?
+            $callTimeCondition
             AND $visibleFilter
         GROUP BY DATE(cl.call_date), u.id
     ";
     $stmt = $pdo->prepare($sqlCalls);
-    $stmt->execute([$companyId, $startDate, $endDate, $startTime, $endTime]);
+    $stmt->execute($callParams);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $d = $row['call_day'];
         $uid = $row['user_id'];
