@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Product, Company, PriceAnnouncement, PriceAnnouncementTier, PriceAnnouncementDiscountTier } from '../types';
-import { createPriceAnnouncement, updatePriceAnnouncement, listRoles, uploadPriceImage } from '../services/api';
+import { createPriceAnnouncement, updatePriceAnnouncement, listRoles, uploadPriceImage, listPriceAnnouncements } from '../services/api';
 import Modal from './Modal';
 import MultiSelectFilter, { MultiSelectOption } from './MultiSelectFilter';
 
@@ -54,6 +54,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
 }) => {
   const [productId, setProductId] = useState<number | ''>('');
   const [months, setMonths] = useState<string[]>(['']);
+  const [existingCounts, setExistingCounts] = useState<Record<string, number>>({});
   const [title, setTitle] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -77,6 +78,37 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
   const [error, setError] = useState('');
 
   const companyOptions: MultiSelectOption[] = companies.map((c) => ({ id: c.id, label: c.name }));
+
+  useEffect(() => {
+    if (!productId || announcement) {
+      setExistingCounts({});
+      return;
+    }
+    const uniqueMonths = Array.from(new Set(months.filter(m => m.trim() !== '')));
+    if (uniqueMonths.length === 0) {
+      setExistingCounts({});
+      return;
+    }
+
+    let isMounted = true;
+    const fetchCounts = async () => {
+      try {
+        const counts: Record<string, number> = {};
+        await Promise.all(
+          uniqueMonths.map(async (m) => {
+            const res = await listPriceAnnouncements(`${m}-01`, Number(productId));
+            const arr = Array.isArray(res) ? res : (res?.data || []);
+            counts[m] = arr.length;
+          })
+        );
+        if (isMounted) setExistingCounts(counts);
+      } catch (err) {
+        // ignore
+      }
+    };
+    fetchCounts();
+    return () => { isMounted = false; };
+  }, [productId, months, announcement]);
 
   useEffect(() => {
     listRoles()
@@ -369,22 +401,29 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
           <div className="flex flex-col gap-2">
             <label className="block text-sm font-medium text-gray-700">เดือนที่ประกาศ *</label>
             {months.map((m, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <input
-                  type="month"
-                  value={m}
-                  onChange={(e) => {
-                    const newM = [...months];
-                    newM[idx] = e.target.value;
-                    setMonths(newM);
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                />
+              <div key={idx} className="flex items-start gap-2">
+                <div className="flex-1">
+                  <input
+                    type="month"
+                    value={m}
+                    onChange={(e) => {
+                      const newM = [...months];
+                      newM[idx] = e.target.value;
+                      setMonths(newM);
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                  {!announcement && existingCounts[m] > 0 && (
+                    <div className="text-xs text-orange-600 mt-1 font-medium">
+                      ⚠️ มีโปรโมชั่นแล้ว {existingCounts[m]} รายการ
+                    </div>
+                  )}
+                </div>
                 {!announcement && months.length > 1 && (
                   <button
                     type="button"
                     onClick={() => setMonths(months.filter((_, i) => i !== idx))}
-                    className="text-red-500 hover:text-red-700 flex-shrink-0"
+                    className="text-red-500 hover:text-red-700 flex-shrink-0 mt-2"
                     title="ลบเดือนนี้"
                   >
                     <Trash2 size={16} />
