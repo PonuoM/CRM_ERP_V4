@@ -1450,12 +1450,6 @@ function handle_orders(PDO $pdo, ?string $id): void
                         error_log("Skipped box deletion for order $id because payload 'boxes' was an empty array [].");
                     }
                 }
-                // Force recalculate financials to prevent old frontend state from overriding cod_amount or amount_paid
-                if (function_exists('recalculate_order_financials')) {
-                    $authUser = get_authenticated_user($pdo);
-                    $userId = $authUser ? (int) $authUser['id'] : null;
-                    recalculate_order_financials($pdo, $id, 'index/orders_put', $userId);
-                }
 
                 $pdo->commit();
 
