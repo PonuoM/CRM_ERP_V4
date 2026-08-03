@@ -53,7 +53,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
   onSaved,
 }) => {
   const [productId, setProductId] = useState<number | ''>('');
-  const [month, setMonth] = useState('');
+  const [months, setMonths] = useState<string[]>(['']);
   const [title, setTitle] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -91,7 +91,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
     const source = announcement || copyFrom;
     if (source) {
       setProductId(source.product_id);
-      setMonth(announcement ? monthInputValue(announcement.month) : nextMonthValue(source.month));
+      setMonths(announcement ? [monthInputValue(announcement.month)] : [nextMonthValue(source.month)]);
       setTitle(source.title || '');
       setGeneralNotes(source.general_notes || '');
       setImageUrl(source.image_url || '');
@@ -123,7 +123,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       setVisibilityCompanyIds(source.visibility_company_ids || []);
     } else {
       setProductId('');
-      setMonth(new Date().toISOString().slice(0, 7));
+      setMonths([new Date().toISOString().slice(0, 7)]);
       setTitle('');
       setGeneralNotes('');
       setImageUrl('');
@@ -270,10 +270,12 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       setError('กรุณาเลือกสินค้า');
       return;
     }
-    if (!month) {
-      setError('กรุณาเลือกเดือน');
+    const validMonths = months.filter((m) => m.trim() !== '');
+    if (validMonths.length === 0) {
+      setError('กรุณาเลือกเดือนอย่างน้อย 1 เดือน');
       return;
     }
+    const uniqueMonths = Array.from(new Set(validMonths));
     if (tiers.length === 0) {
       setError('กรุณาเพิ่มราคาอย่างน้อย 1 รายการ');
       return;
@@ -282,10 +284,9 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
     setLoading(true);
     setError('');
     try {
-      const payload = {
+      const payloadBase = {
         company_id: defaultCompanyId,
         product_id: productId,
-        month: `${month}-01`,
         title: title || null,
         general_notes: generalNotes || null,
         image_url: imageUrl.trim() || null,
@@ -315,9 +316,11 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       };
 
       if (announcement) {
-        await updatePriceAnnouncement(announcement.id, payload);
+        await updatePriceAnnouncement(announcement.id, { ...payloadBase, month: `${uniqueMonths[0]}-01` });
       } else {
-        await createPriceAnnouncement(payload);
+        for (const m of uniqueMonths) {
+          await createPriceAnnouncement({ ...payloadBase, month: `${m}-01` });
+        }
       }
       onSaved();
       onClose();
@@ -363,14 +366,41 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">เดือนที่ประกาศ *</label>
-            <input
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            />
+          <div className="flex flex-col gap-2">
+            <label className="block text-sm font-medium text-gray-700">เดือนที่ประกาศ *</label>
+            {months.map((m, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input
+                  type="month"
+                  value={m}
+                  onChange={(e) => {
+                    const newM = [...months];
+                    newM[idx] = e.target.value;
+                    setMonths(newM);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+                {!announcement && months.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setMonths(months.filter((_, i) => i !== idx))}
+                    className="text-red-500 hover:text-red-700 flex-shrink-0"
+                    title="ลบเดือนนี้"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            ))}
+            {!announcement && (
+              <button
+                type="button"
+                onClick={() => setMonths([...months, nextMonthValue(months[months.length - 1])])}
+                className="text-sm text-blue-600 flex items-center gap-1 hover:text-blue-700 w-fit"
+              >
+                <Plus size={14} /> เพิ่มเดือน
+              </button>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">หัวข้อ (ถ้ามี)</label>
