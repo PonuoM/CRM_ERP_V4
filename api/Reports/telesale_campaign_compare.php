@@ -5,7 +5,12 @@
  * Call side  — from call_import_logs (provider CDR, real durations):
  *     outbound only (rec_type = 2), agent = matched_user_id (role 6/7, company)
  *     customer = call_termination normalised (66XXXXXXXXX -> 0XXXXXXXXX), matched to customers.phone
- *     segment  = matched customer's CURRENT basket (customers.current_basket_key); unmatched -> "ไม่มีแคมเปญ"
+ *     segment  = the basket that customer was in at the END of the period's month, read from
+ *                customer_basket_snapshots (falls back to customers.current_basket_key for the
+ *                current month / when no snapshot exists); unmatched -> "ไม่มีแคมเปญ".
+ *                It used to always use the CURRENT basket, which filed a July call under whatever
+ *                basket the customer moved to since — one segment could then show 19 owned vs 100
+ *                called. Both columns now resolve from the same snapshot date.
  *       names_called = distinct customer phone dialed
  *       total_calls  = COUNT(*)
  *       answered     = status = 1 (รับสาย, any duration)
@@ -17,8 +22,14 @@
  *     segment = order_items.basket_key_at_sale -> campaign basket name; else "ไม่มีแคมเปญ"
  *       orders = COUNT(DISTINCT order id), sales = SUM(net_total)
  *
- * Ownership — from customers (CURRENT snapshot, not period-bound, same convention as call segment):
- *     owned = COUNT(*) of customers.assigned_to = agent, grouped by customers.current_basket_key.
+ * Ownership — POINT-IN-TIME per period, from customer_ownership_snapshots:
+ *     owned = the agent's customer count as it stood at the END of that period's month,
+ *     grouped by the basket the customer was in at that moment. Month-end rows are written
+ *     nightly by cron/snapshot_customer_ownership.php (23:50, i.e. before the day-1 01:00
+ *     `monthly_cron` reclaim strips ownership) and backfilled for older months by
+ *     cron/backfill_ownership_snapshots.php. A period whose month has not ended yet — or
+ *     one with no snapshot row — falls back to the live `customers` table, and the response
+ *     says so via owned_source so the UI can label it.
  *     Segments with owned customers are shown even with zero call/sale activity in both periods.
  *
  * Teams: no `teams` table. team head = role-6 supervisor; a telesale's team is resolved via
@@ -143,7 +154,7 @@ try {
         ];
     }
     if (empty($userMap)) {
-        json_response(['success' => true, 'periods' => ['a' => ['month' => $monthA, 'year' => $yearA], 'b' => ['month' => $monthB, 'year' => $yearB]], 'has_teams' => false, 'teams_list' => [], 'agents_list' => [], 'segments_list' => $segmentsList, 'owned' => 0, 'total' => null, 'groups' => []]);
+        json_response(['success' => true, 'periods' => ['a' => ['month' => $monthA, 'year' => $yearA], 'b' => ['month' => $monthB, 'year' => $yearB]], 'has_teams' => false, 'teams_list' => [], 'agents_list' => [], 'segments_list' => $segmentsList, 'owned' => ['a' => 0, 'b' => 0], 'owned_source' => ['a' => 'live', 'b' => 'live'], 'total' => null, 'groups' => []]);
         exit;
     }
 
@@ -195,17 +206,65 @@ try {
     });
 
     if (empty($activeIds)) {
-        json_response(['success' => true, 'periods' => ['a' => ['month' => $monthA, 'year' => $yearA], 'b' => ['month' => $monthB, 'year' => $yearB]], 'has_teams' => $hasTeams, 'teams_list' => $teamsListOut, 'agents_list' => $agentsList, 'segments_list' => $segmentsList, 'owned' => 0, 'total' => null, 'groups' => []]);
+        json_response(['success' => true, 'periods' => ['a' => ['month' => $monthA, 'year' => $yearA], 'b' => ['month' => $monthB, 'year' => $yearB]], 'has_teams' => $hasTeams, 'teams_list' => $teamsListOut, 'agents_list' => $agentsList, 'segments_list' => $segmentsList, 'owned' => ['a' => 0, 'b' => 0], 'owned_source' => ['a' => 'live', 'b' => 'live'], 'total' => null, 'groups' => []]);
         exit;
     }
     $idPh = implode(',', array_fill(0, count($activeIds), '?'));
 
-    // ---- Customer phone -> current basket id map (company)
-    $phoneBasket = [];
-    $cust = $pdo->prepare("SELECT phone, current_basket_key FROM customers WHERE company_id = ? AND phone IS NOT NULL AND phone <> ''");
-    $cust->execute([$companyId]);
-    while ($row = $cust->fetch(PDO::FETCH_ASSOC)) {
-        $phoneBasket[$row['phone']] = $row['current_basket_key'];
+    // ---- Which snapshot date represents each period.
+    // One date drives BOTH the owned figure and the basket a call is filed under, so a row can
+    // never show "19 owned / 100 called" in the same segment from two different points in time.
+    // The current (unfinished) month, and any month with no snapshot, resolve to null = live data.
+    $snapDateStmt = $pdo->prepare("
+        SELECT MAX(snapshot_date) FROM customer_basket_snapshots
+        WHERE company_id = ? AND snapshot_date BETWEEN ? AND ?
+    ");
+    $currentMonthStart = date('Y-m-01');
+    $periodSnapDate = [];
+    foreach (['a' => [$yearA, $monthA], 'b' => [$yearB, $monthB]] as $key => $ym) {
+        $monthStart = sprintf('%04d-%02d-01', $ym[0], $ym[1]);
+        $periodSnapDate[$key] = null;
+        if ($monthStart < $currentMonthStart) {
+            $snapDateStmt->execute([$companyId, $monthStart, date('Y-m-t', strtotime($monthStart))]);
+            $d = $snapDateStmt->fetchColumn();
+            if ($d) $periodSnapDate[$key] = $d;
+        }
+    }
+
+    // ---- Customer phone -> basket map, one per period.
+    // Calls are matched to customers by phone, and each call must be filed under the basket the
+    // customer was in during THAT month — not the basket they happen to sit in today. Reading it
+    // live put a July call into whatever basket the customer moved to since.
+    $liveMapLoader = function () use ($pdo, $companyId) {
+        $map = [];
+        $st = $pdo->prepare("SELECT phone, current_basket_key FROM customers WHERE company_id = ? AND phone IS NOT NULL AND phone <> ''");
+        $st->execute([$companyId]);
+        while ($row = $st->fetch(PDO::FETCH_ASSOC)) $map[$row['phone']] = $row['current_basket_key'];
+        return $map;
+    };
+    $snapMapLoader = function ($date) use ($pdo, $companyId) {
+        $map = [];
+        $st = $pdo->prepare("
+            SELECT c.phone, s.basket_key
+            FROM customer_basket_snapshots s
+            JOIN customers c ON c.customer_id = s.customer_id
+            WHERE s.snapshot_date = ? AND s.company_id = ? AND c.phone IS NOT NULL AND c.phone <> ''
+        ");
+        $st->execute([$date, $companyId]);
+        while ($row = $st->fetch(PDO::FETCH_ASSOC)) $map[$row['phone']] = $row['basket_key'];
+        return $map;
+    };
+    // Maps are held in a cache keyed by date ('live' for the current month) and periods refer to
+    // them by key, so two periods on the same basis never load or copy the map twice.
+    $phoneMapCache = [];
+    $phoneMapKey = [];
+    foreach (['a', 'b'] as $k) {
+        $d = $periodSnapDate[$k];
+        $ck = ($d === null) ? 'live' : $d;
+        if (!isset($phoneMapCache[$ck])) {
+            $phoneMapCache[$ck] = ($d === null) ? $liveMapLoader() : $snapMapLoader($d);
+        }
+        $phoneMapKey[$k] = $ck;
     }
 
     $segOf = function ($basketId) use ($campaignBaskets, $NO_CAMPAIGN) {
@@ -220,9 +279,12 @@ try {
     $emptyMetrics = function () {
         return ['names_called' => 0, 'total_calls' => 0, 'answered' => 0, 'missed' => 0, 'talked' => 0, 'orders' => 0, 'sales' => 0.0];
     };
+    $emptyOwned = function () {
+        return ['a' => 0, 'b' => 0];
+    };
 
     $agents = [];
-    $ensureSeg = function ($aid, $seg) use (&$agents, $emptyMetrics, $userMap) {
+    $ensureSeg = function ($aid, $seg) use (&$agents, $emptyMetrics, $emptyOwned, $userMap) {
         if (!isset($agents[$aid])) {
             $agents[$aid] = [
                 'agent_id' => $aid,
@@ -237,7 +299,7 @@ try {
             ];
         }
         if (!isset($agents[$aid]['seg'][$seg])) {
-            $agents[$aid]['seg'][$seg] = ['owned' => 0, 'a' => $emptyMetrics(), 'b' => $emptyMetrics()];
+            $agents[$aid]['seg'][$seg] = ['owned' => $emptyOwned(), 'a' => $emptyMetrics(), 'b' => $emptyMetrics()];
         }
     };
 
@@ -272,7 +334,7 @@ try {
         while ($r = $cs->fetch(PDO::FETCH_ASSOC)) {
             $aid = (int) $r['agent_id'];
             if (!isset($userMap[$aid])) continue;
-            $seg = $segOf($phoneBasket[$normPhone($r['dialed'])] ?? null);
+            $seg = $segOf($phoneMapCache[$phoneMapKey[$key]][$normPhone($r['dialed'])] ?? null);
             if ($filterSegments !== null && !isset($filterSegments[$seg])) continue;
             $ensureSeg($aid, $seg);
             $m = &$agents[$aid]['seg'][$seg][$key];
@@ -298,26 +360,61 @@ try {
         }
     }
 
-    // ---- Owned customers (CURRENT snapshot, not period-bound) — assigned_to agent, grouped by
-    // current basket. (A true point-in-time historical version was attempted via customer_audit_log
-    // but abandoned: the basket-routing system reassigns ownership across the whole customer pool so
-    // heavily — ~900K+ change events — that even single-team-scoped reconstruction took 28s/94MB;
-    // only single-agent scope was fast enough (~5s), which wasn't a usable threshold for this report.)
-    $ownedSql = "
+    // ---- Owned customers, per period (point-in-time).
+    // Reading this live from `customers` used to make both months show today's number, which is
+    // always AFTER the month-end reclaim — so a telesale's book looked smaller than it was when
+    // they actually worked it. customer_ownership_snapshots stores the month-end figure instead.
+    // Live fallback keeps the current (unfinished) month usable and covers any month with no snapshot.
+    $ownedLiveSql = "
         SELECT assigned_to AS agent_id, current_basket_key AS basket_id, COUNT(*) AS cnt
         FROM customers
         WHERE company_id = ? AND assigned_to IN ($idPh)
         GROUP BY assigned_to, current_basket_key
     ";
-    $os = $pdo->prepare($ownedSql);
-    $os->execute(array_merge([$companyId], $activeIds));
-    while ($r = $os->fetch(PDO::FETCH_ASSOC)) {
-        $aid = (int) $r['agent_id'];
-        if (!isset($userMap[$aid])) continue;
-        $seg = $segOf($r['basket_id']);
-        if ($filterSegments !== null && !isset($filterSegments[$seg])) continue;
-        $ensureSeg($aid, $seg);
-        $agents[$aid]['seg'][$seg]['owned'] += (int) $r['cnt'];
+    $ownedSnapSql = "
+        SELECT agent_id, basket_key AS basket_id, SUM(owned_count) AS cnt, MAX(source) AS source
+        FROM customer_ownership_snapshots
+        WHERE snapshot_date = ? AND company_id = ? AND agent_id IN ($idPh)
+        GROUP BY agent_id, basket_key
+    ";
+    $applyOwned = function ($rows, $key) use (&$agents, $userMap, $segOf, $filterSegments, $ensureSeg) {
+        foreach ($rows as $r) {
+            $aid = (int) $r['agent_id'];
+            if (!isset($userMap[$aid])) continue;
+            $seg = $segOf($r['basket_id']);
+            if ($filterSegments !== null && !isset($filterSegments[$seg])) continue;
+            $ensureSeg($aid, $seg);
+            $agents[$aid]['seg'][$seg]['owned'][$key] += (int) $r['cnt'];
+        }
+    };
+
+    $ownedSource = [];
+    foreach (['a', 'b'] as $key) {
+        $snapDate = $periodSnapDate[$key]; // same date the call buckets above were built from
+        $rows = [];
+        $src = 'live';
+
+        if ($snapDate !== null) {
+            $sn = $pdo->prepare($ownedSnapSql);
+            $sn->execute(array_merge([$snapDate, $companyId], $activeIds));
+            $rows = $sn->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($rows)) {
+                // 'backfill' = reconstructed from basket_transition_log, 'cron' = captured that night
+                $isBackfill = false;
+                foreach ($rows as $r) {
+                    if ($r['source'] === 'backfill') { $isBackfill = true; break; }
+                }
+                $src = $isBackfill ? 'backfill' : 'snapshot';
+            }
+        }
+        if (empty($rows)) {
+            $lv = $pdo->prepare($ownedLiveSql);
+            $lv->execute(array_merge([$companyId], $activeIds));
+            $rows = $lv->fetchAll(PDO::FETCH_ASSOC);
+            $src = 'live';
+        }
+        $ownedSource[$key] = $src;
+        $applyOwned($rows, $key);
     }
 
     // Segment ordering
@@ -333,18 +430,22 @@ try {
     $sumInto = function (&$dst, $src) {
         foreach (['names_called', 'total_calls', 'answered', 'missed', 'talked', 'orders', 'sales'] as $f) $dst[$f] += $src[$f];
     };
+    $sumOwned = function (&$dst, $src) {
+        $dst['a'] += $src['a'];
+        $dst['b'] += $src['b'];
+    };
 
     // Build agent rows
     $agentOut = [];
     foreach ($agents as $a) {
         $agentTotal = ['a' => $emptyMetrics(), 'b' => $emptyMetrics()];
-        $agentOwned = 0;
+        $agentOwned = $emptyOwned();
         $segNames = array_keys($a['seg']);
         usort($segNames, $segSort);
         $segments = [];
         foreach ($segNames as $segName) {
             $sd = $a['seg'][$segName];
-            if (array_sum($sd['a']) <= 0 && array_sum($sd['b']) <= 0 && $sd['owned'] <= 0) continue;
+            if (array_sum($sd['a']) <= 0 && array_sum($sd['b']) <= 0 && array_sum($sd['owned']) <= 0) continue;
             // "ไม่มีแคมเปญ" segment is hidden from the breakdown (these are unowned/reclaimed
             // customers, not a real campaign — see report discussion) but its activity still
             // rolls up into the agent/team/grand totals below. Exception: when the user
@@ -354,9 +455,9 @@ try {
             }
             $sumInto($agentTotal['a'], $sd['a']);
             $sumInto($agentTotal['b'], $sd['b']);
-            $agentOwned += $sd['owned'];
+            $sumOwned($agentOwned, $sd['owned']);
         }
-        if (array_sum($agentTotal['a']) <= 0 && array_sum($agentTotal['b']) <= 0 && $agentOwned <= 0) continue;
+        if (array_sum($agentTotal['a']) <= 0 && array_sum($agentTotal['b']) <= 0 && array_sum($agentOwned) <= 0) continue;
         $agentOut[] = [
             'agent_id' => $a['agent_id'],
             'username' => $a['username'],
@@ -375,20 +476,20 @@ try {
 
     // Group agents by team
     $grand = ['a' => $emptyMetrics(), 'b' => $emptyMetrics()];
-    $grandOwned = 0;
+    $grandOwned = $emptyOwned();
     $groupsMap = [];
     foreach ($agentOut as $a) {
         $tk = $a['team_key'];
         if (!isset($groupsMap[$tk])) {
-            $groupsMap[$tk] = ['team_key' => $tk, 'team_name' => $a['team_name'], 'owned' => 0, 'total' => ['a' => $emptyMetrics(), 'b' => $emptyMetrics()], 'agents' => []];
+            $groupsMap[$tk] = ['team_key' => $tk, 'team_name' => $a['team_name'], 'owned' => $emptyOwned(), 'total' => ['a' => $emptyMetrics(), 'b' => $emptyMetrics()], 'agents' => []];
         }
         $groupsMap[$tk]['agents'][] = $a;
-        $groupsMap[$tk]['owned'] += $a['owned'];
+        $sumOwned($groupsMap[$tk]['owned'], $a['owned']);
         $sumInto($groupsMap[$tk]['total']['a'], $a['total']['a']);
         $sumInto($groupsMap[$tk]['total']['b'], $a['total']['b']);
         $sumInto($grand['a'], $a['total']['a']);
         $sumInto($grand['b'], $a['total']['b']);
-        $grandOwned += $a['owned'];
+        $sumOwned($grandOwned, $a['owned']);
     }
     // Sort agents within team: head first, then by label
     foreach ($groupsMap as &$g) {
@@ -414,6 +515,7 @@ try {
         'agents_list' => $agentsList,
         'segments_list' => $segmentsList,
         'owned' => $grandOwned,
+        'owned_source' => $ownedSource,
         'total' => $grand,
         'groups' => $groups,
     ]);
