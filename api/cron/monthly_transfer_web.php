@@ -52,6 +52,13 @@ try {
     $pdo = db_connect();
     set_audit_context($pdo, 'monthly_cron', null);
     
+    require_once __DIR__ . '/../Services/CronLoggerService.php';
+    $cronLogger = new CronLoggerService($pdo, 'monthly_transfer');
+    
+    if (!$dryRun) {
+        $cronLogger->start();
+    }
+    
     // Get companies to process
     if ($companyParam === 'all') {
         $companyStmt = $pdo->query("SELECT DISTINCT id FROM companies");
@@ -619,6 +626,14 @@ foreach ($companies as $companyId) {
     echo "  Total Errors: $grandTotalErrors\n";
     echo "===========================================\n";
     
+    if (!$dryRun) {
+        $cronLogger->finish($grandTotalTransferred, $grandTotalErrors, 'success');
+    }
+    
 } catch (Exception $e) {
     echo "FATAL ERROR: " . $e->getMessage() . "\n";
+    
+    if (isset($cronLogger) && !$dryRun) {
+        $cronLogger->fail($e);
+    }
 }
