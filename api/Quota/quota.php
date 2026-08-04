@@ -1272,6 +1272,10 @@ function calculateQuota(PDO $conn, int $quotaProductId, int $userId): array {
  * Uses oi.parent_order_id (not oi.order_id) for JOIN because order_items.order_id has -1 suffix.
  */
 function _calcSalesInPeriod(PDO $conn, int $userId, int $quotaProductId, string $dateCol, string $periodStart, string $periodEnd): float {
+    // Ensure periodEnd covers the entire day if only a date (Y-m-d) is provided
+    if (strlen(trim($periodEnd)) === 10) {
+        $periodEnd = trim($periodEnd) . ' 23:59:59';
+    }
     $stmt = $conn->prepare("
         SELECT COALESCE(SUM(
             CASE WHEN (oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL
@@ -1284,7 +1288,7 @@ function _calcSalesInPeriod(PDO $conn, int $userId, int $quotaProductId, string 
         AND o.company_id = (SELECT company_id FROM quota_products WHERE id = :qpId AND deleted_at IS NULL)
         AND o.order_status NOT IN ('Cancelled', 'Returned', 'ตีกลับ', 'ยกเลิก')
         AND $dateCol >= :periodStart
-        AND $dateCol < :periodEnd
+        AND $dateCol <= :periodEnd
     ");
     $stmt->execute([
         ':userId' => $userId,
