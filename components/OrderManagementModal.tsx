@@ -5080,7 +5080,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               </InfoCard>
             )}
 
-          <InfoCard icon={Truck} title="การจัดส่ง">
+          <InfoCard icon={Truck} title="สถานะออเดอร์">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -5134,6 +5134,30 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                     ))}
                 </select>
               </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  สถานะการชำระเงิน
+                </label>
+                <select
+                  value={currentOrder.paymentStatus || ""}
+                  onChange={(e) => {
+                    setCurrentOrder(prev => ({ ...prev, paymentStatus: e.target.value as PaymentStatus }));
+                  }}
+                  disabled={!isEditing || isLocked || permission === 'seller'}
+                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${!isEditing || isLocked || permission === 'seller' ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
+                >
+                  <option value="">-- เลือกสถานะการชำระเงิน --</option>
+                  <option value={PaymentStatus.Unpaid}>ยังไม่ชำระเงิน (Unpaid)</option>
+                  <option value={PaymentStatus.PendingVerification}>รอตรวจสอบสลิป (PendingVerification)</option>
+                  <option value={PaymentStatus.Verified}>ตรวจสอบสลิปแล้ว (Verified)</option>
+                  <option value={PaymentStatus.PreApproved}>อนุมัติเบื้องต้น (PreApproved)</option>
+                  <option value={PaymentStatus.Approved}>อนุมัติโดยการเงิน (Approved)</option>
+                  <option value={PaymentStatus.Paid}>ชำระครบถ้วน (Paid)</option>
+                  <option value={PaymentStatus.Cancelled}>ยกเลิก (Cancelled)</option>
+                </select>
+              </div>
+
 
 
             </div>
