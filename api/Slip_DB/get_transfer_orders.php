@@ -340,11 +340,7 @@ try {
                    AND (o.payment_status IS NULL OR o.payment_status != 'Approved')
                    GROUP BY o.id, o.total_amount, o.payment_status";
 
-  // Only add HAVING clause if amount column exists
-  if ($check_amount_col > 0) {
-    $countSql .=
-      " HAVING COALESCE(SUM(os.amount), 0) < COALESCE(o.total_amount, 0) OR SUM(os.amount) IS NULL";
-  }
+  // No HAVING clause needed, we want to show all orders regardless of slip total
 
   $countSql .= ") as grouped_orders";
 
@@ -396,12 +392,7 @@ try {
             AND (o.payment_status IS NULL OR o.payment_status != 'Approved')
             GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, o.payment_status, o.payment_method, c.first_name, c.last_name, c.phone";
 
-  // Only add HAVING clause if amount column exists
-  // Filter out orders that are fully paid based on slip totals
-  if ($check_amount_col > 0) {
-    $sql .=
-      " HAVING COALESCE(SUM(os.amount), 0) < COALESCE(o.total_amount, 0) OR SUM(os.amount) IS NULL";
-  }
+  // No HAVING clause needed, we want to show all orders regardless of slip total
 
   $sql .= " ORDER BY o.order_date DESC LIMIT ? OFFSET ?";
 
