@@ -625,6 +625,7 @@ class ReturnedOrdersReportService
                 COALESCE(oar.is_new_order_created, 0) AS is_new_order_created,
                 oar.new_order_id,
                 CONCAT(u.first_name, ' ', u.last_name) AS creator_name,
+                r.name AS creator_role_name,
                 CASE 
                     WHEN o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob6 WHERE ob6.order_id = o.id AND ob6.return_status IS NOT NULL) 
                     THEN COALESCE((SELECT SUM(ob7.cod_amount) FROM order_boxes ob7 WHERE ob7.order_id = o.id AND ob7.return_status IS NOT NULL), 0)
@@ -636,6 +637,7 @@ class ReturnedOrdersReportService
                 ota.created_at AS assigned_at
             FROM orders o
             LEFT JOIN users u ON o.creator_id = u.id
+            LEFT JOIN roles r ON u.role_id = r.id
             LEFT JOIN order_audio_resolutions oar ON o.id = oar.order_id
             LEFT JOIN customers c ON o.customer_id = c.customer_id
             LEFT JOIN order_cancellations oc ON o.id = oc.order_id
