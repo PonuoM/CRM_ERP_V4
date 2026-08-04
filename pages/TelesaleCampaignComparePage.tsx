@@ -10,13 +10,17 @@ interface Props { currentUser: User; }
 
 interface Metrics { names_called: number; total_calls: number; answered: number; missed: number; talked: number; orders: number; sales: number; }
 interface Period { a: Metrics; b: Metrics; }
-interface SegmentRow { segment: string; owned: number; a: Metrics; b: Metrics; }
+// owned is point-in-time per period (end of that month), not one shared "today" figure.
+interface Owned { a: number; b: number; }
+interface SegmentRow { segment: string; owned: Owned; a: Metrics; b: Metrics; }
 interface AgentRow {
     agent_id: number; username: string; label: string; name: string;
     role_label: string; team_key: string; team_name: string; is_head: boolean; is_inactive: boolean;
-    owned: number; total: Period; segments: SegmentRow[];
+    owned: Owned; total: Period; segments: SegmentRow[];
 }
-interface TeamGroup { team_key: string; team_name: string; owned: number; total: Period; agents: AgentRow[]; }
+interface TeamGroup { team_key: string; team_name: string; owned: Owned; total: Period; agents: AgentRow[]; }
+// snapshot = captured that night by cron | backfill = reconstructed from basket history | live = today's count
+type OwnedSource = "snapshot" | "backfill" | "live";
 interface ApiResp {
     success: boolean;
     periods: { a: { month: number; year: number }; b: { month: number; year: number } };
@@ -24,7 +28,8 @@ interface ApiResp {
     teams_list: { key: string; name: string }[];
     agents_list: { id: number; label: string; team_key: string }[];
     segments_list: string[];
-    owned: number;
+    owned: Owned;
+    owned_source: { a: OwnedSource; b: OwnedSource };
     total: Period | null;
     groups: TeamGroup[];
 }
@@ -38,7 +43,8 @@ const eqMetrics = (x: Metrics, y: Metrics) => METRIC_KEYS.every(k => (x[k] || 0)
 // the segment filter is narrowed to one basket), the sub-row would duplicate the agent row —
 // collapse them into one line with the segment name shown as a small tag after the agent name.
 const soleSegmentOf = (ag: AgentRow): SegmentRow | null =>
-    ag.segments.length === 1 && ag.segments[0].owned === ag.owned
+    ag.segments.length === 1
+        && ag.segments[0].owned.a === ag.owned.a && ag.segments[0].owned.b === ag.owned.b
         && eqMetrics(ag.segments[0].a, ag.total.a) && eqMetrics(ag.segments[0].b, ag.total.b)
         ? ag.segments[0] : null;
 const moneyFmt = (n: number) => new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
@@ -59,6 +65,7 @@ const Avatar: React.FC<{ label: string; muted?: boolean }> = ({ label, muted }) 
 // Column definitions with hover tooltip explaining the calculation/meaning.
 // Each cell may show a smaller secondary line below the main number to save horizontal space.
 const COLS = [
+    { key: "owned", label: "ลูกค้าที่ดูแล", tip: "จำนวนลูกค้าในมือ ณ วันสุดท้ายของเดือนนั้น (ก่อนระบบดึงกลับต้นเดือนถัดไป) — เก็บไว้เป็น snapshot รายวัน ไม่ใช่ยอดวันนี้ เดือนที่ยังไม่จบจะแสดงยอดปัจจุบัน" },
     { key: "names_called", label: "ชื่อที่โทร", tip: "จำนวนลูกค้า (เบอร์ไม่ซ้ำ) ที่โทรออกไปหาในเดือนนี้ — นับจาก call_import_logs สายโทรออก, จัดกลุ่มตามถังปัจจุบันของลูกค้า" },
     { key: "total_calls", label: "สายโทร", tip: "จำนวนสายโทรออกทั้งหมด ตัวเล็กด้านล่าง = รับสาย/ไม่รับสาย (status เชื่อมต่อ ไม่ว่าจะคุยนานแค่ไหน)" },
     { key: "talked", label: "ได้คุย", tip: "จำนวนสายที่รับและคุยจริง = สถานะรับสาย และระยะเวลา ≥ 30 วินาที (จากระบบบันทึกเวลาคุยของผู้ให้บริการ)" },
@@ -81,10 +88,11 @@ const Pill: React.FC<{ children: React.ReactNode; tone: "up" | "down" | "neutral
 
 // tint = faint background wash so the eye can tell "this column belongs to the recent/older block"
 // without re-reading the header — recent (left) gets a blue wash, older (right) stays plain white.
-const MetricCells: React.FC<{ m: Metrics; tint?: "recent" | "older" }> = ({ m, tint }) => {
+const MetricCells: React.FC<{ m: Metrics; owned: number; tint?: "recent" | "older" }> = ({ m, owned, tint }) => {
     const bg = tint === "recent" ? "bg-blue-50/40" : "";
     return (
         <>
+            <td className={`${CELL} ${bg}`}>{intFmt(owned)}</td>
             <td className={`${CELL} ${bg}`}>{intFmt(m.names_called)}</td>
             <td className={`${CELL} ${bg}`}>
                 <div>{intFmt(m.total_calls)}</div>
@@ -103,9 +111,24 @@ const MetricCells: React.FC<{ m: Metrics; tint?: "recent" | "older" }> = ({ m, t
     );
 };
 
-const OwnedCell: React.FC<{ n: number }> = ({ n }) => (
-    <td className={CELL + " text-gray-500"}>{intFmt(n)}</td>
-);
+// Tag next to a month header saying where its "ลูกค้าที่ดูแล" number came from.
+// A live figure is today's count standing in for a month that has not ended (or has no
+// snapshot yet) — it must not be read as the month-end book.
+const OWNED_SOURCE_TAG: Record<OwnedSource, { label: string; cls: string; tip: string } | null> = {
+    snapshot: null,
+    backfill: { label: "ประมาณการ", cls: "bg-amber-100 text-amber-700", tip: "ยอดลูกค้าที่ดูแลของเดือนนี้ ย้อนสร้างจากประวัติการย้ายถัง (basket_transition_log) เพราะยังไม่มีการเก็บ snapshot ตอนนั้น — คลาดเคลื่อนได้ราว 0.5%" },
+    live: { label: "ยอดปัจจุบัน", cls: "bg-gray-100 text-gray-500", tip: "เดือนนี้ยังไม่จบ (หรือยังไม่มี snapshot) จึงแสดงยอดลูกค้าที่ดูแล ณ ตอนนี้ ไม่ใช่ยอดสิ้นเดือน" },
+};
+
+const OwnedSourceTag: React.FC<{ source?: OwnedSource }> = ({ source }) => {
+    const tag = source ? OWNED_SOURCE_TAG[source] : null;
+    if (!tag) return null;
+    return (
+        <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-normal ${tag.cls}`} title={tag.tip}>
+            {tag.label}
+        </span>
+    );
+};
 
 // The Diff block gets its own solid amber wash (header + body) so it reads as one distinct
 // "comparison result" panel instead of blending into the surrounding raw-number columns.
@@ -232,14 +255,17 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
         // Export keeps full per-metric detail (answered/missed, Basket Size, %Con as separate columns)
         // even though the on-screen table merges them into compact two-line cells.
         // Column order mirrors the on-screen table: recent month (B) first, then Diff, then older month (A).
-        const colNames = ["ชื่อที่โทร", "สายโทร", "รับสาย", "ไม่รับสาย", "ได้คุย", "ออเดอร์", "Basket Size", "ยอดขาย", "%Con"];
-        const head1 = ["", "", labelB, ...Array(colNames.length - 1).fill(""), "Diff", "%Diff", labelA, ...Array(colNames.length - 1).fill("")];
-        const head2 = ["ทีม / Agent / Segment", "ลูกค้าที่ดูแล", ...colNames, "Diff (ยอดขาย)", "%Diff", ...colNames];
-        const mc = (m: Metrics) => [m.names_called, m.total_calls, m.answered, m.missed, m.talked, m.orders, +basketSize(m).toFixed(2), +m.sales.toFixed(2), +pct(m.orders, m.names_called).toFixed(2)];
-        const rowOf = (label: string, p: Period, owned: number) => {
+        // "ลูกค้าที่ดูแล" now belongs to a month (end-of-month figure), so it sits inside each
+        // month block rather than as one shared column.
+        const colNames = ["ลูกค้าที่ดูแล", "ชื่อที่โทร", "สายโทร", "รับสาย", "ไม่รับสาย", "ได้คุย", "ออเดอร์", "Basket Size", "ยอดขาย", "%Con"];
+        const srcNote = (s?: OwnedSource) => (s && OWNED_SOURCE_TAG[s] ? ` (ลูกค้าที่ดูแล: ${OWNED_SOURCE_TAG[s]!.label})` : "");
+        const head1 = ["", labelB + srcNote(data.owned_source?.b), ...Array(colNames.length - 1).fill(""), "Diff", "%Diff", labelA + srcNote(data.owned_source?.a), ...Array(colNames.length - 1).fill("")];
+        const head2 = ["ทีม / Agent / Segment", ...colNames, "Diff (ยอดขาย)", "%Diff", ...colNames];
+        const mc = (m: Metrics, owned: number) => [owned, m.names_called, m.total_calls, m.answered, m.missed, m.talked, m.orders, +basketSize(m).toFixed(2), +m.sales.toFixed(2), +pct(m.orders, m.names_called).toFixed(2)];
+        const rowOf = (label: string, p: Period, owned: Owned) => {
             const diff = p.b.sales - p.a.sales;
             const pdiff = p.a.sales > 0 ? (diff / p.a.sales) * 100 : (p.b.sales > 0 ? 100 : 0);
-            return [label, owned, ...mc(p.b), +diff.toFixed(2), +pdiff.toFixed(2), ...mc(p.a)];
+            return [label, ...mc(p.b, owned.b), +diff.toFixed(2), +pdiff.toFixed(2), ...mc(p.a, owned.a)];
         };
         const rows: any[][] = [head1, head2];
         if (data.total) rows.push(rowOf("รวมทั้งหมด (Total)", data.total, data.owned));
@@ -359,19 +385,18 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
                     <div className="h-full flex items-center justify-center text-gray-400 text-sm">ไม่พบข้อมูลในช่วงเดือนที่เลือก</div>
                 ) : (
                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-auto">
-                        <table className="w-full border-collapse min-w-[1700px]">
+                        <table className="w-full border-collapse min-w-[1820px]">
                             <thead className="sticky top-0 z-30">
                                 <tr className="bg-white">
                                     <th rowSpan={2} className="px-4 py-3 text-left font-medium text-gray-400 text-[11px] uppercase tracking-wide sticky left-0 bg-white z-40 min-w-[240px] border-b-2 border-gray-100">ทีม / Agent / Segment</th>
-                                    <th rowSpan={2} className="px-3 py-3 text-right font-medium text-gray-400 text-[11px] uppercase tracking-wide border-b-2 border-gray-100">
-                                        <span className="inline-flex items-center justify-end">ลูกค้าที่ดูแล<InfoTip text="จำนวนลูกค้าที่ผูกกับ agent คนนี้อยู่ในถังนี้ขณะนี้ (assigned_to ปัจจุบัน) — เป็นค่าปัจจุบัน ใช้ร่วมกันทั้งสองเดือนที่เลือก ไม่ได้แยกตามเดือน" /></span>
-                                    </th>
                                     <th colSpan={COLS.length} className="px-3 py-2.5 text-center font-bold text-blue-700 text-[12px] border-b-2 border-blue-100 bg-blue-50/60 border-l border-gray-100">
                                         {labelB} <span className="font-normal text-blue-400">(ล่าสุด)</span>
+                                        <OwnedSourceTag source={data.owned_source?.b} />
                                     </th>
                                     <th colSpan={2} className="px-3 py-2.5 text-center font-bold text-amber-700 text-[12px] border-b-2 border-amber-100 bg-amber-50/70 border-l border-amber-100">เทียบยอดขาย</th>
                                     <th colSpan={COLS.length} className="px-3 py-2.5 text-center font-semibold text-gray-500 text-[12px] border-b-2 border-gray-100 bg-gray-50/60 border-l border-gray-100">
                                         {labelA} <span className="font-normal text-gray-400">(ก่อนหน้า)</span>
+                                        <OwnedSourceTag source={data.owned_source?.a} />
                                     </th>
                                 </tr>
                                 <tr>
@@ -403,10 +428,9 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
                                                 รวมทั้งหมด (Total)
                                             </span>
                                         </td>
-                                        <td className="px-3 py-3.5 text-right text-indigo-700">{intFmt(data.owned)}</td>
-                                        <MetricCells m={data.total.b} tint="recent" />
+                                        <MetricCells m={data.total.b} owned={data.owned.b} tint="recent" />
                                         <DiffCells a={data.total.a} b={data.total.b} />
-                                        <MetricCells m={data.total.a} />
+                                        <MetricCells m={data.total.a} owned={data.owned.a} />
                                     </tr>
                                 )}
                                 {data.groups.map((g, gi) => {
@@ -424,10 +448,9 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
                                                             <span className="text-[11px] font-normal text-gray-400">({g.agents.length} คน)</span>
                                                         </span>
                                                     </td>
-                                                    <OwnedCell n={g.owned} />
-                                                    <MetricCells m={g.total.b} tint="recent" />
+                                                    <MetricCells m={g.total.b} owned={g.owned.b} tint="recent" />
                                                     <DiffCells a={g.total.a} b={g.total.b} />
-                                                    <MetricCells m={g.total.a} />
+                                                    <MetricCells m={g.total.a} owned={g.owned.a} />
                                                 </tr>
                                             )}
                                             {!teamCollapsed && g.agents.map(ag => {
@@ -446,18 +469,16 @@ const TelesaleCampaignComparePage: React.FC<Props> = ({ currentUser }) => {
                                                                     {soleSeg && <span className="text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 whitespace-nowrap">{soleSeg.segment}</span>}
                                                                 </span>
                                                             </td>
-                                                            <OwnedCell n={ag.owned} />
-                                                            <MetricCells m={ag.total.b} tint="recent" />
+                                                            <MetricCells m={ag.total.b} owned={ag.owned.b} tint="recent" />
                                                             <DiffCells a={ag.total.a} b={ag.total.b} />
-                                                            <MetricCells m={ag.total.a} />
+                                                            <MetricCells m={ag.total.a} owned={ag.owned.a} />
                                                         </tr>
                                                         {!agentCollapsed && !soleSeg && ag.segments.map((seg, si) => (
                                                             <tr key={si} className="hover:bg-gray-50/70 text-gray-400 transition-colors border-b border-gray-50">
                                                                 <td className={`px-4 py-2.5 text-left sticky left-0 bg-white z-20 text-[12px] ${data.has_teams ? 'pl-[4.25rem]' : 'pl-14'}`}>{seg.segment}</td>
-                                                                <OwnedCell n={seg.owned} />
-                                                                <MetricCells m={seg.b} tint="recent" />
+                                                                <MetricCells m={seg.b} owned={seg.owned.b} tint="recent" />
                                                                 <DiffCells a={seg.a} b={seg.b} />
-                                                                <MetricCells m={seg.a} />
+                                                                <MetricCells m={seg.a} owned={seg.owned.a} />
                                                             </tr>
                                                         ))}
                                                     </React.Fragment>
