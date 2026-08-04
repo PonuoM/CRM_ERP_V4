@@ -287,7 +287,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           'วันที่สั่งซื้อ': row.order_date,
           'พนักงานที่เปิดออเดอร์': row.creator_name || 'ไม่ระบุ',
           'ป้ายกำกับ': row.tag_name,
-          'สร้างคำสั่งซื้อใหม่แล้ว': parseInt(row.is_new_order_created) === 1 ? (row.new_order_id ? `ใช่ (ID: ${row.new_order_id})` : 'ใช่') : 'ไม่ใช่',
+          'สร้างคำสั่งซื้อใหม่แล้ว': parseInt(row.is_new_order_created) === 1 ? (row.new_order_id || '') : '',
           'ลูกค้า': row.customer_name,
           'สถานะออเดอร์': getOrderStatusThai(row.order_status),
           'ยอดเงิน': parseFloat(row.total_amount),
