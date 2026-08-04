@@ -89,4 +89,15 @@ Consider: Purchase frequency (restock needed?), loyalty (high grade?), and avoid
 Customer Data: " . json_encode($context) . "
 Output MUST be JSON: {\"score\": number, \"reason_thai\": \"string\"}";
     }
+
+    /**
+     * Convert Google Drive /view URLs to direct download URLs
+     */
+    private function convertDriveUrl($url) {
+        if (preg_match('/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/', $url, $matches)) {
+            return "https://drive.google.com/uc?export=download&id=" . $matches[1];
+        }
+        return $url;
+    }
+
 }

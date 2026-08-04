@@ -47,6 +47,8 @@ try {
                 DistributionReportController::export_time_travel_call_stats($pdo);
             }
             break;
+
+            
         case 'system_updates':
             require_once __DIR__ . '/Controllers/SystemUpdateController.php';
             handle_system_updates($pdo, $id);
@@ -112,6 +114,125 @@ try {
             require_once __DIR__ . '/Controllers/ProductController.php';
             handle_products($pdo, $id);
             break;
+        case 'summarize_order_audio':
+            if (method() !== 'POST') {
+                json_response(['error' => 'INVALID_METHOD', 'message' => 'Method not allowed'], 405);
+            }
+            $input = json_decode(file_get_contents('php://input'), true);
+            $orderId = !empty($input['order_id']) ? $input['order_id'] : null;
+            $type = !empty($input['type']) ? $input['type'] : 'returned'; // 'returned' or 'cancelled'
+            $requestedAudioLinkId = !empty($input['audio_link_id']) ? $input['audio_link_id'] : null;
+            
+            if (!$orderId) {
+                json_response(['error' => 'MISSING_PARAM', 'message' => 'Missing order_id'], 400);
+            }
+            
+            // Get specific audio link or fallback to first
+            if ($requestedAudioLinkId) {
+                $stmt = $pdo->prepare("SELECT id, audio_url FROM order_audio_links WHERE id = ? AND order_id = ?");
+                $stmt->execute([$requestedAudioLinkId, $orderId]);
+                $audioLink = $stmt->fetch(PDO::FETCH_ASSOC);
+            } else {
+                $stmt = $pdo->prepare("SELECT id, audio_url FROM order_audio_links WHERE order_id = ? ORDER BY created_at ASC LIMIT 1");
+                $stmt->execute([$orderId]);
+                $audioLink = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+            
+            if (!$audioLink || empty($audioLink['audio_url'])) {
+                json_response(['error' => 'NOT_FOUND', 'message' => 'No audio links found for this order'], 404);
+            }
+
+            $audioLinkIdToUpdate = $audioLink['id'];
+            $audioUrlToSend = $audioLink['audio_url'];
+
+            // Get customer ID
+            $stmt = $pdo->prepare("SELECT customer_id FROM orders WHERE id = ?");
+            $stmt->execute([$orderId]);
+            $customerId = $stmt->fetchColumn();
+
+            // Send to Voicecall API
+            $apiUrl = getenv('VOICECALL_API_URL');
+            $apiToken = getenv('VOICECALL_API_TOKEN');
+            
+            // Try reading directly from .env if getenv fails
+            $envPaths = [__DIR__ . '/../.env', __DIR__ . '/../.env.local', __DIR__ . '/.env', __DIR__ . '/.env.local', __DIR__ . '/../../.env'];
+            $checkedInfo = [];
+            foreach ($envPaths as $path) {
+                if (file_exists($path)) {
+                    $checkedInfo[] = basename($path) . " (found)";
+                    $envLines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                    if ($envLines) {
+                        foreach ($envLines as $line) {
+                            // Remove BOM if present
+                            $line = preg_replace('/^[\xef\xbb\xbf]+/', '', $line);
+                            if (strpos(trim($line), '#') !== 0 && strpos($line, '=') !== false) {
+                                list($k, $v) = explode('=', $line, 2);
+                                $k = trim(str_ireplace('export ', '', trim($k)));
+                                if ($k === 'VOICECALL_API_URL') $apiUrl = trim(trim($v), '"\'');
+                                if ($k === 'VOICECALL_API_TOKEN' || $k === 'ERP_API_KEY') $apiToken = trim(trim($v), '"\'');
+                            }
+                        }
+                    }
+                } else {
+                    $checkedInfo[] = basename($path) . " (not found)";
+                }
+            }
+
+            // Fallback default URL if not specified
+            if (empty($apiUrl)) {
+                $apiUrl = "https://prima49.com/voicecall/api/index.php/erp/summarize";
+            }
+
+            // Force the new token if it's empty or still the old one from a stale getenv
+            if (empty($apiToken) || $apiToken === 'vc_erp_a93b4c10ef28d9f1') {
+                $apiToken = "vc_erp_8f7e6d5c4b3a2910";
+            }
+
+            if (empty($apiToken)) {
+                json_response(['error' => 'MISSING_CONFIG', 'message' => 'API 500: ไม่พบ TOKEN (VOICECALL_API_TOKEN หรือ ERP_API_KEY) ในไฟล์ .env (' . implode(', ', $checkedInfo) . ')'], 500);
+            }
+
+            $payload = [
+                "order_id" => $orderId,
+                "customer_id" => $customerId,
+                "audio_url" => $audioUrlToSend,
+                "context_type" => $type
+            ];
+
+            $ch = curl_init($apiUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $apiToken
+            ]);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            $decoded = @json_decode($response, true);
+
+            if ($httpCode >= 200 && $httpCode < 300 && isset($decoded['summary']['executive_summary'])) {
+                $executiveSummary = $decoded['summary']['executive_summary'];
+
+                // Save to the specific audio link's notes
+                $upd = $pdo->prepare("UPDATE order_audio_links SET notes = ? WHERE id = ?");
+                $upd->execute([$executiveSummary, $audioLinkIdToUpdate]);
+                
+                // Clear the old summary from the top section so it actually 'moves' (safe to do for all calls)
+                $clearStmt = $pdo->prepare("UPDATE order_audio_resolutions SET resolution_notes = NULL WHERE order_id = ?");
+                $clearStmt->execute([$orderId]);
+
+                json_response(['ok' => true, 'status' => 'completed', 'message' => 'สรุปผลสำเร็จ', 'ai_summary' => $executiveSummary, 'audio_link_id' => $audioLinkIdToUpdate]);
+            } else {
+                $errMsg = $decoded['message'] ?? 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ Voicecall API';
+                json_response(['error' => 'VOICECALL_ERROR', 'message' => "ข้อผิดพลาดจาก Voicecall ($httpCode): $errMsg"], 500);
+            }
+            break;
+
         case 'returned_orders_report':
             require_once __DIR__ . '/Services/ReturnedOrdersReportService.php';
             $svc = new ReturnedOrdersReportService($pdo);
