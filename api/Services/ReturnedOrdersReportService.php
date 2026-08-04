@@ -585,6 +585,7 @@ class ReturnedOrdersReportService
                 ot.name AS tag_name,
                 ot.type AS tag_type,
                 ot.color AS tag_color,
+                SUM(COALESCE(oar.is_new_order_created, 0)) AS new_order_count,
                 COUNT(DISTINCT o.id) AS order_count,
                 SUM(
                     CASE 
@@ -621,6 +622,8 @@ class ReturnedOrdersReportService
                 o.order_status,
                 ot.name AS tag_name,
                 ot.type AS tag_type,
+                COALESCE(oar.is_new_order_created, 0) AS is_new_order_created,
+                oar.new_order_id,
                 CASE 
                     WHEN o.order_status = 'Returned' OR EXISTS (SELECT 1 FROM order_boxes ob6 WHERE ob6.order_id = o.id AND ob6.return_status IS NOT NULL) 
                     THEN COALESCE((SELECT SUM(ob7.cod_amount) FROM order_boxes ob7 WHERE ob7.order_id = o.id AND ob7.return_status IS NOT NULL), 0)

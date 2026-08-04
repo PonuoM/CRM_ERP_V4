@@ -42,6 +42,8 @@ export interface OrderData {
   cancel_notes: string;
   admin_resolution_notes?: string;
   admin_resolution_completed: number;
+  is_new_order_created?: number;
+  new_order_id?: string;
   cancelled_at: string;
   returned_at: string;
   creator_name: string;
@@ -274,7 +276,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
         // Format Summary
         const summaryData = summary.map((row: any) => ({
           'ป้ายกำกับ': row.tag_name,
-          'ประเภทป้าย': row.tag_type === 'SYSTEM' ? 'ระบบ' : 'ส่วนตัว',
+          'มีการสร้างคำสั่งซื้อใหม่ (ออเดอร์)': parseInt(row.new_order_count) || 0,
           'จำนวนออเดอร์': parseInt(row.order_count),
           'ยอดเงินรวม': parseFloat(row.total_amount)
         }));
@@ -284,7 +286,7 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           'รหัสออเดอร์': row.order_id,
           'วันที่สั่งซื้อ': row.order_date,
           'ป้ายกำกับ': row.tag_name,
-          'ประเภทป้าย': row.tag_type === 'SYSTEM' ? 'ระบบ' : 'ส่วนตัว',
+          'สร้างคำสั่งซื้อใหม่แล้ว': parseInt(row.is_new_order_created) === 1 ? (row.new_order_id ? `ใช่ (ID: ${row.new_order_id})` : 'ใช่') : 'ไม่ใช่',
           'ลูกค้า': row.customer_name,
           'สถานะออเดอร์': getOrderStatusThai(row.order_status),
           'ยอดเงิน': parseFloat(row.total_amount),
@@ -1110,6 +1112,12 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
                                 <Copy className="w-3.5 h-3.5" />
                                 คัดลอกข้อมูล
                               </button>
+                              
+                              {order.is_new_order_created === 1 && (
+                                <div className="mt-2 text-[11px] bg-blue-100 text-blue-800 px-2 py-1 rounded text-center border border-blue-200 font-medium">
+                                  🔄 สั่งใหม่แล้ว {order.new_order_id ? `(${order.new_order_id})` : ''}
+                                </div>
+                              )}
                               
                               <button
                                 onClick={() => handleToggleCompleted(order.order_id, order.admin_resolution_completed)}
