@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2, Copy, Package, Users, Building2, Percent, StickyNote, Calendar, Search } from 'lucide-react';
 import { Product, Company, User, PriceAnnouncement } from '../types';
-import { listPriceAnnouncements, deletePriceAnnouncement } from '../services/api';
+import { listPriceAnnouncements, deletePriceAnnouncement, createPriceAnnouncement } from '../services/api';
 import PriceAnnouncementModal from '../components/PriceAnnouncementModal';
+import Modal from '../components/Modal';
 
 interface PriceAnnouncementPageProps {
   products: Product[];
@@ -253,12 +254,20 @@ interface SheetSectionProps {
   onCopy: (a: PriceAnnouncement) => void;
   onEdit: (a: PriceAnnouncement) => void;
   onDelete: (id: number) => void;
+  onBulkCopy?: (ids: number[]) => void;
+  onBulkDelete?: (ids: number[]) => void;
 }
 
 // Sidebar navigation — product list on the left, announcement detail on the right.
-const SheetSection: React.FC<SheetSectionProps> = ({ list, allCompanies, canEdit, onCopy, onEdit, onDelete }) => {
+const SheetSection: React.FC<SheetSectionProps> = ({ list, allCompanies, canEdit, onCopy, onEdit, onDelete, onBulkCopy, onBulkDelete }) => {
   const [activeId, setActiveId] = useState<number | null>(list[0]?.id ?? null);
   const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+  // When list changes (e.g. searching or reloading), clear selections if items are gone
+  useEffect(() => {
+    setSelectedIds(prev => prev.filter(id => list.some(a => a.id === id)));
+  }, [list]);
 
   // Products that appear more than once (different visibility) get a company sub-label.
   const duplicateProductIds = useMemo(() => {
@@ -301,6 +310,28 @@ const SheetSection: React.FC<SheetSectionProps> = ({ list, allCompanies, canEdit
           </div>
         </div>
 
+        <div className="p-2 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-2">
+          <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-gray-700 font-medium select-none">
+            <input
+              type="checkbox"
+              checked={filteredList.length > 0 && selectedIds.length === filteredList.length}
+              onChange={(e) => setSelectedIds(e.target.checked ? filteredList.map(a => a.id) : [])}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3 h-3"
+            />
+            เลือกทั้งหมด
+          </label>
+          {selectedIds.length > 0 && canEdit && (
+            <div className="flex gap-1">
+              <button onClick={() => onBulkCopy?.(selectedIds)} className="px-1.5 py-1 text-[10px] font-bold bg-blue-100 text-blue-700 rounded hover:bg-blue-200" title="คัดลอกที่เลือก">
+                คัดลอก {selectedIds.length}
+              </button>
+              <button onClick={() => onBulkDelete?.(selectedIds)} className="px-1.5 py-1 text-[10px] font-bold bg-red-100 text-red-700 rounded hover:bg-red-200" title="ลบที่เลือก">
+                ลบ {selectedIds.length}
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="overflow-y-auto flex-1 min-h-0">
           {filteredList.length === 0 ? (
             <div className="text-xs text-gray-400 text-center py-6">ไม่พบรายการ</div>
@@ -310,23 +341,40 @@ const SheetSection: React.FC<SheetSectionProps> = ({ list, allCompanies, canEdit
               const label = a.title || a.product_name || `#${a.id}`;
               const isActive = a.id === active?.id;
               return (
-                <button
+                <div
                   key={a.id}
-                  onClick={() => setActiveId(a.id)}
-                  title={label + (isDup && a.company_name ? ` · ${a.company_name}` : '')}
-                  className={`w-full text-left px-3 py-2.5 text-xs border-b border-gray-100 transition-colors flex flex-col gap-0.5 ${
-                    isActive
-                      ? 'bg-blue-600 text-white font-semibold'
-                      : 'text-gray-700 hover:bg-blue-50 hover:text-blue-700'
+                  className={`flex items-stretch border-b border-gray-100 transition-colors ${
+                    isActive ? 'bg-blue-600' : 'hover:bg-gray-50'
                   }`}
                 >
-                  <span className="leading-tight">{label}</span>
+                  <label className={`pl-2 py-3 flex items-start cursor-pointer ${isActive ? 'bg-blue-600' : 'bg-white hover:bg-gray-50'}`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(a.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedIds([...selectedIds, a.id]);
+                        else setSelectedIds(selectedIds.filter(id => id !== a.id));
+                      }}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5 w-3 h-3"
+                    />
+                  </label>
+                  <button
+                    onClick={() => setActiveId(a.id)}
+                    title={label + (isDup && a.company_name ? ` · ${a.company_name}` : '')}
+                    className={`flex-1 text-left px-2 py-2.5 text-xs flex flex-col gap-0.5 ${
+                      isActive
+                        ? 'text-white font-semibold'
+                        : 'text-gray-700'
+                    }`}
+                  >
+                    <span className="leading-tight">{label}</span>
                   {isDup && a.company_name && (
                     <span className={`text-xs leading-tight ${isActive ? 'text-blue-100' : 'text-gray-400'}`}>
                       {a.company_name}
                     </span>
                   )}
-                </button>
+                  </button>
+                </div>
               );
             })
           )}
@@ -357,6 +405,57 @@ const PriceAnnouncementPage: React.FC<PriceAnnouncementPageProps> = ({ products,
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PriceAnnouncement | null>(null);
   const [copyFrom, setCopyFrom] = useState<PriceAnnouncement | null>(null);
+
+  const [bulkCopyIds, setBulkCopyIds] = useState<number[]>([]);
+  const [bulkCopyMonths, setBulkCopyMonths] = useState<string[]>(['']);
+  const [bulkCopyLoading, setBulkCopyLoading] = useState(false);
+  const [bulkCollisions, setBulkCollisions] = useState<{ productName: string; month: string; count: number }[]>([]);
+
+  // Check for collisions when bulk copying
+  useEffect(() => {
+    if (bulkCopyIds.length === 0) {
+      setBulkCollisions([]);
+      return;
+    }
+    const uniqueMonths = Array.from(new Set(bulkCopyMonths.filter(m => m.trim() !== '')));
+    if (uniqueMonths.length === 0) {
+      setBulkCollisions([]);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchCounts = async () => {
+      try {
+        const newCollisions: { productName: string; month: string; count: number }[] = [];
+        const sources = [...announcements, ...nextAnnouncements].filter(a => bulkCopyIds.includes(a.id));
+        
+        // Fetch data for all target months exactly ONCE
+        const monthData: Record<string, any[]> = {};
+        await Promise.all(
+          uniqueMonths.map(async (m) => {
+            const res = await listPriceAnnouncements(`${m}-01`);
+            monthData[m] = Array.isArray(res) ? res : (res?.data || []);
+          })
+        );
+
+        sources.forEach((source) => {
+          const pName = source.title || source.product_name || `#${source.product_id}`;
+          uniqueMonths.forEach((m) => {
+            const arr = monthData[m] || [];
+            const matchCount = arr.filter((existing: any) => existing.product_id === source.product_id).length;
+            if (matchCount > 0) {
+              newCollisions.push({ productName: pName, month: m, count: matchCount });
+            }
+          });
+        });
+        if (isMounted) setBulkCollisions(newCollisions);
+      } catch (err) {
+        // ignore
+      }
+    };
+    fetchCounts();
+    return () => { isMounted = false; };
+  }, [bulkCopyIds, bulkCopyMonths, announcements, nextAnnouncements]);
 
   const closeModal = () => {
     setModalOpen(false);
@@ -397,6 +496,23 @@ const PriceAnnouncementPage: React.FC<PriceAnnouncementPageProps> = ({ products,
     } catch (e: any) {
       alert(e?.data?.message || 'ลบไม่สำเร็จ');
     }
+  };
+
+  const handleBulkDelete = async (ids: number[]) => {
+    if (!window.confirm(`ต้องการลบโปรโมชั่นที่เลือกจำนวน ${ids.length} รายการหรือไม่?`)) return;
+    try {
+      setLoading(true);
+      await Promise.all(ids.map(id => deletePriceAnnouncement(id)));
+      load();
+    } catch (e: any) {
+      alert(e?.data?.message || 'ลบไม่สำเร็จ');
+      load();
+    }
+  };
+
+  const handleBulkCopy = (ids: number[]) => {
+    setBulkCopyIds(ids);
+    setBulkCopyMonths([nextMonthValue(month)]);
   };
 
   const openCopy = (a: PriceAnnouncement) => {
@@ -456,6 +572,8 @@ const PriceAnnouncementPage: React.FC<PriceAnnouncementPageProps> = ({ products,
                 onCopy={openCopy}
                 onEdit={openEdit}
                 onDelete={handleDelete}
+                onBulkCopy={handleBulkCopy}
+                onBulkDelete={handleBulkDelete}
               />
             )}
           </div>
@@ -473,6 +591,8 @@ const PriceAnnouncementPage: React.FC<PriceAnnouncementPageProps> = ({ products,
                 onCopy={openCopy}
                 onEdit={openEdit}
                 onDelete={handleDelete}
+                onBulkCopy={handleBulkCopy}
+                onBulkDelete={handleBulkDelete}
               />
             </div>
           )}
@@ -489,6 +609,108 @@ const PriceAnnouncementPage: React.FC<PriceAnnouncementPageProps> = ({ products,
         onClose={closeModal}
         onSaved={load}
       />
+
+      {bulkCopyIds.length > 0 && (
+        <Modal
+          title={`คัดลอก ${bulkCopyIds.length} โปรโมชั่นไปยังเดือนใหม่`}
+          onClose={() => { setBulkCopyIds([]); setBulkCopyMonths(['']); }}
+          size="md"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">กรุณาเลือกเดือนที่ต้องการคัดลอกโปรโมชั่นเหล่านี้ไปใช้ (เลือกได้หลายเดือน)</p>
+            {bulkCollisions.length > 0 && (
+              <div className="bg-orange-50 border border-orange-200 p-3 rounded-md">
+                <div className="text-orange-800 text-sm font-semibold mb-1">
+                  ⚠️ พบโปรโมชั่นซ้ำซ้อน
+                </div>
+                <div className="text-orange-700 text-xs mb-2">
+                  สินค้าต่อไปนี้มีการตั้งโปรโมชั่นในเดือนที่คุณเลือกไว้แล้ว ระบบจะทำการสร้างเป็นโปรโมชั่นใหม่ซ้อนกัน:
+                </div>
+                <ul className="list-disc pl-5 text-xs text-orange-700 space-y-0.5 max-h-32 overflow-y-auto">
+                  {bulkCollisions.map((c, i) => (
+                    <li key={i}>
+                      {c.productName} <span className="text-orange-500 text-[10px]">({thaiMonthLabel(c.month)})</span>
+                      {c.count > 1 && <span className="ml-1 font-semibold text-red-600">- ซ้ำ {c.count} รายการ</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {bulkCopyMonths.map((m, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input
+                  type="month"
+                  value={m}
+                  onChange={(e) => {
+                    const newM = [...bulkCopyMonths];
+                    newM[idx] = e.target.value;
+                    setBulkCopyMonths(newM);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                />
+                {bulkCopyMonths.length > 1 && (
+                  <button onClick={() => setBulkCopyMonths(bulkCopyMonths.filter((_, i) => i !== idx))} className="text-red-500">
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              onClick={() => setBulkCopyMonths([...bulkCopyMonths, nextMonthValue(bulkCopyMonths[bulkCopyMonths.length - 1] || month)])}
+              className="text-sm text-blue-600 flex items-center gap-1 hover:text-blue-700"
+            >
+              <Plus size={14} /> เพิ่มเดือน
+            </button>
+            <div className="flex justify-end gap-2 pt-4">
+              <button
+                onClick={() => { setBulkCopyIds([]); setBulkCopyMonths(['']); }}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={async () => {
+                  const validMonths = bulkCopyMonths.filter(m => m.trim() !== '');
+                  if (validMonths.length === 0) return alert('กรุณาเลือกอย่างน้อย 1 เดือน');
+                  setBulkCopyLoading(true);
+                  try {
+                    const visualSources = [...announcements, ...nextAnnouncements].filter(a => bulkCopyIds.includes(a.id));
+                    const sourcesToInsert = [...visualSources].reverse(); // Reverse so newest IDs get inserted last and appear at the top
+                    for (const source of sourcesToInsert) {
+                      const payloadBase = {
+                        company_id: source.company_id,
+                        product_id: source.product_id,
+                        title: source.title || null,
+                        general_notes: source.general_notes || null,
+                        image_url: source.image_url || null,
+                        tiers: source.tiers.map(t => ({ quantity: t.quantity, new_total_price: t.new_total_price, new_unit_price: t.new_unit_price, notes: t.notes })),
+                        discount_tiers: (source.discount_tiers || []).map(dt => ({ min_amount: dt.min_amount, cod_discount_pct: dt.cod_discount_pct, transfer_discount_pct: dt.transfer_discount_pct })),
+                        discount_notes: source.discount_notes || [],
+                        visibility_role_ids: source.visibility_role_ids || [],
+                        visibility_company_ids: source.visibility_company_ids || []
+                      };
+                      for (const targetMonth of validMonths) {
+                        await createPriceAnnouncement({ ...payloadBase, month: `${targetMonth}-01` });
+                      }
+                    }
+                    load();
+                    setBulkCopyIds([]);
+                    setBulkCopyMonths(['']);
+                  } catch (e: any) {
+                    alert(e?.data?.message || 'คัดลอกไม่สำเร็จ');
+                  } finally {
+                    setBulkCopyLoading(false);
+                  }
+                }}
+                disabled={bulkCopyLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
+              >
+                {bulkCopyLoading ? 'กำลังคัดลอก...' : 'คัดลอก'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

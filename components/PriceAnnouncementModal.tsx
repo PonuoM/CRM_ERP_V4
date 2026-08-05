@@ -52,9 +52,9 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
   onClose,
   onSaved,
 }) => {
-  const [productId, setProductId] = useState<number | ''>('');
+  const [productIds, setProductIds] = useState<number[]>([]);
   const [months, setMonths] = useState<string[]>(['']);
-  const [existingCounts, setExistingCounts] = useState<Record<string, number>>({});
+  const [collisions, setCollisions] = useState<{ productName: string; month: string }[]>([]);
   const [title, setTitle] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -80,35 +80,43 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
   const companyOptions: MultiSelectOption[] = companies.map((c) => ({ id: c.id, label: c.name }));
 
   useEffect(() => {
-    if (!productId || announcement) {
-      setExistingCounts({});
+    if (productIds.length === 0 || announcement) {
+      setCollisions([]);
       return;
     }
     const uniqueMonths = Array.from(new Set(months.filter(m => m.trim() !== '')));
     if (uniqueMonths.length === 0) {
-      setExistingCounts({});
+      setCollisions([]);
       return;
     }
 
     let isMounted = true;
     const fetchCounts = async () => {
       try {
-        const counts: Record<string, number> = {};
+        const newCollisions: { productName: string; month: string }[] = [];
         await Promise.all(
-          uniqueMonths.map(async (m) => {
-            const res = await listPriceAnnouncements(`${m}-01`, Number(productId));
-            const arr = Array.isArray(res) ? res : (res?.data || []);
-            counts[m] = arr.length;
+          productIds.map(async (pid) => {
+            const prod = products.find(p => p.id === pid);
+            const prodName = prod ? prod.name : `#${pid}`;
+            await Promise.all(
+              uniqueMonths.map(async (m) => {
+                const res = await listPriceAnnouncements(`${m}-01`, pid);
+                const arr = Array.isArray(res) ? res : (res?.data || []);
+                if (arr.length > 0) {
+                  newCollisions.push({ productName: prodName, month: m });
+                }
+              })
+            );
           })
         );
-        if (isMounted) setExistingCounts(counts);
+        if (isMounted) setCollisions(newCollisions);
       } catch (err) {
         // ignore
       }
     };
     fetchCounts();
     return () => { isMounted = false; };
-  }, [productId, months, announcement]);
+  }, [productIds, months, announcement, products]);
 
   useEffect(() => {
     listRoles()
@@ -122,7 +130,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
   useEffect(() => {
     const source = announcement || copyFrom;
     if (source) {
-      setProductId(source.product_id);
+      setProductIds([source.product_id]);
       setMonths(announcement ? [monthInputValue(announcement.month)] : [nextMonthValue(source.month)]);
       setTitle(source.title || '');
       setGeneralNotes(source.general_notes || '');
@@ -154,7 +162,7 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       setVisibilityRoleIds(source.visibility_role_ids || []);
       setVisibilityCompanyIds(source.visibility_company_ids || []);
     } else {
-      setProductId('');
+      setProductIds([]);
       setMonths([new Date().toISOString().slice(0, 7)]);
       setTitle('');
       setGeneralNotes('');
@@ -298,8 +306,8 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!productId) {
-      setError('กรุณาเลือกสินค้า');
+    if (productIds.length === 0) {
+      setError('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
       return;
     }
     const validMonths = months.filter((m) => m.trim() !== '');
@@ -318,7 +326,6 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
     try {
       const payloadBase = {
         company_id: defaultCompanyId,
-        product_id: productId,
         title: title || null,
         general_notes: generalNotes || null,
         image_url: imageUrl.trim() || null,
@@ -348,10 +355,12 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
       };
 
       if (announcement) {
-        await updatePriceAnnouncement(announcement.id, { ...payloadBase, month: `${uniqueMonths[0]}-01` });
+        await updatePriceAnnouncement(announcement.id, { ...payloadBase, product_id: productIds[0], month: `${uniqueMonths[0]}-01` });
       } else {
-        for (const m of uniqueMonths) {
-          await createPriceAnnouncement({ ...payloadBase, month: `${m}-01` });
+        for (const pid of productIds) {
+          for (const m of uniqueMonths) {
+            await createPriceAnnouncement({ ...payloadBase, product_id: pid, month: `${m}-01` });
+          }
         }
       }
       onSaved();
@@ -385,18 +394,31 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">สินค้า *</label>
-            <select
-              value={productId}
-              onChange={(e) => setProductId(e.target.value ? parseInt(e.target.value, 10) : '')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            >
-              <option value="">-- เลือกสินค้า --</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.sku})
-                </option>
-              ))}
-            </select>
+            {announcement ? (
+              // Edit mode: single select (locked to 1 item conceptually)
+              <select
+                value={productIds[0] || ''}
+                onChange={(e) => setProductIds(e.target.value ? [parseInt(e.target.value, 10)] : [])}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="">-- เลือกสินค้า --</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.sku})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              // Create/Copy mode: multi select
+              <MultiSelectFilter
+                options={products.map((p) => ({ id: p.id, label: `${p.name} (${p.sku})` }))}
+                selectedIds={productIds}
+                onChange={setProductIds}
+                placeholder="ค้นหาสินค้า..."
+                emptyMeansAllLabel="-- เลือกสินค้า --"
+                emptyHint="กรุณาเลือกสินค้าที่ต้องการประกาศราคา"
+              />
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <label className="block text-sm font-medium text-gray-700">เดือนที่ประกาศ *</label>
@@ -413,9 +435,14 @@ const PriceAnnouncementModal: React.FC<PriceAnnouncementModalProps> = ({
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   />
-                  {!announcement && existingCounts[m] > 0 && (
-                    <div className="text-xs text-orange-600 mt-1 font-medium">
-                      ⚠️ มีโปรโมชั่นแล้ว {existingCounts[m]} รายการ
+                  {collisions.filter(c => c.month === m).length > 0 && (
+                    <div className="text-xs text-orange-600 mt-1.5 font-medium leading-relaxed bg-orange-50 p-1.5 rounded border border-orange-200">
+                      ⚠️ สินค้าเหล่านี้มีโปรโมชั่นในเดือนนี้แล้ว:
+                      <ul className="list-disc pl-4 mt-0.5 opacity-90">
+                        {collisions.filter(c => c.month === m).map((c, i) => (
+                          <li key={i}>{c.productName}</li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>
