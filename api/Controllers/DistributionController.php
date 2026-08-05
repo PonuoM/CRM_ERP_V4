@@ -497,7 +497,7 @@ class DistributionController {
 
         // Fetch details
         $detailStmt = $pdo->prepare("
-            SELECT dsd.session_id, dsd.agent_id, u.first_name as agent_first, u.last_name as agent_last,
+            SELECT dsd.session_id, dsd.agent_id, dsd.undo_status, u.first_name as agent_first, u.last_name as agent_last,
                    c.customer_id, c.customer_ref_id as customer_code, CONCAT(c.first_name, ' ', c.last_name) as customer_name, c.phone as customer_phone
             FROM distribution_session_details dsd
             LEFT JOIN users u ON dsd.agent_id = u.id
@@ -522,7 +522,8 @@ class DistributionController {
                 'id' => $d['customer_id'],
                 'code' => $d['customer_code'],
                 'name' => $d['customer_name'],
-                'phone' => $d['customer_phone']
+                'phone' => $d['customer_phone'],
+                'undo_status' => $d['undo_status']
             ];
         }
 
@@ -730,8 +731,16 @@ class DistributionController {
         // 3. Update session status
         $newStatus = (count($skippedIds) === 0 && count($successIds) > 0) ? 'undo_full' : 'undo_partial';
         if (count($successIds) > 0) {
-            $updateSessionStmt = $pdo->prepare("UPDATE distribution_sessions SET session_status = ? WHERE id = ?");
-            $updateSessionStmt->execute([$newStatus, $sessionId]);
+            $updateSessionStmt = $pdo->prepare("UPDATE distribution_sessions SET session_status = ?, undo_success_count = ?, undo_skipped_count = ? WHERE id = ?");
+            $updateSessionStmt->execute([$newStatus, count($successIds), count($skippedIds), $sessionId]);
+
+            // Update undo_status in details
+            $inSuccess = implode(',', array_map('intval', $successIds));
+            $pdo->exec("UPDATE distribution_session_details SET undo_status = 'undone' WHERE session_id = " . (int)$sessionId . " AND customer_id IN ($inSuccess)");
+        }
+        if (count($skippedIds) > 0) {
+            $inSkipped = implode(',', array_map('intval', $skippedIds));
+            $pdo->exec("UPDATE distribution_session_details SET undo_status = 'skipped' WHERE session_id = " . (int)$sessionId . " AND customer_id IN ($inSkipped)");
         }
 
         $pdo->commit();

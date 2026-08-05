@@ -16,6 +16,7 @@ interface CustomerDetail {
     code: string;
     name: string;
     phone: string;
+    undo_status?: string;
 }
 
 interface AgentDetail {
@@ -44,6 +45,8 @@ interface DistributionSession {
     details: AgentDetail[];
     agent_snapshot?: AgentSnapshot[];
     session_status?: string;
+    undo_success_count?: number | null;
+    undo_skipped_count?: number | null;
     company_name?: string;
     session_tag?: string;
 }
@@ -1081,6 +1084,18 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                 <div className="text-sm text-gray-500">รวมทั้งหมด</div>
                                                 <div className="font-bold text-lg text-green-600">{session.total_customers} <span className="text-sm font-normal text-gray-500">รายการ</span></div>
                                             </div>
+                                            {(session.session_status === 'undo_partial' || session.session_status === 'undo_full') && (
+                                                <div className="text-right ml-2 px-3 py-1 bg-gray-50 rounded border border-gray-100">
+                                                    <div className={`text-xs font-bold ${session.session_status === 'undo_partial' ? 'text-amber-600' : 'text-gray-500'}`}>
+                                                        {session.session_status === 'undo_partial' ? '⚠️ ดึงคืนบางส่วน' : '✅ ดึงคืนทั้งหมด'}
+                                                    </div>
+                                                    <div className="text-xs mt-0.5 whitespace-nowrap">
+                                                        <span className="text-green-600 font-medium">สำเร็จ {session.undo_success_count ?? 0}</span>
+                                                        <span className="text-gray-400 mx-1">|</span>
+                                                        <span className="text-red-500 font-medium">ข้าม {session.undo_skipped_count ?? 0}</span>
+                                                    </div>
+                                                </div>
+                                            )}
                                             {session.session_status !== 'undo_full' && (
                                                 <button 
                                                     onClick={() => setUndoTarget(session.id)}
@@ -1127,16 +1142,32 @@ const DistributionReportModal: React.FC<DistributionReportModalProps> = ({ isOpe
                                                     )}
                                                     <tbody>
                                                         {(sessionDetails[session.id] || session.details || []).map((agent: any, idx: number) => (
-                                                            <tr key={agent.agent_id} className={`border-b last:border-b-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                                                                <td className="px-4 py-2 font-medium text-gray-800">
-                                                                    {agent.agent_name}
-                                                                </td>
-                                                                <td className="px-4 py-2 text-right">
-                                                                    <span className="font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100">
-                                                                        {agent.customers.length} คน
-                                                                    </span>
-                                                                </td>
-                                                            </tr>
+                                                            <React.Fragment key={agent.agent_id}>
+                                                                <tr className={`border-b last:border-b-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                                                    <td className="px-4 py-2 font-medium text-gray-800">
+                                                                        {agent.agent_name}
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-right">
+                                                                        <span className="font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100">
+                                                                            {agent.customers.length} คน
+                                                                        </span>
+                                                                    </td>
+                                                                </tr>
+                                                                {(session.session_status === 'undo_partial' || session.session_status === 'undo_full') && agent.customers && agent.customers.map((c: any) => (
+                                                                    <tr key={c.id} className="bg-gray-50/50 border-b last:border-b-0 text-sm">
+                                                                        <td className="px-4 py-1.5 pl-8 text-gray-600 border-l-2 border-l-blue-200">
+                                                                            {c.name} ({c.code})
+                                                                        </td>
+                                                                        <td className="px-4 py-1.5 text-right">
+                                                                            {c.undo_status === 'undone' ? (
+                                                                                <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">ดึงคืนสำเร็จ</span>
+                                                                            ) : c.undo_status === 'skipped' ? (
+                                                                                <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">ข้าม</span>
+                                                                            ) : null}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </React.Fragment>
                                                         ))}
                                                     </tbody>
                                                 </table>
