@@ -73,6 +73,7 @@ class BasketRoutingService {
             }
 
             // Perform Update
+            set_audit_context($this->pdo, 'basket_routing_v1/' . $type);
             $sql = "UPDATE customers SET ";
             $params = [];
             foreach ($updates as $key => $val) {
@@ -267,6 +268,7 @@ class BasketRoutingService {
             }
 
             // Execute Updates
+            set_audit_context($this->pdo, 'basket_routing_v1/release_pool_' . $reason);
             $sql = "UPDATE customers SET ";
             $params = [];
             foreach ($updates as $key => $val) {

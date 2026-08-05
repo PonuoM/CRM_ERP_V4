@@ -2609,6 +2609,7 @@ function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $ent
             $findStmt->execute([$customerId, is_numeric($customerId) ? (int) $customerId : null]);
             $customer = $findStmt->fetch();
             if ($customer && $customer['customer_id']) {
+                set_audit_context($pdo, 'orders/auto_assign');
                 $auto = $pdo->prepare('UPDATE customers SET assigned_to=?, date_assigned = COALESCE(date_assigned, NOW()) WHERE customer_id=? AND (assigned_to IS NULL OR assigned_to=0)');
                 $auto->execute([$creatorId, $customer['customer_id']]);
                 $hist = $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())');

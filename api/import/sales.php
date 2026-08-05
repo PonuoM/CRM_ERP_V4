@@ -306,6 +306,7 @@ foreach ($grouped as $orderId => $group) {
             // มีผู้ดูแลระบุมา → assign ตาม
             $finalAssignedTo = $caretakerId;
             if ($currentAssignedTo != $caretakerId) {
+                set_audit_context($pdo, 'import/sales');
                 $updateSql = "UPDATE customers SET assigned_to = ?, date_assigned = ?, ownership_expires = ? WHERE customer_id = ?";
                 $pdo->prepare($updateSql)->execute([$caretakerId, $nowStr, $expireDate, $customerPk]);
                 $summary['updatedCustomers']++;

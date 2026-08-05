@@ -587,6 +587,7 @@ class DistributionController {
     }
 
     $pdo->beginTransaction();
+    set_audit_context($pdo, 'distribution_v2_undo');
 
     try {
         // 1. Get session info

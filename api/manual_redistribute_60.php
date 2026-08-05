@@ -64,6 +64,7 @@ try {
         // Assuming we keep them in current basket but change owner.
         
         // Changed: id -> customer_id
+        set_audit_context($pdo, 'manual_script/redistribute_60');
         $sql = "UPDATE customers SET assigned_to = ? WHERE customer_id IN ($inQuery)";
         $params = array_merge([$targetUserId], $ids);
         
