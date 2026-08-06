@@ -10,6 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once '../config.php';
+require_once 'stock_plan_permission.php';
 $pdo = db_connect();
 
 try {
@@ -23,6 +24,9 @@ try {
     $notes = $input['notes'] ?? '';
     $items = $input['items'] ?? [];
     $userId = $input['user_id'] ?? null;
+
+    // เพิ่มแพลนได้เฉพาะบัญชีที่ได้รับสิทธิ์ (ตั้งค่าที่แท็บ "สิทธิ์การจัดการ")
+    stock_plan_require_manage($pdo, $userId);
 
     if (empty($plannedDate) || empty($items)) {
         throw new Exception('Missing required fields');

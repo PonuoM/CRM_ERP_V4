@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Settings as SettingsIcon, Save, Calendar, CheckSquare, Square, Check, Trash2, Package, CalendarDays, Plus, Edit2, X } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Calendar, CheckSquare, Square, Check, Trash2, Package, CalendarDays, Plus, Edit2, X, ShieldCheck } from 'lucide-react';
 import { ProductSummary, StockPlanRow, TonDivisorRow, formatTon, STATUS_META } from './types';
 import { listStockPlanProducts, saveStockPlanProduct, listFactoryHolidays, saveFactoryHoliday, deleteFactoryHoliday } from '@/services/api';
 import { User } from '@/types';
+import StockPlanAccessSettings from './StockPlanAccessSettings';
 
 interface StockPlanSettingsProps {
   currentUser?: User;
@@ -11,16 +12,21 @@ interface StockPlanSettingsProps {
   reportDivisorRows: TonDivisorRow[];
   reportTonDivisorMap: Record<number, number>;
   onSaveDivisor: (productId: number, divisor: number | null) => Promise<void>;
-  
+
   onRefreshHolidays: () => void;
   viewedYear: number;
   viewedMonth: number;
+  /** ตั้งสิทธิ์ให้บัญชีอื่นได้ไหม (Super Admin / Admin Control / CEO) — คุมการแสดงแท็บ "สิทธิ์การจัดการ" */
+  canGrantAccess?: boolean;
+  companyId?: number;
 }
 
 const MONTH_NAMES_TH = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
 ];
+
+type SettingsTabKey = 'catalog' | 'holidays' | 'divisor' | 'access';
 
 const StockPlanSettings: React.FC<StockPlanSettingsProps> = ({ 
   currentUser,
@@ -31,9 +37,11 @@ const StockPlanSettings: React.FC<StockPlanSettingsProps> = ({
   onSaveDivisor,
   onRefreshHolidays,
   viewedYear,
-  viewedMonth
+  viewedMonth,
+  canGrantAccess,
+  companyId
 }) => {
-  const [settingsTab, setSettingsTab] = useState<'catalog' | 'holidays' | 'divisor'>('catalog');
+  const [settingsTab, setSettingsTab] = useState<SettingsTabKey>('catalog');
 
   // ==================== Divisor State ====================
   const [divisorSearch, setDivisorSearch] = useState('');
@@ -207,10 +215,12 @@ const StockPlanSettings: React.FC<StockPlanSettingsProps> = ({
 
   const sortedHolidays = [...holidaysList].sort((a, b) => a.holiday_date.localeCompare(b.holiday_date));
 
-  const settingsTabs: { key: 'catalog' | 'holidays' | 'divisor'; label: string; icon: React.ElementType }[] = [
+  const settingsTabs: { key: SettingsTabKey; label: string; icon: React.ElementType }[] = [
     { key: 'catalog', label: 'แคตตาล็อกสินค้า', icon: Package },
     { key: 'holidays', label: 'วันหยุดโรงงาน', icon: CalendarDays },
     { key: 'divisor', label: 'ตั้งค่าตัวหารตัน', icon: SettingsIcon },
+    // เห็นเฉพาะ Super Admin / Admin Control / CEO
+    ...(canGrantAccess ? [{ key: 'access' as SettingsTabKey, label: 'สิทธิ์การจัดการ', icon: ShieldCheck }] : []),
   ];
 
   return (
@@ -503,6 +513,10 @@ const StockPlanSettings: React.FC<StockPlanSettingsProps> = ({
             })}
           </div>
         </div>
+      )}
+
+      {settingsTab === 'access' && canGrantAccess && (
+        <StockPlanAccessSettings currentUserId={currentUser?.id} companyId={companyId} />
       )}
     </div>
   );
