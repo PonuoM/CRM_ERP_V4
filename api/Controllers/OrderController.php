@@ -2034,6 +2034,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $pricePerUnit = $pricePerUnit < 0 ? 0.0 : $pricePerUnit;
                         $discount = isset($item['discount']) ? (float) $item['discount'] : 0.0;
                         $monthlyDiscount = isset($item['monthlyDiscount']) ? (float) $item['monthlyDiscount'] : (float) ($item['monthly_discount'] ?? 0.0);
+                        $monthlyDiscount = isset($item['monthlyDiscount']) ? (float) $item['monthlyDiscount'] : (float) ($item['monthly_discount'] ?? 0.0);
                         $isFreebie = (!empty($item['isFreebie']) || (!empty($item['is_freebie']) && (int) $item['is_freebie'] === 1)) ? 1 : 0;
                         $netTotal = calculate_order_item_net_total([
                             'quantity' => $quantity,
@@ -2949,11 +2950,13 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $pricePerUnit = isset($item['pricePerUnit']) ? (float) $item['pricePerUnit'] : (float) ($item['price_per_unit'] ?? 0.0);
                         $pricePerUnit = $pricePerUnit < 0 ? 0.0 : $pricePerUnit;
                         $discount = isset($item['discount']) ? (float) $item['discount'] : 0.0;
+                        $monthlyDiscount = isset($item['monthlyDiscount']) ? (float) $item['monthlyDiscount'] : (float) ($item['monthly_discount'] ?? 0.0);
                         $isFreebie = (!empty($item['isFreebie']) || (!empty($item['is_freebie']) && (int) $item['is_freebie'] === 1)) ? 1 : 0;
                         $netTotal = calculate_order_item_net_total([
                             'quantity' => $quantity,
                             'pricePerUnit' => $pricePerUnit,
                             'discount' => $discount,
+                                'monthlyDiscount' => $monthlyDiscount ?? 0,
                             'isFreebie' => $isFreebie,
                         ]);
                         return [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie];

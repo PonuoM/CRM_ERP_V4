@@ -1986,10 +1986,10 @@ export async function getUpsellOrders(customerId: string | number, userId?: numb
   return apiFetch(`upsell/orders?${qs.toString()}`);
 }
 
-export async function addUpsellItems(orderId: string, creatorId: number, items: any[]): Promise<{ success: boolean; orderId: string; newTotalAmount: number; items: any[] }> {
+export async function addUpsellItems(orderId: string, creatorId: number, items: any[], codBoxes?: { boxNumber: number, codAmount: number }[]): Promise<{ success: boolean; orderId: string; newTotalAmount: number; items: any[] }> {
   return apiFetch("upsell/items", {
     method: "POST",
-    body: JSON.stringify({ orderId, creatorId, items }),
+    body: JSON.stringify({ orderId, creatorId, items, codBoxes }),
   });
 }
 

@@ -6504,6 +6504,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                         $pricePerUnit = isset($item['pricePerUnit']) ? (float) $item['pricePerUnit'] : (float) ($item['price_per_unit'] ?? 0);
                         $pricePerUnit = $pricePerUnit < 0 ? 0.0 : $pricePerUnit;
                         $discount = (float) ($item['discount'] ?? 0);
+                        $monthlyDiscount = (float) ($item['monthlyDiscount'] ?? 0);
                         $isFreebie = isset($item['isFreebie']) && $item['isFreebie'] ? 1 : 0;
                         $promotionId = $item['promotionId'] ?? null;
 
@@ -6526,6 +6527,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                                 'quantity' => $quantity,
                                 'pricePerUnit' => $pricePerUnit,
                                 'discount' => $discount,
+                                'monthlyDiscount' => $monthlyDiscount,
                                 'isFreebie' => $isFreebie,
                             ]);
                         }
@@ -6543,9 +6545,9 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                         $itemStmt = $pdo->prepare("
                             INSERT INTO order_items (
                                 order_id, parent_order_id, product_id, product_name, quantity,
-                                price_per_unit, discount, net_total, is_freebie, box_number,
+                                price_per_unit, discount, monthly_discount, net_total, is_freebie, box_number,
                                 promotion_id, parent_item_id, is_promotion_parent, creator_id, basket_key_at_sale
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ");
 
                         $itemStmt->execute([
@@ -6556,6 +6558,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                             $quantity,
                             $pricePerUnit,
                             $discount,
+                            $monthlyDiscount,
                             $netTotal,
                             $isFreebie,
                             $boxNumber,
@@ -6647,41 +6650,69 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void
                     }
 
                     // Maintain per-box COD/collection amounts in order_boxes for COD orders
-                    if (($order['payment_method'] ?? '') === 'COD' && !empty($boxNetAdditions)) {
+                    if (($order['payment_method'] ?? '') === 'COD') {
+                        $codBoxes = $in['codBoxes'] ?? null;
+                        
                         $selectBox = $pdo->prepare('SELECT collection_amount, cod_amount FROM order_boxes WHERE order_id=? AND box_number=? LIMIT 1');
                         $updateBox = $pdo->prepare('UPDATE order_boxes SET collection_amount=?, cod_amount=? WHERE order_id=? AND box_number=?');
                         $insertBox = $pdo->prepare('INSERT INTO order_boxes (order_id, sub_order_id, box_number, payment_method, collection_amount, cod_amount, collected_amount, waived_amount, status) VALUES (?,?,?,?,?,?,?,?,?)');
                         $paymentMethod = $order['payment_method'] ?? 'COD';
 
-                        foreach ($boxNetAdditions as $boxNumber => $addedNet) {
-                            $boxNum = (int) $boxNumber;
-                            if ($boxNum <= 0) {
-                                $boxNum = 1;
+                        if (is_array($codBoxes) && !empty($codBoxes)) {
+                            // Use user-provided explicit box amounts
+                            foreach ($codBoxes as $box) {
+                                $boxNum = (int) ($box['boxNumber'] ?? 1);
+                                if ($boxNum <= 0) $boxNum = 1;
+                                $subOrderIdForBox = "{$orderId}-{$boxNum}";
+                                $userCodAmount = (float) ($box['codAmount'] ?? 0);
+                                
+                                $selectBox->execute([$orderId, $boxNum]);
+                                $existing = $selectBox->fetch(PDO::FETCH_ASSOC);
+                                if ($existing) {
+                                    $existingCollection = isset($existing['collection_amount']) ? (float) $existing['collection_amount'] : 0.0;
+                                    $existingCod = isset($existing['cod_amount']) ? (float) $existing['cod_amount'] : 0.0;
+                                    $newCollection = $existingCollection + $userCodAmount;
+                                    $newCod = $existingCod + $userCodAmount;
+                                    $updateBox->execute([$newCollection, $newCod, $orderId, $boxNum]);
+                                } else {
+                                    $insertBox->execute([
+                                        $orderId, $subOrderIdForBox, $boxNum, $paymentMethod,
+                                        $userCodAmount, $userCodAmount, 0.0, 0.0, 'PENDING'
+                                    ]);
+                                }
                             }
-                            $subOrderIdForBox = "{$orderId}-{$boxNum}";
+                        } else if (!empty($boxNetAdditions)) {
+                            // Fallback to auto-calculate if frontend didn't provide it
+                            foreach ($boxNetAdditions as $boxNumber => $addedNet) {
+                                $boxNum = (int) $boxNumber;
+                                if ($boxNum <= 0) {
+                                    $boxNum = 1;
+                                }
+                                $subOrderIdForBox = "{$orderId}-{$boxNum}";
 
-                            $selectBox->execute([$orderId, $boxNum]);
-                            $existing = $selectBox->fetch(PDO::FETCH_ASSOC);
-                            if ($existing) {
-                                $existingCollection = isset($existing['collection_amount']) ? (float) $existing['collection_amount'] : 0.0;
-                                $existingCod = isset($existing['cod_amount']) ? (float) $existing['cod_amount'] : 0.0;
-                                $newCollection = $existingCollection + $addedNet;
-                                $newCod = $existingCod + $addedNet;
-                                $updateBox->execute([$newCollection, $newCod, $orderId, $boxNum]);
-                            } else {
-                                $collectionAmount = (float) $addedNet;
-                                $codAmount = (float) $addedNet;
-                                $insertBox->execute([
-                                    $orderId,
-                                    $subOrderIdForBox,
-                                    $boxNum,
-                                    $paymentMethod,
-                                    $collectionAmount,
-                                    $codAmount,
-                                    0.0,
-                                    0.0,
-                                    'PENDING',
-                                ]);
+                                $selectBox->execute([$orderId, $boxNum]);
+                                $existing = $selectBox->fetch(PDO::FETCH_ASSOC);
+                                if ($existing) {
+                                    $existingCollection = isset($existing['collection_amount']) ? (float) $existing['collection_amount'] : 0.0;
+                                    $existingCod = isset($existing['cod_amount']) ? (float) $existing['cod_amount'] : 0.0;
+                                    $newCollection = $existingCollection + $addedNet;
+                                    $newCod = $existingCod + $addedNet;
+                                    $updateBox->execute([$newCollection, $newCod, $orderId, $boxNum]);
+                                } else {
+                                    $collectionAmount = (float) $addedNet;
+                                    $codAmount = (float) $addedNet;
+                                    $insertBox->execute([
+                                        $orderId,
+                                        $subOrderIdForBox,
+                                        $boxNum,
+                                        $paymentMethod,
+                                        $collectionAmount,
+                                        $codAmount,
+                                        0.0,
+                                        0.0,
+                                        'PENDING',
+                                    ]);
+                                }
                             }
                         }
                     }

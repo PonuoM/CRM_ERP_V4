@@ -1105,6 +1105,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         0,
       ),
 
+      boxes: (raw.boxes || []).map((b: any) => ({
+        boxNumber: Number(b.boxNumber ?? b.box_number ?? 1),
+        codAmount: Number(b.codAmount ?? b.cod_amount ?? 0),
+      })),
+
       items: normalizeUpsellItems(
         raw.items ?? raw.order_items ?? raw.orderItems,
       ),
@@ -1268,24 +1273,21 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         const updatedItem = { ...item, [field]: cappedValue };
 
-        // ถ้าแก้ไขส่วนลด → คำนวณยอดรวมใหม่
+                // ถ้าแก้ไขส่วนลด → คำนวณยอดรวมใหม่
+        if (field === "discount" || field === "monthlyDiscount") {
+          let discount = Number(updatedItem.discount) || 0;
+          let monthlyDiscount = Number(updatedItem.monthlyDiscount) || 0;
 
-        if (field === "discount") {
-          const discount = Math.max(
-            0,
-            Math.min(
-              Number(value) || 0,
-              (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0),
-            ),
-          );
+          if (field === "discount") {
+             discount = Math.max(0, Math.min(Number(value) || 0, (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0) - monthlyDiscount));
+             updatedItem.discount = discount;
+          } else {
+             monthlyDiscount = Math.max(0, Math.min(Number(value) || 0, (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0) - discount));
+             updatedItem.monthlyDiscount = monthlyDiscount;
+          }
 
-          const newTotal =
-            (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0) -
-            discount;
-
+          const newTotal = (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0) - discount - monthlyDiscount;
           (updatedItem as any).line_total = Math.max(0, newTotal);
-
-          updatedItem.discount = discount;
         }
 
         // ถ้าแก้ไขยอดรวม → คำนวณส่วนลดใหม่
@@ -1293,15 +1295,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           (field as string) === "line_total" ||
           (field as string) === "total"
         ) {
-          const baseTotal =
-            (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0);
-
+          const baseTotal = (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0);
           const newTotal = Math.max(0, Math.min(Number(value) || 0, baseTotal));
-
-          const newDiscount = Math.max(0, baseTotal - newTotal);
-
+          const monthlyDiscount = Number(updatedItem.monthlyDiscount) || 0;
+          const newDiscount = Math.max(0, baseTotal - newTotal - monthlyDiscount);
+          
           updatedItem.discount = newDiscount;
-
           (updatedItem as any).line_total = newTotal;
         }
 
@@ -1309,13 +1308,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         else if (field === "quantity" || field === "pricePerUnit") {
           // Skip for promotion parents — second pass recalculates with correct pricePerUnit
           if (!updatedItem.isPromotionParent) {
-            const baseTotal =
-              (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0);
-
+            const baseTotal = (updatedItem.pricePerUnit || 0) * (updatedItem.quantity || 0);
             const currentDiscount = updatedItem.discount || 0;
-
-            const newTotal = Math.max(0, baseTotal - currentDiscount);
-
+            const currentMonthlyDiscount = updatedItem.monthlyDiscount || 0;
+            const newTotal = Math.max(0, baseTotal - currentDiscount - currentMonthlyDiscount);
             (updatedItem as any).line_total = newTotal;
           }
         }
@@ -1669,10 +1665,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     const price = Number(item.pricePerUnit ?? 0);
 
     const discount = Number(item.discount ?? 0);
+    const monthlyDiscount = Number(item.monthlyDiscount ?? 0);
 
     const computed = (item as any).priceOverride != null
-      ? Number((item as any).priceOverride) - discount
-      : qty * price - discount;
+      ? Number((item as any).priceOverride) - discount - monthlyDiscount
+      : qty * price - discount - monthlyDiscount;
 
     // Prefer backend-stored net_total when available (for existing order items)
     if (
@@ -1684,6 +1681,42 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
 
     return computed;
+  };
+
+  const divideUpsellCodEqually = () => {
+    const maxOriginalBox = getMaxOriginalBoxNumber();
+    const targetBoxCount = Math.max(numUpsellBoxes, Math.max(1, maxOriginalBox));
+
+    if (targetBoxCount <= 0 || upsellNewItemsTotal <= 0) return;
+
+    const amountPerBox = upsellNewItemsTotal / targetBoxCount;
+
+    const newBoxes: CodBox[] = [];
+
+    let distributedAmount = 0;
+
+    for (let i = 0; i < targetBoxCount - 1; i++) {
+      const roundedAmount = Math.floor(amountPerBox * 100) / 100;
+
+      newBoxes.push({
+        boxNumber: i + 1,
+
+        codAmount: roundedAmount,
+      });
+
+      distributedAmount += roundedAmount;
+    }
+
+    newBoxes.push({
+      boxNumber: targetBoxCount,
+
+      codAmount: parseFloat(
+        (upsellNewItemsTotal - distributedAmount).toFixed(2),
+      ),
+    });
+
+    setUpsellBoxes(newBoxes);
+    prevUpsellBoxesRef.current = newBoxes;
   };
 
   const calculateUpsellNewItemsTotal = () =>
@@ -1762,12 +1795,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     const maxOriginalBox = getMaxOriginalBoxNumber();
 
-    // Always create boxes from 1 to numUpsellBoxes (preserve existing codAmount)
+    // Always create boxes from 1 to targetBoxCount (preserve existing codAmount)
 
+    const targetBoxCount = Math.max(numUpsellBoxes, Math.max(1, maxOriginalBox));
     const newBoxes: CodBox[] = [];
 
-    for (let i = 1; i <= numUpsellBoxes; i++) {
-      const actualBoxNumber = maxOriginalBox + i;
+    for (let i = 1; i <= targetBoxCount; i++) {
+      const actualBoxNumber = i;
 
       // Try to preserve existing codAmount from previous boxes
 
@@ -1824,39 +1858,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setUpsellBoxes(updatedBoxes);
   };
 
-  const divideUpsellCodEqually = () => {
-    if (numUpsellBoxes <= 0 || upsellNewItemsTotal <= 0) return;
-
-    const amountPerBox = upsellNewItemsTotal / numUpsellBoxes;
-
-    const newBoxes: CodBox[] = [];
-
-    const maxOriginalBox = getMaxOriginalBoxNumber();
-
-    let distributedAmount = 0;
-
-    for (let i = 0; i < numUpsellBoxes - 1; i++) {
-      const roundedAmount = Math.floor(amountPerBox * 100) / 100;
-
-      newBoxes.push({
-        boxNumber: maxOriginalBox + i + 1,
-
-        codAmount: roundedAmount,
-      });
-
-      distributedAmount += roundedAmount;
-    }
-
-    newBoxes.push({
-      boxNumber: maxOriginalBox + numUpsellBoxes,
-
-      codAmount: parseFloat(
-        (upsellNewItemsTotal - distributedAmount).toFixed(2),
-      ),
-    });
-
-    setUpsellBoxes(newBoxes);
-  };
 
   // ──────────────────────────────────────────────────────────────────────────
   // [E4] UPSELL — Save Handler (validate + addUpsellItems API)
@@ -1906,9 +1907,27 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           return;
         }
 
-        // Get boxes that actually have items (don't require all boxes from 1 to numUpsellBoxes)
+                // ตรวจสอบว่าทุกกล่องมีสินค้าอย่างน้อย 1 รายการ
 
         const uniqueBoxes = new Set<number>();
+
+        // นับสินค้าจากออเดอร์เดิมด้วย (ถ้ามี)
+        if (selectedUpsellOrder.items && Array.isArray(selectedUpsellOrder.items)) {
+          selectedUpsellOrder.items.forEach((item: any) => {
+            const b = item.box_number || item.boxNumber;
+            if (
+              b &&
+              b >= 1 &&
+              b <= numUpsellBoxes &&
+              !item.is_freebie &&
+              !item.isFreebie &&
+              !item.parent_item_id &&
+              !item.parentItemId
+            ) {
+              uniqueBoxes.add(b);
+            }
+          });
+        }
 
         upsellItems.forEach((item) => {
           if (
@@ -1921,6 +1940,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             uniqueBoxes.add(item.boxNumber);
           }
         });
+
+        // ตรวจสอบว่าทุกกล่องตั้งแต่ 1 ถึง numUpsellBoxes มีสินค้า
+        for (let boxNum = 1; boxNum <= numUpsellBoxes; boxNum++) {
+          if (!uniqueBoxes.has(boxNum)) {
+            setUpsellError(`กล่องที่ ${boxNum} ไม่มีสินค้า กรุณาเพิ่มสินค้าในกล่องนี้หรือลดจำนวนกล่อง`);
+            return;
+          }
+        }
 
         // Validate COD amounts - only check boxes that have items
 
@@ -1989,9 +2016,16 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         isPromotionParent: item.isPromotionParent || false,
 
         priceOverride: item.priceOverride ?? undefined,
+
+        monthlyDiscount: item.monthlyDiscount ?? undefined,
       }));
 
-      await addUpsellItems(selectedUpsellOrder.id, currentUser.id, itemsToAdd);
+      await addUpsellItems(
+        selectedUpsellOrder.id,
+        currentUser.id,
+        itemsToAdd,
+        selectedUpsellOrder.paymentMethod === PaymentMethod.COD ? upsellBoxes : undefined
+      );
 
       // Show success modal
 
@@ -6922,7 +6956,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               />
                             </div>
 
-                            <div className="col-span-1 flex items-end h-full">
+                                                        <div className="col-span-1 flex flex-col justify-start">
+                              <label className="text-xs mb-1 block opacity-0 pointer-events-none">&nbsp;</label>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -7004,6 +7039,37 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 }
                                 className="w-full p-2 border border-gray-300 rounded-md bg-white text-sm"
                               />
+                              <label className="flex items-center gap-1 text-[10px] text-gray-500 mt-1 cursor-pointer w-full justify-start whitespace-nowrap">
+                                <input 
+                                  type="checkbox" 
+                                  checked={item.monthlyDiscount !== undefined} 
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      handleUpsellUpdateItem(item.id, "monthlyDiscount" as any, 0);
+                                    } else {
+                                      handleUpsellUpdateItem(item.id, "monthlyDiscount" as any, undefined);
+                                    }
+                                  }} 
+                                /> ใช้ส่วนลดประจำเดือน
+                              </label>
+                              {item.monthlyDiscount !== undefined && (
+                                <input
+                                  type="number"
+                                  value={item.monthlyDiscount || 0}
+                                  onChange={(e) => {
+                                    const discountValue = Number(e.target.value) || 0;
+                                    const baseTotal = item.isFreebie
+                                      ? 0
+                                      : (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0) - (Number(item.discount) || 0);
+                                    const clampedDiscount = Math.max(0, Math.min(discountValue, baseTotal));
+                                    handleUpsellUpdateItem(item.id, "monthlyDiscount" as any, clampedDiscount);
+                                  }}
+                                  className="w-full p-1 mt-1 border border-gray-300 rounded-md bg-white text-[11px] text-purple-600"
+                                  min={0}
+                                  title="ส่วนลดประจำเดือน"
+                                  placeholder="ส่วนลด ปจด."
+                                />
+                              )}
                             </div>
 
                             <div className="col-span-2">
@@ -7053,7 +7119,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   className="w-full p-2 border border-gray-300 rounded-md bg-white text-sm"
                                 >
                                   {Array.from(
-                                    { length: numUpsellBoxes },
+                                    { length: Math.max(numUpsellBoxes, Math.max(1, getMaxOriginalBoxNumber())) },
                                     (_, i) => i + 1,
                                   ).map((n) => (
                                     <option key={n} value={n}>
@@ -7169,28 +7235,24 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </span>
                     </div>
 
-                    <div className="mb-4">
+                    <div className="mb-4 mt-4">
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        จำนวนกล่อง (สำหรับสินค้าใหม่)
+                        จำนวนกล่อง
                       </label>
-
                       <input
                         type="number"
-                        min="1"
-                        value={numUpsellBoxes}
+                        min={Math.max(1, getMaxOriginalBoxNumber())}
+                        value={Math.max(numUpsellBoxes, Math.max(1, getMaxOriginalBoxNumber()))}
                         onChange={(e) => {
-                          const newValue = Math.max(1, Number(e.target.value));
-
+                          const maxOrig = Math.max(1, getMaxOriginalBoxNumber());
+                          const newValue = Math.max(maxOrig, Number(e.target.value));
                           setNumUpsellBoxes(newValue);
-
                           setUpsellError(null);
                         }}
                         className="w-32 px-3 py-2 border border-gray-300 rounded-md"
                       />
-
                       <p className="text-xs text-gray-500 mt-1">
-                        จำนวนกล่องที่ต้องการสำหรับสินค้าใหม่
-                        (สามารถเพิ่มได้ตามต้องการ)
+                        จำนวนกล่องทั้งหมดที่ต้องการ (ขั้นต่ำคือจำนวนกล่องของออเดอร์เดิม)
                       </p>
                     </div>
 
@@ -7210,18 +7272,16 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         </p>
                       ) : (
                         upsellBoxes.map((box, index) => {
-                          const maxOriginalBox = getMaxOriginalBoxNumber();
-
-                          const displayBoxNumber =
-                            box.boxNumber - maxOriginalBox;
+                          const originalBox = selectedUpsellOrder?.boxes?.find(b => b.boxNumber === box.boxNumber);
+                          const originalCod = originalBox ? originalBox.codAmount : (box.boxNumber === 1 ? getUpsellOrderTotal(selectedUpsellOrder) : 0);
 
                           return (
                             <div
                               key={index}
                               className="flex items-center gap-4"
                             >
-                              <label className="font-medium text-gray-800 w-32">
-                                กล่องที่ {displayBoxNumber}:
+                              <label className="font-medium text-gray-800 w-56 whitespace-nowrap">
+                                กล่องที่ {box.boxNumber}: <span className="text-xs text-gray-500 font-normal ml-1">(ราคาเดิม {formatCurrency(originalCod)} บาท)</span>
                               </label>
 
                               <input
@@ -7240,13 +7300,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 step="0.01"
                               />
 
-                              {displayBoxNumber === 1 &&
-                                maxOriginalBox >= 1 && (
-                                  <span className="text-xs text-gray-500 italic">
-                                    (สามารถรวมกับกล่องที่ 1 ของต้นทาง หรือใส่ 0
-                                    หากไม่รวม)
-                                  </span>
-                                )}
+                              
                             </div>
                           );
                         })
