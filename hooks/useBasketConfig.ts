@@ -29,6 +29,7 @@ export interface DynamicBasketConfig {
     max_distribution_count?: number | null;
     hold_days_before_redistribute?: number | null;
     linked_basket_key?: string | null;
+    ui_group?: string | null;
 }
 
 export interface BasketTab {
