@@ -1261,21 +1261,55 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                     </button>
                   </div>
                   {showBasketChange && (
-                    <div className="mt-2 space-y-2">
-                      <select
-                        className="w-full border rounded-md px-2 py-1 text-sm"
-                        value={selectedBasketKey}
-                        onChange={e => { setSelectedBasketKey(e.target.value); setBasketChangeError(null); }}
-                      >
-                        <option value="">เลือกตะกร้า</option>
-                        {basketConfigs.filter(b => b.is_active).map(b => (
-                          <option key={b.id} value={String(b.id)}>
-                            {b.basket_name} ({b.target_page})
-                          </option>
-                        ))}
-                      </select>
-                      {basketChangeError && <p className="text-xs text-red-600">{basketChangeError}</p>}
-                      <div className="flex items-center space-x-2">
+                    <div className="mt-2 space-y-2 relative">
+                      <div className="w-full bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden text-sm">
+                        <div className="flex border-b bg-gray-50">
+                          <div className="flex-1 p-2 font-medium text-gray-700 text-center border-r">ถังผู้ดูแล (Dashboard)</div>
+                          <div className="flex-1 p-2 font-medium text-gray-700 text-center">ถังแจก (Distribution)</div>
+                        </div>
+                        <div className="flex max-h-64 overflow-y-auto bg-white">
+                          <div className="flex-1 border-r p-1.5 space-y-1">
+                            {basketConfigs.filter(b => b.is_active && b.target_page?.includes('dashboard')).map(b => (
+                              <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => { setSelectedBasketKey(String(b.id)); setBasketChangeError(null); }}
+                                className={`w-full text-left px-2.5 py-1.5 rounded transition-all duration-200 ease-in-out ${
+                                  selectedBasketKey === String(b.id)
+                                    ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm ring-1 ring-blue-500/20'
+                                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                }`}
+                              >
+                                {b.basket_name}
+                              </button>
+                            ))}
+                            {basketConfigs.filter(b => b.is_active && b.target_page?.includes('dashboard')).length === 0 && (
+                              <div className="text-center text-xs text-gray-400 py-4">ไม่มีตะกร้า</div>
+                            )}
+                          </div>
+                          <div className="flex-1 p-1.5 space-y-1">
+                            {basketConfigs.filter(b => b.is_active && b.target_page?.includes('distribution')).map(b => (
+                              <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => { setSelectedBasketKey(String(b.id)); setBasketChangeError(null); }}
+                                className={`w-full text-left px-2.5 py-1.5 rounded transition-all duration-200 ease-in-out ${
+                                  selectedBasketKey === String(b.id)
+                                    ? 'bg-green-50 text-green-700 font-semibold shadow-sm ring-1 ring-green-500/20'
+                                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                }`}
+                              >
+                                {b.basket_name}
+                              </button>
+                            ))}
+                            {basketConfigs.filter(b => b.is_active && b.target_page?.includes('distribution')).length === 0 && (
+                              <div className="text-center text-xs text-gray-400 py-4">ไม่มีตะกร้า</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {basketChangeError && <p className="text-xs text-red-600 font-medium">{basketChangeError}</p>}
+                      <div className="flex items-center space-x-2 pt-1">
                         <button
                           type="button"
                           onClick={handleBasketChange}

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { ToastProvider } from "./components/Toast";
+import { triggerCustomersRefresh } from "./utils/dataSync";
 import {
   UserRole,
   User,
@@ -2603,6 +2604,9 @@ const App: React.FC = () => {
     setViewingCustomerId(customer.id);
   }
   const handleCloseCustomerDetail = () => {
+    if (viewingCustomerId) {
+      triggerCustomersRefresh(viewingCustomerId, 'customer_detail_closed');
+    }
     setViewingCustomerId(null);
     setViewingCustomerData(null);
   }
@@ -4238,7 +4242,7 @@ const App: React.FC = () => {
       console.error("Redistribute customer failed", e);
     }
 
-    setViewingCustomerId((prev) => (prev === customerId ? null : prev));
+    // setViewingCustomerId((prev) => (prev === customerId ? null : prev)); // Keep user on CustomerDetailPage
   };
 
   const handleTakeCustomer = async (customerToTake: Customer) => {
