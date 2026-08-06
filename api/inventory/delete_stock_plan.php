@@ -10,14 +10,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once '../config.php';
+require_once 'stock_plan_permission.php';
 $pdo = db_connect();
 
 try {
     $input = json_decode(file_get_contents('php://input'), true);
     $planId = (int)($input['id'] ?? 0);
-    $force = !empty($input['force']); // emergency override, intended for SuperAdmin only (enforced client-side)
+    $force = !empty($input['force']); // emergency override -- Super Admin เท่านั้น (ดูด้านล่าง)
+    $userId = isset($input['user_id']) ? (int)$input['user_id'] : 0;
     if (!$planId) {
         throw new Exception('Missing plan id');
+    }
+
+    // ลบแพลนได้เฉพาะบัญชีที่ได้รับสิทธิ์ (ตั้งค่าที่แท็บ "สิทธิ์การจัดการ")
+    stock_plan_require_manage($pdo, $userId);
+
+    // ข้ามด่าน "ห้ามลบแพลนที่ยืนยันรับเข้าแล้ว" ได้เฉพาะ Super Admin
+    if ($force && !stock_plan_is_super_admin($pdo, $userId)) {
+        $force = false;
     }
 
     $pdo->beginTransaction();

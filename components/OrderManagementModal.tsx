@@ -67,6 +67,7 @@ import {
   getOrderCancellation,
   listUsers,
 } from "../services/api";
+import { listQuotaProducts, getUserQuotaDetail } from "../services/quotaApi";
 import {
   toLocalDatetimeString,
   fromLocalDatetimeString,
@@ -310,6 +311,120 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   // Prevent duplicate fetches for the same order
   const lastFetchedOrderId = useRef<number | null>(null);
+
+  // Quota states
+  const [quotaProductsList, setQuotaProductsList] = useState<any[]>([]);
+  const [quotaDetails, setQuotaDetails] = useState<any[]>([]);
+
+  // Fetch Quota Data
+  useEffect(() => {
+    if (!currentUser?.companyId || !productSelectorOpen) return;
+    
+    let cancelled = false;
+    (async () => {
+      try {
+        const qps = await listQuotaProducts(currentUser.companyId!);
+        const activeQps = qps.filter((q: any) => q.isActive);
+        if (activeQps.length === 0 || cancelled) return;
+        
+        const details = await getUserQuotaDetail({
+          companyId: currentUser.companyId!,
+          userId: currentUser.id,
+          rateScheduleId: 'all'
+        });
+        
+        if (!cancelled) {
+          setQuotaProductsList(activeQps);
+          setQuotaDetails(details);
+        }
+      } catch (error) {
+        console.error("Error fetching quota:", error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.companyId, currentUser?.id, productSelectorOpen]);
+
+  // Dynamically calculate remaining quota by RateSchedule ID
+  const dynamicQuotaRemainingByRate = useMemo(() => {
+    const remainingMap = new Map<number, number>();
+
+    // 1. Initialize map with DB remaining
+    quotaDetails.forEach((d: any) => {
+      if (!d.isExpired && d.rateScheduleId) {
+        remainingMap.set(d.rateScheduleId, Number(d.remaining ?? 0));
+      }
+    });
+
+    // 2. Subtract newly added quota in the UI cart (delta)
+    if (currentOrder?.items) {
+      currentOrder.items.forEach((item) => {
+        const pid = item.productId;
+        const currentQty = Math.max(0, item.quantity ?? 0);
+        if (!pid) return;
+
+        // Find original qty
+        const originalItem = order.items?.find((i: any) => i.productId === pid);
+        const originalQty = originalItem ? Math.max(0, originalItem.quantity ?? 0) : 0;
+        
+        const deltaQty = currentQty - originalQty; // Positive if added more, Negative if removed
+        if (deltaQty === 0) return;
+
+        // Find matching quota product
+        const qp = quotaProductsList.find((q: any) => q.productId === pid);
+        if (!qp) return;
+
+        const cost = qp.quotaCost ?? 1;
+        const totalQuotaConsumed = deltaQty * cost;
+
+        // Subtract/Add delta from applicable rates
+        quotaDetails.forEach((d: any) => {
+          if (!d.isExpired && d.rateScheduleId && d.scopeIds && d.scopeIds.includes(qp.id)) {
+            const currentRemaining = remainingMap.get(d.rateScheduleId) ?? 0;
+            remainingMap.set(d.rateScheduleId, currentRemaining - totalQuotaConsumed);
+          }
+        });
+      });
+    }
+
+    return remainingMap;
+  }, [quotaDetails, quotaProductsList, currentOrder?.items, order?.items]);
+
+  // Map to pass to ProductSelectorModal
+  const dynamicProductQuotaMap = useMemo(() => {
+    const map = new Map<number, any>();
+    
+    for (const qp of quotaProductsList) {
+        let totalRemaining = 0;
+        let totalQuotaVal = 0;
+        let hasRate = false;
+        
+        quotaDetails.forEach((d: any) => {
+            if (!d.isExpired && d.rateScheduleId && d.scopeIds && d.scopeIds.includes(qp.id)) {
+                hasRate = true;
+                totalRemaining += (dynamicQuotaRemainingByRate.get(d.rateScheduleId) ?? 0);
+                totalQuotaVal += Number(d.totalQuota ?? 0);
+            }
+        });
+
+        if (hasRate) {
+            const cost = qp.quotaCost ?? 1;
+            map.set(qp.productId, {
+                isQuotaProduct: true,
+                remaining: totalRemaining,
+                totalQuota: totalQuotaVal,
+                isExhausted: totalRemaining < cost
+            });
+        } else {
+            map.set(qp.productId, {
+                isQuotaProduct: true,
+                remaining: 0,
+                totalQuota: 0,
+                isExhausted: true
+            });
+        }
+    }
+    return map;
+  }, [quotaDetails, quotaProductsList, dynamicQuotaRemainingByRate]);
 
   // Track manual box edits to ensure they persist over any state resets
   const boxOverrides = useRef<Record<number, { collectionAmount?: number; codAmount?: number }>>({});
@@ -5477,6 +5592,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         onSelectPromotion={handleSelectPromotion}
         companyId={currentUser?.companyId}
         currentUserId={currentUser?.id}
+        quotaMap={dynamicProductQuotaMap}
+        quotaProducts={quotaProductsList}
       />
     </>
   );

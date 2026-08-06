@@ -47,6 +47,38 @@ export interface StockPlanExpectation {
 
 export type StockPlanRow = PendingStockPlanRow | StockPlanExpectation;
 
+/** หมายเหตุ 1 บรรทัดในไทม์ไลน์ของแพลน (stock_arrival_plan_notes) */
+export interface StockPlanNote {
+  id: number;
+  plan_id: number;
+  note: string;
+  created_by: number | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+/** สิทธิ์ของผู้ใช้ปัจจุบันในระบบแพลนรับสินค้า — มาจาก get_stock_plan_access.php */
+export interface StockPlanAccess {
+  can_manage: boolean;   // เพิ่ม/ลบแพลน + เพิ่มหมายเหตุ
+  can_grant: boolean;    // ตั้งสิทธิ์ให้บัญชีอื่น (แท็บ "สิทธิ์การจัดการ")
+  is_super_admin: boolean;
+  role?: string | null;
+}
+
+/** บัญชีในตารางตั้งค่าสิทธิ์ — มาจาก list_stock_plan_managers.php */
+export interface StockPlanManagerRow {
+  id: number;
+  username: string;
+  name: string;
+  role: string | null;
+  company_id: number | null;
+  status: string | null;
+  can_manage: boolean;
+  always_allowed: boolean;
+  granted_at: string | null;
+  granted_by_name: string | null;
+}
+
 export interface TonDivisorRow {
   product_id: number;
   sku?: string;
@@ -78,3 +110,12 @@ export const formatTon = (qty: number, divisor: number | null | undefined) => {
 };
 
 export const shortStamp = (ts?: string | null) => (ts ? ts.slice(0, 16) : '');
+
+/** "2026-08-03 14:20:11" -> "03/08/2569 14:20" (ใช้ในไทม์ไลน์หมายเหตุ) */
+export const noteStamp = (ts?: string | null) => {
+  if (!ts) return '';
+  const [datePart, timePart = ''] = ts.replace('T', ' ').split(' ');
+  const [y, m, d] = datePart.split('-');
+  if (!y || !m || !d) return ts;
+  return `${d}/${m}/${Number(y) + 543} ${timePart.slice(0, 5)}`.trim();
+};

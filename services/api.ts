@@ -1622,10 +1622,67 @@ export async function recordStockPlanActual(payload: {
   });
 }
 
-export async function deleteStockPlan(id: number, force?: boolean) {
+export async function deleteStockPlan(id: number, force?: boolean, userId?: number) {
   return apiFetch("inventory/delete_stock_plan.php", {
     method: "POST",
-    body: JSON.stringify({ id, force }),
+    body: JSON.stringify({ id, force, user_id: userId }),
+  });
+}
+
+// ---- หมายเหตุ (ไทม์ไลน์) ของแพลน ----
+export async function listStockPlanNotes(params: {
+  planId?: number;
+  month?: number;
+  year?: number;
+  companyId?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params.planId) qs.set("plan_id", String(params.planId));
+  if (params.month) qs.set("month", String(params.month));
+  if (params.year) qs.set("year", String(params.year));
+  if (params.companyId) qs.set("companyId", String(params.companyId));
+  const query = qs.toString();
+  return apiFetch(`inventory/list_stock_plan_notes.php${query ? `?${query}` : ""}`);
+}
+
+export async function addStockPlanNote(payload: { plan_id: number; note: string; user_id?: number }) {
+  return apiFetch("inventory/add_stock_plan_note.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteStockPlanNote(id: number, userId?: number) {
+  return apiFetch("inventory/delete_stock_plan_note.php", {
+    method: "POST",
+    body: JSON.stringify({ id, user_id: userId }),
+  });
+}
+
+// ---- สิทธิ์จัดการแพลน ----
+export async function getStockPlanAccess(userId?: number) {
+  const qs = new URLSearchParams();
+  if (userId) qs.set("user_id", String(userId));
+  const query = qs.toString();
+  return apiFetch(`inventory/get_stock_plan_access.php${query ? `?${query}` : ""}`);
+}
+
+export async function listStockPlanManagers(params: { userId?: number; companyId?: number }) {
+  const qs = new URLSearchParams();
+  if (params.userId) qs.set("user_id", String(params.userId));
+  if (params.companyId) qs.set("companyId", String(params.companyId));
+  const query = qs.toString();
+  return apiFetch(`inventory/list_stock_plan_managers.php${query ? `?${query}` : ""}`);
+}
+
+export async function saveStockPlanManager(payload: {
+  user_id: number;
+  can_manage: boolean;
+  actor_user_id?: number;
+}) {
+  return apiFetch("inventory/save_stock_plan_manager.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

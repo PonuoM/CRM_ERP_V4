@@ -15,15 +15,28 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { User, UserRole } from '@/types';
-import { listStockPlans, listProducts, deleteStockPlan, listTonDivisors, saveTonDivisor, listFactoryHolidays, listStockPlanProducts } from '@/services/api';
+import {
+  listStockPlans,
+  listProducts,
+  deleteStockPlan,
+  listTonDivisors,
+  saveTonDivisor,
+  listFactoryHolidays,
+  listStockPlanProducts,
+  listStockPlanNotes,
+  addStockPlanNote,
+  deleteStockPlanNote,
+  getStockPlanAccess,
+} from '@/services/api';
 import StockPlanFormModal from '@/components/StockPlanFormModal';
 import StockPlanScheduleModal from '@/components/StockPlanScheduleModal';
 import StockPlanReconcileModal from '@/components/StockPlanReconcileModal';
 
-import { StockPlanRow, ProductSummary, TonDivisorRow, STATUS_META, rowStatus, shortStamp } from '@/components/StockArrivalPlanning/types';
+import { StockPlanRow, ProductSummary, TonDivisorRow, StockPlanNote, StockPlanAccess, STATUS_META, rowStatus, shortStamp } from '@/components/StockArrivalPlanning/types';
 import StockPlanCalendar from '@/components/StockArrivalPlanning/StockPlanCalendar';
 import StockPlanReport from '@/components/StockArrivalPlanning/StockPlanReport';
 import StockPlanSettings from '@/components/StockArrivalPlanning/StockPlanSettings';
+import StockPlanNotes from '@/components/StockArrivalPlanning/StockPlanNotes';
 
 interface StockArrivalPlanningPageProps {
   currentUser?: User;
@@ -52,7 +65,9 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
   const [products, setProducts] = useState<any[]>([]);
   const [reportDivisorRows, setReportDivisorRows] = useState<TonDivisorRow[]>([]);
   const [holidays, setHolidays] = useState<string[]>([]);
-  
+  const [notes, setNotes] = useState<StockPlanNote[]>([]);
+  const [access, setAccess] = useState<StockPlanAccess>({ can_manage: false, can_grant: false, is_super_admin: false });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +78,8 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
 
   const isSuperAdmin = currentUser?.role === UserRole.SuperAdmin;
   const effectiveCompanyId = companyId ?? currentUser?.companyId;
+  // สิทธิ์เพิ่ม/ลบแพลน + เพิ่มหมายเหตุ — ตอบจากเซิร์ฟเวอร์ (role สูง หรือได้รับสิทธิ์รายบัญชี)
+  const canManage = access.can_manage;
 
   const loadPlans = async () => {
     setLoading(true);
@@ -88,6 +105,15 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
     }
   };
 
+  const loadNotes = async () => {
+    try {
+      const res = await listStockPlanNotes({ month, year, companyId: effectiveCompanyId });
+      setNotes(res?.data ?? []);
+    } catch (err) {
+      console.error('Error loading plan notes:', err);
+    }
+  };
+
   const loadHolidays = async () => {
     try {
       const res = await listFactoryHolidays();
@@ -100,13 +126,38 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
     }
   };
 
-  useEffect(() => { 
+  useEffect(() => {
     if (effectiveCompanyId) {
       loadPlans();
       loadReportTonDivisors();
       loadHolidays();
+      loadNotes();
     }
   }, [month, year, effectiveCompanyId]);
+
+  useEffect(() => {
+    const loadAccess = async () => {
+      if (!currentUser?.id) {
+        setAccess({ can_manage: false, can_grant: false, is_super_admin: false });
+        return;
+      }
+      try {
+        const res = await getStockPlanAccess(currentUser.id);
+        const data = res?.data;
+        setAccess({
+          can_manage: !!data?.can_manage,
+          can_grant: !!data?.can_grant,
+          is_super_admin: !!data?.is_super_admin,
+          role: data?.role ?? null,
+        });
+      } catch (err) {
+        console.error('Error loading stock plan access:', err);
+        // โหลดสิทธิ์ไม่ได้ = ถือว่าไม่มีสิทธิ์ (เซิร์ฟเวอร์กันซ้ำอีกชั้นอยู่แล้ว)
+        setAccess({ can_manage: false, can_grant: false, is_super_admin: false });
+      }
+    };
+    loadAccess();
+  }, [currentUser?.id]);
 
   useEffect(() => {
     const loadCatalog = async () => {
@@ -210,12 +261,33 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
   const handleDeletePlan = async (planId: number) => {
     if (!confirm('ต้องการลบแพลนนี้ใช่หรือไม่? (ใช้สำหรับกรณีฉุกเฉินเท่านั้น)')) return;
     try {
-      await deleteStockPlan(planId, true);
+      // force = ข้ามด่าน "ห้ามลบแพลนที่ยืนยันรับเข้าแล้ว" -- Super Admin เท่านั้น (เซิร์ฟเวอร์บังคับซ้ำ)
+      await deleteStockPlan(planId, isSuperAdmin, currentUser?.id);
       setSelectedDay(null);
       loadPlans();
+      loadNotes();
     } catch (err: any) {
       alert(err?.data?.error || err?.message || 'ลบไม่สำเร็จ');
     }
+  };
+
+  const notesByPlan = useMemo(() => {
+    const map: Record<number, StockPlanNote[]> = {};
+    notes.forEach(n => {
+      if (!map[n.plan_id]) map[n.plan_id] = [];
+      map[n.plan_id].push(n);
+    });
+    return map;
+  }, [notes]);
+
+  const handleAddNote = async (planId: number, note: string) => {
+    await addStockPlanNote({ plan_id: planId, note, user_id: currentUser?.id });
+    await loadNotes();
+  };
+
+  const handleDeleteNote = async (noteId: number) => {
+    await deleteStockPlanNote(noteId, currentUser?.id);
+    await loadNotes();
   };
 
   const exportToExcel = () => {
@@ -303,12 +375,14 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <button
-            onClick={() => setFormDate(selectedDay)}
-            className="w-full bg-blue-600 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 hover:bg-blue-700 text-sm font-medium"
-          >
-            <Plus size={16} /> เพิ่มแพลนวันนี้
-          </button>
+          {canManage && (
+            <button
+              onClick={() => setFormDate(selectedDay)}
+              className="w-full bg-blue-600 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 hover:bg-blue-700 text-sm font-medium"
+            >
+              <Plus size={16} /> เพิ่มแพลนวันนี้
+            </button>
+          )}
 
           {dayPlanGroups.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-6">ไม่มีแพลนวันนี้</p>
@@ -323,7 +397,7 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
                     <div className="text-[11px] text-gray-400">สร้างโดย {group.plan.created_by_name} · {shortStamp(group.plan.created_at)}</div>
                   )}
                 </div>
-                {isSuperAdmin && (
+                {canManage && (
                   <button onClick={() => handleDeletePlan(group.plan.id)} className="shrink-0 text-gray-400 hover:text-red-600" title="ลบแพลน (ฉุกเฉิน)">
                     <Trash2 size={14} />
                   </button>
@@ -371,6 +445,16 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
                   </div>
                 ))}
               </div>
+
+              <StockPlanNotes
+                planId={group.plan.id}
+                notes={notesByPlan[group.plan.id] ?? []}
+                canAdd={canManage}
+                currentUserId={currentUser?.id}
+                isSuperAdmin={isSuperAdmin}
+                onAdd={handleAddNote}
+                onDelete={handleDeleteNote}
+              />
             </div>
           ))}
         </div>
@@ -393,12 +477,14 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
           >
             <Download size={18} /> Export Excel
           </button>
-          <button
-            onClick={() => setFormDate(null)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 hover:bg-blue-700 font-medium shadow-sm"
-          >
-            <Plus size={18} /> เพิ่มแพลน
-          </button>
+          {canManage && (
+            <button
+              onClick={() => setFormDate(null)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 hover:bg-blue-700 font-medium shadow-sm"
+            >
+              <Plus size={18} /> เพิ่มแพลน
+            </button>
+          )}
         </div>
       </div>
 
@@ -470,6 +556,8 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
               onRefreshHolidays={loadHolidays}
               viewedYear={year}
               viewedMonth={month}
+              canGrantAccess={access.can_grant}
+              companyId={effectiveCompanyId}
             />
           )}
         </>
