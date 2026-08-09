@@ -1098,14 +1098,38 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         }
     }, [basketConfigs, activeBasketKey, setActiveBasketKey]);
 
+    // State for Challenge Sub-Basket Toggle
+    const [activeChallengeSubBasket, setActiveChallengeSubBasket] = useState<string>('all');
+
     // Build dynamic tab configs from DB
     const tabConfigs = useMemo(() => {
-        return basketConfigs.map(config => ({
-            key: config.basket_key,
-            name: config.basket_name,
-            count: (basketGroups.get(config.basket_key) || []).length,
-            config
-        }));
+        const configs: {key: string, name: string, count: number, config?: any}[] = [];
+        let challengeCount = 0;
+        let hasChallenge = false;
+        
+        basketConfigs.forEach(config => {
+            const count = (basketGroups.get(config.basket_key) || []).length;
+            if (config.ui_group === 'challenge') {
+                challengeCount += count;
+                hasChallenge = true;
+            } else {
+                configs.push({
+                    key: config.basket_key,
+                    name: config.basket_name,
+                    count,
+                    config
+                });
+            }
+        });
+
+        if (hasChallenge) {
+            configs.push({
+                key: 'ui_group_challenge',
+                name: 'ถังชาเล้นจ์',
+                count: challengeCount
+            });
+        }
+        return configs;
     }, [basketConfigs, basketGroups]);
 
     // Filter and sort customers for active tab
@@ -1139,7 +1163,19 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
     // Filter Logic
     const filteredCustomers = useMemo(() => {
-        let customers = basketGroups.get(activeBasketKey) || [];
+        let customers: Customer[] = [];
+        if (activeBasketKey === 'ui_group_challenge') {
+            basketConfigs.forEach(config => {
+                if (config.ui_group === 'challenge') {
+                    if (activeChallengeSubBasket === 'all' || activeChallengeSubBasket === config.basket_key) {
+                        const inBasket = basketGroups.get(config.basket_key) || [];
+                        customers = [...customers, ...inBasket];
+                    }
+                }
+            });
+        } else {
+            customers = basketGroups.get(activeBasketKey) || [];
+        }
 
         // Apply region filter
         if (deferredSelectedRegions.length > 0) {
@@ -1361,7 +1397,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return customers;
-    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, deferredSelectedGrades, upcomingAppointmentFilter, filterByOverdueAppointment, appointmentInfoMap, hideContactedFilter, hideContactedCustomRange, sortByBirthday, showContactedDateRange]);
+    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, deferredSelectedGrades, upcomingAppointmentFilter, filterByOverdueAppointment, appointmentInfoMap, hideContactedFilter, hideContactedCustomRange, sortByBirthday, showContactedDateRange, activeChallengeSubBasket, basketConfigs]);
 
     // Manual sync - just refresh to get fresh data from API via App.tsx
     const handleManualSync = () => {
@@ -1431,6 +1467,30 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     </div>
                 )}
             </div>
+
+            {/* Challenge Sub-Basket Badges */}
+            {activeBasketKey === 'ui_group_challenge' && (
+                <div className="flex flex-wrap gap-2 mb-6">
+                    <button
+                        onClick={() => setActiveChallengeSubBasket('all')}
+                        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${activeChallengeSubBasket === 'all' ? 'bg-orange-500 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                    >
+                        ทั้งหมด
+                    </button>
+                    {basketConfigs.filter(c => c.ui_group === 'challenge').map(config => (
+                        <button
+                            key={config.basket_key}
+                            onClick={() => setActiveChallengeSubBasket(config.basket_key)}
+                            className={`flex items-center px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${activeChallengeSubBasket === config.basket_key ? 'bg-orange-500 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                        >
+                            {config.basket_name}
+                            <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${activeChallengeSubBasket === config.basket_key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                {(basketGroups.get(config.basket_key) || []).length}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Search & Filters Row */}
             <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-4 mb-6">
