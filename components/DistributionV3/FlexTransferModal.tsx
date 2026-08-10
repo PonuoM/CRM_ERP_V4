@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowRightLeft, Plus, Trash2, Loader2, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowRightLeft, Plus, Trash2, Loader2, Check, Search } from 'lucide-react';
 
 interface FlexTransferModalProps {
     isOpen: boolean;
@@ -52,6 +52,8 @@ const FlexTransferModal: React.FC<FlexTransferModalProps> = ({
     handleExecuteFlexTransfer,
     flexTransferring
 }) => {
+    const [agentSearchQuery, setAgentSearchQuery] = useState('');
+
     if (!isOpen) return null;
 
     return (
@@ -177,8 +179,18 @@ const FlexTransferModal: React.FC<FlexTransferModalProps> = ({
                                         เลือกแล้ว {flex1toManyCheckedTargets.length} คน
                                     </div>
                                 </div>
+                                <div className="mb-2 relative">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                                    <input 
+                                        type="text" 
+                                        value={agentSearchQuery}
+                                        onChange={(e) => setAgentSearchQuery(e.target.value)}
+                                        placeholder="ค้นหาพนักงาน..."
+                                        className="w-full border rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    />
+                                </div>
                                 <div className="border rounded-xl max-h-60 overflow-y-auto divide-y bg-gray-50/50">
-                                    {agents.filter(a => a.id !== flex1toManySourceAgent).map(agent => (
+                                    {agents.filter(a => a.id !== flex1toManySourceAgent && `${a.firstName} ${a.lastName}`.toLowerCase().includes(agentSearchQuery.toLowerCase())).map(agent => (
                                         <div key={agent.id} className={`p-3 flex items-center justify-between transition-colors ${flex1toManyCheckedTargets.includes(agent.id) ? 'bg-blue-50/50' : 'hover:bg-gray-100/50'}`}>
                                             <div className="flex items-center gap-3">
                                                 <input 
