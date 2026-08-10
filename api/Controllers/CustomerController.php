@@ -431,6 +431,57 @@ function handle_customers(PDO $pdo, ?string $id): void
                         // Bulk response
                         json_response(['agents' => $agentsData]);
                     }
+                } elseif (isset($_GET['action']) && $_GET['action'] === 'holding_pool_count') {
+                    // Quota-400 concept (Phase 1, manual cap — see meeting 3 Aug 2026):
+                    // count each agent's holding load against the specific baskets
+                    // named as counted toward the cap — the 5 main aging-pool
+                    // baskets plus the personal 3-month buckets — excluding anyone
+                    // with a pending (not-yet-completed) appointment (Follow).
+                    // This does NOT block distribution; it only powers the
+                    // on-screen indicator so the admin can keep applying the cap
+                    // manually with real numbers instead of a side calculation.
+                    $companyId = $_GET['companyId'] ?? null;
+                    if (!$companyId) {
+                        json_response(['error' => 'companyId required'], 400);
+                    }
+
+                    $countedBasketKeys = [
+                        'find_new_owner_dash', 'waiting_for_match_dash',
+                        'mid_6_9m_dash', 'mid_9_12m_dash', 'mid_1_3y_dash',
+                        'personal_1_2m', 'personal_last_chance',
+                    ];
+                    $keyPlaceholders = implode(',', array_fill(0, count($countedBasketKeys), '?'));
+
+                    $basketIdStmt = $pdo->prepare("SELECT id FROM basket_config WHERE company_id = 1 AND basket_key IN ($keyPlaceholders)");
+                    $basketIdStmt->execute($countedBasketKeys);
+                    $countedBasketIds = $basketIdStmt->fetchAll(PDO::FETCH_COLUMN);
+
+                    if (empty($countedBasketIds)) {
+                        json_response(['agents' => []]);
+                    }
+
+                    $idPlaceholders = implode(',', array_fill(0, count($countedBasketIds), '?'));
+                    $sql = "
+                        SELECT c.assigned_to, COUNT(*) as holding_count
+                        FROM customers c
+                        WHERE c.company_id = ?
+                          AND c.assigned_to IS NOT NULL AND c.assigned_to != 0
+                          AND c.current_basket_key IN ($idPlaceholders)
+                          AND NOT EXISTS (
+                              SELECT 1 FROM appointments a
+                              WHERE a.customer_id = c.customer_id AND a.status != 'เสร็จสิ้น'
+                          )
+                        GROUP BY c.assigned_to
+                    ";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute(array_merge([$companyId], $countedBasketIds));
+
+                    $agents = [];
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $agents[(string)$row['assigned_to']] = (int)$row['holding_count'];
+                    }
+
+                    json_response(['agents' => $agents, 'counted_basket_keys' => $countedBasketKeys]);
                 } elseif (isset($_GET['action']) && $_GET['action'] === 'counts') {
                     $t_start = microtime(true);
                     log_perf("handle_customers:counts:START");
@@ -1544,6 +1595,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                 if (!empty($assignedTo) && (string) $assignedTo !== (string) $oldAssigned) {
                     $pdo->prepare('UPDATE customers SET date_assigned=COALESCE(date_assigned, NOW()) WHERE customer_id=?')->execute([$targetId]);
                     $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())')->execute([$targetId, $assignedTo]);
+                    clear_user_tags_on_ownership_change($pdo, [$targetId], $user['id'] ?? null);
                 }
 
                 // Post-update normalization - REMOVED 2026-01-27

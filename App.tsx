@@ -4599,41 +4599,33 @@ const App: React.FC = () => {
 
     const customer = customers.find((c) => c.id === customerId);
 
-    // AUTO-COMPLETE APPOINTMENTS LOGIC - DISABLED
-    // This was causing newly created appointments to be marked as completed
-    // because it marks ALL pending appointments within 2 days as 'เสร็จสิ้น'
-    // when a call is logged. This is too aggressive.
-    // 
-    // TODO: If auto-complete is needed, it should:
-    // 1. Only complete appointments that are BEFORE today (past due)
-    // 2. NOT complete appointments that are today or in the future
-    // 3. Be triggered by explicit user action, not automatically
-    //
-    // Original code commented out:
-    /*
-    const now = new Date();
-    const todayStart = new Date(now);
+    // AUTO-COMPLETE OVERDUE APPOINTMENTS
+    // When a call is logged for this customer, clear any of their
+    // appointments that are already overdue (date strictly before today).
+    // Appointments for today or in the future are left untouched — an
+    // earlier version of this logic completed everything within a 2-day
+    // window, which wrongly marked appointments that hadn't happened yet.
+    const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const pendingAppointments = appointments.filter(a =>
+    const overdueAppointments = appointments.filter(a =>
       (String(a.customerId) === String(customerId) || String(a.customerId) === String(customer?.pk)) &&
       a.status !== 'เสร็จสิ้น' &&
-      new Date(a.date).getTime() <= (now.getTime() + 2 * 24 * 60 * 60 * 1000)
+      new Date(a.date).getTime() < todayStart.getTime()
     );
 
-    if (pendingAppointments.length > 0) {
+    if (overdueAppointments.length > 0) {
       setAppointments(prev => prev.map(a =>
-        pendingAppointments.some(pa => pa.id === a.id)
+        overdueAppointments.some(oa => oa.id === a.id)
           ? { ...a, status: 'เสร็จสิ้น' }
           : a
       ));
 
-      pendingAppointments.forEach(appt => {
+      overdueAppointments.forEach(appt => {
         updateAppointment(appt.id, { status: 'เสร็จสิ้น' })
-          .catch(e => console.error(`Failed to auto-complete appointment ${appt.id}`, e));
+          .catch(e => console.error(`Failed to auto-complete overdue appointment ${appt.id}`, e));
       });
     }
-    */
 
 
     // Calculate status independent of customer state presence

@@ -367,6 +367,7 @@ function handleBasketCustomers($pdo, $companyId)
         WHERE c.company_id = ?
         AND c.current_basket_key = ?
         AND (c.assigned_to IS NULL OR c.assigned_to = 0)
+        AND (c.hold_until_date IS NULL OR c.hold_until_date <= NOW())
     ";
 
     $params = [$companyId, $basketId];
@@ -1023,6 +1024,7 @@ function handleTransferCustomers($pdo, $companyId)
 
         $results = [];
         $totalTransferred = 0;
+        $allTransferredCustomerIds = [];
 
         foreach ($transfers as $t) {
             $fromAgentId = $t['from_agent_id'] ?? null;
@@ -1111,6 +1113,7 @@ function handleTransferCustomers($pdo, $companyId)
 
                 if ($updateStmt->rowCount() > 0) {
                     $transferredCount++;
+                    $allTransferredCustomerIds[] = $customerId;
                 }
             }
 
@@ -1166,6 +1169,9 @@ function handleTransferCustomers($pdo, $companyId)
         } else {
             $pdo->prepare("DELETE FROM distribution_sessions WHERE id = ?")->execute([$sessionId]);
         }
+
+        $requestTriggeredBy = $input['triggered_by'] ?? null;
+        clear_user_tags_on_ownership_change($pdo, $allTransferredCustomerIds, $requestTriggeredBy ? (int)$requestTriggeredBy : null);
 
         $pdo->commit();
 

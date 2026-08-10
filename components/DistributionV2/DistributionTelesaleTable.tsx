@@ -52,6 +52,8 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     const [customStartTime, setCustomStartTime] = useState<string>('00:00');
     const [customEndTime, setCustomEndTime] = useState<string>('23:59');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
+    const [holdingCap, setHoldingCap] = useState<string>('400');
+    const [loadingHoldingCounts, setLoadingHoldingCounts] = useState(false);
 
     const selectAllRef = useRef<HTMLInputElement>(null);
 
@@ -108,6 +110,40 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [callFilterStartDate, callFilterEndDate, callFilterShift, customStartTime, customEndTime, agents.length, callDataSource]);
+
+    // Quota-400 concept (manual cap — see meeting 3 Aug 2026): show each
+    // agent's current holding load next to the cap so the admin can keep
+    // applying it by eye without a side calculation. Not enforced here.
+    const fetchHoldingCounts = useCallback(async () => {
+        if (!agents || agents.length === 0) return;
+
+        setLoadingHoldingCounts(true);
+        try {
+            const response = await apiFetch(
+                `customers?action=holding_pool_count&companyId=${currentUser?.companyId}`
+            );
+
+            if (response?.agents) {
+                setAgents(prev => prev.map(agent => ({
+                    ...agent,
+                    holdingCount: response.agents[agent.id] ?? 0
+                })));
+            } else if (response?.error) {
+                setMessage({ type: 'error', text: response.error });
+            }
+        } catch (error: any) {
+            console.error('Failed to fetch holding counts:', error);
+        } finally {
+            setLoadingHoldingCounts(false);
+        }
+    }, [agents.length, currentUser?.companyId, setAgents, setMessage]);
+
+    useEffect(() => {
+        if (agents.length > 0) {
+            fetchHoldingCounts();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [agents.length]);
 
     const filteredAgents = useMemo(() => {
         let displayAgents = agents;
@@ -301,6 +337,16 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                         min={0}
                     />
                 </div>
+                <div>
+                    <label className="block text-xs font-semibold text-orange-800 mb-1">เพดานยอดถือครอง (ต่อคน)</label>
+                    <input
+                        type="number"
+                        value={holdingCap}
+                        onChange={(e) => setHoldingCap(e.target.value)}
+                        className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 w-24 text-center"
+                        min={0}
+                    />
+                </div>
                 <div className="flex-1">
                     <button
                         onClick={() => {
@@ -365,6 +411,9 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                 <th className="p-3 text-center font-medium text-gray-600">เวลาทำงาน</th>
                                 <th className="p-3 text-center font-medium text-gray-600">Action</th>
                                 <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
+                                <th className="p-3 text-center font-medium text-gray-600" title="นับเฉพาะถังหาคนดูแลใหม่, รอคนมาจีบ, 6-9 เดือน, 9-12 เดือน, 1-3 ปี และถังส่วนตัว 3 เดือน — ไม่รวมรายชื่อที่มีนัดหมาย">
+                                    ยอดถือครอง / เพดาน
+                                </th>
                                 {dashboardBaskets.map(basket => (
                                     <th key={basket.basket_key} className="text-center p-3 text-xs font-medium text-gray-600 bg-gray-50 whitespace-nowrap">
                                         <div className="truncate max-w-[100px] mx-auto" title={basket.basket_name}>
@@ -434,6 +483,22 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                             </button>
                                         </td>
                                         <td className="p-3 text-center font-semibold text-gray-700">{agent.totalCustomers}</td>
+                                        <td className="p-3 text-center">
+                                            {loadingHoldingCounts ? (
+                                                <span className="text-gray-300 text-xs">...</span>
+                                            ) : (
+                                                <span
+                                                    className={`font-semibold ${
+                                                        (agent.holdingCount ?? 0) > (parseInt(holdingCap) || 0)
+                                                            ? 'text-red-600'
+                                                            : 'text-gray-700'
+                                                    }`}
+                                                    title="ยอดนี้ยังไม่บังคับ ไม่กันการแจก แสดงไว้ให้ใช้ประกอบการตัดสินใจเท่านั้น"
+                                                >
+                                                    {agent.holdingCount ?? 0} / {holdingCap || 0}
+                                                </span>
+                                            )}
+                                        </td>
                                         {dashboardBaskets.map(basket => (
                                             <td key={basket.basket_key} className="p-3 text-center text-gray-600 text-sm">
                                                 {agent.basketCounts?.[basket.basket_key] || 0}

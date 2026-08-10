@@ -258,3 +258,41 @@ function attach_call_status_to_customers(PDO $pdo, array &$customers): void
         error_log("attach_call_status_to_customers error: " . $e->getMessage());
     }
 }
+
+/**
+ * Soft-delete user-created call-status tags (tags.type = 'USER') when a
+ * customer's ownership changes (distribution, transfer, or manual reassign).
+ *
+ * Scope is intentionally narrow: only tags.type = 'USER' are cleared.
+ * SYSTEM tags (e.g. "เสียชีวิต", "ห้ามติดต่อ", "เบอร์โทรผิด") and legacy
+ * untyped tags are left untouched — they represent facts about the customer
+ * that must persist across ownership changes, not the previous owner's
+ * personal call notes.
+ */
+function clear_user_tags_on_ownership_change(PDO $pdo, array $customerIds, ?int $performedBy = null): int
+{
+    $customerIds = array_values(array_filter($customerIds, function ($id) {
+        return $id !== null && $id !== '';
+    }));
+    if (empty($customerIds)) {
+        return 0;
+    }
+
+    try {
+        $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+        $stmt = $pdo->prepare("
+            UPDATE customer_tags ct
+            JOIN tags t ON t.id = ct.tag_id
+            SET ct.deleted_at = NOW(), ct.deleted_by = ?
+            WHERE ct.customer_id IN ($placeholders)
+              AND ct.deleted_at IS NULL
+              AND t.type = 'USER'
+        ");
+        $stmt->execute(array_merge([$performedBy], $customerIds));
+        return $stmt->rowCount();
+    } catch (Throwable $e) {
+        // Never let tag cleanup block the ownership change itself.
+        error_log("clear_user_tags_on_ownership_change error: " . $e->getMessage());
+        return 0;
+    }
+}
