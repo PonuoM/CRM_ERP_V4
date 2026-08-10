@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Plus,
   Trash2,
+  Pencil,
   PackageCheck,
   CalendarPlus,
   X,
@@ -72,7 +73,8 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
   const [error, setError] = useState<string | null>(null);
 
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [formDate, setFormDate] = useState<string | null | undefined>(undefined); 
+  const [formDate, setFormDate] = useState<string | null | undefined>(undefined);
+  const [editPlanId, setEditPlanId] = useState<number | null>(null);
   const [scheduleTarget, setScheduleTarget] = useState<any | null>(null);
   const [reconcileTarget, setReconcileTarget] = useState<any | null>(null);
 
@@ -398,9 +400,14 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
                   )}
                 </div>
                 {canManage && (
-                  <button onClick={() => handleDeletePlan(group.plan.id)} className="shrink-0 text-gray-400 hover:text-red-600" title="ลบแพลน (ฉุกเฉิน)">
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setEditPlanId(group.plan.id)} className="text-gray-400 hover:text-blue-600" title="แก้ไขแพลน">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => handleDeletePlan(group.plan.id)} className="text-gray-400 hover:text-red-600" title="ลบแพลน (ฉุกเฉิน)">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="divide-y">
@@ -573,6 +580,17 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
           currentUser={currentUser}
           onClose={() => setFormDate(undefined)}
           onSaved={() => { setFormDate(undefined); loadPlans(); }}
+        />
+      )}
+
+      {editPlanId !== null && (
+        <StockPlanFormModal
+          editPlanId={editPlanId}
+          products={products}
+          companyId={effectiveCompanyId}
+          currentUser={currentUser}
+          onClose={() => setEditPlanId(null)}
+          onSaved={() => { setEditPlanId(null); loadPlans(); }}
         />
       )}
 

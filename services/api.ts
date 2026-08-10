@@ -1594,6 +1594,27 @@ export async function createStockPlan(payload: {
   });
 }
 
+export async function getStockPlan(id: number) {
+  return apiFetch(`inventory/get_stock_plan.php?id=${id}`);
+}
+
+export async function updateStockPlan(payload: {
+  id: number;
+  planned_date: string;
+  notes?: string;
+  user_id?: number;
+  items: {
+    id?: number;
+    product_id: number;
+    planned_qty: number;
+  }[];
+}) {
+  return apiFetch("inventory/update_stock_plan.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function addStockPlanExpectation(payload: {
   item_id: number;
   expected_qty: number;
