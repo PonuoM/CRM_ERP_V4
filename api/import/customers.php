@@ -45,11 +45,64 @@ if (!isset($input['rows']) || !is_array($input['rows'])) {
     json_response(['error' => 'INVALID_INPUT', 'message' => 'Missing rows array'], 400);
 }
 
+// Target basket: rows with no (valid) caretaker land in this distribution
+// ("pool") basket; rows with a valid caretaker land in its linked dashboard
+// basket instead, alongside setting assigned_to. Required so imported
+// customers actually enter the routing system instead of current_basket_key
+// staying NULL forever.
+$basketKey = sanitize_value($input['basketKey'] ?? null);
+if (!$basketKey) {
+    json_response(['error' => 'INVALID_INPUT', 'message' => 'Missing basketKey'], 400);
+}
+
+$basketStmt = $pdo->prepare("SELECT id, basket_name FROM basket_config WHERE basket_key = ? AND target_page = 'distribution' AND company_id = 1");
+$basketStmt->execute([$basketKey]);
+$basketRow = $basketStmt->fetch(PDO::FETCH_ASSOC);
+if (!$basketRow) {
+    json_response(['error' => 'INVALID_BASKET', 'message' => "ไม่พบถังฝั่ง Distribution ที่ระบุ: $basketKey"], 400);
+}
+$poolBasketId = $basketRow['id'];
+$poolBasketName = $basketRow['basket_name'];
+
+// The Dashboard-side destination is chosen explicitly by the admin, not
+// derived from linked_basket_key — several pairs share the same display name,
+// and the admin may deliberately want a different Dashboard basket than the
+// configured pair. Only required when the file actually has owner rows.
+$assignedBasketKey = sanitize_value($input['assignedBasketKey'] ?? null);
+$assignedBasketId = null;
+$assignedBasketName = null;
+if ($assignedBasketKey) {
+    $assignedStmt = $pdo->prepare("SELECT id, basket_name FROM basket_config WHERE basket_key = ? AND target_page = 'dashboard_v2' AND company_id = 1");
+    $assignedStmt->execute([$assignedBasketKey]);
+    $assignedRow = $assignedStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$assignedRow) {
+        json_response(['error' => 'INVALID_BASKET', 'message' => "ไม่พบถังฝั่ง Dashboard ที่ระบุ: $assignedBasketKey"], 400);
+    }
+    $assignedBasketId = $assignedRow['id'];
+    $assignedBasketName = $assignedRow['basket_name'];
+}
+
+// Cache caretaker existence checks (one lookup per distinct caretakerId per request).
+$caretakerCache = [];
+function resolve_caretaker(PDO $pdo, array &$cache, $rawId, int $companyId): ?int {
+    if (!$rawId || !is_numeric($rawId)) return null;
+    $id = (int)$rawId;
+    if (array_key_exists($id, $cache)) return $cache[$id];
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE id = ? AND company_id = ?");
+    $stmt->execute([$id, $companyId]);
+    $found = $stmt->fetchColumn();
+    return $cache[$id] = ($found ? $id : null);
+}
+
 $rows = $input['rows'];
 $summary = [
     'totalRows' => count($rows),
     'createdCustomers' => 0,
     'updatedCustomers' => 0,
+    'assignedToOwner' => 0,
+    'sentToPool' => 0,
+    'poolBasketName' => $poolBasketName,
+    'assignedBasketName' => $assignedBasketName,
     'notes' => []
 ];
 
@@ -93,31 +146,46 @@ foreach ($rows as $index => $row) {
     // Create
     try {
         $sql = "INSERT INTO customers (
-            customer_ref_id, first_name, last_name, phone, email, 
+            customer_ref_id, first_name, last_name, phone, email,
             street, subdistrict, district, province, postal_code,
             company_id, assigned_to, date_assigned, date_registered, ownership_expires,
-            lifecycle_status, behavioral_status, grade, total_purchases
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            lifecycle_status, behavioral_status, grade, total_purchases,
+            current_basket_key, basket_entered_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        $assignedTo = sanitize_value($row['caretakerId'] ?? null); 
-        if (!$assignedTo) {
-             // 
-        } else {
-             if (!is_numeric($assignedTo)) $assignedTo = null; 
+        $rawCaretakerId = sanitize_value($row['caretakerId'] ?? null);
+        $assignedTo = resolve_caretaker($pdo, $caretakerCache, $rawCaretakerId, $user['company_id']);
+        if ($rawCaretakerId && !$assignedTo) {
+            $summary['notes'][] = "แถวที่ $rowNum: ไม่พบรหัสผู้ดูแล '$rawCaretakerId' ในระบบ ถือว่าแถวนี้ไม่มีผู้ดูแล (เข้าถังฝั่ง Distribution แทน)";
         }
-        $bucketType = $assignedTo ? 'assigned' : 'ready';
+        // A row with a valid owner needs a Dashboard destination. The UI blocks
+        // this, but guard here too so a direct API call can't land owned rows
+        // in the pool basket by omitting assignedBasketKey.
+        if ($assignedTo && !$assignedBasketId) {
+            json_response([
+                'error' => 'MISSING_ASSIGNED_BASKET',
+                'message' => 'ไฟล์มีแถวที่ระบุผู้ดูแล แต่ไม่ได้เลือกถังฝั่ง Dashboard ปลายทาง (assignedBasketKey)'
+            ], 400);
+        }
+
+        $targetBasketId = $assignedTo ? $assignedBasketId : $poolBasketId;
+        if ($assignedTo) {
+            $summary['assignedToOwner']++;
+        } else {
+            $summary['sentToPool']++;
+        }
 
         // Dates
         $nowStr = date('Y-m-d H:i:s');
         $expireDate = date('Y-m-d H:i:s', strtotime('+90 days'));
-        
+
         $email = sanitize_value($row['email'] ?? null);
         $addr = sanitize_value($row['address'] ?? null);
         $sub = sanitize_value($row['subdistrict'] ?? null);
         $dist = sanitize_value($row['district'] ?? null);
         $prov = sanitize_value($row['province'] ?? null);
         $zip = sanitize_value($row['postalCode'] ?? null);
-        
+
         // Statuses
         $behave = sanitize_value($row['behavioralStatus'] ?? 'Cold');
         $grade = sanitize_value($row['grade'] ?? 'Standard');
@@ -127,14 +195,15 @@ foreach ($rows as $index => $row) {
         $stmtIns->execute([
             $customerId, $firstName, $lastName, $phone, $email,
             $addr, $sub, $dist, $prov, $zip,
-            $user['company_id'], $assignedTo, 
-            $nowStr, // date_assigned
+            $user['company_id'], $assignedTo,
+            $assignedTo ? $nowStr : null, // date_assigned — only meaningful once someone actually owns the row
             $nowStr, // date_registered
             $expireDate, // ownership_expires
-            'New', // lifecycle_status (forced)
-            $behave, $grade, $purchases
+            $assignedTo ? 'Assigned' : 'New', // lifecycle_status
+            $behave, $grade, $purchases,
+            $targetBasketId, $nowStr // current_basket_key, basket_entered_date
         ]);
-        
+
         $summary['createdCustomers']++;
 
     } catch (Exception $e) {

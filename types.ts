@@ -512,6 +512,10 @@ export interface ImportResultSummary {
   updatedOrders: number;
   waitingBasket: number;
   caretakerConflicts: number;
+  assignedToOwner?: number;
+  sentToPool?: number;
+  poolBasketName?: string;
+  assignedBasketName?: string | null;
   notes: string[];
 }
 
