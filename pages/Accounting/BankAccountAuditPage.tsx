@@ -139,7 +139,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     const fetchCompanies = async () => {
         try {
-            const res = await apiFetch('companies');
+            // minimal=1 → id/name เท่านั้น แต่เห็นได้ทุก role (Backoffice/Finance ต้องเลือกบริษัทปลายทางได้)
+            const res = await apiFetch('companies?minimal=1');
             const list = Array.isArray(res) ? res : (res?.data || []);
             setCompanies(list.map((c: any) => ({ id: Number(c.id), name: c.name })));
         } catch (error) {

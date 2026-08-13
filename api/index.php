@@ -4504,6 +4504,15 @@ function handle_companies(PDO $pdo, ?string $id): void
                 $row = $stmt->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
+                // ?minimal=1 → id + name only, visible to every authenticated user.
+                // Cross-company pickers (e.g. Bank Audit "โอน Statement ให้บริษัทอื่น") are used by
+                // Backoffice/Finance, who must be able to pick a destination company without being
+                // granted read access to the full company records below.
+                if (isset($_GET['minimal']) && $_GET['minimal'] !== '0') {
+                    $stmt = $pdo->query('SELECT id, name FROM companies ORDER BY id ASC');
+                    json_response($stmt->fetchAll());
+                }
+
                 // List companies: only show user's company unless they can see all
                 $sql = 'SELECT * FROM companies';
                 $params = [];
