@@ -573,46 +573,35 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
 
             if (isToday) {
                 console.log("📞 Fetching today's data from OneCall API directly...");
+                // Resolve which phones to count. OneCall returns every extension on the PBX
+                // (all companies + non-telesale staff), so an undefined filter is never correct —
+                // it made the KPI cards count ~34% more calls than the table below them.
+                // Mirror what the DB endpoints do: a specific telesale → just them,
+                // anything else (incl. an admin/CEO whose own id is preselected) → all visible telesales.
                 let userPhones: string[] | undefined;
-                const shouldFilterByUser = !isSystem || (selectedUserId && selectedUserId !== "");
+                const selectedTelesale = selectedUserId
+                    ? teamUsers.find(u => String(u.id) === selectedUserId)
+                    : undefined;
 
-                if (shouldFilterByUser) {
-                    const userId = selectedUserId || String(currentUserId);
-                    if (userId && userId !== "") {
-                        if (selectedUserId === "") {
-                            // "All Users" selected by a Supervisor (isSystem is false)
-                            // We need to fetch ALL phones of their team from teamUsers
-                            const phones = teamUsers
-                                .map(u => u.phone)
-                                .filter(p => p != null && p.trim() !== "")
-                                .map(p => p.replace(/^0/, "66"));
+                if (selectedTelesale?.phone) {
+                    userPhones = [selectedTelesale.phone.replace(/^0/, "66")];
+                    console.log(`🔍 Filtering by phone: ${userPhones[0]} (user: ${selectedTelesale.name})`);
+                } else {
+                    const phones = teamUsers
+                        .map(u => u.phone)
+                        .filter(p => p != null && p.trim() !== "")
+                        .map(p => p.replace(/^0/, "66"));
 
-                            if (phones.length > 0) {
-                                userPhones = phones;
-                                console.log(`🔍 Filtering by team phones: ${phones.length} users`);
-                            } else {
-                                console.log("🚫 Supervisor's team has no phones - returning empty data");
-                                hourlyDataRes = {
-                                    success: true,
-                                    summary: { total_calls: 0, talked_calls: 0, total_minutes: 0, avg_minutes: 0, avg_talk_minutes: 0, avg_idle_minutes: 0 },
-                                    hourly: []
-                                };
-                            }
-                        } else {
-                            // Specific user selected
-                            const selectedUser = teamUsers.find(u => String(u.id) === userId);
-                            if (selectedUser && selectedUser.phone) {
-                                userPhones = [selectedUser.phone.replace(/^0/, "66")];
-                                console.log(`🔍 Filtering by phone: ${userPhones[0]} (user: ${selectedUser.name})`);
-                            } else if (!isSystem) {
-                                console.log("🚫 Telesale user without phone - returning empty data");
-                                hourlyDataRes = {
-                                    success: true,
-                                    summary: { total_calls: 0, talked_calls: 0, total_minutes: 0, avg_minutes: 0, avg_talk_minutes: 0, avg_idle_minutes: 0 },
-                                    hourly: []
-                                };
-                            }
-                        }
+                    if (phones.length > 0) {
+                        userPhones = phones;
+                        console.log(`🔍 Filtering by team phones: ${phones.length} users`);
+                    } else {
+                        console.log("🚫 No phones to match on - returning empty data");
+                        hourlyDataRes = {
+                            success: true,
+                            summary: { total_calls: 0, talked_calls: 0, total_minutes: 0, avg_minutes: 0, avg_talk_minutes: 0, avg_idle_minutes: 0 },
+                            hourly: []
+                        };
                     }
                 }
 
