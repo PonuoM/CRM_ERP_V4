@@ -25,12 +25,17 @@ try {
         throw new Exception('Plan not found');
     }
 
-    // Per item: how much is already scheduled (has expectations at all, and how much
-    // of planned_qty those expectations account for) — the edit form needs both to
-    // decide what's safe to shrink/remove.
+    // Per item, the edit form needs to tell two very different things apart:
+    //   open_scheduled_qty = expectations still at 'expected' — only a schedule, so editing
+    //     the product or dropping the row is allowed (it just warns first).
+    //   locked_qty / locked_count = confirmed or closed-short expectations — goods that really
+    //     moved. Those are the hard floor; only a Super Admin force can go past them.
+    // Keep in sync with the same split in update_stock_plan.php.
     $itemStmt = $pdo->prepare("
         SELECT i.id, i.product_id, i.planned_qty, pr.sku, pr.name AS product_name,
-               COALESCE(SUM(e.expected_qty), 0) AS scheduled_qty,
+               COALESCE(SUM(CASE WHEN e.status = 'expected' THEN e.expected_qty ELSE 0 END), 0) AS open_scheduled_qty,
+               COALESCE(SUM(CASE WHEN e.status <> 'expected' THEN e.expected_qty ELSE 0 END), 0) AS locked_qty,
+               COUNT(CASE WHEN e.status <> 'expected' THEN 1 END) AS locked_count,
                COUNT(e.id) AS expectation_count
         FROM stock_arrival_plan_items i
         JOIN stock_arrival_products pr ON i.product_id = pr.id
@@ -48,7 +53,9 @@ try {
             'planned_qty' => (int)$row['planned_qty'],
             'sku' => $row['sku'],
             'product_name' => $row['product_name'],
-            'scheduled_qty' => (int)$row['scheduled_qty'],
+            'open_scheduled_qty' => (int)$row['open_scheduled_qty'],
+            'locked_qty' => (int)$row['locked_qty'],
+            'locked_count' => (int)$row['locked_count'],
             'has_expectations' => (int)$row['expectation_count'] > 0,
         ];
     }

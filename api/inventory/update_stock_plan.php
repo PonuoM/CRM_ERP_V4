@@ -24,9 +24,13 @@ try {
     $notes = $input['notes'] ?? '';
     $items = $input['items'] ?? [];
     $userId = $input['user_id'] ?? null;
+    $force = !empty($input['force']); // ข้ามด่าน "ห้ามแตะรายการที่รับเข้าจริงแล้ว" -- Super Admin เท่านั้น
 
     // แก้ไขแพลนได้เฉพาะบัญชีที่ได้รับสิทธิ์ (เกณฑ์เดียวกับเพิ่ม/ลบแพลน)
     stock_plan_require_manage($pdo, $userId);
+    if ($force && !stock_plan_is_super_admin($pdo, $userId)) {
+        $force = false;
+    }
 
     if (!$planId) {
         throw new Exception('Missing plan id');
@@ -48,12 +52,17 @@ try {
         throw new Exception('Plan not found');
     }
 
-    // Existing items keyed by id, with how much is already scheduled against each
-    // (an item that already has expectations can't have its product changed or its
-    // quantity reduced below what's already been scheduled — that would either
-    // silently invalidate real scheduling history or make remaining_qty negative).
+    // Existing items keyed by id, split into what's still editable vs. what's already history.
+    //   locked_qty / locked_count = expectations that were confirmed or closed short — real
+    //     goods movements. Changing the product or dropping the item would rewrite what the
+    //     warehouse actually received, so that needs a Super Admin force.
+    //   Expectations still sitting at 'expected' are just a schedule; correcting them is
+    //     ordinary editing, so the product can change and the item can be dropped (its
+    //     scheduled rows cascade away with it).
     $existingStmt = $pdo->prepare("
-        SELECT i.id, i.product_id, COALESCE(SUM(e.expected_qty), 0) AS scheduled_qty
+        SELECT i.id, i.product_id,
+               COALESCE(SUM(CASE WHEN e.status <> 'expected' THEN e.expected_qty ELSE 0 END), 0) AS locked_qty,
+               COUNT(CASE WHEN e.status <> 'expected' THEN 1 END) AS locked_count
         FROM stock_arrival_plan_items i
         LEFT JOIN stock_arrival_plan_expectations e ON e.item_id = i.id
         WHERE i.plan_id = ?
@@ -64,7 +73,8 @@ try {
     foreach ($existingStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $existingItems[(int)$row['id']] = [
             'product_id' => (int)$row['product_id'],
-            'scheduled_qty' => (int)$row['scheduled_qty'],
+            'locked_qty' => (int)$row['locked_qty'],
+            'locked_count' => (int)$row['locked_count'],
         ];
     }
 
@@ -76,14 +86,14 @@ try {
     }
 
     // Items dropped from the submitted list = the user wants to remove them.
-    // Only allow that if nothing has been scheduled against them yet.
     foreach ($existingItems as $existingId => $existing) {
         if (in_array($existingId, $submittedIds, true)) {
             continue;
         }
-        if ($existing['scheduled_qty'] > 0) {
-            throw new Exception("ลบรายการสินค้าที่มีการกำหนดวันที่คาดว่าจะเข้าไปแล้วไม่ได้ (item id $existingId)");
+        if ($existing['locked_count'] > 0 && !$force) {
+            throw new Exception("ลบรายการสินค้าที่ยืนยันรับเข้าจริงไปแล้วไม่ได้ (item id $existingId)");
         }
+        // Cascades to its expectations via FK
         $pdo->prepare("DELETE FROM stock_arrival_plan_items WHERE id = ?")->execute([$existingId]);
     }
 
@@ -97,11 +107,11 @@ try {
 
         if ($itemId && isset($existingItems[$itemId])) {
             $existing = $existingItems[$itemId];
-            if ($plannedQty < $existing['scheduled_qty']) {
-                throw new Exception("จำนวนใหม่ต่ำกว่ายอดที่กำหนดวันที่คาดว่าจะเข้าไปแล้ว (item id $itemId ต้องไม่ต่ำกว่า {$existing['scheduled_qty']})");
+            if ($plannedQty < $existing['locked_qty'] && !$force) {
+                throw new Exception("จำนวนใหม่ต่ำกว่ายอดที่ยืนยันรับเข้าจริงไปแล้ว (item id $itemId ต้องไม่ต่ำกว่า {$existing['locked_qty']})");
             }
-            if ($productId !== $existing['product_id'] && $existing['scheduled_qty'] > 0) {
-                throw new Exception("เปลี่ยนสินค้าของรายการที่กำหนดวันที่คาดว่าจะเข้าไปแล้วไม่ได้ (item id $itemId)");
+            if ($productId !== $existing['product_id'] && $existing['locked_count'] > 0 && !$force) {
+                throw new Exception("เปลี่ยนสินค้าของรายการที่ยืนยันรับเข้าจริงไปแล้วไม่ได้ (item id $itemId)");
             }
             $updateStmt->execute([$productId, $plannedQty, $itemId]);
         } else {

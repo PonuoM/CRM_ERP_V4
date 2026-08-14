@@ -31,10 +31,28 @@
 
 ## 3. 🧠 ลอจิกสำคัญ (Critical Business Logic)
 
-### 3.1 ระบบ "Ghost Plan" (แพลนที่ถูกเลื่อน)
-หากสินค้าถูกเลื่อนวันรับ (Rescheduled) ระบบจะไม่สร้างแถวใหม่ใน DB แต่จะใช้วิธี **"หลอกตา" (Ghost Rendering)** ในหน้า Frontend:
-- ถ้ารายการนั้นมีสถานะ `rescheduled` ระบบ Frontend จะเรนเดอร์ในวันเดิมด้วยสไตล์จางๆ และแสดงสถานะ "เลื่อน" 
-- และจะแสดงรายการเดียวกันใน **วันใหม่ (New Expected Date)** ในรูปแบบสีสดใส
+### 3.1 การเลื่อนวัน (Rescheduled) — 1 รายการ = 1 วันเท่านั้น
+หากสินค้าถูกเลื่อนวันรับ รายการจะแสดงที่ **วันใหม่วันเดียว** (`display_date` = `actual_date ?? expected_date`) ไม่ค้างไว้วันเดิม
+
+> **หมายเหตุประวัติ:** เดิมระบบใช้ "Ghost Rendering" คือเรนเดอร์สำเนาจางๆ (👻 opacity-40) ค้างไว้วันเดิมด้วย
+> ถูกถอดออกแล้วเพราะผู้ใช้อ่านแล้วสับสน — เห็นของซ้ำสองวันแล้วแยกไม่ออกว่าวันไหนคือวันจริง
+> ถ้าจะเอากลับมา อย่าทำเป็นสำเนาในปฏิทิน ให้ไปทำเป็นไทม์ไลน์ใน Day Panel แทน
+
+ที่มาของรายการที่ถูกเลื่อนแสดงผ่าน `movedFromLabel()` ใน `types.ts` — เป็นข้อความบรรทัดเดียวติดอยู่กับตัวรายการ
+(เช่น "เลื่อนจากแพลน 27/07/2569" / "คาดไว้ 11/08/2569") โชว์ทั้งใน tooltip ของปฏิทินและใน Day Panel
+
+### 3.1.1 การแก้ไข: 2 ระดับ
+| ระดับ | ที่ | แก้อะไรได้ | API |
+|---|---|---|---|
+| **แพลน** | ปุ่ม ✏️ หัวการ์ดใน Day Panel | วันที่แพลน, หมายเหตุ, เพิ่ม/ลบ/เปลี่ยนสินค้า, จำนวนแพลน | `update_stock_plan.php` |
+| **สินค้ารายตัว** | ปุ่ม "แก้ไขรายการนี้" ในแต่ละแถว | วันที่คาดว่าจะเข้า (= เลื่อนวัน), จำนวน, เลข SO + ยกเลิกวันที่ | `update_stock_plan_expectation.php`, `delete_stock_plan_expectation.php` |
+
+**เส้นแบ่งว่าอะไรแก้ได้/ไม่ได้** — ดูที่ `stock_arrival_plan_expectations.status`:
+- `expected` (ยังไม่รับเข้า) = แค่ตารางนัด แก้/ลบ/เปลี่ยนสินค้าได้ตามปกติ
+- `confirmed` / `closed_short` = ของเข้าคลังจริงแล้ว เป็นประวัติ **ห้ามแก้** ยกเว้น Super Admin ส่ง `force: true`
+
+ตรรกะนี้อยู่ทั้งใน `update_stock_plan.php` (`locked_qty` / `locked_count`) และ `get_stock_plan.php`
+(`open_scheduled_qty` / `locked_qty` / `locked_count`) — **แก้ที่ใดที่หนึ่งต้องแก้อีกที่ด้วย**
 
 ### 3.2 การคำนวณเลขสัปดาห์ (Week Number Calculation)
 - ระบบใช้มาตรฐาน ISO 8601 (สัปดาห์เริ่มวันจันทร์)
@@ -54,10 +72,13 @@
 - `components/StockArrivalPlanning/StockPlanCalendar.tsx` (ปฏิทิน)
 - `components/StockArrivalPlanning/StockPlanReport.tsx` (รายงานตัน)
 - `components/StockArrivalPlanning/StockPlanSettings.tsx` (หน้าตั้งค่า 3 แท็บ)
-- `components/StockPlanFormModal.tsx` (ฟอร์มเพิ่ม/แก้ไขแพลน)
+- `components/StockPlanFormModal.tsx` (ฟอร์มเพิ่ม/แก้ไขแพลน — ระดับแพลน)
+- `components/StockPlanExpectationEditModal.tsx` (แก้ไขวันที่/จำนวน/SO — ระดับสินค้ารายตัว)
+- `components/StockPlanScheduleModal.tsx` (กำหนดวันที่คาดว่าจะเข้าครั้งแรก), `StockPlanReconcileModal.tsx` (ยืนยันรับเข้า)
 
 **Backend:**
 - API สำหรับรายการแพลน: `api/inventory/list_stock_plans.php`, `save_stock_plan.php`
+- API ระดับสินค้ารายตัว: `update_stock_plan_expectation.php`, `delete_stock_plan_expectation.php`
 - API สำหรับตั้งค่า: `list_stock_plan_products.php`, `save_factory_holiday.php`
 - **Migrations:** `062_stock_arrival_products_catalog.sql`, `063_factory_holidays.sql`
 

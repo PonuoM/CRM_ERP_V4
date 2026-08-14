@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, CalendarPlus } from 'lucide-react';
 import { User } from '@/types';
 import { addStockPlanExpectation } from '@/services/api';
-import { PendingStockPlanRow } from '@/pages/StockArrivalPlanningPage';
+import { PendingStockPlanRow } from '@/components/StockArrivalPlanning/types';
 
 interface StockPlanScheduleModalProps {
   pending: PendingStockPlanRow;

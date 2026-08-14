@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, CalendarDays, Loader2 } from 'lucide-react';
-import { Product, User } from '@/types';
+import { Product, User, UserRole } from '@/types';
 import { createStockPlan, getStockPlan, updateStockPlan } from '@/services/api';
 import ProductSearchSelect from '@/components/ProductSearchSelect';
 
@@ -9,8 +9,13 @@ interface ItemDraft {
   id?: number; // present only when editing an existing item
   product_id: number | '';
   planned_qty: number | '';
-  scheduledQty?: number; // already committed via a schedule/expectation — floor for planned_qty
-  hasExpectations?: boolean; // locks product_id and blocks removal
+  // Scheduled but not yet received — still just a plan, so the row stays editable; changing the
+  // product or removing the row throws that schedule away, which the UI warns about first.
+  openScheduledQty?: number;
+  // Confirmed / closed-short — goods that really moved. Floor for planned_qty, and the product
+  // can't be swapped out from under them unless a Super Admin forces it.
+  lockedQty?: number;
+  lockedCount?: number;
 }
 
 interface StockPlanFormModalProps {
@@ -25,9 +30,12 @@ interface StockPlanFormModalProps {
 
 const StockPlanFormModal: React.FC<StockPlanFormModalProps> = ({ plannedDate, editPlanId, products, companyId, currentUser, onClose, onSaved }) => {
   const isEdit = !!editPlanId;
+  const isSuperAdmin = currentUser?.role === UserRole.SuperAdmin;
   const [planDate, setPlanDate] = useState(plannedDate ?? new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<ItemDraft[]>([{ product_id: '', planned_qty: '' }]);
+  // สำเนาตอนโหลด — ใช้เทียบว่าผู้ใช้ "แตะ" รายการที่รับเข้าจริงไปแล้วจริงหรือเปล่า
+  const [originalItems, setOriginalItems] = useState<ItemDraft[]>([]);
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,15 +49,16 @@ const StockPlanFormModal: React.FC<StockPlanFormModalProps> = ({ plannedDate, ed
         if (!mounted || !res?.success) return;
         setPlanDate(res.plan.planned_date);
         setNotes(res.plan.notes || '');
-        setItems(
-          (res.items || []).map((it: any) => ({
-            id: it.id,
-            product_id: it.product_id,
-            planned_qty: it.planned_qty,
-            scheduledQty: it.scheduled_qty || 0,
-            hasExpectations: !!it.has_expectations,
-          })),
-        );
+        const loaded: ItemDraft[] = (res.items || []).map((it: any) => ({
+          id: it.id,
+          product_id: it.product_id,
+          planned_qty: it.planned_qty,
+          openScheduledQty: it.open_scheduled_qty || 0,
+          lockedQty: it.locked_qty || 0,
+          lockedCount: it.locked_count || 0,
+        }));
+        setItems(loaded);
+        setOriginalItems(loaded);
       })
       .catch((err: any) => {
         if (mounted) setError(err?.data?.error || err?.message || 'โหลดข้อมูลแพลนไม่สำเร็จ');
@@ -63,10 +72,33 @@ const StockPlanFormModal: React.FC<StockPlanFormModalProps> = ({ plannedDate, ed
   }, [editPlanId]);
 
   const addItemRow = () => setItems(prev => [...prev, { product_id: '', planned_qty: '' }]);
-  const removeItemRow = (index: number) => setItems(prev => prev.filter((_, i) => i !== index));
+
+  const removeItemRow = (index: number) => {
+    const row = items[index];
+    if (row?.openScheduledQty) {
+      const name = products.find(p => p.id === row.product_id)?.name ?? `สินค้า #${row.product_id}`;
+      if (!confirm(`"${name}" กำหนดวันที่คาดว่าจะเข้าไว้แล้ว ${row.openScheduledQty} หน่วย\n\nลบรายการนี้ = ยกเลิกวันที่ที่กำหนดไว้ทั้งหมดด้วย ยืนยันหรือไม่?`)) return;
+    }
+    setItems(prev => prev.filter((_, i) => i !== index));
+  };
+
   const updateItemField = (index: number, field: 'product_id' | 'planned_qty', value: any) => {
     setItems(prev => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
   };
+
+  // แตะรายการที่ยืนยันรับเข้าจริงไปแล้วหรือเปล่า (เปลี่ยนสินค้า / ลบทิ้ง / ลดจำนวนต่ำกว่าที่รับจริง)
+  // = แก้ประวัติของที่เข้าคลังจริง ต้องส่ง force และเซิร์ฟเวอร์ยอมเฉพาะ Super Admin
+  // แค่ "มี" รายการที่รับเข้าแล้วอยู่ในแพลนไม่นับ — ไม่งั้น Super Admin จะไม่เหลือด่านกันพลาดเลย
+  const touchesReceivedHistory = useMemo(() => {
+    const current = new Map(items.filter(row => row.id).map(row => [row.id!, row]));
+    return originalItems.some(orig => {
+      if (!orig.id || !(orig.lockedCount ?? 0)) return false;
+      const row = current.get(orig.id);
+      if (!row) return true; // ลบทิ้ง
+      if (Number(row.product_id) !== Number(orig.product_id)) return true; // เปลี่ยนสินค้า
+      return Number(row.planned_qty || 0) < (orig.lockedQty ?? 0); // ลดต่ำกว่ายอดที่รับจริง
+    });
+  }, [items, originalItems]);
 
   const handleSave = async () => {
     setError(null);
@@ -79,9 +111,12 @@ const StockPlanFormModal: React.FC<StockPlanFormModalProps> = ({ plannedDate, ed
       setError('กรุณาระบุสินค้าและจำนวนแพลนให้ครบทุกแถว (มากกว่า 0)');
       return;
     }
-    const belowScheduled = items.find(row => row.scheduledQty && Number(row.planned_qty) < row.scheduledQty);
-    if (belowScheduled) {
-      setError(`จำนวนต้องไม่ต่ำกว่ายอดที่กำหนดวันที่คาดว่าจะเข้าไปแล้ว (${belowScheduled.scheduledQty})`);
+    const belowReceived = items.find(row => row.lockedQty && Number(row.planned_qty) < row.lockedQty);
+    if (belowReceived && !isSuperAdmin) {
+      setError(`จำนวนต้องไม่ต่ำกว่ายอดที่ยืนยันรับเข้าจริงไปแล้ว (${belowReceived.lockedQty})`);
+      return;
+    }
+    if (touchesReceivedHistory && !confirm('แพลนนี้มีสินค้าที่ยืนยันรับเข้าจริงไปแล้ว และการแก้ครั้งนี้จะทับประวัติของที่เข้าคลังจริง\n\nยืนยันหรือไม่?')) {
       return;
     }
 
@@ -99,6 +134,7 @@ const StockPlanFormModal: React.FC<StockPlanFormModalProps> = ({ plannedDate, ed
           planned_date: planDate,
           notes,
           user_id: currentUser?.id,
+          force: touchesReceivedHistory,
           items: itemPayload,
         });
       } else {
@@ -176,13 +212,15 @@ const StockPlanFormModal: React.FC<StockPlanFormModalProps> = ({ plannedDate, ed
               <div className="space-y-2">
                 {items.map((row, index) => {
                   const product = products.find(p => p.id === row.product_id);
-                  const locked = !!row.hasExpectations;
+                  const received = row.lockedCount ?? 0;
+                  // รายการที่รับเข้าจริงแล้วล็อกไว้ ยกเว้น Super Admin ที่แก้ทับได้ (ส่ง force ไปให้เซิร์ฟเวอร์)
+                  const locked = received > 0 && !isSuperAdmin;
                   return (
                     <div key={row.id ?? `new-${index}`} className="border rounded-lg p-2 bg-white" style={{ width: '100%', boxSizing: 'border-box' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
                         <div style={{ flex: '1 1 0%', minWidth: 0 }}>
                           {locked ? (
-                            <div className="px-2 py-1.5 text-sm text-gray-600 bg-gray-50 rounded-lg border border-dashed" title="กำหนดวันที่คาดว่าจะเข้าไปแล้ว เปลี่ยนสินค้าไม่ได้">
+                            <div className="px-2 py-1.5 text-sm text-gray-600 bg-gray-50 rounded-lg border border-dashed" title="ยืนยันรับเข้าจริงไปแล้ว เปลี่ยนสินค้าไม่ได้">
                               {product?.name || `สินค้า #${row.product_id}`}
                             </div>
                           ) : (
@@ -213,9 +251,16 @@ const StockPlanFormModal: React.FC<StockPlanFormModalProps> = ({ plannedDate, ed
                           </button>
                         )}
                       </div>
-                      {row.scheduledQty ? (
+                      {received > 0 && (
+                        <p className={`text-[11px] mt-1 ${isSuperAdmin ? 'text-red-600' : 'text-gray-500'}`}>
+                          {isSuperAdmin
+                            ? `ยืนยันรับเข้าจริงไปแล้ว ${row.lockedQty} หน่วย — แก้ได้เพราะเป็น Super Admin แต่จะทับประวัติของที่รับเข้าจริง`
+                            : `ยืนยันรับเข้าจริงไปแล้ว ${row.lockedQty} หน่วย — เปลี่ยนสินค้า/ลบทิ้งไม่ได้ และจำนวนต้องไม่ต่ำกว่านี้`}
+                        </p>
+                      )}
+                      {row.openScheduledQty ? (
                         <p className="text-[11px] text-amber-600 mt-1">
-                          กำหนดวันที่คาดว่าจะเข้าไปแล้ว {row.scheduledQty} หน่วย — ลดจำนวนต่ำกว่านี้หรือเปลี่ยนสินค้าไม่ได้
+                          กำหนดวันที่คาดว่าจะเข้าไว้แล้ว {row.openScheduledQty} หน่วย — เปลี่ยนสินค้าแล้ววันที่เดิมจะย้ายตามไปเป็นของสินค้าใหม่ / ลบรายการนี้จะยกเลิกวันที่ที่กำหนดไว้ด้วย
                         </p>
                       ) : null}
                     </div>
