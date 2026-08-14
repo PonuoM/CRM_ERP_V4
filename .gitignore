@@ -87,6 +87,11 @@ test_*.json
 test_*.csv
 investigate_*.php
 investigation_*.html
+# Ad-hoc Thai-language HTML reports left at repo root (one-off exports
+# generated for investigation; never ship these — open from disk if needed)
+*รายงาน*.html
+*ไทม์ไลน์*.html
+*timeline*.html
 temp_*.php
 temp_*.txt
 tmp_*.txt
