@@ -87,6 +87,24 @@ function parseDateDMY($dateStr)
     return $dateStr;
 }
 
+// ── Helper: normalise Duration to HH:MM:SS ──
+// OneCall เปลี่ยนรูปแบบคอลัมน์ Duration ใน CSV จาก "HH:MM:SS" เป็น "วินาทีล้วน" (ไฟล์แรกที่เจอ = batch 228,
+// อัปเมื่อ 10 ส.ค. 2026 ครอบข้อมูลตั้งแต่ 6 ส.ค.) ทุกรายงานอ่านค่านี้ด้วย TIME_TO_SEC() ซึ่งตีความ
+// วินาทีล้วนไม่ได้ — TIME_TO_SEC('60') คืน NULL, TIME_TO_SEC('130') คืน 90 — ทำให้ยอด "ได้คุย" และ
+// "นาทีคุย" ต่ำกว่าจริงถึง 40-60% จึงต้องแปลงเป็น HH:MM:SS ตั้งแต่ตอน import
+function normalizeDuration($raw)
+{
+    $val = trim((string) $raw);
+    if ($val === '')
+        return '00:00:00';
+    if (strpos($val, ':') !== false)
+        return $val;            // เป็น HH:MM:SS อยู่แล้ว
+    if (!ctype_digit($val))
+        return '00:00:00';      // ค่าแปลกปลอม — กันไม่ให้ TIME_TO_SEC พังเงียบๆ
+    $sec = (int) $val;
+    return sprintf('%02d:%02d:%02d', intdiv($sec, 3600), intdiv($sec % 3600, 60), $sec % 60);
+}
+
 // ── Pre-load user phones for matching (scoped by company_id) ──
 $userPhones = [];
 if ($companyId) {
@@ -198,7 +216,7 @@ try {
         $termReason = $getCol($row, 'TerminatedReason');
         $reasonChange = $getCol($row, 'ReasonChange');
         $finalNumber = $getCol($row, 'FinalNumber');
-        $duration = $getCol($row, 'Duration');
+        $duration = normalizeDuration($getCol($row, 'Duration'));
         $recType = $getCol($row, 'RecType');
         $chargingGroup = $getCol($row, 'ChargingGroup');
         $bgName = $getCol($row, 'BusinessGroupName');

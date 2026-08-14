@@ -52,7 +52,6 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     const [customStartTime, setCustomStartTime] = useState<string>('00:00');
     const [customEndTime, setCustomEndTime] = useState<string>('23:59');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
-    const [holdingCap, setHoldingCap] = useState<string>('400');
     const [loadingHoldingCounts, setLoadingHoldingCounts] = useState(false);
 
     const selectAllRef = useRef<HTMLInputElement>(null);
@@ -111,9 +110,10 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [callFilterStartDate, callFilterEndDate, callFilterShift, customStartTime, customEndTime, agents.length, callDataSource]);
 
-    // Quota-400 concept (manual cap — see meeting 3 Aug 2026): show each
-    // agent's current holding load next to the cap so the admin can keep
-    // applying it by eye without a side calculation. Not enforced here.
+    // แสดงยอดที่แต่ละคนถืออยู่ตอนนี้ ไว้ประกอบการตัดสินใจว่าจะแจกให้ใครเพิ่ม — ไม่ได้บังคับหรือกันการแจก
+    // เคยมีช่อง "เพดานยอดถือครอง (ต่อคน) = 400" คู่กับคอลัมน์นี้ แต่ถอดออกแล้ว เพราะ 400 ที่ตกลงกันไว้
+    // (ประชุม 3 ส.ค. 2026) หมายถึง "แจกครั้งละ 400 รายชื่อ" ไม่ใช่ "ถือครองได้ไม่เกิน 400 ต่อคน"
+    // จำนวนต่อรอบดูได้ที่ "จำนวนรวม / ≈ N ต่อคน" ท้ายตาราง
     const fetchHoldingCounts = useCallback(async () => {
         if (!agents || agents.length === 0) return;
 
@@ -337,16 +337,6 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                         min={0}
                     />
                 </div>
-                <div>
-                    <label className="block text-xs font-semibold text-orange-800 mb-1">เพดานยอดถือครอง (ต่อคน)</label>
-                    <input
-                        type="number"
-                        value={holdingCap}
-                        onChange={(e) => setHoldingCap(e.target.value)}
-                        className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 w-24 text-center"
-                        min={0}
-                    />
-                </div>
                 <div className="flex-1">
                     <button
                         onClick={() => {
@@ -412,7 +402,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                 <th className="p-3 text-center font-medium text-gray-600">Action</th>
                                 <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
                                 <th className="p-3 text-center font-medium text-gray-600" title="นับเฉพาะถังหาคนดูแลใหม่, รอคนมาจีบ, 6-9 เดือน, 9-12 เดือน, 1-3 ปี และถังส่วนตัว 3 เดือน — ไม่รวมรายชื่อที่มีนัดหมาย">
-                                    ยอดถือครอง / เพดาน
+                                    ยอดถือครอง
                                 </th>
                                 {dashboardBaskets.map(basket => (
                                     <th key={basket.basket_key} className="text-center p-3 text-xs font-medium text-gray-600 bg-gray-50 whitespace-nowrap">
@@ -488,14 +478,10 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                                 <span className="text-gray-300 text-xs">...</span>
                                             ) : (
                                                 <span
-                                                    className={`font-semibold ${
-                                                        (agent.holdingCount ?? 0) > (parseInt(holdingCap) || 0)
-                                                            ? 'text-red-600'
-                                                            : 'text-gray-700'
-                                                    }`}
-                                                    title="ยอดนี้ยังไม่บังคับ ไม่กันการแจก แสดงไว้ให้ใช้ประกอบการตัดสินใจเท่านั้น"
+                                                    className="font-semibold text-gray-700"
+                                                    title="ยอดที่ถืออยู่ตอนนี้ ไม่บังคับ ไม่กันการแจก แสดงไว้ให้ใช้ประกอบการตัดสินใจเท่านั้น"
                                                 >
-                                                    {agent.holdingCount ?? 0} / {holdingCap || 0}
+                                                    {agent.holdingCount ?? 0}
                                                 </span>
                                             )}
                                         </td>
