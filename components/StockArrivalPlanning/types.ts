@@ -21,7 +21,6 @@ export interface PendingStockPlanRow {
   remaining_qty: number;
   item: StockPlanItemRef;
   plan: StockPlanRef;
-  is_ghost?: boolean;
 }
 
 export interface StockPlanExpectation {
@@ -42,7 +41,6 @@ export interface StockPlanExpectation {
   confirmed_at?: string | null;
   item: StockPlanItemRef;
   plan: StockPlanRef;
-  is_ghost?: boolean;
 }
 
 export type StockPlanRow = PendingStockPlanRow | StockPlanExpectation;
@@ -110,6 +108,32 @@ export const formatTon = (qty: number, divisor: number | null | undefined) => {
 };
 
 export const shortStamp = (ts?: string | null) => (ts ? ts.slice(0, 16) : '');
+
+/** "2026-07-27" -> "27/07/2569" */
+export const thaiDate = (date?: string | null) => {
+  if (!date) return '';
+  const [y, m, d] = date.slice(0, 10).split('-');
+  if (!y || !m || !d) return date;
+  return `${d}/${m}/${Number(y) + 543}`;
+};
+
+/**
+ * ป้ายบอกที่มาของรายการที่ไม่ได้อยู่วันเดียวกับแพลนตั้งต้น (null = ไม่ได้เลื่อน)
+ *
+ * แทนที่ระบบ "Ghost Plan" เดิมที่เรนเดอร์สำเนาจางๆ ไว้วันเก่า — ตอนนี้รายการจะอยู่ที่วันจริง
+ * วันเดียว แล้วบอกที่มาไว้ในตัวรายการแทน เพื่อไม่ให้ปฏิทินมีของซ้ำสองวัน
+ */
+export const movedFromLabel = (row: StockPlanRow): string | null => {
+  if (row.kind !== 'expectation') return null;
+  const shown = row.display_date.slice(0, 10);
+  const planned = row.plan.planned_date ? row.plan.planned_date.slice(0, 10) : null;
+  const expected = row.expected_date ? row.expected_date.slice(0, 10) : null;
+
+  // เข้าจริงคนละวันกับที่คาดไว้ — บอกวันที่คาดไว้เป็นหลัก
+  if (expected && expected !== shown) return `คาดไว้ ${thaiDate(expected)}`;
+  if (planned && planned !== shown) return `เลื่อนจากแพลน ${thaiDate(planned)}`;
+  return null;
+};
 
 /** "2026-08-03 14:20:11" -> "03/08/2569 14:20" (ใช้ในไทม์ไลน์หมายเหตุ) */
 export const noteStamp = (ts?: string | null) => {

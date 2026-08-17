@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Plus,
   Trash2,
+  Pencil,
   PackageCheck,
   CalendarPlus,
   X,
@@ -31,8 +32,9 @@ import {
 import StockPlanFormModal from '@/components/StockPlanFormModal';
 import StockPlanScheduleModal from '@/components/StockPlanScheduleModal';
 import StockPlanReconcileModal from '@/components/StockPlanReconcileModal';
+import StockPlanExpectationEditModal from '@/components/StockPlanExpectationEditModal';
 
-import { StockPlanRow, ProductSummary, TonDivisorRow, StockPlanNote, StockPlanAccess, STATUS_META, rowStatus, shortStamp } from '@/components/StockArrivalPlanning/types';
+import { StockPlanRow, StockPlanExpectation, ProductSummary, TonDivisorRow, StockPlanNote, StockPlanAccess, STATUS_META, rowStatus, shortStamp, movedFromLabel } from '@/components/StockArrivalPlanning/types';
 import StockPlanCalendar from '@/components/StockArrivalPlanning/StockPlanCalendar';
 import StockPlanReport from '@/components/StockArrivalPlanning/StockPlanReport';
 import StockPlanSettings from '@/components/StockArrivalPlanning/StockPlanSettings';
@@ -72,9 +74,11 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
   const [error, setError] = useState<string | null>(null);
 
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [formDate, setFormDate] = useState<string | null | undefined>(undefined); 
+  const [formDate, setFormDate] = useState<string | null | undefined>(undefined);
+  const [editPlanId, setEditPlanId] = useState<number | null>(null);
   const [scheduleTarget, setScheduleTarget] = useState<any | null>(null);
   const [reconcileTarget, setReconcileTarget] = useState<any | null>(null);
+  const [editExpectation, setEditExpectation] = useState<StockPlanExpectation | null>(null);
 
   const isSuperAdmin = currentUser?.role === UserRole.SuperAdmin;
   const effectiveCompanyId = companyId ?? currentUser?.companyId;
@@ -210,36 +214,21 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
     };
   }, [productSummaries]);
 
-  // Process rows for Calendar and Side Panel
+  // Process rows for Calendar and Side Panel.
+  // Each row lands on exactly one day — the day it is actually expected/arrived on. A rescheduled
+  // item used to also render a faded "ghost" copy back on its original planned date, which read as
+  // a second, still-pending arrival; the origin is now shown as a label on the row itself instead.
   const itemsByDay = useMemo(() => {
     const map: Record<string, StockPlanRow[]> = {};
-    
+
     rows.forEach(row => {
       const realDate = row.display_date.slice(0, 10);
-      
-      // Add real item
       if (!map[realDate]) map[realDate] = [];
-      map[realDate].push({ ...row, is_ghost: false });
-
-      // Ghost Plan Logic: if it's an expectation and it has been rescheduled from its original planned date
-      if (row.kind === 'expectation' && row.plan.planned_date) {
-        const plannedDate = row.plan.planned_date.slice(0, 10);
-        if (plannedDate !== realDate) {
-          if (!map[plannedDate]) map[plannedDate] = [];
-          // Inject a ghost copy
-          map[plannedDate].push({ ...row, is_ghost: true });
-        }
-      }
+      map[realDate].push(row);
     });
-    
-    // Sort items within each day
+
     Object.values(map).forEach(list => {
-      list.sort((a, b) => {
-        // Real plans first, ghost plans last
-        if (a.is_ghost && !b.is_ghost) return 1;
-        if (!a.is_ghost && b.is_ghost) return -1;
-        return (a.item.product_name ?? '').localeCompare(b.item.product_name ?? '');
-      });
+      list.sort((a, b) => (a.item.product_name ?? '').localeCompare(b.item.product_name ?? '', 'th'));
     });
 
     return map;
@@ -398,52 +387,69 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
                   )}
                 </div>
                 {canManage && (
-                  <button onClick={() => handleDeletePlan(group.plan.id)} className="shrink-0 text-gray-400 hover:text-red-600" title="ลบแพลน (ฉุกเฉิน)">
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setEditPlanId(group.plan.id)} className="text-gray-400 hover:text-blue-600" title="แก้ไขแพลน">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => handleDeletePlan(group.plan.id)} className="text-gray-400 hover:text-red-600" title="ลบแพลน (ฉุกเฉิน)">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="divide-y">
-                {group.rows.map((row, i) => (
-                  <div key={i} className={`p-3 ${row.is_ghost ? 'opacity-50 bg-gray-50' : ''}`}>
-                    <div className="flex justify-between items-start gap-2 mb-1">
-                      <span className="font-medium text-sm">
-                        {row.is_ghost && <span className="text-orange-500 text-xs mr-1">👻 (เลื่อนไป {row.display_date.slice(0,10)})</span>}
-                        {productLabel(row)}
-                      </span>
-                      {renderStatusBadge(rowStatus(row))}
-                    </div>
-                    {row.kind === 'expectation' && row.so_number && <div className="text-xs text-gray-400">SO: {row.so_number}</div>}
-                    
-                    {row.kind === 'pending' ? (
-                      <>
-                        <div className="text-xs text-gray-500">แพลนรวม {row.item.planned_qty} · ยังไม่กำหนดวันที่ {row.remaining_qty}</div>
-                        <button
-                          onClick={() => handleRowAction(row)}
-                          className="mt-2 text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center gap-1 border border-blue-200 rounded-lg px-2 py-1 hover:bg-blue-50"
-                        >
-                          <CalendarPlus size={14} /> กำหนดวันที่คาดว่าจะเข้า
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-xs text-gray-500">
-                          คาดว่าจะเข้า {row.expected_qty}
-                          {row.actual_qty !== null ? ` · จริง ${row.actual_qty}` : ''}
-                        </div>
-                        {row.note && <div className="text-xs text-gray-400 mt-1">หมายเหตุ: {row.note}</div>}
-                        {!row.is_ghost && row.status === 'expected' && (
+                {group.rows.map((row, i) => {
+                  const movedFrom = movedFromLabel(row);
+                  return (
+                    <div key={i} className="p-3">
+                      <div className="flex justify-between items-start gap-2 mb-1">
+                        <span className="font-medium text-sm">{productLabel(row)}</span>
+                        {renderStatusBadge(rowStatus(row))}
+                      </div>
+                      {movedFrom && <div className="text-xs text-orange-600 mb-1">{movedFrom}</div>}
+                      {row.kind === 'expectation' && row.so_number && <div className="text-xs text-gray-400">SO: {row.so_number}</div>}
+
+                      {row.kind === 'pending' ? (
+                        <>
+                          <div className="text-xs text-gray-500">แพลนรวม {row.item.planned_qty} · ยังไม่กำหนดวันที่ {row.remaining_qty}</div>
                           <button
                             onClick={() => handleRowAction(row)}
                             className="mt-2 text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center gap-1 border border-blue-200 rounded-lg px-2 py-1 hover:bg-blue-50"
                           >
-                            <PackageCheck size={14} /> ยืนยันรับเข้า
+                            <CalendarPlus size={14} /> กำหนดวันที่คาดว่าจะเข้า
                           </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                ))}
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xs text-gray-500">
+                            คาดว่าจะเข้า {row.expected_qty}
+                            {row.actual_qty !== null ? ` · จริง ${row.actual_qty}` : ''}
+                          </div>
+                          {row.note && <div className="text-xs text-gray-400 mt-1">หมายเหตุ: {row.note}</div>}
+                          {row.status === 'expected' && (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <button
+                                onClick={() => handleRowAction(row)}
+                                className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center gap-1 border border-blue-200 rounded-lg px-2 py-1 hover:bg-blue-50"
+                              >
+                                <PackageCheck size={14} /> ยืนยันรับเข้า
+                              </button>
+                              {canManage && (
+                                <button
+                                  onClick={() => setEditExpectation(row)}
+                                  className="text-gray-600 hover:text-gray-800 text-xs font-medium flex items-center gap-1 border border-gray-200 rounded-lg px-2 py-1 hover:bg-gray-50"
+                                  title="แก้ไขวันที่ / จำนวน / เลข SO ของสินค้ารายการนี้"
+                                >
+                                  <Pencil size={13} /> แก้ไขรายการนี้
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <StockPlanNotes
@@ -576,6 +582,17 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
         />
       )}
 
+      {editPlanId !== null && (
+        <StockPlanFormModal
+          editPlanId={editPlanId}
+          products={products}
+          companyId={effectiveCompanyId}
+          currentUser={currentUser}
+          onClose={() => setEditPlanId(null)}
+          onSaved={() => { setEditPlanId(null); loadPlans(); }}
+        />
+      )}
+
       {scheduleTarget && (
         <StockPlanScheduleModal
           pending={scheduleTarget}
@@ -591,6 +608,15 @@ const StockArrivalPlanningPage: React.FC<StockArrivalPlanningPageProps> = ({ cur
           currentUser={currentUser}
           onClose={() => setReconcileTarget(null)}
           onSaved={() => { setReconcileTarget(null); loadPlans(); }}
+        />
+      )}
+
+      {editExpectation && (
+        <StockPlanExpectationEditModal
+          expectation={editExpectation}
+          currentUser={currentUser}
+          onClose={() => setEditExpectation(null)}
+          onSaved={() => { setEditExpectation(null); loadPlans(); }}
         />
       )}
     </div>

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, PackageCheck } from 'lucide-react';
 import { User } from '@/types';
 import { recordStockPlanActual } from '@/services/api';
-import { StockPlanExpectation } from '@/pages/StockArrivalPlanningPage';
+import { StockPlanExpectation } from '@/components/StockArrivalPlanning/types';
 
 interface StockPlanReconcileModalProps {
   expectation: StockPlanExpectation;

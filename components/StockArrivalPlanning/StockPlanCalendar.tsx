@@ -1,6 +1,6 @@
 import React from 'react';
 import HoverTooltip from '@/components/HoverTooltip';
-import { StockPlanRow, STATUS_META } from './types';
+import { StockPlanRow, STATUS_META, movedFromLabel } from './types';
 
 interface StockPlanCalendarProps {
   year: number;
@@ -75,11 +75,11 @@ const StockPlanCalendar: React.FC<StockPlanCalendarProps> = ({
 
   const renderTooltipContent = (row: StockPlanRow) => {
     const meta = STATUS_META[rowStatus(row)] ?? STATUS_META.pending;
+    const movedFrom = movedFromLabel(row);
     return (
       <div className="space-y-1">
         <div className="font-semibold text-white">
           {row.item.product_name ?? row.item.sku ?? row.item.product_id}
-          {row.is_ghost && <span className="ml-2 text-xs text-orange-300 border border-orange-300 px-1 rounded">ถูกเลื่อน</span>}
         </div>
         {row.item.sku && <div className="text-gray-400">SKU: {row.item.sku}</div>}
         <div className="flex items-center gap-1.5 pt-0.5">
@@ -96,11 +96,7 @@ const StockPlanCalendar: React.FC<StockPlanCalendarProps> = ({
             </div>
             {row.so_number && <div className="text-gray-300">SO: {row.so_number}</div>}
             {row.note && <div className="text-gray-400 italic">"{row.note}"</div>}
-            {row.is_ghost && (
-              <div className="text-orange-300 text-xs mt-1">
-                * แพลนนี้ถูกเลื่อนไปเป็นวันที่ {row.actual_date ?? row.expected_date}
-              </div>
-            )}
+            {movedFrom && <div className="text-orange-300 text-xs mt-1">{movedFrom}</div>}
           </>
         )}
       </div>
@@ -174,12 +170,9 @@ const StockPlanCalendar: React.FC<StockPlanCalendarProps> = ({
                     <div className="mt-1.5 space-y-0.5">
                       {dayItems.slice(0, 5).map((row, i) => {
                         const meta = STATUS_META[rowStatus(row)] ?? STATUS_META.pending;
-                        // Ghost plans get a faded look
-                        const ghostClass = row.is_ghost ? 'opacity-40 border border-dashed hover:opacity-100 transition-opacity' : '';
                         return (
                           <HoverTooltip key={i} content={renderTooltipContent(row)}>
-                            <div className={`text-[10px] px-1 py-0.5 rounded truncate ${meta.badge} ${ghostClass}`}>
-                              {row.is_ghost && '👻 '}
+                            <div className={`text-[10px] px-1 py-0.5 rounded truncate ${meta.badge}`}>
                               {calendarLabel(row)}
                             </div>
                           </HoverTooltip>

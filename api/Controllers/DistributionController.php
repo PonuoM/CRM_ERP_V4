@@ -29,6 +29,17 @@ class DistributionController {
     $triggeredBy = $input['triggered_by'] ?? null;
 
     $strictDuplicateCheck = $input['strict_duplicate_check'] ?? false;
+    $minCallMinutes = isset($input['min_call_minutes']) ? (int)$input['min_call_minutes'] : 0;
+
+    // The 110-minute Talk Time policy only governs the standard aging-based
+    // lead pool (the baskets discussed in the meeting alongside the 400-lead
+    // quota). It intentionally does NOT apply to this same endpoint's other
+    // uses — new_customer_dis, upsell_dis, marketplace_dis, the challenge
+    // baskets (no_answer/quit_farming/etc.), holding_before_redistribute, or
+    // block_customers — none of which were part of that policy discussion.
+    $talkTimeDefaultMinutes = 110;
+    $talkTimeGatedBaskets = ['find_new_owner', 'waiting_for_match', 'mid_6_9m', 'mid_9_12m', 'mid_1_3y', 'ancient'];
+    $isTalkTimeGatedBasket = in_array($sourceBasketKey, $talkTimeGatedBaskets, true);
 
     if (empty($assignments)) {
         http_response_code(400);
@@ -137,6 +148,52 @@ class DistributionController {
             }
         }
 
+        // 3. Server-side Talk Time gate.
+        // The frontend already filters agents by call minutes, but that is a
+        // convenience filter the admin can bypass entirely (e.g. the "select
+        // all" button ignores it, and simply not applying the filter sends
+        // min_call_minutes: null) — so this re-checks independently of what
+        // the client sent, using the official policy: total minutes on the
+        // previous business day (Mon-Fri), counted only within the
+        // 07:00-18:30 window, must reach the threshold. The threshold is the
+        // higher of the policy default and whatever stricter value the admin
+        // requested via the UI filter.
+        $ineligibleAgentIds = [];
+        $effectiveMinCallMinutes = $isTalkTimeGatedBasket ? max($minCallMinutes, $talkTimeDefaultMinutes) : 0;
+        if ($effectiveMinCallMinutes > 0) {
+            $minCallMinutes = $effectiveMinCallMinutes;
+            $agentIdsToCheck = array_values(array_unique(array_filter(array_column($assignments, 'agent_id'))));
+            if (!empty($agentIdsToCheck)) {
+                $prevWorkDay = date('Y-m-d', strtotime('-1 day'));
+                while (in_array((int)date('N', strtotime($prevWorkDay)), [6, 7], true)) {
+                    $prevWorkDay = date('Y-m-d', strtotime($prevWorkDay . ' -1 day'));
+                }
+
+                $agentPlaceholders = implode(',', array_fill(0, count($agentIdsToCheck), '?'));
+                $talkTimeStmt = $pdo->prepare("
+                    SELECT matched_user_id, SUM(TIME_TO_SEC(duration)) / 60 as total_minutes
+                    FROM call_import_logs
+                    WHERE call_date = ?
+                      AND start_time >= '07:00:00' AND start_time <= '18:30:00'
+                      AND status = 1
+                      AND matched_user_id IN ($agentPlaceholders)
+                    GROUP BY matched_user_id
+                ");
+                $talkTimeStmt->execute(array_merge([$prevWorkDay], $agentIdsToCheck));
+                $minutesByAgent = [];
+                while ($row = $talkTimeStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $minutesByAgent[(string)$row['matched_user_id']] = (float)$row['total_minutes'];
+                }
+
+                foreach ($agentIdsToCheck as $aId) {
+                    $minutes = $minutesByAgent[(string)$aId] ?? 0;
+                    if ($minutes < $minCallMinutes) {
+                        $ineligibleAgentIds[(string)$aId] = true;
+                    }
+                }
+            }
+        }
+
         $validAssignments = [];
         foreach ($assignments as $assignment) {
             $customerId = $assignment['customer_id'];
@@ -145,6 +202,11 @@ class DistributionController {
             if (!$customerId || !$agentId) continue;
 
             if ($strictDuplicateCheck && isset($existingChecks[$customerId . '_' . $agentId])) {
+                $failedIds[] = $customerId;
+                continue;
+            }
+
+            if (isset($ineligibleAgentIds[(string)$agentId])) {
                 $failedIds[] = $customerId;
                 continue;
             }
@@ -251,12 +313,14 @@ class DistributionController {
         // --- Distribution Session Logging ---
         if (count($successDetails) > 0) {
             $distributionMode = $input['distribution_mode'] ?? 'Unknown';
-            $minCallMinutes = isset($input['min_call_minutes']) ? (int)$input['min_call_minutes'] : null;
+            // Log the threshold that was actually enforced (0 = gate did not apply to this basket),
+            // not just whatever the client happened to send.
+            $loggedMinCallMinutes = $effectiveMinCallMinutes > 0 ? $effectiveMinCallMinutes : null;
             $agentSnapshot = isset($input['agent_snapshot']) ? json_encode($input['agent_snapshot'], JSON_UNESCAPED_UNICODE) : null;
             $tagId = isset($input['tag_id']) && $input['tag_id'] !== '' ? (int)$input['tag_id'] : null;
             
             $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, tag_id) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?)");
-            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $minCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $tagId]);
+            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $loggedMinCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $tagId]);
             $sessionId = $pdo->lastInsertId();
 
             // Bulk Insert for better performance
@@ -279,6 +343,8 @@ class DistributionController {
         }
         // ------------------------------------
 
+        clear_user_tags_on_ownership_change($pdo, $successIds, $triggeredBy ? (int)$triggeredBy : null);
+
         $pdo->commit();
 
         echo json_encode([
@@ -288,6 +354,7 @@ class DistributionController {
             'agent_stats' => $agentStats,
             'total_success' => count($successIds),
             'total_failed' => count($failedIds),
+            'ineligible_agent_ids' => array_keys($ineligibleAgentIds),
             'debug_info' => [
                 'total_active_agents' => $totalActiveAgents
             ]

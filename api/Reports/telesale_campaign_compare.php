@@ -21,6 +21,12 @@
  *     agent = COALESCE(oi.creator_id, o.creator_id) (role 6/7, company)
  *     segment = order_items.basket_key_at_sale -> campaign basket name; else "ไม่มีแคมเปญ"
  *       orders = COUNT(DISTINCT order id), sales = SUM(net_total)
+ *     Product split — ปุ๋ย vs ชีวภัณฑ์ carry very different basket sizes (Jul 2026: ~2,900 vs ~950),
+ *     so one blended AOV hides which product mix an agent actually sells. orders_fert/sales_fert
+ *     and orders_bio/sales_bio repeat the same aggregation restricted to products.category
+ *     LIKE '%ปุ๋ย%' / '%ชีวภัณฑ์%' (same rule as User_DB/telesale_performance.php).
+ *     An order carrying both categories counts once in EACH, so the two order counts do not
+ *     add up to `orders` — they exist only as AOV denominators, never as a total.
  *
  * Ownership — POINT-IN-TIME per period, from customer_ownership_snapshots:
  *     owned = the agent's customer count as it stood at the END of that period's month,
@@ -36,7 +42,8 @@
  *   supervisor_id (-> role-6 user) OR team_id (matched to a role-6 supervisor's team_id).
  *   Team name = head supervisor's first_name. Unassigned -> "ไม่มีทีม".
  *
- * Params: month_a, year_a, month_b, year_b, agent_id (filter one agent), team (filter one team head id),
+ * Params: month_a, year_a, month_b, year_b, agent_ids[] (filter to these agents; legacy agent_id
+ *         still accepted for one), team (filter one team head id),
  *         segments[] (filter by segment/basket name; empty = all; may include "ไม่มีแคมเปญ")
  */
 
@@ -76,7 +83,19 @@ try {
     [$startA, $endA] = $rangeOf($yearA, $monthA);
     [$startB, $endB] = $rangeOf($yearB, $monthB);
 
-    $filterAgent = isset($_GET['agent_id']) ? intval($_GET['agent_id']) : 0;
+    // Agent filter accepts a list (agent_ids[]=1&agent_ids[]=2). The old single `agent_id`
+    // is still honoured so any saved link / older bundle keeps working.
+    $filterAgents = [];
+    if (isset($_GET['agent_ids']) && is_array($_GET['agent_ids'])) {
+        foreach ($_GET['agent_ids'] as $v) {
+            $n = intval($v);
+            if ($n > 0) $filterAgents[] = $n;
+        }
+    }
+    if (empty($filterAgents) && isset($_GET['agent_id']) && intval($_GET['agent_id']) > 0) {
+        $filterAgents = [intval($_GET['agent_id'])];
+    }
+    $filterAgents = array_values(array_unique($filterAgents));
     $filterTeam = isset($_GET['team']) && $_GET['team'] !== '' ? $_GET['team'] : null; // head id as string, '0' = ไม่มีทีม
 
     // ---- Campaign basket id -> name (dashboard_v2 active) — loaded early so every response
@@ -182,8 +201,10 @@ try {
 
     // Apply filter (within visible set) to determine which agent ids to aggregate
     $activeIds = $visibleIds;
-    if ($filterAgent > 0) {
-        $activeIds = isset($visibleSet[$filterAgent]) ? [$filterAgent] : [];
+    if (!empty($filterAgents)) {
+        $activeIds = array_values(array_filter($filterAgents, function ($id) use ($visibleSet) {
+            return isset($visibleSet[$id]);
+        }));
     } elseif ($filterTeam !== null) {
         $activeIds = array_values(array_filter($visibleIds, function ($id) use ($userMap, $filterTeam) {
             return $userMap[$id]['team_key'] === (string) $filterTeam;
@@ -277,7 +298,11 @@ try {
         return strncmp($p, '66', 2) === 0 ? '0' . substr($p, 2) : $p;
     };
     $emptyMetrics = function () {
-        return ['names_called' => 0, 'total_calls' => 0, 'answered' => 0, 'missed' => 0, 'talked' => 0, 'orders' => 0, 'sales' => 0.0];
+        return [
+            'names_called' => 0, 'total_calls' => 0, 'answered' => 0, 'missed' => 0, 'talked' => 0,
+            'orders' => 0, 'sales' => 0.0,
+            'orders_fert' => 0, 'sales_fert' => 0.0, 'orders_bio' => 0, 'sales_bio' => 0.0,
+        ];
     };
     $emptyOwned = function () {
         return ['a' => 0, 'b' => 0];
@@ -314,14 +339,24 @@ try {
           AND call_date >= ? AND call_date < ?
         GROUP BY matched_user_id, call_termination
     ";
+    // Line amount + "counts as a real sale" predicate, reused by the total and both category splits
+    // so a change to the freebie rule can never drift between them.
+    $lineAmount = "COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)";
+    $notFreebie = "(oi.is_freebie = 0 OR oi.is_freebie IS NULL)";
+    $catFert = "p.category LIKE '%ปุ๋ย%'";
+    $catBio  = "p.category LIKE '%ชีวภัณฑ์%'";
     $saleSql = "
         SELECT COALESCE(oi.creator_id, o.creator_id) AS agent_id,
                oi.basket_key_at_sale AS basket_id,
                COUNT(DISTINCT o.id) AS orders,
-               COALESCE(SUM(CASE WHEN (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-                                 THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) AS sales
+               COALESCE(SUM(CASE WHEN $notFreebie THEN $lineAmount ELSE 0 END), 0) AS sales,
+               COUNT(DISTINCT CASE WHEN $notFreebie AND $catFert THEN o.id END) AS orders_fert,
+               COALESCE(SUM(CASE WHEN $notFreebie AND $catFert THEN $lineAmount ELSE 0 END), 0) AS sales_fert,
+               COUNT(DISTINCT CASE WHEN $notFreebie AND $catBio THEN o.id END) AS orders_bio,
+               COALESCE(SUM(CASE WHEN $notFreebie AND $catBio THEN $lineAmount ELSE 0 END), 0) AS sales_bio
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
+        LEFT JOIN products p ON oi.product_id = p.id
         WHERE COALESCE(oi.creator_id, o.creator_id) IN ($idPh)
           AND o.order_date >= ? AND o.order_date < ?
           AND o.order_status <> 'Cancelled' AND oi.parent_item_id IS NULL
@@ -356,6 +391,10 @@ try {
             $m = &$agents[$aid]['seg'][$seg][$key];
             $m['orders'] += (int) $r['orders'];
             $m['sales'] += (float) $r['sales'];
+            $m['orders_fert'] += (int) $r['orders_fert'];
+            $m['sales_fert'] += (float) $r['sales_fert'];
+            $m['orders_bio'] += (int) $r['orders_bio'];
+            $m['sales_bio'] += (float) $r['sales_bio'];
             unset($m);
         }
     }
@@ -428,7 +467,8 @@ try {
         return $ox === $oy ? strcmp($x, $y) : ($ox <=> $oy);
     };
     $sumInto = function (&$dst, $src) {
-        foreach (['names_called', 'total_calls', 'answered', 'missed', 'talked', 'orders', 'sales'] as $f) $dst[$f] += $src[$f];
+        foreach (['names_called', 'total_calls', 'answered', 'missed', 'talked', 'orders', 'sales',
+                  'orders_fert', 'sales_fert', 'orders_bio', 'sales_bio'] as $f) $dst[$f] += $src[$f];
     };
     $sumOwned = function (&$dst, $src) {
         $dst['a'] += $src['a'];

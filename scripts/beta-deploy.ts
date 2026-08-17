@@ -21,6 +21,12 @@ const betaDir = "C:\\AppServ\\www\\beta_test";
 
 const excludedApiPaths = ["uploads", "vendor", "config.php"];
 
+// Vite emits content-hashed bundles (index-<hash>.js). Copying without pruning
+// leaves every past build behind forever — that is what filled the host quota.
+// Keep recent orphans for a grace period so browsers holding a cached index.html
+// can still fetch the bundle it points at.
+const ASSET_KEEP_DAYS = 7;
+
 function shouldExclude(filePath: string): boolean {
   const relative = path.relative(apiDir, filePath);
   return excludedApiPaths.some(
@@ -41,6 +47,36 @@ function copyDirectory(src: string, dest: string, excludeFn?: (p: string) => boo
   }
 }
 
+function pruneStaleAssets(destAssetsDir: string, srcAssetsDir: string): void {
+  if (!fs.existsSync(destAssetsDir) || !fs.existsSync(srcAssetsDir)) return;
+
+  const fresh = new Set(fs.readdirSync(srcAssetsDir));
+  const cutoff = Date.now() - ASSET_KEEP_DAYS * 24 * 60 * 60 * 1000;
+  let removed = 0;
+  let freed = 0;
+  let kept = 0;
+
+  for (const entry of fs.readdirSync(destAssetsDir, { withFileTypes: true })) {
+    if (!entry.isFile() || fresh.has(entry.name)) continue;
+
+    const filePath = path.join(destAssetsDir, entry.name);
+    const stat = fs.statSync(filePath);
+    if (stat.mtimeMs > cutoff) {
+      kept++;
+      continue;
+    }
+
+    fs.unlinkSync(filePath);
+    removed++;
+    freed += stat.size;
+  }
+
+  console.log(
+    `Pruned ${removed} stale asset(s), freed ${(freed / 1048576).toFixed(1)} MB` +
+      (kept ? ` (kept ${kept} within ${ASSET_KEEP_DAYS}-day grace window)` : ""),
+  );
+}
+
 function main(): void {
   if (!fs.existsSync(betaDir)) {
     console.error(`beta_test directory not found: ${betaDir}`);
@@ -49,6 +85,7 @@ function main(): void {
 
   console.log("Copying frontend (dist/) to beta_test...");
   copyDirectory(distDir, betaDir);
+  pruneStaleAssets(path.join(betaDir, "assets"), path.join(distDir, "assets"));
   console.log("Frontend done.");
 
   console.log("Syncing api/ to beta_test/api/ (excluding config, uploads, vendor)...");

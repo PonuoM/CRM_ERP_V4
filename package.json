@@ -11,6 +11,8 @@
     "preview": "vite preview",
     "beta:build": "vite build && npx tsx scripts/beta-deploy.ts",
     "host:build": "npx tsx scripts/host/host-build.ts",
+    "host:prune": "npx tsx scripts/host/prune-remote-assets.ts",
+    "host:prune:apply": "npx tsx scripts/host/prune-remote-assets.ts --apply",
     "db:sync": "npx tsx scripts/sync-db-url.ts",
     "db:pull": "npx tsx scripts/prisma/db-pull.ts",
     "db:push": "npx tsx scripts/prisma/db-push.ts",

@@ -1594,6 +1594,29 @@ export async function createStockPlan(payload: {
   });
 }
 
+export async function getStockPlan(id: number) {
+  return apiFetch(`inventory/get_stock_plan.php?id=${id}`);
+}
+
+export async function updateStockPlan(payload: {
+  id: number;
+  planned_date: string;
+  notes?: string;
+  user_id?: number;
+  /** ข้ามด่าน "ห้ามแตะรายการที่ยืนยันรับเข้าจริงแล้ว" — เซิร์ฟเวอร์ยอมเฉพาะ Super Admin */
+  force?: boolean;
+  items: {
+    id?: number;
+    product_id: number;
+    planned_qty: number;
+  }[];
+}) {
+  return apiFetch("inventory/update_stock_plan.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function addStockPlanExpectation(payload: {
   item_id: number;
   expected_qty: number;
@@ -1604,6 +1627,28 @@ export async function addStockPlanExpectation(payload: {
   return apiFetch("inventory/add_stock_plan_expectation.php", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+/** แก้ไขรายการคาดว่าจะเข้าทีละสินค้า — เลื่อนวัน / แก้จำนวน / แก้เลข SO (เฉพาะที่ยังไม่ยืนยันรับเข้า) */
+export async function updateStockPlanExpectation(payload: {
+  id: number;
+  expected_qty: number;
+  expected_date: string;
+  so_number?: string;
+  user_id?: number;
+}) {
+  return apiFetch("inventory/update_stock_plan_expectation.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** ยกเลิกการกำหนดวันของสินค้ารายการเดียว — จำนวนเด้งกลับไปรอกำหนดวันใหม่ */
+export async function deleteStockPlanExpectation(id: number, userId?: number) {
+  return apiFetch("inventory/delete_stock_plan_expectation.php", {
+    method: "POST",
+    body: JSON.stringify({ id, user_id: userId }),
   });
 }
 

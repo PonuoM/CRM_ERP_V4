@@ -123,13 +123,27 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
     return Array.from(categories);
   }, [commissionHistory]);
 
-  // Fetch Summary Statistics (Global)
+  // Fetch Summary Statistics — must respect the same filters as the table
+  // so KPI cards reflect the filtered set, not the entire system.
   const fetchSummary = async () => {
     if (!user?.companyId) return;
     try {
       const response = await getDebtCollectionSummary({
-        // companyId: user.companyId, 
-        status: activeTab // Filter summary by tab status
+        // companyId: user.companyId,
+        status: activeTab, // Filter summary by tab status
+
+        // Apply the same search/filter parameters as fetchOrders()
+        customerName: isNaN(Number(searchTerm)) && !searchTerm.startsWith('OD') ? searchTerm : undefined,
+        customerPhone: !isNaN(Number(searchTerm)) && searchTerm.length > 5 ? searchTerm : undefined,
+        orderId: searchTerm.startsWith('OD') || (!isNaN(Number(searchTerm)) && searchTerm.length <= 5) ? searchTerm : undefined,
+
+        minDaysOverdue: filterDaysOverdue ? Number(filterDaysOverdue) : undefined,
+        trackingStatus: filterTrackingStatus || undefined,
+        startDate: filterStartDate || undefined,
+        endDate: filterEndDate || undefined,
+        missingReceivedDate: filterMissingReceivedDate ? '1' : undefined,
+        over7Days: filterOver7Days ? '1' : undefined,
+        trackerId: filterTrackerId || undefined
       });
       if (response.ok) {
         setSummaryStats({
@@ -731,6 +745,17 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   const displayStart = totalOrders === 0 ? 0 : startIndex + 1;
   const displayEnd = totalOrders === 0 ? 0 : endIndex;
 
+  // KPI label context — when any filter is applied, KPI cards reflect the filtered subset
+  const isFiltered =
+    Boolean(searchTerm) ||
+    Boolean(filterDaysOverdue) ||
+    Boolean(filterTrackingStatus) ||
+    Boolean(filterStartDate) ||
+    Boolean(filterEndDate) ||
+    filterMissingReceivedDate ||
+    filterOver7Days ||
+    Boolean(filterTrackerId);
+
   // Render
   return (
     <div className="p-6">
@@ -1133,7 +1158,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                 <DollarSign className="w-6 h-6 text-red-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600 mb-1">ยอดค้างชำระทั้งหมด (ทั้งระบบ)</p>
+                <p className="text-sm text-gray-600 mb-1">ยอดค้างชำระทั้งหมด {isFiltered ? '(ตามตัวกรอง)' : '(ทั้งระบบ)'}</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {summaryStats.totalDebt.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} บาท
                 </p>
@@ -1147,7 +1172,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                 <FileText className="w-6 h-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600 mb-1">จำนวนคำสั่งซื้อ (ทั้งระบบ)</p>
+                <p className="text-sm text-gray-600 mb-1">จำนวนคำสั่งซื้อ {isFiltered ? '(ตามตัวกรอง)' : '(ทั้งระบบ)'}</p>
                 <p className="text-2xl font-bold text-gray-900">{summaryStats.orderCount} รายการ</p>
               </div>
             </div>

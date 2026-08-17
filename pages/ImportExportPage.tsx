@@ -447,7 +447,39 @@ const ImportReportModal: React.FC<ImportReportModalProps> = ({
                 {summary.waitingBasket}
               </p>
             </div>
+            {type === "customers" && summary.assignedToOwner !== undefined && (
+              <div className="rounded-md bg-indigo-50 px-3 py-2">
+                <p className="text-xs text-indigo-600">
+                  มีผู้ดูแล → {summary.assignedBasketName ? `"${summary.assignedBasketName}"` : "—"} (Dashboard)
+                </p>
+                <p className="text-lg font-semibold text-indigo-900">
+                  {summary.assignedToOwner}
+                </p>
+              </div>
+            )}
+            {type === "customers" && summary.sentToPool !== undefined && (
+              <div className="rounded-md bg-cyan-50 px-3 py-2">
+                <p className="text-xs text-cyan-600">
+                  ไม่มีผู้ดูแล → {summary.poolBasketName ? `"${summary.poolBasketName}"` : "—"} (Distribution)
+                </p>
+                <p className="text-lg font-semibold text-cyan-900">
+                  {summary.sentToPool}
+                </p>
+              </div>
+            )}
           </div>
+
+          {type === "customers" &&
+            !!summary.assignedToOwner &&
+            !!summary.sentToPool && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 mb-4">
+                <p className="font-medium">
+                  ℹ️ ไฟล์นี้มีทั้งแถวที่ระบุผู้ดูแลและไม่ระบุปนกัน — ระบบแยกเข้าถังตามที่เลือกไว้แล้ว:{" "}
+                  {summary.assignedToOwner} รายเข้า "{summary.assignedBasketName}" (Dashboard),{" "}
+                  {summary.sentToPool} รายเข้า "{summary.poolBasketName}" (Distribution)
+                </p>
+              </div>
+            )}
 
           {summary.caretakerConflicts > 0 && (
             <div className="rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700 mb-4">
@@ -526,6 +558,16 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<number | null>(null);
   const [selectedBasketId, setSelectedBasketId] = useState<string | null>(null);
+  // Customer import: the two destinations are chosen separately and explicitly —
+  // rows without an owner go to a Distribution (pool) basket, rows with a valid
+  // owner go to a Dashboard basket. Picking the pool auto-suggests its linked
+  // Dashboard pair, but the admin can override it.
+  const [customerPoolBasketKey, setCustomerPoolBasketKey] = useState<string | null>(null);
+  const [customerAssignedBasketKey, setCustomerAssignedBasketKey] = useState<string | null>(null);
+  const [allBaskets, setAllBaskets] = useState<{ id: number; basket_key: string; basket_name: string; target_page: string; ui_group?: string | null; linked_basket_key?: string | null }[]>([]);
+  // Counted from the selected CSV so the admin knows up front whether the
+  // "has owner" destination even matters for this file.
+  const [customerFileStats, setCustomerFileStats] = useState<{ total: number; withOwner: number; withoutOwner: number } | null>(null);
   const [pages, setPages] = useState<{ id: number; name: string; platform?: string }[]>([]);
   const [platforms, setPlatforms] = useState<{ id: number; name: string }[]>([]);
   const [baskets, setBaskets] = useState<{ id: number; basket_key: string; basket_name: string; target_page: string }[]>([]);
@@ -546,11 +588,69 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
 
     apiFetch('basket_config.php').then((data) => {
       if (Array.isArray(data)) {
+        setAllBaskets(data);
         // Filter only distribution baskets
         setBaskets(data.filter(b => b.target_page === 'distribution' || b.target_page === 'distribution_v2'));
       }
     }).catch(console.error);
   }, []);
+
+  // Baskets split by side and grouped, so the dropdowns read as
+  // "which side am I picking from" instead of one flat list where
+  // Distribution and Dashboard entries are indistinguishable (several
+  // pairs share the exact same basket_name, e.g. both "0 บาท").
+  const groupBaskets = (targetPage: string) => {
+    const rows = allBaskets.filter(b => b.target_page === targetPage);
+    const groups: { label: string; items: typeof rows }[] = [];
+    const main = rows.filter(b => !b.ui_group);
+    const challenge = rows.filter(b => b.ui_group === 'challenge');
+    const other = rows.filter(b => b.ui_group && b.ui_group !== 'challenge');
+    if (main.length) groups.push({ label: 'ถังหลัก', items: main });
+    if (challenge.length) groups.push({ label: 'ถังคัดออก (ไม่รับสาย / เบอร์ผิด / ฯลฯ)', items: challenge });
+    if (other.length) groups.push({ label: 'อื่นๆ', items: other });
+    return groups;
+  };
+
+  const poolBasketGroups = useMemo(() => groupBaskets('distribution'), [allBaskets]);
+  const assignedBasketGroups = useMemo(() => groupBaskets('dashboard_v2'), [allBaskets]);
+
+  const poolBasketName = useMemo(
+    () => allBaskets.find(b => b.basket_key === customerPoolBasketKey)?.basket_name ?? null,
+    [customerPoolBasketKey, allBaskets],
+  );
+  const assignedBasketName = useMemo(
+    () => allBaskets.find(b => b.basket_key === customerAssignedBasketKey)?.basket_name ?? null,
+    [customerAssignedBasketKey, allBaskets],
+  );
+
+  // Picking the pool basket pre-fills its linked Dashboard pair as a
+  // convenience — it stays editable, and is left blank when no pair exists
+  // so the admin has to make the call rather than silently getting the
+  // pool basket on the Dashboard side.
+  const handlePoolBasketChange = (key: string | null) => {
+    setCustomerPoolBasketKey(key);
+    const pool = key ? allBaskets.find(b => b.basket_key === key) : null;
+    const linkedKey = pool?.linked_basket_key || null;
+    const linkedExists = linkedKey ? allBaskets.some(b => b.basket_key === linkedKey && b.target_page === 'dashboard_v2') : false;
+    setCustomerAssignedBasketKey(linkedExists ? linkedKey : null);
+  };
+
+  // Count owner vs non-owner rows straight from the chosen CSV, so the form
+  // can say up front whether the "has owner" destination is even used.
+  const analyzeCustomerFile = async (file: File) => {
+    try {
+      const table = parseCsv(await file.text());
+      const rows = toCustomerRows(table);
+      const withOwner = rows.filter(r => {
+        const raw = (r as any).caretakerId;
+        return raw !== undefined && raw !== null && String(raw).trim() !== '';
+      }).length;
+      setCustomerFileStats({ total: rows.length, withOwner, withoutOwner: rows.length - withOwner });
+    } catch {
+      // Malformed file — leave stats unknown; the real error surfaces on upload.
+      setCustomerFileStats(null);
+    }
+  };
 
   const resetSelectedFile = (type: TemplateKey) => {
     setSelectedFiles((prev) => {
@@ -562,6 +662,7 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
       salesInputRef.current.value = "";
     } else if (type === "customers" && customersInputRef.current) {
       customersInputRef.current.value = "";
+      setCustomerFileStats(null);
     }
     setErrorMessage(null);
   };
@@ -574,12 +675,18 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
     setErrorMessage(null);
     if (file) {
       setSelectedFiles((prev) => ({ ...prev, [type]: file }));
+      if (type === "customers") {
+        void analyzeCustomerFile(file);
+      }
     } else {
       setSelectedFiles((prev) => {
         const next = { ...prev };
         delete next[type];
         return next;
       });
+      if (type === "customers") {
+        setCustomerFileStats(null);
+      }
     }
   };
 
@@ -627,12 +734,25 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
           throw new Error("ไม่พบข้อมูลลูกค้าที่นำเข้าได้");
         }
 
-        // Use API instead of prop
-        // if (onImportCustomers) { ... }
+        if (!customerPoolBasketKey) {
+          throw new Error("กรุณาเลือกถังปลายทางของแถวที่ไม่มีผู้ดูแลก่อนนำเข้า");
+        }
+        const rowsWithOwner = customerRows.filter(r => {
+          const raw = (r as any).caretakerId;
+          return raw !== undefined && raw !== null && String(raw).trim() !== '';
+        }).length;
+        if (rowsWithOwner > 0 && !customerAssignedBasketKey) {
+          throw new Error(`ไฟล์นี้มี ${rowsWithOwner} แถวที่ระบุผู้ดูแล — กรุณาเลือกถังปลายทางฝั่ง Dashboard ของแถวเหล่านั้นด้วย`);
+        }
+
         try {
           const result = await apiFetch('import/customers.php', {
             method: 'POST',
-            body: JSON.stringify({ rows: customerRows })
+            body: JSON.stringify({
+              rows: customerRows,
+              basketKey: customerPoolBasketKey,
+              assignedBasketKey: customerAssignedBasketKey,
+            })
           }) as ImportResultSummary;
 
           if (result) {
@@ -837,6 +957,77 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
               <h3 className="font-medium text-gray-800 mb-4">
                 นำเข้าข้อมูลลูกค้า
               </h3>
+
+              {customerFileStats && (
+                <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                  ไฟล์นี้มี {customerFileStats.total} แถว —{" "}
+                  <strong className="text-indigo-700">{customerFileStats.withOwner} แถวระบุผู้ดูแล</strong>,{" "}
+                  <strong className="text-cyan-700">{customerFileStats.withoutOwner} แถวไม่ระบุ</strong>
+                  {customerFileStats.withOwner > 0 && customerFileStats.withoutOwner > 0 && (
+                    <span className="block mt-1 text-amber-700">
+                      ⚠️ ไฟล์นี้ปนกัน 2 แบบ — แนะนำให้แยกอัปโหลดทีละรอบเพื่อลดความผิดพลาด
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="mb-4 space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    <span className="inline-block px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-700 mr-1.5">แถวที่ไม่มีผู้ดูแล</span>
+                    เข้าถังไหน · ฝั่ง Distribution <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={customerPoolBasketKey || ""}
+                    onChange={(e) => handlePoolBasketChange(e.target.value || null)}
+                    className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-green-500 focus:border-green-500"
+                  >
+                    <option value="">-- เลือกถังฝั่ง Distribution --</option>
+                    {poolBasketGroups.map(group => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.items.map(b => (
+                          <option key={b.id} value={b.basket_key}>{b.basket_name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 mr-1.5">แถวที่มีผู้ดูแล</span>
+                    เข้าถังไหน · ฝั่ง Dashboard
+                    {customerFileStats && customerFileStats.withOwner > 0 && <span className="text-red-500"> *</span>}
+                  </label>
+                  <select
+                    value={customerAssignedBasketKey || ""}
+                    onChange={(e) => setCustomerAssignedBasketKey(e.target.value || null)}
+                    className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-green-500 focus:border-green-500"
+                  >
+                    <option value="">-- เลือกถังฝั่ง Dashboard --</option>
+                    {assignedBasketGroups.map(group => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.items.map(b => (
+                          <option key={b.id} value={b.basket_key}>{b.basket_name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {customerFileStats && customerFileStats.withOwner === 0
+                      ? "ไฟล์นี้ไม่มีแถวที่ระบุผู้ดูแล — ช่องนี้จะไม่ถูกใช้"
+                      : "เลือกถังฝั่ง Dashboard เอง ไม่ต้องอิงถังคู่ของด้านบน (ระบบเติมถังคู่ให้เป็นค่าเริ่มต้นเท่านั้น)"}
+                  </p>
+                </div>
+
+                {(poolBasketName || assignedBasketName) && (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 space-y-0.5">
+                    <div>ไม่มีผู้ดูแล → <strong>{poolBasketName || "ยังไม่ได้เลือก"}</strong> (Distribution)</div>
+                    <div>มีผู้ดูแล → <strong>{assignedBasketName || "ยังไม่ได้เลือก"}</strong> (Dashboard) + ตั้งผู้ดูแลตามไฟล์</div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center gap-3 mb-4">
                 <button
                   type="button"
@@ -878,7 +1069,12 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
               <button
                 type="button"
                 onClick={() => handleUpload("customers")}
-                disabled={!selectedFiles.customers || isProcessing}
+                disabled={
+                  !selectedFiles.customers ||
+                  !customerPoolBasketKey ||
+                  (!!customerFileStats && customerFileStats.withOwner > 0 && !customerAssignedBasketKey) ||
+                  isProcessing
+                }
                 className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-md disabled:bg-gray-300 disabled:text-gray-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200"
               >
                 อัปโหลดไฟล์
@@ -900,11 +1096,18 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
               </li>
               <li>
                 สำหรับรหัสพนักงานขายและผู้ดูแล ให้กรอกเป็นตัวเลข ID
-                ที่ตรงกับระบบ
+                ที่ตรงกับระบบ (ถ้าใส่ผิดหรือไม่มีตัวตนในระบบ
+                จะถือว่าแถวนั้นไม่มีผู้ดูแล)
               </li>
               <li>
-                กรณีไม่ระบุผู้ดูแล ลูกค้าจะถูกจัดเข้าตะกร้าพักอัตโนมัติ
-                และรอการจัดสรรใหม่ตามเงื่อนไข
+                นำเข้าลูกค้าต้องเลือกถังปลายทาง 2 ช่องแยกกัน — ช่องแรกสำหรับแถวที่ไม่มีผู้ดูแล
+                (ฝั่ง Distribution) ช่องที่สองสำหรับแถวที่มีผู้ดูแล (ฝั่ง Dashboard)
+                ระบบจะเติมถังคู่ให้เป็นค่าเริ่มต้น แต่เปลี่ยนเองได้
+              </li>
+              <li>
+                แนะนำให้แยกไฟล์อัปโหลดทีละรอบตามลักษณะข้อมูล
+                (เช่น รอบที่มีผู้ดูแลครบ กับรอบที่ไม่มีผู้ดูแลเลย)
+                เพื่อลดความผิดพลาดจากการปนกัน
               </li>
             </ul>
           </div>
