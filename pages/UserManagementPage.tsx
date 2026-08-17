@@ -145,7 +145,16 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
                 <td className="px-6 py-4">{user.email || "-"}</td>
                 <td className="px-6 py-4">{user.phone || "-"}</td>
                 <td className="px-6 py-4">{user.role}</td>
-                <td className="px-6 py-4">{user.teamId || "-"}</td>
+                <td className="px-6 py-4">
+                  {(() => {
+                    if (!user.teamId) return "-";
+                    const leader = users.find(u => 
+                      Number(u.teamId) === Number(user.teamId) && 
+                      (u.role === UserRole.Supervisor || String(u.role).includes('Supervisor'))
+                    );
+                    return leader ? `${user.teamId} (${leader.firstName || leader.username})` : user.teamId;
+                  })()}
+                </td>
                 <td className="px-6 py-4">
                   {user.status === 'resigned' ? (
                     <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">

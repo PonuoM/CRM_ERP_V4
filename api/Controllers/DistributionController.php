@@ -159,7 +159,8 @@ class DistributionController {
         // higher of the policy default and whatever stricter value the admin
         // requested via the UI filter.
         $ineligibleAgentIds = [];
-        $effectiveMinCallMinutes = $isTalkTimeGatedBasket ? max($minCallMinutes, $talkTimeDefaultMinutes) : 0;
+        // [MODIFIED] Changed to trust the UI's $minCallMinutes directly instead of enforcing max(110).
+        $effectiveMinCallMinutes = $minCallMinutes; 
         if ($effectiveMinCallMinutes > 0) {
             $minCallMinutes = $effectiveMinCallMinutes;
             $agentIdsToCheck = array_values(array_unique(array_filter(array_column($assignments, 'agent_id'))));
