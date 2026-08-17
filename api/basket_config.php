@@ -1175,9 +1175,15 @@ function handleTransferCustomers($pdo, $companyId)
             'results' => $results
         ]);
 
-    } catch (Exception $e) {
-        $pdo->rollBack();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         http_response_code(500);
-        echo json_encode(['error' => $e->getMessage()]);
+        $errorMsg = $e->getMessage();
+        if (!mb_check_encoding($errorMsg, 'UTF-8')) {
+            $errorMsg = utf8_encode($errorMsg);
+        }
+        echo json_encode(['error' => 'API Error: ' . $errorMsg, 'trace' => $e->getTraceAsString()]);
     }
 }
