@@ -17,6 +17,7 @@ ini_set('display_errors', 1);
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/Services/CustomerDataHelper.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
