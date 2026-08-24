@@ -28,7 +28,35 @@ $DB_NAME = getenv("DB_NAME") ?: "erp";
 $DB_USER = getenv("DB_USER") ?: "root";
 $DB_PASS = getenv("DB_PASS") ?: "12345678";
 
+// HR Mobile Connect schema. Lives on the SAME MySQL instance as the ERP and the same DB user can see
+// it, so HR tables are reached by qualifying the schema name in SQL — no second connection needed.
+// NOTE: keep this identical to the copy in the root config.php (see user_has_permission's note: in
+// production host-build deploys the root config.php in place of this file).
+if (!defined('HR_DB')) {
+  define('HR_DB', getenv("HR_DB_NAME") ?: "primacom_hr_mobile_connect");
+}
 
+/**
+ * Is the HR Mobile Connect schema reachable from this connection?
+ * Every HR read is optional enrichment — the ERP must keep working when HR is missing
+ * (e.g. a local dev database that has no HR copy), so callers gate on this instead of
+ * letting a missing schema turn into a 500.
+ */
+function hr_db_available(PDO $pdo): bool
+{
+  static $available = null;
+  if ($available !== null) {
+    return $available;
+  }
+  try {
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?');
+    $stmt->execute([HR_DB, 'employees']);
+    $available = ((int) $stmt->fetchColumn()) > 0;
+  } catch (Throwable $e) {
+    $available = false;
+  }
+  return $available;
+}
 
 function db_connect(): PDO
 {
