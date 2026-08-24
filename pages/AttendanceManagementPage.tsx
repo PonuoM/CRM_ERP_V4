@@ -1,7 +1,31 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import APP_BASE_PATH from '../appBasePath';
 
-interface AttendanceRecord {
+/**
+ * ข้อมูลที่ดึงมาจากระบบ HR (primacom_hr_mobile_connect) ผ่าน users.hr_employee_id
+ * เก็บแยกจากตัวเลขของ ERP โดยตั้งใจ เพราะวัดคนละแบบ:
+ *   ERP  = first_login/last_logout ของระบบ + ชั่วโมงที่หัวหน้าปรับเอง (ใช้กรณีมาทำงานแต่ไม่ได้เข้าระบบ เช่น ไปอบรม)
+ *   HR   = เวลาตอกบัตรจริงจากแอป HR พร้อมพิกัด
+ * หน้าเว็บแสดงทั้งสองชุดคู่กัน ไม่แทนที่กัน
+ */
+interface HrFields {
+    hr_employee_id: string | null;
+    hr_full_name: string | null;
+    hr_first_name: string | null;
+    hr_last_name: string | null;
+    hr_nickname: string | null;
+    hr_hire_date: string | null;
+    hr_department: string | null;
+    hr_clock_in: string | null;
+    hr_clock_out: string | null;
+    hr_hours: number | null;
+    hr_location: string | null;
+    hr_is_offsite: boolean;
+    hr_note: string | null;
+    hr_days_worked: number | null;
+}
+
+interface AttendanceRecord extends HrFields {
     id: number | null;
     user_id: number;
     full_name: string;
@@ -18,10 +42,11 @@ interface AttendanceResponse {
     date: string;
     dayName: string;
     isEditable: boolean;
+    hr_available: boolean;
     records: AttendanceRecord[];
 }
 
-interface MonthlySummaryRecord {
+interface MonthlySummaryRecord extends HrFields {
     user_id: number;
     full_name: string;
     total_days: number;
@@ -32,6 +57,7 @@ interface MonthlySummaryResponse {
     success: boolean;
     year: number;
     month: number;
+    hr_available: boolean;
     records: MonthlySummaryRecord[];
 }
 
@@ -62,6 +88,14 @@ const decimalToTime = (decimal: number): string => {
     return `${hours}:${String(minutes).padStart(2, '0')}`;
 };
 
+// วันที่จาก DB เป็น ค.ศ. — แสดงเป็น พ.ศ. ให้ตรงกับหน้าอื่นในระบบ
+const formatThaiDate = (value: string | null): string => {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear() + 543}`;
+};
+
 export function AttendanceManagementPage() {
     const [selectedDate, setSelectedDate] = useState(() => {
         const yesterday = new Date();
@@ -77,6 +111,8 @@ export function AttendanceManagementPage() {
     const [savingAll, setSavingAll] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
+    // ตารางกว้างมากเมื่อกางทั้งสองระบบ จึงพับฝั่ง HR เก็บได้
+    const [showHr, setShowHr] = useState(true);
 
     // Track which records have been saved to avoid reset
     const savedUserIds = useRef<Set<number>>(new Set());
@@ -301,6 +337,10 @@ export function AttendanceManagementPage() {
 
     const today = new Date().toISOString().split('T')[0];
 
+    // ซ่อนคอลัมน์ HR ทั้งบล็อกเมื่อผู้ใช้พับเก็บ หรือเมื่อต่อฐาน HR ไม่ได้
+    const showHrColumns = showHr && data?.hr_available !== false;
+    const colCount = showHrColumns ? 13 : 8;
+
     // Calendar component
     const renderCalendar = () => {
         const dateObj = new Date(selectedDate);
@@ -379,7 +419,7 @@ export function AttendanceManagementPage() {
     };
 
     return (
-        <div className="p-4 md:p-6 max-w-7xl mx-auto">
+        <div className="p-4 md:p-6 max-w-[1700px] mx-auto">
             {/* Header */}
             <div className="mb-6">
                 <h1 className="text-2xl font-bold text-gray-800 mb-2">
@@ -387,6 +427,11 @@ export function AttendanceManagementPage() {
                 </h1>
                 <p className="text-gray-500 text-sm">
                     แก้ไขชั่วโมงทำงานจริงของทีมงาน (แก้ไขได้เฉพาะวันก่อนวันนี้)
+                </p>
+                <p className="text-gray-500 text-sm mt-1">
+                    ตารางแสดงสองระบบคู่กัน — <span className="font-medium text-gray-600">ระบบ ERP</span> คือเวลาเข้าใช้งานระบบ
+                    และชั่วโมงที่หัวหน้าปรับเอง (ใช้กรณีมาทำงานแต่ไม่ได้เข้าระบบ เช่น ไปอบรม)
+                    ส่วน <span className="font-medium text-indigo-600">ระบบ HR</span> คือเวลาตอกบัตรจริงจากแอป HR
                 </p>
             </div>
 
@@ -423,7 +468,23 @@ export function AttendanceManagementPage() {
                             ⚠️ ไม่สามารถแก้ไขวันนี้หรือวันในอนาคต
                         </span>
                     )}
+
+                    <label className="ml-auto flex items-center gap-2 text-sm text-gray-600 whitespace-nowrap">
+                        <input
+                            type="checkbox"
+                            checked={showHr}
+                            onChange={(e) => setShowHr(e.target.checked)}
+                            className="rounded border-gray-300"
+                        />
+                        แสดงข้อมูลจากระบบ HR
+                    </label>
                 </div>
+
+                {data && !data.hr_available && (
+                    <p className="mt-3 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                        ⚠️ ตอนนี้เชื่อมต่อฐานข้อมูล HR ไม่ได้ จึงแสดงเฉพาะข้อมูลฝั่ง ERP
+                    </p>
+                )}
             </div>
 
             {/* Message */}
@@ -436,9 +497,9 @@ export function AttendanceManagementPage() {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 {/* Main Table */}
-                <div className="lg:col-span-2">
+                <div className="lg:col-span-3">
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                         {/* Action Bar */}
                         {data?.isEditable && (
@@ -465,27 +526,47 @@ export function AttendanceManagementPage() {
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead className="bg-gray-50 border-b border-gray-200">
+                                    {/* แถวบนบอกที่มาของข้อมูล เพื่อไม่ให้สับสนว่าตัวเลขไหนของระบบไหน */}
+                                    <tr className="border-b border-gray-200">
+                                        <th rowSpan={2} className="px-3 py-2 text-left font-medium text-gray-600 align-bottom">#</th>
+                                        <th colSpan={5} className="px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-gray-500 uppercase bg-gray-100">
+                                            ระบบ ERP · เข้าใช้งานระบบ + ปรับเอง
+                                        </th>
+                                        {showHrColumns && (
+                                            <th colSpan={5} className="px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-indigo-600 uppercase bg-indigo-100/70 border-l-2 border-indigo-200">
+                                                ระบบ HR · ตอกบัตรจริง
+                                            </th>
+                                        )}
+                                        <th rowSpan={2} className="px-3 py-2 text-center font-medium text-gray-600 align-bottom">สถานะ</th>
+                                        <th rowSpan={2} className="px-3 py-2 text-center font-medium text-gray-600 align-bottom">Action</th>
+                                    </tr>
                                     <tr>
-                                        <th className="px-3 py-3 text-left font-medium text-gray-600">#</th>
-                                        <th className="px-3 py-3 text-left font-medium text-gray-600">พนักงาน</th>
-                                        <th className="px-3 py-3 text-center font-medium text-gray-600">Login</th>
-                                        <th className="px-3 py-3 text-center font-medium text-gray-600">Logout</th>
-                                        <th className="px-3 py-3 text-center font-medium text-gray-600" style={{ width: '100px' }}>ชม.</th>
-                                        <th className="px-3 py-3 text-left font-medium text-gray-600">หมายเหตุ</th>
-                                        <th className="px-3 py-3 text-center font-medium text-gray-600">สถานะ</th>
-                                        <th className="px-3 py-3 text-center font-medium text-gray-600">Action</th>
+                                        <th className="px-3 py-2 text-left font-medium text-gray-600 bg-gray-100">ชื่อใน ERP</th>
+                                        <th className="px-3 py-2 text-center font-medium text-gray-600 bg-gray-100">Login</th>
+                                        <th className="px-3 py-2 text-center font-medium text-gray-600 bg-gray-100">Logout</th>
+                                        <th className="px-3 py-2 text-center font-medium text-gray-600 bg-gray-100" style={{ width: '100px' }}>ชม.</th>
+                                        <th className="px-3 py-2 text-left font-medium text-gray-600 bg-gray-100">หมายเหตุ</th>
+                                        {showHrColumns && (
+                                            <>
+                                                <th className="px-3 py-2 text-left font-medium text-indigo-700 bg-indigo-50 border-l-2 border-indigo-200">ชื่อจริง</th>
+                                                <th className="px-3 py-2 text-left font-medium text-indigo-700 bg-indigo-50">นามสกุล</th>
+                                                <th className="px-3 py-2 text-left font-medium text-indigo-700 bg-indigo-50">ชื่อเล่น</th>
+                                                <th className="px-3 py-2 text-center font-medium text-indigo-700 bg-indigo-50">ตอกเข้า</th>
+                                                <th className="px-3 py-2 text-center font-medium text-indigo-700 bg-indigo-50">ตอกออก</th>
+                                            </>
+                                        )}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {loading ? (
                                         <tr>
-                                            <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                                            <td colSpan={colCount} className="px-4 py-8 text-center text-gray-400">
                                                 กำลังโหลด...
                                             </td>
                                         </tr>
                                     ) : data?.records.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                                            <td colSpan={colCount} className="px-4 py-8 text-center text-gray-400">
                                                 ไม่พบข้อมูลพนักงาน
                                             </td>
                                         </tr>
@@ -497,6 +578,14 @@ export function AttendanceManagementPage() {
                                                     <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                                                     <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">
                                                         {record.full_name}
+                                                        {showHrColumns && !record.hr_employee_id && (
+                                                            <span
+                                                                className="ml-1.5 text-amber-500"
+                                                                title="ยังไม่ได้จับคู่กับพนักงานในระบบ HR — ไปที่ จัดการข้อมูล › จับคู่พนักงาน HR"
+                                                            >
+                                                                ⚠
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td className="px-3 py-2 text-center text-gray-600">
                                                         {record.first_login || '-'}
@@ -544,6 +633,67 @@ export function AttendanceManagementPage() {
                                                             </span>
                                                         )}
                                                     </td>
+
+                                                    {showHrColumns && (
+                                                        <>
+                                                            <td className="px-3 py-2 bg-indigo-50/40 border-l-2 border-indigo-100 whitespace-nowrap">
+                                                                {record.hr_first_name ? (
+                                                                    <>
+                                                                        <span className="text-indigo-900">{record.hr_first_name}</span>
+                                                                        {record.hr_hire_date && (
+                                                                            <span className="block text-[11px] text-indigo-400">
+                                                                                เข้างาน {formatThaiDate(record.hr_hire_date)}
+                                                                            </span>
+                                                                        )}
+                                                                    </>
+                                                                ) : (
+                                                                    <span className="text-gray-300">—</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-2 bg-indigo-50/40 whitespace-nowrap">
+                                                                {record.hr_last_name
+                                                                    ? <span className="text-indigo-900">{record.hr_last_name}</span>
+                                                                    : <span className="text-gray-300">—</span>}
+                                                            </td>
+                                                            <td className="px-3 py-2 bg-indigo-50/40 whitespace-nowrap">
+                                                                {record.hr_nickname
+                                                                    ? <span className="text-indigo-900">{record.hr_nickname}</span>
+                                                                    : <span className="text-gray-300">—</span>}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-center bg-indigo-50/40 whitespace-nowrap">
+                                                                {record.hr_clock_in ? (
+                                                                    <>
+                                                                        <span className="text-indigo-900 font-medium">{record.hr_clock_in}</span>
+                                                                        {record.hr_is_offsite && (
+                                                                            <span
+                                                                                className="block text-[11px] text-amber-600"
+                                                                                title={record.hr_location || 'นอกพื้นที่ทำงาน'}
+                                                                            >
+                                                                                นอกพื้นที่
+                                                                            </span>
+                                                                        )}
+                                                                    </>
+                                                                ) : (
+                                                                    <span className="text-gray-300">—</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-center bg-indigo-50/40 whitespace-nowrap">
+                                                                {record.hr_clock_out ? (
+                                                                    <>
+                                                                        <span className="text-indigo-900 font-medium">{record.hr_clock_out}</span>
+                                                                        {record.hr_hours !== null && (
+                                                                            <span className="block text-[11px] text-indigo-400">
+                                                                                รวม {decimalToTime(record.hr_hours)} ชม.
+                                                                            </span>
+                                                                        )}
+                                                                    </>
+                                                                ) : (
+                                                                    <span className="text-gray-300">—</span>
+                                                                )}
+                                                            </td>
+                                                        </>
+                                                    )}
+
                                                     <td className="px-3 py-2 text-center">
                                                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${status.class}`}>
                                                             {status.label}
@@ -578,6 +728,12 @@ export function AttendanceManagementPage() {
                             <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">0:01-3:59 = ไม่เต็มเวลา</span>
                             <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">0:00 = หยุด/ลา</span>
                         </div>
+                        {showHrColumns && (
+                            <p className="mt-3 text-xs text-gray-500">
+                                สถานะคำนวณจากชั่วโมงฝั่ง ERP เท่านั้น — เวลาตอกบัตรฝั่ง HR แสดงไว้เทียบให้ดู ไม่ได้นำมาคิดสถานะ
+                                · เครื่องหมาย ⚠ หลังชื่อ = ยังไม่ได้จับคู่กับพนักงานในระบบ HR
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -587,17 +743,41 @@ export function AttendanceManagementPage() {
                         <h3 className="font-bold text-gray-800 mb-3">
                             📊 สรุปเดือน {monthlySummary ? THAI_MONTHS[monthlySummary.month] : '-'}
                         </h3>
-                        <div className="space-y-2 max-h-96 overflow-y-auto">
+                        <div className="space-y-2 max-h-[32rem] overflow-y-auto">
                             {monthlySummary?.records.map((r) => (
-                                <div key={r.user_id} className="flex justify-between items-center py-2 border-b border-gray-100">
-                                    <span className="text-sm text-gray-700 truncate">{r.full_name}</span>
-                                    <span className="font-bold text-blue-600">{r.total_days.toFixed(1)} วัน</span>
+                                <div key={r.user_id} className="py-2 border-b border-gray-100">
+                                    <div className="flex justify-between items-center gap-2">
+                                        <span className="text-sm text-gray-700 truncate">{r.full_name}</span>
+                                        <span className="font-bold text-blue-600 whitespace-nowrap">{r.total_days.toFixed(1)} วัน</span>
+                                    </div>
+                                    {showHrColumns && (r.hr_full_name || r.hr_days_worked !== null) && (
+                                        <div className="flex justify-between items-center gap-2 mt-0.5">
+                                            <span className="text-xs text-indigo-500 truncate">
+                                                {r.hr_full_name || '-'}
+                                                {r.hr_nickname ? ` (${r.hr_nickname})` : ''}
+                                            </span>
+                                            {r.hr_days_worked !== null && (
+                                                <span
+                                                    className="text-xs text-indigo-600 whitespace-nowrap"
+                                                    title="จำนวนวันที่ตอกบัตรเข้างานในระบบ HR"
+                                                >
+                                                    HR {r.hr_days_worked} วัน
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                             {!monthlySummary?.records.length && (
                                 <p className="text-gray-400 text-sm text-center py-4">ไม่มีข้อมูล</p>
                             )}
                         </div>
+                        {showHrColumns && (
+                            <p className="mt-3 text-[11px] text-gray-400 leading-relaxed">
+                                ตัวเลขน้ำเงิน = วันทำงานตาม ERP (รวมที่หัวหน้าปรับเอง) ·
+                                ตัวเลขม่วง = จำนวนวันที่ตอกบัตรจริงในระบบ HR ทั้งสองค่าไม่จำเป็นต้องเท่ากัน
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>

@@ -56,7 +56,124 @@ try {
     
     // Thai day names
     $thaiDays = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
-    
+
+    /**
+     * เติมข้อมูลจากระบบ HR (ชื่อจริง นามสกุล ชื่อเล่น วันเข้างาน และเวลาตอกบัตร) ลงในผลลัพธ์
+     *
+     * ผูกกันผ่าน users.hr_employee_id ที่ตั้งไว้ในหน้า "จับคู่พนักงาน HR" (migration 081)
+     * ตัวเลขฝั่ง HR เป็นเวลาตอกบัตรจริง ส่วน login/logout กับชั่วโมงที่แก้ได้ในหน้านี้เป็นของ ERP
+     * ทั้งสองชุดเก็บแยกกันโดยตั้งใจ — คนละวิธีวัด และหน้าเว็บแสดงคู่กันให้เห็นทั้งสองอย่าง
+     *
+     * ทุกอย่างที่นี่เป็นข้อมูลเสริม ถ้าฐาน HR ล่มหรือไม่มี (เช่นเครื่อง dev) records เดิมต้องยังใช้ได้
+     *
+     * @param string|null $date ถ้าระบุ จะดึงเวลาตอกบัตรของวันนั้นมาด้วย
+     * @param array|null  $range [start, end] ถ้าระบุ จะนับจำนวนวันที่ตอกบัตรในช่วงนั้น
+     */
+    $attachHrInfo = function (array $records, ?string $date = null, ?array $range = null) use ($pdo) {
+        $ids = [];
+        foreach ($records as $r) {
+            $hrId = $r['hr_employee_id'] ?? null;
+            if ($hrId !== null && $hrId !== '') {
+                $ids[$hrId] = true;
+            }
+        }
+
+        $blank = [
+            'hr_employee_id' => null, 'hr_full_name' => null, 'hr_first_name' => null,
+            'hr_last_name' => null, 'hr_nickname' => null, 'hr_hire_date' => null,
+            'hr_department' => null, 'hr_clock_in' => null, 'hr_clock_out' => null,
+            'hr_hours' => null, 'hr_location' => null, 'hr_is_offsite' => false,
+            'hr_note' => null, 'hr_days_worked' => null,
+        ];
+
+        if (!$ids || !hr_db_available($pdo)) {
+            foreach ($records as &$r) {
+                $r = array_merge($r, $blank);
+            }
+            unset($r);
+            return $records;
+        }
+
+        $ids = array_keys($ids);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $select = 'e.id, e.name, e.nickname, e.hire_date, d.name AS department';
+        $joins = ' LEFT JOIN ' . HR_DB . '.departments d ON d.id = e.department_id';
+        // ผูกค่าตามลำดับที่ placeholder ปรากฏใน SQL: SELECT list ก่อน แล้วค่อย JOIN แล้วค่อย WHERE
+        $selectParams = [];
+        $joinParams = [];
+
+        if ($range !== null) {
+            // นับเฉพาะวันที่มีเวลาเข้างานจริง (แถวที่ตอกเข้าไม่ตอกออกก็ยังนับว่ามาทำงาน)
+            $select .= ', (SELECT COUNT(*) FROM ' . HR_DB . '.attendance ra
+                             WHERE ra.employee_id = e.id AND ra.date BETWEEN ? AND ? AND ra.clock_in IS NOT NULL) AS days_worked';
+            $selectParams[] = $range[0];
+            $selectParams[] = $range[1];
+        }
+        if ($date !== null) {
+            $select .= ', a.clock_in, a.clock_out, a.location_name, a.is_offsite, a.admin_note';
+            $joins .= ' LEFT JOIN ' . HR_DB . '.attendance a ON a.employee_id = e.id AND a.date = ?';
+            $joinParams[] = $date;
+        }
+
+        try {
+            $stmt = $pdo->prepare('SELECT ' . $select . ' FROM ' . HR_DB . '.employees e' . $joins . ' WHERE e.id IN (' . $placeholders . ')');
+            $stmt->execute(array_merge($selectParams, $joinParams, $ids));
+            $hrRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log('attendance_management: HR lookup failed - ' . $e->getMessage());
+            foreach ($records as &$r) {
+                $r = array_merge($r, $blank);
+            }
+            unset($r);
+            return $records;
+        }
+
+        $byId = [];
+        foreach ($hrRows as $row) {
+            // employees.name เก็บ "ชื่อจริง นามสกุล" รวมช่องเดียว — ตัดที่ช่องว่างแรก
+            $fullName = trim((string) $row['name']);
+            $spacePos = mb_strpos($fullName, ' ');
+            $firstName = $spacePos === false ? $fullName : mb_substr($fullName, 0, $spacePos);
+            $lastName = $spacePos === false ? '' : trim(mb_substr($fullName, $spacePos + 1));
+
+            $clockIn = $row['clock_in'] ?? null;
+            $clockOut = $row['clock_out'] ?? null;
+            $hrHours = null;
+            if ($clockIn && $clockOut) {
+                $seconds = strtotime($clockOut) - strtotime($clockIn);
+                if ($seconds > 0) {
+                    $hrHours = round($seconds / 3600, 2);
+                }
+            }
+
+            $byId[$row['id']] = [
+                'hr_employee_id' => $row['id'],
+                'hr_full_name' => $fullName,
+                'hr_first_name' => $firstName,
+                'hr_last_name' => $lastName,
+                'hr_nickname' => $row['nickname'],
+                'hr_hire_date' => $row['hire_date'],
+                'hr_department' => $row['department'],
+                'hr_clock_in' => $clockIn ? substr((string) $clockIn, 0, 5) : null,
+                'hr_clock_out' => $clockOut ? substr((string) $clockOut, 0, 5) : null,
+                'hr_hours' => $hrHours,
+                'hr_location' => $row['location_name'] ?? null,
+                'hr_is_offsite' => isset($row['is_offsite']) ? ((int) $row['is_offsite'] === 1) : false,
+                'hr_note' => $row['admin_note'] ?? null,
+                'hr_days_worked' => isset($row['days_worked']) ? (int) $row['days_worked'] : null,
+            ];
+        }
+
+        foreach ($records as &$r) {
+            $hrId = $r['hr_employee_id'] ?? null;
+            $r = array_merge($r, ($hrId !== null && isset($byId[$hrId])) ? $byId[$hrId] : $blank);
+        }
+        unset($r);
+
+        return $records;
+    };
+
+
     if ($method === 'GET') {
         $action = $_GET['action'] ?? 'daily';
         
@@ -72,19 +189,20 @@ try {
             $params = array_merge($params, $supervisorParams);
             
             $stmt = $pdo->prepare("
-                SELECT 
+                SELECT
                     u.id AS user_id,
                     CONCAT(u.first_name, ' ', u.last_name) AS full_name,
+                    u.hr_employee_id,
                     COALESCE(SUM(a.attendance_value), 0) AS total_days,
                     COUNT(a.id) AS work_days_count
                 FROM users u
-                LEFT JOIN user_daily_attendance a ON a.user_id = u.id 
+                LEFT JOIN user_daily_attendance a ON a.user_id = u.id
                     AND a.work_date BETWEEN ? AND ?
                 WHERE u.company_id = ?
                   AND u.status = 'active'
                   AND (u.role LIKE '%telesale%' OR u.role LIKE '%supervisor%')
                   {$supervisorFilter}
-                GROUP BY u.id, u.first_name, u.last_name
+                GROUP BY u.id, u.first_name, u.last_name, u.hr_employee_id
                 ORDER BY u.first_name, u.last_name
             ");
             // Reorder params: company_id first, then dates
@@ -97,11 +215,15 @@ try {
                 $r['work_days_count'] = (int) $r['work_days_count'];
             }
             unset($r);
-            
+
+            // เสริมชื่อจริง/ชื่อเล่น + จำนวนวันที่ตอกบัตรจริงในเดือนเดียวกัน
+            $records = $attachHrInfo($records, null, [$startDate, $endDate]);
+
             json_response([
                 'success' => true,
                 'year' => $year,
                 'month' => $month,
+                'hr_available' => hr_db_available($pdo),
                 'records' => $records
             ]);
             
@@ -122,9 +244,10 @@ try {
             
             // LEFT JOIN to show all employees even without attendance record
             $stmt = $pdo->prepare("
-                SELECT 
+                SELECT
                     u.id AS user_id,
                     CONCAT(u.first_name, ' ', u.last_name) AS full_name,
+                    u.hr_employee_id,
                     a.id,
                     a.work_date,
                     DATE_FORMAT(a.first_login, '%H:%i') AS first_login,
@@ -165,15 +288,19 @@ try {
                 }
             }
             unset($record);
-            
+
+            // เสริมชื่อจริง/นามสกุล/ชื่อเล่น + เวลาตอกบัตรจริงของวันเดียวกัน
+            $records = $attachHrInfo($records, $date, null);
+
             $today = date('Y-m-d');
             $isEditable = ($date < $today);
-            
+
             json_response([
                 'success' => true,
                 'date' => $date,
                 'dayName' => $dayName,
                 'isEditable' => $isEditable,
+                'hr_available' => hr_db_available($pdo),
                 'records' => $records
             ]);
         }
