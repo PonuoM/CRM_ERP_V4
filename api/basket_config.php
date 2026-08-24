@@ -404,7 +404,8 @@ function handleBasketCustomers($pdo, $companyId)
 
     // Then get data WITH limit AND offset
     $offset = intval($_GET['skip'] ?? $_GET['offset'] ?? 0);
-    $sql .= " ORDER BY c.last_order_date DESC LIMIT ? OFFSET ?";
+    // แจกรายชื่อที่อยู่ในถังนานที่สุดก่อน (FIFO)
+    $sql .= " ORDER BY COALESCE(c.basket_entered_date, c.date_registered) ASC LIMIT ? OFFSET ?";
     $params[] = $limit;
     $params[] = $offset;
 
@@ -725,6 +726,13 @@ function handleReclaimCustomers($pdo, $companyId)
             
             if ($agentId === 'all') {
                 $selectSql .= " AND c.assigned_to IS NOT NULL AND c.assigned_to != 0 ";
+            } else if (strpos($agentId, ',') !== false) {
+                $agentIds = array_filter(array_map('intval', explode(',', $agentId)));
+                if (!empty($agentIds)) {
+                    $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
+                    $selectSql .= " AND c.assigned_to IN ($placeholders) ";
+                    $params = array_merge($params, $agentIds);
+                }
             } else {
                 $selectSql .= " AND c.assigned_to = ? ";
                 $params[] = $agentId;
@@ -732,12 +740,12 @@ function handleReclaimCustomers($pdo, $companyId)
             
             if ($reclaimMode === 'no_call_no_appt') {
                 $selectSql .= " AND NOT EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
-                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE())) ";
             } else if ($reclaimMode === 'called_no_appt') {
                 $selectSql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
-                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE())) ";
             } else if ($reclaimMode === 'called_with_appt') {
-                $selectSql .= " AND EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE())) ";
             }
             
             // Best Practice: Reclaim the oldest unused customers first instead of random ones
@@ -789,8 +797,6 @@ function handleReclaimCustomers($pdo, $companyId)
                 foreach ($chunk as $cust) {
                     $custId = $cust['customer_id'];
                     $oldAgent = $cust['assigned_to'];
-                    $triggeredBy = $agentId === 'all' ? $oldAgent : $agentId;
-                    
                     // Transition Log
                     $logValues[] = "(?, ?, ?, ?, NULL, ?, ?, ?, NOW())";
                     array_push($logParams, $custId, $dashboardBasketId, $targetBasketId, $oldAgent, 'reclaim', $triggeredBy, 'Reclaimed from Telesale');
@@ -862,12 +868,21 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
     }
 
     try {
-        $agentCondition = "AND c.assigned_to = ?";
-        $params = [$companyId, $agentId];
-        
         if ($agentId === 'all') {
             $agentCondition = "AND c.assigned_to IS NOT NULL AND c.assigned_to != 0";
             $params = [$companyId];
+        } else if (strpos($agentId, ',') !== false) {
+            $agentIds = array_filter(array_map('intval', explode(',', $agentId)));
+            if (empty($agentIds)) {
+                echo json_encode(['ok' => true, 'counts' => []]);
+                return;
+            }
+            $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
+            $agentCondition = "AND c.assigned_to IN ($placeholders)";
+            $params = array_merge([$companyId], $agentIds);
+        } else {
+            $agentCondition = "AND c.assigned_to = ?";
+            $params = [$companyId, $agentId];
         }
 
         if ($reclaimMode === 'all_categories') {
@@ -876,14 +891,14 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
                 SELECT bc.basket_key,
                     SUM(CASE WHEN 
                         NOT EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) AND 
-                        NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01'))
+                        NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE()))
                     THEN 1 ELSE 0 END) as count_no_call_no_appt,
                     SUM(CASE WHEN 
                         EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) AND 
-                        NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01'))
+                        NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE()))
                     THEN 1 ELSE 0 END) as count_called_no_appt,
                     SUM(CASE WHEN 
-                        EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01'))
+                        EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE()))
                     THEN 1 ELSE 0 END) as count_called_with_appt
                 FROM customers c
                 JOIN basket_config bc ON bc.id = c.current_basket_key AND bc.company_id = 1
@@ -927,12 +942,12 @@ function handlePreviewReclaimUnassigned($pdo, $companyId)
         
         if ($reclaimMode === 'no_call_no_appt') {
             $sql .= " AND NOT EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
-            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE())) ";
         } else if ($reclaimMode === 'called_no_appt') {
             $sql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
-            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            $sql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE())) ";
         } else if ($reclaimMode === 'called_with_appt') {
-            $sql .= " AND EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+            $sql .= " AND EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE())) ";
         }
         
         $sql .= " GROUP BY bc.basket_key";
@@ -1074,6 +1089,13 @@ function handleTransferCustomers($pdo, $companyId)
             if ($fromAgentId === 'all') {
                 $selectSql .= " AND c.assigned_to IS NOT NULL AND c.assigned_to != 0 AND c.assigned_to != ? ";
                 $selectParams[] = $toAgentId; // Don't transfer to self
+            } else if (strpos($fromAgentId, ',') !== false) {
+                $fromAgentIds = array_filter(array_map('intval', explode(',', $fromAgentId)));
+                if (!empty($fromAgentIds)) {
+                    $placeholders = implode(',', array_fill(0, count($fromAgentIds), '?'));
+                    $selectSql .= " AND c.assigned_to IN ($placeholders) ";
+                    $selectParams = array_merge($selectParams, $fromAgentIds);
+                }
             } else {
                 $selectSql .= " AND c.assigned_to = ? ";
                 $selectParams[] = $fromAgentId;
@@ -1081,12 +1103,12 @@ function handleTransferCustomers($pdo, $companyId)
             
             if ($transferMode === 'no_call_no_appt') {
                 $selectSql .= " AND NOT EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
-                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE())) ";
             } else if ($transferMode === 'called_no_appt') {
                 $selectSql .= " AND EXISTS (SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id AND ch.date >= COALESCE(c.date_assigned, '1970-01-01')) ";
-                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE())) ";
             } else if ($transferMode === 'called_with_appt') {
-                $selectSql .= " AND EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND a.created_at >= COALESCE(c.date_assigned, '1970-01-01')) ";
+                $selectSql .= " AND EXISTS (SELECT 1 FROM appointments a WHERE a.customer_id = c.customer_id AND a.created_by = c.assigned_to AND (a.created_at >= COALESCE(c.date_assigned, '1970-01-01') OR a.status = 'รอดำเนินการ' OR a.date >= CURDATE())) ";
             }
             
             $selectSql .= " ORDER BY c.updated_at ASC LIMIT " . (int)$count;

@@ -316,7 +316,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         const counts: Record<string, number> = {};
         await Promise.all(baskets.map(async (basket) => {
             try {
-                if (basket.basket_key === 'block_customer') {
+                if (basket.basket_key === 'block_customers') {
                     // Blocked customers use separate API (basket_customers filters is_blocked=0)
                     const res = await apiFetch(`get_blocked_customers.php?company_id=${currentUser?.companyId}`);
                     counts[basket.basket_key] = res?.success ? (res.data?.length || 0) : 0;
@@ -1556,79 +1556,6 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
     };
 
-    const handlePreviewUnassigned = async (basketKey: string | 'ALL', mode: 'all_no_appt' | 'called_no_appt') => {
-        if (!reclaimingAgent) return;
-        setUnassignedReclaimMode(mode);
-        setFetchingUnassigned(true);
-        try {
-            const result = await apiFetch(`basket_config.php?action=preview_reclaim_unassigned&agent_id=${reclaimingAgent.id}&companyId=${currentUser?.companyId}&reclaim_mode=${mode}`);
-            if (result?.ok && result.counts) {
-                setUnassignedPreviewData(result.counts);
-                if (basketKey === 'ALL') {
-                    setUnassignedTargetBaskets(dashboardBaskets.map(b => b.basket_key));
-                } else {
-                    setUnassignedTargetBaskets([basketKey]);
-                }
-                setShowUnassignedPreview(true);
-            } else {
-                setMessage({ type: 'error', text: `ไม่สามารถโหลดข้อมูลได้ (Backend): ${JSON.stringify(result)}` });
-            }
-        } catch (error: any) {
-            console.error('Failed to preview unassigned:', error);
-            setMessage({ type: 'error', text: `ข้อผิดพลาดระบบ: ${error?.message || 'Unknown'}` });
-        } finally {
-            setFetchingUnassigned(false);
-        }
-    };
-
-    const handleExecuteUnassignedReclaim = async () => {
-        if (!reclaimingAgent) return;
-
-        // Collect payloads
-        const payloadBaskets: Record<string, number> = {};
-        let total = 0;
-        
-        unassignedTargetBaskets.forEach(key => {
-            const count = unassignedPreviewData[key] || 0;
-            if (count > 0 && key !== 'upsell_dis') {
-                payloadBaskets[key] = count;
-                total += count;
-            }
-        });
-
-        if (total === 0) {
-            setMessage({ type: 'error', text: 'ไม่พบลูกค้าที่ไม่มีนัดหมายในตะกร้าที่เลือก' });
-            return;
-        }
-
-        setReclaiming(true);
-        try {
-            const result = await apiFetch(
-                `basket_config.php?action=reclaim_customers&companyId=${currentUser?.companyId}`,
-                {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        agent_id: reclaimingAgent.id,
-                        baskets: payloadBaskets,
-                        reclaim_mode: unassignedReclaimMode,
-                        tag_id: sessionTag === '' ? null : sessionTag
-                    })
-                }
-            );
-
-            setMessage({ type: 'success', text: `ดึงคืนไม่มีนัดหมายสำเร็จ ${result?.reclaimed || total} รายชื่อ` });
-            setShowUnassignedPreview(false);
-            setReclaimModalOpen(false);
-            fetchAgents(); // Refresh agent stats
-            fetchAllBasketCounts(); // Refresh basket pools
-        } catch (error) {
-            console.error('Reclaim unassigned failed:', error);
-            setMessage({ type: 'error', text: 'ดึงคืนลูกค้าไม่มีนัดหมายไม่สำเร็จ' });
-        } finally {
-            setReclaiming(false);
-        }
-    };
-
     // Get active basket info
     const activeBasketInfo = baskets.find(b => b.basket_key === activeBasket);
     const isHoldingBasketActive = activeBasket === 'holding_before_redistribute' && !forceDistributeHolding;
@@ -1888,7 +1815,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 basketCounts={basketCounts}
                 activeBasket={activeBasket}
                 setActiveBasket={(key) => {
-                    if (key === 'block_customer') {
+                    if (key === 'block_customers') {
                         handleBlockedBasketClick();
                     } else {
                         setActiveBasket(key);

@@ -37,7 +37,7 @@ const DistributionStatsCards: React.FC<DistributionStatsCardsProps> = ({
                         <button
                             key={basket.basket_key}
                             onClick={() => {
-                                if (basket.basket_key === 'block_customer') {
+                                if (basket.basket_key === 'block_customers') {
                                     handleBlockedBasketClick();
                                     return;
                                 }
@@ -52,8 +52,8 @@ const DistributionStatsCards: React.FC<DistributionStatsCardsProps> = ({
                                     : 'border-gray-100 bg-white hover:border-blue-200')
                                 }`}
                         >
-                            <p className={`text-[11px] font-medium mb-0.5 truncate ${basket.basket_key === 'block_customer' ? 'text-red-600' : isHolding ? 'text-amber-600' : 'text-gray-500'}`}>
-                                {basket.basket_key === 'block_customer' ? '🚫 ' : isHolding ? '⏳ ' : ''}{basket.basket_name}
+                            <p className={`text-[11px] font-medium mb-0.5 truncate ${basket.basket_key === 'block_customers' ? 'text-red-600' : isHolding ? 'text-amber-600' : 'text-gray-500'}`}>
+                                {basket.basket_key === 'block_customers' ? '🚫 ' : isHolding ? '⏳ ' : ''}{basket.basket_name}
                             </p>
                             <div className={`text-xl font-bold flex items-center h-7 ${isHolding
                                 ? (isActive ? 'text-amber-600' : 'text-amber-700')

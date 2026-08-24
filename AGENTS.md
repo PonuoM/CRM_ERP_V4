@@ -94,4 +94,7 @@
 - **NEVER** use `window.alert`, `window.confirm`, or `window.prompt` for user interactions.
 - **ALWAYS** use custom UI components like `Modal`, `Toast`, or `Alert` provided by the system or design library to maintain a consistent and professional user experience.
 
-
+**Rule 10: Exhaustive Analysis & Edge Case Consideration (⭐ CRITICAL)**
+- **BE THOROUGH**: When asked to investigate an issue, explain logic, or search through code, do NOT stop at the first superficial match. You must trace the complete data flow.
+- **EXPLORE ALL POSSIBILITIES**: Actively look for edge cases. (e.g., What if a field is null? What if the action occurred in a previous cycle? What if a background job altered the state?).
+- **MULTIPLE SCENARIOS**: Always analyze and present all possible scenarios that could lead to a specific outcome before jumping to a single conclusion.

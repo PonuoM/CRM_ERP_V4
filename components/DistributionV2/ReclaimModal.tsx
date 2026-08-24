@@ -72,13 +72,13 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
     sessionTagsList
 }) => {
     React.useEffect(() => {
-        if (bulkActionType === 'reclaim') {
+        if (bulkActionType === 'reclaim' && bulkReclaimDestinationType !== 'force') {
             setSelectedBaskets(prev => prev.filter(key => {
                 const b = dashboardBaskets.find(bk => bk.basket_key === key);
                 return b && b.linked_basket_key;
             }));
         }
-    }, [bulkActionType, dashboardBaskets, setSelectedBaskets]);
+    }, [bulkActionType, bulkReclaimDestinationType, dashboardBaskets, setSelectedBaskets]);
 
     if (!isOpen || !reclaimingAgent) return null;
 
@@ -105,12 +105,12 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                             <input 
                                 type="checkbox" 
                                 checked={
-                                    dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0 && !(bulkActionType === 'reclaim' && !b.linked_basket_key)).length > 0 &&
-                                    selectedBaskets.length === dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0 && !(bulkActionType === 'reclaim' && !b.linked_basket_key)).length
+                                    dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0 && !(bulkActionType === 'reclaim' && bulkReclaimDestinationType !== 'force' && !b.linked_basket_key)).length > 0 &&
+                                    selectedBaskets.length === dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0 && !(bulkActionType === 'reclaim' && bulkReclaimDestinationType !== 'force' && !b.linked_basket_key)).length
                                 }
                                 onChange={(e) => {
                                     if (e.target.checked) {
-                                        setSelectedBaskets(dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0 && !(bulkActionType === 'reclaim' && !b.linked_basket_key)).map(b => b.basket_key));
+                                        setSelectedBaskets(dashboardBaskets.filter(b => b.basket_key !== 'upsell_dis' && (reclaimingAgent.basketCounts?.[b.basket_key] || 0) > 0 && !(bulkActionType === 'reclaim' && bulkReclaimDestinationType !== 'force' && !b.linked_basket_key)).map(b => b.basket_key));
                                     } else {
                                         setSelectedBaskets([]);
                                     }
@@ -125,7 +125,7 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                         const currentHolding = reclaimingAgent.basketCounts?.[basket.basket_key] || 0;
                         const isEmpty = currentHolding === 0;
                         const isSelected = selectedBaskets.includes(basket.basket_key);
-                        const isReclaimBlocked = bulkActionType === 'reclaim' && !basket.linked_basket_key;
+                        const isReclaimBlocked = bulkActionType === 'reclaim' && bulkReclaimDestinationType !== 'force' && !basket.linked_basket_key;
                         const isDisabled = isEmpty || isReclaimBlocked;
 
                         return (

@@ -106,21 +106,24 @@ try {
                 $newOrderStatus = ($currentOrderStatus === 'Delivered') ? 'PreApproved' : $currentOrderStatus;
             }
 
-            // Don't revert cancelled/returned orders
-            if (!in_array($currentOrderStatus, ['Cancelled', 'Returned'])) {
-                $updateStmt = $pdo->prepare("
-                    UPDATE orders
-                    SET payment_status = :paymentStatus,
-                        order_status = :orderStatus
-                    WHERE id = :orderId AND company_id = :companyId
-                ");
-                $updateStmt->execute([
-                    ':paymentStatus' => $newPaymentStatus,
-                    ':orderStatus' => $newOrderStatus,
-                    ':orderId' => $orderId,
-                    ':companyId' => $companyId,
-                ]);
+            // Don't revert order_status for cancelled/returned orders, but DO update payment_status
+            if (in_array($currentOrderStatus, ['Cancelled', 'Returned'])) {
+                $newOrderStatus = $currentOrderStatus;
+                $newPaymentStatus = 'Cancelled'; // Force payment status to Cancelled since it's unmatched
             }
+
+            $updateStmt = $pdo->prepare("
+                UPDATE orders
+                SET payment_status = :paymentStatus,
+                    order_status = :orderStatus
+                WHERE id = :orderId AND company_id = :companyId
+            ");
+            $updateStmt->execute([
+                ':paymentStatus' => $newPaymentStatus,
+                ':orderStatus' => $newOrderStatus,
+                ':orderId' => $orderId,
+                ':companyId' => $companyId,
+            ]);
         }
     }
 
