@@ -1320,10 +1320,15 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
     const [transferring, setTransferring] = useState(false);
 
-    const openReclaimModal = (agent: AgentWithBaskets) => {
+    const openReclaimModal = (
+        agent: AgentWithBaskets,
+        presetBaskets?: string[],
+        presetMode?: 'reclaim' | 'transfer'
+    ) => {
         setReclaimingAgent(agent);
-        setSelectedBaskets([]); // Reset selection
-        setBulkActionType(null); // Reset action
+        // ถ้าเลือกถังมาจากหน้าอื่นแล้ว (เช่นโมดัลพนักงานพ้นสภาพ) ให้ติ๊กไว้ให้เลย
+        setSelectedBaskets(presetBaskets && presetBaskets.length > 0 ? presetBaskets : []);
+        setBulkActionType(presetMode ?? null); // Reset action
         setBulkTargetAgents([]); // Reset target agents
         setBulkTargetSupervisorFilter(''); // Reset supervisor filter
         setBulkLimit(''); // Reset limit

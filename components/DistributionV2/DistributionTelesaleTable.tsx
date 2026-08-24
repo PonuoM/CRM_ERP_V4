@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Eye, Loader2, Filter } from 'lucide-react';
+import { Eye, Loader2, Filter, UserX } from 'lucide-react';
 import { AgentWithBaskets, BasketConfig } from '../../types/distribution';
 import { apiFetch } from '../../services/api';
+import DepartedAgentsModal from './DepartedAgentsModal';
 
 interface DistributionTelesaleTableProps {
     agents: AgentWithBaskets[];
@@ -15,7 +16,7 @@ interface DistributionTelesaleTableProps {
     setCallThresholdMinutes: React.Dispatch<React.SetStateAction<string>>;
     setHasCallFilterApplied: React.Dispatch<React.SetStateAction<boolean>>;
     handlePreparePreview: () => void;
-    openReclaimModal: (agent: any) => void;
+    openReclaimModal: (agent: any, presetBaskets?: string[], presetMode?: 'reclaim' | 'transfer') => void;
     setMessage: (msg: any) => void;
     currentUser: any;
 }
@@ -53,6 +54,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     const [customEndTime, setCustomEndTime] = useState<string>('23:59');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
     const [loadingHoldingCounts, setLoadingHoldingCounts] = useState(false);
+    const [departedModalOpen, setDepartedModalOpen] = useState(false);
 
     const selectAllRef = useRef<HTMLInputElement>(null);
 
@@ -154,6 +156,19 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
         return displayAgents.filter(a => a.isActive);
     }, [agents, agentSupervisorFilter]);
 
+    // พนักงานที่ปิดสถานะแล้ว (inactive/resigned) แต่ยังมีลูกค้าค้างในมือ
+    // ไม่แสดงในตารางหลักเพื่อไม่ให้รก และรับรายชื่อใหม่ไม่ได้ — ดูได้จากแถบเตือน/โมดัลแยก
+    // คนที่ถือ 0 ราย ถือว่าเคลียร์แล้ว ไม่ต้องแสดง
+    const departedAgents = useMemo(
+        () => agents.filter(a => !a.isActive && (a.totalCustomers || 0) > 0),
+        [agents]
+    );
+
+    const departedStuckTotal = useMemo(
+        () => departedAgents.reduce((sum, a) => sum + (a.totalCustomers || 0), 0),
+        [departedAgents]
+    );
+
     const handleSelectAllClick = () => {
         if (selectedAgents.length === filteredAgents.length) {
             setSelectedAgents([]);
@@ -180,6 +195,38 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
 
     return (
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+            {/* แถบเตือน: มีรายชื่อค้างกับพนักงานที่พ้นสภาพ — หายเองเมื่อดึงคืนหมด */}
+            {departedAgents.length > 0 && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-center gap-3">
+                        <UserX size={18} className="text-red-600 shrink-0" />
+                        <span className="text-sm text-red-800">
+                            มีรายชื่อค้างกับพนักงานที่พ้นสภาพ{' '}
+                            <strong className="font-bold">{departedStuckTotal.toLocaleString()}</strong> ราย
+                            {' '}({departedAgents.length} คน)
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setDepartedModalOpen(true)}
+                        className="px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 whitespace-nowrap"
+                    >
+                        จัดการ
+                    </button>
+                </div>
+            )}
+
+            <DepartedAgentsModal
+                isOpen={departedModalOpen}
+                onClose={() => setDepartedModalOpen(false)}
+                departedAgents={departedAgents}
+                dashboardBaskets={dashboardBaskets}
+                onAction={(agent, presetBaskets, mode) => {
+                    setDepartedModalOpen(false);
+                    openReclaimModal(agent, presetBaskets, mode);
+                    setHasCallFilterApplied(false);
+                }}
+            />
+
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
                     <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">2</span>

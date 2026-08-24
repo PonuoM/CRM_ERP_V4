@@ -272,7 +272,7 @@ const ReclaimModal: React.FC<ReclaimModalProps> = ({
                                                 ล้างการเลือก
                                             </button>
                                         </div>
-                                        {agents.filter(a => a.id !== reclaimingAgent.id && a.role !== 'admin' && a.role !== 'manager' && (!bulkTargetSupervisorFilter || a.supervisorId === bulkTargetSupervisorFilter)).map(agent => {
+                                        {agents.filter(a => a.id !== reclaimingAgent.id && a.isActive !== false && a.role !== 'admin' && a.role !== 'manager' && (!bulkTargetSupervisorFilter || a.supervisorId === bulkTargetSupervisorFilter)).map(agent => {
                                             const isSelected = bulkTargetAgents.includes(agent.id);
                                             return (
                                                 <label key={agent.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm border-b border-gray-50 last:border-0">
