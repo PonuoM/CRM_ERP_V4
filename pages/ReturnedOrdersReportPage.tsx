@@ -163,7 +163,8 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           'ประเภทการยกเลิก/ตีกลับ': order.cancel_type || '-',
           'หมายเหตุเพิ่มเติม': order.cancel_notes || '-',
           'สรุปออเดอร์ (แอดมิน)': order.admin_resolution_notes || '-',
-          'ลิงก์ไฟล์เสียง': audioString
+          'ลิงก์ไฟล์เสียง': audioString,
+          'สถานะสรุป': order.admin_resolution_completed === 1 ? 'สรุปแล้ว' : 'ยังไม่เสร็จ'
         };
       });
 
