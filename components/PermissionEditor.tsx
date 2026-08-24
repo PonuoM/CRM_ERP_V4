@@ -99,6 +99,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'inv2.history', label: 'ประวัติ V2 (History)' },
             { key: 'inv2.mapping', label: 'ผูกคลัง V2 (Warehouse Mapping)' },
             { key: 'inv2.arrival_planning', label: 'แพลนรับสินค้า (Stock Arrival Planning)' },
+            { key: 'inv2.production', label: 'สั่งผลิต & ใบขน (Factory Production)' },
         ]
     },
     'Promotions': {
@@ -184,6 +185,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'data.companies', label: 'จัดการ Companies (บริษัท)' },
             { key: 'data.jst_inventory', label: 'สินค้าคงคลัง JST' },
             { key: 'data.roles', label: 'จัดการ Roles (บทบาทและสิทธิ์)' },
+            { key: 'data.hr_employee_mapping', label: 'จับคู่พนักงาน HR (เชื่อม ERP กับระบบ HR)' },
         ]
     },
     'System': {

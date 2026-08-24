@@ -46,6 +46,7 @@ import {
   ShoppingBag,
   Activity,
   ExternalLink,
+  Factory,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -393,6 +394,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "ประวัติ V2", icon: History, key: "inv2.history" },
         { label: "ผูกคลัง V2", icon: FileText, key: "inv2.mapping" },
         { label: "แพลนรับสินค้า", icon: Calendar, key: "inv2.arrival_planning" },
+        { label: "สั่งผลิต & ใบขน", icon: Factory, key: "inv2.production" },
       ]
     },
     {
@@ -449,6 +451,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Companies", icon: Briefcase, key: "data.companies" },
         { label: "JST Inventory", icon: Package, key: "data.jst_inventory" },
         { label: "Role Management", icon: Key, key: "data.roles" },
+        { label: "จับคู่พนักงาน HR", icon: Users, key: "data.hr_employee_mapping" },
         { label: "จัดการพื้นที่ทำงาน", icon: Settings, key: "settings.geo_company" },
         { label: "Addresses", icon: MapPin, key: "data.addresses" },
         { label: "Database Management", icon: Database, key: "data.database", allowRule: (u: UserType) => u.role === UserRole.SuperAdmin },

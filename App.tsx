@@ -187,6 +187,7 @@ import DistributionDashboardPage from "./pages/DistributionDashboardPage";
 import TelesalePerformancePage from "./pages/TelesalePerformancePage";
 import TelesaleCallstatsPage from "./pages/TelesaleCallstatsPage";
 import AttendanceManagementPage from "./pages/AttendanceManagementPage";
+import HrEmployeeMappingPage from "./pages/HrEmployeeMappingPage";
 import AdsInputV2 from "./pages/AdsInputV2";
 import SalesSheetPage from "./pages/SalesSheetPage";
 import TelesaleCallReportPage from "./pages/TelesaleCallReportPage";
@@ -280,6 +281,7 @@ import AddressManagementPage from "./pages/AddressManagementPage";
 import GoogleSheetImportPage from "./pages/GoogleSheetImportPage";
 import InventoryReportsPage from "./pages/InventoryReportsPage";
 import StockArrivalPlanningPage from "./pages/StockArrivalPlanningPage";
+import FactoryProductionPage from "./pages/FactoryProductionPage";
 import Inv2StockOrderPage from "./pages/Inv2StockOrderPage";
 import Inv2ReceivePage from "./pages/Inv2ReceivePage";
 import Inv2DispatchPage from "./pages/Inv2DispatchPage";
@@ -6994,6 +6996,9 @@ const App: React.FC = () => {
     if (activePage === "แพลนรับสินค้า") {
       return <StockArrivalPlanningPage currentUser={currentUser} />;
     }
+    if (activePage === "สั่งผลิต & ใบขน") {
+      return <FactoryProductionPage currentUser={currentUser} />;
+    }
     if (activePage === "Team") {
       if (currentUser.role === UserRole.Supervisor) {
         return (
@@ -7489,6 +7494,10 @@ const App: React.FC = () => {
       case "nav.attendance_management":
       case "จัดการวันมาทำงาน":
         return <AttendanceManagementPage />;
+
+      case "data.hr_employee_mapping":
+      case "จับคู่พนักงาน HR":
+        return <HrEmployeeMappingPage />;
 
       // PROCESSED: Customers
       case "Add Customer":
