@@ -885,7 +885,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         const headers = [
             "ID", "Bank Account", "Statement Date/Time", "Statement Amount", "Channel",
             "Description", "Order ID", "Order Amount", "Payment Method", "Status",
-            "Confirmed At", "Note", "Mismatch Reason"
+            "Confirmed At", "Note", "Mismatch Reason",
+            "Transfer Type", "Transfer Company", "Transferred By", "Transferred At", "Transfer Note"
         ];
 
         const rows = logs.map(log => [
@@ -908,7 +909,13 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                     log.status,
             log.confirmed_at ? formatDate(log.confirmed_at) : '',
             log.note || '',
-            log.mismatch_reason || ''
+            log.mismatch_reason || '',
+            log.transfer_direction === 'out' ? 'โอนออก' : log.transfer_direction === 'in' ? 'รับโอน' : '',
+            log.transfer_direction === 'out' ? (log.assigned_company_name || (log.assigned_company_id ? `บริษัท #${log.assigned_company_id}` : '')) :
+            log.transfer_direction === 'in' ? (log.owner_company_name || '') : '',
+            log.transfer_direction ? (log.assigned_by_name || '') : '',
+            log.transfer_direction && log.assigned_at ? formatDate(log.assigned_at) : '',
+            log.transfer_direction ? (log.assign_note || '') : ''
         ]);
 
         downloadDataFile([headers, ...rows], `bank_audit_${startDate}_${endDate}`, type);
