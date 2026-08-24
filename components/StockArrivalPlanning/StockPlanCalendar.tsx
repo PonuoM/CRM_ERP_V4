@@ -1,6 +1,7 @@
 import React from 'react';
 import HoverTooltip from '@/components/HoverTooltip';
 import { StockPlanRow, STATUS_META, movedFromLabel } from './types';
+import { buildMonthWeeks, weekLabelOf, calendarItemLabel, WEEKDAY_NAMES_TH } from './calendarGrid';
 
 interface StockPlanCalendarProps {
   year: number;
@@ -11,8 +12,6 @@ interface StockPlanCalendarProps {
   holidays: string[];
 }
 
-const WEEKDAY_NAMES_TH = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
-
 const StockPlanCalendar: React.FC<StockPlanCalendarProps> = ({
   year, month, itemsByDay, selectedDay, onDayClick, holidays
 }) => {
@@ -20,57 +19,12 @@ const StockPlanCalendar: React.FC<StockPlanCalendarProps> = ({
   const todayStr = now.toISOString().slice(0, 10);
   const holidaySet = new Set(holidays);
 
-  // Calendar logic (Monday start)
-  const firstDayOfMonth = new Date(year, month - 1, 1);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  
-  // getDay() -> Sun=0, Mon=1, ..., Sat=6
-  // We want Mon=0, Tue=1, ..., Sun=6
-  const startWeekday = (firstDayOfMonth.getDay() + 6) % 7;
-
-  // Build cells including previous/next month filler days to complete weeks
-  const cells: { dateStr: string; isCurrentMonth: boolean }[] = [];
-  
-  // Previous month fillers
-  const prevMonthDays = new Date(year, month - 1, 0).getDate();
-  for (let i = startWeekday - 1; i >= 0; i--) {
-    const d = prevMonthDays - i;
-    const m = month === 1 ? 12 : month - 1;
-    const y = month === 1 ? year - 1 : year;
-    cells.push({
-      dateStr: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
-      isCurrentMonth: false
-    });
-  }
-  
-  // Current month days
-  for (let d = 1; d <= daysInMonth; d++) {
-    cells.push({
-      dateStr: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
-      isCurrentMonth: true
-    });
-  }
-  
-  // Next month fillers
-  let nextDay = 1;
-  while (cells.length % 7 !== 0) {
-    const m = month === 12 ? 1 : month + 1;
-    const y = month === 12 ? year + 1 : year;
-    cells.push({
-      dateStr: `${y}-${String(m).padStart(2, '0')}-${String(nextDay++).padStart(2, '0')}`,
-      isCurrentMonth: false
-    });
-  }
-
-  // Chunk into weeks (7 days per row)
-  const weeks: typeof cells[] = [];
-  for (let i = 0; i < cells.length; i += 7) {
-    weeks.push(cells.slice(i, i + 7));
-  }
+  // ตารางสัปดาห์/วันเติมหัวท้ายเดือน — ใช้ตัวเดียวกับที่ Export Excel ใช้ (calendarGrid.ts)
+  const weeks = buildMonthWeeks(year, month);
 
   const rowStatus = (row: StockPlanRow) => (row.kind === 'pending' ? 'pending' : row.status);
   const rowQty = (row: StockPlanRow) => (row.kind === 'pending' ? row.remaining_qty : (row.actual_qty ?? row.expected_qty));
-  const calendarLabel = (row: StockPlanRow) => `${row.item.product_name ?? row.item.sku ?? row.item.product_id} · ${rowQty(row)}`;
+  const calendarLabel = (row: StockPlanRow) => calendarItemLabel(row.item.product_name ?? row.item.sku ?? row.item.product_id, rowQty(row));
   const shortStamp = (ts?: string | null) => (ts ? ts.slice(0, 16) : '');
 
   const renderTooltipContent = (row: StockPlanRow) => {
@@ -121,9 +75,7 @@ const StockPlanCalendar: React.FC<StockPlanCalendarProps> = ({
       <div className="space-y-1.5">
         {weeks.map((week, wIdx) => {
           // Calculate week label based on the Monday of this week
-          const mondayStr = week[0].dateStr;
-          const [mYear, mMonth, mDay] = mondayStr.split('-').map(Number);
-          const weekNum = Math.floor((mDay - 1) / 7) + 1;
+          const { monthNo: mMonth, weekNo: weekNum } = weekLabelOf(week[0].dateStr);
           
           return (
             <div key={wIdx} className="grid grid-cols-[45px_1fr_1fr_1fr_1fr_1fr_1fr_0.6fr] gap-1.5">
