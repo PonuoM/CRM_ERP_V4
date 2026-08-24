@@ -3189,3 +3189,248 @@ export async function deleteSystemUpdate(id: number) {
     method: "DELETE",
   });
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   สั่งผลิต & ใบขน (Factory Production)
+   backend: api/inventory/production_*.php, *_delivery_note.php
+   ═══════════════════════════════════════════════════════════════════ */
+
+export async function getProductionAccess(userId?: number) {
+  return apiFetch(`inventory/get_production_access.php?user_id=${userId ?? 0}`);
+}
+
+export async function listProductionFactories(params?: { userId?: number; includeInactive?: boolean }) {
+  const qs = new URLSearchParams();
+  if (params?.userId) qs.set("user_id", String(params.userId));
+  if (params?.includeInactive) qs.set("include_inactive", "1");
+  const query = qs.toString();
+  return apiFetch(`inventory/list_production_factories.php${query ? `?${query}` : ""}`);
+}
+
+export async function saveProductionFactory(payload: {
+  id?: number;
+  code: string;
+  name: string;
+  note?: string;
+  sort_order?: number;
+  is_active?: boolean;
+  user_id?: number;
+}) {
+  return apiFetch("inventory/save_production_factory.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteProductionFactory(payload: { id: number; user_id?: number }) {
+  return apiFetch("inventory/delete_production_factory.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listProductionOrders(params?: {
+  userId?: number;
+  companyId?: number;
+  factoryId?: number;
+  month?: number;
+  year?: number;
+  status?: string;
+  progress?: string;
+  search?: string;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.userId) qs.set("user_id", String(params.userId));
+  if (params?.companyId) qs.set("companyId", String(params.companyId));
+  if (params?.factoryId) qs.set("factoryId", String(params.factoryId));
+  if (params?.month) qs.set("month", String(params.month));
+  if (params?.year) qs.set("year", String(params.year));
+  if (params?.status) qs.set("status", params.status);
+  if (params?.progress) qs.set("progress", params.progress);
+  if (params?.search) qs.set("search", params.search);
+  const query = qs.toString();
+  return apiFetch(`inventory/list_production_orders.php${query ? `?${query}` : ""}`);
+}
+
+export async function getProductionOrder(id: number, userId?: number) {
+  return apiFetch(`inventory/get_production_order.php?id=${id}&user_id=${userId ?? 0}`);
+}
+
+/** เก็บไฟล์ PDF ต้นทางของใบ SO/ใบขน คืน path ที่เอาไปผูกกับเอกสาร */
+export async function uploadProductionDoc(file: File, userId?: number) {
+  const form = new FormData();
+  form.append("file", file);
+  if (userId) form.append("user_id", String(userId));
+  const token = localStorage.getItem("authToken");
+  const headers: any = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const apiBasePath = resolveApiBasePath();
+  const res = await fetch(`${apiBasePath.replace(/\/$/, "")}/inventory/upload_production_doc.php`, {
+    method: "POST", headers, body: form,
+  });
+  return res.json();
+}
+
+/** URL เปิดดูไฟล์ที่เก็บไว้ (path จาก uploadProductionDoc) */
+export function productionDocUrl(path?: string | null): string {
+  if (!path) return "";
+  if (/^https?:\/\//.test(path)) return path;
+  const apiBasePath = resolveApiBasePath().replace(/\/$/, "");
+  return `${apiBasePath}/${path.replace(/^\/+/, "")}`;
+}
+
+/** ฟิลด์ที่อ่านมาจากไฟล์ PDF ต้นทาง -- ส่งเฉพาะตอนนำเข้าไฟล์ */
+interface ProductionDocFields {
+  customer_code?: string | null;
+  customer_name?: string | null;
+  customer_address?: string | null;
+  receive_date?: string | null;
+  warehouse_name?: string | null;
+  coordinator_name?: string | null;
+  source_type?: string | null;
+  source_file?: string | null;
+  source_path?: string | null;
+  source_size?: number | null;
+}
+
+export async function saveProductionOrder(payload: ProductionDocFields & {
+  id?: number;
+  so_number: string;
+  company_id?: number | null;
+  factory_id: number;
+  so_date: string;
+  period_start?: string | null;
+  period_end?: string | null;
+  due_date?: string | null;
+  status?: string;
+  notes?: string;
+  force?: boolean;
+  user_id?: number;
+  items: {
+    id?: number; product_id: number; ordered_qty: number; note?: string | null;
+    doc_line_no?: number | null; doc_sku?: string | null; doc_name?: string | null;
+    unit?: string | null; department?: string | null;
+  }[];
+}) {
+  return apiFetch("inventory/save_production_order.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteProductionOrder(payload: { id: number; user_id?: number }) {
+  return apiFetch("inventory/delete_production_order.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listDeliveryNotes(params?: {
+  userId?: number;
+  factoryId?: number;
+  orderId?: number;
+  month?: number;
+  year?: number;
+  status?: string;
+  search?: string;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.userId) qs.set("user_id", String(params.userId));
+  if (params?.factoryId) qs.set("factoryId", String(params.factoryId));
+  if (params?.orderId) qs.set("orderId", String(params.orderId));
+  if (params?.month) qs.set("month", String(params.month));
+  if (params?.year) qs.set("year", String(params.year));
+  if (params?.status) qs.set("status", params.status);
+  if (params?.search) qs.set("search", params.search);
+  const query = qs.toString();
+  return apiFetch(`inventory/list_delivery_notes.php${query ? `?${query}` : ""}`);
+}
+
+export async function saveDeliveryNote(payload: {
+  id?: number;
+  dn_number: string;
+  factory_id: number;
+  issued_date: string;
+  status?: string;
+  vehicle_note?: string;
+  note?: string;
+  force?: boolean;
+  user_id?: number;
+  items: { order_item_id: number; qty: number; note?: string | null }[];
+}) {
+  return apiFetch("inventory/save_delivery_note.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** action: pickup = iPod รับของเข้าคลัง | undo = ถอนการรับเข้า */
+export async function pickupDeliveryNote(payload: {
+  id: number;
+  action?: "pickup" | "undo";
+  warehouse_id?: number;
+  received_date?: string;
+  vehicle_note?: string;
+  user_id?: number;
+  items?: { id: number; received_qty?: number; note?: string | null }[];
+}) {
+  return apiFetch("inventory/pickup_delivery_note.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteDeliveryNote(payload: { id: number; user_id?: number }) {
+  return apiFetch("inventory/delete_delivery_note.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getProductionSummary(params?: {
+  userId?: number;
+  companyId?: number;
+  factoryId?: number;
+  month?: number;
+  year?: number;
+  scope?: "open" | "all";
+}) {
+  const qs = new URLSearchParams();
+  if (params?.userId) qs.set("user_id", String(params.userId));
+  if (params?.companyId) qs.set("companyId", String(params.companyId));
+  if (params?.factoryId) qs.set("factoryId", String(params.factoryId));
+  if (params?.month) qs.set("month", String(params.month));
+  if (params?.year) qs.set("year", String(params.year));
+  if (params?.scope) qs.set("scope", params.scope);
+  const query = qs.toString();
+  return apiFetch(`inventory/production_summary.php${query ? `?${query}` : ""}`);
+}
+
+export async function listProductionManagers(params: { userId: number; companyId?: number }) {
+  const qs = new URLSearchParams({ user_id: String(params.userId) });
+  if (params.companyId) qs.set("companyId", String(params.companyId));
+  return apiFetch(`inventory/list_production_managers.php?${qs.toString()}`);
+}
+
+export async function saveProductionManager(payload: {
+  user_id: number;
+  actor_user_id: number;
+  can_manage?: boolean;
+  factory_ids?: number[];
+}) {
+  return apiFetch("inventory/save_production_manager.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function saveProductDefaultFactory(payload: {
+  product_id: number;
+  factory_id: number | null;
+  user_id?: number;
+}) {
+  return apiFetch("inventory/save_product_default_factory.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

@@ -13,7 +13,8 @@ require_once '../config.php';
 $pdo = db_connect();
 
 try {
-    $stmt = $pdo->query("SELECT id, sku, name, format_code FROM stock_arrival_products WHERE is_active = 1 ORDER BY name ASC");
+    // default_factory_id ใช้เฉพาะเมนู "สั่งผลิต & ใบขน" (โรงงานเริ่มต้นของสินค้า)
+    $stmt = $pdo->query("SELECT id, sku, name, format_code, default_factory_id FROM stock_arrival_products WHERE is_active = 1 ORDER BY name ASC");
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $data = array_map(function ($row) {
@@ -22,6 +23,7 @@ try {
             'sku' => $row['sku'],
             'name' => $row['name'],
             'format_code' => $row['format_code'],
+            'default_factory_id' => $row['default_factory_id'] !== null ? (int)$row['default_factory_id'] : null,
         ];
     }, $rows);
 

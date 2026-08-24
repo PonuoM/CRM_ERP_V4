@@ -50,12 +50,19 @@
   # No .htaccess rewrite here to avoid forcing PHP proxy path.
 </IfModule>
 
+# Vite/pdf.js บาง asset เป็นนามสกุล .mjs ซึ่ง Apache ไม่รู้จักมาแต่เดิม
+# ถ้าไม่ประกาศไว้ server จะส่ง Content-Type ว่างมา แล้วเบราว์เซอร์บล็อกทิ้ง
+# ตามกฎ strict MIME ของ module script
+<IfModule mod_mime.c>
+  AddType text/javascript .mjs
+</IfModule>
+
 # Ensure the default document is the built index.html
 DirectoryIndex dist/index.html
 
 # Optional: cache static assets aggressively
 <IfModule mod_headers.c>
-  <FilesMatch "\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$">
+  <FilesMatch "\.(js|mjs|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
 
