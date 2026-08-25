@@ -3317,7 +3317,7 @@ export async function checkProductionDoc(params: {
   if (params.hash) qs.set('hash', params.hash);
   if (params.soRef) qs.set('so_ref', params.soRef);
   if (params.userId) qs.set('user_id', String(params.userId));
-  return apiFetch(`inventory/check_production_doc.php?${qs.toString()}`) as Promise<{
+  return apiFetch(`inventory/lookup_production_doc.php?${qs.toString()}`) as Promise<{
     success: boolean;
     data: {
       by_number: ProductionDocMatch | null;
