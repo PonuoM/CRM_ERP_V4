@@ -272,7 +272,8 @@ try {
         } catch (Throwable $e) {}
     }
 
-    $creatorTotals = OrderExportService::calculateCreatorTotals($rows);
+    $lookups['remainingTotals'] = OrderExportService::calculateRemainingOrderTotals($rows, $lookups);
+    $creatorTotals = OrderExportService::calculateCreatorTotals($rows, $lookups);
     $headers = OrderExportService::getCsvHeaders(false, false);
 
     $format = $_GET['format'] ?? 'csv';

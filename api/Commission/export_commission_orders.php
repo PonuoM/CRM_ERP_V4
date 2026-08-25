@@ -264,20 +264,19 @@ try {
             }
         } catch (Throwable $e) { error_log('Commission export airport: ' . $e->getMessage()); }
 
-        // 2e: Order boxes return_status (for Returned orders)
+        // 2e: Order boxes return_status (all orders — including partial returns)
         try {
-            $returnedIds = array_values(array_unique(array_filter(array_map(function($r) {
-                return ($r['order_status'] ?? '') === 'Returned' ? $r['order_id'] : null;
-            }, $rows))));
-            if (!empty($returnedIds)) {
-                $retChunks = array_chunk($returnedIds, $chunkSize);
-                foreach ($retChunks as $retChunk) {
-                    $ph = implode(',', array_fill(0, count($retChunk), '?'));
-                    $bStmt = $pdo->prepare("SELECT order_id, box_number, return_status FROM order_boxes WHERE order_id IN ($ph)");
-                    $bStmt->execute($retChunk);
-                    foreach ($bStmt->fetchAll(PDO::FETCH_ASSOC) as $b) {
-                        $lookups['boxes'][$b['order_id'] . '-' . $b['box_number']] = $b['return_status'];
-                    }
+            foreach ($chunks as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $bStmt = $pdo->prepare("SELECT order_id, box_number, return_status, return_note
+                     FROM order_boxes
+                     WHERE order_id IN ($ph) AND return_status IS NOT NULL");
+                $bStmt->execute($chunk);
+                foreach ($bStmt->fetchAll(PDO::FETCH_ASSOC) as $b) {
+                    $lookups['boxes'][$b['order_id'] . '-' . $b['box_number']] = [
+                        'status' => $b['return_status'],
+                        'note' => $b['return_note'] ?? null,
+                    ];
                 }
             }
         } catch (Throwable $e) { error_log('Commission export boxes: ' . $e->getMessage()); }
@@ -286,7 +285,8 @@ try {
     // ============================================================
     // Phase 2.5: Calculate creator totals per order
     // ============================================================
-    $creatorTotals = OrderExportService::calculateCreatorTotals($rows);
+    $lookups['remainingTotals'] = OrderExportService::calculateRemainingOrderTotals($rows, $lookups);
+    $creatorTotals = OrderExportService::calculateCreatorTotals($rows, $lookups);
 
     // ============================================================
     // Phase 3: Output CSV

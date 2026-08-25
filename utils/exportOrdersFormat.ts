@@ -6,7 +6,7 @@ export function formatOrdersRaw(
   users: User[],
   pages: Page[],
   products: Product[],
-  orderBoxesMap: Record<string, string>
+  orderBoxesMap: Record<string, any>
 ): any[] {
   const ordersRawReport: any[] = [];
 
@@ -76,6 +76,17 @@ export function formatOrdersRaw(
       return regionMap[province] || 'ไม่ทราบภาค';
     };
 
+    const getBoxReturnStatus = (orderId?: string, boxNumber?: number): string | null => {
+      if (!orderId || boxNumber === undefined) return null;
+      const data = orderBoxesMap[`${orderId}-${boxNumber}`];
+      if (data == null || data === '') return null;
+      if (typeof data === 'string') return data;
+      return data.return_status || data.status || null;
+    };
+
+    const isBoxReturned = (orderId?: string, boxNumber?: number) => !!getBoxReturnStatus(orderId, boxNumber);
+    const orderFullyReturned = order.orderStatus === 'Returned';
+
     const getOrderStatusThai = (status: string, orderId?: string, boxNumber?: number): string => {
       const statusMap: { [key: string]: string } = {
         'Pending': 'รอดำเนินการ', 'Confirmed': 'ยืนยันแล้ว', 'Picking': 'กำลังจัดเตรียม',
@@ -84,17 +95,17 @@ export function formatOrdersRaw(
         'BadDebt': 'หนี้สูญ', 'PreApproved': 'รออนุมัติ'
       };
       const base = statusMap[status] || status;
+      const returnStatus = getBoxReturnStatus(orderId, boxNumber);
+      const boxReturned = !!returnStatus;
 
-      if (status === 'Returned' && orderId && boxNumber !== undefined) {
-        const key = `${orderId}-${boxNumber}`;
-        const returnData = orderBoxesMap[key];
-        const returnStatus = returnData ? returnData.return_status : null;
+      if ((status === 'Returned' || boxReturned) && orderId && boxNumber !== undefined) {
         const returnStatusThai: { [key: string]: string } = {
           returning: 'กำลังตีกลับ', returned: 'สภาพดี', good: 'สภาพดี',
           damaged: 'ชำรุด', lost: 'ตีกลับสูญหาย'
         };
         const statusText = returnStatus ? (returnStatusThai[returnStatus] || returnStatus) : 'ไม่ถูกตีกลับ';
-        return `ตีกลับ (กล่อง ${boxNumber} : ${statusText})`;
+        const label = status === 'Returned' ? 'ตีกลับ' : base;
+        return `${label} (กล่อง ${boxNumber} : ${statusText})`;
       }
       if (status === 'Cancelled') {
         const type = (order as any).cancellationType || 'ยังไม่ระบุเหตุผล';
@@ -107,10 +118,12 @@ export function formatOrdersRaw(
       if (order.orderStatus === 'Cancelled') {
         return (order as any).cancellationNotes || '-';
       }
-      if (order.orderStatus === 'Returned' && orderId && boxNumber !== undefined) {
-        const key = `${orderId}-${boxNumber}`;
-        const returnData = orderBoxesMap[key];
-        return (returnData && returnData.return_note) ? returnData.return_note : '-';
+      if ((orderFullyReturned || isBoxReturned(orderId, boxNumber)) && orderId && boxNumber !== undefined) {
+        const returnData = orderBoxesMap[`${orderId}-${boxNumber}`];
+        if (returnData && typeof returnData === 'object' && returnData.return_note) {
+          return returnData.return_note;
+        }
+        return '-';
       }
       return '-';
     };
@@ -188,26 +201,29 @@ export function formatOrdersRaw(
         const cid = String(item.creatorId ?? order.creatorId ?? '');
         const isPromoParent = !!(item as any).isPromotionParent;
         const isPromoChild = !!(item as any).parentItemId;
-        const qty = item.quantity || 0;
-        const netTotal = (item as any).netTotal || 0;
-        const retailPrice = item.pricePerUnit || 0;
+        const netTotal = (item as any).netTotal || (item as any).net_total || 0;
+        const boxReturned = isBoxReturned(order.id, item.boxNumber || 1);
 
         let itTotal: number;
-        if (isPromoParent) {
+        if (isPromoParent || item.isFreebie || boxReturned || orderFullyReturned) {
           itTotal = 0;
         } else if (isPromoChild) {
           itTotal = netTotal;
-        } else if (item.isFreebie) {
-          itTotal = 0;
         } else {
-          const calculatedTotal = (retailPrice * qty) - (item.discount || 0);
-          itTotal = calculatedTotal > 0 ? calculatedTotal : netTotal;
+          itTotal = Number(netTotal) || 0;
         }
 
         if (!item.isFreebie && !isPromoParent) {
           creatorTotals[cid] = (creatorTotals[cid] || 0) + itTotal;
         }
       });
+
+      const hasReturnedBox = sortedItems.some(item => isBoxReturned(order.id, item.boxNumber || 1));
+      const remainingBillTotal = orderFullyReturned
+        ? 0
+        : hasReturnedBox
+          ? Object.values(creatorTotals).reduce((sum, val) => sum + val, 0)
+          : (order.totalAmount || 0);
 
       const grossTotal = Object.values(creatorTotals).reduce((sum, val) => sum + val, 0);
       const shippingCost = order.shippingCost || 0;
@@ -314,10 +330,12 @@ export function formatOrdersRaw(
           'ราคาต่อหน่วย': isPromoParent ? 0 : retailPrice,
           'ส่วนลด': effectiveDiscount,
           'ส่วนลดประจำเดือน': item.monthlyDiscount ?? (item as any).monthly_discount ?? 0,
-          'ยอดรวมรายการ': Number((item as any).netTotal ?? (item as any).net_total ?? 0),
+          'ยอดรวมรายการ': (isBoxReturned(order.id, item.boxNumber || 1) || orderFullyReturned)
+            ? 0
+            : Number((item as any).netTotal ?? (item as any).net_total ?? 0),
           'ค่าจัดส่ง (ต่อบิล)': order.shippingCost || 0,
           'ส่วนลดท้ายบิล': order.billDiscount || 0,
-          'ยอดรวมทั้งบิล': index === 0 ? (order.totalAmount || 0) : '-',
+          'ยอดรวมทั้งบิล': index === 0 ? remainingBillTotal : '-',
           'ยอดรวมรายคน': displayCreatorTotal,
           'หมายเลขกล่อง': String(item.boxNumber || 1),
           'หมายเลขติดตาม': getTrackingNumber(),

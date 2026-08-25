@@ -321,16 +321,13 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
         setFetchedOrders(mappedOrders);
 
-        // Fetch order_boxes for returned orders (to get return_status per box)
+        // Fetch order_boxes for return_status per box (including partial returns)
         try {
-          const returnedOrderIds = mappedOrders
-            .filter(o => o.orderStatus === 'Returned')
-            .map(o => o.id);
-          if (returnedOrderIds.length > 0) {
-            // Batch fetch in chunks of 100
+          const allOrderIds = mappedOrders.map(o => o.id);
+          if (allOrderIds.length > 0) {
             const boxMap: Record<string, { return_status: string | null; return_note: string | null }> = {};
-            for (let i = 0; i < returnedOrderIds.length; i += 100) {
-              const chunk = returnedOrderIds.slice(i, i + 100);
+            for (let i = 0; i < allOrderIds.length; i += 100) {
+              const chunk = allOrderIds.slice(i, i + 100);
               const idsParam = chunk.join(',');
               const boxRes = await apiFetch(`Orders/get_order_boxes.php?order_ids=${encodeURIComponent(idsParam)}`);
               const boxes = boxRes?.boxes || boxRes?.data || [];

@@ -1624,18 +1624,21 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         }))
       }));
 
-      const orderBoxesMap: Record<string, string> = {};
-      const returnedOrderIds = mappedOrders.filter((o: any) => o.orderStatus === 'Returned').map((o: any) => o.id);
+      const orderBoxesMap: Record<string, any> = {};
+      const allOrderIds = mappedOrders.map((o: any) => o.id);
 
-      if (returnedOrderIds.length > 0) {
-        for (let i = 0; i < returnedOrderIds.length; i += 100) {
-          const batchIds = returnedOrderIds.slice(i, i + 100);
+      if (allOrderIds.length > 0) {
+        for (let i = 0; i < allOrderIds.length; i += 100) {
+          const batchIds = allOrderIds.slice(i, i + 100);
           try {
             const res = await apiFetch(`Orders/get_order_boxes.php?order_ids=${batchIds.join(',')}`);
             if (res.ok && res.boxes) {
               res.boxes.forEach((box: any) => {
                 const key = `${box.order_id}-${box.box_number}`;
-                orderBoxesMap[key] = box.return_status;
+                orderBoxesMap[key] = {
+                  return_status: box.return_status || null,
+                  return_note: box.return_note || null,
+                };
               });
             }
           } catch (e) {

@@ -74,7 +74,55 @@ class OrderExportService {
         ];
     }
 
-    public static function calculateCreatorTotals(array $rows): array {
+    /** return_status of a box, or null if the box is not returned. Accepts array or string lookup. */
+    public static function getBoxReturnStatus(array $lookups, string $orderId, $boxNumber): ?string {
+        $key = $orderId . '-' . $boxNumber;
+        $boxData = $lookups['boxes'][$key] ?? null;
+        if ($boxData === null || $boxData === '') {
+            return null;
+        }
+        if (is_array($boxData)) {
+            $status = $boxData['status'] ?? $boxData['return_status'] ?? null;
+            return ($status === null || $status === '') ? null : (string) $status;
+        }
+        return (string) $boxData;
+    }
+
+    public static function isBoxReturned(array $lookups, string $orderId, $boxNumber): bool {
+        return self::getBoxReturnStatus($lookups, $orderId, $boxNumber) !== null;
+    }
+
+    /** Remaining billable net per order after zeroing returned boxes. */
+    public static function calculateRemainingOrderTotals(array $rows, array $lookups): array {
+        $totals = [];
+        foreach ($rows as $r) {
+            $orderId = $r['order_id'];
+            if (!isset($totals[$orderId])) {
+                $totals[$orderId] = ['remaining' => 0.0, 'hasReturnedBox' => false];
+            }
+            $boxNumber = $r['box_number'] ?? 1;
+            $boxReturned = self::isBoxReturned($lookups, $orderId, $boxNumber);
+            if ($boxReturned) {
+                $totals[$orderId]['hasReturnedBox'] = true;
+            }
+
+            $netTotal = (isset($r['net_total']) && $r['net_total'] !== null)
+                ? (float) $r['net_total']
+                : ((int) ($r['quantity'] ?? 0) * (float) ($r['price_per_unit'] ?? 0));
+
+            $isPromoParent = (bool) ($r['is_promotion_parent'] ?? false);
+            $isFreebie = (bool) ($r['is_freebie'] ?? false);
+            $orderFullyReturned = ($r['order_status'] ?? '') === 'Returned';
+
+            if ($isPromoParent || $isFreebie || $boxReturned || $orderFullyReturned) {
+                $netTotal = 0.0;
+            }
+            $totals[$orderId]['remaining'] += $netTotal;
+        }
+        return $totals;
+    }
+
+    public static function calculateCreatorTotals(array $rows, array $lookups = []): array {
         $creatorTotals = [];
 
         foreach ($rows as $r) {
@@ -95,10 +143,12 @@ class OrderExportService {
             $isFreebie = (bool)($r['is_freebie'] ?? false);
             
             $orderTotalAmount = (float)($r['total_amount'] ?? 0);
+            $boxReturned = self::isBoxReturned($lookups, $orderId, $r['box_number'] ?? 1);
+            $orderFullyReturned = ($r['order_status'] ?? '') === 'Returned';
 
-            // ถ้า total_amount ของบิลนี้เป็น 0 (เช่น ตีกลับบางออเดอร์, เคลม, ของแถม)
-            // ยอดรวมรายคนก็ต้องเป็น 0 ด้วย เพื่อให้ตัวเลขล้อตามกัน
-            if ($isPromoParent || $isFreebie || $orderTotalAmount == 0) {
+            // ถ้า total_amount ของบิลนี้เป็น 0 (เช่น ตีกลับทั้งออเดอร์, เคลม, ของแถม)
+            // หรือกล่องของรายการนี้ถูกตีกลับ — ไม่นับยอด
+            if ($isPromoParent || $isFreebie || $orderTotalAmount == 0 || $boxReturned || $orderFullyReturned) {
                 $netTotal = 0;
             }
             
@@ -189,6 +239,14 @@ class OrderExportService {
         // Claim/Gift orders: discount = full price
         $isClaimOrGift = in_array($row['payment_status'] ?? '', ['Claim', 'Gift']);
         $discount = $isClaimOrGift ? ($qty * $price) : $originalDiscount;
+
+        $orderStatus = $row['order_status'] ?? '';
+        $boxNumber = $row['box_number'] ?? 1;
+        $boxReturned = self::isBoxReturned($lookups, $orderId, $boxNumber);
+        $orderFullyReturned = $orderStatus === 'Returned';
+        if ($boxReturned || $orderFullyReturned) {
+            $netTotal = 0;
+        }
     
         $paid = (float)($row['amount_paid'] ?? 0);
         $total = (float)($row['total_amount'] ?? 0);
@@ -226,27 +284,22 @@ class OrderExportService {
         $airportDeliveryDate = $airportData['delivery_date'] ?? null;
         $airportDeliveryStatus = $airportData['delivery_status'] ?? '-';
     
-        // สถานะออเดอร์ — enrich with box return_status for Returned orders
-        $orderStatus = $row['order_status'] ?? '';
-        $boxNumber = $row['box_number'] ?? 1;
+        // สถานะออเดอร์ — enrich with box return_status when this box was returned
         $reasonNote = '-';
+        $returnStatus = self::getBoxReturnStatus($lookups, $orderId, $boxNumber);
+        $boxData = $lookups['boxes'][$orderId . '-' . $boxNumber] ?? null;
 
-        if ($orderStatus === 'Returned') {
-            $boxKey = $orderId . '-' . $boxNumber;
-            $boxData = $lookups['boxes'][$boxKey] ?? null;
-            $returnStatus = $boxData ? $boxData['status'] : '__NONE__';
-            $reasonNote = ($boxData && $boxData['note']) ? $boxData['note'] : '-';
-            
+        if ($orderFullyReturned || $boxReturned) {
+            $reasonNote = (is_array($boxData) && !empty($boxData['note'])) ? $boxData['note'] : '-';
             $returnStatusThai = [
                 'returning' => 'กำลังตีกลับ', 'returned' => 'สภาพดี',
                 'good' => 'สภาพดี', 'damaged' => 'ชำรุด', 'lost' => 'ตีกลับสูญหาย'
             ];
-            if ($returnStatus === '__NONE__') {
-                $statusText = 'ไม่ถูกตีกลับ';
-            } else {
-                $statusText = $returnStatusThai[$returnStatus] ?? $returnStatus;
-            }
-            $orderStatusDisplay = "ตีกลับ (กล่อง {$boxNumber} : {$statusText})";
+            $statusText = $returnStatus ? ($returnStatusThai[$returnStatus] ?? $returnStatus) : 'ไม่ถูกตีกลับ';
+            $baseStatus = $orderFullyReturned
+                ? 'ตีกลับ'
+                : ($statusThai[$orderStatus] ?? $orderStatus ?: '-');
+            $orderStatusDisplay = "{$baseStatus} (กล่อง {$boxNumber} : {$statusText})";
         } elseif ($orderStatus === 'Cancelled') {
             $cancelData = $lookups['cancellations'][$orderId] ?? null;
             $orderStatusDisplay = $statusThai[$orderStatus] ?? $orderStatus ?: '-';
@@ -263,9 +316,18 @@ class OrderExportService {
         $billDiscount = (float)($row['bill_discount'] ?? 0);
         $couponDiscount = (float)($row['coupon_discount'] ?? 0);
 
-        $subtotalAmount = 0;
-        if ($totalAmount > 0) {
-            $subtotalAmount = $totalAmount - $shippingCost + $billDiscount;
+        $remainingMeta = $lookups['remainingTotals'][$orderId] ?? null;
+        if ($orderFullyReturned) {
+            $totalAmount = 0;
+            $subtotalAmount = 0;
+        } elseif ($remainingMeta && !empty($remainingMeta['hasReturnedBox'])) {
+            $totalAmount = (float) $remainingMeta['remaining'];
+            $subtotalAmount = $totalAmount;
+        } else {
+            $subtotalAmount = 0;
+            if ($totalAmount > 0) {
+                $subtotalAmount = $totalAmount - $shippingCost + $billDiscount;
+            }
         }
 
         $result = [
