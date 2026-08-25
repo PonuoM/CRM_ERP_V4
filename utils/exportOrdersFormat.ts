@@ -244,20 +244,16 @@ export function formatOrdersRaw(
         const retailPrice = item.pricePerUnit || 0;
 
         let effectiveDiscount: number;
-        let itemTotal: number;
 
         if (isPromoParent) {
-          effectiveDiscount = 0; itemTotal = 0;
+          effectiveDiscount = 0;
         } else if (isPromoChild) {
           const retailTotal = qty * retailPrice;
           effectiveDiscount = retailTotal - netTotal;
-          itemTotal = netTotal;
         } else if (item.isFreebie) {
-          effectiveDiscount = item.discount || 0; itemTotal = 0;
+          effectiveDiscount = item.discount || 0;
         } else {
           effectiveDiscount = item.discount || 0;
-          const calculatedTotal = (retailPrice * qty) - effectiveDiscount;
-          itemTotal = calculatedTotal > 0 ? calculatedTotal : netTotal;
         }
 
         let productCode = '-';
@@ -317,7 +313,8 @@ export function formatOrdersRaw(
           'จำนวน (ชิ้น)': item.quantity || 0,
           'ราคาต่อหน่วย': isPromoParent ? 0 : retailPrice,
           'ส่วนลด': effectiveDiscount,
-          'ยอดรวมรายการ': (item.isFreebie || isPromoParent) ? 0 : itemTotal,
+          'ส่วนลดประจำเดือน': item.monthlyDiscount ?? (item as any).monthly_discount ?? 0,
+          'ยอดรวมรายการ': Number((item as any).netTotal ?? (item as any).net_total ?? 0),
           'ค่าจัดส่ง (ต่อบิล)': order.shippingCost || 0,
           'ส่วนลดท้ายบิล': order.billDiscount || 0,
           'ยอดรวมทั้งบิล': index === 0 ? (order.totalAmount || 0) : '-',
@@ -365,6 +362,7 @@ export function formatOrdersRaw(
         'จำนวน (ชิ้น)': 0,
         'ราคาต่อหน่วย': '-',
         'ส่วนลด': '-',
+        'ส่วนลดประจำเดือน': '-',
         'ยอดรวมรายการ': '-',
         'ค่าจัดส่ง (ต่อบิล)': order.shippingCost || 0,
         'ส่วนลดท้ายบิล': order.billDiscount || 0,

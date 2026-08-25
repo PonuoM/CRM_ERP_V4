@@ -123,7 +123,7 @@ class OrderExportService {
             'ที่อยู่', 'ตำบล', 'อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์', 'ภาค',
             'รหัสสินค้า/โปร', 'สินค้า', 'ประเภทสินค้า', 'ประเภทสินค้า (รีพอร์ต)',
             'ชื่อโปร',
-            'ของแถม', 'จำนวน (ชิ้น)', 'ราคาต่อหน่วย', 'ส่วนลด', 'ยอดรวมรายการ',
+            'ของแถม', 'จำนวน (ชิ้น)', 'ราคาต่อหน่วย', 'ส่วนลด', 'ส่วนลดประจำเดือน', 'ยอดรวมรายการ',
             'ค่าจัดส่ง (ต่อบิล)', 'ส่วนลดท้ายบิล', 'คูปองส่วนลด', 'ยอดรวมเฉพาะสินค้า', 'ยอดรวมทั้งบิล', 'ยอดรวมรายคน',
             'หมายเลขกล่อง', 'หมายเลขติดตาม',
             'วันที่จัดส่ง Airport', 'สถานะจาก Airport',
@@ -189,8 +189,6 @@ class OrderExportService {
         // Claim/Gift orders: discount = full price
         $isClaimOrGift = in_array($row['payment_status'] ?? '', ['Claim', 'Gift']);
         $discount = $isClaimOrGift ? ($qty * $price) : $originalDiscount;
-        $calculatedTotal = ($qty * $price) - $discount;
-        $itemTotal = $row['is_freebie'] ? 0 : ($calculatedTotal > 0 ? $calculatedTotal : $netTotal);
     
         $paid = (float)($row['amount_paid'] ?? 0);
         $total = (float)($row['total_amount'] ?? 0);
@@ -298,7 +296,8 @@ class OrderExportService {
             $qty,
             $price,
             $discount,
-            $itemTotal,
+            (float)($row['monthly_discount'] ?? 0),
+            $netTotal,
             $isFirstItem ? $shippingCost : 0,
             $isFirstItem ? $billDiscount : 0,
             $isFirstItem ? $couponDiscount : 0,

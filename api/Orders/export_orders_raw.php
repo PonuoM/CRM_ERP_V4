@@ -88,6 +88,7 @@ try {
             oi.quantity,
             oi.price_per_unit,
             oi.discount,
+            oi.monthly_discount,
             oi.net_total,
             oi.is_freebie,
             oi.box_number,

@@ -287,6 +287,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               quantity: it.quantity || 0,
               pricePerUnit: it.price_per_unit || 0,
               discount: it.discount || 0,
+              monthlyDiscount: Number(it.monthly_discount ?? it.monthlyDiscount ?? 0),
               netTotal: Number(it.net_total) || 0,
               isFreebie: !!it.is_freebie,
               boxNumber: it.box_number || 1,

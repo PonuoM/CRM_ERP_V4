@@ -170,6 +170,7 @@ export const mapOrderFromApi = (r: any): Order => {
             quantity: Number(i.quantity ?? 0),
             pricePerUnit: Number(i.price_per_unit ?? i.pricePerUnit ?? 0),
             discount: Number(i.discount ?? 0),
+            monthlyDiscount: Number(i.monthly_discount ?? i.monthlyDiscount ?? 0),
             isFreebie: Boolean(i.is_freebie ?? i.isFreebie),
             boxNumber: Number(i.box_number ?? i.boxNumber ?? 1),
             productId: i.product_id ?? i.productId,

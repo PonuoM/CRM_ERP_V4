@@ -38,7 +38,7 @@
     "react-apexcharts": "^1.8.0",
     "react-datepicker": "^9.1.0",
     "react-dom": "^19.1.1",
-    "react-window": "^1.8.10",
+    "react-window": "^1.8.11",
     "react-window-infinite-loader": "^2.0.0",
     "thai-data": "^3.0.2",
     "xlsx": "^0.18.5"
