@@ -104,8 +104,7 @@ export function formatOrdersRaw(
           damaged: 'ชำรุด', lost: 'ตีกลับสูญหาย'
         };
         const statusText = returnStatus ? (returnStatusThai[returnStatus] || returnStatus) : 'ไม่ถูกตีกลับ';
-        const label = status === 'Returned' ? 'ตีกลับ' : base;
-        return `${label} (กล่อง ${boxNumber} : ${statusText})`;
+        return `ตีกลับ (กล่อง ${boxNumber} : ${statusText})`;
       }
       if (status === 'Cancelled') {
         const type = (order as any).cancellationType || 'ยังไม่ระบุเหตุผล';

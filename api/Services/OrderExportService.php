@@ -296,10 +296,7 @@ class OrderExportService {
                 'good' => 'สภาพดี', 'damaged' => 'ชำรุด', 'lost' => 'ตีกลับสูญหาย'
             ];
             $statusText = $returnStatus ? ($returnStatusThai[$returnStatus] ?? $returnStatus) : 'ไม่ถูกตีกลับ';
-            $baseStatus = $orderFullyReturned
-                ? 'ตีกลับ'
-                : ($statusThai[$orderStatus] ?? $orderStatus ?: '-');
-            $orderStatusDisplay = "{$baseStatus} (กล่อง {$boxNumber} : {$statusText})";
+            $orderStatusDisplay = "ตีกลับ (กล่อง {$boxNumber} : {$statusText})";
         } elseif ($orderStatus === 'Cancelled') {
             $cancelData = $lookups['cancellations'][$orderId] ?? null;
             $orderStatusDisplay = $statusThai[$orderStatus] ?? $orderStatus ?: '-';
