@@ -7,9 +7,11 @@
  */
 import fs from 'node:fs';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { parseProductionDoc, type RawTextItem } from '../components/FactoryProduction/pdfImport';
+import { parseProductionDoc, buildLines, type RawTextItem } from '../components/FactoryProduction/pdfImport';
 
 const file = process.argv[2];
+/** --raw = พิมพ์บรรทัด+ช่องดิบที่อ่านได้ ใช้ตอนเอกสารเปลี่ยนหน้าตาแล้วต้องออกแบบ parser ใหม่ */
+const showRaw = process.argv.includes('--raw');
 const data = new Uint8Array(fs.readFileSync(file));
 const doc = await pdfjs.getDocument({ data }).promise;
 
@@ -23,8 +25,21 @@ for (let p = 1; p <= doc.numPages; p++) {
   }
 }
 
+if (showRaw) {
+  for (const line of buildLines(items)) {
+    console.log(
+      String(Math.round(line.y)).padStart(5),
+      '|',
+      line.cells.map(c => `${Math.round(c.x)}:${c.text}`).join('  ')
+    );
+  }
+  process.exit(0);
+}
+
 const parsed = parseProductionDoc(items);
 console.log('=== ', file, ' ===');
+console.log('ชนิดเอกสาร   :', parsed.kind);
+console.log('อ้างถึง SO   :', parsed.soReference || '-');
 console.log('เลขที่เอกสาร :', parsed.docNumber);
 console.log('วันที่สั่ง    :', parsed.docDate);
 console.log('วันที่รับ     :', parsed.receiveDate);

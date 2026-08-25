@@ -3291,6 +3291,40 @@ interface ProductionDocFields {
   source_file?: string | null;
   source_path?: string | null;
   source_size?: number | null;
+  source_hash?: string | null;
+}
+
+/** เอกสารที่เคยคีย์เข้าระบบแล้ว (ผลจาก checkProductionDoc) */
+export interface ProductionDocMatch {
+  id: number;
+  doc_no: string;
+  doc_date: string | null;
+  created_at: string | null;
+  factory_name: string | null;
+  source_file?: string | null;
+}
+
+/** เช็คว่าใบที่กำลังนำเข้าเคยคีย์ไปแล้วหรือยัง (เลขเอกสารซ้ำ / ไฟล์ซ้ำ) */
+export async function checkProductionDoc(params: {
+  kind: 'so' | 'dn';
+  docNo?: string;
+  hash?: string | null;
+  soRef?: string;
+  userId?: number;
+}) {
+  const qs = new URLSearchParams({ kind: params.kind });
+  if (params.docNo) qs.set('doc_no', params.docNo);
+  if (params.hash) qs.set('hash', params.hash);
+  if (params.soRef) qs.set('so_ref', params.soRef);
+  if (params.userId) qs.set('user_id', String(params.userId));
+  return apiFetch(`inventory/check_production_doc.php?${qs.toString()}`) as Promise<{
+    success: boolean;
+    data: {
+      by_number: ProductionDocMatch | null;
+      by_file: ProductionDocMatch[];
+      reference: { id: number; so_number: string; factory_id: number; factory_name: string | null } | null;
+    };
+  }>;
 }
 
 export async function saveProductionOrder(payload: ProductionDocFields & {

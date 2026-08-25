@@ -47,7 +47,7 @@ try {
     foreach (['customer_code', 'customer_name', 'doc_receive_date', 'warehouse_name',
               'coordinator_name', 'driver_name', 'driver_phone', 'driver_id_card',
               'vehicle_plate', 'source_type', 'source_file',
-              'source_path', 'source_size'] as $f) {
+              'source_path', 'source_size', 'source_hash'] as $f) {
         if (array_key_exists($f, $input)) {
             $docFields[$f] = ($input[$f] === '' ? null : $input[$f]);
         }

@@ -62,6 +62,8 @@ try {
             'path' => 'uploads/production_docs/' . $subDir . '/' . $name,
             'size' => (int)$file['size'],
             'original_name' => (string)$file['name'],
+            // ลายนิ้วมือไฟล์ ใช้เตือนตอนอัปใบเดิมซ้ำ (ดู check_production_doc.php)
+            'hash' => sha1_file($target) ?: null,
         ],
     ]);
 

@@ -228,6 +228,7 @@ const ProductionOrderModal: React.FC<Props> = ({
           source_file: importFile || null,
           source_path: storedDoc?.path ?? null,
           source_size: storedDoc?.size ?? null,
+          source_hash: storedDoc?.hash ?? null,
         } : {}),
         items: items.map(r => ({
           ...(r.id ? { id: r.id } : {}),

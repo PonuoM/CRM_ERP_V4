@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Loader2, Search } from 'lucide-react';
 import { User, UserRole } from '@/types';
 import { listProductionOrders, saveDeliveryNote } from '@/services/api';
-import PdfImportPanel, { type StoredDoc } from '@/components/FactoryProduction/PdfImportPanel';
+import PdfImportPanel, { type StoredDoc, type DocReference } from '@/components/FactoryProduction/PdfImportPanel';
 import type { ParsedDoc } from '@/components/FactoryProduction/pdfImport';
 import {
   ProductionFactory, ProductionOrder, DeliveryNote, fmtQty, fmtDate,
@@ -124,7 +124,9 @@ const DeliveryNoteModal: React.FC<Props> = ({
    * อ่านไฟล์ใบขนเสร็จ -> เติมเลขใบขน/วันที่ แล้วกระจายจำนวนลงบรรทัด SO ที่รหัสตรงกัน
    * ถ้ารหัสเดียวไปโผล่หลาย SO จะไล่เติมจากใบที่ค้างมากสุดก่อน แล้วค่อยล้นไปใบถัดไป
    */
-  const applyParsed = (doc: ParsedDoc, fileName: string, stored: StoredDoc | null) => {
+  const applyParsed = (
+    doc: ParsedDoc, fileName: string, stored: StoredDoc | null, reference: DocReference | null,
+  ) => {
     setImported(doc);
     setImportFile(fileName);
     setStoredDoc(stored);
@@ -133,7 +135,15 @@ const DeliveryNoteModal: React.FC<Props> = ({
     if (doc.docNumber) setDnNumber(doc.docNumber);
     if (doc.docDate) setIssuedDate(doc.docDate);
 
-    if (!factoryId) {
+    /* ใบขนบอกไว้ว่าออกจาก SO ใบไหน -- ถ้าใบนั้นอยู่ในระบบ ใช้โรงงานของมันเลย
+       ไม่ต้องให้คนคีย์มาเดาเอง */
+    let workingFactory = factoryId;
+    if (reference?.factory_id && !editNote) {
+      workingFactory = reference.factory_id;
+      setFactoryId(reference.factory_id);
+    }
+
+    if (!workingFactory) {
       setUnmatchedSkus([]);
       setError('เลือกโรงงานก่อน แล้วระบบจะจับคู่รายการในไฟล์กับ SO ที่ค้างอยู่ให้');
       return;
@@ -141,6 +151,7 @@ const DeliveryNoteModal: React.FC<Props> = ({
 
     const next: Record<number, number | ''> = {};
     const missing: string[] = [];
+    const refSo = reference?.so_number ?? doc.soReference;
 
     doc.items.forEach(docItem => {
       const sku = docItem.sku.toUpperCase();
@@ -149,7 +160,12 @@ const DeliveryNoteModal: React.FC<Props> = ({
         .filter(c => String(c.item.sku ?? '').toUpperCase() === sku)
         .map(c => ({ ...c, remaining: remainingOf(c.item.id, c.item.pending_qty) }))
         .filter(c => c.remaining > 0)
-        .sort((a, b) => b.remaining - a.remaining);
+        /* SO ที่ใบขนอ้างถึงต้องมาก่อนเสมอ ที่เหลือค่อยเรียงตามยอดค้างมากสุด */
+        .sort((a, b) => {
+          const aRef = refSo && a.so === refSo ? 1 : 0;
+          const bRef = refSo && b.so === refSo ? 1 : 0;
+          return (bRef - aRef) || (b.remaining - a.remaining);
+        });
 
       if (candidates.length === 0) {
         missing.push(docItem.sku);
@@ -226,6 +242,7 @@ const DeliveryNoteModal: React.FC<Props> = ({
           source_file: importFile || null,
           source_path: storedDoc?.path ?? null,
           source_size: storedDoc?.size ?? null,
+          source_hash: storedDoc?.hash ?? null,
         } : {}),
         items: selected,
       });

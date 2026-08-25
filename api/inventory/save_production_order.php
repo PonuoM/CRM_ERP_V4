@@ -60,7 +60,7 @@ try {
     $docFields = [];
     foreach (['customer_code', 'customer_name', 'customer_address', 'receive_date',
               'warehouse_name', 'coordinator_name', 'source_type', 'source_file',
-              'source_path', 'source_size'] as $f) {
+              'source_path', 'source_size', 'source_hash'] as $f) {
         if (array_key_exists($f, $input)) {
             $docFields[$f] = ($input[$f] === '' ? null : $input[$f]);
         }
