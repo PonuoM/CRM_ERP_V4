@@ -193,7 +193,10 @@ const PdfImportPanel: React.FC<Props> = ({
               <div className="flex items-start gap-2 text-amber-800">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 <span className="text-xs">
-                  ไม่มีรหัสนี้ในแคตตาล็อก ต้องเลือกสินค้าเอง: <b>{unmatchedSkus.join(', ')}</b>
+                  {kind === 'so'
+                    ? 'ไม่มีรหัสนี้ในแคตตาล็อก ต้องเลือกสินค้าเอง: '
+                    : 'จับคู่กับยอดค้างของ SO ไม่ได้ ต้องติ๊กจำนวนเอง: '}
+                  <b>{unmatchedSkus.join(', ')}</b>
                 </span>
               </div>
             )}

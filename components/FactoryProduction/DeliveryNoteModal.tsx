@@ -53,6 +53,8 @@ const DeliveryNoteModal: React.FC<Props> = ({
   const [importFile, setImportFile] = useState('');
   const [storedDoc, setStoredDoc] = useState<StoredDoc | null>(null);
   const [unmatchedSkus, setUnmatchedSkus] = useState<string[]>([]);
+  /** ไฟล์ที่อ่านแล้วแต่ยังจับคู่กับ SO ไม่ได้ (ยังไม่ได้เลือกโรงงาน / SO ยังโหลดไม่เสร็จ) */
+  const [pendingMatch, setPendingMatch] = useState<{ doc: ParsedDoc; reference: DocReference | null } | null>(null);
 
   // ยอดของใบขนใบนี้เอง — ตอนแก้ไขต้องบวกคืนเข้ายอดคงเหลือ ไม่งั้นจะดูเหมือนเกิน
   const ownQty = useMemo(() => {
@@ -65,6 +67,9 @@ const DeliveryNoteModal: React.FC<Props> = ({
     if (!factoryId) { setOrders([]); return; }
     let mounted = true;
     setLoading(true);
+    /* ล้างของโรงงานเดิมทิ้งก่อน ไม่งั้นระหว่างรอโหลด ตัวจับคู่ใบขนจะไปหยิบ SO
+       ของโรงงานที่เพิ่งเปลี่ยนออกมาใช้ */
+    setOrders([]);
     listProductionOrders({
       userId: currentUser?.id,
       companyId,
@@ -124,51 +129,33 @@ const DeliveryNoteModal: React.FC<Props> = ({
    * อ่านไฟล์ใบขนเสร็จ -> เติมเลขใบขน/วันที่ แล้วกระจายจำนวนลงบรรทัด SO ที่รหัสตรงกัน
    * ถ้ารหัสเดียวไปโผล่หลาย SO จะไล่เติมจากใบที่ค้างมากสุดก่อน แล้วค่อยล้นไปใบถัดไป
    */
-  const applyParsed = (
-    doc: ParsedDoc, fileName: string, stored: StoredDoc | null, reference: DocReference | null,
-  ) => {
-    setImported(doc);
-    setImportFile(fileName);
-    setStoredDoc(stored);
-    setError(null);
-
-    if (doc.docNumber) setDnNumber(doc.docNumber);
-    if (doc.docDate) setIssuedDate(doc.docDate);
-
-    /* ใบขนบอกไว้ว่าออกจาก SO ใบไหน -- ถ้าใบนั้นอยู่ในระบบ ใช้โรงงานของมันเลย
-       ไม่ต้องให้คนคีย์มาเดาเอง */
-    let workingFactory = factoryId;
-    if (reference?.factory_id && !editNote) {
-      workingFactory = reference.factory_id;
-      setFactoryId(reference.factory_id);
-    }
-
-    if (!workingFactory) {
-      setUnmatchedSkus([]);
-      setError('เลือกโรงงานก่อน แล้วระบบจะจับคู่รายการในไฟล์กับ SO ที่ค้างอยู่ให้');
-      return;
-    }
+  /**
+   * กระจายจำนวนในไฟล์ลงบรรทัด SO ที่รหัสตรงกัน
+   * คืน false ถ้ายังจับคู่ไม่ได้เพราะรายการ SO ยังไม่พร้อม (จะรอไป match รอบหน้า)
+   */
+  const matchToOrders = (doc: ParsedDoc, reference: DocReference | null): boolean => {
+    if (orders.length === 0) return false;
 
     const next: Record<number, number | ''> = {};
     const missing: string[] = [];
-    const refSo = reference?.so_number ?? doc.soReference;
+    /* ใช้เฉพาะเลข SO ที่ยืนยันแล้วว่ามีจริงในระบบ -- ห้ามใช้เลขดิบจากไฟล์
+       ไม่งั้นจะเทียบไม่ตรงแล้วเงียบ ๆ ไปลง SO ใบอื่นแทน */
+    const refSo = reference?.so_number ?? '';
 
     doc.items.forEach(docItem => {
       const sku = docItem.sku.toUpperCase();
       const candidates = orders
         .flatMap(o => o.items.map(i => ({ item: i, so: o.so_number })))
         .filter(c => String(c.item.sku ?? '').toUpperCase() === sku)
+        /* ใบขนที่ระบุ SO ต้นทางไว้ ให้ลงเฉพาะ SO ใบนั้นใบเดียว
+           ยอดที่เกินถือเป็นของผิดปกติ ต้องให้คนดู ไม่ใช่ล้นไปใบอื่นเอง */
+        .filter(c => !refSo || c.so === refSo)
         .map(c => ({ ...c, remaining: remainingOf(c.item.id, c.item.pending_qty) }))
         .filter(c => c.remaining > 0)
-        /* SO ที่ใบขนอ้างถึงต้องมาก่อนเสมอ ที่เหลือค่อยเรียงตามยอดค้างมากสุด */
-        .sort((a, b) => {
-          const aRef = refSo && a.so === refSo ? 1 : 0;
-          const bRef = refSo && b.so === refSo ? 1 : 0;
-          return (bRef - aRef) || (b.remaining - a.remaining);
-        });
+        .sort((a, b) => b.remaining - a.remaining);
 
       if (candidates.length === 0) {
-        missing.push(docItem.sku);
+        missing.push(refSo ? `${docItem.sku} (ไม่มียอดค้างใน ${refSo})` : docItem.sku);
         return;
       }
       let left = Math.round(docItem.qty);
@@ -183,13 +170,66 @@ const DeliveryNoteModal: React.FC<Props> = ({
 
     setQtyByItem(prev => ({ ...prev, ...next }));
     setUnmatchedSkus(missing);
+    return true;
   };
+
+  const applyParsed = (
+    doc: ParsedDoc, fileName: string, stored: StoredDoc | null, reference: DocReference | null,
+  ) => {
+    setImported(doc);
+    setImportFile(fileName);
+    setStoredDoc(stored);
+    setError(null);
+    setPendingMatch(null);
+
+    if (doc.docNumber) setDnNumber(doc.docNumber);
+    if (doc.docDate) setIssuedDate(doc.docDate);
+
+    /* ใบขนอ้าง SO ที่ยังไม่มีในระบบ -- ห้ามเดาว่าเป็นใบไหน เพราะถ้าโรงงานนี้มี SO อื่น
+       ที่มีรหัสสินค้าเดียวกันค้างอยู่ ยอดจะไหลไปลงใบนั้นแบบเงียบ ๆ */
+    if (doc.soReference && !reference) {
+      setUnmatchedSkus([]);
+      setError(`ใบขนนี้อ้างถึง SO ${doc.soReference} ซึ่งยังไม่มีในระบบ — ต้องเปิด SO ใบนั้นก่อน `
+        + `แล้วค่อยคีย์ใบขนนี้ (ถ้าจะคีย์ลง SO ใบอื่นจริง ๆ ให้ติ๊กจำนวนเองด้านล่าง)`);
+      return;
+    }
+
+    /* ใบนั้นอยู่ในระบบ -- ใช้โรงงานของมันเลย ไม่ต้องให้คนคีย์มาเดา
+       แต่ถ้าต้องสลับโรงงาน ห้ามจับคู่ตอนนี้ เพราะ orders ในมือยังเป็นของโรงงานเดิม
+       ต้องรอ useEffect โหลดรายการ SO ของโรงงานใหม่มาก่อน */
+    if (reference?.factory_id && !editNote && reference.factory_id !== factoryId) {
+      setFactoryId(reference.factory_id);
+      setUnmatchedSkus([]);
+      setPendingMatch({ doc, reference });
+      return;
+    }
+
+    if (!factoryId) {
+      setUnmatchedSkus([]);
+      setPendingMatch({ doc, reference });
+      setError('เลือกโรงงานก่อน แล้วระบบจะจับคู่รายการในไฟล์กับ SO ที่ค้างอยู่ให้');
+      return;
+    }
+
+    if (!matchToOrders(doc, reference)) setPendingMatch({ doc, reference });
+  };
+
+  /* รายการ SO มาถึงหลังจากอ่านไฟล์ไปแล้ว -> จับคู่ให้เลย ผู้ใช้จะได้ไม่ต้องอัปไฟล์ซ้ำ */
+  useEffect(() => {
+    if (!pendingMatch || orders.length === 0) return;
+    if (matchToOrders(pendingMatch.doc, pendingMatch.reference)) {
+      setPendingMatch(null);
+      setError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, pendingMatch]);
 
   const clearImport = () => {
     setImported(null);
     setImportFile('');
     setStoredDoc(null);
     setUnmatchedSkus([]);
+    setPendingMatch(null);
   };
 
   const selected = useMemo(
