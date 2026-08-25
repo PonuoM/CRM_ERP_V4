@@ -10,10 +10,11 @@ export interface QuotaCalculationParams {
     totalToDistribute: number;
     distributionMode: 'equal' | 'load_balance' | 'performance';
     distributeRemainder: boolean;
+    remainderMode?: 'sequential' | 'performance';
 }
 
 export function calculateQuotas(params: QuotaCalculationParams): Record<number, number> {
-    const { selectedAgents, agents, totalToDistribute, distributionMode, distributeRemainder } = params;
+    const { selectedAgents, agents, totalToDistribute, distributionMode, distributeRemainder, remainderMode = 'sequential' } = params;
 
     if (selectedAgents.length === 0 || totalToDistribute <= 0) {
         const zeros: Record<number, number> = {};
@@ -31,8 +32,18 @@ export function calculateQuotas(params: QuotaCalculationParams): Record<number, 
         remainder = totalToDistribute - (base * selectedAgents.length);
 
         if (distributeRemainder && remainder > 0) {
-            for (let i = 0; i < selectedAgents.length && remainder > 0; i++) {
-                newQuotas[selectedAgents[i]]++;
+            let agentsToReceive = [...selectedAgents];
+            if (remainderMode === 'performance') {
+                agentsToReceive.sort((a, b) => {
+                    const minsA = agents.find(ag => ag.id === a)?.callMinutes || 0;
+                    const minsB = agents.find(ag => ag.id === b)?.callMinutes || 0;
+                    if (minsB !== minsA) return minsB - minsA;
+                    return a - b; // Fallback sequential
+                });
+            }
+
+            for (let i = 0; i < agentsToReceive.length && remainder > 0; i++) {
+                newQuotas[agentsToReceive[i]]++;
                 remainder--;
             }
         }
@@ -69,8 +80,17 @@ export function calculateQuotas(params: QuotaCalculationParams): Record<number, 
             selectedAgents.forEach(id => newQuotas[id] = base);
             remainder = totalToDistribute - (base * selectedAgents.length);
             if (distributeRemainder && remainder > 0) {
-                for (let i = 0; i < selectedAgents.length && remainder > 0; i++) {
-                    newQuotas[selectedAgents[i]]++;
+                let agentsToReceive = [...selectedAgents];
+                if (remainderMode === 'performance') {
+                    agentsToReceive.sort((a, b) => {
+                        const minsA = agents.find(ag => ag.id === a)?.callMinutes || 0;
+                        const minsB = agents.find(ag => ag.id === b)?.callMinutes || 0;
+                        if (minsB !== minsA) return minsB - minsA;
+                        return a - b;
+                    });
+                }
+                for (let i = 0; i < agentsToReceive.length && remainder > 0; i++) {
+                    newQuotas[agentsToReceive[i]]++;
                     remainder--;
                 }
             }
@@ -82,8 +102,11 @@ export function calculateQuotas(params: QuotaCalculationParams): Record<number, 
             });
 
             if (remainder > 0) {
-                const sortedAgents = [...selectedAgents].sort((a, b) => stats[b] - stats[a]);
-                for (let i = 0; i < selectedAgents.length && remainder > 0; i++) {
+                const sortedAgents = [...selectedAgents].sort((a, b) => {
+                    if (stats[b] !== stats[a]) return stats[b] - stats[a];
+                    return a - b;
+                });
+                for (let i = 0; i < sortedAgents.length && remainder > 0; i++) {
                     newQuotas[sortedAgents[i]]++;
                     remainder--;
                 }

@@ -90,6 +90,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     type DistributionMode = 'equal' | 'load_balance' | 'performance';
     const [distributionMode, setDistributionMode] = useState<DistributionMode>('equal');
     const [distributeRemainder, setDistributeRemainder] = useState(false);
+    const [remainderMode, setRemainderMode] = useState<'sequential' | 'performance'>('sequential');
     const [agentQuotas, setAgentQuotas] = useState<Record<number, string>>({});
     const [previewConflictMap, setPreviewConflictMap] = useState<Record<string, number[]>>({});
     const [previewCustomerPool, setPreviewCustomerPool] = useState<Customer[]>([]);
@@ -476,7 +477,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             agents: mappedAgents,
             totalToDistribute: total,
             distributionMode,
-            distributeRemainder
+            distributeRemainder,
+            remainderMode
         });
 
         const quotasStr: Record<number, string> = {};
@@ -485,7 +487,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
         setAgentQuotas(quotasStr);
 
-    }, [distributionMode, distributeRemainder, totalToDistribute, selectedAgents.length]);
+    }, [distributionMode, distributeRemainder, remainderMode, totalToDistribute, selectedAgents.length]);
 
     // Toggle agent selection
     const toggleAgent = (agentId: number) => {
@@ -1951,6 +1953,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 setDistributionMode={setDistributionMode}
                 distributeRemainder={distributeRemainder}
                 setDistributeRemainder={setDistributeRemainder}
+                remainderMode={remainderMode}
+                setRemainderMode={setRemainderMode}
                 previewWarning={previewWarning}
                 preview={preview}
                 distributing={distributing}

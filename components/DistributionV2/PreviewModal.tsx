@@ -9,6 +9,8 @@ interface PreviewModalProps {
     setDistributionMode: (val: 'equal' | 'load_balance' | 'performance') => void;
     distributeRemainder: boolean;
     setDistributeRemainder: (val: boolean) => void;
+    remainderMode: 'sequential' | 'performance';
+    setRemainderMode: (val: 'sequential' | 'performance') => void;
     previewWarning: string | null;
     preview: any[];
     distributing: boolean;
@@ -25,6 +27,8 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
     setDistributionMode,
     distributeRemainder,
     setDistributeRemainder,
+    remainderMode,
+    setRemainderMode,
     previewWarning,
     preview,
     distributing,
@@ -82,15 +86,43 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
                     </div>
 
                     {distributionMode === 'equal' && (
-                        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer w-fit">
-                            <input 
-                                type="checkbox" 
-                                checked={distributeRemainder}
-                                onChange={(e) => setDistributeRemainder(e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span>กระจายเศษรายชื่อที่หารไม่ลงตัวให้พนักงาน (คนแรกๆ จะได้ +1)</span>
-                        </label>
+                        <div className="ml-1">
+                            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer w-fit">
+                                <input 
+                                    type="checkbox" 
+                                    checked={distributeRemainder}
+                                    onChange={(e) => setDistributeRemainder(e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>กระจายเศษรายชื่อที่หารไม่ลงตัวให้พนักงาน (คนแรกๆ จะได้ +1)</span>
+                            </label>
+                            
+                            {distributeRemainder && (
+                                <div className="ml-6 mt-2 p-3 bg-gray-50 border border-gray-100 rounded-lg space-y-2">
+                                    <p className="text-xs font-semibold text-gray-600">วิธีกระจายเศษ:</p>
+                                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer w-fit">
+                                        <input 
+                                            type="radio" 
+                                            name="remainderMode"
+                                            checked={remainderMode === 'sequential'}
+                                            onChange={() => setRemainderMode('sequential')}
+                                            className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                        />
+                                        <span>เรียงตามคิวปกติ (คนบนสุดในรายชื่อได้ก่อน)</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer w-fit">
+                                        <input 
+                                            type="radio" 
+                                            name="remainderMode"
+                                            checked={remainderMode === 'performance'}
+                                            onChange={() => setRemainderMode('performance')}
+                                            className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                        />
+                                        <span>อิงเวลาโทร (พนักงานที่โทรเยอะสุดได้ก่อน)</span>
+                                    </label>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
 
