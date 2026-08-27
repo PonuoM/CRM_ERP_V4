@@ -66,6 +66,74 @@ try {
         case 'customer_tags':
             handle_customer_tags($pdo);
             break;
+        // Bridge between the CRM and the agent's handset — see api/Controllers/CallController.php.
+        case 'call':
+            require_once __DIR__ . '/Controllers/CallController.php';
+            $callAction = $id ?? '';
+            if ($callAction === 'dial')          CallController::dial($pdo);
+            else if ($callAction === 'numbers')  CallController::numbers($pdo);
+            else if ($callAction === 'status')   CallController::status($pdo);
+            else if ($callAction === 'cancel')   CallController::cancel($pdo);
+            else if ($callAction === 'poll')     CallController::poll($pdo);
+            else if ($callAction === 'event')    CallController::event($pdo);
+            else if ($callAction === 'identify') CallController::identify($pdo);
+            else json_response(['ok' => false, 'error' => 'INVALID_ACTION',
+                'message' => "Action '$callAction' is not valid for call"], 400);
+            break;
+
+        case 'device':
+            require_once __DIR__ . '/Controllers/CallController.php';
+            if (($id ?? '') === 'register') CallController::registerDevice($pdo);
+            else json_response(['ok' => false, 'error' => 'INVALID_ACTION'], 400);
+            break;
+
+        // What the signed-in user may see of customer phone numbers. The UI reads this once after
+        // login instead of guessing from the data: a column of "ซ่อน" is worse than no column, and
+        // string-matching the mask would break the moment the wording changes.
+        // bootstrap.php has already resolved the policy for this request.
+        // Read and edit the masking policy itself. Separate from `phone_policy`, which every signed-in
+        // user reads to know what THEY may see — this one is the control panel behind it.
+        case 'phone_policy_settings':
+            require_once __DIR__ . '/Controllers/PhonePolicyController.php';
+            if (method() === 'GET') PhonePolicyController::read($pdo);
+            else if (method() === 'POST' || method() === 'PUT') PhonePolicyController::save($pdo);
+            else json_response(['ok' => false, 'error' => 'METHOD_NOT_ALLOWED'], 405);
+            break;
+
+        case 'phone_policy':
+            // Click-to-call is a separate switch from masking, on purpose: a company can adopt
+            // dialling from the CRM without hiding numbers, or hide numbers while its handsets are
+            // still being rolled out. It needs no setting of its own — an agent either has a
+            // registered handset or does not.
+            $hasDevice = false;
+            try {
+                $me = get_authenticated_user($pdo);
+                if ($me) {
+                    $devStmt = $pdo->prepare(
+                        "SELECT 1 FROM agent_devices
+                          WHERE user_id = ? AND status = 'active' AND revoked_at IS NULL
+                            AND last_seen_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
+                          LIMIT 1"
+                    );
+                    $devStmt->execute([(int) $me['id']]);
+                    $hasDevice = (bool) $devStmt->fetchColumn();
+                }
+            } catch (Throwable $e) {
+                // Migration 090/091 not applied yet — no handsets, so no call button. Never fatal.
+            }
+
+            json_response([
+                'ok'                => true,
+                'stage'             => phone_masking_stage(),
+                'can_view_phone'    => phone_visibility(),
+                'phone_hidden'      => phone_masking_full() && !phone_visibility(),
+                'can_search_phone'  => can_search_by_phone(),
+                'can_click_to_call' => $hasDevice,
+                'mask'              => PHONE_MASK,
+                'mask_char'         => PHONE_MASK_CHAR,
+            ]);
+            break;
+
         case 'companies':
             handle_companies($pdo, $id);
             break;
