@@ -16,8 +16,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+/**
+ * Roles that may read the address book but not add to it.
+ *
+ * A new delivery address redirects where a customer's goods physically go, which is the one edit on
+ * this screen with a cost attached if it is wrong or malicious. Telesale request it instead.
+ */
+const ADDRESS_READONLY_ROLES = ['telesale', 'supervisor telesale'];
+
 try {
     $pdo = db_connect();
+
 /**
  * A shipping phone that came back to us masked must not overwrite the real one.
  *
@@ -116,9 +125,22 @@ function incoming_phone_or_keep(?string $incoming, PDO $pdo, string $table, stri
     }
     
     else if ($method === 'POST') {
+        // Adding a delivery address is how a customer's goods get redirected somewhere new, so it
+        // stays with the roles that already carry that responsibility. Telesale who need one send
+        // the request on rather than entering it themselves.
+        $me = get_authenticated_user($pdo);
+        $myRole = strtolower(trim((string) ($me['role'] ?? '')));
+        if (in_array($myRole, ADDRESS_READONLY_ROLES, true)) {
+            json_response([
+                'success' => false,
+                'error' => 'FORBIDDEN',
+                'message' => 'ตำแหน่งของคุณเพิ่มที่อยู่เองไม่ได้ กรุณาแจ้งแอดมินหรือแบ็คออฟฟิศให้เพิ่มให้',
+            ], 403);
+        }
+
         $data = json_decode(file_get_contents('php://input'), true);
         $customerId = $data['customer_id'] ?? $data['customerId'] ?? null;
-        
+
         if (!$customerId) {
             json_response(['error' => 'Missing customerId'], 400);
         }
