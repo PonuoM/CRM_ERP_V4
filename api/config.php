@@ -145,9 +145,13 @@ function cors(): void
   }
 }
 
+// No debug log here on purpose. This used to append every request URI to a relative
+// `auth_debug.log` beside the API code, and every rejected token verbatim. Apache serves
+// that path, so the file was a downloadable transcript of internal traffic — customer ids
+// and all — needing no login. If auth needs tracing again, use error_log(): it lands in
+// the server log, which is not web-reachable, and it rotates.
 function validate_auth(PDO $pdo): void
 {
-  file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH CHECK: " . ($_SERVER['REQUEST_URI'] ?? 'unknown') . " Mem: " . memory_get_usage() . "\n", FILE_APPEND);
   $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 
   if (!$auth && function_exists('getallheaders')) {
@@ -161,7 +165,6 @@ function validate_auth(PDO $pdo): void
   }
 
   if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
-    file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH FAIL: No Bearer token found in header: '$auth'\n", FILE_APPEND);
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Missing or invalid token'], 401);
   }
   $token = $matches[1];
@@ -171,12 +174,10 @@ function validate_auth(PDO $pdo): void
   $t = $stmt->fetch();
 
   if (!$t) {
-    file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH FAIL: Token not found in DB: '$token'\n", FILE_APPEND);
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Invalid token'], 401);
   }
 
   if (strtotime($t['expires_at']) < time()) {
-    file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH FAIL: Token expired. Expires: '{$t['expires_at']}', Now: " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Token expired'], 401);
   }
 }
