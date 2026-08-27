@@ -3468,3 +3468,59 @@ export async function saveProductDefaultFactory(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+/**
+ * What this user may see of customer phone numbers.
+ *
+ * Read once after login rather than inferred from the data. Two reasons: a column full of the mask
+ * word is worse than no column at all, and matching that word in the UI would silently break the
+ * day the wording changes. The server owns the policy — see api/phone_privacy.php.
+ */
+export interface PhonePolicy {
+  /** 'off' = nothing masked (behaves as it always has) · 'exports_only' · 'full' */
+  stage: "off" | "exports_only" | "full";
+  /** This role is allowed to read real numbers. */
+  can_view_phone: boolean;
+  /** Numbers on screen are masked for this user — hide the column, do not print the mask. */
+  phone_hidden: boolean;
+  /** Searching customers by phone still works. */
+  can_search_phone: boolean;
+  /** Shown when a number exists but no digits at all can be offered. */
+  mask: string;
+  /** The character standing in for each hidden digit, e.g. "x" in 08xxxxxx78. */
+  maskChar: string;
+  /** This agent has a registered handset, so click-to-call is available. */
+  can_click_to_call: boolean;
+}
+
+/** Safe default: assume nothing is hidden, matching how the system behaved before masking existed. */
+export const DEFAULT_PHONE_POLICY: PhonePolicy = {
+  stage: "off",
+  can_view_phone: true,
+  phone_hidden: false,
+  can_search_phone: true,
+  mask: "ซ่อน",
+  maskChar: "x",
+  can_click_to_call: false,
+};
+
+export async function fetchPhonePolicy(): Promise<PhonePolicy> {
+  try {
+    const res = await apiFetch("phone_policy");
+    if (res && res.ok) {
+      return {
+        stage: res.stage ?? "off",
+        can_view_phone: !!res.can_view_phone,
+        phone_hidden: !!res.phone_hidden,
+        can_search_phone: res.can_search_phone !== false,
+        mask: res.mask ?? "ซ่อน",
+        maskChar: (res.mask_char ?? "x").toLowerCase(),
+        can_click_to_call: !!res.can_click_to_call,
+      };
+    }
+  } catch {
+    // An older server has no such route. Falling back to "nothing hidden" keeps the UI working;
+    // the server masks the data regardless, so this can never reveal a number that was hidden.
+  }
+  return DEFAULT_PHONE_POLICY;
+}

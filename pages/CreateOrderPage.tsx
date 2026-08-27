@@ -4651,7 +4651,16 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       }
 
       // If shippingAddress.phone is empty, it will be automatically filled with selectedCustomer.phone or newCustomerPhone during payload creation
-      if (shippingAddress.phone && shippingAddress.phone.trim() !== "") {
+      // A hidden number reaches the browser as a word. Validating it would reject an order the user
+      // never mistyped, so treat digit-free values as "leave it alone" — the server keeps the
+      // number it already has rather than writing the placeholder back.
+      // A masked value keeps some digits (08xxxxxx78), so the mask character is what identifies it.
+      const recipientPhoneIsHidden =
+        !!shippingAddress.phone &&
+        shippingAddress.phone.trim() !== "" &&
+        (/x/i.test(shippingAddress.phone) || !/\d/.test(shippingAddress.phone));
+
+      if (!recipientPhoneIsHidden && shippingAddress.phone && shippingAddress.phone.trim() !== "") {
         const cleanedPhone = shippingAddress.phone.replace(/\D/g, "");
         if (cleanedPhone.length !== 10 || cleanedPhone[0] !== "0") {
           highlightField("shippingAddress");

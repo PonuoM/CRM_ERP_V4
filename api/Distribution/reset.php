@@ -15,6 +15,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Get database connection
 $pdo = db_connect();
+require_once __DIR__ . '/../phone_privacy.php';
+phone_privacy_init($pdo);
 
 $action = $_GET['action'] ?? null;
 $companyId = $_GET['companyId'] ?? 1;
@@ -221,6 +223,7 @@ function handleGetCandidates($pdo, $companyId)
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $candidates = array_map(function ($c) { return scrub_customer_row($c, 'ui'); }, $candidates);
 
     echo json_encode([
         'ok' => true,

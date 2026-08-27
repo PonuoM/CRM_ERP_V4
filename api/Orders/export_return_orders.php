@@ -6,8 +6,12 @@
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../phone_privacy.php';
 cors();
 $pdo = db_connect();
+// Was reachable by anyone with the URL — every caller already sends a token.
+validate_auth($pdo);
+phone_privacy_init($pdo);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -93,6 +97,7 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $rows = array_map('scrub_customer_row', $rows);
 
     echo json_encode([
         'success' => true,

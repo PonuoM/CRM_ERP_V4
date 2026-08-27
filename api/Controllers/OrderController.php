@@ -394,7 +394,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $params[] = $customerId;
                 }
 
-                if ($customerPhone) {
+                if ($customerPhone && can_search_by_phone()) {
                     $phoneDigits = preg_replace('/\D/', '', $customerPhone);
                     $whereConditions[] = 'REPLACE(REPLACE(REPLACE(c.phone, "-", ""), " ", ""), "(", "") LIKE ?';
                     $params[] = '%' . $phoneDigits . '%';
@@ -490,6 +490,11 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $stmt->execute();
                 }
                 $orders = $stmt->fetchAll();
+                // Orders list carries customer_phone AND a second copy aliased as phone (see the
+                // SELECT above). Nothing between here and the response reads either one.
+                foreach ($orders as $i => $o) {
+                    $orders[$i] = scrub_customer_row($o, 'ui');
+                }
 
                 // Fetch items for each order
                 // Need to include items from sub orders (mainOrderId-1, mainOrderId-2, etc.)
@@ -910,6 +915,13 @@ function handle_orders(PDO $pdo, ?string $id): void
                         }
                         if ($dbCol === 'sales_channel_page_id' && $val === '')
                             $val = null;
+
+                        // A masked number must never round-trip back into the database. Detect it by
+                        // the mask character, not by the absence of digits — a partial mask such as
+                        // 08xxxxxx78 keeps four real ones and would otherwise sail straight through.
+                        if ($dbCol === 'recipient_phone' && is_string($val) && is_masked_phone($val)) {
+                            continue;
+                        }
 
                         $updateFields[] = "$dbCol = ?";
                         $params[] = $val;

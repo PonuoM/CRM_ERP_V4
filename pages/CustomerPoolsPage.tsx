@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { usePhonePolicy } from '../hooks/usePhonePolicy';
 import { Customer, User, ModalType } from '@/types';
 import { Users, Clock, PackageOpen, UserCheck, Eye, PhoneCall, Lock } from 'lucide-react';
 import { getRemainingTimeRounded } from '@/utils/time';
@@ -22,6 +23,7 @@ const dayDiff = (from?: string) => {
 };
 
 const CustomerPoolsPage: React.FC<CustomerPoolsPageProps> = ({ customers, users, currentUser, onViewCustomer, openModal }) => {
+  const phonePolicy = usePhonePolicy();
   const [active, setActive] = useState<PoolTab>('ready');
   const [search, setSearch] = useState('');
 
@@ -167,7 +169,7 @@ const CustomerPoolsPage: React.FC<CustomerPoolsPageProps> = ({ customers, users,
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="ค้นหา: ชื่อ/เบอร์โทร"
+            placeholder={phonePolicy.can_search_phone ? "ค้นหา: ชื่อ/เบอร์โทร" : "ค้นหา: ชื่อลูกค้า"}
             className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-80"
           />
         </div>

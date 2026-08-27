@@ -27,6 +27,8 @@ $action = $_GET['action'] ?? '';
 if ($action === 'check_mismatched') {
     try {
         $pdo = db_connect();
+        require_once __DIR__ . '/phone_privacy.php';
+        phone_privacy_init($pdo);
         $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : null;
 
         $sql = "SELECT c.customer_id, c.customer_ref_id, c.first_name, c.last_name, c.phone,
@@ -46,6 +48,7 @@ if ($action === 'check_mismatched') {
         }
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = array_map(function ($r) { return scrub_customer_row($r, 'ui'); }, $rows);
 
         json_response(["success" => true, "data" => $rows, "count" => count($rows)]);
     } catch (Throwable $e) {
@@ -63,6 +66,8 @@ if ($action === 'fix_mismatched') {
     }
     try {
         $pdo = db_connect();
+        require_once __DIR__ . '/phone_privacy.php';
+        phone_privacy_init($pdo);
         $input = json_decode(file_get_contents('php://input'), true);
         $customerIds = $input['customer_ids'] ?? [];
         if (empty($customerIds)) {
@@ -93,6 +98,8 @@ if ($action === 'fix_mismatched') {
 // ─── Default: list blocked customers ───
 try {
     $pdo = db_connect();
+    require_once __DIR__ . '/phone_privacy.php';
+    phone_privacy_init($pdo);
     $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : null;
 
     // Latest active block per customer in the blocked bucket

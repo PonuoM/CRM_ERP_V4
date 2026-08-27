@@ -90,14 +90,17 @@ try {
     }
 
     if ($search !== '') {
+        // Phone drops out for anyone the number is hidden from — a partial match reads it back.
+        $searchPhone = can_search_by_phone();
+        $phoneClause = $searchPhone ? "
+            OR c.phone LIKE ?" : '';
         $extraFilter .= " AND (
             o.id LIKE ? 
-            OR CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,'')) LIKE ?
-            OR c.phone LIKE ?
+            OR CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,'')) LIKE ?$phoneClause
             OR oi.product_name LIKE ?
         )";
         $searchWild = "%$search%";
-        $extraParams = array_merge($extraParams, [$searchWild, $searchWild, $searchWild, $searchWild]);
+        $extraParams = array_merge($extraParams, array_fill(0, $searchPhone ? 4 : 3, $searchWild));
     }
 
     // Common WHERE — exclude promotion child items (they are sub-items of a promo bundle)

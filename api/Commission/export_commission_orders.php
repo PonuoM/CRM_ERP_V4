@@ -13,6 +13,10 @@ require_once __DIR__ . "/../Services/OrderExportService.php";
 
 try {
     $pdo = db_connect();
+    // Was reachable by anyone with the URL — every caller already sends a token.
+    validate_auth($pdo);
+    // Decides whether OrderExportService writes real customer numbers or the mask.
+    phone_privacy_init($pdo);
     set_time_limit(300);
 
     $company_id = (int)($_GET['company_id'] ?? 0);

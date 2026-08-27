@@ -3,6 +3,7 @@ import { Customer, ModalType, Tag, TagType, User, UserRole } from "../types";
 import { Eye, PhoneCall, Plus, ChevronLeft, ChevronRight, ShoppingCart, UserCog } from "lucide-react";
 import { getRemainingTimeRounded } from "@/utils/time";
 import usePersistentState from "@/utils/usePersistentState";
+import CustomerPhone from "./CustomerPhone";
 
 
 interface CustomerTableProps {
@@ -431,9 +432,10 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                         <span className="font-medium text-gray-900 whitespace-nowrap">
                           {customer.firstName} {customer.lastName}
                         </span>
-                        <span className="text-xs text-gray-500 mt-1">
-                          {customer.phone}
-                        </span>
+                        <CustomerPhone
+                          value={customer.phone}
+                          className="text-xs text-gray-500 mt-1"
+                        />
                       </div>
                     </td>
                     <td className="px-6 py-4">{customer.province}</td>

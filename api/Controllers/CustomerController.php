@@ -679,11 +679,15 @@ function handle_customers(PDO $pdo, ?string $id): void
                             }
                             $matches[] = [
                                 'customer_id'        => $r['customer_id'],
-                                'customer_ref_id'    => $r['customer_ref_id'],
+                                // customer_ref_id is CUS-<phone>-<company>, so it spells out the
+                                // number this endpoint just masked two lines below.
+                                'customer_ref_id'    => (phone_masking_full() && !phone_visibility())
+                                    ? null
+                                    : $r['customer_ref_id'],
                                 'first_name'         => $r['first_name'],
                                 'last_name'          => $r['last_name'],
-                                'phone'              => $r['phone'],
-                                'backup_phone'       => $r['backup_phone'],
+                                'phone'              => customer_phone_ui($r['phone'] ?? ''),
+                                'backup_phone'       => customer_backup_phones_ui($r['backup_phone'] ?? ''),
                                 'assigned_to'        => $r['assigned_to'] !== null ? (int)$r['assigned_to'] : null,
                                 'assigned_to_name'   => $assignedName,
                                 'lifecycle_status'   => $r['lifecycle_status'],
@@ -893,7 +897,9 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $params[] = "%$name%";
                         }
 
-                        if ($phone && $phone !== '') {
+                        // Dropped for anyone the number is hidden from: a partial match reads the
+                        // number back one digit at a time. Filtering by it simply returns nothing.
+                        if ($phone && $phone !== '' && can_search_by_phone()) {
                             // Normalize: search both with and without leading 0
                             $phoneNormalized = preg_replace('/^0+/', '', preg_replace('/\D/', '', $phone));
                             if ($phoneNormalized !== '' && $phoneNormalized !== $phone) {
@@ -1118,6 +1124,12 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $t_query_start = microtime(true);
                             $stmt->execute($params);
                             $customers = $stmt->fetchAll();
+                            // Customer list is the screen telesale live in — phone, backup_phone,
+                            // recipient_phone and customer_ref_id all leave from here. Nothing between
+                            // this fetch and the response reads the number, so scrub it at the source.
+                            foreach ($customers as $i => $c) {
+                                $customers[$i] = scrub_customer_row($c, 'ui');
+                            }
                             error_log("[customers:list] MAIN_QUERY done rows=" . count($customers) . " memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                             log_perf("handle_customers:list:EXECUTE_QUERY source=$source filter=$filterType count=" . count($customers), $t_query_start);
 
@@ -1294,6 +1306,30 @@ function handle_customers(PDO $pdo, ?string $id): void
             }
             break;
         case 'POST':
+            // 🛡️ ห้าม Telesale / Supervisor Telesale เพิ่มลูกค้าใหม่ (นโยบาย 2026-08-27)
+            // ลูกค้าใหม่ต้องให้ Admin เป็นคนสร้างและโอนผู้ดูแลให้ก่อน จึงจะเปิดบิลได้
+            // เช็คจาก role ของ "ผู้ใช้ที่ล็อกอินจริง" ไม่ใช่ค่าที่ส่งมาจากหน้าจอ จึงข้ามด่านนี้ไม่ได้
+            $actorRoleStmt = $pdo->prepare('
+                SELECT r.code
+                FROM users u
+                LEFT JOIN roles r ON (
+                    (u.role_id IS NOT NULL AND r.id = u.role_id) OR
+                    (u.role_id IS NULL AND (r.name = u.role OR r.code = u.role))
+                )
+                WHERE u.id = ?
+                LIMIT 1
+            ');
+            $actorRoleStmt->execute([$user['id']]);
+            $actorRoleCode = $actorRoleStmt->fetchColumn();
+
+            if (in_array($actorRoleCode, ['telesale', 'supervisor_telesale'], true)) {
+                json_response([
+                    'error' => 'CUSTOMER_CREATE_FORBIDDEN',
+                    'message' => 'ตำแหน่งของคุณไม่มีสิทธิ์เพิ่มลูกค้าใหม่ — ให้แจ้ง Admin สร้างลูกค้าและโอนให้คุณเป็นผู้ดูแลก่อน จึงจะเปิดบิลได้'
+                ], 403);
+                return;
+            }
+
             $in = json_input();
             $phoneCandidate = trim($in['phone'] ?? '');
             $companyCandidate = $in['companyId'] ?? null;

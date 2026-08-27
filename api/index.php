@@ -1387,12 +1387,17 @@ function build_customer_search_conditions(string $q, string $tableAlias = ''): a
     $searchCols = [
         "{$prefix}first_name",
         "{$prefix}last_name",
-        "{$prefix}phone",
-        "{$prefix}backup_phone",
         "{$prefix}customer_id",
         "{$prefix}facebook_name",
         "{$prefix}line_id"
     ];
+
+    // A partial match on a number is a way to read it back one digit at a time, so the phone
+    // columns drop out of search for anyone the number is hidden from.
+    $searchPhone = can_search_by_phone();
+    if ($searchPhone) {
+        array_splice($searchCols, 2, 0, ["{$prefix}phone", "{$prefix}backup_phone"]);
+    }
 
     // Normalize phone for matching (strip leading 0)
     $normalizedPhone = preg_replace('/^0+/', '', preg_replace('/\D/', '', $q));
@@ -1409,7 +1414,7 @@ function build_customer_search_conditions(string $q, string $tableAlias = ''): a
 
         // For phone: also match without leading 0
         $termPhoneNormalized = preg_replace('/^0+/', '', preg_replace('/\D/', '', $term));
-        if ($termPhoneNormalized !== '' && $termPhoneNormalized !== $term) {
+        if ($searchPhone && $termPhoneNormalized !== '' && $termPhoneNormalized !== $term) {
             $termConditions[] = "{$prefix}phone LIKE ?";
             $params[] = "%$termPhoneNormalized%";
             $termConditions[] = "{$prefix}backup_phone LIKE ?";
@@ -2744,11 +2749,12 @@ function get_order(PDO $pdo, string $id): ?array
             $custStmt->execute([$o['customer_id'], $o['customer_id']]);
             $cust = $custStmt->fetch();
             if ($cust) {
-                $o['customer'] = $cust;
+                // SELECT * above, so the whole customers row ships to the browser — scrub before it does.
+                $o['customer'] = scrub_customer_row($cust, 'ui');
                 // Keep for backward compatibility
-                $o['customer_phone'] = $cust['phone'];
-                $o['phone'] = $cust['phone'];
-                $o['customer_backup_phone'] = $cust['backup_phone'];
+                $o['customer_phone'] = customer_phone_ui($cust['phone'] ?? '');
+                $o['phone'] = customer_phone_ui($cust['phone'] ?? '');
+                $o['customer_backup_phone'] = customer_backup_phones_ui($cust['backup_phone'] ?? '');
             }
         } catch (Throwable $e) { /* ignore */
         }
@@ -2899,7 +2905,7 @@ function handle_calls(PDO $pdo, ?string $id): void
                 $stmt = $pdo->prepare('SELECT ch.*, c.first_name AS customer_first_name, c.last_name AS customer_last_name, c.phone AS customer_phone FROM call_history ch LEFT JOIN customers c ON ch.customer_id = c.customer_id WHERE ch.id = ?');
                 $stmt->execute([$id]);
                 $row = $stmt->fetch();
-                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+                $row ? json_response(scrub_customer_row($row, 'ui')) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
                 // Pagination and Filtering
                 $companyId = $_GET['companyId'] ?? null;
@@ -2992,8 +2998,12 @@ function handle_calls(PDO $pdo, ?string $id): void
 
                 $stmt->execute();
                 $data = $stmt->fetchAll();
+                // Call history is the telesale's busiest screen and every row carries customer_phone.
+                foreach ($data as $i => $row) {
+                    $data[$i] = scrub_customer_row($row, 'ui');
+                }
 
-                // If page/pageSize was requested, return envelope. 
+                // If page/pageSize was requested, return envelope.
                 // BUT to fix 500 error for existing callers who don't expect envelope, we must be careful.
                 // Existing global fetching calls without params.
                 // If we default pageSize=100, we limit the data.
@@ -4341,6 +4351,9 @@ function handle_upsell_orders(PDO $pdo): void
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$userId, $companyId]);
     $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($orders as $i => $o) {
+        $orders[$i] = scrub_customer_row($o, 'ui');
+    }
 
     json_response([
         'orders' => $orders,

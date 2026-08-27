@@ -4,6 +4,7 @@
  * GET ?company_id=&start_date=&end_date=&format=
  */
 require_once __DIR__ . "/../config.php";
+require_once __DIR__ . "/../phone_privacy.php";
 
 function formatCsvRow(array $row): array {
     $date = $row['call_date'] ? date('d/m/Y H:i', strtotime($row['call_date'])) : '-';
@@ -16,7 +17,7 @@ function formatCsvRow(array $row): array {
         $date,
         $row['caller'] ?? '-',
         trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? '')) ?: '-',
-        $row['phone'] ?? '-',
+        customer_phone_export($row['phone'] ?? '') ?: '-',
         $row['status'] ?? '-',
         $row['result'] ?? '-',
         $row['crop_type'] ?? '-',
@@ -28,6 +29,8 @@ function formatCsvRow(array $row): array {
 
 try {
     $pdo = db_connect();
+    // Must run before formatCsvRow() is used, for both the CSV and the preview branch.
+    phone_privacy_init($pdo);
     set_time_limit(300);
 
     // Get authentication to support role-based filtering if needed

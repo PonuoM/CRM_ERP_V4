@@ -36,6 +36,8 @@ $companyId = $_GET['companyId'] ?? 1;
 
 // Get database connection
 $pdo = db_connect();
+require_once __DIR__ . '/phone_privacy.php';
+phone_privacy_init($pdo);
 
 try {
     // Handle basket customers fetch (filter by basket rules)

@@ -1,5 +1,6 @@
 <?php
 require_once '../config.php';
+require_once __DIR__ . '/../phone_privacy.php';
 
 cors();
 
@@ -9,6 +10,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 try {
     $pdo = db_connect();
+    // Finance and account keep real numbers here — they call these customers. Everyone else is masked.
+    phone_privacy_init($pdo);
 
     $user = get_authenticated_user($pdo);
     // Write request details to debug log
@@ -167,7 +170,7 @@ try {
                 'bigBags' => (int) $r['big_bags'],
                 'items' => $items,
                 'customerName' => trim($r['customer_first_name'] . ' ' . $r['customer_last_name']),
-                'customerPhone' => $r['customer_phone'],
+                'customerPhone' => customer_phone_export($r['customer_phone'] ?? ''),
                 'orderDate' => $r['order_date'],
                 'deliveryDate' => $r['delivery_date'],
                 'totalAmount' => (float) $r['total_amount'],

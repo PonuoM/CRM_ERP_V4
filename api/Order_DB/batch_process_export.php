@@ -41,6 +41,8 @@ try {
     $orderIds = array_slice($orderIds, 0, 500);
 
     $pdo = db_connect();
+    require_once __DIR__ . '/../phone_privacy.php';
+    phone_privacy_init($pdo);
     set_audit_context($pdo, 'orders/batch_export');
 
 
@@ -68,6 +70,7 @@ try {
     $stmt = $pdo->prepare($orderSql);
     $stmt->execute($orderIds);
     $ordersRaw = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $ordersRaw = array_map('scrub_customer_row', $ordersRaw);
 
     if (empty($ordersRaw)) {
         $pdo->rollBack();

@@ -14,6 +14,8 @@ require_once __DIR__ . '/config.php';
 ini_set('max_execution_time', '30');
 
 $pdo = db_connect();
+require_once __DIR__ . '/phone_privacy.php';
+phone_privacy_init($pdo);
 
 // ==================== CHECK PREREQUISITES ====================
 $tablesExist = true;
@@ -206,7 +208,7 @@ if ($tablesExist) {
             'employee_name' => $userNames[$p['assigned_to']] ?? 'ไม่ทราบ',
             'customer_id' => $p['customer_id'],
             'customer_name' => $custInfo[$p['customer_id']]['name'] ?? '-',
-            'customer_phone' => $custInfo[$p['customer_id']]['phone'] ?? '-',
+            'customer_phone' => customer_phone_ui($custInfo[$p['customer_id']]['phone'] ?? '') ?: '-',
             'period_start' => $p['period_start'],
             'period_end' => $p['period_end'],
             'is_active' => ($p['period_end'] >= $now) ? 1 : 0,

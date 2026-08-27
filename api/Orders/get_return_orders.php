@@ -55,11 +55,15 @@ try {
 
     // Search by order ID, tracking number, or customer phone
     if ($search !== '') {
-        $whereConditions[] = "(ob.order_id LIKE ? OR otn.tracking_number LIKE ? OR c.phone LIKE ?)";
+        // Phone drops out for anyone the number is hidden from — a partial match reads it back.
+        $searchPhone = can_search_by_phone();
+        $whereConditions[] = $searchPhone
+            ? "(ob.order_id LIKE ? OR otn.tracking_number LIKE ? OR c.phone LIKE ?)"
+            : "(ob.order_id LIKE ? OR otn.tracking_number LIKE ?)";
         $searchWild = '%' . $search . '%';
         $params[] = $searchWild;
         $params[] = $searchWild;
-        $params[] = $searchWild;
+        if ($searchPhone) { $params[] = $searchWild; }
     }
 
     // Filter by order_date range

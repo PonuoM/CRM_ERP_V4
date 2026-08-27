@@ -29,6 +29,8 @@ $offset = isset($_GET['offset']) ? (int) $_GET['offset'] : 0;
 try {
     // Connect to database
     $pdo = db_connect();
+    require_once __DIR__ . '/../phone_privacy.php';
+    phone_privacy_init($pdo);
 
     $response = ['success' => true, 'data' => []];
 
@@ -162,7 +164,10 @@ try {
                     if (array_key_exists('recipient_phone', $addr)) {
                         $addr['phone'] = $addr['recipient_phone'];
                     }
+                    // SELECT * above, and the shipping contact is a customer number like any other.
+                    $addr = scrub_customer_row($addr, 'ui');
                 }
+                unset($addr);
                 $response['data'] = $addresses;
             } else {
                 $response['success'] = false;

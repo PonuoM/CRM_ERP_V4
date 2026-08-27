@@ -18,6 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 try {
     $pdo = db_connect();
+    require_once __DIR__ . '/phone_privacy.php';
+    phone_privacy_init($pdo);
     
     // Auth Validation (optional depending on system strictness)
     // validate_auth($pdo); 
@@ -57,7 +59,7 @@ try {
                 'province' => $primary['province'],
                 'zipCode' => $primary['postal_code'],
                 'isPrimary' => true,
-                'phone' => sanitizeValue($primary['recipient_phone'] ?: $primary['phone'])
+                'phone' => customer_phone_ui(sanitizeValue($primary['recipient_phone'] ?: $primary['phone']))
             ];
         }
         
@@ -78,7 +80,7 @@ try {
                 'province' => $sec['province'],
                 'zipCode' => $sec['zip_code'],
                 'isPrimary' => false,
-                'phone' => sanitizeValue($sec['recipient_phone'] ?? '')
+                'phone' => customer_phone_ui(sanitizeValue($sec['recipient_phone'] ?? ''))
             ];
         }
         

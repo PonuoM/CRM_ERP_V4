@@ -20,6 +20,8 @@ header('Content-Type: application/json; charset=utf-8');
 
 try {
     $pdo = db_connect();
+    // Was reachable by anyone with the URL — every caller already sends a token.
+    validate_auth($pdo);
 } catch (Exception $e) {
     json_response(['error' => 'DB_CONNECTION_FAILED', 'message' => $e->getMessage()], 500);
 }

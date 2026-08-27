@@ -151,6 +151,7 @@ import CheckOrderPage from "./pages/CheckOrderPage";
 import InventoryPage from "./pages/jst/InventoryPage";
 import CompanySettingsPage from "./pages/jst/CompanySettingsPage";
 import GeoCompanySettingsPage from "./pages/GeoCompanySettingsPage";
+import PhonePrivacySettingsPage from "./pages/PhonePrivacySettingsPage";
 import SystemUpdatesManagementPage from "./pages/SystemUpdatesManagementPage";
 import SystemUpdatesHistoryPage from "./pages/SystemUpdatesHistoryPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
@@ -7252,6 +7253,9 @@ const App: React.FC = () => {
       case "settings.geo_company":
       case "จัดการพื้นที่ทำงาน":
         return <GeoCompanySettingsPage />;
+      case "settings.phone_privacy":
+      case "การมองเห็นเบอร์ลูกค้า":
+        return <PhonePrivacySettingsPage />;
       case "settings.company":
       case "Company Settings":
       case "ตั้งค่าบริษัท":

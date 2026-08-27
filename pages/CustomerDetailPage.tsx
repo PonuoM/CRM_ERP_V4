@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import CustomerPhone from "../components/CustomerPhone";
 import {
   Customer,
   Order,
@@ -1109,7 +1110,11 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 label="ชื่อ-นามสกุล"
                 value={`${customer.firstName} ${customer.lastName}`}
               />
-              <InfoItem label="เบอร์โทร" value={customer.phone} />
+              <InfoItem label="เบอร์โทร">
+                <p className="text-sm font-medium text-gray-800 truncate">
+                  <CustomerPhone value={customer.phone} />
+                </p>
+              </InfoItem>
               <InfoItem label="เบอร์โทรสำรอง" value={customer.backupPhone || "-"} />
               <InfoItem label="Facebook">
                 <div className="flex items-center space-x-2">
