@@ -157,6 +157,19 @@ const formatWorkingTime = (hours?: number | null, days?: number | null): string 
     return `${formatWorkQty(displayDays)} วัน (${formatWorkQty(displayHours)} ชม.)`;
 };
 
+const renderPerWorkDay = (value: number, workingDays?: number | null, workingHours?: number | null) => {
+    const days = (Number(workingDays) > 0)
+        ? Number(workingDays)
+        : (Number(workingHours) > 0 ? Number(workingHours) / 8 : 0);
+    if (days > 0) {
+        return <span className="font-semibold">{(value / days).toFixed(0)}</span>;
+    }
+    if (value > 0) {
+        return <span className="text-red-500 font-bold" title="มีกิจกรรม แต่ไม่มีบันทึกเวลาทำงาน">⚠️ 0</span>;
+    }
+    return <span className="text-gray-400">-</span>;
+};
+
 interface SegmentCell {
     owned: number;
     names_called: number;
@@ -1439,8 +1452,10 @@ export default function TelesalePerformancePage() {
                                             <div className="font-semibold text-gray-700 mb-2">ซ่อน/แสดง คอลัมน์:</div>
                                             <div className="flex flex-wrap gap-x-3 gap-y-1">
                                                 {([
-                                                    ['kpi_calls', 'สายที่โทร'], ['kpi_minutes', 'นาที'], ['kpi_avgDailyMinutes', 'โทรเฉลี่ย/วัน'],
-                                                    ['kpi_connected', 'รับสาย'], ['kpi_talked', 'ได้คุย'], ['kpi_missed', 'ไม่ได้รับ'],
+                                                    ['kpi_calls', 'สายที่โทร'], ['kpi_minutes', 'นาที'], ['kpi_avgDailyMinutes', 'นาที/วันทำงาน'],
+                                                    ['kpi_connected', 'รับสาย'], ['kpi_avgConnected', 'รับสาย(เฉลี่ย)'],
+                                                    ['kpi_talked', 'ได้คุย'], ['kpi_avgTalked', 'ได้คุย(เฉลี่ย)'],
+                                                    ['kpi_missed', 'ไม่ได้รับ'], ['kpi_avgMissed', 'ไม่ได้รับ(เฉลี่ย)'],
                                                     ['kpi_answerRate', '%รับ'], ['kpi_workingHours', 'วันทำงาน'],
                                                     ['kpi_newCust', 'ลค.ใหม่'], ['kpi_coreCust', 'ลค.เก่า'], ['kpi_revivalCust', 'ลค.ขุด'],
                                                     ['kpi_upsell', 'Upsell'], ['kpi_totalOrders', 'ออเดอร์'], ['kpi_totalSales', 'ยอดขาย'], ['kpi_closeRate', '% ปิด'],
@@ -1467,10 +1482,13 @@ export default function TelesalePerformancePage() {
                                                             <th className="px-2 py-2 text-left font-medium">ชื่อ</th>
                                                             {visibleCols.kpi_calls && <th className="px-2 py-2 text-center font-medium">สาย</th>}
                                                             {visibleCols.kpi_minutes && <th className="px-2 py-2 text-center font-medium">นาที</th>}
-                                                            {visibleCols.kpi_avgDailyMinutes && <th className="px-2 py-2 text-center font-medium">นาที/วันทำงาน</th>}
+                                                            {visibleCols.kpi_avgDailyMinutes && <th className="px-2 py-2 text-center font-medium text-blue-800">นาที/วันทำงาน</th>}
                                                             {visibleCols.kpi_connected && <th className="px-2 py-2 text-center font-medium">รับสาย</th>}
+                                                            {visibleCols.kpi_avgConnected && <th className="px-2 py-2 text-center font-medium text-emerald-800">รับสาย(เฉลี่ย)</th>}
                                                             {visibleCols.kpi_talked && <th className="px-2 py-2 text-center font-medium">ได้คุย</th>}
+                                                            {visibleCols.kpi_avgTalked && <th className="px-2 py-2 text-center font-medium text-indigo-800">ได้คุย(เฉลี่ย)</th>}
                                                             {visibleCols.kpi_missed && <th className="px-2 py-2 text-center font-medium">ไม่ได้รับ</th>}
+                                                            {visibleCols.kpi_avgMissed && <th className="px-2 py-2 text-center font-medium text-red-800">ไม่ได้รับ(เฉลี่ย)</th>}
                                                             {visibleCols.kpi_answerRate && <th className="px-2 py-2 text-center font-medium">%รับ</th>}
                                                             {visibleCols.kpi_workingHours && <th className="px-2 py-2 text-center font-medium">วันทำงาน</th>}
                                                             {visibleCols.kpi_newCust && <th className="px-2 py-2 text-center font-medium border-l border-gray-200">ลค.ใหม่</th>}
@@ -1499,10 +1517,13 @@ export default function TelesalePerformancePage() {
                                                                     <td className="px-2 py-1.5 font-medium text-gray-800 whitespace-nowrap">{ts.name}</td>
                                                                     {visibleCols.kpi_calls && <td className="px-2 py-1.5 text-center">{m.totalCalls || '·'}</td>}
                                                                     {visibleCols.kpi_minutes && <td className="px-2 py-1.5 text-center">{m.totalMinutes > 0 ? m.totalMinutes.toFixed(0) : '·'}</td>}
-                                                                    {visibleCols.kpi_avgDailyMinutes && <td className="px-2 py-1.5 text-center text-gray-300">·</td>}
+                                                                    {visibleCols.kpi_avgDailyMinutes && <td className="px-2 py-1.5 text-center text-blue-800">{renderPerWorkDay(m.totalMinutes, m.workingDays, m.workingHours)}</td>}
                                                                     {visibleCols.kpi_connected && <td className="px-2 py-1.5 text-center text-emerald-600">{m.connectedCalls || '·'}</td>}
+                                                                    {visibleCols.kpi_avgConnected && <td className="px-2 py-1.5 text-center text-emerald-800">{renderPerWorkDay(m.connectedCalls, m.workingDays, m.workingHours)}</td>}
                                                                     {visibleCols.kpi_talked && <td className="px-2 py-1.5 text-center">{m.talkedCalls || '·'}</td>}
+                                                                    {visibleCols.kpi_avgTalked && <td className="px-2 py-1.5 text-center text-indigo-800">{renderPerWorkDay(m.talkedCalls, m.workingDays, m.workingHours)}</td>}
                                                                     {visibleCols.kpi_missed && <td className="px-2 py-1.5 text-center text-red-500">{m.missedCalls || '·'}</td>}
+                                                                    {visibleCols.kpi_avgMissed && <td className="px-2 py-1.5 text-center text-red-800">{renderPerWorkDay(m.missedCalls, m.workingDays, m.workingHours)}</td>}
                                                                     {visibleCols.kpi_answerRate && <td className="px-2 py-1.5 text-center">{m.totalCalls ? `${m.answerRate.toFixed(1)}%` : '·'}</td>}
                                                                     {visibleCols.kpi_workingHours && <td className="px-2 py-1.5 text-center text-blue-600 whitespace-nowrap">{m.workingHours > 0 ? formatWorkingTime(m.workingHours, m.workingDays) : '·'}</td>}
                                                                     {visibleCols.kpi_newCust && <td className="px-2 py-1.5 text-center border-l border-gray-100">{m.newCustOrders || '·'}</td>}
@@ -1522,34 +1543,52 @@ export default function TelesalePerformancePage() {
                                                             );
                                                         })}
                                                     </tbody>
-                                                    <tfoot className="bg-blue-50/50 border-t-2 border-gray-300">
+                                                    <tbody className="divide-y divide-gray-100 bg-blue-50/40">
+                                                        <tr className="bg-gray-100 text-gray-700 border-t-2 border-gray-300">
+                                                            <td className="px-2 py-2 text-left font-medium sticky left-0 bg-gray-100">สรุปรวม</td>
+                                                            <td className="px-2 py-2 text-left font-medium">ตามพนักงาน</td>
+                                                            {visibleCols.kpi_calls && <td></td>}
+                                                            {visibleCols.kpi_minutes && <td></td>}
+                                                            {visibleCols.kpi_avgDailyMinutes && <td></td>}
+                                                            {visibleCols.kpi_connected && <td></td>}
+                                                            {visibleCols.kpi_avgConnected && <td></td>}
+                                                            {visibleCols.kpi_talked && <td></td>}
+                                                            {visibleCols.kpi_avgTalked && <td></td>}
+                                                            {visibleCols.kpi_missed && <td></td>}
+                                                            {visibleCols.kpi_avgMissed && <td></td>}
+                                                            {visibleCols.kpi_answerRate && <td></td>}
+                                                            {visibleCols.kpi_workingHours && <td></td>}
+                                                            {visibleCols.kpi_newCust && <td></td>}
+                                                            {visibleCols.kpi_coreCust && <td></td>}
+                                                            {visibleCols.kpi_revivalCust && <td></td>}
+                                                            {visibleCols.kpi_upsell && <td></td>}
+                                                            {visibleCols.kpi_totalOrders && <td></td>}
+                                                            {visibleCols.kpi_totalSales && <td></td>}
+                                                            {visibleCols.kpi_closeRate && <td></td>}
+                                                            {visibleCols.sales_gross && <td></td>}
+                                                            {visibleCols.sales_cancelled && <td></td>}
+                                                            {visibleCols.sales_returned && <td></td>}
+                                                            {visibleCols.sales_bio && <td></td>}
+                                                            {visibleCols.sales_fertilizer && <td></td>}
+                                                            {visibleCols.sales_other && <td></td>}
+                                                        </tr>
                                                         {summaryDailyRecords.map(ts => {
                                                             const m = ts.metrics;
                                                             const net = m.totalSales + m.upsellSales;
-                                                            // API แปลงวันทำงานมาให้แล้ว (ส-อา 6 ชม. = 1 วันเต็มสำหรับ role 6/7)
-                                                            const workingDays = m.workingDays > 0 ? m.workingDays : m.workingHours / 8;
                                                             const closeRate = pct(m.netOrders, m.talkedCalls);
-                                                            const perDay = (v: number) =>
-                                                                workingDays > 0 ? v / workingDays : null;
-                                                            const avgCell = (v: number) => {
-                                                                const r = perDay(v);
-                                                                if (r === null) {
-                                                                    return v > 0
-                                                                        ? <span className="text-red-500 font-bold" title="มีกิจกรรม แต่ไม่มีบันทึกเวลาทำงาน">⚠️ 0</span>
-                                                                        : <span className="text-gray-300">·</span>;
-                                                                }
-                                                                return <span className="font-semibold">{r.toFixed(0)}</span>;
-                                                            };
                                                             return (
                                                                 <tr key={`sum-${ts.userId}`} className="font-semibold text-gray-800">
                                                                     <td className="px-2 py-2 sticky left-0 bg-blue-50">สรุปรวม</td>
                                                                     <td className="px-2 py-2 whitespace-nowrap">{ts.name}</td>
                                                                     {visibleCols.kpi_calls && <td className="px-2 py-2 text-center">{m.totalCalls || '·'}</td>}
                                                                     {visibleCols.kpi_minutes && <td className="px-2 py-2 text-center">{m.totalMinutes > 0 ? m.totalMinutes.toFixed(0) : '·'}</td>}
-                                                                    {visibleCols.kpi_avgDailyMinutes && <td className="px-2 py-2 text-center">{avgCell(m.totalMinutes)}</td>}
+                                                                    {visibleCols.kpi_avgDailyMinutes && <td className="px-2 py-2 text-center text-blue-800">{renderPerWorkDay(m.totalMinutes, m.workingDays, m.workingHours)}</td>}
                                                                     {visibleCols.kpi_connected && <td className="px-2 py-2 text-center">{m.connectedCalls || '·'}</td>}
+                                                                    {visibleCols.kpi_avgConnected && <td className="px-2 py-2 text-center text-emerald-800">{renderPerWorkDay(m.connectedCalls, m.workingDays, m.workingHours)}</td>}
                                                                     {visibleCols.kpi_talked && <td className="px-2 py-2 text-center">{m.talkedCalls || '·'}</td>}
+                                                                    {visibleCols.kpi_avgTalked && <td className="px-2 py-2 text-center text-indigo-800">{renderPerWorkDay(m.talkedCalls, m.workingDays, m.workingHours)}</td>}
                                                                     {visibleCols.kpi_missed && <td className="px-2 py-2 text-center">{m.missedCalls || '·'}</td>}
+                                                                    {visibleCols.kpi_avgMissed && <td className="px-2 py-2 text-center text-red-800">{renderPerWorkDay(m.missedCalls, m.workingDays, m.workingHours)}</td>}
                                                                     {visibleCols.kpi_answerRate && <td className="px-2 py-2 text-center">{m.totalCalls ? `${m.answerRate.toFixed(1)}%` : '·'}</td>}
                                                                     {visibleCols.kpi_workingHours && <td className="px-2 py-2 text-center text-blue-700 whitespace-nowrap">{m.workingHours > 0 ? formatWorkingTime(m.workingHours, m.workingDays) : '·'}</td>}
                                                                     {visibleCols.kpi_newCust && <td className="px-2 py-2 text-center border-l border-gray-200">{m.newCustOrders || '·'}</td>}
@@ -1568,7 +1607,7 @@ export default function TelesalePerformancePage() {
                                                                 </tr>
                                                             );
                                                         })}
-                                                    </tfoot>
+                                                    </tbody>
                                                 </table>
                                             )}
                                         </div>
