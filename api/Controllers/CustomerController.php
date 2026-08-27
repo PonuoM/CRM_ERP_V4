@@ -1576,11 +1576,26 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $logStmt->execute([$id, $oldBasketKey, $newBasketKey, $triggerUserId]);
                 }
 
+                // A masked number must never be saved back over the real one.
+                //
+                // The edit form is filled from what the API sent, so an agent who may not see the
+                // number gets 08xxxxxx36 in the field. Pressing save with that untouched would
+                // overwrite the customer's actual phone number with the mask — irreversibly, and
+                // silently. Passing null instead leaves COALESCE to keep what is already stored.
+                $phoneIn = $in['phone'] ?? null;
+                $backupIn = $in['backupPhone'] ?? null;
+                if (is_string($phoneIn) && is_masked_phone($phoneIn)) {
+                    $phoneIn = null;
+                }
+                if (is_string($backupIn) && is_masked_phone($backupIn)) {
+                    $backupIn = null;
+                }
+
                 $params = [
                     $in['firstName'] ?? null,
                     $in['lastName'] ?? null,
-                    $in['phone'] ?? null,
-                    $in['backupPhone'] ?? null,
+                    $phoneIn,
+                    $backupIn,
                     $in['email'] ?? null,
                     $in['province'] ?? null,
                     $in['companyId'] ?? null,

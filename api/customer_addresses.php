@@ -18,6 +18,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 try {
     $pdo = db_connect();
+/**
+ * A shipping phone that came back to us masked must not overwrite the real one.
+ *
+ * The address form is populated from what this endpoint returned, so an agent who may not see the
+ * number is editing a field that reads 08xxxxxx36. Saving the form untouched would write that
+ * string over the customer's actual number. Returning the stored value instead keeps the edit to
+ * the fields the agent actually changed.
+ */
+function incoming_phone_or_keep(?string $incoming, PDO $pdo, string $table, string $idCol, $idValue): string
+{
+    $incoming = trim((string) $incoming);
+    if ($incoming === '' || !is_masked_phone($incoming)) {
+        return $incoming;
+    }
+    try {
+        $stmt = $pdo->prepare("SELECT recipient_phone FROM `$table` WHERE `$idCol` = ? LIMIT 1");
+        $stmt->execute([$idValue]);
+        $kept = $stmt->fetchColumn();
+        return $kept === false ? '' : (string) $kept;
+    } catch (Throwable $e) {
+        // Better to leave the field alone than to guess: return the mask's stored counterpart is
+        // impossible, so send back an empty string and let the caller's COALESCE-less UPDATE write
+        // nothing meaningful rather than a corrupted number.
+        error_log('incoming_phone_or_keep: ' . $e->getMessage());
+        return '';
+    }
+}
+
     require_once __DIR__ . '/phone_privacy.php';
     phone_privacy_init($pdo);
     
@@ -137,7 +165,9 @@ try {
                 sanitizeValue($data['district'] ?? ''),
                 sanitizeValue($data['province'] ?? ''),
                 sanitizeValue($data['zipCode'] ?? ''),
-                sanitizeValue($data['phone'] ?? ''),
+                incoming_phone_or_keep(
+                    sanitizeValue($data['phone'] ?? ''), $pdo, 'customers', 'customer_id', $customerId
+                ),
                 $customerId
             ]);
             json_response(['success' => true]);
@@ -153,7 +183,9 @@ try {
                 sanitizeValue($data['district'] ?? ''),
                 sanitizeValue($data['province'] ?? ''),
                 sanitizeValue($data['zipCode'] ?? ''),
-                sanitizeValue($data['phone'] ?? ''),
+                incoming_phone_or_keep(
+                    sanitizeValue($data['phone'] ?? ''), $pdo, 'customer_address', 'id', $addressId
+                ),
                 $addressId
             ]);
             json_response(['success' => true]);
