@@ -71,6 +71,21 @@ try {
                 $issueCategory, 
                 $notes
             ]);
+
+            // อัปเดตคอลัมน์แคชที่ Distribution V2 ใช้เรียงลำดับการแจก (ดู migration 087)
+            // สายจาก Voicecall AI ที่มีสรุปบทสนทนากลับมา = คุยกับลูกค้าได้จริง จึงนับเป็น "โทรติด"
+            // (status ที่ได้จาก AI เป็นคนละชุดคำกับที่เทเลกดในระบบ เทียบตรง ๆ ไม่ได้)
+            try {
+                $pdo->prepare(
+                    'UPDATE customers
+                        SET total_calls = COALESCE(total_calls,0) + 1,
+                            last_call_date = ?,
+                            last_talk_at = ?
+                      WHERE customer_id = ?'
+                )->execute([$callDate, $callDate, $customerId]);
+            } catch (Throwable $e) {
+                error_log('webhook_voicecall: update customer call cache failed - ' . $e->getMessage());
+            }
         }
     }
 

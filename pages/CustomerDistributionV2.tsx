@@ -53,8 +53,21 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [dashboardBaskets, setDashboardBaskets] = useState<BasketConfig[]>([]);
     const [basketCounts, setBasketCounts] = useState<Record<string, number>>({});
     const [activeBasket, setActiveBasket] = useState<string>('');
-    const [strictDuplicateCheck, setStrictDuplicateCheck] = useState(false);
-    const [customers, setCustomers] = useState<Customer[]>([]);
+    // Smart Allocation (กันแจกรายชื่อซ้ำคนเดิม) บังคับเปิดถาวรตั้งแต่ 25 ส.ค. 2026
+    // เดิมเป็น checkbox ที่ default = ปิด ซึ่งรวมกับ pool.sort() แบบ most-constrained-first
+    // ทำให้ระบบหยิบ "รายชื่อที่เพิ่งหลุดจากมือพนักงานที่เลือก" ขึ้นมาก่อน แล้วส่งกลับไปหาคนเดิม
+    // วัดจริง 10 วันย้อนหลัง: ~90% ของรอบแจก เป็นการแจกคืนคนเดิม 100% (ค่าฐานในถังแค่ 6%)
+    // ต้นทุนของการเปิด = อาจแจกไม่ครบโควตา แต่ pool 30,000+ vs แจกรอบละ ~250 ไม่มีทางไม่พอ
+    const strictDuplicateCheck = true;
+    // ฟิลด์จัดลำดับที่ backend ส่งมาเพิ่มจาก type Customer ปกติ (ดู handleBasketCustomers)
+    //   lead_group: 'A1' ไม่เคยกดโทร | 'B' เคยโทรติด | 'A2' โทรแล้วไม่เคยติด | 'cooldown' เพิ่งโทรติด
+    type PoolCustomer = Customer & {
+        lead_group?: string;
+        last_talk_at?: string | null;
+        days_since_talk?: number | null;
+        ytd_amount?: number;
+    };
+    const [customers, setCustomers] = useState<PoolCustomer[]>([]);
     const [agents, setAgents] = useState<AgentWithBaskets[]>([]);
     const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
     const [agentSupervisorFilter, setAgentSupervisorFilter] = useState<number | ''>('');
@@ -75,6 +88,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [totalToDistribute, setTotalToDistribute] = useState<string>('');
     const [callThresholdMinutes, setCallThresholdMinutes] = useState<string>('110');
     const [hasCallFilterApplied, setHasCallFilterApplied] = useState<boolean>(false);
+    // หน้าต่างเวลาที่ตารางพนักงานใช้คำนวณ "นาทีโทร" ที่โชว์บนจอ ส่งไปให้ backend ตรวจซ้ำด้วยนิยามเดียวกัน
+    const [callFilterWindow, setCallFilterWindow] = useState<{ start_date: string; end_date: string; start_time: string; end_time: string } | null>(null);
     const [preview, setPreview] = useState<DistributionPreview[]>([]);
     const [showPreview, setShowPreview] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
@@ -93,8 +108,16 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [remainderMode, setRemainderMode] = useState<'sequential' | 'performance'>('sequential');
     const [agentQuotas, setAgentQuotas] = useState<Record<number, string>>({});
     const [previewConflictMap, setPreviewConflictMap] = useState<Record<string, number[]>>({});
-    const [previewCustomerPool, setPreviewCustomerPool] = useState<Customer[]>([]);
+    const [previewCustomerPool, setPreviewCustomerPool] = useState<PoolCustomer[]>([]);
     const [previewWarning, setPreviewWarning] = useState<string>('');
+    const [previewSkippedCount, setPreviewSkippedCount] = useState<number>(0);
+
+    // Cooldown: รายชื่อที่ "เพิ่งโทรติด" ภายใน N วัน จะถูก backend เรียงไว้ท้ายสุดเสมอ
+    // แจกได้อยู่ แต่ต้องกดยืนยันก่อน (hybrid guard - ตกลงกับทีม CRM 25 ส.ค. 2026)
+    const [poolReadyCount, setPoolReadyCount] = useState<number>(0);
+    const [poolCooldownCount, setPoolCooldownCount] = useState<number>(0);
+    const [poolCooldownDays, setPoolCooldownDays] = useState<number>(30);
+
 
     // Manual Reset State
     const [resetModalOpen, setResetModalOpen] = useState(false);
@@ -397,30 +420,58 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
 
     // Fetch customers for active basket
-    const fetchCustomers = useCallback(async () => {
-        if (!activeBasket) return;
+    //
+    // ลำดับที่ได้กลับมาคือ "ลำดับการแจกจริง" ที่ backend เรียงมาให้แล้ว (ดู handleBasketCustomers)
+    // ห้ามเรียงใหม่ที่ฝั่งนี้เด็ดขาด — การเรียงใหม่คือต้นเหตุของบั๊กแจกรายชื่อที่เพิ่งโทร (25 ส.ค. 2026)
+    //
+    // limit: เดิมดึงมา 50,000 แถวทุกครั้ง (ถังใหญ่สุดมี 30,453) ทั้งที่แจกรอบละไม่กี่ร้อย
+    // เปลี่ยนเป็นดึงเผื่อจากจำนวนที่จะแจก เพราะรายชื่อที่ติดเงื่อนไขซ้ำจะถูกข้ามไป จึงต้องมีสำรอง
+    const fetchCustomers = useCallback(async (targetTotal?: number) => {
+        if (!activeBasket) return { rows: [] as PoolCustomer[], readyCount: 0, cooldownCount: 0, cooldownDays: 30 };
 
         setLoadingCustomers(true);
         try {
             const actualCalledFilterDays = calledFilterDays === 'custom' ? calledFilterCustomDays : calledFilterDays;
             const calledFilterParams = actualCalledFilterDays ? `&called_filter_days=${actualCalledFilterDays}&called_filter_mode=${calledFilterMode}` : '';
 
+            const wanted = targetTotal ?? (parseInt(totalToDistribute) || 0);
+            const limit = Math.min(50000, Math.max(2000, wanted * 5 + 500));
+
             const response = await apiFetch(
-                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=50000${calledFilterParams}`
+                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=${limit}${calledFilterParams}`
             );
             const data = response?.data || [];
-            const mapped = data.map((r: any) => mapCustomerFromApi(r));
+            // mapCustomerFromApi สร้าง object ใหม่ตาม type Customer จึงต้องแปะฟิลด์จัดลำดับกลับเข้าไปเอง
+            const mapped = data.map((r: any) => ({
+                ...mapCustomerFromApi(r),
+                lead_group: r.lead_group,
+                last_talk_at: r.last_talk_at,
+                days_since_talk: r.days_since_talk === null || r.days_since_talk === undefined ? null : Number(r.days_since_talk),
+                ytd_amount: Number(r.ytd_amount || 0)
+            })) as PoolCustomer[];
+
+            const readyCount = response?.ready_count ?? response?.count ?? mapped.length;
+            const cooldownCount = response?.cooldown_count ?? 0;
+            const cooldownDays = response?.cooldown_days ?? 30;
+
             setCustomers(mapped);
+            setPoolReadyCount(readyCount);
+            setPoolCooldownCount(cooldownCount);
+            setPoolCooldownDays(cooldownDays);
             if (activeBasket) {
                 setBasketCounts(prev => ({ ...prev, [activeBasket]: response?.count || mapped.length }));
             }
+            return { rows: mapped, readyCount, cooldownCount, cooldownDays };
         } catch (error) {
             console.error('Failed to fetch customers:', error);
             setCustomers([]);
+            return { rows: [] as PoolCustomer[], readyCount: 0, cooldownCount: 0, cooldownDays: 30 };
         } finally {
             setLoadingCustomers(false);
         }
-    }, [activeBasket, currentUser?.companyId]);
+        // calledFilter* ต้องอยู่ใน deps ด้วย ไม่งั้นค่าที่ใช้จะเป็นค่าตอนสร้าง callback (stale closure)
+        // บั๊กเดิม: เปลี่ยนตัวกรอง "โทรแล้ว/ยังไม่โทร" แล้วตัวเลขบนการ์ดเปลี่ยน แต่รายชื่อที่แจกจริงไม่เปลี่ยน
+    }, [activeBasket, currentUser?.companyId, calledFilterDays, calledFilterCustomDays, calledFilterMode, totalToDistribute]);
 
     // Initial load
     useEffect(() => {
@@ -441,12 +492,15 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
     }, [baskets, fetchAllBasketCounts]);
 
-    // Fetch customers when basket changes
+    // Fetch customers when basket changes or when the call-history filter changes
+    // (ไม่ผูกกับ fetchCustomers ตรง ๆ เพราะ identity ของมันเปลี่ยนตาม totalToDistribute ที่ผู้ใช้พิมพ์
+    //  จะกลายเป็นยิง API ทุกครั้งที่กดตัวเลข)
     useEffect(() => {
         if (activeBasket && baskets.length > 0) {
             fetchCustomers();
         }
-    }, [activeBasket, baskets, fetchCustomers]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeBasket, baskets, calledFilterDays, calledFilterCustomDays, calledFilterMode]);
 
     // Available customers count
     const availableCount = basketCounts[activeBasket] || 0;
@@ -532,10 +586,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         }
     };
 
-    // Generate preview with Conflict-Aware Smart Allocation
-    // Fetches real conflict data from customer_assign_check, then uses
-    // Most-Constrained-First + greedy agent selection to minimize duplicates
-    const handlePreparePreview = async () => {
+    // Generate preview
+    //
+    // ลำดับของ customerPool = ลำดับการแจกที่ backend เรียงมาให้แล้ว (A1 -> B -> A2 -> ที่ติด cooldown)
+    // ที่นี่ทำแค่ "เดินตามลำดับ แล้วหาคนรับ" เท่านั้น ห้ามเรียงใหม่
+    const handlePreparePreview = async (opts?: { allowCooldown?: boolean }) => {
         if (selectedAgents.length === 0) {
             setMessage({ type: 'error', text: 'กรุณาเลือกพนักงานอย่างน้อย 1 คน' });
             return;
@@ -552,7 +607,52 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             return;
         }
 
-        const customerPool = [...customers];
+        // ดึง pool ใหม่เสมอตอนกดพรีวิว เพื่อให้ได้ลำดับล่าสุด + จำนวนที่เผื่อพอกับรอบนี้
+        // (กันเคสเปิดจอค้างไว้ครึ่งวันแล้วรายชื่อในถังเปลี่ยนไปแล้ว)
+        const fresh = await fetchCustomers(total);
+        const customerPool = fresh.rows.length ? [...fresh.rows] : [...customers];
+
+        // Cooldown guard (hybrid): ไม่ตัดรายชื่อที่เพิ่งโทรทิ้ง แต่ถ้าต้องควักมาใช้ ต้องกดยืนยันก่อน
+        // อ่านจากค่าที่ fetch คืนมาโดยตรง ไม่ใช่ state เพราะ setState ยังไม่ทันมีผลในรอบนี้
+        if (!opts?.allowCooldown && fresh.cooldownCount > 0 && total > fresh.readyCount) {
+            const nearest = customerPool
+                .map(c => c.days_since_talk)
+                .filter((d): d is number => d !== null && d !== undefined && !isNaN(d))
+                .sort((a, b) => a - b)[0];
+            const shortBy = total - fresh.readyCount;
+            setConfirmModal({
+                isOpen: true,
+                title: 'มีรายชื่อที่เพิ่งโทรติดปนอยู่',
+                variant: 'warning',
+                confirmColor: 'orange',
+                confirmLabel: `แจกครบ ${total.toLocaleString()} ราย`,
+                message: (
+                    <div className="space-y-3">
+                        <p>
+                            ถังนี้มีรายชื่อที่ <strong>ยังไม่เคยโทร / เว้นระยะครบแล้ว</strong> อยู่{' '}
+                            <strong className="text-green-700">{fresh.readyCount.toLocaleString()}</strong> ราย
+                            แต่ตั้งไว้ว่าจะแจก <strong>{total.toLocaleString()}</strong> ราย
+                        </p>
+                        <p>
+                            ส่วนที่ขาดอีก <strong className="text-orange-700">{shortBy.toLocaleString()}</strong> ราย
+                            จะเป็นรายชื่อที่ <strong>เพิ่งโทรติดภายใน {fresh.cooldownDays} วัน</strong>
+                            {nearest !== undefined && nearest !== null && (
+                                <> (ใกล้สุดคือโทรไปเมื่อ <strong>{nearest} วันที่แล้ว</strong>)</>
+                            )}
+                            {' '}ซึ่งมักโทรซ้ำแล้วไม่เกิดผล
+                        </p>
+                        <p className="text-sm text-gray-500">
+                            ถ้าไม่ต้องการ ให้กดยกเลิกแล้วลดจำนวนเหลือ {fresh.readyCount.toLocaleString()} ราย
+                        </p>
+                    </div>
+                ),
+                onConfirm: () => {
+                    closeConfirmModal();
+                    handlePreparePreview({ allowCooldown: true });
+                }
+            });
+            return;
+        }
 
         // ═══════════════════════════════════════════
         // 1. Fetch conflict data from backend
@@ -588,6 +688,14 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     };
 
     // Auto-generate preview when quotas or modal state changes
+    //
+    // กติกา (แก้ 25 ส.ค. 2026 หลังทีม CRM แจ้งว่าได้รายชื่อที่เพิ่งโทรไป):
+    //   1. previewCustomerPool มาจาก backend เรียงตามลำดับความสำคัญมาแล้ว "ห้ามเรียงใหม่"
+    //      ของเดิมเรียงใหม่แบบ most-constrained-first ซึ่งดัน "รายชื่อที่เพิ่งหลุดจากมือ
+    //      พนักงานที่เลือก" ขึ้นหัวแถว = หยิบของที่เพิ่งโทรมาแจกก่อนของที่ยังไม่เคยแตะ
+    //   2. หาคนรับไม่ได้ (ทุกคนเคยถือรายนี้แล้ว) ให้ "ข้าม" ไปรายถัดไป
+    //      ของเดิมมี Pass 2 ที่ยัดให้คนเดิมเพื่อเติมโควตาให้ครบ ทำให้พรีวิวโชว์เต็ม
+    //      แต่ backend reject ทิ้งทีหลัง = แจกจริงได้ไม่ครบโดยไม่มีใครรู้
     useEffect(() => {
         if (!showPreview || previewCustomerPool.length === 0) return;
 
@@ -606,70 +714,35 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             return [...new Set([...backendConflicts, ...localConflicts])];
         };
 
-        // ═══════════════════════════════════════════
-        // 2. Sort customers: Most Constrained First
-        // ═══════════════════════════════════════════
-        const selectedSet = new Set(selectedAgents);
-        const pool = [...previewCustomerPool];
-        pool.sort((a, b) => {
-            const conflictsA = getConflictAgents(a).filter(id => selectedSet.has(id)).length;
-            const conflictsB = getConflictAgents(b).filter(id => selectedSet.has(id)).length;
-            return conflictsB - conflictsA; // more conflicts first
-        });
-
-        // ═══════════════════════════════════════════
-        // 3. Greedy Assignment
-        // ═══════════════════════════════════════════
         const quota: Record<number, number> = {};
-        const assigned: Record<number, Customer[]> = {};
+        const assigned: Record<number, PoolCustomer[]> = {};
         selectedAgents.forEach(id => {
             quota[id] = parseInt(agentQuotas[id]) || 0;
             assigned[id] = [];
         });
-        const usedCustomers = new Set<string>();
 
-        // Pass 1: Assign without conflicts
-        for (const customer of pool) {
-            const cid = customer.customer_id?.toString() || customer.id;
-            if (usedCustomers.has(cid)) continue;
+        let skipped = 0;
 
-            const conflicts = getConflictAgents(customer);
-            const conflictSet = new Set(conflicts);
+        // เดินตามลำดับที่ backend เรียงมา ทีละราย ไม่เรียงใหม่
+        for (const customer of previewCustomerPool) {
+            if (selectedAgents.every(id => quota[id] <= 0)) break;
 
+            const conflictSet = new Set(getConflictAgents(customer));
+
+            // ในกลุ่มคนที่รับได้ ให้คนที่ยังได้รับน้อยที่สุดในรอบนี้ก่อน (คุมให้กระจายเท่า ๆ กัน)
             const bestAgent = selectedAgents
-                .filter(id => quota[id] > 0 && (!strictDuplicateCheck || !conflictSet.has(id)))
+                .filter(id => quota[id] > 0 && !conflictSet.has(id))
                 .sort((a, b) => assigned[a].length - assigned[b].length)[0];
 
             if (bestAgent !== undefined) {
                 assigned[bestAgent].push(customer);
                 quota[bestAgent]--;
-                usedCustomers.add(cid);
-            }
-
-            if (selectedAgents.every(id => quota[id] <= 0)) break;
-        }
-
-        // Pass 2: Fallback — fill remaining quotas (allow conflicts)
-        for (const customer of pool) {
-            if (selectedAgents.every(id => quota[id] <= 0)) break;
-
-            const cid = customer.customer_id?.toString() || customer.id;
-            if (usedCustomers.has(cid)) continue;
-
-            const fallbackAgent = selectedAgents
-                .filter(id => quota[id] > 0)
-                .sort((a, b) => quota[b] - quota[a])[0];
-
-            if (fallbackAgent !== undefined) {
-                assigned[fallbackAgent].push(customer);
-                quota[fallbackAgent]--;
-                usedCustomers.add(cid);
+            } else {
+                // ทุกคนที่เลือกไว้เคยถือรายนี้แล้ว -> ข้าม ไม่ยัดให้ใคร
+                skipped++;
             }
         }
 
-        // ═══════════════════════════════════════════
-        // 4. Build preview
-        // ═══════════════════════════════════════════
         const previewData: DistributionPreview[] = selectedAgents.map(agentId => {
             const agent = agents.find(a => a.id === agentId);
             return {
@@ -680,11 +753,15 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         });
 
         setPreview(previewData);
-        
+        setPreviewSkippedCount(skipped);
+
         const shortfall = previewData.filter(p => p.customers.length < (parseInt(agentQuotas[p.agentId]) || 0));
         if (shortfall.length > 0) {
             const names = shortfall.map(p => `${p.agentName} (${p.customers.length}/${parseInt(agentQuotas[p.agentId]) || 0})`).join(', ');
-            setPreviewWarning(`⚠️ ได้รับลูกค้าน้อยกว่าโควตาที่ตั้งไว้ (อาจเพราะจำนวนรายชื่อมีจำกัด หรือติดเงื่อนไขรายชื่อซ้ำ): ${names}`);
+            const reason = skipped > 0
+                ? `ข้ามรายชื่อที่พนักงานที่เลือกเคยถือมาแล้ว ${skipped.toLocaleString()} ราย`
+                : 'รายชื่อในถังมีจำกัด';
+            setPreviewWarning(`⚠️ ได้รับลูกค้าน้อยกว่าโควตาที่ตั้งไว้ (${reason}): ${names}`);
         } else {
             setPreviewWarning('');
         }
@@ -853,57 +930,90 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     };
 
     // Distribute More (Retry Loop)
+    //
+    // เดิม: ดึงรายชื่อถัดไปมาจับคู่กับพนักงานที่ยังขาดโควตาแบบเรียงลำดับดิบ ๆ (customer[i] -> agent[i])
+    //       ไม่เช็คว่าพนักงานคนนั้นเคยถือรายนี้มาก่อนไหม พอ backend เช็คเจอก็ reject ทิ้ง
+    //       ผลคือกด "แจกเพิ่ม" แล้วยอดแทบไม่ขยับ และไม่มีใครรู้ว่าทำไม
+    // ใหม่: ดึงรายชื่อถัดไปตามลำดับความสำคัญของ backend แล้วจับคู่ด้วยกติกาเดียวกับรอบแรก
+    //       (ข้ามรายที่พนักงานเคยถือ) จึงได้แต่รายชื่อที่แจกผ่านจริง
     const handleDistributeMore = async () => {
         if (summaryStats.missingTotal <= 0) return;
 
         try {
-            // Calculate skip based on total failed so far (assuming we skip the bad ones)
-            const skipCount = summaryStats.totalFailed;
-
-            // Identify needy agents
-            const needyAgents: number[] = [];
-
+            // พนักงานที่ยังขาดโควตา + ขาดอยู่คนละกี่ราย
+            const needed: Record<number, number> = {};
+            let totalNeeded = 0;
             selectedAgents.forEach(agentId => {
                 const currentSuccess = summaryStats.agentStats[agentId]?.success || 0;
                 const expected = parseInt(agentQuotas[agentId]) || 0;
                 if (currentSuccess < expected) {
-                    // Add agent to list multiple times for each missing slot
-                    for (let i = 0; i < (expected - currentSuccess); i++) {
-                        needyAgents.push(agentId);
-                    }
+                    needed[agentId] = expected - currentSuccess;
+                    totalNeeded += expected - currentSuccess;
                 }
             });
 
-            if (needyAgents.length === 0) {
+            if (totalNeeded === 0) {
                 setMessage({ type: 'warning', text: 'โควต้าครบแล้ว' });
                 return;
             }
 
-            const actualCalledFilterDays = calledFilterDays === 'custom' ? calledFilterCustomDays : calledFilterDays;
-            const calledFilterParams = actualCalledFilterDays ? `&called_filter_days=${actualCalledFilterDays}&called_filter_mode=${calledFilterMode}` : '';
-
-            // Fetch
-            const fetchResult = await apiFetch(`basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=${needyAgents.length}&skip=${skipCount}${calledFilterParams}`);
-
-            const newCandidates = fetchResult?.data || [];
-            if (newCandidates.length === 0) {
+            // ดึง pool ใหม่ (รายที่แจกไปแล้วจะหลุดออกเองเพราะมีเจ้าของแล้ว) เผื่อไว้หลายเท่าของที่ขาด
+            const fresh = await fetchCustomers(totalNeeded);
+            if (fresh.rows.length === 0) {
                 setMessage({ type: 'warning', text: 'ไม่พบรายชื่อเพิ่มเติมในระบบ' });
                 return;
             }
 
-            // Map
-            const newAssignments: { customer_id: string | number; agent_id: number }[] = [];
-            for (let i = 0; i < newCandidates.length; i++) {
-                if (i < needyAgents.length) {
-                    newAssignments.push({
-                        customer_id: newCandidates[i].customer_id,
-                        agent_id: needyAgents[i]
+            // ประวัติการถือครองของรายชื่อชุดใหม่
+            let conflictMap: Record<string, number[]> = {};
+            try {
+                const ids = fresh.rows.map(c => c.id);
+                const CHUNK_SIZE = 3000;
+                for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+                    const res = await apiFetch(`distribution_v2?action=get_assign_checks`, {
+                        method: 'POST',
+                        body: JSON.stringify({ customer_ids: ids.slice(i, i + CHUNK_SIZE) })
                     });
+                    if (res?.ok && res.conflicts) conflictMap = { ...conflictMap, ...res.conflicts };
+                }
+            } catch (e) {
+                console.warn('[Distribution] แจกเพิ่ม: ดึงประวัติการถือครองไม่สำเร็จ', e);
+            }
+
+            const newAssignments: { customer_id: string | number; agent_id: number }[] = [];
+            let skipped = 0;
+
+            for (const customer of fresh.rows) {
+                if (Object.values(needed).every(n => n <= 0)) break;
+                const conflictSet = new Set(conflictMap[customer.id] || []);
+                const bestAgent = Object.keys(needed)
+                    .map(Number)
+                    .filter(id => needed[id] > 0 && !conflictSet.has(id))
+                    .sort((a, b) => needed[b] - needed[a])[0];
+
+                if (bestAgent !== undefined) {
+                    newAssignments.push({ customer_id: customer.id, agent_id: bestAgent });
+                    needed[bestAgent]--;
+                } else {
+                    skipped++;
                 }
             }
 
-            if (newAssignments.length > 0) {
-                await handleExecuteDistribution(newAssignments, true);
+            if (newAssignments.length === 0) {
+                setMessage({
+                    type: 'warning',
+                    text: `ไม่มีรายชื่อที่แจกเพิ่มได้ — รายชื่อที่เหลือในถังพนักงานกลุ่มนี้เคยถือมาแล้วทั้งหมด (${skipped.toLocaleString()} ราย)`
+                });
+                return;
+            }
+
+            await handleExecuteDistribution(newAssignments, true);
+
+            if (skipped > 0) {
+                setMessage({
+                    type: 'warning',
+                    text: `แจกเพิ่ม ${newAssignments.length.toLocaleString()} ราย (ข้ามรายชื่อที่เคยถือแล้ว ${skipped.toLocaleString()} ราย)`
+                });
             }
 
         } catch (e) {
@@ -932,6 +1042,12 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 }
             }
 
+            // นับรายชื่อที่ยังติด cooldown แต่ผู้แจกกดยืนยันแจกไปแล้ว เอาไว้ตรวจย้อนหลัง
+            const cooldownOverrideCount = preview.reduce(
+                (sum, item) => sum + item.customers.filter(c => (c as PoolCustomer).lead_group === 'cooldown').length,
+                0
+            );
+
             // Build Agent Snapshot
             const agentSnapshot = agents.map(a => ({
                 id: a.id,
@@ -952,7 +1068,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         triggered_by: (currentUser as any)?.id,
                         distribution_mode: distributionMode,
                         min_call_minutes: hasCallFilterApplied ? parseInt(callThresholdMinutes) : null,
+                        call_filter_window: hasCallFilterApplied ? callFilterWindow : null,
                         strict_duplicate_check: strictDuplicateCheck,
+                        cooldown_override_count: isRetry ? 0 : cooldownOverrideCount,
                         agent_snapshot: agentSnapshot,
                         tag_id: sessionTag === '' ? null : sessionTag
                     })
@@ -1578,7 +1696,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
 
         try {
             const basePath = typeof window !== 'undefined' ? resolveApiBasePath() : '/api';
-            const url = `${basePath.replace(/\/$/, '')}/Distribution/export_distribution.php?companyId=${companyId}&start_date=${sd}&end_date=${ed}&basket_key=${basket}&format=json`;
+            // Same &token= pattern the other export links use. Without it the endpoint cannot tell
+            // which role is asking, and customer numbers come back masked for everyone.
+            const token = localStorage.getItem('authToken') || '';
+            const url = `${basePath.replace(/\/$/, '')}/Distribution/export_distribution.php?companyId=${companyId}&start_date=${sd}&end_date=${ed}&basket_key=${basket}&format=json&token=${encodeURIComponent(token)}`;
             const response = await fetch(url);
             const result = await response.json();
 
@@ -1838,8 +1959,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             {/* Section 1: Distribution Settings */}
             {!isHoldingBasketActive && (
                 <DistributionSettingsPanel
-                    strictDuplicateCheck={strictDuplicateCheck}
-                    setStrictDuplicateCheck={setStrictDuplicateCheck}
+                    poolReadyCount={poolReadyCount}
+                    poolCooldownCount={poolCooldownCount}
+                    poolCooldownDays={poolCooldownDays}
                     baskets={baskets}
                     basketCounts={basketCounts}
                     activeBasket={activeBasket}
@@ -1866,6 +1988,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     callThresholdMinutes={callThresholdMinutes}
                     setCallThresholdMinutes={setCallThresholdMinutes}
                     setHasCallFilterApplied={setHasCallFilterApplied}
+                    setCallFilterWindow={setCallFilterWindow}
                     handlePreparePreview={handlePreparePreview}
                     openReclaimModal={openReclaimModal}
                     setMessage={setMessage}

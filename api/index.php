@@ -3086,9 +3086,23 @@ function handle_calls(PDO $pdo, ?string $id): void
                     if ($customer && $customer['customer_id']) {
                         // FIX: Update last_call_note and last_call_date along with total_calls
                         // This ensures the "Last Call Note" column in the dashboard is accurate without needing expensive joins.
-                        $updateStmt = $pdo->prepare('UPDATE customers SET total_calls = COALESCE(total_calls,0) + 1, last_call_note = ?, last_call_date = ? WHERE customer_id=?');
+                        //
+                        // last_talk_at เขียนเฉพาะตอนโทรติดจริง (status รับสาย/ได้คุย) — ไม่นับ 'ตัดสายทิ้ง'
+                        // เพราะ Distribution V2 ใช้คอลัมน์นี้เรียงลำดับว่าจะแจกใครก่อน (ดู migration 087)
+                        // call_history.duration ใช้แทนไม่ได้ 99% เป็น 0
+                        $isTalk = in_array($in['status'] ?? '', ['รับสาย', 'ได้คุย'], true);
+                        $updateStmt = $pdo->prepare(
+                            'UPDATE customers
+                                SET total_calls = COALESCE(total_calls,0) + 1,
+                                    last_call_note = ?,
+                                    last_call_date = ?,
+                                    last_talk_at = CASE WHEN ? = 1 THEN ? ELSE last_talk_at END
+                              WHERE customer_id = ?'
+                        );
                         $updateStmt->execute([
                             $in['notes'] ?? null,
+                            $callDate,
+                            $isTalk ? 1 : 0,
                             $callDate,
                             $customer['customer_id']
                         ]);

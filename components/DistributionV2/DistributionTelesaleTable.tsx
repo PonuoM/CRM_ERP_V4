@@ -15,6 +15,7 @@ interface DistributionTelesaleTableProps {
     callThresholdMinutes: string;
     setCallThresholdMinutes: React.Dispatch<React.SetStateAction<string>>;
     setHasCallFilterApplied: React.Dispatch<React.SetStateAction<boolean>>;
+    setCallFilterWindow: (w: { start_date: string; end_date: string; start_time: string; end_time: string } | null) => void;
     handlePreparePreview: () => void;
     openReclaimModal: (agent: any, presetBaskets?: string[], presetMode?: 'reclaim' | 'transfer') => void;
     setMessage: (msg: any) => void;
@@ -32,6 +33,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     callThresholdMinutes,
     setCallThresholdMinutes,
     setHasCallFilterApplied,
+    setCallFilterWindow,
     handlePreparePreview,
     openReclaimModal,
     setMessage,
@@ -39,16 +41,21 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
 }) => {
     const [agentSupervisorFilter, setAgentSupervisorFilter] = useState<number | ''>('');
     const [callDataSource, setCallDataSource] = useState<'db' | 'realtime'>('db');
-    const [callFilterStartDate, setCallFilterStartDate] = useState<string>(() => {
+    // ค่าเริ่มต้น = "วันทำการก่อนหน้า" ข้ามเสาร์-อาทิตย์ ให้ตรงกับกติกาที่ backend ใช้ตรวจซ้ำ
+    // ของเดิมใช้ "เมื่อวานตามปฏิทิน" เฉย ๆ ทำให้ทุกวันจันทร์จอไปดึงยอดวันอาทิตย์ = 0 นาทีทุกคน
+    // ปุ่ม "เลือกพนักงานที่โทรเกินเกณฑ์" จึงเลือกไม่ได้สักคน ทั้งที่จริงมี 20-21 คนผ่านเกณฑ์
+    // (วัดจริง 24 ส.ค. และ 17 ส.ค. ซึ่งเป็นวันจันทร์ทั้งคู่: ผ่านตามจอ 0 คน / ผ่านจริง 20-21 คน)
+    const previousWorkDay = () => {
         const d = new Date();
         d.setDate(d.getDate() - 1);
-        return d.toISOString().split('T')[0];
-    });
-    const [callFilterEndDate, setCallFilterEndDate] = useState<string>(() => {
-        const d = new Date();
-        d.setDate(d.getDate() - 1);
-        return d.toISOString().split('T')[0];
-    });
+        while (d.getDay() === 0 || d.getDay() === 6) {
+            d.setDate(d.getDate() - 1);
+        }
+        // ใช้เวลาท้องถิ่น ไม่ใช่ toISOString ที่แปลงเป็น UTC แล้วทำให้วันเพี้ยนไป 1 วัน
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const [callFilterStartDate, setCallFilterStartDate] = useState<string>(previousWorkDay);
+    const [callFilterEndDate, setCallFilterEndDate] = useState<string>(previousWorkDay);
     const [callFilterShift, setCallFilterShift] = useState<string>('09:00-18:00');
     const [customStartTime, setCustomStartTime] = useState<string>('00:00');
     const [customEndTime, setCustomEndTime] = useState<string>('23:59');
@@ -379,6 +386,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                         onChange={(e) => {
                             setCallThresholdMinutes(e.target.value);
                             setHasCallFilterApplied(false);
+                            setCallFilterWindow(null);
                         }}
                         className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 w-24 text-center"
                         min={0}
@@ -398,6 +406,19 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                                 
                             setSelectedAgents([...inactiveSelected, ...eligibleIds]);
                             setHasCallFilterApplied(true);
+
+                            // ส่งหน้าต่างเวลาที่จอใช้คำนวณไปด้วย ไม่งั้น backend จะตรวจซ้ำด้วยช่วงเวลาของมันเอง
+                            // (วันทำการก่อนหน้า 07:00-18:30) ซึ่งอาจคนละชุดกับที่ผู้ใช้เลือก เช่นเลือกช่วงหลายวัน
+                            // หรือสลับไปดูข้อมูลสด "วันนี้" แล้วตัวเลขบนจอกับตัวเลขที่ใช้ตัดสินไม่ตรงกัน
+                            const [winStart, winEnd] = callFilterShift === 'custom'
+                                ? [customStartTime, customEndTime]
+                                : callFilterShift.split('-');
+                            setCallFilterWindow({
+                                start_date: callFilterStartDate,
+                                end_date: callFilterEndDate,
+                                start_time: winStart,
+                                end_time: winEnd
+                            });
                         }}
                         disabled={loadingCallMinutes || agents.length === 0}
                         className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 text-sm font-medium flex items-center gap-2"

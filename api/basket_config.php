@@ -349,11 +349,64 @@ function handleBasketCustomers($pdo, $companyId)
 
     $basketId = $config['id'];
 
+    // ลำดับความสำคัญของรายชื่อที่จะแจก (ตกลงกับทีม CRM 25 ส.ค. 2026)
+    //   A1  ไม่เคยกดโทรเลย            -> ยอดปีนี้มากสุดก่อน, ตกไปใช้ยอดสะสมถ้าทั้งถังเป็น 0
+    //   B   เคยโทรติด + พ้น cooldown  -> โทรติดล่าสุดเก่าสุดก่อน
+    //   A2  โทรแล้วไม่เคยติดสักครั้ง   -> พยายามโทรล่าสุดเก่าสุดก่อน
+    //   B*  เพิ่งโทรติดภายใน cooldown -> ท้ายสุดเสมอ (ยังแจกได้ แต่หน้าเว็บต้องให้กดยืนยันก่อน)
+    //
+    // "โทรติด" = call_history.status IN ('รับสาย','ได้คุย') อ่านผ่านคอลัมน์แคช customers.last_talk_at
+    // (call_history.duration ใช้ไม่ได้ 99% เป็น 0 - ดู migration 087)
+    //
+    // ยอดปีนี้แยกเป็น derived table เพราะกรองแค่บิลปีปัจจุบัน (~38k แถว) ถูกกว่า correlated subquery มาก
+    // ส่วนยอดสะสมใช้ customers.total_purchases ที่มีอยู่แล้ว (ตรวจแล้วตรงกับ SUM(orders.total_amount))
+    $cooldownDays = isset($config['cooldown_days']) ? intval($config['cooldown_days']) : 30;
+    if (isset($_GET['cooldown_days']) && $_GET['cooldown_days'] !== '') {
+        $cooldownDays = max(0, intval($_GET['cooldown_days']));
+    }
+
+    // ลำดับกลุ่มตั้งค่าได้รายถัง เผื่ออยากสลับ A1/B ทีหลังโดยไม่ต้องแก้โค้ด
+    $groupOrder = trim($config['lead_group_order'] ?? '') !== '' ? $config['lead_group_order'] : 'A1,B,A2';
+    $groupRank = ['A1' => 0, 'B' => 1, 'A2' => 2];
+    $rankOf = [];
+    foreach (array_map('trim', explode(',', $groupOrder)) as $idx => $g) {
+        if (isset($groupRank[$g])) {
+            $rankOf[$g] = $idx;
+        }
+    }
+    foreach (array_keys($groupRank) as $g) {
+        if (!isset($rankOf[$g])) {
+            $rankOf[$g] = $groupRank[$g];
+        }
+    }
+
+    // กลุ่มที่ติด cooldown ถูกดันไปท้ายสุดเสมอ ไม่ว่าจะจัดลำดับกลุ่มไว้อย่างไร
+    $cooldownExpr = $cooldownDays > 0
+        ? "(c.last_talk_at IS NOT NULL AND c.last_talk_at >= DATE_SUB(NOW(), INTERVAL {$cooldownDays} DAY))"
+        : "0";
+
+    $groupExpr = "CASE
+            WHEN {$cooldownExpr} THEN 9
+            WHEN c.last_call_date IS NULL THEN {$rankOf['A1']}
+            WHEN c.last_talk_at IS NOT NULL THEN {$rankOf['B']}
+            ELSE {$rankOf['A2']}
+        END";
+
+    $labelExpr = "CASE
+            WHEN {$cooldownExpr} THEN 'cooldown'
+            WHEN c.last_call_date IS NULL THEN 'A1'
+            WHEN c.last_talk_at IS NOT NULL THEN 'B'
+            ELSE 'A2'
+        END";
+
+    $yearStart = date('Y') . '-01-01';
+
     // 1. In the correct company (companyId from request)
     // 2. Have current_basket_key matching the basket's ID
     // 3. Are NOT assigned to anyone (available for distribution)
-    $sql = "
-        SELECT 
+    // 4. ไม่ใช่ลูกค้าที่ถูกบล็อค
+    $selectSql = "
+        SELECT
             c.customer_id,
             c.first_name,
             c.last_name,
@@ -364,16 +417,38 @@ function handleBasketCustomers($pdo, $companyId)
             c.last_order_date,
             c.total_purchases,
             c.previous_assigned_to,
+            c.last_call_date,
+            c.last_talk_at,
+            COALESCE(ytd.amount, 0) AS ytd_amount,
+            DATEDIFF(CURDATE(), c.last_talk_at) AS days_since_talk,
+            DATEDIFF(CURDATE(), c.last_call_date) AS days_since_call,
+            {$labelExpr} AS lead_group,
             DATEDIFF(CURDATE(), c.last_order_date) as days_since_order,
             DATEDIFF(CURDATE(), c.date_registered) as days_since_registered
-        FROM customers c
+    ";
+
+    // แยก join ยอดขายออกจาก where เพื่อให้ query นับจำนวนไม่ต้องแบก derived table ไปด้วย
+    $ytdJoinSql = "
+        LEFT JOIN (
+            SELECT o.customer_id, SUM(o.total_amount) AS amount
+            FROM orders o
+            WHERE o.company_id = ?
+              AND o.order_date >= ?
+              AND o.order_status NOT IN ('Cancelled', 'Returned')
+            GROUP BY o.customer_id
+        ) ytd ON ytd.customer_id = c.customer_id
+    ";
+
+    $whereSql = "
         WHERE c.company_id = ?
         AND c.current_basket_key = ?
         AND (c.assigned_to IS NULL OR c.assigned_to = 0)
         AND (c.hold_until_date IS NULL OR c.hold_until_date <= NOW())
+        AND COALESCE(c.is_blocked, 0) = 0
     ";
 
-    $params = [$companyId, $basketId];
+    $ytdParams = [$companyId, $yearStart];
+    $whereParams = [$companyId, $basketId];
 
     // Apply Called Filter if provided
     $calledFilterDays = isset($_GET['called_filter_days']) && $_GET['called_filter_days'] !== '' ? intval($_GET['called_filter_days']) : null;
@@ -381,43 +456,53 @@ function handleBasketCustomers($pdo, $companyId)
 
     if ($calledFilterDays !== null && $calledFilterDays > 0) {
         if ($calledFilterMode === 'include') {
-            $sql .= " AND EXISTS (
-                SELECT 1 FROM call_history ch 
-                WHERE ch.customer_id = c.customer_id 
-                AND ch.date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-            )";
-            $params[] = $calledFilterDays;
+            $whereSql .= " AND (c.last_call_date IS NOT NULL AND c.last_call_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY))";
         } else {
-            // Exclude (NOT EXISTS) - Default behavior
-            $sql .= " AND NOT EXISTS (
-                SELECT 1 FROM call_history ch 
-                WHERE ch.customer_id = c.customer_id 
-                AND ch.date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-            )";
-            $params[] = $calledFilterDays;
+            // Exclude - Default behavior
+            $whereSql .= " AND (c.last_call_date IS NULL OR c.last_call_date < DATE_SUB(CURDATE(), INTERVAL ? DAY))";
         }
+        $whereParams[] = $calledFilterDays;
     }
 
-    // First, get total count WITHOUT limit
-    $countSql = "SELECT COUNT(*) as total FROM (" . $sql . ") as subquery";
+    // นับยอดรวม + แยกว่าพร้อมแจกจริงกี่ราย / ติด cooldown กี่ราย (หน้าเว็บใช้ตัดสินว่าต้องขึ้น popup ยืนยันไหม)
+    // ไม่ต้อง join ยอดขาย เพราะไม่ได้ใช้ในการนับ
+    $countSql = "SELECT COUNT(*) AS total, SUM(CASE WHEN {$cooldownExpr} THEN 1 ELSE 0 END) AS cooldown_count FROM customers c " . $whereSql;
     $countStmt = $pdo->prepare($countSql);
-    $countStmt->execute($params);
-    $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
+    $countStmt->execute($whereParams);
+    $countRow = $countStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $totalCount = intval($countRow['total'] ?? 0);
+    $cooldownCount = intval($countRow['cooldown_count'] ?? 0);
 
     // Then get data WITH limit AND offset
-    $offset = intval($_GET['skip'] ?? $_GET['offset'] ?? 0);
-    // แจกรายชื่อที่อยู่ในถังนานที่สุดก่อน (FIFO)
-    $sql .= " ORDER BY COALESCE(c.basket_entered_date, c.date_registered) ASC LIMIT ? OFFSET ?";
-    $params[] = $limit;
-    $params[] = $offset;
+    $offset = max(0, intval($_GET['skip'] ?? $_GET['offset'] ?? 0));
+    $limit = max(1, min(50000, $limit));
+    $orderSql = "
+        ORDER BY
+            {$groupExpr} ASC,
+            CASE WHEN c.last_talk_at IS NOT NULL THEN c.last_talk_at END ASC,
+            CASE WHEN c.last_talk_at IS NULL THEN c.last_call_date END ASC,
+            COALESCE(ytd.amount, 0) DESC,
+            c.total_purchases DESC,
+            COALESCE(c.basket_entered_date, c.date_registered) ASC,
+            c.customer_id ASC
+        LIMIT {$limit} OFFSET {$offset}
+    ";
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
+    // ใส่ตัวเลขลงไปตรง ๆ (ผ่าน intval มาแล้ว) แทน placeholder เพราะ LIMIT ? ใช้ได้เฉพาะตอน
+    // ATTR_EMULATE_PREPARES = false เท่านั้น ผูกกับ config ระดับ connection โดยไม่จำเป็น
+    $dataParams = array_merge($ytdParams, $whereParams);
+    $stmt = $pdo->prepare($selectSql . " FROM customers c " . $ytdJoinSql . $whereSql . $orderSql);
+    $stmt->execute($dataParams);
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $customers = array_map(function ($c) { return scrub_customer_row($c, 'ui'); }, $customers);
 
     echo json_encode([
         'data' => $customers,
-        'count' => intval($totalCount),
+        'count' => $totalCount,
+        'ready_count' => $totalCount - $cooldownCount,
+        'cooldown_count' => $cooldownCount,
+        'cooldown_days' => $cooldownDays,
+        'lead_group_order' => $groupOrder,
         'basket_key' => $basketKey,
         'basket_id' => $basketId
     ]);
