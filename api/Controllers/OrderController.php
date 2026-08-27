@@ -1597,6 +1597,42 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
 
+                // 🛡️ OWNERSHIP GUARD (2026-08-26)
+                // Telesale / Supervisor Telesale เปิดบิลให้ลูกค้าที่มีผู้ดูแลเป็นคนอื่นไม่ได้
+                // - ลูกค้าไม่มีผู้ดูแล หรือเป็นลูกค้าของตัวเอง → เปิดได้ตามปกติ
+                // - role อื่น (Admin Page ฯลฯ) ไม่ติดกฎนี้ ระบบจะส่งเข้า Upsell ให้เจ้าของเดิมตามกฎ P5
+                // - กรณีขายแทน (proxy) เช็คจาก creator_id ซึ่งคือคนที่ได้ยอด จึงกันได้ถูกคน
+                if (in_array($creatorData['role_code'] ?? '', ['telesale', 'supervisor_telesale'], true)) {
+                    $guardCustomerId = $in['customerId'] ?? null;
+                    if ($guardCustomerId) {
+                        $ownerGuard = $pdo->prepare('
+                            SELECT c.customer_id, c.assigned_to, u.first_name AS owner_first, u.last_name AS owner_last
+                            FROM customers c
+                            LEFT JOIN users u ON u.id = c.assigned_to
+                            WHERE c.customer_ref_id = ? OR c.customer_id = ?
+                            LIMIT 1
+                        ');
+                        $ownerGuard->execute([$guardCustomerId, is_numeric($guardCustomerId) ? (int) $guardCustomerId : 0]);
+                        $guardRow = $ownerGuard->fetch(PDO::FETCH_ASSOC);
+                        $guardOwnerId = $guardRow ? (int) ($guardRow['assigned_to'] ?? 0) : 0;
+
+                        if ($guardOwnerId > 0 && $guardOwnerId !== (int) $creatorId) {
+                            $guardOwnerName = trim(($guardRow['owner_first'] ?? '') . ' ' . ($guardRow['owner_last'] ?? ''));
+                            if ($guardOwnerName === '') {
+                                $guardOwnerName = 'ผู้ดูแลรายอื่น (#' . $guardOwnerId . ')';
+                            }
+                            $pdo->rollBack();
+                            json_response([
+                                'error' => 'CUSTOMER_HAS_OTHER_OWNER',
+                                'message' => 'ลูกค้ารายนี้อยู่ในความดูแลของ ' . $guardOwnerName . ' จึงเปิดบิลให้ไม่ได้ — ถ้าลูกค้าต้องการซื้อจริง ให้แจ้งหัวหน้าโอนลูกค้าก่อน',
+                                'ownerId' => $guardOwnerId,
+                                'ownerName' => $guardOwnerName
+                            ], 403);
+                            return;
+                        }
+                    }
+                }
+
                 // 🎫 QUOTA ENFORCEMENT: Check if order items would exceed quota limits
                 try {
                     $companyId = intval($in['companyId'] ?? 0);

@@ -1036,16 +1036,17 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                     </table>
                                                 </div>
 
-                                                {/* Fix Button */}
+                                                {/* ปุ่มย้ายเจ้าของถูกปิดถาวร 2026-08-26 — เหตุผลอยู่ที่ basket_reevaluate_api.php action=fix_misassigned */}
+                                                <div className="px-4 py-3 mb-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 text-sm flex items-start gap-2">
+                                                    <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                                                    <span>
+                                                        หน้านี้เป็น <strong>รายงานอย่างเดียว</strong> — ปุ่มย้ายเจ้าของถูกปิดถาวร
+                                                        เพราะลูกค้าที่มีผู้ดูแลอยู่แล้วต้องอยู่กับเจ้าของเดิมจนหมดสิทธิ์ตามกติกาตะกร้า
+                                                        ถ้าต้องการโอนจริง ให้ใช้เมนูโอน/แจกลูกค้า ที่บันทึกประวัติการโอนได้
+                                                    </span>
+                                                </div>
+
                                                 <div className="flex gap-3">
-                                                    <button
-                                                        onClick={handleMisFix}
-                                                        disabled={misFixing || misSelected.size === 0}
-                                                        className="px-6 py-3 bg-orange-600 text-white rounded-xl hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
-                                                    >
-                                                        {misFixing ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-                                                        {misFixing ? 'กำลังย้าย...' : misSelected.size === 0 ? 'เลือกลูกค้าที่ต้องการย้าย' : `ยืนยันย้ายเจ้าของ ${misSelected.size} คน`}
-                                                    </button>
                                                     <button
                                                         onClick={handleMisScan}
                                                         disabled={misScanning}

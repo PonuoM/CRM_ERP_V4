@@ -3764,9 +3764,42 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     };
   };
 
+  // 🛡️ OWNERSHIP GUARD (2026-08-26)
+  // Telesale / Sup Telesale เปิดบิลให้ลูกค้าที่มีผู้ดูแลเป็นคนอื่นไม่ได้
+  // กฎจริงบังคับที่ฝั่งเซิร์ฟเวอร์ (OrderController POST) — ตรงนี้กันไว้ก่อน
+  // เพื่อไม่ให้พนักงานกรอกฟอร์มทั้งใบแล้วค่อยมาเจอว่าเปิดบิลไม่ได้
+  const sellerIsTelesaleRole =
+    currentUser.role === UserRole.Telesale ||
+    currentUser.role === UserRole.Supervisor;
+
+  const getOwnershipBlockMessage = (
+    customer: { assignedTo?: number | null } | null,
+    sellerId: number | null,
+  ): string | null => {
+    const ownerId = Number(customer?.assignedTo ?? 0);
+    if (!ownerId || !sellerId) return null;
+    if (ownerId === Number(sellerId)) return null;
+
+    const owner = users.find((u) => u.id === ownerId);
+    const ownerName = owner
+      ? `${owner.firstName} ${owner.lastName}`.trim()
+      : `ผู้ดูแลรายอื่น (#${ownerId})`;
+
+    return `ลูกค้ารายนี้อยู่ในความดูแลของ ${ownerName}\n\nเปิดบิลให้ไม่ได้ครับ — ถ้าลูกค้าต้องการซื้อจริง ให้แจ้งหัวหน้าโอนลูกค้าก่อน`;
+  };
+
   // Helper function to set customer data consistently
 
   const setCustomerData = (customerData: Customer) => {
+    // กันตั้งแต่ตอนเลือกลูกค้า (ยกเว้นโหมดขายแทน ที่เช็คตอนบันทึกด้วย creator จริง)
+    if (sellerIsTelesaleRole && !isProxySale) {
+      const blockMessage = getOwnershipBlockMessage(customerData, currentUser.id);
+      if (blockMessage) {
+        alert(blockMessage);
+        return;
+      }
+    }
+
     setSelectedCustomer(customerData);
 
     setOrderData((prev) => ({ ...prev, customerId: customerData.id }));
@@ -4618,6 +4651,22 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         alert("เลือก “ขายแทน” ไว้ กรุณาระบุว่าลงออเดอร์แทนใคร");
         setIsSaving(false);
         return;
+      }
+
+      // 🛡️ กันเปิดบิลให้ลูกค้าของคนอื่น — เช็คด้วย creator จริง (รองรับโหมดขายแทน)
+      const effectiveCreatorId =
+        isProxySale && proxyUserId ? proxyUserId : currentUser.id;
+
+      if (sellerIsTelesaleRole || (isProxySale && proxyUserId)) {
+        const ownershipBlock = getOwnershipBlockMessage(
+          selectedCustomer,
+          effectiveCreatorId,
+        );
+        if (ownershipBlock) {
+          alert(ownershipBlock);
+          setIsSaving(false);
+          return;
+        }
       }
 
       // Check for incomplete address fields and list missing ones
