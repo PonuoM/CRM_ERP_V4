@@ -3978,6 +3978,15 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   const startCreatingNewCustomer = () => {
+    // 🛡️ Telesale / Sup Telesale เพิ่มลูกค้าใหม่ไม่ได้ (นโยบาย 2026-08-27)
+    // ปุ่มถูกซ่อนอยู่แล้ว อันนี้กันไว้เผื่อมีทางเข้าอื่นเรียกฟังก์ชันนี้
+    if (sellerIsTelesaleRole) {
+      alert(
+        "ตำแหน่งของคุณไม่มีสิทธิ์เพิ่มลูกค้าใหม่ ให้แจ้ง Admin สร้างลูกค้าและโอนให้คุณเป็นผู้ดูแลก่อน จึงจะเปิดบิลได้",
+      );
+      return;
+    }
+
     clearValidationErrorFor("customerSelector");
 
     setIsCreatingNewCustomer(true);

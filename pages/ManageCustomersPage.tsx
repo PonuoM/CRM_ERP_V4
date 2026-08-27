@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { usePhonePolicy } from '../hooks/usePhonePolicy';
-import { User, Customer, Order, ModalType } from '@/types';
+import { User, Customer, Order, ModalType, UserRole } from '@/types';
 import CustomerTable from '@/components/CustomerTable';
 import { getCustomerStats, getOrderStats, listCustomers, createCustomer } from '@/services/api';
 import { mapCustomerFromApi } from '@/utils/customerMapper';
@@ -428,6 +428,11 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
               </button>
             )}
             <div className="flex-1" />
+            {/* 🛡️ Telesale / Sup Telesale เพิ่มลูกค้าใหม่ไม่ได้ (นโยบาย 2026-08-27)
+                ลูกค้าใหม่ต้องให้ Admin สร้างและโอนผู้ดูแลให้ก่อน จึงจะเปิดบิลได้
+                กฎจริงบังคับที่ฝั่งเซิร์ฟเวอร์ (CustomerController POST) ตรงนี้แค่ซ่อนปุ่ม */}
+            {currentUser.role !== UserRole.Telesale &&
+             currentUser.role !== UserRole.Supervisor && (
             <button
               onClick={() => setIsAddCustomerModalOpen(true)}
               className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-green-50 text-green-700 hover:bg-green-100 ml-auto mr-2"
@@ -437,6 +442,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
               </svg>
               เพิ่มลูกค้าใหม่
             </button>
+            )}
             <button
               onClick={() => setIsMergeModalOpen(true)}
               className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-purple-50 text-purple-700 hover:bg-purple-100"
