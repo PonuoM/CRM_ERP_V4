@@ -1,10 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import { Customer, User, CallHistory, Tag, TagType } from '../types';
 import Modal from './Modal';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Info } from 'lucide-react';
 import TagSelectionModal from './TagSelectionModal';
 import FarmPlotEditor, { PlotDraft, makeEmptyPlot, plotsToDrafts } from './FarmPlotEditor';
+import CallCustomerButton from './CallCustomerButton';
 import { getCustomerPlots, saveCustomerPlots } from '../services/api';
+
+/**
+ * One labelled field.
+ *
+ * The label row is a fixed height and carries at most a short phrase; anything longer goes into the
+ * tooltip. Two fields side by side used to fall out of line whenever one label wrapped to a second
+ * line, which is what made this form look untidy no matter how the inputs were styled.
+ */
+const Field: React.FC<{
+  label: string;
+  hint?: string;
+  required?: boolean;
+  accent?: string;
+  children: React.ReactNode;
+}> = ({ label, hint, required, accent, children }) => (
+  <div className="flex flex-col">
+    <div className="flex h-6 items-center gap-1">
+      <label className="font-medium text-gray-700">{label}</label>
+      {required && <span className="text-red-500">*</span>}
+      {accent && <span className="text-xs font-normal text-green-700">{accent}</span>}
+      {hint && (
+        <span title={hint} className="cursor-help text-gray-400 hover:text-gray-600" aria-label={hint}>
+          <Info size={14} />
+        </span>
+      )}
+    </div>
+    {children}
+  </div>
+);
 
 // Helper function to get contrasting text color (black or white)
 const getContrastColor = (hexColor: string): string => {
@@ -20,10 +50,26 @@ const getContrastColor = (hexColor: string): string => {
   return brightness > 128 ? '#000000' : '#FFFFFF';
 };
 
+/** What the handset reported about a call that has just finished. */
+export interface CompletedCall {
+  /** Seconds actually spent talking, measured from answer to hang-up. */
+  durationSec: number;
+  /** False when nobody picked up — the statuses that claim a conversation are then untruthful. */
+  answered: boolean;
+}
+
 interface LogCallModalProps {
   customer: Customer;
   user: User;
   systemTags: Tag[];
+  /**
+   * Present when this form was opened by hanging up a call the CRM placed.
+   *
+   * The duration then comes from the radio instead of from memory, and the statuses that assert a
+   * conversation are refused on a call nobody answered — a telesale cannot log "ได้คุย" on a phone
+   * that rang out, which is exactly the number every report downstream depends on.
+   */
+  completedCall?: CompletedCall;
   // FIX: Change customerId type from number to string to match the Customer type.
   onSave: (callLog: Omit<CallHistory, 'id'>, customerId: string, newFollowUpDate?: string, newTags?: Tag[]) => Promise<void>;
   onCreateUserTag: (tagName: string) => Promise<Tag | null>;
@@ -36,10 +82,34 @@ const nonConversationResultOptions = ['ไม่รับสาย', 'สาย�
 const allCallResultOptions = [...new Set([...conversationResultOptions, ...nonConversationResultOptions])];
 
 
-const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags, onSave, onCreateUserTag, onClose }) => {
+const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags, completedCall, onSave, onCreateUserTag, onClose }) => {
   const [status, setStatus] = useState('');
   const [callResult, setCallResult] = useState('');
-  const [duration, setDuration] = useState('0');
+  /**
+   * The measured call, whether it came from the page that opened this form or from the call button
+   * inside it. One source of truth so the duration and the blocked statuses cannot disagree.
+   */
+  const [liveCall, setLiveCall] = useState<CompletedCall | undefined>(completedCall);
+
+  // Seconds when the system measured them, minutes when a person types them — the label switches
+  // with the source so the number on screen always means what it says.
+  const [duration, setDuration] = useState(
+    completedCall ? String(completedCall.durationSec) : '0',
+  );
+  const isAutoTimed = !!liveCall;
+  /** Statuses that assert a conversation happened. Unavailable when the call was never answered. */
+  const conversationStatuses = ['รับสาย', 'ได้คุย'];
+  const blockedStatuses = liveCall && !liveCall.answered ? conversationStatuses : [];
+
+  /** A call finished while this form was open — adopt its numbers over anything typed so far. */
+  const adoptCall = (call: CompletedCall) => {
+    setLiveCall(call);
+    setDuration(String(call.durationSec));
+    if (!call.answered && conversationStatuses.includes(status)) {
+      // The agent may have pre-selected "ได้คุย" before dialling. The call says otherwise.
+      setStatus('');
+    }
+  };
   const [nextFollowUpDate, setNextFollowUpDate] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
@@ -95,6 +165,12 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
   const isNotesValid = !isNotesRequired || notes.trim().length >= notesMinLength;
 
   const handleSave = async () => {
+    if (blockedStatuses.includes(status)) {
+      // The dropdown already refuses this; the check repeats here because the value can also arrive
+      // from a stale render or the devtools, and a false "ได้คุย" corrupts every report downstream.
+      alert('ลูกค้าไม่ได้รับสาย จึงเลือกสถานะนี้ไม่ได้');
+      return;
+    }
     if (!status) {
       alert('กรุณาเลือกสถานะการโทร');
       return;
@@ -181,10 +257,19 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
 
   return (
     <Modal title="บันทึกการโทร" onClose={!isSaving ? onClose : () => { }}>
-      <div className="space-y-6 text-sm">
+      <div className="space-y-5 text-sm">
+        {/* Calling belongs at the top: the agent dials, talks, hangs up, and only then has anything
+            to write down. Hidden for anyone without a registered handset. */}
+        <CallCustomerButton
+          customerId={customer.customerId ?? customer.id}
+          customerName={`${customer.firstName} ${customer.lastName}`}
+          onCallEnded={(s) =>
+            adoptCall({ durationSec: s.duration_sec ?? 0, answered: !!s.answered_at })
+          }
+        />
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">สถานะการโทร</label>
+          <Field label="สถานะการโทร" required>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
@@ -193,11 +278,28 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
               style={{ colorScheme: 'light' }}
             >
               <option value="" disabled className="text-gray-500">เลือกสถานะการโทร</option>
-              {callStatusOptions.map(opt => <option key={opt} value={opt} className="text-black">{opt}</option>)}
+              {callStatusOptions.map(opt => (
+                <option
+                  key={opt}
+                  value={opt}
+                  disabled={blockedStatuses.includes(opt)}
+                  className={blockedStatuses.includes(opt) ? 'text-gray-400' : 'text-black'}
+                >
+                  {opt}{blockedStatuses.includes(opt) ? ' (ลูกค้าไม่รับสาย)' : ''}
+                </option>
+              ))}
             </select>
-          </div>
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">ผลการโทร</label>
+          </Field>
+
+          <Field
+            label="ผลการโทร"
+            required
+            hint={
+              isResultDisabled
+                ? 'สถานะที่เลือกไม่มีการสนทนา ระบบจึงเติมผลการโทรให้ตรงกันอัตโนมัติ'
+                : undefined
+            }
+          >
             <select
               value={callResult}
               onChange={(e) => setCallResult(e.target.value)}
@@ -208,26 +310,39 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
               <option value="" disabled className="text-gray-500">เลือกผลการโทร</option>
               {(isResultDisabled ? [status] : conversationResultOptions).map(opt => <option key={opt} value={opt} className="text-black">{opt}</option>)}
             </select>
-          </div>
+          </Field>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">ระยะเวลา (นาที)</label>
+          <Field
+            label={isAutoTimed ? 'ระยะเวลา (วินาที)' : 'ระยะเวลา (นาที)'}
+            accent={isAutoTimed ? 'จับเวลาให้แล้ว' : undefined}
+            hint={
+              isAutoTimed
+                ? 'จับเวลาจริงตั้งแต่ลูกค้ารับสายจนวางสาย แก้ไขไม่ได้'
+                : 'กรอกเองสำหรับสายที่โทรนอกระบบ'
+            }
+          >
             <input
               type="number"
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
-              disabled={isSaving}
+              disabled={isSaving || isAutoTimed}
+              readOnly={isAutoTimed}
               className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
               placeholder="0"
               style={{ colorScheme: 'light' }}
             />
-          </div>
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">
-              วันที่คาดว่าจะติดต่อครั้งถัดไป
-              <span className="text-xs text-green-600 ml-1">(ใส่วันที่เพื่อสร้างนัดหมายอัตโนมัติ)</span>
-            </label>
+            {isAutoTimed && !liveCall!.answered && (
+              <p className="mt-1 text-xs text-amber-700">
+                ลูกค้าไม่ได้รับสาย — เลือก "รับสาย" หรือ "ได้คุย" ไม่ได้
+              </p>
+            )}
+          </Field>
+
+          <Field
+            label="ติดต่อครั้งถัดไป"
+            hint="ใส่วันที่แล้วระบบจะสร้างนัดหมายให้อัตโนมัติ ไม่ต้องการนัดหมายก็เว้นว่างไว้ — นัดได้ไม่เกิน 30 วันจากวันนี้"
+          >
             <input
               type="datetime-local"
               min={nowForInput}
@@ -239,12 +354,10 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
               placeholder=""
               style={{ colorScheme: 'light' }}
             />
-            <p className="text-xs text-gray-500 mt-1">
-              หมายเหตุ: หากใส่วันที่ ระบบจะสร้างนัดหมายให้อัตโนมัติ
-              หากไม่ต้องการสร้างนัดหมาย ไม่ต้องใส่วันที่
-              <span className="block text-amber-600">นัดหมายได้สูงสุด 30 วันจากวันปัจจุบัน</span>
-            </p>
-          </div>
+            {nextFollowUpDate && (
+              <p className="mt-1 text-xs text-green-700">จะสร้างนัดหมายให้อัตโนมัติเมื่อบันทึก</p>
+            )}
+          </Field>
         </div>
         {plotsLoaded && (
           <FarmPlotEditor
@@ -255,11 +368,15 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
             showNudge={isNotesRequired}
           />
         )}
-        <div>
-          <label className="block text-gray-700 font-medium mb-1">
-            หมายเหตุ
-            {isNotesRequired && <span className="text-red-500 ml-1">* (จำเป็น)</span>}
-          </label>
+        <Field
+          label="หมายเหตุ"
+          required={isNotesRequired}
+          hint={
+            isNotesRequired
+              ? `สถานะที่เลือกเป็นสายที่ได้คุย จึงต้องบันทึกว่าคุยอะไรอย่างน้อย ${notesMinLength} ตัวอักษร`
+              : undefined
+          }
+        >
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -279,9 +396,9 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
               {isNotesValid ? ' ✓' : ` (ต้องอย่างน้อย ${notesMinLength} ตัวอักษร)`}
             </p>
           )}
-        </div>
-        <div>
-          <label className="block text-gray-700 font-medium mb-1">เพิ่ม Tag</label>
+        </Field>
+
+        <Field label="Tag" hint="ติดป้ายให้ลูกค้ารายนี้ เช่น สนใจสินค้า ลูกค้าเก่า">
           <button
             onClick={() => setShowTagModal(true)}
             disabled={isSaving}
@@ -314,7 +431,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
               <p className="text-gray-400 text-xs italic">Tags ที่เลือกจะแสดงที่นี่</p>
             )}
           </div>
-        </div>
+        </Field>
 
         {showTagModal && (
           <TagSelectionModal

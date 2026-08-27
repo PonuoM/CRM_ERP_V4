@@ -8029,6 +8029,9 @@ const App: React.FC = () => {
             customer={modalState.data as Customer}
             user={currentUser}
             systemTags={systemTags}
+            // Set when the form was opened by hanging up a call the CRM placed; absent when the
+            // agent pressed "บันทึกโทร" for a call made some other way, which stays hand-entered.
+            completedCall={(modalState.data as any)?.__completedCall}
             onSave={handleLogCall}
             onCreateUserTag={handleCreateUserTag}
             onClose={closeModal}

@@ -22,6 +22,46 @@ const apiBasePath =
   typeof window === "undefined" ? "/api" : resolveApiBasePath();
 const base = `${apiBasePath.replace(/\/$/, "")}/index.php/`; // works with or without Apache rewrite
 
+// Backoff before each retry. Two entries = up to two retries.
+const RETRY_DELAYS_MS = [150, 500];
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The host drops a measured ~6.5% of PHP requests before PHP even starts — the reply is
+ * a 500 with an empty body and none of the headers this API sets, and it hits every PHP
+ * app on the server, phpMyAdmin included. Nothing in this codebase can prevent it.
+ *
+ * It matters here because a page opens with roughly eight calls in parallel, so at that
+ * drop rate nearly half of all page loads lose at least one and render as broken. One
+ * retry takes that to well under a percent.
+ *
+ * Only repeat-safe methods retry: a dropped POST may well have been executed before the
+ * reply was lost, so re-sending it could duplicate an order or a call log.
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit | undefined,
+  headers: any,
+  retryable: boolean,
+): Promise<{ res: Response; text: string }> {
+  for (let attempt = 0; ; attempt++) {
+    const lastAttempt = !retryable || attempt >= RETRY_DELAYS_MS.length;
+    try {
+      const res = await fetch(url, { ...init, headers });
+      const text = await res.text();
+      // 4xx is a real answer from the app — retrying it just wastes a round trip.
+      if (res.status < 500 || lastAttempt) return { res, text };
+    } catch (err) {
+      // Connection reset before any response: same host fault, same remedy.
+      if (lastAttempt) throw err;
+    }
+    await sleep(RETRY_DELAYS_MS[attempt]);
+  }
+}
+
 export async function apiFetch(path: string, init?: RequestInit) {
   const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
   const headers: any = { "Content-Type": "application/json", ...(init?.headers || {}) };
@@ -47,12 +87,14 @@ export async function apiFetch(path: string, init?: RequestInit) {
   headers["Pragma"] = "no-cache";
   headers["Expires"] = "0";
 
-  const res = await fetch(url, {
-    ...init,
+  const method = (init?.method || "GET").toUpperCase();
+  const { res, text } = await fetchWithRetry(
+    url,
+    init,
     headers,
-  });
+    method === "GET" || method === "HEAD",
+  );
 
-  const text = await res.text();
   let data: any = null;
   
   if (text.trim() === '') {
@@ -3609,4 +3651,53 @@ export async function fetchPhonePolicy(): Promise<PhonePolicy> {
     // the server masks the data regardless, so this can never reveal a number that was hidden.
   }
   return DEFAULT_PHONE_POLICY;
+}
+
+// ── Click-to-call ──────────────────────────────────────────────────────────────────────────────
+
+/** One of a customer's numbers, already masked to whatever this user is allowed to see. */
+export interface CallableNumber {
+  index: number;
+  label: string;
+  display: string;
+}
+
+export interface CallSession {
+  id: number;
+  status: "queued" | "dispatched" | "ringing" | "answered" | "ended" | "failed" | "cancelled";
+  answered_at: string | null;
+  ended_at: string | null;
+  duration_sec: number | null;
+  failure_reason: string | null;
+}
+
+/** What the agent's handset should ring. Positions match what dialCustomer expects. */
+export async function fetchCallableNumbers(customerId: number | string): Promise<CallableNumber[]> {
+  const res = await apiFetch(`call/numbers?customer_id=${encodeURIComponent(String(customerId))}`);
+  return res?.ok ? (res.numbers ?? []) : [];
+}
+
+/**
+ * Ask the agent's handset to ring a customer.
+ *
+ * Sends only the customer and which of their numbers to use — the number itself never travels to
+ * the browser, which is the entire point of the feature.
+ */
+export async function dialCustomer(customerId: number | string, phoneIndex = 0) {
+  return apiFetch("call/dial", {
+    method: "POST",
+    body: JSON.stringify({ customer_id: customerId, phone_index: phoneIndex }),
+  });
+}
+
+export async function fetchCallStatus(sessionId: number): Promise<CallSession | null> {
+  const res = await apiFetch(`call/status?session_id=${sessionId}`);
+  return res?.ok ? (res.session as CallSession) : null;
+}
+
+export async function cancelCall(sessionId: number) {
+  return apiFetch("call/cancel", {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId }),
+  });
 }
