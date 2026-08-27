@@ -135,3 +135,15 @@ nul
 
 # Scratch directory
 scratch/
+
+# Android signing — ห้ามขึ้น git เด็ดขาด
+android/keystore/
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+
+# เอกสาร/ไฟล์ทำงานในเครื่อง ไม่ต้องขึ้น git
+loose-files/
+.hallmark/
+*แผนแจก*.html
