@@ -32,6 +32,8 @@ echo "=====================================================\n\n";
 
 try {
     $pdo = db_connect();
+    // ติดป้ายที่มาให้ trigger ก่อนแตะ customers มิฉะนั้นประวัติลูกค้าจะขึ้นว่าไม่ทราบที่มา
+    set_audit_context($pdo, 'script/init_basket_assignment');
     
     // =====================================================
     // STEP 0: Check Upsell candidates (assigned_to IS NULL + Pending order)

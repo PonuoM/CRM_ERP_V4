@@ -5,6 +5,8 @@ import { MoreHorizontal, Plus, Edit, Trash2 } from 'lucide-react';
 import { listCustomerLogs } from '../services/api';
 import {
   actionLabels,
+  describeCustomerLogEvent,
+  isOpaqueLogSource,
   parseCustomerLogRow,
   summarizeCustomerLogChanges,
 } from '../utils/customerLogs';
@@ -148,8 +150,15 @@ const ActivityLogModal: React.FC<ActivityLogModalProps> = ({ customer, initialLo
                             <div className="h-7 w-7 rounded-full bg-gray-100 flex items-center justify-center">
                               <ActivityIcon action={log.actionType} />
                             </div>
-                            <span className="font-semibold text-gray-800">
-                              {actionLabels[log.actionType] ?? log.actionType}
+                            <span
+                              className={
+                                isOpaqueLogSource(log.apiSource)
+                                  ? "font-semibold text-amber-700"
+                                  : "font-semibold text-gray-800"
+                              }
+                              title={log.apiSource ?? undefined}
+                            >
+                              {describeCustomerLogEvent(log)}
                             </span>
                           </div>
                         </td>

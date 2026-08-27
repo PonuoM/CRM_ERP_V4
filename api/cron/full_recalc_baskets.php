@@ -25,6 +25,8 @@ if (php_sapi_name() !== 'cli' && $providedKey !== $SECRET_KEY) {
 }
 
 $pdo = db_connect();
+// ติดป้ายที่มาให้ trigger ก่อนแตะ customers มิฉะนั้นประวัติลูกค้าจะขึ้นว่าไม่ทราบที่มา
+set_audit_context($pdo, 'cron/full_recalc_baskets');
 
 // DRY RUN MODE
 $dryRun = ($_GET['dryrun'] ?? '1') === '1';

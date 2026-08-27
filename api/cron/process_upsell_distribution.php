@@ -48,6 +48,8 @@ $TARGET_BASKET = 53; // upsell_dis
 
 try {
     $pdo = db_connect();
+    // ติดป้ายที่มาให้ trigger ก่อนแตะ customers มิฉะนั้นประวัติลูกค้าจะขึ้นว่าไม่ทราบที่มา
+    set_audit_context($pdo, 'cron/process_upsell_distribution');
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
     // Get all companies

@@ -4309,6 +4309,160 @@ function handle_activities(PDO $pdo, ?string $id): void
     }
 }
 
+/**
+ * Fill in what a raw customer_logs row cannot say for itself.
+ *
+ * Three gaps, all of which made the activity feed unreadable:
+ *
+ *  - `api_source` only exists on rows written after migration 094. Older rows still have their
+ *    reason recorded, but in customer_audit_log, written by the sibling trigger in the same
+ *    statement and therefore carrying the identical timestamp. Looking it up for the handful of
+ *    rows on screen costs nothing; backfilling 1.5M rows on a live database costs a lot.
+ *  - Baskets are stored as numeric ids, so the feed said "39 → 40" where a person needed
+ *    "ส่วนตัว 1-2 เดือน → ส่วนตัวโอกาสสุดท้าย".
+ *  - Phone numbers now flow through this endpoint, because the edit button is audited. They must
+ *    obey the same masking policy as every other screen, or the history page becomes the way to
+ *    read a customer's number without permission.
+ */
+function enrich_customer_log_rows(PDO $pdo, array $rows): array
+{
+    if (!$rows) {
+        return $rows;
+    }
+
+    $phoneFields = ['phone', 'backup_phone', 'recipient_phone'];
+    $basketIds = [];
+    $ownerIds = [];
+    $needSource = [];
+
+    foreach ($rows as $i => $row) {
+        if (($row['api_source'] ?? null) === null) {
+            $needSource[$i] = [$row['customer_id'] ?? '', $row['created_at'] ?? ''];
+        }
+        foreach (['old_values', 'new_values'] as $col) {
+            $vals = json_decode((string) ($row[$col] ?? ''), true);
+            if (!is_array($vals)) {
+                continue;
+            }
+            if (isset($vals['current_basket_key']) && $vals['current_basket_key'] !== null) {
+                $basketIds[(string) $vals['current_basket_key']] = true;
+            }
+            // Owners are resolved here rather than in the browser because the page's user list is
+            // fetched separately and filtered: it arrives late, and it drops deactivated staff
+            // entirely. A customer handed over by someone who has since left would then read
+            // "ผู้ใช้ ID 25" forever. The database still knows the name.
+            if (isset($vals['assigned_to']) && $vals['assigned_to'] !== null) {
+                $ownerIds[(int) $vals['assigned_to']] = true;
+            }
+        }
+    }
+
+    // ---- ที่มาของแถวเก่า ----
+    foreach ($needSource as $i => [$cid, $created]) {
+        if ($cid === '' || $created === '') {
+            continue;
+        }
+        try {
+            $stmt = $pdo->prepare(
+                'SELECT api_source, changed_by FROM customer_audit_log
+                 WHERE customer_id = ? AND created_at = ? LIMIT 1'
+            );
+            $stmt->execute([$cid, $created]);
+            if ($hit = $stmt->fetch()) {
+                $rows[$i]['api_source'] = $hit['api_source'];
+                // The old trigger wrote the recipient into created_by, so prefer the audit log's
+                // actor whenever it knows one — it is the only truthful answer to "ใครทำ".
+                if (!empty($hit['changed_by'])) {
+                    $rows[$i]['acted_by'] = (int) $hit['changed_by'];
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('enrich_customer_log_rows source: ' . $e->getMessage());
+        }
+    }
+
+    // ---- ชื่อถัง ----
+    $basketNames = [];
+    if ($basketIds) {
+        try {
+            $ids = array_keys($basketIds);
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $pdo->prepare("SELECT id, basket_name FROM basket_config WHERE id IN ($in)");
+            $stmt->execute($ids);
+            foreach ($stmt->fetchAll() as $b) {
+                $basketNames[(string) $b['id']] = $b['basket_name'];
+            }
+        } catch (Throwable $e) {
+            error_log('enrich_customer_log_rows baskets: ' . $e->getMessage());
+        }
+    }
+
+    // ---- ชื่อผู้ลงมือ ที่ trigger เก่าเว้นไว้ รวมกับชื่อเจ้าของที่ปรากฏในค่าเก่า/ใหม่ ----
+    $actorIds = [];
+    foreach ($rows as $row) {
+        if (!empty($row['acted_by'])) {
+            $actorIds[(int) $row['acted_by']] = true;
+        }
+    }
+    $actorNames = [];
+    $lookupIds = $actorIds + $ownerIds;
+    if ($lookupIds) {
+        try {
+            $ids = array_keys($lookupIds);
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $pdo->prepare(
+                "SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE id IN ($in)"
+            );
+            $stmt->execute($ids);
+            foreach ($stmt->fetchAll() as $u) {
+                $actorNames[(int) $u['id']] = $u['name'];
+            }
+        } catch (Throwable $e) {
+            error_log('enrich_customer_log_rows actors: ' . $e->getMessage());
+        }
+    }
+
+    foreach ($rows as $i => $row) {
+        $used = [];
+        $usedUsers = [];
+        foreach (['old_values', 'new_values'] as $col) {
+            $vals = json_decode((string) ($row[$col] ?? ''), true);
+            if (!is_array($vals)) {
+                continue;
+            }
+            $dirty = false;
+            foreach ($phoneFields as $pf) {
+                if (isset($vals[$pf]) && is_string($vals[$pf]) && $vals[$pf] !== '') {
+                    $vals[$pf] = customer_phone_ui($vals[$pf]);
+                    $dirty = true;
+                }
+            }
+            if (isset($vals['current_basket_key']) && $vals['current_basket_key'] !== null) {
+                $key = (string) $vals['current_basket_key'];
+                if (isset($basketNames[$key])) {
+                    $used[$key] = $basketNames[$key];
+                }
+            }
+            if (isset($vals['assigned_to']) && $vals['assigned_to'] !== null) {
+                $uid = (int) $vals['assigned_to'];
+                if (isset($actorNames[$uid])) {
+                    $usedUsers[$uid] = $actorNames[$uid];
+                }
+            }
+            if ($dirty) {
+                $rows[$i][$col] = json_encode($vals, JSON_UNESCAPED_UNICODE);
+            }
+        }
+        $rows[$i]['basket_labels'] = $used ?: null;
+        $rows[$i]['user_labels'] = $usedUsers ?: null;
+        if (!empty($row['acted_by']) && isset($actorNames[(int) $row['acted_by']])) {
+            $rows[$i]['created_by_name'] = $actorNames[(int) $row['acted_by']];
+        }
+    }
+
+    return $rows;
+}
+
 function handle_customer_logs(PDO $pdo, ?string $id): void
 {
     if (method() !== 'GET') {
@@ -4332,7 +4486,12 @@ function handle_customer_logs(PDO $pdo, ?string $id): void
         );
         $stmt->execute([$id]);
         $row = $stmt->fetch();
-        $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+        if (!$row) {
+            json_response(['error' => 'NOT_FOUND'], 404);
+            return;
+        }
+        $enriched = enrich_customer_log_rows($pdo, [$row]);
+        json_response($enriched[0]);
         return;
     }
 
@@ -4348,7 +4507,7 @@ function handle_customer_logs(PDO $pdo, ?string $id): void
     $sql .= ' ORDER BY cl.created_at DESC LIMIT ' . $limit;
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    json_response($stmt->fetchAll());
+    json_response(enrich_customer_log_rows($pdo, $stmt->fetchAll()));
 }
 
 /**

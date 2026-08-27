@@ -29,6 +29,8 @@ echo "Mode: " . ($dryRun ? "DRY RUN" : "LIVE") . "\n";
 echo "===========================================\n\n";
 
 $pdo = db_connect();
+// ติดป้ายที่มาให้ trigger ก่อนแตะ customers มิฉะนั้นประวัติลูกค้าจะขึ้นว่าไม่ทราบที่มา
+set_audit_context($pdo, 'script/init_baskets_web');
 
 // Get basket configurations for this company (for dashboard)
 $basketStmt = $pdo->prepare("

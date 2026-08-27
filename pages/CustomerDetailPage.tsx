@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import CustomerPhone from "../components/CustomerPhone";
+import CallCustomerButton from "../components/CallCustomerButton";
 import {
   Customer,
   Order,
@@ -62,6 +63,8 @@ import {
 } from "@/services/api";
 import {
   actionLabels,
+  describeCustomerLogEvent,
+  isOpaqueLogSource,
   parseCustomerLogRow,
   summarizeCustomerLogChanges,
 } from "../utils/customerLogs";
@@ -541,11 +544,16 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   const currentOwnerUser =
     customer.assignedTo != null ? usersById.get(customer.assignedTo) : null;
 
+  // ลำดับความน่าเชื่อถือ: รายชื่อผู้ใช้ในหน้า (สดที่สุดถ้ามาแล้ว) → ชื่อที่เซิร์ฟเวอร์ส่งมากับตัวลูกค้า
+  // → prop จากหน้าแม่ → เลข id เป็นทางสุดท้าย ตัวที่สองคือตัวที่แก้อาการ "ขึ้น ID แวบหนึ่ง"
+  // ตอนหน้าโหลดเสร็จก่อนรายชื่อผู้ใช้ และแก้กรณีเจ้าของเดิมที่ปิดบัญชีไปแล้วซึ่งไม่มีในรายชื่อ
   const currentOwnerBaseName =
-    currentOwnerUser
+    (currentOwnerUser
       ? `${currentOwnerUser.firstName} ${currentOwnerUser.lastName}`.trim()
-      : ownerName ||
-      (customer.assignedTo != null ? `ID ${customer.assignedTo}` : "-");
+      : "") ||
+    (customer.assignedToName ?? "").trim() ||
+    ownerName ||
+    (customer.assignedTo != null ? `ID ${customer.assignedTo}` : "-");
 
   const currentOwnerCustomerCount = currentOwnerUser
     ? customerCounts?.[currentOwnerUser.id] ?? 0
@@ -981,9 +989,19 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       id: `log-${log.id}`,
       timestamp: log.createdAt,
       description: summaries.join(', ') || '',
-      actorName: allUsers.find(u => u.id === log.createdBy)?.firstName + ' ' + allUsers.find(u => u.id === log.createdBy)?.lastName || '',
+      // เดิมต่อ string ก่อนเช็คว่าเจอคนมั้ย ไม่เจอจึงได้ "undefined undefined" ซึ่งเป็นค่า truthy
+      // ทำให้ || '' ข้างหลังไม่มีวันทำงาน ชื่อจากเซิร์ฟเวอร์มาก่อนเพราะรู้จักคนที่ปิดบัญชีแล้วด้วย
+      actorName:
+        log.createdByName?.trim() ||
+        (() => {
+          const actor = allUsers.find(u => u.id === log.createdBy);
+          return actor ? `${actor.firstName} ${actor.lastName}`.trim() : '';
+        })(),
       type: 'log' as const,
       actionType: log.actionType,
+      // ที่มากับชื่อถัง/ชื่อคน ต้องติดมาด้วย ไม่งั้นทุกแถวจะขึ้นว่า "ไม่ทราบที่มา"
+      apiSource: log.apiSource,
+      basketLabels: log.basketLabels,
       summaries: summaries,
     }));
 
@@ -1878,6 +1896,24 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
         <div className="lg:col-span-1 space-y-6">
           {/* Action Buttons Container */}
           <div className="bg-white p-4 rounded-lg shadow-sm border flex flex-wrap gap-2 justify-center">
+            {/* Hidden entirely for an agent with no registered handset, so a company that has not
+                adopted the dialler sees the page exactly as before. */}
+            <CallCustomerButton
+              customerId={customer.customerId ?? customer.id}
+              customerName={`${customer.firstName} ${customer.lastName}`}
+              className="w-full"
+              onCallEnded={(s) =>
+                // Straight into the log form with the real duration already filled in — the moment
+                // after hanging up is the only moment an agent remembers what was said.
+                openModal("logCall", {
+                  ...customer,
+                  __completedCall: {
+                    durationSec: s.duration_sec ?? 0,
+                    answered: !!s.answered_at,
+                  },
+                } as any)
+              }
+            />
             <button
               onClick={() => openModal("logCall", customer)}
               className="bg-green-100 text-green-700 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center hover:bg-green-200 flex-1 whitespace-nowrap"
@@ -2074,10 +2110,18 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                     <ActivityIcon action={(item as any).actionType || 'update'} />
                                   )}
                                 </div>
-                                <span className="font-semibold text-gray-800">
-                                  {item.type === 'activity' ? 'กิจกรรม' : (
-                                    actionLabels[(item as any).actionType] ?? (item as any).actionType
-                                  )}
+                                <span
+                                  className={
+                                    item.type !== 'activity' &&
+                                    isOpaqueLogSource((item as any).apiSource)
+                                      ? 'font-semibold text-amber-700'
+                                      : 'font-semibold text-gray-800'
+                                  }
+                                  title={item.type === 'activity' ? undefined : (item as any).apiSource}
+                                >
+                                  {item.type === 'activity'
+                                    ? 'กิจกรรม'
+                                    : describeCustomerLogEvent(item as any)}
                                 </span>
                               </div>
                             </td>

@@ -745,6 +745,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
                         $customers = $stmt->fetchAll();
+                        attach_owner_names($pdo, $customers);
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
@@ -796,6 +797,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
                         $customers = $stmt->fetchAll();
+                        attach_owner_names($pdo, $customers);
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
@@ -1124,6 +1126,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $t_query_start = microtime(true);
                             $stmt->execute($params);
                             $customers = $stmt->fetchAll();
+                        attach_owner_names($pdo, $customers);
                             // Customer list is the screen telesale live in — phone, backup_phone,
                             // recipient_phone and customer_ref_id all leave from here. Nothing between
                             // this fetch and the response reads the number, so scrub it at the source.
@@ -1708,3 +1711,55 @@ function handle_customers(PDO $pdo, ?string $id): void
     }
 }
 
+/**
+ * แนบชื่อผู้ดูแลมากับข้อมูลลูกค้า
+ *
+ * เดิมหน้าเว็บเอา assigned_to ไปเทียบกับรายชื่อผู้ใช้ที่โหลดแยกอีกชุด ซึ่งมีปัญหาสองทาง
+ * ชุดนั้นมาช้ากว่าข้อมูลลูกค้า ช่วงที่ยังไม่มาก็เลยโชว์เป็น "ID 1812" แวบหนึ่ง
+ * และมันกรองพนักงานที่ปิดบัญชีออก ลูกค้าที่เจ้าของเดิมลาออกไปแล้วจึงขึ้นเป็นเลขตลอดกาล
+ *
+ * ส่งชื่อมาพร้อมกันเสียเลยจบทั้งสองปัญหา และไม่เพิ่มรอบ request ให้หน้าที่ยิง API ถี่อยู่แล้ว
+ * เป็นคิวรีเดียวต่อหนึ่งลิสต์ ไม่ใช่ต่อหนึ่งลูกค้า
+ */
+function attach_owner_names(PDO $pdo, array &$customers): void
+{
+    if (!$customers) {
+        return;
+    }
+
+    $ids = [];
+    foreach ($customers as $c) {
+        if (isset($c['assigned_to']) && $c['assigned_to'] !== null && (int) $c['assigned_to'] > 0) {
+            $ids[(int) $c['assigned_to']] = true;
+        }
+    }
+    if (!$ids) {
+        return;
+    }
+
+    $names = [];
+    try {
+        $ids = array_keys($ids);
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT id, TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) AS name
+             FROM users WHERE id IN ($in)"
+        );
+        $stmt->execute($ids);
+        foreach ($stmt->fetchAll() as $u) {
+            if (trim((string) $u['name']) !== '') {
+                $names[(int) $u['id']] = $u['name'];
+            }
+        }
+    } catch (Throwable $e) {
+        // ชื่อผู้ดูแลเป็นของแถม ถ้าหาไม่ได้ก็ปล่อยให้หน้าเว็บใช้ทางเดิม ไม่ควรทำให้ลิสต์ลูกค้าพัง
+        error_log('attach_owner_names: ' . $e->getMessage());
+        return;
+    }
+
+    foreach ($customers as &$c) {
+        $uid = isset($c['assigned_to']) ? (int) $c['assigned_to'] : 0;
+        $c['assigned_to_name'] = $uid > 0 && isset($names[$uid]) ? $names[$uid] : null;
+    }
+    unset($c);
+}

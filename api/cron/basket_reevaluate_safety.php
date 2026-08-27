@@ -46,6 +46,8 @@ echo "===========================================\n\n";
 
 try {
     $pdo = db_connect();
+    // ติดป้ายที่มาให้ trigger ก่อนแตะ customers มิฉะนั้นประวัติลูกค้าจะขึ้นว่าไม่ทราบที่มา
+    set_audit_context($pdo, 'cron/basket_reevaluate_safety');
     
     // ============================================================
     // Basket rules (Dashboard baskets)

@@ -27,6 +27,8 @@ $action = $_GET['action'] ?? '';
 if ($action === 'check_mismatched') {
     try {
         $pdo = db_connect();
+        // ติดป้ายที่มาให้ trigger ก่อนแตะ customers มิฉะนั้นประวัติลูกค้าจะขึ้นว่าไม่ทราบที่มา
+        set_audit_context($pdo, 'index/blocked_customers');
         require_once __DIR__ . '/phone_privacy.php';
         phone_privacy_init($pdo);
         $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : null;

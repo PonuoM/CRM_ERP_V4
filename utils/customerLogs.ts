@@ -22,6 +22,83 @@ export const actionLabels: Record<CustomerLog["actionType"], string> = {
   delete: "ลบข้อมูลลูกค้า",
 };
 
+/**
+ * ชื่อเหตุการณ์ตามที่มาของการเปลี่ยน
+ *
+ * `action_type` มีแค่ create/update/delete ทุกอย่างจึงขึ้นว่า "ปรับปรุงข้อมูลลูกค้า" เหมือนกันหมด
+ * ทั้งที่การขาย การโอนให้คนอื่น การดึงคืน และการย้ายถังตามกฎ คือคนละเรื่องกันสิ้นเชิงสำหรับคนอ่าน
+ * ที่มาจริงอยู่ใน api_source ซึ่งฝั่ง API ส่งมาให้แล้ว ตารางนี้แค่แปลให้เป็นภาษาคน
+ */
+const eventLabels: Record<string, string> = {
+  // ---- การแจกและการถือครอง ----
+  distribution_v2: "แจกลูกค้า",
+  distribution_v2_undo: "ยกเลิกการแจก",
+  "basket_config/distribute": "แจกลูกค้า",
+  "basket_config/reclaim": "ดึงคืนเข้าถังกลาง",
+  "basket_config/transfer": "โอนให้พนักงานคนอื่น",
+  monthly_cron: "ระบบดึงคืนรอบเดือน",
+  "cron/basket_return_to_owner": "ระบบคืนลูกค้าให้เจ้าของเดิม",
+  "ownership/status_check": "หมดสิทธิ์ครอบครอง ระบบปลดออก",
+  "ownership/redistribute": "ส่งกลับเข้าคิวแจกใหม่",
+  "ownership/retrieve": "ดึงลูกค้ากลับมาดูแล",
+  "ownership/followup_quota": "ต่อเวลาติดตาม",
+
+  // ---- การขาย ----
+  "ownership/sale": "ปิดการขายได้",
+  "orders/batch_export": "เปิดบิล/ส่งออก",
+  "import/sales": "นำเข้ายอดขาย",
+  "import/sales_fast": "นำเข้ายอดขาย",
+
+  // ---- คนแก้ไขเอง ----
+  "index/customer_update": "แก้ไขข้อมูลลูกค้า",
+  "index/blocked_customers": "จัดการลูกค้าบล็อค",
+
+  // ---- กฎอัตโนมัติของถัง ----
+  "basket_routing_v2/picking_upsell_sold": "ขายได้ → เข้าถัง Upsell",
+  "basket_routing_v2/picking_upsell_not_sold": "ไม่ปิดการขาย → ออกจากถัง Upsell",
+  "basket_routing_v2/picking_dist_to_pool": "หมดเวลาถือครอง → คืนถังกลาง",
+  "basket_routing_v2/pending_admin_owned": "รอแอดมินปิดบิล",
+  "basket_routing_v2/pending_admin_unowned": "รอแอดมินปิดบิล (ยังไม่มีเจ้าของ)",
+  "basket_routing_v2/picking_telesale_own": "เทเลปิดบิลเอง",
+  "basket_routing_v2/picking_upsell_return_39": "คืนถังส่วนตัว 1-2 เดือน",
+  "basket_routing_v2/cancelled_dist_to_pool": "ยกเลิกบิล → คืนถังกลาง",
+  "cron/process_picking_baskets": "ระบบจัดถังตามกฎ",
+  "cron/basket_reevaluate_safety": "ระบบตรวจทานถังซ้ำ",
+  "cron/full_recalc_baskets": "ระบบคำนวณถังใหม่ทั้งหมด",
+  "cron/process_upsell_51_exit": "หมดเวลาถัง Upsell",
+  "cron/process_upsell_by_others": "Upsell โดยพนักงานคนอื่น",
+  "cron/process_upsell_distribution": "แจกถัง Upsell",
+  "cron/upsell_exit_handler": "ออกจากถัง Upsell",
+};
+
+/**
+ * ที่มาที่บอกได้แค่ว่า "ไม่รู้"
+ *
+ * direct_db คือ UPDATE ที่วิ่งเข้ามาโดยไม่มีใครติดป้ายไว้ ส่วน unknown_api คือของเก่าก่อนระบบ audit
+ * แยกให้เห็นชัดดีกว่ากลบเป็น "ปรับปรุงข้อมูลลูกค้า" เพราะแถวพวกนี้แปลว่ายังมีช่องโหว่ให้ปิด
+ */
+const opaqueSources = new Set(["direct_db", "unknown_api", ""]);
+
+export const isOpaqueLogSource = (apiSource?: string | null): boolean =>
+  opaqueSources.has((apiSource ?? "").trim());
+
+/** ชื่อเหตุการณ์ที่จะขึ้นเป็นหัวข้อของแต่ละบรรทัดในฟีด */
+export const describeCustomerLogEvent = (log: CustomerLog): string => {
+  if (log.actionType !== "update") return actionLabels[log.actionType];
+
+  const source = (log.apiSource ?? "").trim();
+  const known = eventLabels[source];
+  if (known) return known;
+
+  if (isOpaqueLogSource(source)) {
+    // ไม่เดาแทนข้อมูลที่ไม่มี บอกตรง ๆ ว่าไม่รู้ที่มา แล้วให้รายละเอียดข้างล่างเล่าเท่าที่เล่าได้
+    return "ไม่ทราบที่มา";
+  }
+
+  // ที่มาใหม่ที่ยังไม่ได้แปล ดีกว่าโชว์ว่า "ปรับปรุงข้อมูลลูกค้า" เพราะอย่างน้อยตามรอยกลับไปได้
+  return `ปรับปรุงข้อมูลลูกค้า (${source})`;
+};
+
 const bucketLabels: Record<string, string> = {
   ready: "ตะกร้าพร้อมแจก",
   assigned: "มอบหมายแล้ว",
@@ -58,6 +135,18 @@ const fieldLabelMap: Record<string, string> = {
   follow_up_date: "วันติดตาม",
   do_reason: "เหตุผลการ DO",
   grade: "เกรดลูกค้า",
+  current_basket_key: "ถัง",
+  backup_phone: "เบอร์สำรอง",
+  recipient_phone: "เบอร์ผู้รับ",
+  facebook_name: "ชื่อ Facebook",
+  line_id: "LINE ID",
+  birth_date: "วันเกิด",
+  street: "ที่อยู่",
+  subdistrict: "ตำบล/แขวง",
+  district: "อำเภอ/เขต",
+  province: "จังหวัด",
+  postal_code: "รหัสไปรษณีย์",
+  is_blocked: "สถานะบล็อค",
 };
 
 export const formatCustomerLogFieldLabel = (field: string) =>
@@ -67,16 +156,30 @@ export const formatCustomerLogValue = (
   field: string,
   value: unknown,
   usersById: Map<number, User>,
+  /** basket id → ชื่อถัง จากแถวนั้น ๆ ที่ฝั่ง API แนบมาให้ */
+  basketLabels?: Record<string, string> | null,
+  /** user id → ชื่อ จากฝั่ง API ครอบคลุมพนักงานที่ปิดบัญชีไปแล้วซึ่งไม่มีในรายชื่อฝั่งหน้าเว็บ */
+  userLabels?: Record<string, string> | null,
 ): string => {
   if (value === null || typeof value === "undefined") return "-";
+
+  if (field === "current_basket_key") {
+    const key = String(value);
+    // ไม่มีชื่อก็ยังบอกเลขไว้ ดีกว่าเงียบ ถังที่ถูกลบไปแล้วยังต้องตามรอยได้
+    return basketLabels?.[key] ?? `ถัง ${key}`;
+  }
+  if (field === "is_blocked") {
+    return String(value) === "1" || value === true ? "ถูกบล็อค" : "ปกติ";
+  }
 
   if (field === "assigned_to") {
     const numericId = Number(value);
     if (!Number.isNaN(numericId)) {
       const assignedUser = usersById.get(numericId);
-      return assignedUser
-        ? `${assignedUser.firstName} ${assignedUser.lastName}`
-        : `ผู้ใช้ ID ${numericId}`;
+      if (assignedUser) return `${assignedUser.firstName} ${assignedUser.lastName}`;
+      // รายชื่อฝั่งหน้าเว็บมาช้าและไม่มีคนที่ปิดบัญชี ฝั่ง API จึงส่งชื่อสำรองมาให้
+      const fromServer = userLabels?.[String(numericId)];
+      return fromServer || `ผู้ใช้ ID ${numericId}`;
     }
   }
   if (field === "bucket_type") {
@@ -152,6 +255,15 @@ export const parseCustomerLogRow = (row: any): CustomerLog => {
         ? null
         : Number(row.created_by),
     createdByName: row?.created_by_name ?? null,
+    apiSource: row?.api_source ?? null,
+    basketLabels:
+      row?.basket_labels && typeof row.basket_labels === "object"
+        ? (row.basket_labels as Record<string, string>)
+        : null,
+    userLabels:
+      row?.user_labels && typeof row.user_labels === "object"
+        ? (row.user_labels as Record<string, string>)
+        : null,
     createdAt: row?.created_at ?? "",
   };
 };
@@ -228,8 +340,8 @@ export const summarizeCustomerLogChanges = (
     if (allowedFields && !allowedFields.includes(field)) continue;
 
     const label = formatCustomerLogFieldLabel(field);
-    const oldText = formatCustomerLogValue(field, oldValue, usersById);
-    const newText = formatCustomerLogValue(field, newValue, usersById);
+    const oldText = formatCustomerLogValue(field, oldValue, usersById, log.basketLabels, log.userLabels);
+    const newText = formatCustomerLogValue(field, newValue, usersById, log.basketLabels, log.userLabels);
 
     const hasOld =
       oldValue !== null &&

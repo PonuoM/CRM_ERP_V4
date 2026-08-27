@@ -27,6 +27,8 @@ $logger->logStart();
 $dryRun = in_array('--dry-run', $argv ?? []) || isset($_GET['dry_run']);
 
 $pdo = db_connect();
+// ติดป้ายที่มาให้ trigger ก่อนแตะ customers มิฉะนั้นประวัติลูกค้าจะขึ้นว่าไม่ทราบที่มา
+set_audit_context($pdo, 'cron/upsell_exit_handler');
 // Process all companies - no company filter
 
 $results = [

@@ -15,6 +15,9 @@ function ensure_schema(PDO $pdo): void {
 
 function handle_ownership(PDO $pdo, ?string $id): void {
     ensure_schema($pdo);
+    // ค่าเริ่มต้นสำหรับ GET ซึ่ง checkAndUpdateCustomerStatus() ปลดสิทธิ์ครอบครองที่หมดอายุทิ้ง
+    // เป็นการเขียนที่ไม่มีใครกดสั่ง จึงต้องมีป้ายของตัวเองไม่ให้ไปปนกับการกระทำของคน
+    set_audit_context($pdo, 'ownership/status_check');
     switch (method()) {
         case 'POST':
             $input = json_decode(file_get_contents('php://input'), true);
@@ -24,6 +27,18 @@ function handle_ownership(PDO $pdo, ?string $id): void {
                 json_response(['error' => 'Customer ID required'], 400);
                 return;
             }
+            // ทั้งสี่ action ลงเอยที่ UPDATE customers เหมือนกัน ต่างกันแค่เหตุผล ถ้าไม่ติดป้ายไว้
+            // ประวัติลูกค้าจะขึ้นว่า "ไม่ทราบที่มา" ทั้งที่นี่คือเหตุการณ์ที่อยากอ่านที่สุด — ขายได้เมื่อไหร่
+            $auditLabels = [
+                'sale'         => 'ownership/sale',
+                'followup'     => 'ownership/followup_quota',
+                'redistribute' => 'ownership/redistribute',
+                'retrieve'     => 'ownership/retrieve',
+            ];
+            if (isset($auditLabels[$action])) {
+                set_audit_context($pdo, $auditLabels[$action]);
+            }
+
             switch ($action) {
                 case 'sale': handleSale($pdo, $customerId); break;
                 case 'followup': handleFollowUpQuota($pdo, $customerId, $input); break;
