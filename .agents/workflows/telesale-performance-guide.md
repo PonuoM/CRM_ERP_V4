@@ -28,18 +28,20 @@ description: คู่มืออธิบายการทำงานหน�
 ### 2. 📝 เจาะลึก KPI & หมวดหมู่ (Daily View Mode - `new`)
 โหมดนี้จะแสดงผลงานแบบเจาะลึกรายวันของพนักงานในช่วงวันที่เลือก โดยมีข้อมูลที่สำคัญ ได้แก่:
 - **Daily KPI:** สายที่โทร, นาทีที่คุย, รับสาย, ได้คุยเกิน 30 วิ, ไม่ได้รับ, %รับสาย
-- **เวลาทำงาน (Working Hours):** 
+- **วันทำงาน (Working Days):**
   > [!IMPORTANT]
-  > การคำนวณเวลาทำงานรายวันในโหมดนี้ อ้างอิงจากตาราง `user_daily_attendance` คอลัมน์ `attendance_value` โดยมีสูตรการคำนวณคือ:
-  > **เวลาทำงาน (ชั่วโมง) = attendance_value * 8** 
-  > (เช่น ถ้าบันทึก 0.5 จะแสดงผลเป็น 4.0 ชม.)
+  > หน้า Attendance บันทึก `attendance_value = hours / 8` ทุกวัน จึงต้องแปลงตอนแสดง KPI:
+  > `raw = min(attendance_value, 1.0)` → `clockHours = raw * 8` → `workingDays = min(clockHours / hoursPerDay, 1.0)`
+  > **จ–ศ (ทุก role):** 1 วัน = 8 ชม. ค่าเกิน 1 ใน DB ถูกตัดเหลือ 1.0 วัน (เช่น 1.3 → `1.0 วัน (8 ชม.)`)
+  > **เสาร์–อาทิตย์ role 6/7 (Supervisor / Telesale):** 1 วัน = 6 ชม. ดังนั้น 0.75 ใน DB → `1.0 วัน (6 ชม.)` / ค่า 1.0 → `1.0 วัน (8 ชม.)` ไม่ใช่ 1.3 วัน
+  > **เสาร์–อาทิตย์ role 3 (Admin Page):** ใช้ 8 ชม./วันเหมือนวันอื่น (0.75 ใน DB ยังเป็น `0.75 วัน (6 ชม.)`)
 - **ยอดขายรายวัน:** ดูรายละเอียดออเดอร์และยอดขายที่เกิดขึ้นในแต่ละวัน
 
 ---
 
-## ⚙️ โครงสร้างฟีเจอร์ "เวลาทำงานรายวัน"
+## ⚙️ โครงสร้างฟีเจอร์ "วันทำงานรายวัน"
 
-เพื่อแสดงคอลัมน์ "เวลาทำงาน" ในหน้าเจาะลึก KPI (Daily View) ระบบมีการทำงานดังนี้:
+เพื่อแสดงคอลัมน์ "วันทำงาน" ในหน้าเจาะลึก KPI (Daily View) ระบบมีการทำงานดังนี้:
 
 **Backend (`telesale_daily_performance.php`)**
 1. คิวรีข้อมูลเข้างานด้วย SQL:
@@ -49,11 +51,15 @@ description: คู่มืออธิบายการทำงานหน�
    WHERE DATE(work_date) BETWEEN ? AND ?
    GROUP BY DATE(work_date), user_id
    ```
-2. นำไปคำนวณ `workingHours = working_days * 8` และเพิ่มเข้าไปใน `metrics` ของแต่ละคน/วัน
+2. ตัด `attendance_value` ที่เกิน 1 เหลือ 1.0 แล้วกู้ชั่วโมง `clockHours = raw * 8`
+3. แปลงเป็นวัน: จ–ศ หาร 8; ส–อา หาร 6 เฉพาะ `role_id` 6 และ 7 (Admin Page / role 3 ใช้ 8 ทุกวัน) แล้วตัด `workingDays` ไม่เกิน 1.0
+4. ส่ง `workingDays` และ `workingHours = clockHours` เข้า `metrics` ของแต่ละคน/วัน
 
 **Frontend (`TelesalePerformancePage.tsx`)**
-- มี Checkbox เพื่อเปิด/ปิด (Toggle) การแสดงผลคอลัมน์ "เวลาทำงาน" ในหน้าจอ (ผูกกับ State `visibleCols.kpi_workingHours`)
-- ในแถวท้ายสุดของตาราง (Summary Row) จะมีการบวกตัวเลข `workingHours` รวมของพนักงานทุกคนมาแสดงผล
+- มี Checkbox เพื่อเปิด/ปิด (Toggle) การแสดงผลคอลัมน์ "วันทำงาน" ในหน้าจอ (ผูกกับ State `visibleCols.kpi_workingHours`)
+- เซลล์แสดง `formatWorkingTime(hours, days)` เช่น Telesale เสาร์ที่บันทึก 6 ชม. `1.0 วัน (6 ชม.)` / Admin Page เสาร์ `0.75 วัน (6 ชม.)`
+- แถวสรุปบวกทั้ง `workingDays` และ `workingHours` ที่แปลงแล้ว (เช่น 5 วันธรรมดา + 1 เสาร์ Telesale = `6.0 วัน (46 ชม.)`)
+- ค่าเฉลี่ยต่อวันหารด้วย `workingDays` ไม่หารชั่วโมงด้วย 8 เพื่อไม่ให้เสาร์–อาทิตย์เพี้ยน
 
 ---
 

@@ -7,6 +7,15 @@
 
 require_once __DIR__ . '/../config.php';
 
+/** จ–ศ = 8 ชม./วัน; ส–อา = 6 ชม./วัน เฉพาะ role 6/7 (Supervisor/Telesale). Admin Page (3) ใช้ 8 ทุกวัน */
+function kpi_hours_per_work_day(string $date, int $roleId): int {
+    $w = (int) date('w', strtotime($date . ' 12:00:00'));
+    if (($w === 0 || $w === 6) && in_array($roleId, [6, 7], true)) {
+        return 6;
+    }
+    return 8;
+}
+
 cors();
 
 try {
@@ -145,6 +154,7 @@ try {
                     'totalMinutes' => 0,
                     'answerRate' => 0,
                     'workingHours' => 0,
+                    'workingDays' => 0,
                     
                     'totalSales' => 0, // ยอดขายสุทธิปกติ (ไม่รวม upsell)
                     'upsellSales' => 0,
@@ -316,7 +326,12 @@ try {
         }
     }
 
-    // 5. Attendance Data (working hours = attendance_value * 8)
+    $roleByUser = [];
+    foreach ($visibleUsersList as $u) {
+        $roleByUser[(int) $u['id']] = (int) ($u['role_id'] ?? 0);
+    }
+
+    // 5. Attendance: cap 1 day; weekend 6h only for role 6/7. DB stores hours/8.
     $sqlAttendance = "
         SELECT 
             DATE(work_date) AS work_day,
@@ -332,8 +347,12 @@ try {
         $d = $row['work_day'];
         $uid = $row['user_id'];
         if (isset($dailyData[$d][$uid])) {
-            $workingDays = floatval($row['working_days']);
-            $dailyData[$d][$uid]['metrics']['workingHours'] = $workingDays * 8;
+            $raw = min(floatval($row['working_days']), 1.0);
+            $clockHours = $raw * 8;
+            $hoursPerDay = kpi_hours_per_work_day($d, $roleByUser[(int) $uid] ?? 0);
+            $workingDays = $hoursPerDay > 0 ? $clockHours / $hoursPerDay : 0;
+            $dailyData[$d][$uid]['metrics']['workingDays'] = min($workingDays, 1.0);
+            $dailyData[$d][$uid]['metrics']['workingHours'] = $clockHours;
         }
     }
 

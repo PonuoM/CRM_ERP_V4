@@ -14,6 +14,7 @@ interface DailyMetrics {
     totalMinutes: number;
     answerRate: number;
     workingHours: number;
+    workingDays: number;
     totalSales: number;
     upsellSales: number;
     cancelledSales: number;
@@ -162,6 +163,26 @@ interface PerformanceData {
 // ==========================================
 const formatNumber = (num: number): string => {
     return new Intl.NumberFormat('th-TH').format(num);
+};
+
+/** ไม่โชว์ .0 เมื่อเป็นจำนวนเต็ม เช่น 2 วัน (14 ชม.) — เศษยังโชว์ทศนิยม 1 ตำแหน่ง */
+const formatWorkQty = (n: number): string => {
+    const rounded = Math.round(n * 10) / 10;
+    return Math.abs(rounded - Math.round(rounded)) < 1e-6
+        ? String(Math.round(rounded))
+        : rounded.toFixed(1);
+};
+
+/** API ส่งวัน/ชม. ที่แปลงแล้ว — ส–อา 0.75=1 วันเฉพาะ role 6/7; เพดานไม่เกิน 1 วัน/วัน */
+const formatWorkingTime = (hours?: number | null, days?: number | null): string => {
+    const h = Number(hours);
+    const d = Number(days);
+    const hasDays = Number.isFinite(d) && d > 0;
+    const hasHours = Number.isFinite(h) && h > 0;
+    if (!hasDays && !hasHours) return '-';
+    const displayDays = hasDays ? d : h / 8;
+    const displayHours = hasHours ? h : displayDays * 8;
+    return `${formatWorkQty(displayDays)} วัน (${formatWorkQty(displayHours)} ชม.)`;
 };
 
 const formatCurrency = (num: number): string => {
@@ -494,6 +515,7 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                     date: 'สรุปรวม',
                     metrics: {
                         totalCalls: 0, connectedCalls: 0, talkedCalls: 0, missedCalls: 0, totalMinutes: 0, answerRate: 0,
+                        workingHours: 0, workingDays: 0,
                         totalSales: 0, upsellSales: 0, cancelledSales: 0, returnedSales: 0, grossSales: 0,
                         totalOrders: 0, upsellOrders: 0, grossOrders: 0,
                         newCustOrders: 0, newCustSales: 0, coreCustOrders: 0, coreCustSales: 0, revivalCustOrders: 0, revivalCustSales: 0,
@@ -510,6 +532,9 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
             s.totalMinutes += m.totalMinutes;
             if (m.workingHours) {
                 s.workingHours = (s.workingHours || 0) + m.workingHours;
+            }
+            if (m.workingDays) {
+                s.workingDays = (s.workingDays || 0) + m.workingDays;
             }
             s.totalSales += m.totalSales;
             s.upsellSales += m.upsellSales;
@@ -1314,7 +1339,7 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_missed} onChange={e => setVisibleCols(p => ({...p, kpi_missed: e.target.checked}))} /> ไม่ได้รับ</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_avgMissed} onChange={e => setVisibleCols(p => ({...p, kpi_avgMissed: e.target.checked}))} /> ไม่ได้รับ(เฉลี่ย)</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_answerRate} onChange={e => setVisibleCols(p => ({...p, kpi_answerRate: e.target.checked}))} /> %รับสาย</label>
-                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_workingHours} onChange={e => setVisibleCols(p => ({...p, kpi_workingHours: e.target.checked}))} /> เวลาทำงาน</label>
+                        <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_workingHours} onChange={e => setVisibleCols(p => ({...p, kpi_workingHours: e.target.checked}))} /> วันทำงาน</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_newCust} onChange={e => setVisibleCols(p => ({...p, kpi_newCust: e.target.checked}))} /> ลูกค้าใหม่</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_coreCust} onChange={e => setVisibleCols(p => ({...p, kpi_coreCust: e.target.checked}))} /> ลูกค้าเก่า</label>
                         <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={visibleCols.kpi_revivalCust} onChange={e => setVisibleCols(p => ({...p, kpi_revivalCust: e.target.checked}))} /> ลูกค้าขุด</label>
@@ -1359,7 +1384,7 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                                     {visibleCols.kpi_missed && <th className="px-2 py-2 text-center font-medium">ไม่ได้รับ</th>}
                                     {visibleCols.kpi_avgMissed && <th className="px-2 py-2 text-center font-medium text-red-800">ไม่ได้รับ(เฉลี่ย)</th>}
                                     {visibleCols.kpi_answerRate && <th className="px-2 py-2 text-center font-medium">%รับ</th>}
-                                    {visibleCols.kpi_workingHours && <th className="px-2 py-2 text-center font-medium">เวลาทำงาน</th>}
+                                    {visibleCols.kpi_workingHours && <th className="px-2 py-2 text-center font-medium">วันทำงาน</th>}
                                     
                                     {visibleCols.kpi_newCust && <th className="px-2 py-2 text-center font-medium bg-green-50 border-l border-gray-200">ออเดอร์<br/>(ลค.ใหม่)</th>}
                                     {visibleCols.kpi_coreCust && <th className="px-2 py-2 text-center font-medium bg-blue-50 border-l border-gray-200">ออเดอร์<br/>(ลค.เก่า)</th>}
@@ -1390,7 +1415,7 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                                             {visibleCols.kpi_missed && <td className="px-2 py-2 text-center text-red-500">{ts.metrics.missedCalls || '-'}</td>}
                                             {visibleCols.kpi_avgMissed && <td className="px-2 py-2 text-center text-gray-400 bg-gray-50/50">-</td>}
                                             {visibleCols.kpi_answerRate && <td className="px-2 py-2 text-center">{ts.metrics.answerRate != null ? `${ts.metrics.answerRate.toFixed(1)}%` : '-'}</td>}
-                                            {visibleCols.kpi_workingHours && <td className="px-2 py-2 text-center text-blue-600 font-medium">{ts.metrics.workingHours > 0 ? `${ts.metrics.workingHours.toFixed(1)} ชม.` : '-'}</td>}
+                                            {visibleCols.kpi_workingHours && <td className="px-2 py-2 text-center text-blue-600 font-medium whitespace-nowrap">{formatWorkingTime(ts.metrics.workingHours, ts.metrics.workingDays)}</td>}
                                             
                                             {visibleCols.kpi_newCust && <td className="px-2 py-2 text-center bg-green-50/20 border-l border-gray-100">{ts.metrics.newCustOrders || '-'}</td>}
                                             {visibleCols.kpi_coreCust && <td className="px-2 py-2 text-center bg-blue-50/20 border-l border-gray-100">{ts.metrics.coreCustOrders || '-'}</td>}
@@ -1439,8 +1464,10 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                                     let avgTalkedContent: React.ReactNode = '-';
                                     let avgMissedContent: React.ReactNode = '-';
 
-                                    if (ts.metrics.workingHours > 0) {
-                                        const workingDays = ts.metrics.workingHours / 8;
+                                    const workingDays = (ts.metrics.workingDays > 0)
+                                        ? ts.metrics.workingDays
+                                        : ((ts.metrics.workingHours || 0) / 8);
+                                    if (workingDays > 0) {
                                         avgCallTimeContent = <span className="text-blue-800 font-bold bg-blue-100 px-2 py-1 rounded">{(ts.metrics.totalMinutes / workingDays).toFixed(0)}</span>;
                                         avgConnectedContent = <span className="text-emerald-800 font-bold bg-emerald-100 px-2 py-1 rounded">{(ts.metrics.connectedCalls / workingDays).toFixed(0)}</span>;
                                         avgTalkedContent = <span className="text-indigo-800 font-bold bg-indigo-100 px-2 py-1 rounded">{(ts.metrics.talkedCalls / workingDays).toFixed(0)}</span>;
@@ -1470,7 +1497,7 @@ export default function TelesalePerformancePage({ users = [] }: { users?: any[] 
                                             {visibleCols.kpi_missed && <td className="px-2 py-2 text-center text-red-500">{ts.metrics.missedCalls || '-'}</td>}
                                             {visibleCols.kpi_avgMissed && <td className="px-2 py-2 text-center bg-red-50/50">{avgMissedContent}</td>}
                                             {visibleCols.kpi_answerRate && <td className="px-2 py-2 text-center">{ts.metrics.answerRate != null ? `${ts.metrics.answerRate.toFixed(1)}%` : '-'}</td>}
-                                            {visibleCols.kpi_workingHours && <td className="px-2 py-2 text-center text-blue-700 font-bold">{ts.metrics.workingHours > 0 ? `${ts.metrics.workingHours.toFixed(1)} ชม.` : '-'}</td>}
+                                            {visibleCols.kpi_workingHours && <td className="px-2 py-2 text-center text-blue-700 font-bold whitespace-nowrap">{formatWorkingTime(ts.metrics.workingHours, ts.metrics.workingDays)}</td>}
                                             {visibleCols.kpi_newCust && <td className="px-2 py-2 text-center border-l border-gray-100">{ts.metrics.newCustOrders || '-'}</td>}
                                             {visibleCols.kpi_coreCust && <td className="px-2 py-2 text-center border-l border-gray-100">{ts.metrics.coreCustOrders || '-'}</td>}
                                             {visibleCols.kpi_revivalCust && <td className="px-2 py-2 text-center border-l border-gray-100">{ts.metrics.revivalCustOrders || '-'}</td>}
