@@ -3,6 +3,8 @@ import { Customer, User, CallHistory, Tag, TagType } from '../types';
 import Modal from './Modal';
 import { Plus, X } from 'lucide-react';
 import TagSelectionModal from './TagSelectionModal';
+import FarmPlotEditor, { PlotDraft, makeEmptyPlot, plotsToDrafts } from './FarmPlotEditor';
+import { getCustomerPlots, saveCustomerPlots } from '../services/api';
 
 // Helper function to get contrasting text color (black or white)
 const getContrastColor = (hexColor: string): string => {
@@ -39,12 +41,28 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
   const [callResult, setCallResult] = useState('');
   const [duration, setDuration] = useState('0');
   const [nextFollowUpDate, setNextFollowUpDate] = useState('');
-  const [cropType, setCropType] = useState('');
-  const [areaSize, setAreaSize] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [showTagModal, setShowTagModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false); // New state
+
+  // ข้อมูลสวน — 1 ลูกค้ามีได้หลายชุด (ดู migration 088)
+  const [plots, setPlots] = useState<PlotDraft[]>([makeEmptyPlot()]);
+  const [plotsLoaded, setPlotsLoaded] = useState(false);
+
+  // โหลดของเดิมมาแสดง เพื่อให้เทเล "ยืนยัน" แทนที่จะต้องถามใหม่ทุกสาย
+  useEffect(() => {
+    let alive = true;
+    getCustomerPlots(customer.id)
+      .then((r) => {
+        if (!alive) return;
+        const drafts = plotsToDrafts(r?.plots || []);
+        setPlots(drafts.length > 0 ? drafts : [makeEmptyPlot()]);
+      })
+      .catch(() => { /* อ่านไม่ได้ก็ให้กรอกใหม่ได้ ไม่ต้องบล็อกการบันทึกสาย */ })
+      .finally(() => { if (alive) setPlotsLoaded(true); });
+    return () => { alive = false; };
+  }, [customer.id]);
 
   const isResultDisabled = nonConversationResultOptions.includes(status);
 
@@ -99,6 +117,13 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
       }
     }
 
+    // ชุดที่กรอกอะไรไว้จริงเท่านั้น — ชุดว่างที่ผู้ใช้กดเพิ่มแล้วไม่ได้กรอก ไม่ต้องเก็บ
+    const filledPlots = plots.filter(
+      (p) => p.cropName.trim() !== '' || p.sizeValue !== '' || p.isHomeGarden || p.note.trim() !== ''
+    );
+
+    // ยังเขียนลง call_history เหมือนเดิม เพื่อคงบันทึกว่าคุยอะไรในสายนั้นไว้เป็นหลักฐาน
+    const firstPlot = filledPlots[0];
     const newCallLog: Omit<CallHistory, 'id'> = {
       customerId: customer.id,
       date: new Date().toISOString(),
@@ -108,14 +133,35 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
       status,
       result: callResult,
       duration: parseInt(duration, 10) || 0,
-      cropType: cropType || undefined,
-      areaSize: areaSize || undefined,
+      cropType: filledPlots.map((p) => p.cropName).filter(Boolean).join(', ') || undefined,
+      areaSize: firstPlot && firstPlot.sizeValue
+        ? `${firstPlot.sizeValue} ${firstPlot.sizeUnit}`
+        : undefined,
       notes: notes || undefined,
     };
 
     setIsSaving(true);
     try {
       await onSave(newCallLog, customer.id, nextFollowUpDate, selectedTags);
+
+      // บันทึกข้อมูลสวนแยกอีกที — ถ้าพลาดต้องไม่ทำให้การบันทึกสายล้มตาม
+      // (สายที่โทรไปแล้วสำคัญกว่าข้อมูลสวนที่ยังกรอกใหม่ได้)
+      try {
+        await saveCustomerPlots({
+          customerId: customer.id,
+          userId: user.id,
+          plots: filledPlots.map((p) => ({
+            cropId: p.cropId,
+            cropName: p.cropId ? undefined : (p.cropName.trim() || undefined),
+            sizeValue: p.sizeValue !== '' ? Number(p.sizeValue) : null,
+            sizeUnit: p.sizeValue !== '' ? p.sizeUnit : null,
+            isHomeGarden: p.isHomeGarden,
+            note: p.note.trim() || null,
+          })),
+        });
+      } catch (plotErr) {
+        console.error('save customer plots failed', plotErr);
+      }
     } catch (error) {
       console.error("Error saving log:", error);
       alert("เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่");
@@ -200,32 +246,15 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">พืชพันธุ์</label>
-            <input
-              type="text"
-              value={cropType}
-              onChange={(e) => setCropType(e.target.value)}
-              disabled={isSaving}
-              className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
-              placeholder="เช่น มะม่วง, ทุเรียน, ลำไย"
-              style={{ colorScheme: 'light' }}
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">ขนาดสวน</label>
-            <input
-              type="text"
-              value={areaSize}
-              onChange={(e) => setAreaSize(e.target.value)}
-              disabled={isSaving}
-              className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
-              placeholder="เช่น 5 ไร่, 2,000 ตารางวา"
-              style={{ colorScheme: 'light' }}
-            />
-          </div>
-        </div>
+        {plotsLoaded && (
+          <FarmPlotEditor
+            plots={plots}
+            onChange={setPlots}
+            disabled={isSaving}
+            userId={user.id}
+            showNudge={isNotesRequired}
+          />
+        )}
         <div>
           <label className="block text-gray-700 font-medium mb-1">
             หมายเหตุ

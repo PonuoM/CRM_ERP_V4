@@ -39,6 +39,7 @@ import {
   Zap,
   Loader2,
   History,
+  Sprout,
 } from "lucide-react";
 import { formatFullThaiAddress } from "../utils/addressFormatter";
 import CustomerTagHistoryModal from "../components/Customer/CustomerTagHistoryModal";
@@ -55,7 +56,9 @@ import {
   listAppointments,
   listOrders,
   updateCustomer,
-  getCustomer
+  getCustomer,
+  getCustomerPlots,
+  CustomerPlot,
 } from "@/services/api";
 import {
   actionLabels,
@@ -327,6 +330,22 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
         setLocalTags(res.tags);
       }
     });
+    return () => { mounted = false; };
+  }, [customer.id, refreshTrigger]);
+
+  // ข้อมูลสวนของลูกค้า (พืช + ขนาด) — 1 ลูกค้ามีได้หลายชุด ดู migration 088
+  // ผูกกับ refreshTrigger เพื่อให้อัปเดตทันทีหลังบันทึกการโทร
+  const [farmPlots, setFarmPlots] = useState<CustomerPlot[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    getCustomerPlots(customer.id)
+      .then((res: any) => {
+        if (mounted) setFarmPlots(res?.plots || []);
+      })
+      .catch(() => {
+        // ยังไม่ deploy backend หรืออ่านไม่ได้ ก็แค่ไม่แสดง ไม่ทำให้หน้าพัง
+        if (mounted) setFarmPlots([]);
+      });
     return () => { mounted = false; };
   }, [customer.id, refreshTrigger]);
 
@@ -1159,6 +1178,37 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                     จัดการสมุดที่อยู่
                   </button>
                 </div>
+              </InfoItem>
+              {/* ข้อมูลสวน — ลงในช่องว่างที่เหลือของแถวที่อยู่ 1 ลูกค้ามีได้หลายชุด */}
+              <InfoItem label="ข้อมูลสวน">
+                {farmPlots.length === 0 ? (
+                  <p className="text-sm font-medium text-gray-400">-</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5 mt-0.5">
+                    {farmPlots.map((p) => {
+                      const size =
+                        p.size_value != null && p.size_unit
+                          ? `${Number(p.size_value).toLocaleString()} ${p.size_unit}`
+                          : "";
+                      const label = [p.crop_name || "ไม่ระบุพืช", size]
+                        .filter(Boolean)
+                        .join(" ");
+                      return (
+                        <span
+                          key={p.plot_id}
+                          title={p.note || undefined}
+                          className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-50 text-green-800 border border-green-200"
+                        >
+                          <Sprout size={11} className="text-green-600 flex-none" />
+                          {label}
+                          {Number(p.is_home_garden) === 1 && (
+                            <span className="text-[10px] text-green-600/80">(กินเอง)</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </InfoItem>
               <div className="md:col-span-3 border-t my-2"></div>
               <InfoItem label="เกรดลูกค้า" value={customer.grade} />

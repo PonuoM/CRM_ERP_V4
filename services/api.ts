@@ -1129,6 +1129,92 @@ export async function createCall(payload: any) {
   });
 }
 
+// ─────────── ข้อมูลสวนลูกค้า (พืชพันธุ์ + ขนาดสวน) — ดู migration 088 ───────────
+
+export interface Crop {
+  crop_id: number;
+  name: string;
+  category: string;
+  default_unit: "ไร่" | "ต้น";
+  status: "approved" | "pending" | "merged";
+  usage_count?: number;
+}
+
+export interface CustomerPlot {
+  plot_id?: number;
+  crop_id: number | null;
+  crop_name?: string | null;
+  category?: string | null;
+  default_unit?: string | null;
+  size_value: string | number | null;
+  size_unit: string | null;
+  size_bucket?: string | null;
+  is_home_garden: number;
+  note?: string | null;
+  source?: string;
+}
+
+/** ค้นพืชสำหรับ combobox — ค้นทั้งชื่อจริงและชื่อพ้อง ("ลำใย" ต้องเจอ "ลำไย") */
+export async function searchCrops(q: string, limit = 20): Promise<{ items: Crop[]; suggest: (Crop & { confidence: string }) | null }> {
+  const qs = new URLSearchParams();
+  if (q) qs.set("q", q);
+  qs.set("limit", String(limit));
+  return apiFetch(`crops?${qs.toString()}`);
+}
+
+/**
+ * เพิ่มพืชใหม่ — ใช้งานได้ทันที ไม่ต้องรออนุมัติ
+ * ถ้าระบบเจอตัวใกล้เคียงจะคืน needsConfirm มาก่อน ให้ถามผู้ใช้แล้วส่ง force=true กลับมา
+ */
+export async function createCrop(name: string, opts?: { force?: boolean; userId?: number }) {
+  return apiFetch("crops", {
+    method: "POST",
+    body: JSON.stringify({ name, force: opts?.force ?? false, userId: opts?.userId }),
+  });
+}
+
+export async function getCustomerPlots(customerId: string | number): Promise<{ customerId: number; plots: CustomerPlot[] }> {
+  return apiFetch(`customer_plots?customerId=${encodeURIComponent(String(customerId))}`);
+}
+
+/** บันทึกชุดข้อมูลสวนทั้งหมดของลูกค้า (ส่งมาทั้งชุดเสมอ ระบบจะแทนที่ของเดิม) */
+export async function saveCustomerPlots(payload: {
+  customerId: string | number;
+  plots: Array<{
+    cropId?: number | null;
+    cropName?: string | null;
+    sizeValue?: number | string | null;
+    sizeUnit?: string | null;
+    isHomeGarden?: boolean;
+    note?: string | null;
+  }>;
+  callId?: number | null;
+  userId?: number | null;
+}) {
+  return apiFetch("customer_plots", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** คิวตรวจของ admin */
+export async function listPendingCrops(limit = 50) {
+  return apiFetch(`crops?action=pending&limit=${limit}`);
+}
+
+export async function reviewCrop(payload: {
+  cropId: number;
+  action: "approve" | "merge" | "discard";
+  mergeInto?: number;
+  category?: string;
+  defaultUnit?: "ไร่" | "ต้น";
+}) {
+  return apiFetch("crops?action=review", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function listTags(params?: { type?: "SYSTEM" | "USER"; userId?: number }) {
   const qs = new URLSearchParams();
   if (params?.type) qs.set("type", params.type);

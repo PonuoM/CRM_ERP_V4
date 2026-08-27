@@ -169,6 +169,29 @@ try {
         case 'customer_blocks':
             handle_customer_blocks($pdo, $id);
             break;
+
+        // ข้อมูลสวนลูกค้า (พืชพันธุ์ + ขนาดสวน) — ดู migration 088
+        case 'crops':
+            require_once __DIR__ . '/Controllers/FarmProfileController.php';
+            $cropAction = $_GET['action'] ?? $action ?? '';
+            if (method() === 'POST' && $cropAction === 'review') {
+                FarmProfileController::reviewCrop($pdo);
+            } elseif (method() === 'POST') {
+                FarmProfileController::createCrop($pdo);
+            } elseif ($cropAction === 'pending') {
+                FarmProfileController::pendingCrops($pdo);
+            } else {
+                FarmProfileController::searchCrops($pdo);
+            }
+            break;
+        case 'customer_plots':
+            require_once __DIR__ . '/Controllers/FarmProfileController.php';
+            if (method() === 'PUT' || method() === 'POST') {
+                FarmProfileController::savePlots($pdo);
+            } else {
+                FarmProfileController::getPlots($pdo);
+            }
+            break;
         case 'customers':
             try {
                 require_once __DIR__ . '/Controllers/CustomerController.php';

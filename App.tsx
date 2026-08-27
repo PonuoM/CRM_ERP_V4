@@ -111,6 +111,7 @@ import RandomEmployeePage from "./pages/RandomEmployeePage";
 import ProductManagementPage from "./pages/ProductManagementPage";
 import PriceAnnouncementPage from "./pages/PriceAnnouncementPage";
 import QuotaSettingsPage from "./pages/QuotaSettingsPage";
+import CropReviewPage from "./pages/CropReviewPage";
 import TelesaleSummaryDashboard from "./pages/TelesaleSummaryDashboard";
 import PancakeUserIntegrationPage from "./pages/PancakeUserIntegrationPage";
 import ManageOrdersPage from "./pages/ManageOrdersPage";
@@ -6807,6 +6808,9 @@ const App: React.FC = () => {
           canEdit={isSuperAdmin || !!rolePermissions?.["marketing.price_announcements"]?.use}
         />
       );
+    }
+    if (activePage === "Crop Review") {
+      return <CropReviewPage />;
     }
     if (activePage === "Quota Settings") {
       return (
