@@ -305,6 +305,10 @@ const App: React.FC = () => {
   );
   const lastUserIdRef = useRef<number | null>(null);
 
+  // clientRequestId → เลขบิลที่ขอไว้แล้วสำหรับใบนั้น (ดู handleCreateOrder และ migrations/094)
+  // ล้างทิ้งเมื่อบิลนั้นบันทึกสำเร็จ จึงไม่โตขึ้นเรื่อย ๆ ตลอดอายุ session
+  const mintedOrderIdRef = useRef<Map<string, string>>(new Map());
+
   const resolvePageFromParam = useCallback((value: string | null) => {
     if (!value || value.length === 0) return "Dashboard";
     if (value === "search") return "Search";
@@ -3167,6 +3171,8 @@ const App: React.FC = () => {
     bankAccountId?: number;
     transferDate?: string;
     proxySale?: { onBehalfOfUserId: number; reason?: string };
+    /** กุญแจประจำใบจากหน้าเปิดบิล — คงเดิมทุกครั้งที่กดซ้ำใบเดิม ดู migrations/094 */
+    clientRequestId?: string;
   }): Promise<string | undefined> => {
     const {
       order: newOrderData,
@@ -3177,6 +3183,7 @@ const App: React.FC = () => {
       bankAccountId,
       transferDate,
       proxySale,
+      clientRequestId,
     } = payload;
     const slipUploadsArray = Array.isArray(slipUploads)
       ? slipUploads
@@ -3422,10 +3429,23 @@ const App: React.FC = () => {
     const orderOwner = proxyTargetUser ?? currentUser;
 
     // Generate main order ID
-    const mainOrderId = await generateMainOrderId(
-      orderOwner,
-      currentUser.companyId,
-    );
+    //
+    // generateMainOrderId บวกเลขรันนิ่งฝั่งเซิร์ฟเวอร์ทุกครั้งที่เรียก การกดซ้ำใบเดิมจึงต้องใช้
+    // เลขเดิม ไม่งั้นเลขบิลจะกระโดดทิ้งช่วงทุกครั้งที่ผู้ใช้ลองใหม่ (คีย์กันซ้ำที่ฝั่ง DB กันบิล
+    // เบิ้ลได้อยู่แล้ว แต่กันเลขรันนิ่งไม่ได้ ต้องกันตรงนี้)
+    let mainOrderId = clientRequestId
+      ? mintedOrderIdRef.current.get(clientRequestId)
+      : undefined;
+
+    if (!mainOrderId) {
+      mainOrderId = await generateMainOrderId(
+        orderOwner,
+        currentUser.companyId,
+      );
+      if (clientRequestId) {
+        mintedOrderIdRef.current.set(clientRequestId, mainOrderId);
+      }
+    }
 
     try {
       const orderPayload = {
@@ -3437,6 +3457,7 @@ const App: React.FC = () => {
         orderDate: toThaiIsoString(new Date()),
         bankAccountId: bankAccountId,
         transferDate: transferDate,
+        clientRequestId: clientRequestId,
         ...(proxySale ? { proxyReason: proxySale.reason || undefined } : {}),
       };
 
@@ -3448,7 +3469,13 @@ const App: React.FC = () => {
       const res = await apiCreateOrder(orderPayload);
 
       if (res && res.ok) {
+        // res.duplicate = true แปลว่าเซิร์ฟเวอร์เจอคีย์ซ้ำแล้วส่งบิลเดิมกลับมา ไม่ได้สร้างใบใหม่
+        // ตั้งใจให้เดินทางเดียวกับสร้างสำเร็จปกติ เพราะสำหรับผู้ใช้แล้วผลลัพธ์คือ "บิลนี้มีแล้ว"
         const createdOrderId = res.id;
+
+        if (clientRequestId) {
+          mintedOrderIdRef.current.delete(clientRequestId);
+        }
 
         // บันทึกกิจกรรมการสร้างออเดอร์
         const customer = customers.find(c => c.id === customerIdForOrder || c.pk === customerIdForOrder);

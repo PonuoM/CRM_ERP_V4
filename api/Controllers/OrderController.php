@@ -1597,9 +1597,13 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
 
-                // 🛡️ OWNERSHIP GUARD (2026-08-26)
-                // Telesale / Supervisor Telesale เปิดบิลให้ลูกค้าที่มีผู้ดูแลเป็นคนอื่นไม่ได้
-                // - ลูกค้าไม่มีผู้ดูแล หรือเป็นลูกค้าของตัวเอง → เปิดได้ตามปกติ
+                // 🛡️ OWNERSHIP GUARD (2026-08-26, เข้มขึ้น 2026-08-27)
+                // Telesale / Supervisor Telesale เปิดบิลได้เฉพาะลูกค้าที่ตัวเองดูแลอยู่เท่านั้น
+                // - เป็นลูกค้าของตัวเอง → เปิดได้ตามปกติ
+                // - มีผู้ดูแลเป็นคนอื่น → ห้าม
+                // - ยังไม่มีผู้ดูแล → ห้ามเช่นกัน ต้องให้แจกหรือโอนเข้ามือก่อน (เดิมช่องนี้เปิดอยู่
+                //   ทั้งที่มีลูกค้าไร้เจ้าของ 119,209 ราย ใครก็เปิดบิลให้ได้) คู่กับนโยบายที่ห้าม
+                //   Telesale สร้างลูกค้าใหม่เอง — ดู CustomerController POST
                 // - role อื่น (Admin Page ฯลฯ) ไม่ติดกฎนี้ ระบบจะส่งเข้า Upsell ให้เจ้าของเดิมตามกฎ P5
                 // - กรณีขายแทน (proxy) เช็คจาก creator_id ซึ่งคือคนที่ได้ยอด จึงกันได้ถูกคน
                 if (in_array($creatorData['role_code'] ?? '', ['telesale', 'supervisor_telesale'], true)) {
@@ -1616,12 +1620,25 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $guardRow = $ownerGuard->fetch(PDO::FETCH_ASSOC);
                         $guardOwnerId = $guardRow ? (int) ($guardRow['assigned_to'] ?? 0) : 0;
 
-                        if ($guardOwnerId > 0 && $guardOwnerId !== (int) $creatorId) {
+                        // เช็คเฉพาะเมื่อหาแถวลูกค้าเจอ — ถ้าหาไม่เจอปล่อยให้ด่านตรวจเดิมข้างล่างจัดการ
+                        // ตามเดิม จะได้ไม่สร้างรูปแบบความล้มเหลวใหม่ให้ระบบที่ใช้งานอยู่จริง
+                        if ($guardRow && $guardOwnerId !== (int) $creatorId) {
+                            $pdo->rollBack();
+
+                            if ($guardOwnerId <= 0) {
+                                json_response([
+                                    'error' => 'CUSTOMER_HAS_NO_OWNER',
+                                    'message' => 'ลูกค้ารายนี้ยังไม่มีผู้ดูแล จึงเปิดบิลให้ไม่ได้ — ให้แจ้งหัวหน้าแจกหรือโอนลูกค้าเข้ามือคุณก่อน',
+                                    'ownerId' => 0,
+                                    'ownerName' => null
+                                ], 403);
+                                return;
+                            }
+
                             $guardOwnerName = trim(($guardRow['owner_first'] ?? '') . ' ' . ($guardRow['owner_last'] ?? ''));
                             if ($guardOwnerName === '') {
                                 $guardOwnerName = 'ผู้ดูแลรายอื่น (#' . $guardOwnerId . ')';
                             }
-                            $pdo->rollBack();
                             json_response([
                                 'error' => 'CUSTOMER_HAS_OTHER_OWNER',
                                 'message' => 'ลูกค้ารายนี้อยู่ในความดูแลของ ' . $guardOwnerName . ' จึงเปิดบิลให้ไม่ได้ — ถ้าลูกค้าต้องการซื้อจริง ให้แจ้งหัวหน้าโอนลูกค้าก่อน',
@@ -1726,6 +1743,12 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $hasShippingProvider = in_array('shipping_provider', $existingColumns);
                 $hasBasketKeyAtSale = in_array('basket_key_at_sale', $existingColumns);
                 $hasProxySale = in_array('proxy_creator_id', $existingColumns);
+                // migrations/094 — กุญแจประจำใบจากหน้าจอ ว่างได้ (ทางเข้าอื่นที่ยังไม่ส่งมาก็ยังเปิดบิลได้)
+                $hasClientRequestId = in_array('client_request_id', $existingColumns);
+                $clientRequestId = trim((string) ($in['clientRequestId'] ?? ''));
+                if ($clientRequestId === '' || strlen($clientRequestId) > 36) {
+                    $clientRequestId = null;
+                }
 
                 // Fetch current_basket_key from customer for statistics
                 // Smart mapping: distribution baskets (41-45) get mapped to segment keys
@@ -1794,6 +1817,9 @@ function handle_orders(PDO $pdo, ?string $id): void
                 if ($hasProxySale) {
                     $columns[] = 'proxy_creator_id';
                     $columns[] = 'proxy_reason';
+                }
+                if ($hasClientRequestId) {
+                    $columns[] = 'client_request_id';
                 }
 
                 foreach ($columns as $col) {
@@ -2023,10 +2049,35 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $values[] = $proxyCreatorId;
                     $values[] = $proxyReason;
                 }
+                if ($hasClientRequestId) {
+                    $values[] = $clientRequestId;
+                }
 
                 try {
                     $stmt->execute($values);
                 } catch (PDOException $e) {
+                    // ชน uq_orders_client_request = คำขอนี้เคยบันทึกสำเร็จไปแล้ว แค่คำตอบไม่ถึงหน้าจอ
+                    // (เซิร์ฟเวอร์ช้า/เน็ตหลุด/ผู้ใช้กดซ้ำ) จึงไม่ใช่ error — ตอบเลขบิลเดิมกลับไป
+                    // ให้หน้าจอทำงานต่อเหมือนสร้างสำเร็จ ไม่ให้เกิดบิลใบที่สอง
+                    if (
+                        $hasClientRequestId
+                        && $clientRequestId !== null
+                        && $e->getCode() == 23000
+                        && strpos($e->getMessage(), 'uq_orders_client_request') !== false
+                    ) {
+                        $pdo->rollBack();
+                        $prev = $pdo->prepare('SELECT id FROM orders WHERE client_request_id = ? LIMIT 1');
+                        $prev->execute([$clientRequestId]);
+                        $prevId = $prev->fetchColumn();
+                        if ($prevId !== false) {
+                            error_log('Order create replayed (same clientRequestId): ' . $clientRequestId . ' -> ' . $prevId);
+                            json_response(['ok' => true, 'id' => $prevId, 'duplicate' => true]);
+                            return;
+                        }
+                        // อ่านบิลเดิมไม่เจอ (เพิ่งถูกลบ?) — ปล่อยให้ตกไปเป็น error ปกติ ดีกว่าเดา
+                        json_response(['error' => 'DUPLICATE_REQUEST', 'message' => 'คำขอนี้ถูกบันทึกไปแล้ว แต่หาบิลเดิมไม่พบ กรุณาตรวจสอบรายการออเดอร์'], 409);
+                        return;
+                    }
                     // If duplicate entry error for main order, rollback and return error
                     if ($e->getCode() == 23000 && strpos($e->getMessage(), 'Duplicate entry') !== false) {
                         $pdo->rollBack();
