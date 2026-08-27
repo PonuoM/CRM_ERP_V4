@@ -1,8 +1,27 @@
 <?php
 /**
- * Telesale Daily Performance API
- * 
- * Fetches metrics grouped by User and Date for a specific date range.
+ * Telesale Daily Performance API — one row per (agent, day) for a date range.
+ *
+ * TIME OF DAY (the reason this file was rewritten):
+ *   call_import_logs.call_date is a **DATE** column — the clock lives in `start_time`. The old
+ *   filter read `TIME(cl.call_date) BETWEEN ? AND ?`, which is 00:00:00 for every row ever
+ *   imported, so the moment anyone narrowed the hour picker to, say, 09:00–18:00 every call
+ *   metric on the screen collapsed to zero while sales kept showing. It now filters `start_time`.
+ *   The "business hours" default that used to sit here (Mon-Fri 09-18 / weekend 09-16:30) was
+ *   dead code — its guard compared $startTime, which had already had ':00' appended, against
+ *   '00:00' — and is gone rather than revived: a filter the UI does not show must not silently
+ *   shrink the numbers.
+ *
+ * WHICH DAY A SALE BELONGS TO:
+ *   `order_items.created_at` — the moment the agent actually keyed the line — not the parent
+ *   bill's `order_date`. Upsell lines get added to older bills, and filing them under the bill's
+ *   date moves that revenue to a day the agent did not work (Aug 2026: 82 lines / ฿38k).
+ *   `created_at` carries no index, so the parent bill's indexed `order_date` still prunes the
+ *   scan with a window widened by ITEM_LAG_DAYS; the exact bound is then applied on created_at.
+ *
+ * Params: start_date, end_date (YYYY-MM-DD), start_time, end_time (HH:MM),
+ *         roles (csv of telesale|adminpage, default telesale), teams (csv), agents (csv),
+ *         inactive=1 (include people who have left)
  */
 
 require_once __DIR__ . '/../config.php';
@@ -18,6 +37,9 @@ function kpi_hours_per_work_day(string $date, int $roleId): int {
 
 cors();
 
+/** How far back a bill may sit behind the line keyed against it. Observed max in 2026: 76 days. */
+const ITEM_LAG_DAYS = 120;
+
 try {
     $pdo = db_connect();
     $user = get_authenticated_user($pdo);
@@ -27,361 +49,312 @@ try {
         exit;
     }
 
-    $companyId = $user['company_id'];
-    $currentUserId = $user['id'];
-    $currentUserRole = strtolower($user['role'] ?? '');
-
-    // Role check - Admin, CEO, Supervisor, or Telesale
-    $isAdmin = strpos($currentUserRole, 'admin') !== false && strpos($currentUserRole, 'supervisor') === false && strpos($currentUserRole, 'admin page') === false;
-    $isSupervisor = strpos($currentUserRole, 'supervisor') !== false;
-    $isCEO = strpos($currentUserRole, 'ceo') !== false;
-    $isTelesale = strpos($currentUserRole, 'telesale') !== false || strpos($currentUserRole, 'admin page') !== false;
+    $companyId = (int) $user['company_id'];
+    $currentUserId = (int) $user['id'];
+    $role = strtolower($user['role'] ?? '');
+    $isSupervisor = strpos($role, 'supervisor') !== false;
+    $isAdminPage = strpos($role, 'admin page') !== false;
+    $isAdmin = strpos($role, 'admin') !== false && !$isSupervisor && !$isAdminPage;
+    $isCEO = strpos($role, 'ceo') !== false;
+    $isTelesale = strpos($role, 'telesale') !== false || $isAdminPage;
 
     if (!$isAdmin && !$isSupervisor && !$isCEO && !$isTelesale) {
         json_response(['success' => false, 'message' => 'Access denied. Valid role required.'], 403);
         exit;
     }
 
-    // Get parameters
     $startDate = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d');
     $endDate = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
-    $startTime = isset($_GET['start_time']) && $_GET['start_time'] !== '' ? $_GET['start_time'] . ':00' : '00:00:00';
-    $endTime = isset($_GET['end_time']) && $_GET['end_time'] !== '' ? $_GET['end_time'] . ':59' : '23:59:59';
-    
-    // Validate dates
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
         json_response(['success' => false, 'message' => 'Invalid date format. Use YYYY-MM-DD.'], 400);
         exit;
     }
+    if ($endDate < $startDate) { $tmp = $startDate; $startDate = $endDate; $endDate = $tmp; }
 
-    // Build user filter
-    $userFilter = "";
-    $userParams = [];
+    // Whole-minute bounds: "ถึง 16:00" has to keep an order keyed at 16:00:45.
+    $startTime = (isset($_GET['start_time']) && $_GET['start_time'] !== '') ? $_GET['start_time'] . ':00' : '00:00:00';
+    $endTime = (isset($_GET['end_time']) && $_GET['end_time'] !== '') ? $_GET['end_time'] . ':59' : '23:59:59';
 
-    if ($isSupervisor && !$isAdmin && !$isCEO) {
-        $userFilter = " AND (u.supervisor_id = ? OR u.id = ?)";
-        $userParams = [$currentUserId, $currentUserId];
-    } elseif (!$isAdmin && !$isCEO && !$isSupervisor) {
-        $userFilter = " AND u.id = ?";
-        $userParams = [$currentUserId];
-    }
+    $csv = function ($name) {
+        if (!isset($_GET[$name]) || $_GET[$name] === '') return [];
+        $out = [];
+        foreach (explode(',', (string) $_GET[$name]) as $v) {
+            $v = trim($v);
+            if ($v !== '') $out[] = $v;
+        }
+        return array_values(array_unique($out));
+    };
+    $wantRoles = $csv('roles');
+    if (empty($wantRoles)) $wantRoles = ['telesale'];
+    $roleIds = [];
+    if (in_array('telesale', $wantRoles, true)) { $roleIds[] = 6; $roleIds[] = 7; }
+    if (in_array('adminpage', $wantRoles, true)) { $roleIds[] = 3; }
+    if (empty($roleIds)) $roleIds = [6, 7];
+    $filterTeams = $csv('teams');
+    $filterAgents = array_values(array_filter(array_map('intval', $csv('agents')), function ($n) { return $n > 0; }));
+    $showInactive = isset($_GET['inactive']) && $_GET['inactive'] === '1';   // people who have left
 
-    // Basket Keys
-    $TIER_NEW_KEYS = [38, 46, 47, 48];
+    $TIER_NEW_KEYS = [38, 46, 47];
     $TIER_CORE_KEYS = [39, 40];
-    $TIER_REVIVAL_KEYS = [49, 50];
+    $TIER_REVIVAL_KEYS = [49, 50, 58, 59];   // 58/59 were split out of the retired 48 in May 2026
     $newKeysIn = implode(',', $TIER_NEW_KEYS);
     $coreKeysIn = implode(',', $TIER_CORE_KEYS);
     $revivalKeysIn = implode(',', $TIER_REVIVAL_KEYS);
-    $allSegmentKeysIn = implode(',', array_merge($TIER_NEW_KEYS, $TIER_CORE_KEYS, $TIER_REVIVAL_KEYS));
 
-    // Visible Users
-    // Visible Users
-    $sqlVisibleUsers = "
-        SELECT u.id, u.first_name, u.last_name, u.phone, u.supervisor_id, u.role_id, u.role, sup.first_name AS supervisor_name
-        FROM users u 
-        LEFT JOIN users sup ON u.supervisor_id = sup.id
-        WHERE u.company_id = ? AND u.role_id IN (3, 6, 7) AND u.status = 'active' $userFilter
-        UNION
-        SELECT DISTINCT u.id, u.first_name, u.last_name, u.phone, u.supervisor_id, u.role_id, u.role, sup.first_name AS supervisor_name
-        FROM users u
-        LEFT JOIN users sup ON u.supervisor_id = sup.id
-        JOIN order_items oi ON oi.creator_id = u.id
-        JOIN orders o ON oi.parent_order_id = o.id
-        WHERE u.company_id = ? AND u.role_id IN (3, 6, 7) AND u.status != 'active'
-            AND DATE(o.order_date) BETWEEN ? AND ?
-            AND TIME(o.order_date) BETWEEN ? AND ?
-            AND o.order_status NOT IN ('Cancelled', 'BadDebt')
-            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND oi.parent_item_id IS NULL
-            $userFilter
-    ";
-    $visibleParams = array_merge([$companyId], $userParams, [$companyId, $startDate, $endDate, $startTime, $endTime], $userParams);
-    $stmt = $pdo->prepare($sqlVisibleUsers);
-    $stmt->execute($visibleParams);
-    $visibleUsersList = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // ---- Agents in scope --------------------------------------------------
+    $supById = [];
+    $teamIdToSup = [];
+    $sv = $pdo->prepare("SELECT id, first_name, team_id FROM users WHERE role_id = 6 AND company_id = ?");
+    $sv->execute([$companyId]);
+    foreach ($sv->fetchAll(PDO::FETCH_ASSOC) as $s) {
+        $supById[(int) $s['id']] = $s['first_name'];
+        if ($s['team_id'] !== null && $s['team_id'] !== '' && (int) $s['team_id'] !== 0) {
+            $teamIdToSup[(int) $s['team_id']] = (int) $s['id'];
+        }
+    }
+    $resolveTeam = function ($u) use ($supById, $teamIdToSup) {
+        $rid = (int) $u['role_id'];
+        if ($rid === 3) return ['key' => 'admin_page', 'name' => 'Admin Page'];
+        if ($rid === 6) return ['key' => (string) (int) $u['id'], 'name' => $u['first_name'] ?: ('#' . $u['id'])];
+        $sid = $u['supervisor_id'] !== null ? (int) $u['supervisor_id'] : 0;
+        if ($sid && isset($supById[$sid])) return ['key' => (string) $sid, 'name' => $supById[$sid]];
+        $tid = $u['team_id'] !== null ? (int) $u['team_id'] : 0;
+        if ($tid && isset($teamIdToSup[$tid])) return ['key' => (string) $teamIdToSup[$tid], 'name' => $supById[$teamIdToSup[$tid]]];
+        return ['key' => '0', 'name' => 'ไม่มีทีม'];
+    };
 
-    $visibleIds = array_column($visibleUsersList, 'id');
-    if (empty($visibleIds)) {
-        json_response([
-            'success' => true,
-            'data' => [
-                'dailyRecords' => [],
-                'users' => []
-            ]
-        ]);
-        exit;
+    $rolePh = implode(',', array_fill(0, count($roleIds), '?'));
+    $uStmt = $pdo->prepare("SELECT id, first_name, last_name, role, role_id, team_id, supervisor_id, status
+                            FROM users WHERE role_id IN ($rolePh) AND company_id = ?");
+    $uStmt->execute(array_merge($roleIds, [$companyId]));
+
+    $userMap = [];
+    foreach ($uStmt->fetchAll(PDO::FETCH_ASSOC) as $u) {
+        $id = (int) $u['id'];
+        $t = $resolveTeam($u);
+        $userMap[$id] = [
+            'id' => $id,
+            'name' => trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')),
+            'first_name' => $u['first_name'],
+            'team_key' => $t['key'],
+            'team_name' => $t['name'],
+            'role_id' => (int) $u['role_id'],
+            'role_label' => (int) $u['role_id'] === 6 ? 'Sup' : ((int) $u['role_id'] === 3 ? 'Admin Page' : 'Telesale'),
+            'is_inactive' => strtolower((string) $u['status']) !== 'active',
+        ];
     }
 
-    $resolveTeamName = function($u) use ($visibleUsersList) {
-        if ($u['role_id'] == 3 || stripos($u['role'], 'admin page') !== false) {
-            return 'ทีม Admin Page';
-        }
-        if (!empty($u['supervisor_id']) && !empty($u['supervisor_name'])) {
-            return 'ทีม ' . trim($u['supervisor_name']);
-        }
-        $isSup = in_array($u['id'], array_column($visibleUsersList, 'supervisor_id'));
-        if ($isSup) {
-            return 'ทีม ' . trim($u['first_name']);
-        }
-        return 'อื่นๆ';
+    $emptyOut = function () {
+        json_response(['success' => true, 'data' => ['dailyRecords' => [], 'users' => []]]);
     };
-    $visibleIdsIn = implode(',', array_map('intval', $visibleIds));
-    $visibleFilter = "u.id IN ($visibleIdsIn)";
+    if (empty($userMap)) { $emptyOut(); exit; }
 
-    // Pre-fill daily data array
+    if ($isAdmin || $isCEO) {
+        $visibleIds = array_keys($userMap);
+    } elseif ($isSupervisor) {
+        $visibleIds = array_values(array_filter(array_keys($userMap), function ($id) use ($userMap, $currentUserId) {
+            return $userMap[$id]['team_key'] === (string) $currentUserId || $id === $currentUserId;
+        }));
+    } else {
+        $visibleIds = isset($userMap[$currentUserId]) ? [$currentUserId] : [];
+    }
+    if (!$showInactive) {
+        $visibleIds = array_values(array_filter($visibleIds, function ($id) use ($userMap) {
+            return !$userMap[$id]['is_inactive'];
+        }));
+    }
+    $activeIds = $visibleIds;
+    if (!empty($filterTeams)) {
+        $teamSet = array_flip(array_map('strval', $filterTeams));
+        $activeIds = array_values(array_filter($activeIds, function ($id) use ($userMap, $teamSet) {
+            return isset($teamSet[$userMap[$id]['team_key']]);
+        }));
+    }
+    if (!empty($filterAgents)) {
+        $agentSet = array_flip($filterAgents);
+        $activeIds = array_values(array_filter($activeIds, function ($id) use ($agentSet) { return isset($agentSet[$id]); }));
+    }
+    if (empty($activeIds)) { $emptyOut(); exit; }
+    $idPh = implode(',', array_fill(0, count($activeIds), '?'));
+
+    // ---- Pre-fill the grid so every (agent, day) exists even with zero activity
     $dateStart = new DateTime($startDate);
     $dateEnd = new DateTime($endDate);
-    $dateEnd->modify('+1 day'); // to include end date
-    $interval = DateInterval::createFromDateString('1 day');
-    $period = new DatePeriod($dateStart, $interval, $dateEnd);
+    $dateEnd->modify('+1 day');
+    $period = new DatePeriod($dateStart, DateInterval::createFromDateString('1 day'), $dateEnd);
 
+    $emptyMetrics = [
+        'totalCalls' => 0, 'connectedCalls' => 0, 'talkedCalls' => 0, 'missedCalls' => 0,
+        'totalMinutes' => 0, 'answerRate' => 0, 'workingHours' => 0, 'workingDays' => 0,
+        'totalSales' => 0, 'upsellSales' => 0, 'cancelledSales' => 0, 'returnedSales' => 0, 'grossSales' => 0,
+        'totalOrders' => 0, 'upsellOrders' => 0, 'grossOrders' => 0, 'netOrders' => 0,
+        'newCustOrders' => 0, 'newCustSales' => 0, 'coreCustOrders' => 0, 'coreCustSales' => 0,
+        'revivalCustOrders' => 0, 'revivalCustSales' => 0,
+        'bioSales' => 0, 'fertilizerSales' => 0, 'otherSales' => 0,
+    ];
     $dailyData = [];
     foreach ($period as $dt) {
-        $d = $dt->format("Y-m-d");
+        $d = $dt->format('Y-m-d');
         $dailyData[$d] = [];
-        foreach ($visibleUsersList as $u) {
-            $dailyData[$d][$u['id']] = [
-                'userId' => intval($u['id']),
-                'name' => trim($u['first_name'] . ' ' . $u['last_name']),
-                'team' => $resolveTeamName($u),
+        foreach ($activeIds as $uid) {
+            $m = $userMap[$uid];
+            $dailyData[$d][$uid] = [
+                'userId' => $uid,
+                'name' => $m['name'],
+                'team' => $m['team_name'],
+                'teamKey' => $m['team_key'],
+                'roleLabel' => $m['role_label'],
                 'date' => $d,
-                'metrics' => [
-                    'totalCalls' => 0,
-                    'connectedCalls' => 0,
-                    'talkedCalls' => 0,
-                    'missedCalls' => 0,
-                    'totalMinutes' => 0,
-                    'answerRate' => 0,
-                    'workingHours' => 0,
-                    'workingDays' => 0,
-                    
-                    'totalSales' => 0, // ยอดขายสุทธิปกติ (ไม่รวม upsell)
-                    'upsellSales' => 0,
-                    'cancelledSales' => 0,
-                    'returnedSales' => 0,
-                    'grossSales' => 0, // ยอดขายตั้งต้นทุกสถานะ (ก่อนหัก)
-                    
-                    'totalOrders' => 0, // สุทธิปกติ
-                    'upsellOrders' => 0,
-                    'grossOrders' => 0, // จำนวนบิลทั้งหมด
-                    
-                    'newCustOrders' => 0,
-                    'newCustSales' => 0,
-                    'coreCustOrders' => 0,
-                    'coreCustSales' => 0,
-                    'revivalCustOrders' => 0,
-                    'revivalCustSales' => 0,
-                    
-                    'bioSales' => 0,
-                    'fertilizerSales' => 0,
-                    'otherSales' => 0,
-                ]
+                'metrics' => $emptyMetrics,
             ];
         }
     }
 
-    // 1. Call Data
-    $callTimeCondition = "AND TIME(cl.call_date) BETWEEN ? AND ?";
-    $callParams = [$companyId, $startDate, $endDate, $startTime, $endTime];
+    $endDateEx = date('Y-m-d', strtotime($endDate . ' +1 day'));
 
-    // If UI time filter is default, use dynamic business hours filtering
-    if ($startTime === '00:00' && $endTime === '23:59') {
-        $callTimeCondition = "
-            AND (
-                (DAYOFWEEK(cl.call_date) IN (2,3,4,5,6) AND TIME(cl.call_date) BETWEEN '09:00:00' AND '18:00:00')
-                OR (DAYOFWEEK(cl.call_date) IN (1,7) AND TIME(cl.call_date) BETWEEN '09:00:00' AND '16:30:00')
-            )
-        ";
-        $callParams = [$companyId, $startDate, $endDate];
-    }
-
+    // ---- 1. Calls. Day from call_date (a DATE), hour-of-day from start_time.
     $sqlCalls = "
-        SELECT 
-            DATE(cl.call_date) AS call_day,
-            u.id AS user_id,
-            COUNT(cl.id) AS total_calls,
-            SUM(CASE WHEN cl.status = 1 THEN 1 ELSE 0 END) AS connected_calls,
-            SUM(CASE WHEN cl.status = 1 AND TIME_TO_SEC(cl.duration) >= 30 THEN 1 ELSE 0 END) AS talked_calls,
-            SUM(CASE WHEN cl.status = 0 THEN 1 ELSE 0 END) AS missed_calls,
-            ROUND(COALESCE(SUM(TIME_TO_SEC(cl.duration)), 0) / 60, 2) AS total_minutes
-        FROM users u
-        JOIN call_import_logs cl ON cl.matched_user_id = u.id
-        WHERE u.company_id = ?
-            AND DATE(cl.call_date) BETWEEN ? AND ?
-            $callTimeCondition
-            AND $visibleFilter
-        GROUP BY DATE(cl.call_date), u.id
+        SELECT call_date AS call_day, matched_user_id AS user_id,
+               COUNT(*) AS total_calls,
+               SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS connected_calls,
+               SUM(CASE WHEN status = 1 AND TIME_TO_SEC(duration) >= 30 THEN 1 ELSE 0 END) AS talked_calls,
+               SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS missed_calls,
+               ROUND(COALESCE(SUM(TIME_TO_SEC(duration)), 0) / 60, 2) AS total_minutes
+        FROM call_import_logs
+        WHERE matched_user_id IN ($idPh)
+          AND call_date >= ? AND call_date < ?
+          AND start_time BETWEEN ? AND ?
+        GROUP BY call_date, matched_user_id
     ";
     $stmt = $pdo->prepare($sqlCalls);
-    $stmt->execute($callParams);
+    $stmt->execute(array_merge($activeIds, [$startDate, $endDateEx, $startTime, $endTime]));
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $d = $row['call_day'];
-        $uid = $row['user_id'];
-        if (isset($dailyData[$d][$uid])) {
-            $m = &$dailyData[$d][$uid]['metrics'];
-            $m['totalCalls'] = intval($row['total_calls']);
-            $m['connectedCalls'] = intval($row['connected_calls']);
-            $m['talkedCalls'] = intval($row['talked_calls']);
-            $m['missedCalls'] = intval($row['missed_calls']);
-            $m['totalMinutes'] = floatval($row['total_minutes']);
-            $m['answerRate'] = $m['totalCalls'] > 0 ? round(($m['connectedCalls'] / $m['totalCalls']) * 100, 1) : 0;
-        }
+        $uid = (int) $row['user_id'];
+        if (!isset($dailyData[$d][$uid])) continue;
+        $m = &$dailyData[$d][$uid]['metrics'];
+        $m['totalCalls'] = (int) $row['total_calls'];
+        $m['connectedCalls'] = (int) $row['connected_calls'];
+        $m['talkedCalls'] = (int) $row['talked_calls'];
+        $m['missedCalls'] = (int) $row['missed_calls'];
+        $m['totalMinutes'] = (float) $row['total_minutes'];
+        $m['answerRate'] = $m['totalCalls'] > 0 ? round(($m['connectedCalls'] / $m['totalCalls']) * 100, 1) : 0;
+        unset($m);
     }
 
-    // 2. Gross Orders & Sales (ทุกสถานะ เพื่อหายอดรวมตั้งต้น)
-    $sqlGrossOrders = "
-        SELECT 
-            DATE(o.order_date) AS order_day,
-            oi.creator_id AS user_id,
-            COUNT(DISTINCT o.id) AS gross_orders,
-            COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) AS gross_sales,
-            -- Cancelled
-            SUM(CASE WHEN o.order_status = 'Cancelled' THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS cancelled_sales,
-            -- Returned
-            SUM(CASE WHEN (o.order_status = 'Returned' OR ob.status = 'RETURNED') THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS returned_sales,
-            -- Net Regular Sales (Exclude Cancel, Return, BadDebt, and Upsell)
-            SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'BadDebt', 'Returned') AND (ob.status IS NULL OR ob.status != 'RETURNED') AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale != 51) THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS net_regular_sales,
-            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'BadDebt', 'Returned') AND (ob.status IS NULL OR ob.status != 'RETURNED') AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale != 51) THEN o.id END) AS net_regular_orders,
-            -- Upsell Net Sales
-            SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'BadDebt', 'Returned') AND (ob.status IS NULL OR ob.status != 'RETURNED') AND oi.basket_key_at_sale = 51 THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS net_upsell_sales,
-            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'BadDebt', 'Returned') AND (ob.status IS NULL OR ob.status != 'RETURNED') AND oi.basket_key_at_sale = 51 THEN o.id END) AS net_upsell_orders
+    // ---- 2. Orders & sales, keyed to the day the LINE was created.
+    // The order_date window is only there to let idx_orders_company_date prune the scan; the
+    // authoritative bound is on oi.created_at.
+    $lineAmount = "COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)";
+    $liveItem = "(oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL";
+    $alive = "o.order_status NOT IN ('Cancelled', 'BadDebt', 'Returned') AND (ob.status IS NULL OR ob.status <> 'RETURNED')";
+    $itemWindowStart = date('Y-m-d', strtotime($startDate . ' -' . ITEM_LAG_DAYS . ' days'));
+    $itemWindowEnd = date('Y-m-d', strtotime($endDate . ' +2 days'));
+
+    $sqlOrders = "
+        SELECT DATE(oi.created_at) AS order_day, oi.creator_id AS user_id,
+               COUNT(DISTINCT o.id) AS gross_orders,
+               COALESCE(SUM($lineAmount), 0) AS gross_sales,
+               COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' THEN $lineAmount ELSE 0 END), 0) AS cancelled_sales,
+               COALESCE(SUM(CASE WHEN o.order_status = 'Returned' OR ob.status = 'RETURNED' THEN $lineAmount ELSE 0 END), 0) AS returned_sales,
+               COALESCE(SUM(CASE WHEN $alive AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale <> 51) THEN $lineAmount ELSE 0 END), 0) AS net_regular_sales,
+               COUNT(DISTINCT CASE WHEN $alive AND (oi.basket_key_at_sale IS NULL OR oi.basket_key_at_sale <> 51) THEN o.id END) AS net_regular_orders,
+               COALESCE(SUM(CASE WHEN $alive AND oi.basket_key_at_sale = 51 THEN $lineAmount ELSE 0 END), 0) AS net_upsell_sales,
+               COUNT(DISTINCT CASE WHEN $alive AND oi.basket_key_at_sale = 51 THEN o.id END) AS net_upsell_orders,
+               COUNT(DISTINCT CASE WHEN $alive THEN o.id END) AS net_orders,
+               COUNT(DISTINCT CASE WHEN $alive AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($newKeysIn) THEN o.id END) AS new_orders,
+               COALESCE(SUM(CASE WHEN $alive AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($newKeysIn) THEN $lineAmount ELSE 0 END), 0) AS new_sales,
+               COUNT(DISTINCT CASE WHEN $alive AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($coreKeysIn) THEN o.id END) AS core_orders,
+               COALESCE(SUM(CASE WHEN $alive AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($coreKeysIn) THEN $lineAmount ELSE 0 END), 0) AS core_sales,
+               COUNT(DISTINCT CASE WHEN $alive AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($revivalKeysIn) THEN o.id END) AS revival_orders,
+               COALESCE(SUM(CASE WHEN $alive AND COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($revivalKeysIn) THEN $lineAmount ELSE 0 END), 0) AS revival_sales,
+               COALESCE(SUM(CASE WHEN $alive AND p.category LIKE '%ชีวภัณฑ์%' THEN $lineAmount ELSE 0 END), 0) AS bio_sales,
+               COALESCE(SUM(CASE WHEN $alive AND p.category LIKE '%ปุ๋ย%' THEN $lineAmount ELSE 0 END), 0) AS fertilizer_sales,
+               COALESCE(SUM(CASE WHEN $alive AND (p.category IS NULL OR (p.category NOT LIKE '%ชีวภัณฑ์%' AND p.category NOT LIKE '%ปุ๋ย%')) THEN $lineAmount ELSE 0 END), 0) AS other_sales
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
-        JOIN users u ON oi.creator_id = u.id
-        WHERE o.company_id = ?
-            AND DATE(o.order_date) BETWEEN ? AND ?
-            AND TIME(o.order_date) BETWEEN ? AND ?
-            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND oi.parent_item_id IS NULL
-            AND $visibleFilter
-        GROUP BY DATE(o.order_date), oi.creator_id
-    ";
-    $stmt = $pdo->prepare($sqlGrossOrders);
-    $stmt->execute([$companyId, $startDate, $endDate, $startTime, $endTime]);
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $d = $row['order_day'];
-        $uid = $row['user_id'];
-        if (isset($dailyData[$d][$uid])) {
-            $m = &$dailyData[$d][$uid]['metrics'];
-            $m['grossOrders'] = intval($row['gross_orders']);
-            $m['grossSales'] = floatval($row['gross_sales']);
-            $m['cancelledSales'] = floatval($row['cancelled_sales']);
-            $m['returnedSales'] = floatval($row['returned_sales']);
-            $m['totalSales'] = floatval($row['net_regular_sales']);
-            $m['totalOrders'] = intval($row['net_regular_orders']);
-            $m['upsellSales'] = floatval($row['net_upsell_sales']);
-            $m['upsellOrders'] = intval($row['net_upsell_orders']);
-        }
-    }
-
-    // 3. Segment Sales & Category Sales (Net Only - Exclude Cancelled & BadDebt to match main KPI logic)
-    $sqlSegmentSales = "
-        SELECT 
-            DATE(o.order_date) AS order_day,
-            oi.creator_id AS user_id,
-            -- New
-            COUNT(DISTINCT CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($newKeysIn) THEN o.id END) AS new_orders,
-            SUM(CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($newKeysIn) THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS new_sales,
-            -- Core
-            COUNT(DISTINCT CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($coreKeysIn) THEN o.id END) AS core_orders,
-            SUM(CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($coreKeysIn) THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS core_sales,
-            -- Revival
-            COUNT(DISTINCT CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($revivalKeysIn) THEN o.id END) AS revival_orders,
-            SUM(CASE WHEN COALESCE(oi.basket_key_at_sale, o.basket_key_at_sale) IN ($revivalKeysIn) THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS revival_sales,
-            -- Category
-            SUM(CASE WHEN p.category LIKE '%ชีวภัณฑ์%' THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS bio_sales,
-            SUM(CASE WHEN p.category LIKE '%ปุ๋ย%' THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS fertilizer_sales,
-            SUM(CASE WHEN p.category NOT LIKE '%ชีวภัณฑ์%' AND p.category NOT LIKE '%ปุ๋ย%' THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END) AS other_sales
-        FROM order_items oi
-        JOIN orders o ON oi.parent_order_id = o.id
         LEFT JOIN products p ON oi.product_id = p.id
-        WHERE o.company_id = ?
-            AND DATE(o.order_date) BETWEEN ? AND ?
-            AND TIME(o.order_date) BETWEEN ? AND ?
-            AND o.order_status NOT IN ('Cancelled', 'BadDebt')
-            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
-            AND oi.parent_item_id IS NULL
-            AND oi.creator_id IN ($visibleIdsIn)
-        GROUP BY DATE(o.order_date), oi.creator_id
+        WHERE oi.creator_id IN ($idPh)
+          AND o.company_id = ?
+          AND o.order_date >= ? AND o.order_date < ?
+          AND oi.created_at >= ? AND oi.created_at < ?
+          AND TIME(oi.created_at) BETWEEN ? AND ?
+          AND $liveItem
+        GROUP BY DATE(oi.created_at), oi.creator_id
     ";
-    $stmt = $pdo->prepare($sqlSegmentSales);
-    $stmt->execute([$companyId, $startDate, $endDate, $startTime, $endTime]);
+    $stmt = $pdo->prepare($sqlOrders);
+    $stmt->execute(array_merge($activeIds, [
+        $companyId, $itemWindowStart, $itemWindowEnd,
+        $startDate . ' 00:00:00', $endDateEx . ' 00:00:00',
+        $startTime, $endTime,
+    ]));
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $d = $row['order_day'];
-        $uid = $row['user_id'];
-        if (isset($dailyData[$d][$uid])) {
-            $m = &$dailyData[$d][$uid]['metrics'];
-            $m['newCustOrders'] = intval($row['new_orders']);
-            $m['newCustSales'] = floatval($row['new_sales']);
-            $m['coreCustOrders'] = intval($row['core_orders']);
-            $m['coreCustSales'] = floatval($row['core_sales']);
-            $m['revivalCustOrders'] = intval($row['revival_orders']);
-            $m['revivalCustSales'] = floatval($row['revival_sales']);
-            
-            $m['bioSales'] = floatval($row['bio_sales']);
-            $m['fertilizerSales'] = floatval($row['fertilizer_sales']);
-            $m['otherSales'] = floatval($row['other_sales']);
-        }
+        $uid = (int) $row['user_id'];
+        if (!isset($dailyData[$d][$uid])) continue;
+        $m = &$dailyData[$d][$uid]['metrics'];
+        $m['grossOrders'] = (int) $row['gross_orders'];
+        $m['grossSales'] = (float) $row['gross_sales'];
+        $m['cancelledSales'] = (float) $row['cancelled_sales'];
+        $m['returnedSales'] = (float) $row['returned_sales'];
+        $m['totalSales'] = (float) $row['net_regular_sales'];
+        $m['totalOrders'] = (int) $row['net_regular_orders'];
+        $m['upsellSales'] = (float) $row['net_upsell_sales'];
+        $m['upsellOrders'] = (int) $row['net_upsell_orders'];
+        $m['netOrders'] = (int) $row['net_orders'];       // DISTINCT across regular+upsell, no double count
+        $m['newCustOrders'] = (int) $row['new_orders'];
+        $m['newCustSales'] = (float) $row['new_sales'];
+        $m['coreCustOrders'] = (int) $row['core_orders'];
+        $m['coreCustSales'] = (float) $row['core_sales'];
+        $m['revivalCustOrders'] = (int) $row['revival_orders'];
+        $m['revivalCustSales'] = (float) $row['revival_sales'];
+        $m['bioSales'] = (float) $row['bio_sales'];
+        $m['fertilizerSales'] = (float) $row['fertilizer_sales'];
+        $m['otherSales'] = (float) $row['other_sales'];
+        unset($m);
     }
 
+    // ---- 3. Attendance
+    // DB เก็บ attendance_value เป็นสัดส่วนของวัน 8 ชม. — เพดาน 1 วันต่อวัน
+    // "วันทำงาน" ของ KPI ไม่เท่ากับชั่วโมงหาร 8: เสาร์-อาทิตย์ของ role 6/7 ทำงาน 6 ชม.
+    // ก็นับเป็น 1 วันเต็ม (ดู kpi_hours_per_work_day) Admin Page ใช้ 8 ชม. ทุกวัน
     $roleByUser = [];
-    foreach ($visibleUsersList as $u) {
-        $roleByUser[(int) $u['id']] = (int) ($u['role_id'] ?? 0);
+    foreach ($activeIds as $uid) {
+        $roleByUser[(int) $uid] = (int) ($userMap[(int) $uid]['role_id'] ?? 0);
     }
 
-    // 5. Attendance: cap 1 day; weekend 6h only for role 6/7. DB stores hours/8.
-    $sqlAttendance = "
-        SELECT 
-            DATE(work_date) AS work_day,
-            user_id,
-            SUM(attendance_value) AS working_days
-        FROM user_daily_attendance
-        WHERE DATE(work_date) BETWEEN ? AND ?
-        GROUP BY DATE(work_date), user_id
-    ";
-    $stmt = $pdo->prepare($sqlAttendance);
-    $stmt->execute([$startDate, $endDate]);
+    $stmt = $pdo->prepare("SELECT work_date AS work_day, user_id, SUM(attendance_value) AS working_days
+                           FROM user_daily_attendance
+                           WHERE work_date >= ? AND work_date < ? AND user_id IN ($idPh)
+                           GROUP BY work_date, user_id");
+    $stmt->execute(array_merge([$startDate, $endDateEx], $activeIds));
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $d = $row['work_day'];
-        $uid = $row['user_id'];
-        if (isset($dailyData[$d][$uid])) {
-            $raw = min(floatval($row['working_days']), 1.0);
-            $clockHours = $raw * 8;
-            $hoursPerDay = kpi_hours_per_work_day($d, $roleByUser[(int) $uid] ?? 0);
-            $workingDays = $hoursPerDay > 0 ? $clockHours / $hoursPerDay : 0;
-            $dailyData[$d][$uid]['metrics']['workingDays'] = min($workingDays, 1.0);
-            $dailyData[$d][$uid]['metrics']['workingHours'] = $clockHours;
-        }
+        $uid = (int) $row['user_id'];
+        if (!isset($dailyData[$d][$uid])) continue;
+        $clockHours = min(floatval($row['working_days']), 1.0) * 8;
+        $hoursPerDay = kpi_hours_per_work_day($d, $roleByUser[$uid] ?? 0);
+        $dailyData[$d][$uid]['metrics']['workingHours'] = $clockHours;
+        $dailyData[$d][$uid]['metrics']['workingDays'] = $hoursPerDay > 0
+            ? min($clockHours / $hoursPerDay, 1.0)
+            : 0;
     }
 
-    // Flatten data for frontend
     $flatData = [];
-    foreach ($dailyData as $d => $users) {
-        foreach ($users as $uid => $record) {
-            $flatData[] = $record;
-        }
+    foreach ($dailyData as $d => $perUser) {
+        foreach ($perUser as $record) $flatData[] = $record;
     }
 
-    // Also send a user list for filtering
-    $usersList = array_map(function($u) use ($resolveTeamName) {
-        return [
-            'id' => $u['id'],
-            'name' => trim($u['first_name'] . ' ' . $u['last_name']),
-            'team' => $resolveTeamName($u)
-        ];
-    }, $visibleUsersList);
+    $usersList = [];
+    foreach ($activeIds as $uid) {
+        $m = $userMap[$uid];
+        $usersList[] = ['id' => $uid, 'name' => $m['name'], 'team' => $m['team_name'], 'teamKey' => $m['team_key']];
+    }
 
-    json_response([
-        'success' => true,
-        'data' => [
-            'dailyRecords' => $flatData,
-            'users' => $usersList
-        ]
-    ]);
+    json_response(['success' => true, 'data' => ['dailyRecords' => $flatData, 'users' => $usersList]]);
 
 } catch (Exception $e) {
-    error_log("Error in telesale_daily_performance API: " . $e->getMessage());
+    error_log('Telesale Daily Performance API Error: ' . $e->getMessage());
     json_response(['success' => false, 'message' => 'Internal server error: ' . $e->getMessage()], 500);
 }

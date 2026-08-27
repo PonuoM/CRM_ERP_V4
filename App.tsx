@@ -7471,7 +7471,7 @@ const App: React.FC = () => {
       case "Telesale Performance":
       case "home.telesale_performance":
       case "วิเคราะห์ประสิทธิภาพ Telesale":
-        return <TelesalePerformancePage users={users} />;
+        return <TelesalePerformancePage />;
 
       case "Telesale Callstats":
       case "monitor.callstats":
