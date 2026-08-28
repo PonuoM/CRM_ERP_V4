@@ -59,6 +59,8 @@ export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]>
             r.assigned_to !== null && typeof r.assigned_to !== "undefined"
                 ? Number(r.assigned_to)
                 : null,
+        // มาพร้อมข้อมูลลูกค้าเลย จะได้ไม่ต้องรอรายชื่อผู้ใช้ที่โหลดคนละรอบ
+        assignedToName: r.assigned_to_name ?? null,
         dateAssigned: r.date_assigned,
         dateRegistered: r.date_registered ?? undefined,
         followUpDate: r.follow_up_date ?? undefined,

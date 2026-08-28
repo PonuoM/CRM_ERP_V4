@@ -121,6 +121,19 @@ try {
     // returned_boxes uses same orderWhereClause (filter by order_date)
     $returnWhereClause = "ob.status = 'RETURNED' AND " . $orderWhereClause;
 
+    // ยอดสินค้าแยกหมวด "ของกล่องนั้น" — ต้องเป็น subquery ต่อกล่อง ห้าม JOIN order_items
+    // เข้ามาตรง ๆ เพราะบิลที่มีหลายรายการจะทำให้ order_boxes ซ้ำเป็นเงา แล้ว
+    // SUM(ob.cod_amount) พองเป็นจำนวนเท่าของรายการในบิล (เคสตีกลับ 4 กล่อง โชว์ 92,000 แทน 23,000)
+    $boxCategoryExpr = "COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1))";
+    $boxItemsSumSql = function ($categoryCondition) use ($boxCategoryExpr) {
+      return "COALESCE((SELECT SUM(oi.net_total) FROM order_items oi LEFT JOIN products pr ON oi.product_id = pr.id"
+        . " WHERE oi.parent_order_id = o.id AND oi.box_number = ob.box_number"
+        . " AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL"
+        . " AND {$boxCategoryExpr} {$categoryCondition}), 0)";
+    };
+    $boxBioSql = $boxItemsSumSql("= 'ชีวภัณฑ์'");
+    $boxFertilizerSql = $boxItemsSumSql("LIKE '%ปุ๋ย%'");
+
     // Build WHERE for NOT EXISTS subquery (uses mal. alias prefix)
     $logExistsConditions = ["1=1"];
     $logExistsParams = [];
@@ -236,13 +249,11 @@ try {
                 o.sales_channel_page_id,
                 ads_dates.user_id,
                 SUM(ob.cod_amount) as returned_sales,
-                SUM(CASE WHEN COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) = 'ชีวภัณฑ์' THEN oi.net_total ELSE 0 END) as returned_sales_bio,
-                SUM(CASE WHEN COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) LIKE '%ปุ๋ย%' THEN oi.net_total ELSE 0 END) as returned_sales_fertilizer,
+                SUM($boxBioSql) as returned_sales_bio,
+                SUM($boxFertilizerSql) as returned_sales_fertilizer,
                 COUNT(DISTINCT ob.id) as returned_orders
             FROM order_boxes ob
             JOIN orders o ON ob.order_id = o.id
-            JOIN order_items oi ON o.id = oi.parent_order_id AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL
-            LEFT JOIN products pr ON oi.product_id = pr.id
             INNER JOIN (
                 SELECT DISTINCT page_id, user_id, date
                 FROM marketing_ads_log
@@ -337,13 +348,11 @@ try {
             SELECT 
                 o.sales_channel_page_id,
                 SUM(ob.cod_amount) as returned_sales,
-                SUM(CASE WHEN COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) = 'ชีวภัณฑ์' THEN oi.net_total ELSE 0 END) as returned_sales_bio,
-                SUM(CASE WHEN COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) LIKE '%ปุ๋ย%' THEN oi.net_total ELSE 0 END) as returned_sales_fertilizer,
+                SUM($boxBioSql) as returned_sales_bio,
+                SUM($boxFertilizerSql) as returned_sales_fertilizer,
                 COUNT(DISTINCT ob.id) as returned_orders
             FROM order_boxes ob
             JOIN orders o ON ob.order_id = o.id
-            JOIN order_items oi ON o.id = oi.parent_order_id AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL
-            LEFT JOIN products pr ON oi.product_id = pr.id
             WHERE $returnWhereClause
             AND NOT EXISTS (
                 SELECT 1 FROM marketing_ads_log mal

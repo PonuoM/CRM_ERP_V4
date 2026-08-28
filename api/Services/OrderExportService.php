@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../phone_privacy.php';
+
 class OrderExportService {
 
     private static function formatThaiAddressPart(string $partName, string $value, string $provinceContext): string {
@@ -334,7 +336,7 @@ class OrderExportService {
             trim($creatorName) ?: '-',
             $creatorRole,
             $customerName ?: '-',
-            $row['customer_phone'] ?? '-',
+            customer_phone_export($row['customer_phone'] ?? '') ?: '-',
             $customerTypeThai[$row['customer_type'] ?? $row['lifecycle_status'] ?? ''] ?? ($row['customer_type'] ?? $row['lifecycle_status'] ?? '-'),
             $row['delivery_date'] ? date('d/m/Y', strtotime($row['delivery_date'])) : '-',
             $row['sales_channel'] ?? '-',

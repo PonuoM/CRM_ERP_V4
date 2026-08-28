@@ -22,6 +22,46 @@ const apiBasePath =
   typeof window === "undefined" ? "/api" : resolveApiBasePath();
 const base = `${apiBasePath.replace(/\/$/, "")}/index.php/`; // works with or without Apache rewrite
 
+// Backoff before each retry. Two entries = up to two retries.
+const RETRY_DELAYS_MS = [150, 500];
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The host drops a measured ~6.5% of PHP requests before PHP even starts — the reply is
+ * a 500 with an empty body and none of the headers this API sets, and it hits every PHP
+ * app on the server, phpMyAdmin included. Nothing in this codebase can prevent it.
+ *
+ * It matters here because a page opens with roughly eight calls in parallel, so at that
+ * drop rate nearly half of all page loads lose at least one and render as broken. One
+ * retry takes that to well under a percent.
+ *
+ * Only repeat-safe methods retry: a dropped POST may well have been executed before the
+ * reply was lost, so re-sending it could duplicate an order or a call log.
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit | undefined,
+  headers: any,
+  retryable: boolean,
+): Promise<{ res: Response; text: string }> {
+  for (let attempt = 0; ; attempt++) {
+    const lastAttempt = !retryable || attempt >= RETRY_DELAYS_MS.length;
+    try {
+      const res = await fetch(url, { ...init, headers });
+      const text = await res.text();
+      // 4xx is a real answer from the app — retrying it just wastes a round trip.
+      if (res.status < 500 || lastAttempt) return { res, text };
+    } catch (err) {
+      // Connection reset before any response: same host fault, same remedy.
+      if (lastAttempt) throw err;
+    }
+    await sleep(RETRY_DELAYS_MS[attempt]);
+  }
+}
+
 export async function apiFetch(path: string, init?: RequestInit) {
   const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
   const headers: any = { "Content-Type": "application/json", ...(init?.headers || {}) };
@@ -47,12 +87,14 @@ export async function apiFetch(path: string, init?: RequestInit) {
   headers["Pragma"] = "no-cache";
   headers["Expires"] = "0";
 
-  const res = await fetch(url, {
-    ...init,
+  const method = (init?.method || "GET").toUpperCase();
+  const { res, text } = await fetchWithRetry(
+    url,
+    init,
     headers,
-  });
+    method === "GET" || method === "HEAD",
+  );
 
-  const text = await res.text();
   let data: any = null;
   
   if (text.trim() === '') {
@@ -1124,6 +1166,92 @@ export async function updateAppointment(id: number, payload: any) {
 
 export async function createCall(payload: any) {
   return apiFetch("call_history", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─────────── ข้อมูลสวนลูกค้า (พืชพันธุ์ + ขนาดสวน) — ดู migration 088 ───────────
+
+export interface Crop {
+  crop_id: number;
+  name: string;
+  category: string;
+  default_unit: "ไร่" | "ต้น";
+  status: "approved" | "pending" | "merged";
+  usage_count?: number;
+}
+
+export interface CustomerPlot {
+  plot_id?: number;
+  crop_id: number | null;
+  crop_name?: string | null;
+  category?: string | null;
+  default_unit?: string | null;
+  size_value: string | number | null;
+  size_unit: string | null;
+  size_bucket?: string | null;
+  is_home_garden: number;
+  note?: string | null;
+  source?: string;
+}
+
+/** ค้นพืชสำหรับ combobox — ค้นทั้งชื่อจริงและชื่อพ้อง ("ลำใย" ต้องเจอ "ลำไย") */
+export async function searchCrops(q: string, limit = 20): Promise<{ items: Crop[]; suggest: (Crop & { confidence: string }) | null }> {
+  const qs = new URLSearchParams();
+  if (q) qs.set("q", q);
+  qs.set("limit", String(limit));
+  return apiFetch(`crops?${qs.toString()}`);
+}
+
+/**
+ * เพิ่มพืชใหม่ — ใช้งานได้ทันที ไม่ต้องรออนุมัติ
+ * ถ้าระบบเจอตัวใกล้เคียงจะคืน needsConfirm มาก่อน ให้ถามผู้ใช้แล้วส่ง force=true กลับมา
+ */
+export async function createCrop(name: string, opts?: { force?: boolean; userId?: number }) {
+  return apiFetch("crops", {
+    method: "POST",
+    body: JSON.stringify({ name, force: opts?.force ?? false, userId: opts?.userId }),
+  });
+}
+
+export async function getCustomerPlots(customerId: string | number): Promise<{ customerId: number; plots: CustomerPlot[] }> {
+  return apiFetch(`customer_plots?customerId=${encodeURIComponent(String(customerId))}`);
+}
+
+/** บันทึกชุดข้อมูลสวนทั้งหมดของลูกค้า (ส่งมาทั้งชุดเสมอ ระบบจะแทนที่ของเดิม) */
+export async function saveCustomerPlots(payload: {
+  customerId: string | number;
+  plots: Array<{
+    cropId?: number | null;
+    cropName?: string | null;
+    sizeValue?: number | string | null;
+    sizeUnit?: string | null;
+    isHomeGarden?: boolean;
+    note?: string | null;
+  }>;
+  callId?: number | null;
+  userId?: number | null;
+}) {
+  return apiFetch("customer_plots", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** คิวตรวจของ admin */
+export async function listPendingCrops(limit = 50) {
+  return apiFetch(`crops?action=pending&limit=${limit}`);
+}
+
+export async function reviewCrop(payload: {
+  cropId: number;
+  action: "approve" | "merge" | "discard";
+  mergeInto?: number;
+  category?: string;
+  defaultUnit?: "ไร่" | "ต้น";
+}) {
+  return apiFetch("crops?action=review", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -3466,5 +3594,110 @@ export async function saveProductDefaultFactory(payload: {
   return apiFetch("inventory/save_product_default_factory.php", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * What this user may see of customer phone numbers.
+ *
+ * Read once after login rather than inferred from the data. Two reasons: a column full of the mask
+ * word is worse than no column at all, and matching that word in the UI would silently break the
+ * day the wording changes. The server owns the policy — see api/phone_privacy.php.
+ */
+export interface PhonePolicy {
+  /** 'off' = nothing masked (behaves as it always has) · 'exports_only' · 'full' */
+  stage: "off" | "exports_only" | "full";
+  /** This role is allowed to read real numbers. */
+  can_view_phone: boolean;
+  /** Numbers on screen are masked for this user — hide the column, do not print the mask. */
+  phone_hidden: boolean;
+  /** Searching customers by phone still works. */
+  can_search_phone: boolean;
+  /** Shown when a number exists but no digits at all can be offered. */
+  mask: string;
+  /** The character standing in for each hidden digit, e.g. "x" in 08xxxxxx78. */
+  maskChar: string;
+  /** This agent has a registered handset, so click-to-call is available. */
+  can_click_to_call: boolean;
+}
+
+/** Safe default: assume nothing is hidden, matching how the system behaved before masking existed. */
+export const DEFAULT_PHONE_POLICY: PhonePolicy = {
+  stage: "off",
+  can_view_phone: true,
+  phone_hidden: false,
+  can_search_phone: true,
+  mask: "ซ่อน",
+  maskChar: "x",
+  can_click_to_call: false,
+};
+
+export async function fetchPhonePolicy(): Promise<PhonePolicy> {
+  try {
+    const res = await apiFetch("phone_policy");
+    if (res && res.ok) {
+      return {
+        stage: res.stage ?? "off",
+        can_view_phone: !!res.can_view_phone,
+        phone_hidden: !!res.phone_hidden,
+        can_search_phone: res.can_search_phone !== false,
+        mask: res.mask ?? "ซ่อน",
+        maskChar: (res.mask_char ?? "x").toLowerCase(),
+        can_click_to_call: !!res.can_click_to_call,
+      };
+    }
+  } catch {
+    // An older server has no such route. Falling back to "nothing hidden" keeps the UI working;
+    // the server masks the data regardless, so this can never reveal a number that was hidden.
+  }
+  return DEFAULT_PHONE_POLICY;
+}
+
+// ── Click-to-call ──────────────────────────────────────────────────────────────────────────────
+
+/** One of a customer's numbers, already masked to whatever this user is allowed to see. */
+export interface CallableNumber {
+  index: number;
+  label: string;
+  display: string;
+}
+
+export interface CallSession {
+  id: number;
+  status: "queued" | "dispatched" | "ringing" | "answered" | "ended" | "failed" | "cancelled";
+  answered_at: string | null;
+  ended_at: string | null;
+  duration_sec: number | null;
+  failure_reason: string | null;
+}
+
+/** What the agent's handset should ring. Positions match what dialCustomer expects. */
+export async function fetchCallableNumbers(customerId: number | string): Promise<CallableNumber[]> {
+  const res = await apiFetch(`call/numbers?customer_id=${encodeURIComponent(String(customerId))}`);
+  return res?.ok ? (res.numbers ?? []) : [];
+}
+
+/**
+ * Ask the agent's handset to ring a customer.
+ *
+ * Sends only the customer and which of their numbers to use — the number itself never travels to
+ * the browser, which is the entire point of the feature.
+ */
+export async function dialCustomer(customerId: number | string, phoneIndex = 0) {
+  return apiFetch("call/dial", {
+    method: "POST",
+    body: JSON.stringify({ customer_id: customerId, phone_index: phoneIndex }),
+  });
+}
+
+export async function fetchCallStatus(sessionId: number): Promise<CallSession | null> {
+  const res = await apiFetch(`call/status?session_id=${sessionId}`);
+  return res?.ok ? (res.session as CallSession) : null;
+}
+
+export async function cancelCall(sessionId: number) {
+  return apiFetch("call/cancel", {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId }),
   });
 }

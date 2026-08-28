@@ -13,6 +13,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 try {
     $pdo = db_connect();
+    require_once __DIR__ . '/../phone_privacy.php';
+    phone_privacy_init($pdo);
 
     $companyId = isset($_GET['company_id']) ? (int) $_GET['company_id'] : 0;
     $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
@@ -173,7 +175,7 @@ try {
             'order_id' => $order['order_id'],
             'order_date' => $order['order_date'],
             'customer_name' => $order['customer_name'],
-            'customer_phone' => $order['customer_phone'],
+            'customer_phone' => customer_phone_ui($order['customer_phone'] ?? ''),
             'total_amount' => (float) $order['total_amount'],
             'creator_name' => $order['creator_name'],
             'suggested_type_id' => $hasRelated ? $beforeSystemId : $afterSystemId,

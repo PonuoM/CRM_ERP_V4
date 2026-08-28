@@ -3,6 +3,7 @@ import { Customer, Order, User, Address, UserRole, Page } from "../types";
 import { listOrders, listCustomers, listPages } from "../services/api";
 import { mapOrderFromApi } from "../utils/orderMapper";
 import { mapCustomerFromApi } from "../utils/customerMapper";
+import { usePhonePolicy } from "../hooks/usePhonePolicy";
 import {
   Search,
   Trash2,
@@ -33,6 +34,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
   onStartCreateOrder,
   pages: propPages,
 }) => {
+  const phonePolicy = usePhonePolicy();
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
@@ -290,7 +292,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
               <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="ค้นหาด้วยชื่อ, เบอร์โทร หรือเบอร์สำรอง..."
+                placeholder={phonePolicy.can_search_phone ? "ค้นหาด้วยชื่อ, เบอร์โทร หรือเบอร์สำรอง..." : "ค้นหาด้วยชื่อลูกค้า หรือรหัสลูกค้า..."}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -615,7 +617,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
           searchResults.length === 0 && hasSearched && !isSearching && (
             <div className="mt-6 text-center text-gray-500">
               <p>ไม่พบข้อมูลลูกค้าที่ตรงกับคำค้นหา: "{searchTerm}"</p>
-              <p className="text-xs mt-2">ลองค้นหาด้วยเบอร์โทร, เบอร์สำรอง หรือชื่อลูกค้า</p>
+              <p className="text-xs mt-2">{phonePolicy.can_search_phone ? "ลองค้นหาด้วยเบอร์โทร, เบอร์สำรอง หรือชื่อลูกค้า" : "ค้นหาด้วยเบอร์โทรถูกปิดไว้ — ลองค้นด้วยชื่อหรือรหัสลูกค้าแทน"}</p>
             </div>
           )
         )}

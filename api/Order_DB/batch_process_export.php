@@ -41,6 +41,8 @@ try {
     $orderIds = array_slice($orderIds, 0, 500);
 
     $pdo = db_connect();
+    require_once __DIR__ . '/../phone_privacy.php';
+    phone_privacy_init($pdo);
     set_audit_context($pdo, 'orders/batch_export');
 
 
@@ -68,6 +70,7 @@ try {
     $stmt = $pdo->prepare($orderSql);
     $stmt->execute($orderIds);
     $ordersRaw = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $ordersRaw = array_map('scrub_customer_row', $ordersRaw);
 
     if (empty($ordersRaw)) {
         $pdo->rollBack();
@@ -205,8 +208,12 @@ try {
     // ═══════════════════════════════════════════════════════════
     // 3.5 Update customers.assigned_to = creator_id
     //     เฉพาะเมื่อ creator มี role_id IN (6, 7) เท่านั้น
+    //     และเฉพาะลูกค้าที่ "ยังไม่มีผู้ดูแล" เท่านั้น
+    //     ลูกค้าที่มีผู้ดูแลอยู่แล้ว ห้ามเปลี่ยนเจ้าของที่นี่ — ต้องอยู่กับเจ้าของเดิม
+    //     จนหมดสิทธิ์ตามกติกาตะกร้า (ดู BasketRoutingServiceV2 กฎ P4/P5/P6)
     //     ถ้า customer มีหลาย orders ใน batch → ใช้ creator_id จาก order ล่าสุด
     // ═══════════════════════════════════════════════════════════
+    $crossOwnerSales = []; // customer_id => ['creator_id' => x, 'owner_id' => y] สำหรับ log ข้อ 3.6
     if ($targetStatus === 'Picking') {
         // Collect customer_id => creator_id mapping (latest order wins)
         $customerCreatorMap = [];
@@ -233,15 +240,81 @@ try {
                 $creatorRoles[(int)$row['id']] = (int)$row['role_id'];
             }
 
-            // Update assigned_to only if creator has role_id 6 or 7
-            $assignStmt = $pdo->prepare("UPDATE customers SET assigned_to = ? WHERE customer_id = ?");
+            // ดึงผู้ดูแลปัจจุบันของลูกค้าทุกรายใน batch ก่อน เพื่อไม่ให้เขียนทับของคนอื่น
+            $custIds = array_keys($customerCreatorMap);
+            $custPlaceholders = implode(',', array_fill(0, count($custIds), '?'));
+            $ownerStmt = $pdo->prepare("SELECT customer_id, assigned_to FROM customers WHERE customer_id IN ($custPlaceholders)");
+            $ownerStmt->execute(array_values($custIds));
+            $currentOwners = [];
+            foreach ($ownerStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $currentOwners[(int)$row['customer_id']] = (int)($row['assigned_to'] ?? 0);
+            }
+
+            // Update assigned_to only if creator has role_id 6 or 7 AND ลูกค้ายังไม่มีผู้ดูแล
+            // เงื่อนไข assigned_to IS NULL ใน SQL เป็นด่านสุดท้ายกัน race condition
+            $assignStmt = $pdo->prepare("UPDATE customers SET assigned_to = ? WHERE customer_id = ? AND (assigned_to IS NULL OR assigned_to = 0)");
             foreach ($customerCreatorMap as $custId => $info) {
                 $creatorId = (int)$info['creator_id'];
                 $roleId = $creatorRoles[$creatorId] ?? null;
-                if ($roleId === 6 || $roleId === 7) {
-                    $assignStmt->execute([$creatorId, $custId]);
+                if ($roleId !== 6 && $roleId !== 7) {
+                    continue;
                 }
+
+                $ownerId = $currentOwners[(int)$custId] ?? 0;
+                if ($ownerId > 0) {
+                    // มีผู้ดูแลอยู่แล้ว → ไม่แตะเจ้าของ
+                    // ถ้าคนเปิดบิลไม่ใช่ผู้ดูแล ให้เก็บไว้ log ในข้อ 3.6
+                    if ($ownerId !== $creatorId) {
+                        $crossOwnerSales[(int)$custId] = ['creator_id' => $creatorId, 'owner_id' => $ownerId];
+                    }
+                    continue;
+                }
+
+                $assignStmt->execute([$creatorId, $custId]);
             }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 3.6 บันทึกกรณี "คนอื่นเปิดบิลให้ลูกค้าที่มีผู้ดูแลอยู่แล้ว"
+    //     ผู้ดูแลไม่เปลี่ยน แต่ต้องมีร่องรอยให้หัวหน้าตรวจย้อนหลังได้
+    // ═══════════════════════════════════════════════════════════
+    if (!empty($crossOwnerSales)) {
+        $nameIdMap = [];
+        foreach ($crossOwnerSales as $info) {
+            $nameIdMap[(int)$info['creator_id']] = true;
+            $nameIdMap[(int)$info['owner_id']] = true;
+        }
+        $nameIds = array_keys($nameIdMap);
+        $namePlaceholders = implode(',', array_fill(0, count($nameIds), '?'));
+        $nameStmt = $pdo->prepare("SELECT id, first_name, last_name FROM users WHERE id IN ($namePlaceholders)");
+        $nameStmt->execute($nameIds);
+        $userNames = [];
+        foreach ($nameStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $userNames[(int)$row['id']] = trim($row['first_name'] . ' ' . $row['last_name']);
+        }
+
+        $crossRows = [];
+        $crossParams = [];
+        $crossNow = date('Y-m-d H:i:s');
+        foreach ($crossOwnerSales as $custId => $info) {
+            $sellerId = (int)$info['creator_id'];
+            $ownerId = (int)$info['owner_id'];
+            $sellerName = isset($userNames[$sellerId]) ? $userNames[$sellerId] : ('#' . $sellerId);
+            $ownerName = isset($userNames[$ownerId]) ? $userNames[$ownerId] : ('#' . $ownerId);
+
+            $crossRows[] = "(?, ?, ?, ?, ?)";
+            $crossParams[] = $custId;
+            $crossParams[] = 'cross_owner_sale';
+            $crossParams[] = "{$sellerName} เปิดบิลให้ลูกค้าที่อยู่ในความดูแลของ {$ownerName} — ผู้ดูแลไม่เปลี่ยน";
+            $crossParams[] = $sellerName;
+            $crossParams[] = $crossNow;
+        }
+
+        if (!empty($crossRows)) {
+            $crossSql = "INSERT INTO activities (customer_id, type, description, actor_name, timestamp) VALUES " . implode(',', $crossRows);
+            $crossStmt = $pdo->prepare($crossSql);
+            $crossStmt->execute($crossParams);
         }
     }
 

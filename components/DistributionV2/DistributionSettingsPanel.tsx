@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, ShieldCheck, Clock } from 'lucide-react';
 import { BasketConfig } from '../../types/distribution';
 
 interface DistributionSettingsPanelProps {
@@ -14,8 +14,9 @@ interface DistributionSettingsPanelProps {
     fetchAllBasketCounts: () => void;
     fetchCustomers: () => void;
     fetchAgents: () => void;
-    strictDuplicateCheck: boolean;
-    setStrictDuplicateCheck: (val: boolean) => void;
+    poolReadyCount: number;
+    poolCooldownCount: number;
+    poolCooldownDays: number;
 }
 
 const DistributionSettingsPanel: React.FC<DistributionSettingsPanelProps> = ({
@@ -30,8 +31,9 @@ const DistributionSettingsPanel: React.FC<DistributionSettingsPanelProps> = ({
     fetchAllBasketCounts,
     fetchCustomers,
     fetchAgents,
-    strictDuplicateCheck,
-    setStrictDuplicateCheck
+    poolReadyCount,
+    poolCooldownCount,
+    poolCooldownDays
 }) => {
     return (
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
@@ -76,17 +78,19 @@ const DistributionSettingsPanel: React.FC<DistributionSettingsPanelProps> = ({
                     </button>
                 </div>
             </div>
-            <div className="mt-4 flex items-center gap-2 border-t pt-4">
-                <input 
-                    type="checkbox" 
-                    id="strictDuplicateCheck" 
-                    checked={strictDuplicateCheck} 
-                    onChange={(e) => setStrictDuplicateCheck(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
-                />
-                <label htmlFor="strictDuplicateCheck" className="text-sm text-gray-700 select-none cursor-pointer">
-                    เปิดใช้งาน Smart Allocation (ตรวจสอบและหลีกเลี่ยงการแจกรายชื่อซ้ำให้พนักงานคนเดิม)
-                </label>
+            <div className="mt-4 border-t pt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                <span className="inline-flex items-center gap-1.5 text-green-700 font-medium">
+                    <ShieldCheck size={16} />
+                    Smart Allocation เปิดอยู่เสมอ
+                    <span className="font-normal text-gray-500">— ไม่แจกรายชื่อซ้ำให้พนักงานคนเดิม</span>
+                </span>
+                {poolCooldownCount > 0 && (
+                    <span className="inline-flex items-center gap-1.5 text-amber-700">
+                        <Clock size={16} />
+                        พร้อมแจก <strong>{poolReadyCount.toLocaleString()}</strong>
+                        <span className="text-gray-500">· เพิ่งโทรติดใน {poolCooldownDays} วัน {poolCooldownCount.toLocaleString()} ราย (อยู่ท้ายคิว)</span>
+                    </span>
+                )}
             </div>
         </div>
     );

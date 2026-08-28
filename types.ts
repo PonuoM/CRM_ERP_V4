@@ -399,6 +399,8 @@ export interface Customer {
   province: string;
   companyId: number;
   assignedTo: number | null;
+  /** ชื่อผู้ดูแล ส่งมาจากเซิร์ฟเวอร์พร้อมข้อมูลลูกค้า ใช้แทนการค้นจากรายชื่อผู้ใช้ที่โหลดคนละรอบและมาช้ากว่า */
+  assignedToName?: string | null;
   dateAssigned: string;
   dateRegistered?: string;
   followUpDate?: string;
@@ -942,6 +944,15 @@ export interface CustomerLog {
   changedFields?: string[] | null;
   createdBy?: number | null;
   createdByName?: string | null;
+  /**
+   * Which code path made the change — the difference between a sale, a transfer, a reclaim and a
+   * scheduled rule move, all of which look identical in the raw column values.
+   */
+  apiSource?: string | null;
+  /** Basket id → ชื่อถัง, resolved server-side so the feed can say a name instead of "39 → 40". */
+  basketLabels?: Record<string, string> | null;
+  /** User id → ชื่อ, resolved server-side so deactivated staff still show a name, not an id. */
+  userLabels?: Record<string, string> | null;
   createdAt: string;
 }
 

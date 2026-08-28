@@ -453,6 +453,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Role Management", icon: Key, key: "data.roles" },
         { label: "จับคู่พนักงาน HR", icon: Users, key: "data.hr_employee_mapping" },
         { label: "จัดการพื้นที่ทำงาน", icon: Settings, key: "settings.geo_company" },
+        // Deciding who can read customer numbers is a system-administration act, not a
+        // day-to-day one — the API refuses the same roles this rule hides it from.
+        { label: "การมองเห็นเบอร์ลูกค้า", icon: Settings, key: "settings.phone_privacy",
+          allowRule: (u: UserType) => u.role === UserRole.SuperAdmin || u.role === UserRole.CEO },
         { label: "Addresses", icon: MapPin, key: "data.addresses" },
         { label: "Database Management", icon: Database, key: "data.database", allowRule: (u: UserType) => u.role === UserRole.SuperAdmin },
       ]

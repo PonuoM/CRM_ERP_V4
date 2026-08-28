@@ -679,11 +679,15 @@ function handle_customers(PDO $pdo, ?string $id): void
                             }
                             $matches[] = [
                                 'customer_id'        => $r['customer_id'],
-                                'customer_ref_id'    => $r['customer_ref_id'],
+                                // customer_ref_id is CUS-<phone>-<company>, so it spells out the
+                                // number this endpoint just masked two lines below.
+                                'customer_ref_id'    => (phone_masking_full() && !phone_visibility())
+                                    ? null
+                                    : $r['customer_ref_id'],
                                 'first_name'         => $r['first_name'],
                                 'last_name'          => $r['last_name'],
-                                'phone'              => $r['phone'],
-                                'backup_phone'       => $r['backup_phone'],
+                                'phone'              => customer_phone_ui($r['phone'] ?? ''),
+                                'backup_phone'       => customer_backup_phones_ui($r['backup_phone'] ?? ''),
                                 'assigned_to'        => $r['assigned_to'] !== null ? (int)$r['assigned_to'] : null,
                                 'assigned_to_name'   => $assignedName,
                                 'lifecycle_status'   => $r['lifecycle_status'],
@@ -741,6 +745,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
                         $customers = $stmt->fetchAll();
+                        attach_owner_names($pdo, $customers);
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
@@ -792,6 +797,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
                         $customers = $stmt->fetchAll();
+                        attach_owner_names($pdo, $customers);
 
                         // Add tags to each customer
                         foreach ($customers as &$customer) {
@@ -893,7 +899,9 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $params[] = "%$name%";
                         }
 
-                        if ($phone && $phone !== '') {
+                        // Dropped for anyone the number is hidden from: a partial match reads the
+                        // number back one digit at a time. Filtering by it simply returns nothing.
+                        if ($phone && $phone !== '' && can_search_by_phone()) {
                             // Normalize: search both with and without leading 0
                             $phoneNormalized = preg_replace('/^0+/', '', preg_replace('/\D/', '', $phone));
                             if ($phoneNormalized !== '' && $phoneNormalized !== $phone) {
@@ -1118,6 +1126,13 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $t_query_start = microtime(true);
                             $stmt->execute($params);
                             $customers = $stmt->fetchAll();
+                        attach_owner_names($pdo, $customers);
+                            // Customer list is the screen telesale live in — phone, backup_phone,
+                            // recipient_phone and customer_ref_id all leave from here. Nothing between
+                            // this fetch and the response reads the number, so scrub it at the source.
+                            foreach ($customers as $i => $c) {
+                                $customers[$i] = scrub_customer_row($c, 'ui');
+                            }
                             error_log("[customers:list] MAIN_QUERY done rows=" . count($customers) . " memory=" . round(memory_get_usage(true) / 1024 / 1024, 1) . "MB peak=" . round(memory_get_peak_usage(true) / 1024 / 1024, 1) . "MB");
                             log_perf("handle_customers:list:EXECUTE_QUERY source=$source filter=$filterType count=" . count($customers), $t_query_start);
 
@@ -1294,6 +1309,30 @@ function handle_customers(PDO $pdo, ?string $id): void
             }
             break;
         case 'POST':
+            // 🛡️ ห้าม Telesale / Supervisor Telesale เพิ่มลูกค้าใหม่ (นโยบาย 2026-08-27)
+            // ลูกค้าใหม่ต้องให้ Admin เป็นคนสร้างและโอนผู้ดูแลให้ก่อน จึงจะเปิดบิลได้
+            // เช็คจาก role ของ "ผู้ใช้ที่ล็อกอินจริง" ไม่ใช่ค่าที่ส่งมาจากหน้าจอ จึงข้ามด่านนี้ไม่ได้
+            $actorRoleStmt = $pdo->prepare('
+                SELECT r.code
+                FROM users u
+                LEFT JOIN roles r ON (
+                    (u.role_id IS NOT NULL AND r.id = u.role_id) OR
+                    (u.role_id IS NULL AND (r.name = u.role OR r.code = u.role))
+                )
+                WHERE u.id = ?
+                LIMIT 1
+            ');
+            $actorRoleStmt->execute([$user['id']]);
+            $actorRoleCode = $actorRoleStmt->fetchColumn();
+
+            if (in_array($actorRoleCode, ['telesale', 'supervisor_telesale'], true)) {
+                json_response([
+                    'error' => 'CUSTOMER_CREATE_FORBIDDEN',
+                    'message' => 'ตำแหน่งของคุณไม่มีสิทธิ์เพิ่มลูกค้าใหม่ — ให้แจ้ง Admin สร้างลูกค้าและโอนให้คุณเป็นผู้ดูแลก่อน จึงจะเปิดบิลได้'
+                ], 403);
+                return;
+            }
+
             $in = json_input();
             $phoneCandidate = trim($in['phone'] ?? '');
             $companyCandidate = $in['companyId'] ?? null;
@@ -1540,11 +1579,26 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $logStmt->execute([$id, $oldBasketKey, $newBasketKey, $triggerUserId]);
                 }
 
+                // A masked number must never be saved back over the real one.
+                //
+                // The edit form is filled from what the API sent, so an agent who may not see the
+                // number gets 08xxxxxx36 in the field. Pressing save with that untouched would
+                // overwrite the customer's actual phone number with the mask — irreversibly, and
+                // silently. Passing null instead leaves COALESCE to keep what is already stored.
+                $phoneIn = $in['phone'] ?? null;
+                $backupIn = $in['backupPhone'] ?? null;
+                if (is_string($phoneIn) && is_masked_phone($phoneIn)) {
+                    $phoneIn = null;
+                }
+                if (is_string($backupIn) && is_masked_phone($backupIn)) {
+                    $backupIn = null;
+                }
+
                 $params = [
                     $in['firstName'] ?? null,
                     $in['lastName'] ?? null,
-                    $in['phone'] ?? null,
-                    $in['backupPhone'] ?? null,
+                    $phoneIn,
+                    $backupIn,
                     $in['email'] ?? null,
                     $in['province'] ?? null,
                     $in['companyId'] ?? null,
@@ -1657,3 +1711,55 @@ function handle_customers(PDO $pdo, ?string $id): void
     }
 }
 
+/**
+ * แนบชื่อผู้ดูแลมากับข้อมูลลูกค้า
+ *
+ * เดิมหน้าเว็บเอา assigned_to ไปเทียบกับรายชื่อผู้ใช้ที่โหลดแยกอีกชุด ซึ่งมีปัญหาสองทาง
+ * ชุดนั้นมาช้ากว่าข้อมูลลูกค้า ช่วงที่ยังไม่มาก็เลยโชว์เป็น "ID 1812" แวบหนึ่ง
+ * และมันกรองพนักงานที่ปิดบัญชีออก ลูกค้าที่เจ้าของเดิมลาออกไปแล้วจึงขึ้นเป็นเลขตลอดกาล
+ *
+ * ส่งชื่อมาพร้อมกันเสียเลยจบทั้งสองปัญหา และไม่เพิ่มรอบ request ให้หน้าที่ยิง API ถี่อยู่แล้ว
+ * เป็นคิวรีเดียวต่อหนึ่งลิสต์ ไม่ใช่ต่อหนึ่งลูกค้า
+ */
+function attach_owner_names(PDO $pdo, array &$customers): void
+{
+    if (!$customers) {
+        return;
+    }
+
+    $ids = [];
+    foreach ($customers as $c) {
+        if (isset($c['assigned_to']) && $c['assigned_to'] !== null && (int) $c['assigned_to'] > 0) {
+            $ids[(int) $c['assigned_to']] = true;
+        }
+    }
+    if (!$ids) {
+        return;
+    }
+
+    $names = [];
+    try {
+        $ids = array_keys($ids);
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT id, TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) AS name
+             FROM users WHERE id IN ($in)"
+        );
+        $stmt->execute($ids);
+        foreach ($stmt->fetchAll() as $u) {
+            if (trim((string) $u['name']) !== '') {
+                $names[(int) $u['id']] = $u['name'];
+            }
+        }
+    } catch (Throwable $e) {
+        // ชื่อผู้ดูแลเป็นของแถม ถ้าหาไม่ได้ก็ปล่อยให้หน้าเว็บใช้ทางเดิม ไม่ควรทำให้ลิสต์ลูกค้าพัง
+        error_log('attach_owner_names: ' . $e->getMessage());
+        return;
+    }
+
+    foreach ($customers as &$c) {
+        $uid = isset($c['assigned_to']) ? (int) $c['assigned_to'] : 0;
+        $c['assigned_to_name'] = $uid > 0 && isset($names[$uid]) ? $names[$uid] : null;
+    }
+    unset($c);
+}

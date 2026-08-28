@@ -22,9 +22,15 @@ class DistributionHelper {
         $params[] = max(0, $freshDays);
 
         if ($searchTerm !== '') {
-            $where[] = "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
+            // Phone drops out of search for anyone the number is hidden from — a partial match
+            // reads it back one digit at a time. Param count follows the column list.
+            $searchPhone = can_search_by_phone();
+            $where[] = $searchPhone
+                ? "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)"
+                : "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.customer_id LIKE ?)";
             $like = "%$searchTerm%";
-            $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+            $params[] = $like; $params[] = $like; $params[] = $like;
+            if ($searchPhone) { $params[] = $like; }
         }
 
         return [
@@ -54,9 +60,15 @@ class DistributionHelper {
         ];
 
         if ($searchTerm !== '') {
-            $where[] = "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
+            // Phone drops out of search for anyone the number is hidden from — a partial match
+            // reads it back one digit at a time. Param count follows the column list.
+            $searchPhone = can_search_by_phone();
+            $where[] = $searchPhone
+                ? "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)"
+                : "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.customer_id LIKE ?)";
             $like = "%$searchTerm%";
-            $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+            $params[] = $like; $params[] = $like; $params[] = $like;
+            if ($searchPhone) { $params[] = $like; }
         }
 
         return [
@@ -92,9 +104,15 @@ class DistributionHelper {
         $params[] = max(0, $freshDays);
 
         if ($searchTerm !== '') {
-            $where[] = "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
+            // Phone drops out of search for anyone the number is hidden from — a partial match
+            // reads it back one digit at a time. Param count follows the column list.
+            $searchPhone = can_search_by_phone();
+            $where[] = $searchPhone
+                ? "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)"
+                : "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.customer_id LIKE ?)";
             $like = "%$searchTerm%";
-            $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+            $params[] = $like; $params[] = $like; $params[] = $like;
+            if ($searchPhone) { $params[] = $like; }
         }
 
         return [
@@ -133,9 +151,15 @@ class DistributionHelper {
         ];
 
         if ($searchTerm !== '') {
-            $where[] = "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
+            // Phone drops out of search for anyone the number is hidden from — a partial match
+            // reads it back one digit at a time. Param count follows the column list.
+            $searchPhone = can_search_by_phone();
+            $where[] = $searchPhone
+                ? "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)"
+                : "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.customer_id LIKE ?)";
             $like = "%$searchTerm%";
-            $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+            $params[] = $like; $params[] = $like; $params[] = $like;
+            if ($searchPhone) { $params[] = $like; }
         }
 
         return [

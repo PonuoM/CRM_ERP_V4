@@ -20,6 +20,8 @@ if (!$customerId || !$orderId) {
 
 try {
     $pdo = db_connect();
+    // ติดป้ายที่มาให้ trigger ก่อนแตะ customers มิฉะนั้นประวัติลูกค้าจะขึ้นว่าไม่ทราบที่มา
+    set_audit_context($pdo, 'script/test_basket_move');
     
     echo "<html><head><meta charset='utf-8'><title>Test Basket Move</title>";
     echo "<style>

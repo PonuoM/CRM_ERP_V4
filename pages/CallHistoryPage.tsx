@@ -77,6 +77,13 @@ const formatPhoneToPlus66 = (phone: string) => {
   // Remove any non-digit characters first
   const digitsOnly = phone.replace(/\D/g, "");
 
+  // A hidden number is either digit-free or partially masked (08xxxxxx78). Either way it cannot be
+  // formatted into something the call records will match, so hand back an empty string and let
+  // callers skip the filter rather than search for a number that does not exist.
+  if (digitsOnly === "" || /x/i.test(phone)) {
+    return "";
+  }
+
   // If already starts with +66, return as is
   if (phone.startsWith("+66")) {
     return phone;

@@ -16,6 +16,8 @@ if (!function_exists('handle_get_upsell_orders')) {
                  // Config might double-connect if we passed pdo? 
                  // If standalone, $pdo passed might be null, so we connect.
                  if (!$pdo) $pdo = db_connect();
+                 require_once __DIR__ . '/../phone_privacy.php';
+                 phone_privacy_init($pdo);
             }
 
             $user = get_authenticated_user($pdo);
@@ -47,11 +49,15 @@ if (!function_exists('handle_get_upsell_orders')) {
             $whereClause .= " AND (SELECT COUNT(DISTINCT oi_count.creator_id) FROM order_items oi_count WHERE oi_count.parent_order_id = o.id) > 1";
 
             if (!empty($search)) {
-                $whereClause .= " AND (o.id LIKE ? OR c.first_name LIKE ? OR c.phone LIKE ?)";
+                // Phone drops out for anyone the number is hidden from — a partial match reads it back.
+                $searchPhone = can_search_by_phone();
+                $whereClause .= $searchPhone
+                    ? " AND (o.id LIKE ? OR c.first_name LIKE ? OR c.phone LIKE ?)"
+                    : " AND (o.id LIKE ? OR c.first_name LIKE ?)";
                 $term = "%$search%";
                 $params[] = $term;
                 $params[] = $term;
-                $params[] = $term;
+                if ($searchPhone) { $params[] = $term; }
             }
 
             // Count Total
@@ -75,6 +81,7 @@ if (!function_exists('handle_get_upsell_orders')) {
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $orders = array_map(function ($o) { return scrub_customer_row($o, 'ui'); }, $orders);
 
             $formattedOrders = [];
             foreach ($orders as $order) {
@@ -144,5 +151,7 @@ if (basename($_SERVER['SCRIPT_FILENAME']) == basename(__FILE__)) {
     require_once __DIR__ . '/../config.php';
     cors();
     $pdo = db_connect();
+    require_once __DIR__ . '/../phone_privacy.php';
+    phone_privacy_init($pdo);
     handle_get_upsell_orders($pdo);
 }

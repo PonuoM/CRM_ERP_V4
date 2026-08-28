@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../phone_privacy.php';
 require_once __DIR__ . '/../Services/ShippingSyncService.php';
 require_once __DIR__ . '/../Services/BasketRoutingService.php';
 require_once __DIR__ . '/../Quota/quota_record_helper.php';
@@ -103,6 +104,10 @@ try {
 } catch (Throwable $e) {
     json_response(['ok' => false, 'error' => 'DB_CONNECT_FAILED', 'message' => $e->getMessage()], 500);
 }
+
+// Resolve the customer-phone policy once for every controller this request will reach.
+// Inert until app_settings `phone_masking_stage` = 'full' — see api/phone_privacy.php.
+phone_privacy_init($pdo);
 
 $parts = route_path();
 $resource = $parts[0] ?? '';

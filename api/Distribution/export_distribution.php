@@ -1,8 +1,13 @@
 <?php
 // api/Distribution/export_distribution.php
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../phone_privacy.php';
 
 $pdo = db_connect();
+// Was reachable by anyone with the URL — every caller already sends a token.
+validate_auth($pdo);
+// Resolve once here so both the JSON and the CSV branch below agree on what the caller may see.
+phone_privacy_init($pdo);
 
 $company_id = (int)($_GET['companyId'] ?? 1);
 $basket_key = $_GET['basket_key'] ?? '';
@@ -68,7 +73,7 @@ try {
     if ($format === 'json') {
         $data = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $data[] = $row;
+            $data[] = scrub_customer_row($row);
         }
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['ok' => true, 'data' => $data]);
@@ -101,7 +106,7 @@ try {
             $row['customer_id'],
             $row['first_name'] ?? '-',
             $row['last_name'] ?? '-',
-            $row['phone'] ?? '-',
+            customer_phone_export($row['phone'] ?? '') ?: '-',
             $fromBasket,
             $toBasket,
             $newAgentName ?: '-',

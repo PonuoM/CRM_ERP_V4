@@ -178,6 +178,16 @@ class DistributionExportController {
         $stmt->execute($params);
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // This feeds an Excel download built in DistributionReportModal, so it takes export rules —
+        // enforced now, not on the interactive schedule. `customer_code` is customer_ref_id, which
+        // spells out the phone number (CUS-<number>-<company>), so it has to go with it.
+        foreach ($results as $i => $r) {
+            $results[$i] = scrub_customer_row($r);
+            if (!phone_visibility() && array_key_exists('customer_code', $results[$i])) {
+                $results[$i]['customer_code'] = PHONE_MASK;
+            }
+        }
+
         echo json_encode([
             'ok' => true,
             'data' => $results

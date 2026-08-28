@@ -130,12 +130,26 @@ class DistributionController {
         }
 
         // 1. Bulk Fetch Old Data
+        //
+        // FOR UPDATE: ล็อกแถวลูกค้าไว้จนจบ transaction กันเคสหัวหน้า 2 คนกดแจกพร้อมกัน
+        // (หรือเปิดหน้าค้างไว้แล้วรายชื่อในถังเปลี่ยนไปแล้ว) แล้วแจกทับกันเอง
+        // basket_entered_date ดึงมาเก็บไว้ให้ undo คืนค่าได้ - ดู migration 089
         $inClause = implode(',', array_fill(0, count($customerIds), '?'));
-        $getOldStmt = $pdo->prepare("SELECT customer_id, current_basket_key, assigned_to, lifecycle_status FROM customers WHERE customer_id IN ($inClause)");
+        $getOldStmt = $pdo->prepare("SELECT customer_id, current_basket_key, assigned_to, lifecycle_status, basket_entered_date FROM customers WHERE customer_id IN ($inClause) FOR UPDATE");
         $getOldStmt->execute($customerIds);
         $oldDataMap = [];
         while ($row = $getOldStmt->fetch(PDO::FETCH_ASSOC)) {
             $oldDataMap[$row['customer_id']] = $row;
+        }
+
+        // ลูกค้าที่ "มีเจ้าของไปแล้ว" ระหว่างที่หน้าเว็บถือรายชื่อชุดนี้อยู่ ต้องไม่ถูกเขียนทับ
+        // เกิดจริงแล้ว 1 ครั้ง (session #202, 16 ก.ค. 2026) แจกทับเจ้าของเดิม 279 ราย
+        // เจ้าของเดิมเสียลูกค้าไปโดยไม่มีอะไรแจ้งเตือน
+        $alreadyAssignedIds = [];
+        foreach ($oldDataMap as $cid => $row) {
+            if (!empty($row['assigned_to'])) {
+                $alreadyAssignedIds[(string)$cid] = (int)$row['assigned_to'];
+            }
         }
 
         // 2. Bulk Duplicate Check
@@ -165,22 +179,50 @@ class DistributionController {
             $minCallMinutes = $effectiveMinCallMinutes;
             $agentIdsToCheck = array_values(array_unique(array_filter(array_column($assignments, 'agent_id'))));
             if (!empty($agentIdsToCheck)) {
-                $prevWorkDay = date('Y-m-d', strtotime('-1 day'));
-                while (in_array((int)date('N', strtotime($prevWorkDay)), [6, 7], true)) {
-                    $prevWorkDay = date('Y-m-d', strtotime($prevWorkDay . ' -1 day'));
+                // ใช้ "หน้าต่างเวลาเดียวกับที่หน้าจอใช้คำนวณ" ถ้าฝั่ง UI ส่งมา ไม่งั้นถอยไปใช้
+                // กติกาเริ่มต้น (วันทำการก่อนหน้า 07:00-18:30)
+                //
+                // จำเป็นเพราะตารางพนักงานให้ผู้ใช้เลือกวันที่และกะเองได้ (กะเสาร์ 09:00-16:30,
+                // ช่วงหลายวัน, หรือสลับไปดูข้อมูลสดของวันนี้) ถ้า backend ตรวจซ้ำด้วยช่วงเวลาของตัวเอง
+                // ตัวเลขที่ผู้ใช้เห็นบนจอกับตัวเลขที่ใช้ตัดสินจะเป็นคนละชุด แล้วลูกค้าของพนักงานที่
+                // "จอบอกว่าผ่าน แต่ backend บอกว่าไม่ผ่าน" จะถูกทิ้งทั้งก้อนโดยไม่มีใครรู้
+                $win = $input['call_filter_window'] ?? null;
+                $isDate = function ($d) {
+                    return is_string($d) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1;
+                };
+                $normTime = function ($t, $fallback) {
+                    if (!is_string($t) || preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $t) !== 1) {
+                        return $fallback;
+                    }
+                    return strlen($t) === 5 ? $t . ':00' : $t;
+                };
+
+                if (is_array($win) && $isDate($win['start_date'] ?? null) && $isDate($win['end_date'] ?? null)) {
+                    $winStartDate = $win['start_date'];
+                    $winEndDate   = $win['end_date'];
+                    $winStartTime = $normTime($win['start_time'] ?? null, '00:00:00');
+                    $winEndTime   = $normTime($win['end_time'] ?? null, '23:59:59');
+                } else {
+                    $winStartDate = date('Y-m-d', strtotime('-1 day'));
+                    while (in_array((int)date('N', strtotime($winStartDate)), [6, 7], true)) {
+                        $winStartDate = date('Y-m-d', strtotime($winStartDate . ' -1 day'));
+                    }
+                    $winEndDate   = $winStartDate;
+                    $winStartTime = '07:00:00';
+                    $winEndTime   = '18:30:00';
                 }
 
                 $agentPlaceholders = implode(',', array_fill(0, count($agentIdsToCheck), '?'));
                 $talkTimeStmt = $pdo->prepare("
                     SELECT matched_user_id, SUM(TIME_TO_SEC(duration)) / 60 as total_minutes
                     FROM call_import_logs
-                    WHERE call_date = ?
-                      AND start_time >= '07:00:00' AND start_time <= '18:30:00'
+                    WHERE call_date >= ? AND call_date <= ?
+                      AND start_time >= ? AND start_time <= ?
                       AND status = 1
                       AND matched_user_id IN ($agentPlaceholders)
                     GROUP BY matched_user_id
                 ");
-                $talkTimeStmt->execute(array_merge([$prevWorkDay], $agentIdsToCheck));
+                $talkTimeStmt->execute(array_merge([$winStartDate, $winEndDate, $winStartTime, $winEndTime], $agentIdsToCheck));
                 $minutesByAgent = [];
                 while ($row = $talkTimeStmt->fetch(PDO::FETCH_ASSOC)) {
                     $minutesByAgent[(string)$row['matched_user_id']] = (float)$row['total_minutes'];
@@ -212,6 +254,12 @@ class DistributionController {
                 continue;
             }
 
+            // มีคนถือไปแล้วระหว่างทาง -> ข้าม ไม่แย่งจากเจ้าของเดิม
+            if (isset($alreadyAssignedIds[(string)$customerId])) {
+                $failedIds[] = $customerId;
+                continue;
+            }
+
             $validAssignments[] = [
                 'customer_id' => $customerId,
                 'agent_id' => $agentId
@@ -235,7 +283,9 @@ class DistributionController {
                     $checkValues[] = $assign['agent_id'];
                     $checkValues[] = $companyId;
                 }
-                $pdo->prepare("INSERT INTO customer_assign_check (customer_id, user_id, company_id) VALUES $checkPlaceholders")->execute($checkValues);
+                // ON DUPLICATE KEY: หลัง migration 089 คู่ (customer_id, user_id) เป็น UNIQUE แล้ว
+                // การแจกซ้ำคู่เดิม (เช่นหลัง Manual Reset) ต้องไม่ทำให้ทั้ง transaction ล้ม
+                $pdo->prepare("INSERT INTO customer_assign_check (customer_id, user_id, company_id) VALUES $checkPlaceholders ON DUPLICATE KEY UPDATE company_id = VALUES(company_id)")->execute($checkValues);
 
                 // Bulk Update customers using CASE
                 $updateSql = "UPDATE customers SET assigned_to = CASE customer_id ";
@@ -281,11 +331,12 @@ class DistributionController {
                     $logValues[] = 'Distributed from Distribution V2';
 
                     $successDetails[] = [
-                        'customer_id' => $customerId, 
+                        'customer_id' => $customerId,
                         'agent_id' => $agentId,
                         'previous_assigned_to' => $oldAssignedTo,
                         'previous_basket_key' => $oldBasketKey,
-                        'previous_lifecycle_status' => $oldLifecycle
+                        'previous_lifecycle_status' => $oldLifecycle,
+                        'previous_basket_entered_date' => $oldData['basket_entered_date'] ?? null
                     ];
                 }
                 $pdo->prepare("INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, assigned_to_old, assigned_to_new, transition_type, triggered_by, notes, created_at) VALUES $logPlaceholders")->execute($logValues);
@@ -293,14 +344,19 @@ class DistributionController {
 
             // Bulk Cleanup Logic (Check Round Completion)
             $successInClause = implode(',', array_fill(0, count($successIds), '?'));
+            // COUNT(DISTINCT user_id) ไม่ใช่ COUNT(*) — ของเดิมนับ "แถว" ทำให้แถวซ้ำใน
+            // customer_assign_check ดันยอดจนรีเซ็ตรอบก่อนกำหนด แล้วลูกค้าวนกลับไปหาคนเดิม
+            // (วัดจริง: company 7 มีพนักงาน 3 คน แต่มีลูกค้า 3,174 รายที่เข้าเงื่อนไขรีเซ็ตผิด)
+            // migration 089 ใส่ UNIQUE KEY กันแถวซ้ำที่ต้นทางแล้ว ตรงนี้กันอีกชั้น
             $cleanupStmt = $pdo->prepare("
-                SELECT customer_id 
-                FROM customer_assign_check 
+                SELECT customer_id
+                FROM customer_assign_check
                 WHERE customer_id IN ($successInClause)
-                GROUP BY customer_id 
-                HAVING COUNT(*) >= ?
+                  AND company_id = ?
+                GROUP BY customer_id
+                HAVING COUNT(DISTINCT user_id) >= ?
             ");
-            $cleanupParams = array_merge($successIds, [$totalActiveAgents]);
+            $cleanupParams = array_merge($successIds, [$companyId, $totalActiveAgents]);
             $cleanupStmt->execute($cleanupParams);
             $customersToReset = $cleanupStmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -319,16 +375,18 @@ class DistributionController {
             $loggedMinCallMinutes = $effectiveMinCallMinutes > 0 ? $effectiveMinCallMinutes : null;
             $agentSnapshot = isset($input['agent_snapshot']) ? json_encode($input['agent_snapshot'], JSON_UNESCAPED_UNICODE) : null;
             $tagId = isset($input['tag_id']) && $input['tag_id'] !== '' ? (int)$input['tag_id'] : null;
-            
-            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, tag_id) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?)");
-            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $loggedMinCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $tagId]);
+            // จำนวนรายชื่อที่ยังติด cooldown (เพิ่งโทรติด) แต่ผู้แจกกดยืนยันแจกไปแล้ว - ดู migration 087
+            $cooldownOverride = isset($input['cooldown_override_count']) ? max(0, (int)$input['cooldown_override_count']) : 0;
+
+            $sessionStmt = $pdo->prepare("INSERT INTO distribution_sessions (company_id, distributed_by, distribution_mode, min_call_minutes, total_customers, created_at, agent_snapshot, source_basket, tag_id, cooldown_override_count) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)");
+            $sessionStmt->execute([$companyId, $triggeredBy, $distributionMode, $loggedMinCallMinutes, count($successDetails), $agentSnapshot, $sourceBasketKey, $tagId, $cooldownOverride]);
             $sessionId = $pdo->lastInsertId();
 
             // Bulk Insert for better performance
             $chunkSize = 500;
             $chunks = array_chunk($successDetails, $chunkSize);
             foreach ($chunks as $chunk) {
-                $placeholders = implode(',', array_fill(0, count($chunk), '(?, ?, ?, ?, ?, ?)'));
+                $placeholders = implode(',', array_fill(0, count($chunk), '(?, ?, ?, ?, ?, ?, ?)'));
                 $values = [];
                 foreach ($chunk as $detail) {
                     $values[] = $sessionId;
@@ -337,8 +395,9 @@ class DistributionController {
                     $values[] = $detail['previous_assigned_to'];
                     $values[] = $detail['previous_basket_key'];
                     $values[] = $detail['previous_lifecycle_status'];
+                    $values[] = $detail['previous_basket_entered_date'];
                 }
-                $bulkStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status) VALUES $placeholders");
+                $bulkStmt = $pdo->prepare("INSERT INTO distribution_session_details (session_id, agent_id, customer_id, previous_assigned_to, previous_basket_key, previous_lifecycle_status, previous_basket_entered_date) VALUES $placeholders");
                 $bulkStmt->execute($values);
             }
         }
@@ -356,6 +415,7 @@ class DistributionController {
             'total_success' => count($successIds),
             'total_failed' => count($failedIds),
             'ineligible_agent_ids' => array_keys($ineligibleAgentIds),
+            'already_assigned_ids' => array_keys($alreadyAssignedIds),
             'debug_info' => [
                 'total_active_agents' => $totalActiveAgents
             ]
@@ -590,7 +650,7 @@ class DistributionController {
                 'id' => $d['customer_id'],
                 'code' => $d['customer_code'],
                 'name' => $d['customer_name'],
-                'phone' => $d['customer_phone'],
+                'phone' => customer_phone_ui($d['customer_phone'] ?? ''),
                 'undo_status' => $d['undo_status']
             ];
         }
@@ -710,6 +770,9 @@ class DistributionController {
                 $basketSql = " current_basket_key = CASE customer_id ";
                 $lifecycleSql = " lifecycle_status = CASE customer_id ";
                 $dateAssignedSql = " date_assigned = CASE customer_id ";
+                // คืนวันที่เข้าถังเดิมด้วย (เก็บไว้ตอนแจก - ดู migration 089)
+                // ถ้าเป็น session เก่าที่ยังไม่มีค่านี้ ให้คงค่าปัจจุบันไว้ ดีกว่าเซ็ตเป็น NULL
+                $basketEnteredSql = " basket_entered_date = CASE customer_id ";
                 
                 $updateParams = [];
                 $customerIdsChunk = [];
@@ -721,6 +784,9 @@ class DistributionController {
                     $updateSql .= " WHEN ? THEN ? ";
                     $basketSql .= " WHEN ? THEN ? ";
                     $lifecycleSql .= " WHEN ? THEN ? ";
+                    $basketEnteredSql .= !empty($d['previous_basket_entered_date'])
+                        ? " WHEN ? THEN ? "
+                        : " WHEN ? THEN basket_entered_date ";
                     
                     if (!empty($d['previous_assigned_to'])) {
                         $dateAssignedSql .= " WHEN ? THEN COALESCE((SELECT created_at FROM customer_audit_log WHERE customer_id = ? AND field_name = 'assigned_to' AND new_value = ? ORDER BY id DESC LIMIT 1), NOW()) ";
@@ -732,9 +798,10 @@ class DistributionController {
                 $updateSql .= " END, ";
                 $basketSql .= " END, ";
                 $lifecycleSql .= " END, ";
+                $basketEnteredSql .= " END, ";
                 $dateAssignedSql .= " END WHERE customer_id IN (" . implode(',', array_fill(0, count($customerIdsChunk), '?')) . ")";
 
-                $finalSql = $updateSql . $basketSql . $lifecycleSql . $dateAssignedSql;
+                $finalSql = $updateSql . $basketSql . $lifecycleSql . $basketEnteredSql . $dateAssignedSql;
                 
                 foreach ($chunk as $d) {
                     $updateParams[] = $d['customer_id'];
@@ -747,6 +814,12 @@ class DistributionController {
                 foreach ($chunk as $d) {
                     $updateParams[] = $d['customer_id'];
                     $updateParams[] = $d['previous_lifecycle_status'] ?? 'New';
+                }
+                foreach ($chunk as $d) {
+                    $updateParams[] = $d['customer_id'];
+                    if (!empty($d['previous_basket_entered_date'])) {
+                        $updateParams[] = $d['previous_basket_entered_date'];
+                    }
                 }
                 foreach ($chunk as $d) {
                     if (!empty($d['previous_assigned_to'])) {

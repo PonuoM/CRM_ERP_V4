@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import CustomerPhone from "../components/CustomerPhone";
+import CallCustomerButton from "../components/CallCustomerButton";
 import {
   Customer,
   Order,
@@ -38,6 +40,7 @@ import {
   Zap,
   Loader2,
   History,
+  Sprout,
 } from "lucide-react";
 import { formatFullThaiAddress } from "../utils/addressFormatter";
 import CustomerTagHistoryModal from "../components/Customer/CustomerTagHistoryModal";
@@ -54,10 +57,14 @@ import {
   listAppointments,
   listOrders,
   updateCustomer,
-  getCustomer
+  getCustomer,
+  getCustomerPlots,
+  CustomerPlot,
 } from "@/services/api";
 import {
   actionLabels,
+  describeCustomerLogEvent,
+  isOpaqueLogSource,
   parseCustomerLogRow,
   summarizeCustomerLogChanges,
 } from "../utils/customerLogs";
@@ -329,6 +336,22 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     return () => { mounted = false; };
   }, [customer.id, refreshTrigger]);
 
+  // ข้อมูลสวนของลูกค้า (พืช + ขนาด) — 1 ลูกค้ามีได้หลายชุด ดู migration 088
+  // ผูกกับ refreshTrigger เพื่อให้อัปเดตทันทีหลังบันทึกการโทร
+  const [farmPlots, setFarmPlots] = useState<CustomerPlot[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    getCustomerPlots(customer.id)
+      .then((res: any) => {
+        if (mounted) setFarmPlots(res?.plots || []);
+      })
+      .catch(() => {
+        // ยังไม่ deploy backend หรืออ่านไม่ได้ ก็แค่ไม่แสดง ไม่ทำให้หน้าพัง
+        if (mounted) setFarmPlots([]);
+      });
+    return () => { mounted = false; };
+  }, [customer.id, refreshTrigger]);
+
   // Fetch appointments for this customer
   useEffect(() => {
     let mounted = true;
@@ -521,11 +544,16 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   const currentOwnerUser =
     customer.assignedTo != null ? usersById.get(customer.assignedTo) : null;
 
+  // ลำดับความน่าเชื่อถือ: รายชื่อผู้ใช้ในหน้า (สดที่สุดถ้ามาแล้ว) → ชื่อที่เซิร์ฟเวอร์ส่งมากับตัวลูกค้า
+  // → prop จากหน้าแม่ → เลข id เป็นทางสุดท้าย ตัวที่สองคือตัวที่แก้อาการ "ขึ้น ID แวบหนึ่ง"
+  // ตอนหน้าโหลดเสร็จก่อนรายชื่อผู้ใช้ และแก้กรณีเจ้าของเดิมที่ปิดบัญชีไปแล้วซึ่งไม่มีในรายชื่อ
   const currentOwnerBaseName =
-    currentOwnerUser
+    (currentOwnerUser
       ? `${currentOwnerUser.firstName} ${currentOwnerUser.lastName}`.trim()
-      : ownerName ||
-      (customer.assignedTo != null ? `ID ${customer.assignedTo}` : "-");
+      : "") ||
+    (customer.assignedToName ?? "").trim() ||
+    ownerName ||
+    (customer.assignedTo != null ? `ID ${customer.assignedTo}` : "-");
 
   const currentOwnerCustomerCount = currentOwnerUser
     ? customerCounts?.[currentOwnerUser.id] ?? 0
@@ -961,9 +989,19 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       id: `log-${log.id}`,
       timestamp: log.createdAt,
       description: summaries.join(', ') || '',
-      actorName: allUsers.find(u => u.id === log.createdBy)?.firstName + ' ' + allUsers.find(u => u.id === log.createdBy)?.lastName || '',
+      // เดิมต่อ string ก่อนเช็คว่าเจอคนมั้ย ไม่เจอจึงได้ "undefined undefined" ซึ่งเป็นค่า truthy
+      // ทำให้ || '' ข้างหลังไม่มีวันทำงาน ชื่อจากเซิร์ฟเวอร์มาก่อนเพราะรู้จักคนที่ปิดบัญชีแล้วด้วย
+      actorName:
+        log.createdByName?.trim() ||
+        (() => {
+          const actor = allUsers.find(u => u.id === log.createdBy);
+          return actor ? `${actor.firstName} ${actor.lastName}`.trim() : '';
+        })(),
       type: 'log' as const,
       actionType: log.actionType,
+      // ที่มากับชื่อถัง/ชื่อคน ต้องติดมาด้วย ไม่งั้นทุกแถวจะขึ้นว่า "ไม่ทราบที่มา"
+      apiSource: log.apiSource,
+      basketLabels: log.basketLabels,
       summaries: summaries,
     }));
 
@@ -1109,7 +1147,11 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 label="ชื่อ-นามสกุล"
                 value={`${customer.firstName} ${customer.lastName}`}
               />
-              <InfoItem label="เบอร์โทร" value={customer.phone} />
+              <InfoItem label="เบอร์โทร">
+                <p className="text-sm font-medium text-gray-800 truncate">
+                  <CustomerPhone value={customer.phone} />
+                </p>
+              </InfoItem>
               <InfoItem label="เบอร์โทรสำรอง" value={customer.backupPhone || "-"} />
               <InfoItem label="Facebook">
                 <div className="flex items-center space-x-2">
@@ -1154,6 +1196,37 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                     จัดการสมุดที่อยู่
                   </button>
                 </div>
+              </InfoItem>
+              {/* ข้อมูลสวน — ลงในช่องว่างที่เหลือของแถวที่อยู่ 1 ลูกค้ามีได้หลายชุด */}
+              <InfoItem label="ข้อมูลสวน">
+                {farmPlots.length === 0 ? (
+                  <p className="text-sm font-medium text-gray-400">-</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5 mt-0.5">
+                    {farmPlots.map((p) => {
+                      const size =
+                        p.size_value != null && p.size_unit
+                          ? `${Number(p.size_value).toLocaleString()} ${p.size_unit}`
+                          : "";
+                      const label = [p.crop_name || "ไม่ระบุพืช", size]
+                        .filter(Boolean)
+                        .join(" ");
+                      return (
+                        <span
+                          key={p.plot_id}
+                          title={p.note || undefined}
+                          className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-50 text-green-800 border border-green-200"
+                        >
+                          <Sprout size={11} className="text-green-600 flex-none" />
+                          {label}
+                          {Number(p.is_home_garden) === 1 && (
+                            <span className="text-[10px] text-green-600/80">(กินเอง)</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </InfoItem>
               <div className="md:col-span-3 border-t my-2"></div>
               <InfoItem label="เกรดลูกค้า" value={customer.grade} />
@@ -1823,6 +1896,24 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
         <div className="lg:col-span-1 space-y-6">
           {/* Action Buttons Container */}
           <div className="bg-white p-4 rounded-lg shadow-sm border flex flex-wrap gap-2 justify-center">
+            {/* Hidden entirely for an agent with no registered handset, so a company that has not
+                adopted the dialler sees the page exactly as before. */}
+            <CallCustomerButton
+              customerId={customer.customerId ?? customer.id}
+              customerName={`${customer.firstName} ${customer.lastName}`}
+              className="w-full"
+              onCallEnded={(s) =>
+                // Straight into the log form with the real duration already filled in — the moment
+                // after hanging up is the only moment an agent remembers what was said.
+                openModal("logCall", {
+                  ...customer,
+                  __completedCall: {
+                    durationSec: s.duration_sec ?? 0,
+                    answered: !!s.answered_at,
+                  },
+                } as any)
+              }
+            />
             <button
               onClick={() => openModal("logCall", customer)}
               className="bg-green-100 text-green-700 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center hover:bg-green-200 flex-1 whitespace-nowrap"
@@ -2019,10 +2110,18 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                     <ActivityIcon action={(item as any).actionType || 'update'} />
                                   )}
                                 </div>
-                                <span className="font-semibold text-gray-800">
-                                  {item.type === 'activity' ? 'กิจกรรม' : (
-                                    actionLabels[(item as any).actionType] ?? (item as any).actionType
-                                  )}
+                                <span
+                                  className={
+                                    item.type !== 'activity' &&
+                                    isOpaqueLogSource((item as any).apiSource)
+                                      ? 'font-semibold text-amber-700'
+                                      : 'font-semibold text-gray-800'
+                                  }
+                                  title={item.type === 'activity' ? undefined : (item as any).apiSource}
+                                >
+                                  {item.type === 'activity'
+                                    ? 'กิจกรรม'
+                                    : describeCustomerLogEvent(item as any)}
                                 </span>
                               </div>
                             </td>

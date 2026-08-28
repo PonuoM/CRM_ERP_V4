@@ -16,8 +16,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+/**
+ * Roles that may read the address book but not add to it.
+ *
+ * A new delivery address redirects where a customer's goods physically go, which is the one edit on
+ * this screen with a cost attached if it is wrong or malicious. Telesale request it instead.
+ */
+const ADDRESS_READONLY_ROLES = ['telesale', 'supervisor telesale'];
+
 try {
     $pdo = db_connect();
+
+/**
+ * A shipping phone that came back to us masked must not overwrite the real one.
+ *
+ * The address form is populated from what this endpoint returned, so an agent who may not see the
+ * number is editing a field that reads 08xxxxxx36. Saving the form untouched would write that
+ * string over the customer's actual number. Returning the stored value instead keeps the edit to
+ * the fields the agent actually changed.
+ */
+function incoming_phone_or_keep(?string $incoming, PDO $pdo, string $table, string $idCol, $idValue): string
+{
+    $incoming = trim((string) $incoming);
+    if ($incoming === '' || !is_masked_phone($incoming)) {
+        return $incoming;
+    }
+    try {
+        $stmt = $pdo->prepare("SELECT recipient_phone FROM `$table` WHERE `$idCol` = ? LIMIT 1");
+        $stmt->execute([$idValue]);
+        $kept = $stmt->fetchColumn();
+        return $kept === false ? '' : (string) $kept;
+    } catch (Throwable $e) {
+        // Better to leave the field alone than to guess: return the mask's stored counterpart is
+        // impossible, so send back an empty string and let the caller's COALESCE-less UPDATE write
+        // nothing meaningful rather than a corrupted number.
+        error_log('incoming_phone_or_keep: ' . $e->getMessage());
+        return '';
+    }
+}
+
+    require_once __DIR__ . '/phone_privacy.php';
+    phone_privacy_init($pdo);
     
     // Auth Validation (optional depending on system strictness)
     // validate_auth($pdo); 
@@ -57,7 +96,7 @@ try {
                 'province' => $primary['province'],
                 'zipCode' => $primary['postal_code'],
                 'isPrimary' => true,
-                'phone' => sanitizeValue($primary['recipient_phone'] ?: $primary['phone'])
+                'phone' => customer_phone_ui(sanitizeValue($primary['recipient_phone'] ?: $primary['phone']))
             ];
         }
         
@@ -78,7 +117,7 @@ try {
                 'province' => $sec['province'],
                 'zipCode' => $sec['zip_code'],
                 'isPrimary' => false,
-                'phone' => sanitizeValue($sec['recipient_phone'] ?? '')
+                'phone' => customer_phone_ui(sanitizeValue($sec['recipient_phone'] ?? ''))
             ];
         }
         
@@ -86,9 +125,22 @@ try {
     }
     
     else if ($method === 'POST') {
+        // Adding a delivery address is how a customer's goods get redirected somewhere new, so it
+        // stays with the roles that already carry that responsibility. Telesale who need one send
+        // the request on rather than entering it themselves.
+        $me = get_authenticated_user($pdo);
+        $myRole = strtolower(trim((string) ($me['role'] ?? '')));
+        if (in_array($myRole, ADDRESS_READONLY_ROLES, true)) {
+            json_response([
+                'success' => false,
+                'error' => 'FORBIDDEN',
+                'message' => 'ตำแหน่งของคุณเพิ่มที่อยู่เองไม่ได้ กรุณาแจ้งแอดมินหรือแบ็คออฟฟิศให้เพิ่มให้',
+            ], 403);
+        }
+
         $data = json_decode(file_get_contents('php://input'), true);
         $customerId = $data['customer_id'] ?? $data['customerId'] ?? null;
-        
+
         if (!$customerId) {
             json_response(['error' => 'Missing customerId'], 400);
         }
@@ -135,7 +187,9 @@ try {
                 sanitizeValue($data['district'] ?? ''),
                 sanitizeValue($data['province'] ?? ''),
                 sanitizeValue($data['zipCode'] ?? ''),
-                sanitizeValue($data['phone'] ?? ''),
+                incoming_phone_or_keep(
+                    sanitizeValue($data['phone'] ?? ''), $pdo, 'customers', 'customer_id', $customerId
+                ),
                 $customerId
             ]);
             json_response(['success' => true]);
@@ -151,7 +205,9 @@ try {
                 sanitizeValue($data['district'] ?? ''),
                 sanitizeValue($data['province'] ?? ''),
                 sanitizeValue($data['zipCode'] ?? ''),
-                sanitizeValue($data['phone'] ?? ''),
+                incoming_phone_or_keep(
+                    sanitizeValue($data['phone'] ?? ''), $pdo, 'customer_address', 'id', $addressId
+                ),
                 $addressId
             ]);
             json_response(['success' => true]);

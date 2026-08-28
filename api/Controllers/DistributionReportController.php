@@ -161,6 +161,9 @@ class DistributionReportController {
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($results as $i => $r) {
+                $results[$i] = scrub_customer_row($r, 'ui');
+            }
 
             // Get total count for pagination
             $count_sql = "

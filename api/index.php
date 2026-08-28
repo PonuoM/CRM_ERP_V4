@@ -66,6 +66,74 @@ try {
         case 'customer_tags':
             handle_customer_tags($pdo);
             break;
+        // Bridge between the CRM and the agent's handset — see api/Controllers/CallController.php.
+        case 'call':
+            require_once __DIR__ . '/Controllers/CallController.php';
+            $callAction = $id ?? '';
+            if ($callAction === 'dial')          CallController::dial($pdo);
+            else if ($callAction === 'numbers')  CallController::numbers($pdo);
+            else if ($callAction === 'status')   CallController::status($pdo);
+            else if ($callAction === 'cancel')   CallController::cancel($pdo);
+            else if ($callAction === 'poll')     CallController::poll($pdo);
+            else if ($callAction === 'event')    CallController::event($pdo);
+            else if ($callAction === 'identify') CallController::identify($pdo);
+            else json_response(['ok' => false, 'error' => 'INVALID_ACTION',
+                'message' => "Action '$callAction' is not valid for call"], 400);
+            break;
+
+        case 'device':
+            require_once __DIR__ . '/Controllers/CallController.php';
+            if (($id ?? '') === 'register') CallController::registerDevice($pdo);
+            else json_response(['ok' => false, 'error' => 'INVALID_ACTION'], 400);
+            break;
+
+        // What the signed-in user may see of customer phone numbers. The UI reads this once after
+        // login instead of guessing from the data: a column of "ซ่อน" is worse than no column, and
+        // string-matching the mask would break the moment the wording changes.
+        // bootstrap.php has already resolved the policy for this request.
+        // Read and edit the masking policy itself. Separate from `phone_policy`, which every signed-in
+        // user reads to know what THEY may see — this one is the control panel behind it.
+        case 'phone_policy_settings':
+            require_once __DIR__ . '/Controllers/PhonePolicyController.php';
+            if (method() === 'GET') PhonePolicyController::read($pdo);
+            else if (method() === 'POST' || method() === 'PUT') PhonePolicyController::save($pdo);
+            else json_response(['ok' => false, 'error' => 'METHOD_NOT_ALLOWED'], 405);
+            break;
+
+        case 'phone_policy':
+            // Click-to-call is a separate switch from masking, on purpose: a company can adopt
+            // dialling from the CRM without hiding numbers, or hide numbers while its handsets are
+            // still being rolled out. It needs no setting of its own — an agent either has a
+            // registered handset or does not.
+            $hasDevice = false;
+            try {
+                $me = get_authenticated_user($pdo);
+                if ($me) {
+                    $devStmt = $pdo->prepare(
+                        "SELECT 1 FROM agent_devices
+                          WHERE user_id = ? AND status = 'active' AND revoked_at IS NULL
+                            AND last_seen_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
+                          LIMIT 1"
+                    );
+                    $devStmt->execute([(int) $me['id']]);
+                    $hasDevice = (bool) $devStmt->fetchColumn();
+                }
+            } catch (Throwable $e) {
+                // Migration 090/091 not applied yet — no handsets, so no call button. Never fatal.
+            }
+
+            json_response([
+                'ok'                => true,
+                'stage'             => phone_masking_stage(),
+                'can_view_phone'    => phone_visibility(),
+                'phone_hidden'      => phone_masking_full() && !phone_visibility(),
+                'can_search_phone'  => can_search_by_phone(),
+                'can_click_to_call' => $hasDevice,
+                'mask'              => PHONE_MASK,
+                'mask_char'         => PHONE_MASK_CHAR,
+            ]);
+            break;
+
         case 'companies':
             handle_companies($pdo, $id);
             break;
@@ -100,6 +168,29 @@ try {
             break;
         case 'customer_blocks':
             handle_customer_blocks($pdo, $id);
+            break;
+
+        // ข้อมูลสวนลูกค้า (พืชพันธุ์ + ขนาดสวน) — ดู migration 088
+        case 'crops':
+            require_once __DIR__ . '/Controllers/FarmProfileController.php';
+            $cropAction = $_GET['action'] ?? $action ?? '';
+            if (method() === 'POST' && $cropAction === 'review') {
+                FarmProfileController::reviewCrop($pdo);
+            } elseif (method() === 'POST') {
+                FarmProfileController::createCrop($pdo);
+            } elseif ($cropAction === 'pending') {
+                FarmProfileController::pendingCrops($pdo);
+            } else {
+                FarmProfileController::searchCrops($pdo);
+            }
+            break;
+        case 'customer_plots':
+            require_once __DIR__ . '/Controllers/FarmProfileController.php';
+            if (method() === 'PUT' || method() === 'POST') {
+                FarmProfileController::savePlots($pdo);
+            } else {
+                FarmProfileController::getPlots($pdo);
+            }
             break;
         case 'customers':
             try {
@@ -1319,12 +1410,17 @@ function build_customer_search_conditions(string $q, string $tableAlias = ''): a
     $searchCols = [
         "{$prefix}first_name",
         "{$prefix}last_name",
-        "{$prefix}phone",
-        "{$prefix}backup_phone",
         "{$prefix}customer_id",
         "{$prefix}facebook_name",
         "{$prefix}line_id"
     ];
+
+    // A partial match on a number is a way to read it back one digit at a time, so the phone
+    // columns drop out of search for anyone the number is hidden from.
+    $searchPhone = can_search_by_phone();
+    if ($searchPhone) {
+        array_splice($searchCols, 2, 0, ["{$prefix}phone", "{$prefix}backup_phone"]);
+    }
 
     // Normalize phone for matching (strip leading 0)
     $normalizedPhone = preg_replace('/^0+/', '', preg_replace('/\D/', '', $q));
@@ -1341,7 +1437,7 @@ function build_customer_search_conditions(string $q, string $tableAlias = ''): a
 
         // For phone: also match without leading 0
         $termPhoneNormalized = preg_replace('/^0+/', '', preg_replace('/\D/', '', $term));
-        if ($termPhoneNormalized !== '' && $termPhoneNormalized !== $term) {
+        if ($searchPhone && $termPhoneNormalized !== '' && $termPhoneNormalized !== $term) {
             $termConditions[] = "{$prefix}phone LIKE ?";
             $params[] = "%$termPhoneNormalized%";
             $termConditions[] = "{$prefix}backup_phone LIKE ?";
@@ -2676,11 +2772,12 @@ function get_order(PDO $pdo, string $id): ?array
             $custStmt->execute([$o['customer_id'], $o['customer_id']]);
             $cust = $custStmt->fetch();
             if ($cust) {
-                $o['customer'] = $cust;
+                // SELECT * above, so the whole customers row ships to the browser — scrub before it does.
+                $o['customer'] = scrub_customer_row($cust, 'ui');
                 // Keep for backward compatibility
-                $o['customer_phone'] = $cust['phone'];
-                $o['phone'] = $cust['phone'];
-                $o['customer_backup_phone'] = $cust['backup_phone'];
+                $o['customer_phone'] = customer_phone_ui($cust['phone'] ?? '');
+                $o['phone'] = customer_phone_ui($cust['phone'] ?? '');
+                $o['customer_backup_phone'] = customer_backup_phones_ui($cust['backup_phone'] ?? '');
             }
         } catch (Throwable $e) { /* ignore */
         }
@@ -2831,7 +2928,7 @@ function handle_calls(PDO $pdo, ?string $id): void
                 $stmt = $pdo->prepare('SELECT ch.*, c.first_name AS customer_first_name, c.last_name AS customer_last_name, c.phone AS customer_phone FROM call_history ch LEFT JOIN customers c ON ch.customer_id = c.customer_id WHERE ch.id = ?');
                 $stmt->execute([$id]);
                 $row = $stmt->fetch();
-                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+                $row ? json_response(scrub_customer_row($row, 'ui')) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
                 // Pagination and Filtering
                 $companyId = $_GET['companyId'] ?? null;
@@ -2924,8 +3021,12 @@ function handle_calls(PDO $pdo, ?string $id): void
 
                 $stmt->execute();
                 $data = $stmt->fetchAll();
+                // Call history is the telesale's busiest screen and every row carries customer_phone.
+                foreach ($data as $i => $row) {
+                    $data[$i] = scrub_customer_row($row, 'ui');
+                }
 
-                // If page/pageSize was requested, return envelope. 
+                // If page/pageSize was requested, return envelope.
                 // BUT to fix 500 error for existing callers who don't expect envelope, we must be careful.
                 // Existing global fetching calls without params.
                 // If we default pageSize=100, we limit the data.
@@ -2985,9 +3086,23 @@ function handle_calls(PDO $pdo, ?string $id): void
                     if ($customer && $customer['customer_id']) {
                         // FIX: Update last_call_note and last_call_date along with total_calls
                         // This ensures the "Last Call Note" column in the dashboard is accurate without needing expensive joins.
-                        $updateStmt = $pdo->prepare('UPDATE customers SET total_calls = COALESCE(total_calls,0) + 1, last_call_note = ?, last_call_date = ? WHERE customer_id=?');
+                        //
+                        // last_talk_at เขียนเฉพาะตอนโทรติดจริง (status รับสาย/ได้คุย) — ไม่นับ 'ตัดสายทิ้ง'
+                        // เพราะ Distribution V2 ใช้คอลัมน์นี้เรียงลำดับว่าจะแจกใครก่อน (ดู migration 087)
+                        // call_history.duration ใช้แทนไม่ได้ 99% เป็น 0
+                        $isTalk = in_array($in['status'] ?? '', ['รับสาย', 'ได้คุย'], true);
+                        $updateStmt = $pdo->prepare(
+                            'UPDATE customers
+                                SET total_calls = COALESCE(total_calls,0) + 1,
+                                    last_call_note = ?,
+                                    last_call_date = ?,
+                                    last_talk_at = CASE WHEN ? = 1 THEN ? ELSE last_talk_at END
+                              WHERE customer_id = ?'
+                        );
                         $updateStmt->execute([
                             $in['notes'] ?? null,
+                            $callDate,
+                            $isTalk ? 1 : 0,
                             $callDate,
                             $customer['customer_id']
                         ]);
@@ -4194,6 +4309,160 @@ function handle_activities(PDO $pdo, ?string $id): void
     }
 }
 
+/**
+ * Fill in what a raw customer_logs row cannot say for itself.
+ *
+ * Three gaps, all of which made the activity feed unreadable:
+ *
+ *  - `api_source` only exists on rows written after migration 094. Older rows still have their
+ *    reason recorded, but in customer_audit_log, written by the sibling trigger in the same
+ *    statement and therefore carrying the identical timestamp. Looking it up for the handful of
+ *    rows on screen costs nothing; backfilling 1.5M rows on a live database costs a lot.
+ *  - Baskets are stored as numeric ids, so the feed said "39 → 40" where a person needed
+ *    "ส่วนตัว 1-2 เดือน → ส่วนตัวโอกาสสุดท้าย".
+ *  - Phone numbers now flow through this endpoint, because the edit button is audited. They must
+ *    obey the same masking policy as every other screen, or the history page becomes the way to
+ *    read a customer's number without permission.
+ */
+function enrich_customer_log_rows(PDO $pdo, array $rows): array
+{
+    if (!$rows) {
+        return $rows;
+    }
+
+    $phoneFields = ['phone', 'backup_phone', 'recipient_phone'];
+    $basketIds = [];
+    $ownerIds = [];
+    $needSource = [];
+
+    foreach ($rows as $i => $row) {
+        if (($row['api_source'] ?? null) === null) {
+            $needSource[$i] = [$row['customer_id'] ?? '', $row['created_at'] ?? ''];
+        }
+        foreach (['old_values', 'new_values'] as $col) {
+            $vals = json_decode((string) ($row[$col] ?? ''), true);
+            if (!is_array($vals)) {
+                continue;
+            }
+            if (isset($vals['current_basket_key']) && $vals['current_basket_key'] !== null) {
+                $basketIds[(string) $vals['current_basket_key']] = true;
+            }
+            // Owners are resolved here rather than in the browser because the page's user list is
+            // fetched separately and filtered: it arrives late, and it drops deactivated staff
+            // entirely. A customer handed over by someone who has since left would then read
+            // "ผู้ใช้ ID 25" forever. The database still knows the name.
+            if (isset($vals['assigned_to']) && $vals['assigned_to'] !== null) {
+                $ownerIds[(int) $vals['assigned_to']] = true;
+            }
+        }
+    }
+
+    // ---- ที่มาของแถวเก่า ----
+    foreach ($needSource as $i => [$cid, $created]) {
+        if ($cid === '' || $created === '') {
+            continue;
+        }
+        try {
+            $stmt = $pdo->prepare(
+                'SELECT api_source, changed_by FROM customer_audit_log
+                 WHERE customer_id = ? AND created_at = ? LIMIT 1'
+            );
+            $stmt->execute([$cid, $created]);
+            if ($hit = $stmt->fetch()) {
+                $rows[$i]['api_source'] = $hit['api_source'];
+                // The old trigger wrote the recipient into created_by, so prefer the audit log's
+                // actor whenever it knows one — it is the only truthful answer to "ใครทำ".
+                if (!empty($hit['changed_by'])) {
+                    $rows[$i]['acted_by'] = (int) $hit['changed_by'];
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('enrich_customer_log_rows source: ' . $e->getMessage());
+        }
+    }
+
+    // ---- ชื่อถัง ----
+    $basketNames = [];
+    if ($basketIds) {
+        try {
+            $ids = array_keys($basketIds);
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $pdo->prepare("SELECT id, basket_name FROM basket_config WHERE id IN ($in)");
+            $stmt->execute($ids);
+            foreach ($stmt->fetchAll() as $b) {
+                $basketNames[(string) $b['id']] = $b['basket_name'];
+            }
+        } catch (Throwable $e) {
+            error_log('enrich_customer_log_rows baskets: ' . $e->getMessage());
+        }
+    }
+
+    // ---- ชื่อผู้ลงมือ ที่ trigger เก่าเว้นไว้ รวมกับชื่อเจ้าของที่ปรากฏในค่าเก่า/ใหม่ ----
+    $actorIds = [];
+    foreach ($rows as $row) {
+        if (!empty($row['acted_by'])) {
+            $actorIds[(int) $row['acted_by']] = true;
+        }
+    }
+    $actorNames = [];
+    $lookupIds = $actorIds + $ownerIds;
+    if ($lookupIds) {
+        try {
+            $ids = array_keys($lookupIds);
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $pdo->prepare(
+                "SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE id IN ($in)"
+            );
+            $stmt->execute($ids);
+            foreach ($stmt->fetchAll() as $u) {
+                $actorNames[(int) $u['id']] = $u['name'];
+            }
+        } catch (Throwable $e) {
+            error_log('enrich_customer_log_rows actors: ' . $e->getMessage());
+        }
+    }
+
+    foreach ($rows as $i => $row) {
+        $used = [];
+        $usedUsers = [];
+        foreach (['old_values', 'new_values'] as $col) {
+            $vals = json_decode((string) ($row[$col] ?? ''), true);
+            if (!is_array($vals)) {
+                continue;
+            }
+            $dirty = false;
+            foreach ($phoneFields as $pf) {
+                if (isset($vals[$pf]) && is_string($vals[$pf]) && $vals[$pf] !== '') {
+                    $vals[$pf] = customer_phone_ui($vals[$pf]);
+                    $dirty = true;
+                }
+            }
+            if (isset($vals['current_basket_key']) && $vals['current_basket_key'] !== null) {
+                $key = (string) $vals['current_basket_key'];
+                if (isset($basketNames[$key])) {
+                    $used[$key] = $basketNames[$key];
+                }
+            }
+            if (isset($vals['assigned_to']) && $vals['assigned_to'] !== null) {
+                $uid = (int) $vals['assigned_to'];
+                if (isset($actorNames[$uid])) {
+                    $usedUsers[$uid] = $actorNames[$uid];
+                }
+            }
+            if ($dirty) {
+                $rows[$i][$col] = json_encode($vals, JSON_UNESCAPED_UNICODE);
+            }
+        }
+        $rows[$i]['basket_labels'] = $used ?: null;
+        $rows[$i]['user_labels'] = $usedUsers ?: null;
+        if (!empty($row['acted_by']) && isset($actorNames[(int) $row['acted_by']])) {
+            $rows[$i]['created_by_name'] = $actorNames[(int) $row['acted_by']];
+        }
+    }
+
+    return $rows;
+}
+
 function handle_customer_logs(PDO $pdo, ?string $id): void
 {
     if (method() !== 'GET') {
@@ -4217,7 +4486,12 @@ function handle_customer_logs(PDO $pdo, ?string $id): void
         );
         $stmt->execute([$id]);
         $row = $stmt->fetch();
-        $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+        if (!$row) {
+            json_response(['error' => 'NOT_FOUND'], 404);
+            return;
+        }
+        $enriched = enrich_customer_log_rows($pdo, [$row]);
+        json_response($enriched[0]);
         return;
     }
 
@@ -4233,7 +4507,7 @@ function handle_customer_logs(PDO $pdo, ?string $id): void
     $sql .= ' ORDER BY cl.created_at DESC LIMIT ' . $limit;
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    json_response($stmt->fetchAll());
+    json_response(enrich_customer_log_rows($pdo, $stmt->fetchAll()));
 }
 
 /**
@@ -4273,6 +4547,9 @@ function handle_upsell_orders(PDO $pdo): void
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$userId, $companyId]);
     $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($orders as $i => $o) {
+        $orders[$i] = scrub_customer_row($o, 'ui');
+    }
 
     json_response([
         'orders' => $orders,

@@ -215,6 +215,9 @@ interface CreateOrderPageProps {
   onSave: (payload: {
     order: Partial<Omit<Order, "id" | "orderDate" | "companyId" | "creatorId">>;
 
+    /** กุญแจประจำใบ — คงเดิมทุกครั้งที่กดซ้ำใบเดิม ใช้กันบิลเบิ้ล ดู migrations/094 */
+    clientRequestId?: string;
+
     newCustomer?: Omit<
       Customer,
       | "id"
@@ -3764,9 +3767,55 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     };
   };
 
+  // 🛡️ OWNERSHIP GUARD (2026-08-26)
+  // Telesale / Sup Telesale เปิดบิลให้ลูกค้าที่มีผู้ดูแลเป็นคนอื่นไม่ได้
+  // กฎจริงบังคับที่ฝั่งเซิร์ฟเวอร์ (OrderController POST) — ตรงนี้กันไว้ก่อน
+  // เพื่อไม่ให้พนักงานกรอกฟอร์มทั้งใบแล้วค่อยมาเจอว่าเปิดบิลไม่ได้
+  const sellerIsTelesaleRole =
+    currentUser.role === UserRole.Telesale ||
+    currentUser.role === UserRole.Supervisor;
+
+  const getOwnershipBlockMessage = (
+    customer: { assignedTo?: number | null } | null,
+    sellerId: number | null,
+  ): string | null => {
+    if (!sellerId) return null;
+
+    // แยก "ไม่มีเจ้าของจริง" (null / 0) ออกจาก "ไม่รู้ว่ามีหรือเปล่า" (ฟิลด์ไม่ได้ถูกส่งมา)
+    // ตั้งใจ: บาง path ส่ง object จากลิสต์ที่ไม่มี assignedTo ติดมา ถ้าเหมารวมเป็นไม่มีเจ้าของ
+    // จะบล็อกลูกค้าของตัวเองผิด ๆ — กรณีไม่รู้ปล่อยผ่านให้เซิร์ฟเวอร์ตัดสิน ซึ่งเช็คจาก DB จริง
+    const raw = customer?.assignedTo;
+    if (raw === undefined) return null;
+
+    const ownerId = Number(raw ?? 0);
+
+    // ลูกค้าไร้เจ้าของก็เปิดบิลไม่ได้ (นโยบาย 2026-08-27) ต้องให้แจกหรือโอนเข้ามือก่อน
+    if (!ownerId) {
+      return "ลูกค้ารายนี้ยังไม่มีผู้ดูแล\n\nเปิดบิลให้ไม่ได้ครับ — ให้แจ้งหัวหน้าแจกหรือโอนลูกค้าเข้ามือคุณก่อน";
+    }
+
+    if (ownerId === Number(sellerId)) return null;
+
+    const owner = users.find((u) => u.id === ownerId);
+    const ownerName = owner
+      ? `${owner.firstName} ${owner.lastName}`.trim()
+      : `ผู้ดูแลรายอื่น (#${ownerId})`;
+
+    return `ลูกค้ารายนี้อยู่ในความดูแลของ ${ownerName}\n\nเปิดบิลให้ไม่ได้ครับ — ถ้าลูกค้าต้องการซื้อจริง ให้แจ้งหัวหน้าโอนลูกค้าก่อน`;
+  };
+
   // Helper function to set customer data consistently
 
   const setCustomerData = (customerData: Customer) => {
+    // กันตั้งแต่ตอนเลือกลูกค้า (ยกเว้นโหมดขายแทน ที่เช็คตอนบันทึกด้วย creator จริง)
+    if (sellerIsTelesaleRole && !isProxySale) {
+      const blockMessage = getOwnershipBlockMessage(customerData, currentUser.id);
+      if (blockMessage) {
+        alert(blockMessage);
+        return;
+      }
+    }
+
     setSelectedCustomer(customerData);
 
     setOrderData((prev) => ({ ...prev, customerId: customerData.id }));
@@ -3945,6 +3994,15 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   const startCreatingNewCustomer = () => {
+    // 🛡️ Telesale / Sup Telesale เพิ่มลูกค้าใหม่ไม่ได้ (นโยบาย 2026-08-27)
+    // ปุ่มถูกซ่อนอยู่แล้ว อันนี้กันไว้เผื่อมีทางเข้าอื่นเรียกฟังก์ชันนี้
+    if (sellerIsTelesaleRole) {
+      alert(
+        "ตำแหน่งของคุณไม่มีสิทธิ์เพิ่มลูกค้าใหม่ ให้แจ้ง Admin สร้างลูกค้าและโอนให้คุณเป็นผู้ดูแลก่อน จึงจะเปิดบิลได้",
+      );
+      return;
+    }
+
     clearValidationErrorFor("customerSelector");
 
     setIsCreatingNewCustomer(true);
@@ -4598,6 +4656,27 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
 
+  // 🛡️ กุญแจประจำใบ (migrations/094) — หนึ่งใบที่ตั้งใจเปิด = หนึ่ง UUID ที่ "ไม่เปลี่ยนตอนกดซ้ำ"
+  //
+  // ต้องอยู่ใน ref ไม่ใช่ state: ค่าต้องคงเดิมข้ามการ render และต้องอ่านได้ทันทีในคลิกเดียวกัน
+  // เซิร์ฟเวอร์มี UNIQUE KEY บนคีย์นี้ กดกี่ครั้งก็ได้บิลใบเดียว แล้วตอบเลขบิลเดิมกลับมา
+  // ล้างเมื่อบันทึกสำเร็จเท่านั้น — ล้มเหลวแล้วกดใหม่ต้องเป็นคีย์เดิม ไม่งั้นกันซ้ำไม่ได้
+  const attemptIdRef = useRef<string | null>(null);
+
+  const nextAttemptId = (): string => {
+    // randomUUID มีเฉพาะใน secure context — บนแอปมือถือ/หน้าที่ยังเป็น http จะไม่มี
+    const c: any = typeof crypto !== "undefined" ? crypto : undefined;
+    if (c?.randomUUID) return c.randomUUID();
+    if (c?.getRandomValues) {
+      const b = c.getRandomValues(new Uint8Array(16));
+      b[6] = (b[6] & 0x0f) | 0x40;
+      b[8] = (b[8] & 0x3f) | 0x80;
+      const h = Array.from(b, (x: number) => x.toString(16).padStart(2, "0")).join("");
+      return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+    }
+    return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}-${Math.random().toString(16).slice(2, 10)}`;
+  };
+
   // ──────────────────────────────────────────────────────────────────────────
   // ขายแทน (proxy sale) — logic moved up to QUOTA SYSTEM section to support dynamic quota 
   // ──────────────────────────────────────────────────────────────────────────
@@ -4618,6 +4697,22 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         alert("เลือก “ขายแทน” ไว้ กรุณาระบุว่าลงออเดอร์แทนใคร");
         setIsSaving(false);
         return;
+      }
+
+      // 🛡️ กันเปิดบิลให้ลูกค้าของคนอื่น — เช็คด้วย creator จริง (รองรับโหมดขายแทน)
+      const effectiveCreatorId =
+        isProxySale && proxyUserId ? proxyUserId : currentUser.id;
+
+      if (sellerIsTelesaleRole || (isProxySale && proxyUserId)) {
+        const ownershipBlock = getOwnershipBlockMessage(
+          selectedCustomer,
+          effectiveCreatorId,
+        );
+        if (ownershipBlock) {
+          alert(ownershipBlock);
+          setIsSaving(false);
+          return;
+        }
       }
 
       // Check for incomplete address fields and list missing ones
@@ -4651,7 +4746,16 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       }
 
       // If shippingAddress.phone is empty, it will be automatically filled with selectedCustomer.phone or newCustomerPhone during payload creation
-      if (shippingAddress.phone && shippingAddress.phone.trim() !== "") {
+      // A hidden number reaches the browser as a word. Validating it would reject an order the user
+      // never mistyped, so treat digit-free values as "leave it alone" — the server keeps the
+      // number it already has rather than writing the placeholder back.
+      // A masked value keeps some digits (08xxxxxx78), so the mask character is what identifies it.
+      const recipientPhoneIsHidden =
+        !!shippingAddress.phone &&
+        shippingAddress.phone.trim() !== "" &&
+        (/x/i.test(shippingAddress.phone) || !/\d/.test(shippingAddress.phone));
+
+      if (!recipientPhoneIsHidden && shippingAddress.phone && shippingAddress.phone.trim() !== "") {
         const cleanedPhone = shippingAddress.phone.replace(/\D/g, "");
         if (cleanedPhone.length !== 10 || cleanedPhone[0] !== "0") {
           highlightField("shippingAddress");
@@ -5037,6 +5141,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const payload: Parameters<typeof onSave>[0] = { order: finalOrderData };
 
+      // คีย์เดิมถ้าเคยกดแล้วไม่สำเร็จ, คีย์ใหม่ถ้าเป็นการกดครั้งแรกของใบนี้
+      if (!attemptIdRef.current) {
+        attemptIdRef.current = nextAttemptId();
+      }
+      payload.clientRequestId = attemptIdRef.current;
+
       if (transferSlipUploads.length > 0) {
         payload.slipUploads = transferSlipUploads.map((slip) => ({
           dataUrl: slip.dataUrl,
@@ -5265,6 +5375,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (!savedOrderId) {
         return;
       }
+
+      // บิลนี้จบแล้ว — คืนคีย์ให้ว่าง ใบถัดไปจะได้คีย์ของตัวเอง
+      attemptIdRef.current = null;
 
       // === Phase 2: Auto-record quota usage (fire-and-forget) ===
       try {

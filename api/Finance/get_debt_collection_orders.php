@@ -11,6 +11,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 try {
     // 1. Connect DB
     $pdo = db_connect();
+    require_once __DIR__ . '/../phone_privacy.php';
+    phone_privacy_init($pdo);
 
     // 2. Authentication
     $user = get_authenticated_user($pdo);
@@ -138,19 +140,22 @@ try {
             "c.first_name LIKE ?",
             "c.last_name LIKE ?",
             "CONCAT(c.first_name, ' ', c.last_name) LIKE ?",
-            "o.id LIKE ?",
-            "c.phone LIKE ?"
+            "o.id LIKE ?"
         ];
+        // Phone drops out for anyone the number is hidden from — a partial match reads it back.
+        if (can_search_by_phone()) {
+            $orConds[] = "c.phone LIKE ?";
+        }
 
         $nameLike = '%' . $customerName . '%';
-        // Add params for standard checks
-        for ($i = 0; $i < 5; $i++)
+        // One param per condition built above.
+        for ($i = 0, $n = count($orConds); $i < $n; $i++)
             $params[] = $nameLike;
 
         // Specialized Phone Search (strip non-digits)
         $cleanPhone = preg_replace('/\D/', '', $customerName);
         // Only trigger this if we have enough digits to avoid matching everything
-        if (strlen($cleanPhone) >= 3) {
+        if (strlen($cleanPhone) >= 3 && can_search_by_phone()) {
             $orConds[] = "REPLACE(REPLACE(REPLACE(REPLACE(c.phone, '-', ''), ' ', ''), '(', ''), ')', '') LIKE ?";
             $params[] = '%' . $cleanPhone . '%';
         }
@@ -158,7 +163,7 @@ try {
         $whereConditions[] = "(" . implode(' OR ', $orConds) . ")";
     }
 
-    if ($customerPhone) {
+    if ($customerPhone && can_search_by_phone()) {
         $phoneDigits = preg_replace('/\D/', '', $customerPhone);
         $whereConditions[] = "REPLACE(REPLACE(REPLACE(c.phone, '-', ''), ' ', ''), '(', '') LIKE ?";
         $params[] = '%' . $phoneDigits . '%';
@@ -169,14 +174,17 @@ try {
         $orderIdLike = '%' . $orderId . '%';
         $params[] = $orderIdLike;
 
-        // Also check phone for short numeric inputs (which frontend sends as orderId)
-        // Standard phone check
-        $orConds[] = "c.phone LIKE ?";
-        $params[] = $orderIdLike;
+        // Also check phone for short numeric inputs (which frontend sends as orderId).
+        // Same reason as above: a partial match on the number reads it back a digit at a time.
+        $searchPhone = can_search_by_phone();
+        if ($searchPhone) {
+            $orConds[] = "c.phone LIKE ?";
+            $params[] = $orderIdLike;
+        }
 
         // Robust phone check
         $cleanPhone = preg_replace('/\D/', '', $orderId);
-        if (strlen($cleanPhone) >= 3) {
+        if ($searchPhone && strlen($cleanPhone) >= 3) {
             $orConds[] = "REPLACE(REPLACE(REPLACE(REPLACE(c.phone, '-', ''), ' ', ''), '(', ''), ')', '') LIKE ?";
             $params[] = '%' . $cleanPhone . '%';
         }
@@ -320,6 +328,7 @@ try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $orders = array_map(function ($o) { return scrub_customer_row($o, 'ui'); }, $orders);
 
         // Batch fetch order_items for all orders
         $orderItemsMap = [];

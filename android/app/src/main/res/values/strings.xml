@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Primacom Dialer</string>
+
+    <string name="hint_username">ชื่อผู้ใช้</string>
+    <string name="hint_password">รหัสผ่าน</string>
+    <string name="hint_server">ที่อยู่เซิร์ฟเวอร์</string>
+    <string name="action_sign_in">เข้าสู่ระบบ</string>
+    <string name="action_sign_out">ออกจากระบบ</string>
+    <string name="action_grant">อนุญาตสิทธิ์</string>
+
+    <string name="status_signing_in">กำลังเข้าสู่ระบบ…</string>
+    <string name="error_credentials_required">กรอกชื่อผู้ใช้และรหัสผ่าน</string>
+    <string name="error_network">เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ต</string>
+    <string name="signed_out">ออกจากระบบแล้ว</string>
+
+    <string name="standby_title">พร้อมรับงาน</string>
+    <string name="standby_hint">กดโทรจากหน้าจอคอมพิวเตอร์ เครื่องนี้จะโทรออกให้อัตโนมัติ\nวางเครื่องไว้และเสียบสายชาร์จ</string>
+    <string name="permissions_needed">ต้องอนุญาตสิทธิ์โทรออกก่อนใช้งาน</string>
+
+    <string name="status_connecting">กำลังเชื่อมต่อ…</string>
+    <string name="status_signed_out">ยังไม่ได้เข้าสู่ระบบ</string>
+    <string name="status_offline">เชื่อมต่อไม่ได้ กำลังลองใหม่…</string>
+    <string name="status_ready">พร้อมรับงาน · %1$s</string>
+    <string name="status_calling">กำลังโทรหา %1$s</string>
+    <string name="permissions_hint">แอปต้องได้รับสิทธิ์โทรออกและอ่านสถานะสายก่อนจึงจะรับงานได้</string>
+    <string name="crash_title">แอปปิดตัวผิดปกติครั้งล่าสุด — แจ้งข้อความนี้ให้ผู้ดูแลระบบ</string>
+    <string name="action_clear_crash">ล้างข้อความนี้</string>
+    <string name="action_mute">ปิดไมค์</string>
+    <string name="action_unmute">เปิดไมค์</string>
+    <string name="action_answer">รับสาย</string>
+    <string name="action_hang_up">วางสาย</string>
+    <string name="call_dialing">กำลังโทรออก…</string>
+    <string name="call_incoming">สายเข้า</string>
+    <string name="call_active">กำลังสนทนา</string>
+    <string name="call_ended">วางสายแล้ว</string>
+
+    <string name="dialer_role_needed">ยังไม่ได้ตั้งเป็นแอปโทรศัพท์หลัก — เบอร์ลูกค้าจะยังปรากฏบนหน้าจอโทรศัพท์เดิม</string>
+    <string name="action_set_dialer">ตั้งเป็นแอปโทรศัพท์หลัก</string>
+    <string name="dialer_role_ok">เป็นแอปโทรศัพท์หลักแล้ว · เบอร์ลูกค้าถูกซ่อน</string>
+</resources>

@@ -2,10 +2,18 @@ import React from 'react';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import { Customer, BasketConfig } from '../../types/distribution';
 
+// ป้ายอธิบายว่าทำไมรายชื่อนี้ถึงอยู่ลำดับนี้ (backend เป็นคนจัดกลุ่มมาให้ - ดู handleBasketCustomers)
+const LEAD_GROUP_BADGE: Record<string, { label: string; className: string }> = {
+    A1: { label: 'ยังไม่เคยโทร', className: 'bg-emerald-100 text-emerald-700' },
+    B: { label: 'เคยโทรติด', className: 'bg-blue-100 text-blue-700' },
+    A2: { label: 'โทรแล้วไม่ติด', className: 'bg-gray-100 text-gray-600' },
+    cooldown: { label: 'เพิ่งโทรติด', className: 'bg-orange-100 text-orange-700' }
+};
+
 interface DistributionCustomerPreviewProps {
     activeBasketInfo: BasketConfig | undefined;
     availableCount: number;
-    customers: Customer[];
+    customers: (Customer & { lead_group?: string; days_since_talk?: number | null })[];
     loadingCustomers: boolean;
     fetchCustomers: () => void;
 }
@@ -46,6 +54,7 @@ const DistributionCustomerPreview: React.FC<DistributionCustomerPreviewProps> = 
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 sticky top-0">
                             <tr>
+                                <th className="text-left p-3 font-medium">ลำดับ</th>
                                 <th className="text-left p-3 font-medium">ชื่อ</th>
                                 <th className="text-left p-3 font-medium">เบอร์โทร</th>
                                 <th className="text-left p-3 font-medium">จังหวัด</th>
@@ -54,8 +63,21 @@ const DistributionCustomerPreview: React.FC<DistributionCustomerPreviewProps> = 
                             </tr>
                         </thead>
                         <tbody>
-                            {customers.slice(0, 50).map(customer => (
+                            {customers.slice(0, 50).map((customer, idx) => {
+                                const badge = LEAD_GROUP_BADGE[customer.lead_group || ''];
+                                return (
                                 <tr key={customer.id} className="border-t hover:bg-gray-50">
+                                    <td className="p-3 whitespace-nowrap">
+                                        <span className="text-gray-400 mr-2">{idx + 1}</span>
+                                        {badge && (
+                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${badge.className}`}>
+                                                {badge.label}
+                                                {customer.days_since_talk !== null && customer.days_since_talk !== undefined
+                                                    ? ` ${customer.days_since_talk} วัน`
+                                                    : ''}
+                                            </span>
+                                        )}
+                                    </td>
                                     <td className="p-3">{customer.firstName} {customer.lastName}</td>
                                     <td className="p-3">{customer.phone}</td>
                                     <td className="p-3">{customer.province || '-'}</td>
@@ -66,12 +88,13 @@ const DistributionCustomerPreview: React.FC<DistributionCustomerPreviewProps> = 
                                     </td>
                                     <td className="p-3 text-right">฿{(customer.totalPurchases || 0).toLocaleString()}</td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
-                    {customers.length > 50 && (
+                    {availableCount > 50 && (
                         <div className="text-center py-3 text-gray-400 text-sm">
-                            แสดง 50 จาก {customers.length} รายการ
+                            แสดง 50 รายแรกตามลำดับที่จะแจกจริง จากทั้งหมด {availableCount.toLocaleString()} รายการ
                         </div>
                     )}
                 </div>

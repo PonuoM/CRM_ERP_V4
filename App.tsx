@@ -111,6 +111,7 @@ import RandomEmployeePage from "./pages/RandomEmployeePage";
 import ProductManagementPage from "./pages/ProductManagementPage";
 import PriceAnnouncementPage from "./pages/PriceAnnouncementPage";
 import QuotaSettingsPage from "./pages/QuotaSettingsPage";
+import CropReviewPage from "./pages/CropReviewPage";
 import TelesaleSummaryDashboard from "./pages/TelesaleSummaryDashboard";
 import PancakeUserIntegrationPage from "./pages/PancakeUserIntegrationPage";
 import ManageOrdersPage from "./pages/ManageOrdersPage";
@@ -151,6 +152,7 @@ import CheckOrderPage from "./pages/CheckOrderPage";
 import InventoryPage from "./pages/jst/InventoryPage";
 import CompanySettingsPage from "./pages/jst/CompanySettingsPage";
 import GeoCompanySettingsPage from "./pages/GeoCompanySettingsPage";
+import PhonePrivacySettingsPage from "./pages/PhonePrivacySettingsPage";
 import SystemUpdatesManagementPage from "./pages/SystemUpdatesManagementPage";
 import SystemUpdatesHistoryPage from "./pages/SystemUpdatesHistoryPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
@@ -302,6 +304,10 @@ const App: React.FC = () => {
     UserRole.Telesale,
   );
   const lastUserIdRef = useRef<number | null>(null);
+
+  // clientRequestId → เลขบิลที่ขอไว้แล้วสำหรับใบนั้น (ดู handleCreateOrder และ migrations/094)
+  // ล้างทิ้งเมื่อบิลนั้นบันทึกสำเร็จ จึงไม่โตขึ้นเรื่อย ๆ ตลอดอายุ session
+  const mintedOrderIdRef = useRef<Map<string, string>>(new Map());
 
   const resolvePageFromParam = useCallback((value: string | null) => {
     if (!value || value.length === 0) return "Dashboard";
@@ -3165,6 +3171,8 @@ const App: React.FC = () => {
     bankAccountId?: number;
     transferDate?: string;
     proxySale?: { onBehalfOfUserId: number; reason?: string };
+    /** กุญแจประจำใบจากหน้าเปิดบิล — คงเดิมทุกครั้งที่กดซ้ำใบเดิม ดู migrations/094 */
+    clientRequestId?: string;
   }): Promise<string | undefined> => {
     const {
       order: newOrderData,
@@ -3175,6 +3183,7 @@ const App: React.FC = () => {
       bankAccountId,
       transferDate,
       proxySale,
+      clientRequestId,
     } = payload;
     const slipUploadsArray = Array.isArray(slipUploads)
       ? slipUploads
@@ -3420,10 +3429,23 @@ const App: React.FC = () => {
     const orderOwner = proxyTargetUser ?? currentUser;
 
     // Generate main order ID
-    const mainOrderId = await generateMainOrderId(
-      orderOwner,
-      currentUser.companyId,
-    );
+    //
+    // generateMainOrderId บวกเลขรันนิ่งฝั่งเซิร์ฟเวอร์ทุกครั้งที่เรียก การกดซ้ำใบเดิมจึงต้องใช้
+    // เลขเดิม ไม่งั้นเลขบิลจะกระโดดทิ้งช่วงทุกครั้งที่ผู้ใช้ลองใหม่ (คีย์กันซ้ำที่ฝั่ง DB กันบิล
+    // เบิ้ลได้อยู่แล้ว แต่กันเลขรันนิ่งไม่ได้ ต้องกันตรงนี้)
+    let mainOrderId = clientRequestId
+      ? mintedOrderIdRef.current.get(clientRequestId)
+      : undefined;
+
+    if (!mainOrderId) {
+      mainOrderId = await generateMainOrderId(
+        orderOwner,
+        currentUser.companyId,
+      );
+      if (clientRequestId) {
+        mintedOrderIdRef.current.set(clientRequestId, mainOrderId);
+      }
+    }
 
     try {
       const orderPayload = {
@@ -3435,6 +3457,7 @@ const App: React.FC = () => {
         orderDate: toThaiIsoString(new Date()),
         bankAccountId: bankAccountId,
         transferDate: transferDate,
+        clientRequestId: clientRequestId,
         ...(proxySale ? { proxyReason: proxySale.reason || undefined } : {}),
       };
 
@@ -3446,7 +3469,13 @@ const App: React.FC = () => {
       const res = await apiCreateOrder(orderPayload);
 
       if (res && res.ok) {
+        // res.duplicate = true แปลว่าเซิร์ฟเวอร์เจอคีย์ซ้ำแล้วส่งบิลเดิมกลับมา ไม่ได้สร้างใบใหม่
+        // ตั้งใจให้เดินทางเดียวกับสร้างสำเร็จปกติ เพราะสำหรับผู้ใช้แล้วผลลัพธ์คือ "บิลนี้มีแล้ว"
         const createdOrderId = res.id;
+
+        if (clientRequestId) {
+          mintedOrderIdRef.current.delete(clientRequestId);
+        }
 
         // บันทึกกิจกรรมการสร้างออเดอร์
         const customer = customers.find(c => c.id === customerIdForOrder || c.pk === customerIdForOrder);
@@ -6807,6 +6836,9 @@ const App: React.FC = () => {
         />
       );
     }
+    if (activePage === "Crop Review") {
+      return <CropReviewPage />;
+    }
     if (activePage === "Quota Settings") {
       return (
         <QuotaSettingsPage
@@ -7252,6 +7284,9 @@ const App: React.FC = () => {
       case "settings.geo_company":
       case "จัดการพื้นที่ทำงาน":
         return <GeoCompanySettingsPage />;
+      case "settings.phone_privacy":
+      case "การมองเห็นเบอร์ลูกค้า":
+        return <PhonePrivacySettingsPage />;
       case "settings.company":
       case "Company Settings":
       case "ตั้งค่าบริษัท":
@@ -7463,7 +7498,7 @@ const App: React.FC = () => {
       case "Telesale Performance":
       case "home.telesale_performance":
       case "วิเคราะห์ประสิทธิภาพ Telesale":
-        return <TelesalePerformancePage users={users} />;
+        return <TelesalePerformancePage />;
 
       case "Telesale Callstats":
       case "monitor.callstats":
@@ -7994,6 +8029,9 @@ const App: React.FC = () => {
             customer={modalState.data as Customer}
             user={currentUser}
             systemTags={systemTags}
+            // Set when the form was opened by hanging up a call the CRM placed; absent when the
+            // agent pressed "บันทึกโทร" for a call made some other way, which stays hand-entered.
+            completedCall={(modalState.data as any)?.__completedCall}
             onSave={handleLogCall}
             onCreateUserTag={handleCreateUserTag}
             onClose={closeModal}
