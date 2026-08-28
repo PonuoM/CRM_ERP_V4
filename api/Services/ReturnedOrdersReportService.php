@@ -11,6 +11,79 @@ class ReturnedOrdersReportService
         $this->pdo = $pdo;
     }
 
+    /**
+     * ยอดสินค้าต่อออเดอร์ แยกปุ๋ย / ชีวภัณฑ์ / อื่นๆ จาก products.category
+     * Returned: นับเฉพาะ item ในกล่องที่มี return_status
+     *   ผูกกล่อง-สินค้าด้วย sub_order_id หรือ box_number (ออเดอร์เก่า/อิมพอร์ตมักผูกแค่กล่อง)
+     *   หมวดโปรโมชั่นดูจากสินค้าลูก ถ้าแถวแม่ยังไม่มี category
+     * Cancelled: นับทั้งใบ เพราะไม่มีกล่องตีกลับ
+     */
+    private function getCategoryAmountsByOrderIds(array $orderIds, string $statusType = 'Returned'): array
+    {
+        $categoryAmountsByOrder = [];
+        if (empty($orderIds)) {
+            return $categoryAmountsByOrder;
+        }
+        $orderIds = array_values($orderIds);
+        $in = str_repeat('?,', count($orderIds) - 1) . '?';
+        $lineAmount = "COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)";
+        $liveItem = "(oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL";
+        $catExpr = "COALESCE(p.category, (SELECT p2.category FROM order_items oi2 JOIN products p2 ON oi2.product_id = p2.id WHERE oi2.parent_item_id = oi.id LIMIT 1))";
+        $sumSelect = "
+            COALESCE(SUM(CASE WHEN cat LIKE '%ปุ๋ย%' THEN line_amount ELSE 0 END), 0) AS fertilizer_amount,
+            COALESCE(SUM(CASE WHEN cat LIKE '%ชีวภัณฑ์%' AND cat NOT LIKE '%ปุ๋ย%' THEN line_amount ELSE 0 END), 0) AS bio_amount,
+            COALESCE(SUM(CASE WHEN cat IS NULL OR (cat NOT LIKE '%ปุ๋ย%' AND cat NOT LIKE '%ชีวภัณฑ์%') THEN line_amount ELSE 0 END), 0) AS other_amount
+        ";
+
+        if ($statusType === 'Cancelled') {
+            $sql = "
+                SELECT order_id, $sumSelect
+                FROM (
+                    SELECT oi.parent_order_id AS order_id,
+                           $lineAmount AS line_amount,
+                           $catExpr AS cat
+                    FROM order_items oi
+                    LEFT JOIN products p ON oi.product_id = p.id
+                    WHERE oi.parent_order_id IN ($in)
+                      AND $liveItem
+                ) cat_lines
+                GROUP BY order_id
+            ";
+        } else {
+            $sql = "
+                SELECT order_id, $sumSelect
+                FROM (
+                    SELECT ob.order_id,
+                           $lineAmount AS line_amount,
+                           $catExpr AS cat
+                    FROM order_boxes ob
+                    JOIN order_items oi
+                      ON oi.parent_order_id = ob.order_id
+                     AND (
+                            oi.order_id = ob.sub_order_id
+                         OR oi.box_number = ob.box_number
+                     )
+                    LEFT JOIN products p ON oi.product_id = p.id
+                    WHERE ob.order_id IN ($in)
+                      AND ob.return_status IS NOT NULL
+                      AND $liveItem
+                ) cat_lines
+                GROUP BY order_id
+            ";
+        }
+
+        $catStmt = $this->pdo->prepare($sql);
+        $catStmt->execute($orderIds);
+        while ($row = $catStmt->fetch(PDO::FETCH_ASSOC)) {
+            $categoryAmountsByOrder[$row['order_id']] = [
+                'fertilizer_amount' => (float)$row['fertilizer_amount'],
+                'bio_amount' => (float)$row['bio_amount'],
+                'other_amount' => (float)$row['other_amount']
+            ];
+        }
+        return $categoryAmountsByOrder;
+    }
+
     public function getReportData(
         string $orderStartDate, string $orderEndDate, 
         string $orderStartTime, string $orderEndTime,
@@ -235,6 +308,7 @@ class ReturnedOrdersReportService
                 ];
             }
         }
+        $categoryAmountsByOrder = $this->getCategoryAmountsByOrderIds($orderIds, $statusType);
 
         // Fetch order tags
         $tagsByOrder = [];
@@ -261,6 +335,10 @@ class ReturnedOrdersReportService
             $row['audio_links'] = $audioLinksByOrder[$row['order_id']] ?? [];
             $row['items'] = $itemsByOrder[$row['order_id']] ?? [];
             $row['tags'] = $tagsByOrder[$row['order_id']] ?? [];
+            $amounts = $categoryAmountsByOrder[$row['order_id']] ?? null;
+            $row['fertilizer_amount'] = $amounts['fertilizer_amount'] ?? 0;
+            $row['bio_amount'] = $amounts['bio_amount'] ?? 0;
+            $row['other_amount'] = $amounts['other_amount'] ?? 0;
         }
 
         return $results;
@@ -652,6 +730,33 @@ class ReturnedOrdersReportService
         $detailsStmt = $this->pdo->prepare($detailsSql);
         $detailsStmt->execute($params);
         $details = $detailsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $categoryAmountsByOrder = $this->getCategoryAmountsByOrderIds(
+            array_unique(array_column($details, 'order_id')),
+            $statusType
+        );
+        $sumsByTag = [];
+        foreach ($details as &$row) {
+            $amounts = $categoryAmountsByOrder[$row['order_id']] ?? [];
+            $row['fertilizer_amount'] = $amounts['fertilizer_amount'] ?? 0;
+            $row['bio_amount'] = $amounts['bio_amount'] ?? 0;
+            $row['other_amount'] = $amounts['other_amount'] ?? 0;
+            $tagName = $row['tag_name'];
+            if (!isset($sumsByTag[$tagName])) {
+                $sumsByTag[$tagName] = ['fertilizer_amount' => 0, 'bio_amount' => 0, 'other_amount' => 0];
+            }
+            $sumsByTag[$tagName]['fertilizer_amount'] += $row['fertilizer_amount'];
+            $sumsByTag[$tagName]['bio_amount'] += $row['bio_amount'];
+            $sumsByTag[$tagName]['other_amount'] += $row['other_amount'];
+        }
+        unset($row);
+
+        foreach ($summary as &$s) {
+            $s['fertilizer_amount'] = $sumsByTag[$s['tag_name']]['fertilizer_amount'] ?? 0;
+            $s['bio_amount'] = $sumsByTag[$s['tag_name']]['bio_amount'] ?? 0;
+            $s['other_amount'] = $sumsByTag[$s['tag_name']]['other_amount'] ?? 0;
+        }
+        unset($s);
 
         return [
             'summary' => $summary,
