@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Inbox, PhoneCall, CalendarCheck, CalendarDays, BarChart4, Loader2, Activity, Clock, Calendar, Download } from 'lucide-react';
+import { Inbox, PhoneCall, CalendarCheck, CalendarDays, BarChart4, Loader2, Activity, Clock, Calendar, Download, RotateCcw } from 'lucide-react';
 import resolveApiBasePath from '@/utils/apiBasePath';
 import DateRangePicker, { DateRange } from '@/components/DateRangePicker';
 
@@ -12,6 +12,7 @@ interface BasketStat {
     assigned_total: number;
     called: number;
     appointments: number;
+    reclaimed: number;
 }
 
 interface AgentData {
@@ -46,10 +47,10 @@ const TelesaleCallstatsPage: React.FC = () => {
     const [drilldownData, setDrilldownData] = useState<any[]>([]);
     const [isLoadingDrilldown, setIsLoadingDrilldown] = useState(false);
     const [modalContext, setModalContext] = useState({ agentId: 0, agentName: '', basketKey: '', basketName: '' });
-    const [modalTab, setModalTab] = useState<'all' | 'not_called' | 'called_no_appt' | 'called_and_appt' | 'appt_no_call'>('all');
+    const [modalTab, setModalTab] = useState<'all' | 'not_called' | 'called_no_appt' | 'called_and_appt' | 'appt_no_call' | 'reclaimed'>('all');
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const [drilldownCounts, setDrilldownCounts] = useState({ total_all: 0, total_not_called: 0, total_called_no_appt: 0, total_called_and_appt: 0, total_appt_no_call: 0 });
+    const [drilldownCounts, setDrilldownCounts] = useState({ total_all: 0, total_not_called: 0, total_called_no_appt: 0, total_called_and_appt: 0, total_appt_no_call: 0, total_reclaimed: 0 });
 
 
     const handleExport = async () => {
@@ -150,7 +151,7 @@ const TelesaleCallstatsPage: React.FC = () => {
         fetchDrilldown(agentId, basketKey, 'all', 1);
     };
 
-    const handleTabChange = (tab: 'all' | 'not_called' | 'called_no_appt' | 'called_and_appt' | 'appt_no_call') => {
+    const handleTabChange = (tab: 'all' | 'not_called' | 'called_no_appt' | 'called_and_appt' | 'appt_no_call' | 'reclaimed') => {
         setModalTab(tab);
         setCurrentPage(1);
         fetchDrilldown(modalContext.agentId, modalContext.basketKey, tab, 1);
@@ -332,7 +333,7 @@ const TelesaleCallstatsPage: React.FC = () => {
                                                                     onClick={() => handleCellClick(agent.agent_id, agent.agent_name, basket.basket_key, basket.basket_name)}
                                                                     className="bg-slate-50/50 rounded-2xl p-3 border border-slate-100/50 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:ring-2 hover:ring-indigo-200 transition-all duration-300 cursor-pointer"
                                                                 >
-                                                                    <div className="grid grid-cols-3 gap-2 text-center divide-x divide-slate-200/60">
+                                                                    <div className="grid grid-cols-4 gap-2 text-center divide-x divide-slate-200/60">
                                                                         {/* Assigned Total */}
                                                                         <div className="flex flex-col items-center justify-center group/item py-1" title="ยอดแจกช่วงเวลานี้">
                                                                             <Inbox className="w-4 h-4 text-slate-300 mb-1 group-hover/item:text-blue-500 transition-colors" />
@@ -350,6 +351,12 @@ const TelesaleCallstatsPage: React.FC = () => {
                                                                             <CalendarCheck className="w-4 h-4 text-slate-300 mb-1 group-hover/item:text-amber-500 transition-colors" />
                                                                             <span className="font-bold text-slate-800 text-lg leading-none">{stat.appointments}</span>
                                                                             <span className="text-[10px] text-slate-500 font-medium mt-1">นัดหมาย</span>
+                                                                        </div>
+                                                                        {/* Reclaimed */}
+                                                                        <div className="flex flex-col items-center justify-center group/item py-1" title="ถูกดึงคืน">
+                                                                            <RotateCcw className="w-4 h-4 text-slate-300 mb-1 group-hover/item:text-rose-500 transition-colors" />
+                                                                            <span className="font-bold text-slate-800 text-lg leading-none">{stat.reclaimed || 0}</span>
+                                                                            <span className="text-[10px] text-slate-500 font-medium mt-1">ดึงคืน</span>
                                                                         </div>
                                                                     </div>
                                                                     
@@ -440,6 +447,12 @@ const TelesaleCallstatsPage: React.FC = () => {
                         <CalendarCheck className="w-4 h-4 text-amber-500" />
                         <span>สร้างนัดหมาย</span>
                     </div>
+                    {viewMode === 'performance' && (
+                        <div className="flex items-center gap-2">
+                            <RotateCcw className="w-4 h-4 text-rose-500" />
+                            <span>ถูกดึงคืน</span>
+                        </div>
+                    )}
                 </div>
                 
                 {/* Modal for Drilldown */}
@@ -499,6 +512,14 @@ const TelesaleCallstatsPage: React.FC = () => {
                                             >
                                                 <CalendarDays className="w-3.5 h-3.5" /> นัดแต่ไม่โทร ({drilldownCounts.total_appt_no_call || 0})
                                             </button>
+                                            {viewMode === 'performance' && (
+                                                <button 
+                                                    onClick={() => handleTabChange('reclaimed')}
+                                                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${modalTab === 'reclaimed' ? 'border-rose-500 text-rose-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                                                >
+                                                    <RotateCcw className="w-3.5 h-3.5" /> ดึงคืน ({drilldownCounts.total_reclaimed || 0})
+                                                </button>
+                                            )}
                                         </div>
                                         
                                         {/* Table */}
@@ -509,6 +530,9 @@ const TelesaleCallstatsPage: React.FC = () => {
                                                         <th className="px-4 py-3 font-semibold w-24">รหัสลูกค้า</th>
                                                         <th className="px-4 py-3 font-semibold">ชื่อลูกค้า</th>
                                                         <th className="px-4 py-3 font-semibold">เบอร์โทร</th>
+                                                        {viewMode === 'performance' && (
+                                                            <th className="px-4 py-3 font-semibold">ผู้ดูแลปัจจุบัน</th>
+                                                        )}
                                                         <th className="px-4 py-3 font-semibold text-center w-28">สถานะการโทร</th>
                                                         <th className="px-4 py-3 font-semibold text-center w-28">นัดหมาย</th>
                                                     </tr>
@@ -522,7 +546,7 @@ const TelesaleCallstatsPage: React.FC = () => {
                                                                         href={`?page=Dashboard+V2&customerId=${customer.customer_id}`}
                                                                         target="_blank"
                                                                         rel="noopener noreferrer"
-                                                                        className="text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1.5"
+                                                                        className="text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1.5 w-fit"
                                                                         title="คลิกเพื่อเปิดหน้าต่างรายละเอียดลูกค้าในแท็บใหม่"
                                                                     >
                                                                         {customer.full_name}
@@ -530,8 +554,24 @@ const TelesaleCallstatsPage: React.FC = () => {
                                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                                                         </svg>
                                                                     </a>
+                                                                    {customer.reclaimed_at && modalTab === 'reclaimed' && (
+                                                                        <div className="text-[11px] text-rose-500 mt-0.5 flex items-center gap-1 w-fit bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
+                                                                            <RotateCcw className="w-2.5 h-2.5" /> ดึงเมื่อ {customer.reclaimed_at}
+                                                                        </div>
+                                                                    )}
                                                                 </td>
                                                                 <td className="px-4 py-3 text-slate-600 font-mono text-xs">{customer.phone}</td>
+                                                                {viewMode === 'performance' && (
+                                                                    <td className="px-4 py-3 text-slate-600">
+                                                                        {customer.current_owner === 'กองกลาง (Pool)' ? (
+                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
+                                                                                <Inbox className="w-3 h-3" /> กองกลาง
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-xs">{customer.current_owner}</span>
+                                                                        )}
+                                                                    </td>
+                                                                )}
                                                             <td className="px-4 py-3 text-center">
                                                                 {customer.has_called ? (
                                                                     <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-600 ring-2 ring-white shadow-sm" title="โทรแล้ว"><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></span>
@@ -549,7 +589,7 @@ const TelesaleCallstatsPage: React.FC = () => {
                                                         </tr>
                                                     ))}
                                                     {drilldownData.length === 0 && (
-                                                        <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400 font-medium">ไม่พบรายชื่อลูกค้า</td></tr>
+                                                        <tr><td colSpan={viewMode === 'performance' ? 6 : 5} className="px-4 py-12 text-center text-slate-400 font-medium">ไม่พบรายชื่อลูกค้า</td></tr>
                                                     )}
                                                 </tbody>
                                             </table>

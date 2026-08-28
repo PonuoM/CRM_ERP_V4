@@ -173,7 +173,8 @@ try {
                         LIMIT 1
                     ),
                     c.current_basket_key
-                ) as current_basket_key
+                ) as current_basket_key,
+                c.assigned_to as current_assigned_to
             FROM customer_audit_log a
             JOIN customers c ON a.customer_id = c.customer_id
             WHERE a.field_name = 'assigned_to'
@@ -196,7 +197,8 @@ try {
             C.current_basket_key, 
             COUNT(DISTINCT C.customer_id) as assigned_total,
             COUNT(DISTINCT CH.customer_id) as called,
-            COUNT(DISTINCT A.customer_id) as appointments
+            COUNT(DISTINCT A.customer_id) as appointments,
+            SUM(CASE WHEN C.current_assigned_to != C.assigned_to OR C.current_assigned_to IS NULL THEN 1 ELSE 0 END) as reclaimed
         FROM Cohort C
         LEFT JOIN call_history CH 
             ON C.customer_id = CH.customer_id AND C.assigned_to = CH.caller_id AND CH.date >= C.assignment_date
@@ -226,7 +228,8 @@ try {
                 'appt_no_call_current' => 0,
                 'assigned_total' => 0,
                 'called' => 0,
-                'appointments' => 0
+                'appointments' => 0,
+                'reclaimed' => 0
             ];
         }
     }
@@ -252,6 +255,7 @@ try {
             $dataMap[$agentId]['stats'][$basketKey]['assigned_total'] = (int)$row['assigned_total'];
             $dataMap[$agentId]['stats'][$basketKey]['called'] = (int)$row['called'];
             $dataMap[$agentId]['stats'][$basketKey]['appointments'] = (int)$row['appointments'];
+            $dataMap[$agentId]['stats'][$basketKey]['reclaimed'] = (int)$row['reclaimed'];
         }
     }
 
@@ -287,6 +291,7 @@ try {
                 $headers[] = "[{$bName}] รับแจก";
                 $headers[] = "[{$bName}] โทรแล้ว";
                 $headers[] = "[{$bName}] นัดหมาย";
+                $headers[] = "[{$bName}] ดึงคืน";
             } else {
                 $headers[] = "[{$bName}] ในมือ";
                 $headers[] = "[{$bName}] ยังไม่โทร";
@@ -304,7 +309,7 @@ try {
                 $stat = $agent['stats'][$b['basket_key']] ?? null;
                 if (!$stat) {
                     if ($viewMode === 'performance') {
-                        $row = array_merge($row, ['0', '0', '0']);
+                        $row = array_merge($row, ['0', '0', '0', '0']);
                     } else {
                         $row = array_merge($row, ['0', '0', '0', '0', '0']);
                     }
@@ -315,6 +320,7 @@ try {
                     $row[] = $stat['assigned_total'];
                     $row[] = $stat['called'];
                     $row[] = $stat['appointments'];
+                    $row[] = $stat['reclaimed'];
                 } else {
                     $row[] = $stat['assigned_current'];
                     $row[] = $stat['not_called_current'];

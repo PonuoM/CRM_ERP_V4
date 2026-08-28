@@ -41,7 +41,11 @@ try {
     // Pagination and Tab parameters
     $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
     $limit = isset($_GET['limit']) ? max(1, (int)$_GET['limit']) : 50;
+    $validTabs = ['all', 'not_called', 'called_no_appt', 'called_and_appt', 'appt_no_call', 'reclaimed'];
     $tab = $_GET['tab'] ?? 'all'; // 'all', 'called', 'appt'
+    if (!in_array($tab, $validTabs)) {
+        $tab = 'all';
+    }
 
     if (!$agentId || !$basketKey) {
         json_response(['success' => false, 'message' => 'Missing agent_id or basket_key'], 400);
@@ -211,14 +215,16 @@ try {
         $cohortBaseQuery .= " )";
         
         // 1. Get Counts for all tabs
-        // 1. Get Counts for all tabs
         $countQuery = $cohortBaseQuery . "
             , Base AS (
                 SELECT 
                     co.customer_id,
+                    c.assigned_to as current_assigned_to,
+                    co.assigned_to as co_assigned_to,
                     (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) as has_called,
                     (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) as has_appt
                 FROM Cohort co
+                JOIN customers c ON co.customer_id = c.customer_id
                 WHERE (co.historical_basket_key = ? OR co.historical_basket_key = ?)
             )
             SELECT 
@@ -226,7 +232,8 @@ try {
                 SUM(CASE WHEN has_called = 0 AND has_appt = 0 THEN 1 ELSE 0 END) as total_not_called,
                 SUM(CASE WHEN has_called > 0 AND has_appt = 0 THEN 1 ELSE 0 END) as total_called_no_appt,
                 SUM(CASE WHEN has_called > 0 AND has_appt > 0 THEN 1 ELSE 0 END) as total_called_and_appt,
-                SUM(CASE WHEN has_called = 0 AND has_appt > 0 THEN 1 ELSE 0 END) as total_appt_no_call
+                SUM(CASE WHEN has_called = 0 AND has_appt > 0 THEN 1 ELSE 0 END) as total_appt_no_call,
+                SUM(CASE WHEN current_assigned_to != co_assigned_to OR current_assigned_to IS NULL THEN 1 ELSE 0 END) as total_reclaimed
             FROM Base
         ";
         $paramsCount = array_merge($paramsCohort, [$basketKey, (string)$basketId]);
@@ -239,7 +246,8 @@ try {
                 'total_not_called' => (int)$countsRaw['total_not_called'],
                 'total_called_no_appt' => (int)$countsRaw['total_called_no_appt'],
                 'total_called_and_appt' => (int)$countsRaw['total_called_and_appt'],
-                'total_appt_no_call' => (int)$countsRaw['total_appt_no_call']
+                'total_appt_no_call' => (int)$countsRaw['total_appt_no_call'],
+                'total_reclaimed' => (int)$countsRaw['total_reclaimed']
             ];
         }
 
@@ -252,14 +260,21 @@ try {
                     c.last_name,
                     c.phone,
                     co.assigned_to,
+                    c.assigned_to as current_assigned_to,
+                    u.first_name as current_agent_first,
+                    u.last_name as current_agent_last,
                     co.historical_basket_key,
+                    co.assignment_date,
                     (SELECT COUNT(*) FROM call_history ch WHERE ch.customer_id = co.customer_id AND ch.caller_id = co.assigned_to AND ch.date >= co.assignment_date) as call_count,
                     (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = co.customer_id AND a.created_by = co.assigned_to AND a.created_at >= co.assignment_date) as appt_count
                 FROM Cohort co
                 JOIN customers c ON co.customer_id = c.customer_id
+                LEFT JOIN users u ON c.assigned_to = u.id
                 WHERE (co.historical_basket_key = ? OR co.historical_basket_key = ?)
             )
-            SELECT * FROM Base WHERE 1=1
+            SELECT *, 
+                   (SELECT created_at FROM customer_audit_log cal WHERE cal.customer_id = Base.customer_id AND cal.field_name = 'assigned_to' AND cal.created_at > Base.assignment_date ORDER BY cal.created_at ASC LIMIT 1) as reclaimed_at
+            FROM Base WHERE 1=1
         ";
         
         if ($tab === 'not_called') {
@@ -270,6 +285,8 @@ try {
             $dataQuery .= " AND call_count > 0 AND appt_count > 0";
         } elseif ($tab === 'appt_no_call') {
             $dataQuery .= " AND call_count = 0 AND appt_count > 0";
+        } elseif ($tab === 'reclaimed') {
+            $dataQuery .= " AND (current_assigned_to != assigned_to OR current_assigned_to IS NULL)";
         }
         
         $dataQuery .= " ORDER BY customer_id DESC LIMIT ? OFFSET ?";
@@ -291,12 +308,28 @@ try {
     // Format the response array
     $formatted = [];
     foreach ($customers as $c) {
+        $currentOwner = 'กองกลาง (Pool)';
+        if (!empty($c['current_assigned_to'])) {
+            $currentOwner = trim(($c['current_agent_first'] ?? '') . ' ' . ($c['current_agent_last'] ?? ''));
+            if (empty($currentOwner)) $currentOwner = "พนักงาน #" . $c['current_assigned_to'];
+        }
+
+        $reclaimedAt = null;
+        if (!empty($c['reclaimed_at'])) {
+            try {
+                $dt = new DateTime($c['reclaimed_at']);
+                $reclaimedAt = $dt->format('d/m/Y H:i');
+            } catch (Exception $e) {}
+        }
+
         $formatted[] = [
             'customer_id' => (int)$c['customer_id'],
             'full_name' => trim($c['first_name'] . ' ' . $c['last_name']),
             'phone' => $c['phone'], // User requested full phone number
             'has_called' => (int)$c['call_count'] > 0,
             'has_appointment' => (int)$c['appt_count'] > 0,
+            'current_owner' => $currentOwner,
+            'reclaimed_at' => $reclaimedAt,
         ];
     }
 
@@ -305,6 +338,7 @@ try {
     if ($tab === 'called_no_appt') $totalRecords = $counts['total_called_no_appt'] ?? 0;
     if ($tab === 'called_and_appt') $totalRecords = $counts['total_called_and_appt'] ?? 0;
     if ($tab === 'appt_no_call') $totalRecords = $counts['total_appt_no_call'] ?? 0;
+    if ($tab === 'reclaimed') $totalRecords = $counts['total_reclaimed'] ?? 0;
     
     $totalPages = ceil($totalRecords / $limit);
 
