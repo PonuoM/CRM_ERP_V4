@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Customer, CustomerAddress } from '../types';
 import Modal from './Modal';
 import { MapPin, Plus, Edit, Trash2, CheckCircle, Home, Phone, X } from 'lucide-react';
-import { 
-  listCustomerAddresses, 
-  createCustomerAddress, 
-  updateCustomerAddress, 
-  deleteCustomerAddress 
+import {
+  listCustomerAddresses,
+  createCustomerAddress,
+  updateCustomerAddress,
+  deleteCustomerAddress,
+  apiFetch,
 } from '../services/api';
-import resolveApiBasePath from '../utils/apiBasePath';
 
 interface AddressManagementModalProps {
   customer: Customer;
@@ -80,12 +80,9 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
     const loadProvinces = async () => {
       setAddressLoading(true);
       try {
-        const response = await fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            setProvinces(data.data || []);
-          }
+        const data = await apiFetch(`Address_DB/get_address_data.php?endpoint=provinces`);
+        if (data?.success) {
+          setProvinces(data.data || []);
         }
       } catch (error) {
         console.error('Error loading provinces:', error);
@@ -112,10 +109,9 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
 
   useEffect(() => {
     if (selectedProvince) {
-      fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`)
-        .then(response => response.json())
+      apiFetch(`Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`)
         .then(data => {
-          if (data.success) {
+          if (data?.success) {
             setDistricts(data.data || []);
             // Check district
             if (editingAddress?.district) {
@@ -140,10 +136,9 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
 
   useEffect(() => {
     if (selectedDistrict) {
-      fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`)
-        .then(response => response.json())
+      apiFetch(`Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`)
         .then(data => {
-          if (data.success) {
+          if (data?.success) {
             setSubDistricts(data.data || []);
             // Check subdistrict
             if (editingAddress?.subdistrict) {
@@ -260,13 +255,10 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
     try {
       // Validate address relationships
       try {
-        const addressValidationResponse = await fetch(
-          `${resolveApiBasePath()}/Address_DB/check_exist.php`,
+        const addressValidationResult = await apiFetch(
+          `Address_DB/check_exist.php`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
             body: JSON.stringify({
               province: editingAddress.province,
               district: editingAddress.district,
@@ -276,10 +268,8 @@ const AddressManagementModal: React.FC<AddressManagementModalProps> = ({
           },
         );
 
-        const addressValidationResult = await addressValidationResponse.json();
-
         if (
-          !addressValidationResult.success ||
+          !addressValidationResult?.success ||
           !addressValidationResult.valid
         ) {
           alert(

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { User, UserRole } from "@/types";
 import { Role } from "@/services/roleApi";
+import { apiFetch } from "@/services/api";
 import {
     Phone,
     PhoneIncoming,
@@ -436,10 +437,9 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                     is_system: isSystem ? "1" : "0",
                 });
 
-                const res = await fetch(`${apiBase}/Onecall_DB/get_team_users.php?${params}`);
-                const data = await res.json();
+                const data = await apiFetch(`Onecall_DB/get_team_users.php?${params}`);
 
-                if (data.success) {
+                if (data?.success) {
                     setTeamUsers(data.users || []);
                     // Default to current user
                     if (!selectedUserId && data.users?.length > 0) {
@@ -562,7 +562,7 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
             }
 
             // Always fetch monthly data from DB in parallel
-            const monthlyPromise = fetch(`${apiBase}/Onecall_DB/get_talktime_daily_month.php?${params}`).then(res => res.json());
+            const monthlyPromise = apiFetch(`Onecall_DB/get_talktime_daily_month.php?${params}`);
 
             let hourlyDataRes: any = { success: false, error: "Not run" };
 
@@ -613,12 +613,12 @@ const TalkTimeDashboard: React.FC<TalkTimeDashboardProps> = ({ user }) => {
                         console.log("✅ OneCall API data loaded successfully");
                     } else {
                         console.warn("⚠️ OneCall API failed, falling back to database...", apiResult.error);
-                        hourlyDataRes = await fetch(`${apiBase}/Onecall_DB/get_talktime_hourly.php?${params}`).then(res => res.json());
+                        hourlyDataRes = await apiFetch(`Onecall_DB/get_talktime_hourly.php?${params}`);
                     }
                 }
             } else {
                 console.log("💾 Fetching historical data from Database...");
-                hourlyDataRes = await fetch(`${apiBase}/Onecall_DB/get_talktime_hourly.php?${params}`).then(res => res.json());
+                hourlyDataRes = await apiFetch(`Onecall_DB/get_talktime_hourly.php?${params}`);
             }
 
             const monthlyDataRes = await monthlyPromise;

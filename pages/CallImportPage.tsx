@@ -18,6 +18,7 @@ import {
     Download,
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { apiFetch } from "@/services/api";
 import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 
 interface CallImportPageProps {
@@ -213,11 +214,10 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
             const formData = new FormData();
             formData.append("file", selectedFile);
             formData.append("company_id", String(currentUser.companyId));
-            const res = await fetch(`${apiBase}/Onecall_DB/check_call_duplicates.php`, {
+            const data = await apiFetch(`Onecall_DB/check_call_duplicates.php`, {
                 method: "POST",
                 body: formData,
             });
-            const data = await res.json();
             if (data.success) {
                 setDuplicateInfo({
                     totalRows: data.totalRows,
@@ -248,11 +248,10 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
             formData.append("created_by", String(currentUser.id));
             formData.append("start_date", importStartDate);
             formData.append("end_date", importEndDate);
-            const res = await fetch(`${apiBase}/Onecall_DB/import_call_records.php`, {
+            const data = await apiFetch(`Onecall_DB/import_call_records.php`, {
                 method: "POST",
                 body: formData,
             });
-            const data = await res.json();
             if (data.success) {
                 setImportResult({
                     batchId: data.batchId,
@@ -295,12 +294,10 @@ const CallImportPage: React.FC<CallImportPageProps> = ({ currentUser }) => {
     const deleteBatch = async (batchId: number, fileName: string) => {
         if (!confirm(`ต้องการลบ Batch #${batchId} (${fileName}) และข้อมูลทั้งหมดในชุดนี้?`)) return;
         try {
-            const res = await fetch(`${apiBase}/Onecall_DB/delete_call_batch.php`, {
+            const data = await apiFetch(`Onecall_DB/delete_call_batch.php`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ batch_id: batchId, company_id: currentUser.companyId }),
             });
-            const data = await res.json();
             if (data.success) {
                 fetchBatches(batchPage);
             } else {

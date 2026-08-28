@@ -23,6 +23,7 @@ import {
   listUserPancakeMappings,
   createUserPancakeMapping,
   UserPancakeMapping,
+  apiFetch,
 } from "../services/api";
 import PageIconFront from "@/components/PageIconFront";
 import PancakeEnvOffSidebar from "@/components/PancakeEnvOffSidebar";
@@ -306,29 +307,13 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   const handleDisconnectPageUser = async (pageUserId: number) => {
     setLoading(true);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
-      const headers: any = { "Content-Type": "application/json" };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
       // Update page_user record to set user_id to NULL
-      const response = await fetch(`${apiBase}/Page_DB/disconnect_page_user.php`, {
+      const result = await apiFetch(`Page_DB/disconnect_page_user.php`, {
         method: "POST",
-        headers,
         body: JSON.stringify({
           pageUserId: pageUserId,
         }),
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `HTTP error! status: ${response.status}, response: ${errorText}`,
-        );
-      }
-
-      const result = await response.json();
 
       if (!result.ok) {
         throw new Error(result.error || "Failed to disconnect page user");

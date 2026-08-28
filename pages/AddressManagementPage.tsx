@@ -12,11 +12,21 @@ type TabKey = 'geographies' | 'provinces' | 'districts' | 'sub_districts';
 
 const API_BASE = `${APP_BASE_PATH}api/Address_DB/get_address_data.php`;
 
+// Production's get_address_data.php has validate_auth() injected by host-deploy scripts,
+// so the Address_DB endpoint expects a Bearer token. localStorage is browser-only.
+function authHeader(): Record<string, string> {
+    if (typeof window === 'undefined') return {};
+    const token = window.localStorage?.getItem('authToken');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // ─── API Helpers ──────────────────────────────────────
 async function apiFetch(endpoint: string, id?: string | number) {
     const params = new URLSearchParams({ endpoint, limit: '5000' });
     if (id !== undefined) params.set('id', String(id));
-    const res = await fetch(`${API_BASE}?${params}`);
+    const res = await fetch(`${API_BASE}?${params}`, {
+        headers: { ...authHeader() },
+    });
     const json = await res.json();
     if (!json.success) throw new Error(json.message || 'API Error');
     return json.data;
@@ -25,7 +35,10 @@ async function apiFetch(endpoint: string, id?: string | number) {
 async function apiPost(endpoint: string, body: Record<string, unknown>) {
     const res = await fetch(`${API_BASE}?endpoint=${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...authHeader(),
+        },
         body: JSON.stringify(body),
     });
     const json = await res.json();

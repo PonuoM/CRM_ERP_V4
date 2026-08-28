@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { CallHistory, Customer, User, UserRole } from "@/types";
 import { listRoles, Role } from "@/services/roleApi";
+import { apiFetch } from "@/services/api";
 import { isSystemCheck } from "@/utils/isSystemCheck";
 import {
   PhoneIncoming,
@@ -134,12 +135,8 @@ const getOnecallCredentialsFromDB = async () => {
 
     const user = JSON.parse(sessionUser);
 
-    const apiBase = resolveApiBasePath();
-    const response = await fetch(`${apiBase}/Onecall_DB/get_credentials.php`, {
+    const result = await apiFetch(`Onecall_DB/get_credentials.php`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
       body: JSON.stringify({
         user: {
           id: user.id,
@@ -148,13 +145,6 @@ const getOnecallCredentialsFromDB = async () => {
         },
       }),
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to retrieve credentials");
-    }
-
-    const result = await response.json();
 
     if (!result.success) {
       throw new Error(result.error || "Credentials not found");

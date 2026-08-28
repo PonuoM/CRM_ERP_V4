@@ -17,6 +17,7 @@ import LineChart from "@/components/LineChart";
 import PieChart from "@/components/PieChart";
 import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { apiFetch } from "@/services/api";
 
 interface CallsDashboardProps {
   calls?: CallHistory[];
@@ -257,7 +258,6 @@ const saveBatchToDatabase = async (
   companyId?: number,
 ) => {
   try {
-    const apiBase = resolveApiBasePath();
     const requestData = {
       startdate: startDate,
       enddate: endDate,
@@ -265,38 +265,15 @@ const saveBatchToDatabase = async (
       company_id: companyId,
     };
 
-    const response = await fetch(`${apiBase}/Onecall_DB/onecall_batch.php`, {
+    const data = await apiFetch(`Onecall_DB/onecall_batch.php`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
       body: JSON.stringify(requestData),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    if (!data?.success) {
       return {
         success: false,
-        error: `Failed to save batch: ${response.status} - ${errorText}`,
-      };
-    }
-
-    const responseText = await response.text();
-
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      return {
-        success: false,
-        error: "Invalid JSON response from batch save API",
-      };
-    }
-
-    if (!data.success) {
-      return {
-        success: false,
-        error: data.error || "Unknown error from batch save API",
+        error: data?.error || "Unknown error from batch save API",
       };
     }
 
@@ -311,10 +288,10 @@ const saveBatchToDatabase = async (
       success: true,
       batchId: data.id,
     };
-  } catch (error) {
+  } catch (error: any) {
     return {
       success: false,
-      error: error.message || "Failed to save batch to database",
+      error: error?.message || "Failed to save batch to database",
     };
   }
 };
@@ -322,45 +299,21 @@ const saveBatchToDatabase = async (
 // Function to save log data to database
 const saveLogToDatabase = async (logs: any[], batchId: number, companyId?: number) => {
   try {
-    const apiBase = resolveApiBasePath();
     const requestData = {
       logs: logs,
       batch_id: batchId,
       company_id: companyId,
     };
 
-    const response = await fetch(`${apiBase}/Onecall_DB/onecall_logs.php`, {
+    const data = await apiFetch(`Onecall_DB/onecall_logs.php`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
       body: JSON.stringify(requestData),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    if (!data?.success) {
       return {
         success: false,
-        error: `Failed to save logs: ${response.status} - ${errorText}`,
-      };
-    }
-
-    const responseText = await response.text();
-
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      return {
-        success: false,
-        error: "Invalid JSON response from log save API",
-      };
-    }
-
-    if (!data.success) {
-      return {
-        success: false,
-        error: data.error || "Unknown error from log save API",
+        error: data?.error || "Unknown error from log save API",
       };
     }
 
@@ -368,10 +321,10 @@ const saveLogToDatabase = async (logs: any[], batchId: number, companyId?: numbe
       success: true,
       duplicates: data.duplicates || null,
     };
-  } catch (error) {
+  } catch (error: any) {
     return {
       success: false,
-      error: error.message || "Failed to save logs to database",
+      error: error?.message || "Failed to save logs to database",
     };
   }
 };
@@ -703,17 +656,13 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       const userIdsParam = (!selectedUserId && teamUserIds)
         ? `&user_ids=${encodeURIComponent(teamUserIds.join(","))}`
         : "";
-      const response = await fetch(
-        `${apiBase}/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
+      const data = await apiFetch(
+        `Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
       );
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.success) {
+      if (data?.success) {
         setDashboardStats(data.data);
       } else {
-        console.error("Failed to fetch dashboard stats:", data.error);
+        console.error("Failed to fetch dashboard stats:", data?.error);
       }
     } catch (error) {
       console.error("Error fetching dashboard stats:", error);
@@ -729,11 +678,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       const userIdsParam = (!selectedUserId && teamUserIds)
         ? `&user_ids=${encodeURIComponent(teamUserIds.join(","))}`
         : "";
-      const resp = await fetch(
-        `${apiBase}/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
+      const data = await apiFetch(
+        `Onecall_DB/get_employee_summary.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
       );
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
       if (data && data.success && Array.isArray(data.data)) {
         setEmployeeSummary(data.data);
       } else {
@@ -755,11 +702,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       const userIdsParam = (!selectedUserId && teamUserIds)
         ? `&user_ids=${encodeURIComponent(teamUserIds.join(","))}`
         : "";
-      const resp = await fetch(
-        `${apiBase}/Onecall_DB/get_daily_calls.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
+      const data = await apiFetch(
+        `Onecall_DB/get_daily_calls.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
       );
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
       if (data && data.success && Array.isArray(data.data)) {
         setDailySeries(data.data);
       } else {
@@ -781,11 +726,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       const userIdsParam = (!selectedUserId && teamUserIds)
         ? `&user_ids=${encodeURIComponent(teamUserIds.join(","))}`
         : "";
-      const resp = await fetch(
-        `${apiBase}/Onecall_DB/get_talk_summary.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
+      const data = await apiFetch(
+        `Onecall_DB/get_talk_summary.php?month=${month}&year=${year}${userParam}${companyParam}${userIdsParam}`,
       );
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
       if (data && data.success && data.data) {
         setTalkSummary({
           talked: data.data.talked || 0,
@@ -1017,17 +960,11 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   const fetchBatches = async () => {
     try {
       const companyParam = currentCompanyId ? `?company_id=${currentCompanyId}` : "";
-      const response = await fetch(
-        `${apiBase}/Onecall_DB/onecall_batch_crud.php${companyParam}`,
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.success) {
+      const data = await apiFetch(`Onecall_DB/onecall_batch_crud.php${companyParam}`);
+      if (data?.success) {
         setBatches(data.data || []);
       } else {
-        console.error("Failed to fetch batches:", data.error);
+        console.error("Failed to fetch batches:", data?.error);
       }
     } catch (error) {
       console.error("Error fetching batches:", error);
@@ -1038,12 +975,8 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   const fetchUsers = async () => {
     try {
       const companyParam = currentCompanyId ? `?company_id=${currentCompanyId}` : "";
-      const response = await fetch(`${apiBase}/Onecall_DB/get_users.php${companyParam}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.success) {
+      const data = await apiFetch(`Onecall_DB/get_users.php${companyParam}`);
+      if (data?.success) {
         // Map role values to UserRole enum
         const mappedUsers = (data.data || []).map((user: any) => {
           let mappedRole = user.role;
@@ -1077,27 +1010,18 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
     }
 
     try {
-      const response = await fetch(
-        `${apiBase}/Onecall_DB/onecall_batch_crud.php?id=${batchId}`,
-        {
-          method: "DELETE",
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.success) {
-        alert("ลบข้อมูลสำเร็จ");
+      const data = await apiFetch(`Onecall_DB/onecall_batch_crud.php?id=${batchId}`, {
+        method: "DELETE",
+      });
+      if (data?.success) {
+        alert("ลบข้อมูลสำเร�จ");
         fetchBatches();
       } else {
-        alert("ไม่สามารถลบข้อมูลได้: " + data.error);
+        alert("ไม่สา�ารถลบข้อมูลได้: " + (data?.error || "unknown"));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting batch:", error);
-      alert("เกิดข้อผิดพลาดในการลบข้อมูล: " + error.message);
+      alert("เกิดข้อผิดพลาดในการลบข้อมูล: " + (error?.message || "unknown"));
     }
   };
 
@@ -1137,34 +1061,25 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
       const url =
         isEditingBatch && selectedBatch
-          ? `${apiBase}/Onecall_DB/onecall_batch_crud.php?id=${selectedBatch.id}`
-          : `${apiBase}/Onecall_DB/onecall_batch_crud.php`;
+          ? `Onecall_DB/onecall_batch_crud.php?id=${selectedBatch.id}`
+          : `Onecall_DB/onecall_batch_crud.php`;
 
       const method = isEditingBatch ? "PUT" : "POST";
 
-      const response = await fetch(url, {
+      const data = await apiFetch(url, {
         method,
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(requestData),
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.success) {
+      if (data?.success) {
         alert(isEditingBatch ? "อัปเดตข้อมูลสำเร็จ" : "สร้างข้อมูลสำเร็จ");
         setShowBatchModal(false);
         fetchBatches();
       } else {
-        alert("ไม่สามารถบันทึกข้อมูลได้: " + data.error);
+        alert("ไม่สามารถบันทึกข้อมูลได้: " + (data?.error || "unknown"));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving batch:", error);
-      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล: " + error.message);
+      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล: " + (error?.message || "unknown"));
     }
   };
 

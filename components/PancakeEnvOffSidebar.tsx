@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, Trash2, Settings } from 'lucide-react';
 import { User, UserRole } from '@/types';
 import resolveApiBasePath from '@/utils/apiBasePath';
+import { apiFetch } from '@/services/api';
 
 interface PancakeEnvOffSidebarProps {
     isOpen: boolean;
@@ -55,16 +56,9 @@ const PancakeEnvOffSidebar: React.FC<PancakeEnvOffSidebarProps> = ({ isOpen, onC
 
     const fetchEnvVariables = async () => {
         try {
-            const response = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('authToken')}` // Ensure we pass token for company context
-                }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                if (Array.isArray(data)) {
-                    setEnvVariables(data);
-                }
+            const data = await apiFetch(`Page_DB/env_manager.php`);
+            if (Array.isArray(data)) {
+                setEnvVariables(data);
             }
         } catch (error) {
             console.error('Failed to fetch env variables:', error);
@@ -73,14 +67,9 @@ const PancakeEnvOffSidebar: React.FC<PancakeEnvOffSidebarProps> = ({ isOpen, onC
 
     const checkDbSetting = async () => {
         try {
-            const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-                }
-            });
-            if (envResponse.ok) {
-                const envData = await envResponse.json();
-                const dbSetting = Array.isArray(envData) ? envData.find((env: any) => env.key === 'page_store_db') : null;
+            const envData = await apiFetch(`Page_DB/env_manager.php`);
+            if (Array.isArray(envData)) {
+                const dbSetting = envData.find((env: any) => env.key === 'page_store_db');
                 setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
             }
         } catch (error) {
@@ -92,24 +81,19 @@ const PancakeEnvOffSidebar: React.FC<PancakeEnvOffSidebarProps> = ({ isOpen, onC
         if (!variable.key || !variable.value) return;
         setIsLoading(true);
         try {
-            const response = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
+            const err = await apiFetch(`Page_DB/env_manager.php`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-                },
-                body: JSON.stringify(variable)
+                body: JSON.stringify(variable),
             });
 
-            if (response.ok) {
-                await fetchEnvVariables();
-                // Only clear input if it was the main input form (not db verify checkbox)
-                if (variable.key !== 'page_store_db') {
-                    setNewEnvVar(prev => ({ ...prev, value: '' })); // Keep the key pattern
-                }
-                if (onUpdate) onUpdate();
-            } else {
-                const err = await response.json();
+            await fetchEnvVariables();
+            // Only clear input if it was the main input form (not db verify checkbox)
+            if (variable.key !== 'page_store_db') {
+                setNewEnvVar(prev => ({ ...prev, value: '' })); // Keep the key pattern
+            }
+            if (onUpdate) onUpdate();
+
+            if (err?.error) {
                 alert(`Error: ${err.error || 'Unknown error'}`);
             }
         } catch (error) {
@@ -124,21 +108,15 @@ const PancakeEnvOffSidebar: React.FC<PancakeEnvOffSidebarProps> = ({ isOpen, onC
         if (!confirm(`Are you sure you want to delete variable "${key}"?`)) return;
         setIsLoading(true);
         try {
-            const response = await fetch(`${apiBase}/Page_DB/env_manager.php?key=${encodeURIComponent(key)}`, {
+            await apiFetch(`Page_DB/env_manager.php?key=${encodeURIComponent(key)}`, {
                 method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-                }
             });
 
-            if (response.ok) {
-                await fetchEnvVariables();
-                if (onUpdate) onUpdate();
-            } else {
-                alert('Failed to delete variable');
-            }
+            await fetchEnvVariables();
+            if (onUpdate) onUpdate();
         } catch (error) {
             console.error('Error deleting env variable:', error);
+            alert('Failed to delete variable');
         } finally {
             setIsLoading(false);
         }
