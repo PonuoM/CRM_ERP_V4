@@ -6,3 +6,22 @@ RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]
 
+# ── กันสคริปต์ครั้งเดียวไม่ให้ถูกเรียกจากอินเทอร์เน็ต ────────────────────────────────────
+#
+# ไฟล์จริงในโฟลเดอร์นี้ถูก serve ตรง ไม่ผ่าน index.php (ดูเงื่อนไข !-f ข้างบน) การตรวจสิทธิ์
+# ทั้งหมดอยู่ใน index.php สคริปต์ที่วางไว้ข้าง ๆ จึงข้ามด่านไปทั้งหมด
+#
+# เคยมีของจริงหลุดขึ้น production: migrate_reset_sheet_table.php ที่ DROP TABLE ข้อมูล 18,366 แถว
+# และ kill_processes.php ที่ตัด connection ทุกคนจนระบบล่ม ทั้งคู่เปิด URL ครั้งเดียวก็ทำงาน
+# ไม่ต้องล็อกอิน ลบไฟล์ออกไปแล้วแต่กฎนี้กันไม่ให้ของแบบเดียวกันกลับมาได้อีก
+#
+# บล็อกตามรูปแบบชื่อ ไม่ใช่บล็อกทั้งโฟลเดอร์ เพราะไฟล์อย่าง customers.php basket_config.php
+# companies.php เป็นส่วนของระบบจริงที่หน้าเว็บเรียกอยู่ การบล็อกเหมารวมจะทำให้ระบบพัง
+<FilesMatch "^(test_|dump_|show_|describe_|scan_|migrate_|kill_|convert_|manual_|fix_|init_|recreate_|clean_|optimize_|ensure_|create_.*table|add_.*column|database_sync|list_statuses).*\.php$">
+    Require all denied
+</FilesMatch>
+
+# ไฟล์ log ไม่ควรโหลดได้จากเว็บไม่ว่ากรณีใด
+<FilesMatch "\.(log|sql|bak|old|orig|save)$">
+    Require all denied
+</FilesMatch>
