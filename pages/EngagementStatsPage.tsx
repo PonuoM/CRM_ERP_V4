@@ -10,7 +10,7 @@ import PageIconFront from '@/components/PageIconFront';
 import PancakeEnvOffSidebar from '@/components/PancakeEnvOffSidebar';
 import PancakeTokenErrorModal, { TokenError } from '@/components/PancakeTokenErrorModal';
 import resolveApiBasePath from '@/utils/apiBasePath';
-import { listPages } from '@/services/api';
+import { listPages, apiFetch } from '@/services/api';
 
 interface EngagementStatsPageProps {
   orders?: Order[];
@@ -164,15 +164,12 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     // Check page_store_db setting on page load
     const checkDbSetting = async () => {
       try {
-        const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-        });
-        if (envResponse.ok) {
-          const envData = await envResponse.json();
+        const envData = await apiFetch(`Page_DB/env_manager.php`);
+        if (Array.isArray(envData)) {
           const dbSetting = envData.find((env: any) => env.key === 'page_store_db');
           setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
           // Also set envVariables to ensure hasAccessToken check works
-          setEnvVariables(Array.isArray(envData) ? envData : []);
+          setEnvVariables(envData);
         }
       } catch (error) {
         console.error('Error checking database setting:', error);
@@ -199,22 +196,17 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // Fetch upload batches from database
   const fetchUploadBatches = async () => {
     try {
-      const response = await fetch(`${apiBase}/Page_DB/get_date_ranges.php?source=page_engagement`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.dateRanges) {
-          // Transform the data to match the expected format
-          const batches = data.dateRanges.map((batch: any) => ({
-            id: batch.id,
-            dateRange: batch.date_range,
-            status: 'completed' as const, // All batches from database are completed
-            recordsCount: batch.record_count || 0,
-            createdAt: batch.created_at
-          }));
-          setUploadBatches(batches);
-        }
+      const data = await apiFetch(`Page_DB/get_date_ranges.php?source=page_engagement`);
+      if (data?.success && data.dateRanges) {
+        // Transform the data to match the expected format
+        const batches = data.dateRanges.map((batch: any) => ({
+          id: batch.id,
+          dateRange: batch.date_range,
+          status: 'completed' as const, // All batches from database are completed
+          recordsCount: batch.record_count || 0,
+          createdAt: batch.created_at
+        }));
+        setUploadBatches(batches);
       }
     } catch (error) {
       console.error('Error fetching upload batches:', error);
@@ -229,15 +221,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   const fetchExistingDateRanges = async () => {
     try {
       // Use only page_engagement data for the EngagementStatsPage
-      const response = await fetch(`${apiBase}/Page_DB/get_date_ranges.php?source=page_engagement`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          if (data.existingDates) {
-            setExistingDatesInDatabase(new Set(data.existingDates));
-          }
+      const data = await apiFetch(`Page_DB/get_date_ranges.php?source=page_engagement`);
+      if (data?.success) {
+        if (data.existingDates) {
+          setExistingDatesInDatabase(new Set(data.existingDates));
         }
       }
     } catch (error) {
@@ -792,13 +779,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
     try {
       // Get access token
-      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-      });
-      if (!envResponse.ok) {
+      const envData = await apiFetch(`Page_DB/env_manager.php`);
+      if (!Array.isArray(envData)) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
-      const envData = await envResponse.json();
       const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
       const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
 
@@ -1066,25 +1050,13 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
       // First, ensure tables exist
       try {
-        const setupResponse = await fetch(`${apiBase}/Page_DB/setup_engagement_tables.php`, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-        });
-
-        if (!setupResponse.ok) {
-        } else {
-          const setupResult = await setupResponse.json();
-        }
+        await apiFetch(`Page_DB/setup_engagement_tables.php`, { method: 'GET' });
       } catch (error) {
       }
 
       // Save data to database
-      const saveResponse = await fetch(`${apiBase}/Page_DB/page_engagement_upload.php`, {
+      const saveResponse = await apiFetch(`Page_DB/page_engagement_upload.php`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        },
         body: JSON.stringify({
           dateRange: uploadDateRange,
           userId: currentUser.id,
@@ -1092,11 +1064,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         })
       });
 
-      if (!saveResponse.ok) {
-        throw new Error('ไม่สามารถบันทึกข้อมูลลงฐานข้อมูลได้');
-      }
-
-      const saveResult = await saveResponse.json();
+      const saveResult = saveResponse;
 
       if (!saveResult.success) {
         throw new Error('ไม่สามารถบันทึกข้อมูลลงฐานข้อมูล: ' + (saveResult.error || 'Unknown error'));
@@ -2037,14 +2005,11 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           onUpdate={() => {
             const checkDbSetting = async () => {
               try {
-                const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
-                  headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-                });
-                if (envResponse.ok) {
-                  const envData = await envResponse.json();
-                  const dbSetting = Array.isArray(envData) ? envData.find((env: any) => env.key === 'page_store_db') : null;
+                const envData = await apiFetch(`Page_DB/env_manager.php`);
+                if (Array.isArray(envData)) {
+                  const dbSetting = envData.find((env: any) => env.key === 'page_store_db');
                   setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
-                  setEnvVariables(Array.isArray(envData) ? envData : []);
+                  setEnvVariables(envData);
                 }
               } catch (error) {
                 console.error('Error checking database setting:', error);

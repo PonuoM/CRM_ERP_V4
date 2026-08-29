@@ -7,7 +7,7 @@ import PageIconFront from '@/components/PageIconFront';
 import PancakeEnvOffSidebar from '@/components/PancakeEnvOffSidebar';
 import PancakeTokenErrorModal, { TokenError } from '@/components/PancakeTokenErrorModal';
 import resolveApiBasePath from '@/utils/apiBasePath';
-import { listPages } from '@/services/api';
+import { listPages, apiFetch } from '@/services/api';
 import ExportTypeModal from '@/components/ExportTypeModal';
 import { downloadDataFile } from '@/utils/exportUtils';
 
@@ -141,12 +141,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
   const checkDbSetting = async () => {
     try {
-      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php?key=page_store_db`);
-      if (envResponse.ok) {
-        const envData = await envResponse.json();
-        // envData is { key, value... }
-        setIsStoreDbEnabled(envData && envData.value ? envData.value === '1' : true);
-      }
+      const envData = await apiFetch(`Page_DB/env_manager.php?key=page_store_db`);
+      // envData is { key, value... }
+      setIsStoreDbEnabled(envData && envData.value ? envData.value === '1' : true);
     } catch (error) {
       console.error('Error checking database setting:', error);
     }
@@ -530,14 +527,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     try {
       // Get access token
-      // Get access token
       const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`;
-      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php?key=${accessTokenKey}`);
-      if (!envResponse.ok) {
-        throw new Error('ไม่สามารถดึงข้อมูล env ได้');
-      }
-
-      const envData = await envResponse.json();
+      const envData = await apiFetch(`Page_DB/env_manager.php?key=${accessTokenKey}`);
       let accessToken = '';
       if (envData && envData.value) {
         accessToken = envData.value;
@@ -758,14 +749,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     try {
       // Get access token
-      // Get access token
       const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`;
-      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php?key=${accessTokenKey}`);
-      if (!envResponse.ok) {
-        throw new Error('ไม่สามารถดึงข้อมูล env ได้');
-      }
-
-      const envData = await envResponse.json();
+      const envData = await apiFetch(`Page_DB/env_manager.php?key=${accessTokenKey}`);
       let accessToken = '';
       if (envData && envData.value) {
         accessToken = envData.value;
@@ -908,15 +893,10 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         });
       }
 
-      let response: Response | null = null;
-
       try {
         // Send data to database
-        response = await fetch(`${apiBase}/Page_DB/page_stats_import.php`, {
+        const result = await apiFetch(`Page_DB/page_stats_import.php`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
             dateRange: databaseDateRange,
             pages: pages.map(p => p.page_id || p.id.toString()),
@@ -925,13 +905,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           })
         });
 
-        if (!response.ok) {
-          throw new Error('ไม่สามารถอัปเดตข้อมูลในฐานข้อมูลได้');
-        }
-
-        const result = await response.json();
-
-        if (result.success) {
+        if (result?.success) {
           alert(`อัปเดตข้อมูลเรียบร้อย: ${result.message}`);
           setIsDatabaseModalOpen(false);
         } else {
@@ -940,20 +914,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       } catch (error) {
         console.error('Error updating database:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-
-        // Try to get more detailed error information if it's a fetch error
-        if (error instanceof TypeError && error.message.includes('JSON') && response) {
-          // This might be a JSON parsing error, let's get the raw response
-          try {
-            const responseText = await response.text();
-            console.error('Raw response:', responseText);
-            alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ไม่สามารถแปลคำตอบจากเซิร์ฟเวอร์ได้. ตรวจสอบ console สำหรับข้อมูลเพิ่มเติม');
-          } catch (textError) {
-            alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ' + errorMessage);
-          }
-        } else {
-          alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ' + errorMessage);
-        }
+        alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ' + errorMessage);
       } finally {
         setIsUpdatingDatabase(false);
       }
@@ -1013,10 +974,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   useEffect(() => {
     const fetchEnvVariables = async () => {
       try {
-        const response = await fetch(`${apiBase}/Page_DB/env_manager.php`);
-        if (response.ok) {
-          const data = await response.json();
-          setEnvVariables(Array.isArray(data) ? data : []);
+        const data = await apiFetch(`Page_DB/env_manager.php`);
+        if (Array.isArray(data)) {
+          setEnvVariables(data);
         }
       } catch (error) {
         console.error('Error fetching env variables:', error);
@@ -1036,16 +996,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // Fetch existing date ranges from database
   const fetchExistingDateRanges = async () => {
     try {
-      const response = await fetch(`${apiBase}/Page_DB/get_date_ranges.php`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          if (data.existingDates) {
-            setExistingDatesInDatabase(new Set(data.existingDates));
-          }
-          if (data.dateRanges) {
-            setBatchRecords(data.dateRanges);
-          }
+      const data = await apiFetch(`Page_DB/get_date_ranges.php`);
+      if (data?.success) {
+        if (data.existingDates) {
+          setExistingDatesInDatabase(new Set(data.existingDates));
+        }
+        if (data.dateRanges) {
+          setBatchRecords(data.dateRanges);
         }
       }
     } catch (error) {
@@ -1066,28 +1023,20 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     setIsDeletingBatches(true);
     try {
-      const response = await fetch(`${apiBase}/Page_DB/delete_batches.php`, {
+      const result = await apiFetch(`Page_DB/delete_batches.php`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           batchIds: Array.from(selectedBatches)
         })
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          alert(`ลบข้อมูลสำเร็จ: ${result.message}`);
-          setSelectedBatches(new Set());
-          // Refresh the batch records
-          fetchExistingDateRanges();
-        } else {
-          alert('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
-        }
+      if (result?.success) {
+        alert(`ลบข้อมูลสำเร็จ: ${result.message}`);
+        setSelectedBatches(new Set());
+        // Refresh the batch records
+        fetchExistingDateRanges();
       } else {
-        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+        alert('เกิดข้อผิดพลา�: ' + (result.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error deleting batches:', error);

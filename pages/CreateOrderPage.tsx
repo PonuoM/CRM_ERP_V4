@@ -62,6 +62,7 @@ import {
   createOrderSlip,
   listOrderSlips,
   listCustomers,
+  apiFetch,
 } from "../services/api";
 import ImageLightbox from "../components/common/ImageLightbox";
 import { formatThaiDateTime, toThaiIsoString } from "../utils/datetime";
@@ -2565,27 +2566,19 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     try {
       // Load geographies
 
-      const geoResponse = await fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=geographies`,
+      const geoData = await apiFetch(
+        `Address_DB/get_address_data.php?endpoint=geographies`,
       );
 
-      if (geoResponse.ok) {
-        const geoData = await geoResponse.json();
-
-        if (geoData.success) setGeographies(geoData.data || []);
-      }
+      if (geoData?.success) setGeographies(geoData.data || []);
 
       // Load all provinces
 
-      const provResponse = await fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
+      const provData = await apiFetch(
+        `Address_DB/get_address_data.php?endpoint=provinces`,
       );
 
-      if (provResponse.ok) {
-        const provData = await provResponse.json();
-
-        if (provData.success) setProvinces(provData.data || []);
-      }
+      if (provData?.success) setProvinces(provData.data || []);
     } catch (error) {
       console.error("Error loading address data:", error);
     } finally {
@@ -2626,13 +2619,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   useEffect(() => {
     if (selectedProvince) {
-      fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
+      apiFetch(
+        `Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
       )
-        .then((response) => response.json())
-
         .then((data) => {
-          if (data.success) setDistricts(data.data || []);
+          if (data?.success) setDistricts(data.data || []);
         })
 
         .catch((error) => console.error("Error loading districts:", error));
@@ -2651,13 +2642,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   useEffect(() => {
     if (selectedDistrict) {
-      fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
+      apiFetch(
+        `Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
       )
-        .then((response) => response.json())
-
         .then((data) => {
-          if (data.success) setSubDistricts(data.data || []);
+          if (data?.success) setSubDistricts(data.data || []);
         })
 
         .catch((error) => console.error("Error loading sub-districts:", error));
@@ -2835,22 +2824,20 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       // Load customer addresses from the database
 
-      fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=customer_addresses&id=${encodeURIComponent(customerIdParam)}`,
+      apiFetch(
+        `Address_DB/get_address_data.php?endpoint=customer_addresses&id=${encodeURIComponent(customerIdParam)}`,
       )
-        .then((response) => response.json())
-
         .then((data) => {
           console.log("Customer addresses loaded:", data);
 
-          if (data.success) {
+          if (data?.success) {
             const normalizedAddresses = Array.isArray(data.data)
               ? data.data.map(sanitizeSavedAddress)
               : [];
 
             setAddressOptions(normalizedAddresses);
           } else {
-            console.error("Failed to load customer addresses:", data.message);
+            console.error("Failed to load customer addresses:", data?.message);
           }
         })
 
@@ -3067,13 +3054,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             districts.length === 0 ||
             districts[0].province_id !== province.id
           ) {
-            fetch(
-              `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+            apiFetch(
+              `Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
             )
-              .then((response) => response.json())
-
               .then((data) => {
-                if (data.success) {
+                if (data?.success) {
                   setDistricts(data.data || []);
 
                   // Find and set district ID
@@ -3088,13 +3073,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                       // Load sub-districts for this district
 
-                      fetch(
-                        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                      apiFetch(
+                        `Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
                       )
-                        .then((response) => response.json())
-
                         .then((data) => {
-                          if (data.success) {
+                          if (data?.success) {
                             setSubDistricts(data.data || []);
 
                             // Find and set sub-district ID
@@ -3296,23 +3279,16 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
 
     try {
-      const response = await fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=delete_customer_address`,
-
+      const result = await apiFetch(
+        `Address_DB/get_address_data.php?endpoint=delete_customer_address`,
         {
           method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
 
           body: JSON.stringify({ id: addressId }),
         },
       );
 
-      const result = await response.json();
-
-      if (result.success) {
+      if (result?.success) {
         // Remove the address from the local state
 
         setAddressOptions((prev) =>
@@ -3331,7 +3307,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         alert("ลบที่อยู่เรียบร้อยแล้ว");
       } else {
-        alert("ไม่สามารถลบที่อยู่ได้: " + (result.message || "เกิดข้อผิดพลาด"));
+        alert("ไม่สามารถลบที่อยู่ได้: " + (result?.message || "เกิดข้อ�ิดพลาด"));
       }
     } catch (error) {
       console.error("Error deleting address:", error);
@@ -3386,23 +3362,16 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           : null,
       };
 
-      const response = await fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=set_primary_address`,
-
+      const result = await apiFetch(
+        `Address_DB/get_address_data.php?endpoint=set_primary_address`,
         {
           method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
 
           body: JSON.stringify(payload),
         },
       );
 
-      const result = await response.json();
-
-      if (result.success) {
+      if (result?.success) {
         // Update the customer's address in the local state
 
         if (selectedCustomer) {
@@ -4166,13 +4135,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         if (provinces.length === 0) {
           console.log("⏳ Provinces not loaded, loading now...");
 
-          provincesPromise = fetch(
-            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
+          provincesPromise = apiFetch(
+            `Address_DB/get_address_data.php?endpoint=provinces`,
           )
-            .then((res) => res.json())
-
             .then((provinceData) => {
-              if (provinceData.success) {
+              if (provinceData?.success) {
                 console.log(
                   "✅ Provinces loaded:",
 
@@ -4190,9 +4157,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         // Search for postal code
 
-        const searchPromise = fetch(
-          `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=search&search=${numericValue}`,
-        ).then((res) => res.json());
+        const searchPromise = apiFetch(
+          `Address_DB/get_address_data.php?endpoint=search&search=${numericValue}`,
+        );
 
         // Wait for both to complete
 
@@ -4201,7 +4168,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           .then(([loadedProvinces, data]) => {
             console.log("🔍 Postal code search result:", data);
 
-            if (data.success && data.data && data.data.length > 0) {
+            if (data?.success && data.data && data.data.length > 0) {
               const results = data.data;
 
               console.log("📮 Found results:", results);
@@ -4252,13 +4219,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                   // Load districts for this province
 
-                  fetch(
-                    `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                  apiFetch(
+                    `Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
                   )
-                    .then((res) => res.json())
-
                     .then((districtData) => {
-                      if (districtData.success) {
+                      if (districtData?.success) {
                         setDistricts(districtData.data || []);
 
                         // Find and set district
@@ -4276,9 +4241,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           // Load subdistricts for this district
 
-                          return fetch(
-                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
-                          ).then((res) => res.json());
+                          return apiFetch(
+                            `Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                          );
                         }
                       }
 
@@ -4288,7 +4253,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     })
 
                     .then((subDistrictData) => {
-                      if (subDistrictData.success) {
+                      if (subDistrictData?.success) {
                         setSubDistricts(subDistrictData.data || []);
 
                         // Find and set subdistrict
@@ -4337,13 +4302,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                   setAddressLoading(true);
 
-                  fetch(
-                    `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
+                  apiFetch(
+                    `Address_DB/get_address_data.php?endpoint=provinces`,
                   )
-                    .then((res) => res.json())
-
                     .then((provinceData) => {
-                      if (provinceData.success) {
+                      if (provinceData?.success) {
                         setProvinces(provinceData.data || []);
 
                         const province = provinceData.data.find(
@@ -4363,11 +4326,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           // Continue with loading districts
 
-                          return fetch(
-                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
-
-                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
-                          ).then((res) => res.json());
+                          return apiFetch(
+                            `Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                          );
                         }
                       }
 
@@ -4395,9 +4356,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           // Load subdistricts
 
-                          return fetch(
-                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
-                          ).then((res) => res.json());
+                          return apiFetch(
+                            `Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                          );
                         }
                       }
 
@@ -4767,13 +4728,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       // Validate address relationships
       try {
-        const addressValidationResponse = await fetch(
-          `${resolveApiBasePath()}/Address_DB/check_exist.php`,
+        const addressValidationResult = await apiFetch(
+          `Address_DB/check_exist.php`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
             body: JSON.stringify({
               province: shippingAddress.province,
               district: shippingAddress.district,
@@ -4783,10 +4741,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           },
         );
 
-        const addressValidationResult = await addressValidationResponse.json();
-
         if (
-          !addressValidationResult.success ||
+          !addressValidationResult?.success ||
           !addressValidationResult.valid
         ) {
           highlightField("shippingAddress");
@@ -5434,20 +5390,15 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             phone: sanitizeAddressValue(shippingAddress.phone) || (selectedAddressOption === "profile" ? (sanitizeAddressValue((selectedCustomer as any)?.recipient_phone) || sanitizeAddressValue((selectedCustomer as any)?.recipientPhone)) : "") || sanitizeAddressValue(selectedCustomer?.phone) || "",
           };
 
-          const response = await fetch(
-            `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
+          const result = await apiFetch(
+            `Address_DB/update_customer_address.php`,
             {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
               body: JSON.stringify(updateData),
             },
           );
 
-          const result = await response.json();
-
-          if (result.success) {
+          if (result?.success) {
             console.log("Customer address updated successfully:", result.data);
 
             // Update the selectedCustomer state with the latest data from database
@@ -5529,20 +5480,15 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             birth_date: birthDate || undefined,
           };
 
-          const response = await fetch(
-            `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
+          const result = await apiFetch(
+            `Address_DB/update_customer_address.php`,
             {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
               body: JSON.stringify(updateData),
             },
           );
 
-          const result = await response.json();
-
-          if (result.success) {
+          if (result?.success) {
             console.log(
               "Customer social media updated successfully:",
 
@@ -5598,25 +5544,18 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           (payload as any).newCustomerAddress,
         );
 
-        fetch(
-          `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=save_customer_address`,
-
+        apiFetch(
+          `Address_DB/get_address_data.php?endpoint=save_customer_address`,
           {
             method: "POST",
-
-            headers: {
-              "Content-Type": "application/json",
-            },
 
             body: JSON.stringify((payload as any).newCustomerAddress),
           },
         )
-          .then((response) => response.json())
-
           .then((data) => {
             console.log("Customer address save response:", data);
 
-            if (!data.success) {
+            if (!data?.success) {
               console.error("Error saving customer address:", data.message);
 
               alert("เกิดข้อผิดพลาดในการบันทึกที่อยู่: " + data.message);
@@ -9293,13 +9232,11 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                       Promise.resolve(provinces);
 
                                     if (provinces.length === 0) {
-                                      provincesPromise = fetch(
-                                        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
+                                      provincesPromise = apiFetch(
+                                        `Address_DB/get_address_data.php?endpoint=provinces`,
                                       )
-                                        .then((res) => res.json())
-
                                         .then((data) => {
-                                          if (data.success) {
+                                          if (data?.success) {
                                             setProvinces(data.data || []);
 
                                             return data.data || [];
@@ -9332,9 +9269,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                           // Load districts for this province
 
-                                          return fetch(
-                                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
-                                          ).then((res) => res.json());
+                                          return apiFetch(
+                                            `Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                                          );
                                         }
 
                                         setAddressLoading(false);
@@ -9343,7 +9280,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                       })
 
                                       .then((data) => {
-                                        if (data.success) {
+                                        if (data?.success) {
                                           setDistricts(data.data || []);
 
                                           // Find and set district
@@ -9364,9 +9301,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                             // Load subdistricts for this district
 
-                                            return fetch(
-                                              `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
-                                            ).then((res) => res.json());
+                                            return apiFetch(
+                                              `Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                                            );
                                           }
                                         }
 
@@ -9376,7 +9313,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                       })
 
                                       .then((data) => {
-                                        if (data.success) {
+                                        if (data?.success) {
                                           setSubDistricts(data.data || []);
 
                                           // Find and set subdistrict

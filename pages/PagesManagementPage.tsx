@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Page, User, UserRole } from "@/types";
 import Modal from "@/components/Modal";
-import { createPage, updatePage, listPages, listPlatforms, getSellProductTypes } from "@/services/api";
+import { createPage, updatePage, listPages, listPlatforms, getSellProductTypes, apiFetch } from "@/services/api";
 import PageIconFront from "@/components/PageIconFront";
 import PancakeEnvOffSidebar from "@/components/PancakeEnvOffSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
@@ -16,17 +16,11 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
     if (currentUser?.companyId) {
       try {
         const apiBase = resolveApiBasePath();
-        const response = await fetch(
-          `${apiBase}/Page_DB/env_manager.php?key=ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`,
-          {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          },
+        const data = await apiFetch(
+          `Page_DB/env_manager.php?key=ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`,
         );
 
-        if (response.ok) {
-          const data = await response.json();
+        if (data) {
           accessToken = data.value || "";
         }
       } catch (error) {
@@ -91,28 +85,14 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
         console.log("Preparing to sync pages:", pagesToSync.length, "pages");
         console.log("Company ID:", currentUser.companyId || 1);
 
-        const response = await fetch(`${resolveApiBasePath()}/Page_DB/sync_pages.php`, {
+        const result = await apiFetch(`Page_DB/sync_pages.php`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify({
             pages: pagesToSync,
             companyId: currentUser.companyId || 1,
           }),
         });
 
-        console.log("Sync response status:", response.status);
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("Sync response error:", errorText);
-          throw new Error(
-            `HTTP error! status: ${response.status}, response: ${errorText}`,
-          );
-        }
-
-        const result = await response.json();
         console.log("Sync response result:", result);
 
         // Debug: Log error details if they exist
@@ -133,13 +113,10 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
         // Now sync page users to the page_user table
         try {
           console.log("Starting to sync page users...");
-          const pageUsersResponse = await fetch(
-            `${resolveApiBasePath()}/Page_DB/sync_page_users.php`,
+          const pageUsersResult = await apiFetch(
+            `Page_DB/sync_page_users.php`,
             {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
               body: JSON.stringify({
                 pages: pagesToSync,
                 companyId: currentUser.companyId || 1,
@@ -147,20 +124,6 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
             },
           );
 
-          console.log(
-            "Page users sync response status:",
-            pageUsersResponse.status,
-          );
-
-          if (!pageUsersResponse.ok) {
-            const errorText = await pageUsersResponse.text();
-            console.error("Page users sync response error:", errorText);
-            throw new Error(
-              `HTTP error! status: ${pageUsersResponse.status}, response: ${errorText}`,
-            );
-          }
-
-          const pageUsersResult = await pageUsersResponse.json();
           console.log("Page users sync response result:", pageUsersResult);
 
           if (!pageUsersResult.ok) {
@@ -174,13 +137,10 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
           // Now sync page list user relationships
           try {
             console.log("Starting to sync page list user relationships...");
-            const pageListUserResponse = await fetch(
-              `${resolveApiBasePath()}/Page_DB/sync_page_list_user.php`,
+            const pageListUserResult = await apiFetch(
+              `Page_DB/sync_page_list_user.php`,
               {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
                 body: JSON.stringify({
                   pages: pagesToSync,
                   companyId: currentUser.companyId || 1,
@@ -188,20 +148,6 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
               },
             );
 
-            console.log(
-              "Page list user sync response status:",
-              pageListUserResponse.status,
-            );
-
-            if (!pageListUserResponse.ok) {
-              const errorText = await pageListUserResponse.text();
-              console.error("Page list user sync response error:", errorText);
-              throw new Error(
-                `HTTP error! status: ${pageListUserResponse.status}, response: ${errorText}`,
-              );
-            }
-
-            const pageListUserResult = await pageListUserResponse.json();
             console.log(
               "Page list user sync response result:",
               pageListUserResult,
@@ -359,9 +305,8 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const fetchPageTypes = async () => {
     setLoadingPageTypes(true);
     try {
-      const response = await fetch(`${apiBase}/Page_DB/env_manager.php`);
-      if (response.ok) {
-        const envVars = await response.json();
+      const envVars = await apiFetch(`Page_DB/env_manager.php`);
+      if (Array.isArray(envVars)) {
         const types: { [key: string]: string } = {};
 
         // Extract page type keys and values (e.g., PAGE_TYPE_BUSINESS, PAGE_TYPE_PERSONAL, etc.)
@@ -416,15 +361,8 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     setPancakeShowInCreateOrder(newValue); // Optimistic update
 
     try {
-      const token = localStorage.getItem("authToken");
-      const headers: any = { "Content-Type": "application/json" };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
-      await fetch(`${apiBase}/Page_DB/env_manager.php`, {
+      await apiFetch(`Page_DB/env_manager.php`, {
         method: "POST",
-        headers,
         body: JSON.stringify({
           key: "PANCAKE_SHOW_IN_CREATE_ORDER",
           value: newValue ? "1" : "0",

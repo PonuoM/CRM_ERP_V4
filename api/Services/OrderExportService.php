@@ -124,6 +124,125 @@ class OrderExportService {
         return $totals;
     }
 
+    /** ยอดต่อกล่องจาก order_boxes — วัตถุดิบของ calculateCollectedAmounts() */
+    public static function fetchBoxAmounts(PDO $pdo, array $orderIds): array {
+        $boxAmounts = [];
+        if (empty($orderIds)) {
+            return $boxAmounts;
+        }
+        try {
+            foreach (array_chunk($orderIds, 500) as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $stmt = $pdo->prepare("SELECT order_id, box_number, cod_amount, collection_amount, collected_amount
+                     FROM order_boxes
+                     WHERE order_id IN ($ph)");
+                $stmt->execute($chunk);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $b) {
+                    $boxAmounts[$b['order_id']][(int) $b['box_number']] = [
+                        'cod'        => (float) ($b['cod_amount'] ?? 0),
+                        'collection' => (float) ($b['collection_amount'] ?? 0),
+                        'collected'  => (float) ($b['collected_amount'] ?? 0),
+                    ];
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('OrderExportService::fetchBoxAmounts: ' . $e->getMessage());
+        }
+        return $boxAmounts;
+    }
+
+    /**
+     * เงินที่ได้รับจริงแล้ว แยกเป็นระดับออเดอร์และระดับกล่อง
+     *
+     * COD บันทึกยอดที่เก็บได้จริงไว้รายกล่องที่ order_boxes.collected_amount ใช้ตามนั้นตรง ๆ
+     * ส่วน Transfer/PayAfter เงินเข้าที่ระดับบิล (orders.amount_paid) ไม่มีข้อมูลรายกล่อง
+     * จึงกระจายลงกล่องตามยอดที่แต่ละกล่องเรียกเก็บ และโยนเศษสตางค์ลงกล่องสุดท้าย
+     * เพื่อให้ผลรวมคอลัมน์รายกล่องเท่ากับคอลัมน์ระดับออเดอร์เสมอ
+     *
+     * @return array<string, array{order: float, boxes: array<int, float>}>
+     */
+    public static function calculateCollectedAmounts(array $rows, array $lookups): array {
+        $boxAmounts = $lookups['boxAmounts'] ?? [];
+
+        // กล่องที่ "โผล่ในไฟล์จริง" เท่านั้น — ต้องกระจายยอดลงเฉพาะกล่องเหล่านี้
+        // ไม่งั้นผลรวมในไฟล์จะไม่เท่ากับยอดระดับออเดอร์
+        $rowBoxes = [];
+        $amountPaid = [];
+        foreach ($rows as $r) {
+            $orderId = $r['order_id'];
+            $rowBoxes[$orderId][(int) ($r['box_number'] ?? 1)] = true;
+            $amountPaid[$orderId] = (float) ($r['amount_paid'] ?? 0);
+        }
+
+        $result = [];
+        foreach ($rowBoxes as $orderId => $boxSet) {
+            $boxNumbers = array_keys($boxSet);
+            sort($boxNumbers);
+            $orderBoxes = $boxAmounts[$orderId] ?? [];
+
+            $collectedSum = 0.0;
+            foreach ($orderBoxes as $b) {
+                $collectedSum += (float) ($b['collected'] ?? 0);
+            }
+
+            // COD: มียอดเก็บจริงรายกล่องอยู่แล้ว ใช้ตามนั้น
+            if ($collectedSum > 0) {
+                $perBox = [];
+                $printed = 0.0;
+                foreach ($boxNumbers as $n) {
+                    $perBox[$n] = (float) ($orderBoxes[$n]['collected'] ?? 0);
+                    $printed += $perBox[$n];
+                }
+                // กล่องที่มีใน order_boxes แต่ไม่มีรายการสินค้าในไฟล์ จะตกหล่น
+                // ยกยอดส่วนที่หายไปใส่กล่องแรก เพื่อให้ผลรวมยังตรง
+                $missing = round($collectedSum - $printed, 2);
+                if (abs($missing) >= 0.01 && !empty($boxNumbers)) {
+                    $perBox[$boxNumbers[0]] += $missing;
+                }
+                $result[$orderId] = ['order' => $collectedSum, 'boxes' => $perBox];
+                continue;
+            }
+
+            // Transfer / PayAfter / COD ที่ยังไม่ import ใบนำส่ง: เงินอยู่ระดับบิล
+            $paid = $amountPaid[$orderId] ?? 0.0;
+            $perBox = array_fill_keys($boxNumbers, 0.0);
+            if ($paid != 0.0 && !empty($boxNumbers)) {
+                $weights = [];
+                $weightSum = 0.0;
+                foreach ($boxNumbers as $n) {
+                    $w = (float) ($orderBoxes[$n]['collection'] ?? 0);
+                    if ($w <= 0) {
+                        $w = (float) ($orderBoxes[$n]['cod'] ?? 0);
+                    }
+                    $weights[$n] = $w;
+                    $weightSum += $w;
+                }
+                if ($weightSum <= 0) {
+                    // ไม่รู้สัดส่วน (เช่นกล่องถูกตีกลับจน collection_amount = 0) — หารเท่ากัน
+                    foreach ($boxNumbers as $n) {
+                        $weights[$n] = 1.0;
+                    }
+                    $weightSum = (float) count($boxNumbers);
+                }
+                $lastBox = $boxNumbers[count($boxNumbers) - 1];
+                $running = 0.0;
+                foreach ($boxNumbers as $n) {
+                    if ($n === $lastBox) {
+                        // เศษสตางค์จากการปัดลงกล่องสุดท้าย ผลรวมจึงตรงเป๊ะ
+                        $perBox[$n] = round($paid - $running, 2);
+                    } else {
+                        $share = round($paid * $weights[$n] / $weightSum, 2);
+                        $perBox[$n] = $share;
+                        $running += $share;
+                    }
+                }
+            }
+            $result[$orderId] = ['order' => $paid, 'boxes' => $perBox];
+        }
+
+        return $result;
+    }
+
     public static function calculateCreatorTotals(array $rows, array $lookups = []): array {
         $creatorTotals = [];
 
@@ -192,11 +311,16 @@ class OrderExportService {
                 'รอบ Stamp', 'ค่าคอม', 'ผู้ได้รับค่าคอม (user_id)', 'วันที่ Stamp', 'หมายเหตุ Stamp'
             ]);
         }
-        
+
+        // ท้ายสุดเสมอ — ลงเลขเฉพาะรายการแรกของออเดอร์ / ของกล่อง
+        // ผลรวมคอลัมน์รายกล่องจึงเท่ากับผลรวมคอลัมน์ระดับออเดอร์
+        $headers[] = 'เงินเก็บได้รวมทั้งออเดอร์';
+        $headers[] = 'เงินเก็บได้แยกกล่อง';
+
         return $headers;
     }
 
-    public static function formatOrderCsvRow(array $row, array $lookups, array &$creatorTotals, array &$seenCreators, array &$seenOrders, bool $includeCommissionCols = false, bool $includeStampCols = false): array {
+    public static function formatOrderCsvRow(array $row, array $lookups, array &$creatorTotals, array &$seenCreators, array &$seenOrders, bool $includeCommissionCols = false, bool $includeStampCols = false, array &$seenBoxes = []): array {
         $regionMap = self::getRegionMap();
         $statusThai = self::getStatusThaiMap();
         $customerTypeThai = self::getCustomerTypeThaiMap();
@@ -392,7 +516,18 @@ class OrderExportService {
             $result[] = $row['stamp_date'] ? date('d/m/Y H:i', strtotime($row['stamp_date'])) : '-';
             $result[] = $row['stamp_note'] ?? '-';
         }
-    
+
+        $collected = $lookups['collectedAmounts'][$orderId] ?? null;
+        $result[] = ($isFirstItem && $collected) ? $collected['order'] : '-';
+
+        $boxKey = $orderId . '-' . $boxNumber;
+        if ($collected && !isset($seenBoxes[$boxKey])) {
+            $seenBoxes[$boxKey] = true;
+            $result[] = $collected['boxes'][(int) $boxNumber] ?? 0;
+        } else {
+            $result[] = '-';
+        }
+
         return $result;
     }
 }

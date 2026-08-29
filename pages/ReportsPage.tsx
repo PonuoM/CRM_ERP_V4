@@ -939,9 +939,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const isSuperAdmin = currentUser && String(currentUser.role).toLowerCase() === 'superadmin';
         const companyParam = currentUser && !isSuperAdmin && currentUser.companyId ? currentUser.companyId : 0;
         const deptParam = selectedDepartments.length > 0 ? selectedDepartments.join(',') : 'all';
-        const token = localStorage.getItem('token') || '';
+        // 'token' was the wrong key — LoginPage stores it as 'authToken', so this
+        // always sent an empty token and the API answered UNAUTHORIZED.
+        const token = localStorage.getItem('authToken') || '';
 
-        const url = `${resolveApiBasePath()}/Orders/export_orders_raw.php?company_id=${companyParam}&start_date=${startDateStr}&end_date=${endDateStr}&departments=${encodeURIComponent(deptParam)}&format=${type}&token=${token}`;
+        const url = `${resolveApiBasePath()}/Orders/export_orders_raw.php?company_id=${companyParam}&start_date=${startDateStr}&end_date=${endDateStr}&departments=${encodeURIComponent(deptParam)}&format=${type}&token=${encodeURIComponent(token)}`;
         
         if (type === 'xlsx') {
           setIsExporting(true);

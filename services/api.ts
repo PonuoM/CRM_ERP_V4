@@ -77,7 +77,11 @@ export async function apiFetch(path: string, init?: RequestInit) {
   let url = `${base}${path}`;
 
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('User_DB/') || path.startsWith('cron/') || path.startsWith('Database/') || path.startsWith('Marketplace/') || path.startsWith('Quota/') || path.startsWith('Commission/') || path.startsWith('Reports/') || path.startsWith('Customers/') || path.startsWith('get_blocked_customers.php') || path.startsWith('customer_addresses.php') || path.startsWith('customer_stats_audit.php') || path.startsWith('SessionTags/')) {
+  // Address_DB/* joins this list because the production copy of get_address_data.php (and
+  // check_exist.php / update_customer_address.php) has validate_auth($pdo) injected by the
+  // secure_endpoints.php one-shot script. Files on host carry the auth call; the repo copy
+  // does not. apiFetch must therefore send the Bearer token — raw fetch() without it gets 401.
+  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Address_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('DistributionV2/') || path.startsWith('User_DB/') || path.startsWith('cron/') || path.startsWith('Database/') || path.startsWith('Marketplace/') || path.startsWith('Monitor/') || path.startsWith('Quota/') || path.startsWith('Commission/') || path.startsWith('Reports/') || path.startsWith('Customer/') || path.startsWith('Customers/') || path.startsWith('Quotation/') || path.startsWith('Page_DB/') || path.startsWith('Onecall_DB/') || path.startsWith('get_blocked_customers.php') || path.startsWith('customer_addresses.php') || path.startsWith('customer_stats_audit.php') || path.startsWith('SessionTags/') || path.startsWith('change_password.php') || path.startsWith('google_sheet_import.php')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -392,38 +396,6 @@ export async function getTelesaleUsers(companyId: number) {
 
   if (!res.ok) {
     throw new Error(`Telesale users fetch failed: ${res.statusText}`);
-  }
-
-  return await res.json();
-}
-
-export async function bulkDistributeCustomers(payload: {
-  companyId: number;
-  count: number;
-  agentIds: number[];
-  targetStatus: string;
-  ownershipDays: number;
-  filters?: {
-    mode?: string;
-    grade?: string;
-  };
-}) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
-  const headers: any = { "Content-Type": "application/json" };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const url = `${apiBasePath.replace(/\/$/, "")}/customer/bulk_distribute.php`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Bulk distribution failed: ${res.statusText}`);
   }
 
   return await res.json();
@@ -3699,5 +3671,111 @@ export async function cancelCall(sessionId: number) {
   return apiFetch("call/cancel", {
     method: "POST",
     body: JSON.stringify({ session_id: sessionId }),
+  });
+}
+
+// ── คำขอโอนลูกค้า ────────────────────────────────────────────────────────────────────────────
+// หัวหน้าทีมเปลี่ยนผู้ดูแลเองไม่ได้แล้ว (permission customers.transfer_owner) เส้นทางแทนคือยื่นคำขอ
+// ให้แอดมินอนุมัติ ซึ่งทำให้ทั้งคำขอและการตัดสินใจกลายเป็นบันทึกในระบบแทนที่จะคุยกันในไลน์
+
+export interface TransferRequest {
+  id: number;
+  customer_id: string;
+  company_id: number;
+  requested_by: number;
+  requested_owner_id: number;
+  current_owner_id: number | null;
+  reason: string | null;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  decided_by: number | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+  customer_name?: string | null;
+  requested_by_name?: string | null;
+  requested_owner_name?: string | null;
+  current_owner_name?: string | null;
+  decided_by_name?: string | null;
+}
+
+export async function createTransferRequest(payload: {
+  customerId: string;
+  reason?: string;
+  requestedOwnerId?: number;
+}) {
+  return apiFetch("transfer_requests", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** คิวคำขอ — แอดมินเห็นทั้งบริษัท คนอื่นเห็นเฉพาะใบที่ตัวเองเกี่ยวข้อง (เซิร์ฟเวอร์กรองให้) */
+export async function listTransferRequests(
+  status: "pending" | "approved" | "rejected" | "cancelled" | "all" = "pending",
+): Promise<{ canApprove: boolean; data: TransferRequest[] }> {
+  const res = await apiFetch(`transfer_requests?status=${status}`);
+  return { canApprove: !!res?.canApprove, data: res?.data ?? [] };
+}
+
+/**
+ * อนุมัติหรือปฏิเสธคำขอ
+ *
+ * confirmOwnerChanged ส่งไปเมื่อเจ้าของเปลี่ยนไประหว่างรออนุมัติแล้วแอดมินยืนยันว่ายังจะโอน
+ * เซิร์ฟเวอร์ปฏิเสธรอบแรกโดยตั้งใจ เพื่อไม่ให้โอนทับการเปลี่ยนแปลงที่คนกดยังไม่เห็น
+ */
+export async function decideTransferRequest(
+  id: number,
+  decision: "approved" | "rejected",
+  opts?: { note?: string; confirmOwnerChanged?: boolean },
+) {
+  return apiFetch(`transfer_requests/${id}/decide`, {
+    method: "POST",
+    body: JSON.stringify({ decision, ...opts }),
+  });
+}
+
+export async function cancelTransferRequest(id: number) {
+  return apiFetch(`transfer_requests/${id}/cancel`, { method: "POST" });
+}
+
+// ── นโยบายขออนุมัติก่อนโอนลูกค้า (เปิดปิดรายบริษัท) ─────────────────────────────────────────
+// ไม่ใช่ทุกบริษัทที่มีนโยบายนี้ ปิดอยู่ = พฤติกรรมเดิม เทเลโอนให้หัวหน้าได้ หัวหน้าโอนหากันและโอนให้ลูกทีมได้
+
+export interface TransferPolicySettingRow {
+  company_id: number;
+  company_name: string;
+  /** null = ตามค่าเริ่มต้น */
+  stage: "on" | "off" | null;
+}
+
+export interface TransferPolicySettings {
+  deployment: string;
+  setting_key: string;
+  default_stage: "on" | "off";
+  companies: TransferPolicySettingRow[];
+}
+
+/** นโยบายที่มีผลกับผู้ใช้ปัจจุบัน — ใช้ตัดสินว่าจะโชว์ปุ่มเปลี่ยนผู้ดูแลหรือปุ่มขอโอน */
+export async function fetchTransferPolicy(): Promise<{ approvalRequired: boolean }> {
+  try {
+    const res = await apiFetch("transfer_policy");
+    return { approvalRequired: !!res?.approval_required };
+  } catch {
+    // อ่านไม่ได้ก็ถือว่าไม่ต้องขออนุมัติ ตรงกับที่เซิร์ฟเวอร์ตัดสิน หน้าจอจะได้ไม่ขัดกับ API
+    return { approvalRequired: false };
+  }
+}
+
+export async function fetchTransferPolicySettings(): Promise<TransferPolicySettings> {
+  return apiFetch("transfer_policy_settings") as Promise<TransferPolicySettings>;
+}
+
+export async function saveTransferPolicySettings(payload: {
+  default_stage: "on" | "off";
+  companies: Array<{ company_id: number; stage: "on" | "off" | null }>;
+}) {
+  return apiFetch("transfer_policy_settings", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }

@@ -510,14 +510,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   useEffect(() => {
     const loadProvinces = async () => {
       try {
-        const response = await fetch(
-          `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
+        const data = await apiFetch(
+          `Address_DB/get_address_data.php?endpoint=provinces`,
         );
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            setProvinces(data.data || []);
-          }
+        if (data?.success) {
+          setProvinces(data.data || []);
         }
       } catch (error) {
         console.error("Error loading provinces:", error);
@@ -591,12 +588,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   // Load districts when province selected
   useEffect(() => {
     if (selectedProvince) {
-      fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
+      apiFetch(
+        `Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
       )
-        .then((res) => res.json())
         .then((data) => {
-          if (data.success) setDistricts(data.data || []);
+          if (data?.success) setDistricts(data.data || []);
         })
         .catch((err) => console.error(err));
     } else {
@@ -607,12 +603,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   // Load subdistricts when district selected
   useEffect(() => {
     if (selectedDistrict) {
-      fetch(
-        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
+      apiFetch(
+        `Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
       )
-        .then((res) => res.json())
         .then((data) => {
-          if (data.success) setSubDistricts(data.data || []);
+          if (data?.success) setSubDistricts(data.data || []);
         })
         .catch((err) => console.error(err));
     } else {
@@ -1826,13 +1821,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(
-          `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
+        const data = await apiFetch(
+          `Address_DB/get_address_data.php?endpoint=provinces`,
         );
-
-        if (!res.ok) return;
-
-        const data = await res.json();
 
         if (data?.success) setProvinces(data.data || []);
       } catch (e) {
@@ -1845,13 +1836,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     if (selectedProvince) {
       (async () => {
         try {
-          const res = await fetch(
-            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
+          const data = await apiFetch(
+            `Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
           );
-
-          if (!res.ok) return;
-
-          const data = await res.json();
 
           if (data?.success) setDistricts(data.data || []);
         } catch (e) {
@@ -1873,13 +1860,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     if (selectedDistrict) {
       (async () => {
         try {
-          const res = await fetch(
-            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
+          const data = await apiFetch(
+            `Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
           );
-
-          if (!res.ok) return;
-
-          const data = await res.json();
 
           if (data?.success) setSubDistricts(data.data || []);
         } catch (e) {

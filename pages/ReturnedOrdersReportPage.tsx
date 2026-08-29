@@ -36,6 +36,9 @@ export interface OrderData {
   shipped_date?: string;
   total_amount: number;
   returned_amount?: number;
+  fertilizer_amount?: number;
+  bio_amount?: number;
+  other_amount?: number;
   payment_method: string;
   order_status: string;
   cancel_type: string;
@@ -156,6 +159,9 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           'เบอร์โทร': order.customer_phone,
           'ที่อยู่': order.customer_address || '-',
           'สินค้า': itemsString,
+          'ยอดปุ๋ย': parseFloat(order.fertilizer_amount as any || 0),
+          'ยอดชีวภัณฑ์': parseFloat(order.bio_amount as any || 0),
+          'ยอดอื่นๆ': parseFloat(order.other_amount as any || 0),
           'ยอดทั้งออเดอร์': parseFloat(order.total_amount as any || 0),
           'ยอดตีกลับ': parseFloat(order.returned_amount as any || 0),
           'ช่องทางชำระเงิน': order.payment_method,
@@ -279,6 +285,9 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           'ป้ายกำกับ': row.tag_name,
           'มีการสร้างคำสั่งซื้อใหม่ (ออเดอร์)': parseInt(row.new_order_count) || 0,
           'จำนวนออเดอร์': parseInt(row.order_count),
+          'ยอดปุ๋ย': parseFloat(row.fertilizer_amount || 0),
+          'ยอดชีวภัณฑ์': parseFloat(row.bio_amount || 0),
+          'ยอดอื่นๆ': parseFloat(row.other_amount || 0),
           'ยอดเงินรวม': parseFloat(row.total_amount)
         }));
 
@@ -292,6 +301,9 @@ const ReturnedOrdersReportPage: React.FC<ReturnedOrdersReportPageProps> = ({ cur
           'สร้างคำสั่งซื้อใหม่แล้ว': parseInt(row.is_new_order_created) === 1 ? (row.new_order_id || '') : '',
           'ลูกค้า': row.customer_name,
           'สถานะออเดอร์': getOrderStatusThai(row.order_status),
+          'ยอดปุ๋ย': parseFloat(row.fertilizer_amount || 0),
+          'ยอดชีวภัณฑ์': parseFloat(row.bio_amount || 0),
+          'ยอดอื่นๆ': parseFloat(row.other_amount || 0),
           'ยอดเงิน': parseFloat(row.total_amount),
           'แปะป้ายโดย': row.assigned_by || 'ระบบ',
           'วันที่แปะป้าย': row.assigned_at

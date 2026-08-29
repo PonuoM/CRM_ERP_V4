@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Settings, X, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { apiFetch } from "@/services/api";
 
 // User role enum
 enum UserRole {
@@ -121,11 +122,8 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
       const apiBase = resolveApiBasePath();
 
       // Save username
-      const usernameResponse = await fetch(`${apiBase}/Onecall_DB/env_manager.php`, {
+      const usernameResult = await apiFetch(`Onecall_DB/env_manager.php`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           key: usernameKey,
           value: username,
@@ -133,35 +131,15 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
         }),
       });
 
-      if (!usernameResponse.ok) {
-        const errorData = await usernameResponse.json();
-        throw new Error(
-          `Failed to save username: ${errorData.error || "Unknown error"}`,
-        );
-      }
-
       // Save password
-      const passwordResponse = await fetch(`${apiBase}/Onecall_DB/env_manager.php`, {
+      const passwordResult = await apiFetch(`Onecall_DB/env_manager.php`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           key: passwordKey,
           value: password,
           user: currentUser,
         }),
       });
-
-      if (!passwordResponse.ok) {
-        const errorData = await passwordResponse.json();
-        throw new Error(
-          `Failed to save password: ${errorData.error || "Unknown error"}`,
-        );
-      }
-
-      const usernameResult = await usernameResponse.json();
-      const passwordResult = await passwordResponse.json();
 
       console.log("Credentials saved successfully:", {
         username: usernameResult,
@@ -190,13 +168,9 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
       console.log("Checking database status for company:", companyId);
 
       const currentUser = getCurrentUser();
-      const apiBase = resolveApiBasePath();
 
-      const response = await fetch(`${apiBase}/Onecall_DB/env_manager.php`, {
+      const result = await apiFetch(`Onecall_DB/env_manager.php`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           action: "check_status",
           user: currentUser,
@@ -204,27 +178,15 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
         }),
       });
 
-      console.log("Database check response:", {
-        status: response.status,
-        ok: response.ok,
-        statusText: response.statusText,
-      });
+      console.log("Database check result:", result);
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log("Database check result:", result);
-
-        if (result.success && result.has_credentials) {
-          return {
-            hasCredentials: true,
-            lastUpdated: result.last_updated || null,
-          };
-        } else {
-          console.log("Credentials not found:", result.message);
-        }
+      if (result?.success && result.has_credentials) {
+        return {
+          hasCredentials: true,
+          lastUpdated: result.last_updated || null,
+        };
       } else {
-        const errorText = await response.text();
-        console.error("Database check failed:", errorText);
+        console.log("Credentials not found:", result?.message);
       }
     } catch (error) {
       console.error("Error checking database status:", error);

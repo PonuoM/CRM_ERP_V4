@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Customer } from '../types';
 import Modal from './Modal';
 import { Facebook, MessageSquare, Phone, Cake } from 'lucide-react';
-import resolveApiBasePath from '../utils/apiBasePath';
+import { apiFetch } from '../services/api';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { th } from 'date-fns/locale';
@@ -57,12 +57,9 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
     const loadProvinces = async () => {
       setAddressLoading(true);
       try {
-        const response = await fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            setProvinces(data.data || []);
-          }
+        const data = await apiFetch(`Address_DB/get_address_data.php?endpoint=provinces`);
+        if (data?.success) {
+          setProvinces(data.data || []);
         }
       } catch (error) {
         console.error('Error loading provinces:', error);
@@ -92,10 +89,9 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
   // Load districts when province is selected
   useEffect(() => {
     if (selectedProvince) {
-      fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`)
-        .then(response => response.json())
+      apiFetch(`Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`)
         .then(data => {
-          if (data.success) {
+          if (data?.success) {
             setDistricts(data.data || []);
             // Find district by name
             if (customer.address?.district) {
@@ -121,10 +117,9 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
   // Load sub-districts when district is selected
   useEffect(() => {
     if (selectedDistrict) {
-      fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`)
-        .then(response => response.json())
+      apiFetch(`Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`)
         .then(data => {
-          if (data.success) {
+          if (data?.success) {
             setSubDistricts(data.data || []);
             // Find sub-district by name
             if (customer.address?.subdistrict) {

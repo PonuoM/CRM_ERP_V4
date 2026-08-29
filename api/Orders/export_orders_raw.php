@@ -276,6 +276,8 @@ try {
         } catch (Throwable $e) {}
     }
 
+    $lookups['boxAmounts'] = OrderExportService::fetchBoxAmounts($pdo, $orderIds);
+    $lookups['collectedAmounts'] = OrderExportService::calculateCollectedAmounts($rows, $lookups);
     $lookups['remainingTotals'] = OrderExportService::calculateRemainingOrderTotals($rows, $lookups);
     $creatorTotals = OrderExportService::calculateCreatorTotals($rows, $lookups);
     $headers = OrderExportService::getCsvHeaders(false, false);
@@ -287,8 +289,9 @@ try {
         $jsonRows = [$headers];
         $seenCreators = [];
         $seenOrders = [];
+        $seenBoxes = [];
         foreach ($rows as $row) {
-            $jsonRows[] = OrderExportService::formatOrderCsvRow($row, $lookups, $creatorTotals, $seenCreators, $seenOrders, false, false);
+            $jsonRows[] = OrderExportService::formatOrderCsvRow($row, $lookups, $creatorTotals, $seenCreators, $seenOrders, false, false, $seenBoxes);
         }
         echo json_encode(['ok' => true, 'data' => $jsonRows]);
         exit;
@@ -304,8 +307,9 @@ try {
 
     $seenCreators = [];
     $seenOrders = [];
+    $seenBoxes = [];
     foreach ($rows as $row) {
-        fputcsv($output, OrderExportService::formatOrderCsvRow($row, $lookups, $creatorTotals, $seenCreators, $seenOrders, false, false));
+        fputcsv($output, OrderExportService::formatOrderCsvRow($row, $lookups, $creatorTotals, $seenCreators, $seenOrders, false, false, $seenBoxes));
     }
 
     fclose($output);
