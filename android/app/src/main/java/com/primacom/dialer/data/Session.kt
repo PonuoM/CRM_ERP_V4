@@ -19,9 +19,19 @@ class Session(context: Context) {
         get() = prefs.getString(KEY_BASE_URL, DEFAULT_BASE_URL) ?: DEFAULT_BASE_URL
         set(value) = prefs.edit().putString(KEY_BASE_URL, value.trimEnd('/')).apply()
 
+    /**
+     * เขียนด้วย commit() ไม่ใช่ apply() โดยตั้งใจ
+     *
+     * การกดอนุญาตให้แอปเป็นแอปโทรศัพท์เริ่มต้นทำให้สิทธิ์ของแอปเปลี่ยน แอนดรอยด์จึงฆ่าโปรเซสทิ้ง
+     * แล้วเริ่มใหม่ทันที ถ้ายังเขียน token ค้างอยู่ในคิวแบบ apply() ค่าจะหายไปพร้อมโปรเซส
+     * พนักงานเลยเด้งกลับไปหน้าล็อกอินทุกครั้งที่กดอนุญาตสิทธิ์ ซึ่งเป็นอาการที่เจอจริง
+     *
+     * ไฟล์ prefs เล็กมากและ setter พวกนี้ถูกเรียกแค่ตอนล็อกอินกับลงทะเบียนเครื่อง
+     * การรอเขียนให้เสร็จจึงไม่มีผลกับความลื่นของหน้าจอ
+     */
     var token: String?
         get() = prefs.getString(KEY_TOKEN, null)
-        set(value) = prefs.edit().putString(KEY_TOKEN, value).apply()
+        set(value) { prefs.edit().putString(KEY_TOKEN, value).commit() }
 
     /**
      * Long-lived token belonging to this handset, issued at registration.
@@ -31,11 +41,11 @@ class Session(context: Context) {
      */
     var deviceToken: String?
         get() = prefs.getString(KEY_DEVICE_TOKEN, null)
-        set(value) = prefs.edit().putString(KEY_DEVICE_TOKEN, value).apply()
+        set(value) { prefs.edit().putString(KEY_DEVICE_TOKEN, value).commit() }
 
     var agentName: String?
         get() = prefs.getString(KEY_AGENT_NAME, null)
-        set(value) = prefs.edit().putString(KEY_AGENT_NAME, value).apply()
+        set(value) { prefs.edit().putString(KEY_AGENT_NAME, value).commit() }
 
     /**
      * Stable for the life of the install. Generated here rather than read from the hardware: device
@@ -44,7 +54,7 @@ class Session(context: Context) {
      */
     val deviceId: String
         get() = prefs.getString(KEY_DEVICE_ID, null) ?: UUID.randomUUID().toString()
-            .also { prefs.edit().putString(KEY_DEVICE_ID, it).apply() }
+            .also { prefs.edit().putString(KEY_DEVICE_ID, it).commit() }
 
     /** Whatever this handset should present as its credential. */
     val authToken: String? get() = deviceToken ?: token
@@ -54,7 +64,7 @@ class Session(context: Context) {
     fun clear() {
         // deviceId survives a sign-out — the same handset coming back should not look like a new one.
         val device = deviceId
-        prefs.edit().clear().putString(KEY_DEVICE_ID, device).apply()
+        prefs.edit().clear().putString(KEY_DEVICE_ID, device).commit()
     }
 
     companion object {

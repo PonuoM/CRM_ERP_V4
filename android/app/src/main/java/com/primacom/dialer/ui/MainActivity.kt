@@ -3,13 +3,14 @@ package com.primacom.dialer.ui
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.pm.PackageManager
+import android.graphics.drawable.GradientDrawable
 import android.telecom.TelecomManager
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
-import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -23,13 +24,20 @@ import com.primacom.dialer.data.Api
 import com.primacom.dialer.data.ApiException
 import com.primacom.dialer.data.CrashLog
 import com.primacom.dialer.data.Session
+import com.primacom.dialer.ui.Design.chip
+import com.primacom.dialer.ui.Design.dp
+import com.primacom.dialer.ui.Design.flexSpacer
+import com.primacom.dialer.ui.Design.ghostButton
+import com.primacom.dialer.ui.Design.label
+import com.primacom.dialer.ui.Design.primaryButton
+import com.primacom.dialer.ui.Design.text
 import kotlinx.coroutines.launch
 
 /**
- * Two states and nothing else: sign in, or stand by.
+ * สองสถานะ: เข้าสู่ระบบ หรือวางรอรับงาน
  *
- * There is no dialpad, no contact list and no call log — not as an omission but as the point. Every
- * control that could put a customer's number on this screen is a hole in the reason this app exists.
+ * ไม่มีแป้นกด ไม่มีรายชื่อ ไม่มีประวัติที่โชว์เบอร์ — ทุกช่องที่อาจพาเบอร์ลูกค้าขึ้นจอถูกตัดออก
+ * โดยตั้งใจ หน้าตาใช้ระบบดีไซน์กลางใน Design.kt
  */
 class MainActivity : AppCompatActivity() {
 
@@ -40,6 +48,8 @@ class MainActivity : AppCompatActivity() {
     private val permissions = buildList {
         add(Manifest.permission.CALL_PHONE)
         add(Manifest.permission.READ_PHONE_STATE)
+        add(Manifest.permission.READ_CALL_LOG)
+        add(Manifest.permission.WRITE_CALL_LOG)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -51,10 +61,6 @@ class MainActivity : AppCompatActivity() {
     private val askDialerRole =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { render() }
 
-    /**
-     * Holding the dialer role is what stops the stock in-call screen from printing the number.
-     * Without it every other precaution in this system is undone by the handset itself.
-     */
     private fun isDefaultDialer(): Boolean =
         getSystemService(TelecomManager::class.java)?.defaultDialerPackage == packageName
 
@@ -66,18 +72,27 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = Design.bg
+        window.navigationBarColor = Design.bg
         session = Session(this)
         api = Api(session)
         render()
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
-        // Draw first, start the bridge second. The old order meant a service the system refused took
-        // the whole activity down before the screen that explains the problem could appear.
         render()
         if (session.isSignedIn && missingPermissions().isEmpty()) {
             CallBridgeService.start(this)
+        }
+        if (intent?.getBooleanExtra(EXTRA_REQUEST_ROLE, false) == true) {
+            intent.removeExtra(EXTRA_REQUEST_ROLE)
+            if (session.isSignedIn && !isDefaultDialer()) requestDialerRole()
         }
     }
 
@@ -92,20 +107,18 @@ class MainActivity : AppCompatActivity() {
     // ── sign in ───────────────────────────────────────────────────────────────────────────────
 
     private fun showSignIn() {
-        val root = column()
-        val username = EditText(this).apply { hint = getString(R.string.hint_username) }
-        val password = EditText(this).apply {
-            hint = getString(R.string.hint_password)
+        val root = screen()
+        val username = field(getString(R.string.hint_username))
+        val password = field(getString(R.string.hint_password)).apply {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        val serverUrl = EditText(this).apply {
-            hint = getString(R.string.hint_server)
+        val serverUrl = field(getString(R.string.hint_server)).apply {
             setText(session.baseUrl)
-            textSize = 12f
+            textSize = 12.5f
         }
-        val status = TextView(this).apply { setPadding(0, 24, 0, 0) }
-        val signIn = Button(this).apply { text = getString(R.string.action_sign_in) }
+        val status = text("", 13.5f, Design.danger).apply { setPadding(0, dp(14), 0, 0) }
+        val signIn = primaryButton(getString(R.string.action_sign_in))
 
         signIn.setOnClickListener {
             val u = username.text.toString().trim()
@@ -116,6 +129,8 @@ class MainActivity : AppCompatActivity() {
             }
             session.baseUrl = serverUrl.text.toString().trim()
             signIn.isEnabled = false
+            signIn.alpha = 0.6f
+            status.setTextColor(Design.inkDim)
             status.text = getString(R.string.status_signing_in)
 
             lifecycleScope.launch {
@@ -125,20 +140,47 @@ class MainActivity : AppCompatActivity() {
                     CallBridgeService.start(this@MainActivity)
                     render()
                 } catch (e: ApiException) {
-                    status.text = e.message
+                    status.setTextColor(Design.danger); status.text = e.message
                 } catch (e: Exception) {
-                    status.text = getString(R.string.error_network)
+                    status.setTextColor(Design.danger); status.text = getString(R.string.error_network)
                 } finally {
-                    signIn.isEnabled = true
+                    signIn.isEnabled = true; signIn.alpha = 1f
                 }
             }
         }
 
-        root.addView(heading(getString(R.string.app_name)))
+        // โลโก้แบรนด์
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.ic_call)
+            imageTintList = android.content.res.ColorStateList.valueOf(Design.onAccent)
+            val p = dp(15); setPadding(p, p, p, p)
+            background = GradientDrawable().apply {
+                setColor(Design.accent); cornerRadius = dp(16).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
+        }
+        val brandBlock = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(logo)
+            addView(text("Primacom Dialer", 24f, Design.ink, Design.faceBold).apply { setPadding(0, dp(22), 0, 0) })
+            addView(text("เข้าสู่ระบบด้วยบัญชีพนักงาน", 13.5f, Design.inkDim).apply { setPadding(0, dp(5), 0, 0) })
+        }
+
+        root.addView(brandBlock, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(4) })
+        root.addView(flexSpacer())
+        root.addView(fieldLabel(getString(R.string.hint_username)))
         root.addView(username)
+        root.addView(spacer(dp(14)))
+        root.addView(fieldLabel(getString(R.string.hint_password)))
         root.addView(password)
+        root.addView(spacer(dp(14)))
+        root.addView(fieldLabel(getString(R.string.hint_server)))
         root.addView(serverUrl)
-        root.addView(signIn)
+        root.addView(spacer(dp(22)))
+        root.addView(signIn, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         root.addView(status)
         setContentView(root)
     }
@@ -146,109 +188,226 @@ class MainActivity : AppCompatActivity() {
     // ── standby ───────────────────────────────────────────────────────────────────────────────
 
     private fun showStandby() {
-        val root = column()
+        val root = screen().apply { gravity = Gravity.CENTER_HORIZONTAL }
         val missing = missingPermissions()
 
-        root.addView(heading(
-            if (missing.isEmpty()) getString(R.string.standby_title)
-            else getString(R.string.permissions_needed)
-        ))
-
-        // A crash the agent could not otherwise report — these handsets often cannot reach a laptop.
-        CrashLog.last(this)?.let { trace ->
-            root.addView(TextView(this).apply {
-                text = getString(R.string.crash_title)
-                setPadding(0, 0, 0, 8)
-            })
-            root.addView(TextView(this).apply {
-                text = trace.lines().take(6).joinToString("\n")
-                textSize = 10f
-                setTextIsSelectable(true)
-                setPadding(24, 16, 24, 16)
-                setBackgroundColor(0xFFF3E5E5.toInt())
-            })
-            root.addView(Button(this).apply {
-                text = getString(R.string.action_clear_crash)
-                setOnClickListener { CrashLog.clear(this@MainActivity); render() }
-            })
+        // แถวบน: แบรนด์ + ปุ่มตั้งค่า (ที่ซ่อนปุ่มออกจากระบบไว้)
+        val topRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
-
-        root.addView(TextView(this).apply {
-            text = session.agentName ?: ""
-            textSize = 18f
-            setPadding(0, 8, 0, 24)
+        topRow.addView(label("Primacom Dialer", Design.inkFaint), LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { gravity = Gravity.START })
+        topRow.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_settings)
+            imageTintList = android.content.res.ColorStateList.valueOf(Design.inkDim)
+            val p = dp(8); setPadding(p, p, p, p)
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+            isClickable = true
+            setOnClickListener { showSettings() }
         })
-        root.addView(TextView(this).apply {
-            text = getString(R.string.standby_hint)
-            textSize = 13f
-        })
+        root.addView(topRow)
+        root.addView(spacer(dp(18)))
 
+        // สถานะการเชื่อมต่อ / แอปโทรศัพท์หลัก
         if (isDefaultDialer()) {
-            root.addView(TextView(this).apply {
-                text = getString(R.string.dialer_role_ok)
-                textSize = 13f
-                setTextColor(0xFF256E4F.toInt())
-                setPadding(0, 24, 0, 0)
-            })
+            root.addView(chip("● เชื่อมต่อแล้ว · แอปโทรศัพท์หลัก", Design.positive, 0xFF12291F.toInt()))
         } else {
-            root.addView(TextView(this).apply {
-                text = getString(R.string.dialer_role_needed)
-                textSize = 13f
-                setTextColor(0xFF94600A.toInt())
-                setPadding(0, 24, 0, 8)
-            })
-            root.addView(Button(this).apply {
-                text = getString(R.string.action_set_dialer)
+            root.addView(chip("● ยังไม่ได้ตั้งเป็นแอปโทรศัพท์หลัก", Design.warning, 0xFF2A2415.toInt()))
+        }
+        root.addView(spacer(dp(20)))
+
+        root.addView(text("พร้อมรับงาน", 27f, Design.ink, Design.faceBold, Gravity.CENTER))
+        root.addView(text(session.agentName ?: "", 15f, Design.inkDim, gravity = Gravity.CENTER)
+            .apply { setPadding(0, dp(6), 0, 0) })
+
+        root.addView(text(getString(R.string.standby_hint), 13f, Design.inkFaint, gravity = Gravity.CENTER)
+            .apply { setPadding(0, dp(22), 0, 0); setLineSpacing(dp(4).toFloat(), 1f) })
+
+        // ปุ่มตั้งแอปโทรศัพท์หลัก (เฉพาะตอนยังไม่ได้ตั้ง)
+        if (!isDefaultDialer()) {
+            root.addView(spacer(dp(22)))
+            root.addView(primaryButton(getString(R.string.action_set_dialer)).apply {
                 setOnClickListener { requestDialerRole() }
-            })
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
 
+        // สิทธิ์ที่ยังขาด
         if (missing.isNotEmpty()) {
-            root.addView(TextView(this).apply {
-                text = getString(R.string.permissions_hint)
-                setPadding(0, 32, 0, 8)
-            })
-            root.addView(Button(this).apply {
-                text = getString(R.string.action_grant)
+            root.addView(spacer(dp(16)))
+            root.addView(ghostButton(getString(R.string.action_grant), Design.warning).apply {
                 setOnClickListener { askPermissions.launch(missing.toTypedArray()) }
-            })
-            // Ask straight away the first time rather than waiting for a tap the agent may not expect.
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             if (!permissionsAsked) {
                 permissionsAsked = true
                 askPermissions.launch(missing.toTypedArray())
             }
         }
 
-        root.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(1, 0, 1f)
-        })
-        root.addView(Button(this).apply {
-            text = getString(R.string.action_sign_out)
-            setOnClickListener {
-                session.clear()
-                stopService(android.content.Intent(this@MainActivity, CallBridgeService::class.java))
-                Toast.makeText(this@MainActivity, R.string.signed_out, Toast.LENGTH_SHORT).show()
-                render()
+        // รายงานแครชครั้งล่าสุด (เครื่องมักส่งให้ผู้ดูแลไม่ได้ทางอื่น)
+        CrashLog.last(this)?.let { trace ->
+            root.addView(spacer(dp(24)))
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = Design.roundedStroke(Design.surface, 0xFF3A2320.toInt(), dp(1), dp(12).toFloat())
+                setPadding(dp(14), dp(12), dp(14), dp(12))
             }
-        })
+            box.addView(text(getString(R.string.crash_title), 12f, Design.warning))
+            box.addView(text(trace.lines().take(5).joinToString("\n"), 10.5f, Design.inkDim, Design.faceMono)
+                .apply { setPadding(0, dp(8), 0, dp(8)); setTextIsSelectable(true) })
+            box.addView(text(getString(R.string.action_clear_crash), 12.5f, Design.accent, Design.faceMedium).apply {
+                setOnClickListener { CrashLog.clear(this@MainActivity); render() }
+            })
+            root.addView(box, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+
+        root.addView(flexSpacer())
+        root.addView(ghostButton(getString(R.string.action_view_history)).apply {
+            setOnClickListener {
+                startActivity(android.content.Intent(this@MainActivity, HistoryActivity::class.java))
+            }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         setContentView(root)
     }
 
-    // ── tiny view helpers (no layout files: three screens do not earn a layout system) ────────
+    // ── settings (ปุ่มออกจากระบบซ่อนอยู่ที่นี่ ต้องรหัสแอดมิน) ──────────────────────────────────
 
-    private fun column() = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(64, 96, 64, 64)
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.MATCH_PARENT,
-        )
+    private fun showSettings() {
+        val root = screen()
+
+        // แถบหัว: ปุ่มย้อนกลับ + ชื่อ
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(8))
+        }
+        bar.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_arrow_back)
+            imageTintList = android.content.res.ColorStateList.valueOf(Design.ink)
+            val p = dp(8); setPadding(p, p, p, p)
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+            isClickable = true
+            setOnClickListener { render() }
+        })
+        bar.addView(text(getString(R.string.settings_title), 19f, Design.ink, Design.faceBold).apply {
+            setPadding(dp(6), 0, 0, 0)
+        })
+        root.addView(bar)
+        root.addView(spacer(dp(20)))
+
+        // ข้อมูลบัญชี
+        root.addView(fieldLabel("บัญชีที่เข้าใช้"))
+        root.addView(infoRow(session.agentName ?: "-"))
+        root.addView(spacer(dp(28)))
+
+        root.addView(flexSpacer())
+
+        // ออกจากระบบ (ล็อก)
+        root.addView(text(getString(R.string.signout_locked), 12.5f, Design.inkFaint, gravity = Gravity.CENTER)
+            .apply { setPadding(dp(8), 0, dp(8), dp(12)) })
+        root.addView(ghostButton(getString(R.string.action_sign_out), Design.danger).apply {
+            setOnClickListener { showAdminSignOutDialog() }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        setContentView(root)
     }
 
-    private fun heading(text: String) = TextView(this).apply {
-        this.text = text
-        textSize = 22f
-        gravity = Gravity.START
-        setPadding(0, 0, 0, 32)
+    private fun infoRow(value: String) = text(value, 15.5f, Design.ink).apply {
+        background = Design.roundedStroke(Design.surface, Design.line, dp(1), dp(12).toFloat())
+        setPadding(dp(14), dp(13), dp(14), dp(13))
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** ยืนยันด้วยบัญชีผู้ดูแลระดับสูงก่อนออกจากระบบ */
+    private fun showAdminSignOutDialog() {
+        val pad = dp(22)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, dp(20), pad, dp(4))
+        }
+        val userField = field(getString(R.string.admin_user_hint))
+        val passField = field(getString(R.string.admin_pass_hint)).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val err = text("", 13f, Design.danger).apply { setPadding(dp(2), dp(10), 0, 0) }
+        box.addView(text(getString(R.string.signout_admin_desc), 13.5f, Design.inkDim))
+        box.addView(spacer(dp(16)))
+        box.addView(userField)
+        box.addView(spacer(dp(12)))
+        box.addView(passField)
+        box.addView(err)
+
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.signout_admin_title))
+            .setView(box)
+            .setPositiveButton(getString(R.string.action_confirm_signout), null)
+            .setNegativeButton(getString(R.string.action_cancel), null)
+            .create()
+
+        dialog.setOnShowListener {
+            val confirm = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+            confirm.setOnClickListener {
+                val u = userField.text.toString().trim()
+                val p = passField.text.toString()
+                if (u.isEmpty() || p.isEmpty()) {
+                    err.text = getString(R.string.error_credentials_required); return@setOnClickListener
+                }
+                confirm.isEnabled = false
+                err.setTextColor(Design.inkDim); err.text = getString(R.string.verifying)
+                lifecycleScope.launch {
+                    try {
+                        api.verifyAdmin(u, p)
+                        session.clear()
+                        stopService(android.content.Intent(this@MainActivity, CallBridgeService::class.java))
+                        dialog.dismiss()
+                        Toast.makeText(this@MainActivity, R.string.signed_out, Toast.LENGTH_SHORT).show()
+                        render()
+                    } catch (e: ApiException) {
+                        err.setTextColor(Design.danger); err.text = e.message; confirm.isEnabled = true
+                    } catch (e: Exception) {
+                        err.setTextColor(Design.danger); err.text = getString(R.string.error_network); confirm.isEnabled = true
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    // ── view helpers ──────────────────────────────────────────────────────────────────────────
+
+    private fun screen() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundColor(Design.bg)
+        setPadding(dp(24), dp(56), dp(24), dp(32))
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
+    }
+
+    private fun field(hintText: String) = EditText(this).apply {
+        hint = hintText
+        setHintTextColor(Design.inkFaint)
+        setTextColor(Design.ink)
+        textSize = 15.5f
+        background = Design.roundedStroke(Design.surface, Design.line, dp(1), dp(12).toFloat())
+        setPadding(dp(14), dp(13), dp(14), dp(13))
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+    }
+
+    private fun fieldLabel(t: String) = text(t, 11f, Design.inkFaint, Design.faceMedium).apply {
+        letterSpacing = 0.05f
+        setPadding(dp(2), 0, 0, dp(7))
+    }
+
+    private fun spacer(h: Int) = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(1, h)
+    }
+
+    companion object {
+        const val EXTRA_REQUEST_ROLE = "request_dialer_role"
     }
 }

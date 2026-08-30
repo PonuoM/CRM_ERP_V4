@@ -14,15 +14,18 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "com.primacom.dialer"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.primacom.dialer"
         // Android 10. Below this there is no RoleManager.ROLE_DIALER, which the whole design needs.
         minSdk = 29
-        targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        // Play บังคับให้แอปใหม่ target API ที่ออกภายในราวหนึ่งปี ตัว 34 อัปไม่ผ่านแล้ว
+        // ผลข้างเคียงที่ตามมาคือ foreground service ชนิด dataSync ถูกจำกัด 6 ชม./วัน
+        // ดู AndroidManifest กับ CallBridgeService ที่เปลี่ยนไปใช้ specialUse แทน
+        targetSdk = 36
+        versionCode = 4
+        versionName = "0.1.3"
     }
 
     signingConfigs {

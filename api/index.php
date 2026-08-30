@@ -77,6 +77,8 @@ try {
             else if ($callAction === 'poll')     CallController::poll($pdo);
             else if ($callAction === 'event')    CallController::event($pdo);
             else if ($callAction === 'identify') CallController::identify($pdo);
+            else if ($callAction === 'history')  CallController::history($pdo);
+            else if ($callAction === 'verify_admin') CallController::verifyAdmin($pdo);
             else json_response(['ok' => false, 'error' => 'INVALID_ACTION',
                 'message' => "Action '$callAction' is not valid for call"], 400);
             break;
