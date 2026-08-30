@@ -352,6 +352,9 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Order Tab Settings", icon: Settings, key: "nav.order_tab_settings" },
         { label: "Basket Settings", icon: Layers, key: "nav.basket_settings" },
         { label: "Distribution V2", icon: Users, key: "nav.distribution_v2" },
+        // เห็นได้ทุกตำแหน่งโดยตั้งใจ แอดมินใช้กดอนุมัติ ส่วนคนอื่นใช้ดูสถานะใบที่ตัวเองยื่น
+        // เซิร์ฟเวอร์เป็นคนกรองว่าใครเห็นใบไหน หน้าจอไม่ต้องเดาแทน
+        { label: "คำขอโอนลูกค้า", icon: Users, key: "nav.transfer_requests" },
         { label: "Export Template Settings", icon: FileSpreadsheet, key: "nav.export_template_settings" },
         { label: "Search", icon: Search, key: "nav.search" },
         { label: "ตรวจสอบคำสั่งซื้อ", icon: ClipboardList, key: "nav.cancellation_management" },
@@ -456,6 +459,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         // Deciding who can read customer numbers is a system-administration act, not a
         // day-to-day one — the API refuses the same roles this rule hides it from.
         { label: "การมองเห็นเบอร์ลูกค้า", icon: Settings, key: "settings.phone_privacy",
+          allowRule: (u: UserType) => u.role === UserRole.SuperAdmin || u.role === UserRole.CEO },
+        // สวิตช์นโยบายเหมือนกัน จำกัดคนแก้ให้แคบกว่าคนที่โอนลูกค้าได้ เพราะปิดสวิตช์นี้
+        // เท่ากับยกเลิกการควบคุมทั้งชุดของทุกบริษัทที่เปิดไว้
+        { label: "การอนุมัติโอนย้ายลูกค้า", icon: Settings, key: "settings.transfer_policy",
           allowRule: (u: UserType) => u.role === UserRole.SuperAdmin || u.role === UserRole.CEO },
         { label: "Addresses", icon: MapPin, key: "data.addresses" },
         { label: "Database Management", icon: Database, key: "data.database", allowRule: (u: UserType) => u.role === UserRole.SuperAdmin },

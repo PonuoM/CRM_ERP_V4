@@ -1467,6 +1467,29 @@ function handle_customers(PDO $pdo, ?string $id): void
             $oldAssigned = $current['assigned_to'];
             $assignedTo = $in['assignedTo'] ?? null;
 
+            // เปลี่ยนเจ้าของคือช่องเดียวในฟอร์มนี้ที่ขยับเงิน มันตัดสินว่าออเดอร์ใบถัดไปเป็นยอดของใคร
+            // เดิมด่านเดียวคือ dropdown ในหน้าเว็บ ใครยิง PUT ตรงพร้อม assigned_to ก็ย้ายลูกค้า
+            // มาเป็นของตัวเองได้ ตรวจเฉพาะตอนค่าเปลี่ยนจริง เพราะหน้าจอทั่วไปส่งค่าเดิมกลับมาด้วยเสมอ
+            if (array_key_exists('assignedTo', $in) || array_key_exists('assigned_to', $in)) {
+                $incomingOwner = $in['assignedTo'] ?? $in['assigned_to'] ?? null;
+                $ownerIsChanging = (string) $incomingOwner !== (string) $oldAssigned;
+                // บังคับเฉพาะบริษัทที่เปิดนโยบายนี้ไว้ ไม่ใช่ทุกบริษัท — role_permissions เป็นค่ากลาง
+                // ทั้งระบบ ถ้าตัดสิทธิ์ที่นั่นอย่างเดียวบริษัทที่ไม่มีนโยบายนี้จะโดนไปด้วยทั้งหมด
+                require_once __DIR__ . '/../transfer_policy.php';
+                $needsApproval = transfer_approval_required($pdo, (int) $current['company_id']);
+                if ($ownerIsChanging && $needsApproval) {
+                    $me = get_authenticated_user($pdo);
+                    $allowed = $me
+                        && user_has_permission($pdo, (int) $me['id'], 'customers.transfer_owner');
+                    if (!$allowed) {
+                        json_response([
+                            'error'   => 'FORBIDDEN',
+                            'message' => 'ตำแหน่งของคุณเปลี่ยนผู้ดูแลลูกค้าเองไม่ได้ กรุณาส่งคำขอโอนให้แอดมินอนุมัติ',
+                        ], 403);
+                    }
+                }
+            }
+
             // Calculate new customer_ref_id if phone changes
             $newCustomerRefId = null;
             if (isset($in['phone']) && $in['phone'] !== $current['phone']) {
