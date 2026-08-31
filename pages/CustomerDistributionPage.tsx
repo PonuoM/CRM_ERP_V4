@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Customer,
   User,
@@ -27,7 +27,7 @@ import {
   RefreshCw,
   Calendar,
 } from "lucide-react";
-import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers, getTelesaleUsers, bulkDistributeCustomers, unblockCustomerBlock } from "@/services/api";
+import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers, getTelesaleUsers, unblockCustomerBlock } from "@/services/api";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
 import { mapCustomerFromApi } from "@/utils/customerMapper";
 import Spinner from "@/components/Spinner";
