@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Phone, PhoneOff, Loader2 } from "lucide-react";
+import { Phone, PhoneOff, Loader2, Check } from "lucide-react";
 import {
   cancelCall,
   dialCustomer,
@@ -167,6 +167,46 @@ export const CallCustomerButton: React.FC<CallCustomerButtonProps> = ({
         >
           <PhoneOff className="h-4 w-4" />
           วางสาย
+        </button>
+      </div>
+    );
+  }
+
+  // สายที่จบไปแล้วในรอบนี้ ไม่กลับไปเป็นปุ่มเขียวเต็มใบทันที
+  //
+  // ของเดิมพอวางสายแล้วปุ่ม "โทรออกหาลูกค้า" กลับมาเหมือนยังไม่เคยโทร ทั้งที่ฟอร์มบันทึกการโทร
+  // เปิดค้างอยู่ตรงนั้นพอดี เผลอกดซ้ำแล้วลูกค้าโดนโทรซ้ำทันทีโดยไม่ได้ตั้งใจ
+  // ตรงนี้จึงบอกผลของสายที่เพิ่งจบ แล้วให้กดโทรใหม่เป็นการตัดสินใจอีกครั้งหนึ่ง
+  if (session && !live) {
+    const answered = !!session.answered_at;
+    const mm = String(Math.floor(talkSeconds / 60)).padStart(2, "0");
+    const ss = String(talkSeconds % 60).padStart(2, "0");
+    return (
+      <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+        <span
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
+            answered
+              ? "bg-emerald-50 text-emerald-800"
+              : "bg-amber-50 text-amber-800"
+          }`}
+        >
+          {answered ? <Check className="h-4 w-4" /> : <PhoneOff className="h-4 w-4" />}
+          {answered ? "โทรแล้ว" : "ไม่ได้รับสาย"}
+          {answered && talkSeconds > 0 && (
+            <span className="font-mono tabular-nums">
+              {mm}:{ss}
+            </span>
+          )}
+        </span>
+        <button
+          onClick={() => {
+            setSession(null);
+            setTalkSeconds(0);
+            setError(null);
+          }}
+          className="text-xs text-gray-500 underline hover:text-gray-700"
+        >
+          โทรอีกครั้ง
         </button>
       </div>
     );

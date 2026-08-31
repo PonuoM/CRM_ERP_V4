@@ -153,6 +153,8 @@ import InventoryPage from "./pages/jst/InventoryPage";
 import CompanySettingsPage from "./pages/jst/CompanySettingsPage";
 import GeoCompanySettingsPage from "./pages/GeoCompanySettingsPage";
 import PhonePrivacySettingsPage from "./pages/PhonePrivacySettingsPage";
+import TransferRequestsPage from "./pages/TransferRequestsPage";
+import TransferPolicySettingsPage from "./pages/TransferPolicySettingsPage";
 import SystemUpdatesManagementPage from "./pages/SystemUpdatesManagementPage";
 import SystemUpdatesHistoryPage from "./pages/SystemUpdatesHistoryPage";
 import CancellationDashboardPage from "./pages/CancellationDashboardPage";
@@ -3171,6 +3173,8 @@ const App: React.FC = () => {
     bankAccountId?: number;
     transferDate?: string;
     proxySale?: { onBehalfOfUserId: number; reason?: string };
+    /** ขายแทน + ลูกค้าไร้เจ้าของ: ผู้ใช้ยืนยันให้โอนเข้ามือคนที่ถูกขายแทนก่อนเปิดบิล */
+    claimOwnerlessCustomer?: boolean;
     /** กุญแจประจำใบจากหน้าเปิดบิล — คงเดิมทุกครั้งที่กดซ้ำใบเดิม ดู migrations/094 */
     clientRequestId?: string;
   }): Promise<string | undefined> => {
@@ -3183,6 +3187,7 @@ const App: React.FC = () => {
       bankAccountId,
       transferDate,
       proxySale,
+      claimOwnerlessCustomer,
       clientRequestId,
     } = payload;
     const slipUploadsArray = Array.isArray(slipUploads)
@@ -3459,6 +3464,10 @@ const App: React.FC = () => {
         transferDate: transferDate,
         clientRequestId: clientRequestId,
         ...(proxySale ? { proxyReason: proxySale.reason || undefined } : {}),
+        // ส่งเฉพาะตอนขายแทนจริง ๆ ฝั่งเซิร์ฟเวอร์ก็เช็คซ้ำอีกชั้นว่าเป็น proxy จริงไหม
+        ...(proxySale && claimOwnerlessCustomer
+          ? { claimOwnerlessCustomer: true }
+          : {}),
       };
 
       // If single slip and no multi-slip support in API yet, use slipUrl for the first one
@@ -3812,6 +3821,18 @@ const App: React.FC = () => {
       }
     } catch (e: any) {
       console.error("Create order failed", e);
+
+      // ด่านเจ้าของลูกค้ามีทางออกให้ผู้ใช้อยู่แล้ว (ขายแทนแล้วรับลูกค้าเข้าดูแล) หน้าเปิดบิลจึงเป็น
+      // คนเล่าเรื่องเอง ไม่ยิง alert ดิบของเบราว์เซอร์ที่ขึ้นว่า "API 403:" ทับไปก่อน
+      const ownershipErrors = [
+        "CUSTOMER_HAS_NO_OWNER",
+        "CUSTOMER_HAS_OTHER_OWNER",
+        "CUSTOMER_CLAIM_RACE",
+      ];
+      if (ownershipErrors.includes(e?.data?.error)) {
+        throw e;
+      }
+
       alert(`สร้างออเดอร์ไม่สำเร็จ: ${e.message || "Unknown error"}`);
       return undefined;
     }
@@ -7284,6 +7305,12 @@ const App: React.FC = () => {
       case "settings.geo_company":
       case "จัดการพื้นที่ทำงาน":
         return <GeoCompanySettingsPage />;
+      case "nav.transfer_requests":
+      case "คำขอโอนลูกค้า":
+        return <TransferRequestsPage />;
+      case "settings.transfer_policy":
+      case "การอนุมัติโอนย้ายลูกค้า":
+        return <TransferPolicySettingsPage />;
       case "settings.phone_privacy":
       case "การมองเห็นเบอร์ลูกค้า":
         return <PhonePrivacySettingsPage />;
@@ -8370,6 +8397,11 @@ const App: React.FC = () => {
               onClose={handleCloseCustomerDetail}
               openModal={openModal}
               user={currentUser}
+              // สิทธิ์เดียวกับที่ฝั่งเซิร์ฟเวอร์ใช้กันการยิง PUT assigned_to ตรง ๆ
+              // หน้าจอกับ API ต้องตัดสินด้วยเกณฑ์เดียวกัน ไม่งั้นปุ่มจะโผล่แล้วกดไม่ผ่าน
+              canTransferOwner={
+                isSuperAdmin || !!rolePermissions?.["customers.transfer_owner"]?.use
+              }
               allUsers={companyUsers}
               systemTags={systemTags}
               ownerName={(function () {

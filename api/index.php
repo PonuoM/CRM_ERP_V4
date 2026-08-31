@@ -77,6 +77,8 @@ try {
             else if ($callAction === 'poll')     CallController::poll($pdo);
             else if ($callAction === 'event')    CallController::event($pdo);
             else if ($callAction === 'identify') CallController::identify($pdo);
+            else if ($callAction === 'history')  CallController::history($pdo);
+            else if ($callAction === 'verify_admin') CallController::verifyAdmin($pdo);
             else json_response(['ok' => false, 'error' => 'INVALID_ACTION',
                 'message' => "Action '$callAction' is not valid for call"], 400);
             break;
@@ -93,6 +95,36 @@ try {
         // bootstrap.php has already resolved the policy for this request.
         // Read and edit the masking policy itself. Separate from `phone_policy`, which every signed-in
         // user reads to know what THEY may see — this one is the control panel behind it.
+        // นโยบายที่มีผลกับคนที่เรียก ใช้ตัดสินว่าหน้าจอจะโชว์ปุ่มเปลี่ยนผู้ดูแลหรือปุ่มขอโอน
+        case 'transfer_policy':
+            require_once __DIR__ . '/Controllers/TransferPolicyController.php';
+            TransferPolicyController::mine($pdo);
+            break;
+
+        // แผงตั้งค่าเปิดปิดรายบริษัท แคบกว่าตัวบนโดยตั้งใจ ปิดสวิตช์นี้เท่ากับยกเลิกการควบคุมทั้งชุด
+        case 'transfer_policy_settings':
+            require_once __DIR__ . '/Controllers/TransferPolicyController.php';
+            if (method() === 'GET') TransferPolicyController::read($pdo);
+            else if (method() === 'POST' || method() === 'PUT') TransferPolicyController::save($pdo);
+            else json_response(['ok' => false, 'error' => 'METHOD_NOT_ALLOWED'], 405);
+            break;
+
+        // คำขอโอนลูกค้า เส้นทางทดแทนหลังจากตัดสิทธิ์เปลี่ยนเจ้าของออกจากหัวหน้าทีม
+        case 'transfer_requests':
+            require_once __DIR__ . '/Controllers/TransferRequestController.php';
+            if (method() === 'GET') {
+                TransferRequestController::index($pdo);
+            } else if (method() === 'POST' && $id !== null && $action === 'decide') {
+                TransferRequestController::decide($pdo, $id);
+            } else if (method() === 'POST' && $id !== null && $action === 'cancel') {
+                TransferRequestController::cancel($pdo, $id);
+            } else if (method() === 'POST') {
+                TransferRequestController::create($pdo);
+            } else {
+                json_response(['ok' => false, 'error' => 'METHOD_NOT_ALLOWED'], 405);
+            }
+            break;
+
         case 'phone_policy_settings':
             require_once __DIR__ . '/Controllers/PhonePolicyController.php';
             if (method() === 'GET') PhonePolicyController::read($pdo);

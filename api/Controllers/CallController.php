@@ -598,4 +598,85 @@ class CallController
             ],
         ]);
     }
+
+    /**
+     * GET /api/call/history?limit=
+     *
+     * ประวัติการโทรของพนักงานคนนี้ — โชว์ชื่อลูกค้าและรหัส ไม่มีเบอร์ (โทรกลับผ่าน customer_id)
+     * ยึดจาก call_sessions ของ CRM ไม่ใช่ประวัติในเครื่องที่ถูกลบทิ้ง
+     */
+    public static function history(PDO $pdo): void
+    {
+        $user = self::authUser($pdo);
+        $limit = min(200, max(1, (int) ($_GET['limit'] ?? 60)));
+
+        $stmt = $pdo->prepare(
+            "SELECT s.id, s.customer_id, s.direction, s.status, s.duration_sec,
+                    s.answered_at, s.requested_at,
+                    c.first_name, c.last_name
+               FROM call_sessions s
+               LEFT JOIN customers c ON c.customer_id = s.customer_id
+              WHERE s.agent_user_id = ?
+              ORDER BY s.requested_at DESC
+              LIMIT $limit"
+        );
+        $stmt->execute([(int) $user['id']]);
+
+        $out = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $name = trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? ''));
+            // สาย inbound ที่ไม่มี answered_at และจบแล้ว = สายที่ไม่ได้รับ
+            $missed = $r['direction'] === 'inbound' && empty($r['answered_at'])
+                && in_array($r['status'], ['ended', 'failed'], true);
+            $out[] = [
+                'session_id'   => (int) $r['id'],
+                'customer_id'  => $r['customer_id'] !== null ? (int) $r['customer_id'] : null,
+                'customer_name' => $name !== '' ? $name : null,
+                'direction'    => $r['direction'],
+                'status'       => $r['status'],
+                'missed'       => $missed,
+                'answered'     => !empty($r['answered_at']),
+                'duration_sec' => $r['duration_sec'] !== null ? (int) $r['duration_sec'] : 0,
+                'at'           => $r['requested_at'],
+            ];
+        }
+        json_response(['ok' => true, 'calls' => $out]);
+    }
+
+    /**
+     * POST /api/call/verify_admin { username, password }
+     *
+     * ยืนยันว่าเป็นผู้ดูแลระดับสูง (roles.is_system = 1) ก่อนยอมให้ออกจากระบบบนเครื่องเทเล
+     * เครื่องต้องลงชื่อเข้าใช้อยู่แล้วถึงเรียกได้ (กันคนสุ่มยิง) แล้วส่ง user/pass ของแอดมินมาตรวจ
+     * รหัสในระบบนี้เก็บเป็น plaintext (ดู handle_auth ใน index.php) จึงเทียบตรง ๆ
+     */
+    public static function verifyAdmin(PDO $pdo): void
+    {
+        self::authUser($pdo); // เครื่องต้อง signed-in ก่อน
+        $in = json_input();
+        $username = trim((string) ($in['username'] ?? ''));
+        $password = (string) ($in['password'] ?? '');
+        if ($username === '' || $password === '') {
+            json_response(['ok' => false, 'error' => 'MISSING',
+                'message' => 'กรอกชื่อผู้ใช้และรหัสผ่านผู้ดูแล'], 400);
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT u.password, u.status, u.role, r.is_system
+               FROM users u LEFT JOIN roles r ON u.role = r.name
+              WHERE u.username = ? LIMIT 1'
+        );
+        $stmt->execute([$username]);
+        $a = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$a || $a['status'] !== 'active' || !hash_equals((string) $a['password'], $password)) {
+            json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS',
+                'message' => 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'], 401);
+        }
+        if (empty($a['is_system'])) {
+            json_response(['ok' => false, 'error' => 'NOT_ADMIN',
+                'message' => 'ต้องเป็นผู้ดูแลระดับสูงเท่านั้นจึงออกจากระบบได้'], 403);
+        }
+        json_response(['ok' => true, 'role' => $a['role']]);
+    }
 }

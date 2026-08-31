@@ -16,6 +16,18 @@ data class DialJob(
     val dial: String,
 )
 
+/** One row in the agent's call history — a name and an id, never a number. */
+data class CallRecord(
+    val sessionId: Int,
+    val customerId: Int,
+    val customerName: String,
+    val direction: String,
+    val missed: Boolean,
+    val answered: Boolean,
+    val durationSec: Int,
+    val at: String,
+)
+
 /** Result of a call the server could not accept, so the UI can say why in the agent's language. */
 class ApiException(val code: String, override val message: String) : Exception(message)
 
@@ -97,6 +109,40 @@ class Api(private val session: Session) {
         request("call/identify", "POST", JSONObject().put("phone", phone))
     }
 
+    /** ประวัติการโทรของพนักงานคนนี้ — ชื่อ+รหัส ไม่มีเบอร์ */
+    suspend fun history(limit: Int = 60): List<CallRecord> = withContext(Dispatchers.IO) {
+        val res = request("call/history?limit=$limit", "GET")
+        val arr = res.optJSONArray("calls") ?: return@withContext emptyList()
+        buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                add(CallRecord(
+                    sessionId = o.optInt("session_id"),
+                    customerId = o.optInt("customer_id"),
+                    customerName = o.optString("customer_name").ifBlank { "ไม่ทราบผู้ติดต่อ" },
+                    direction = o.optString("direction"),
+                    missed = o.optBoolean("missed"),
+                    answered = o.optBoolean("answered"),
+                    durationSec = o.optInt("duration_sec"),
+                    at = o.optString("at"),
+                ))
+            }
+        }
+    }
+
+    /** โทรกลับหาลูกค้าด้วยรหัส — สร้างงานโทรให้ poll loop ของเครื่องนี้หยิบไปกดออกเอง */
+    suspend fun dialCustomer(customerId: Int) = withContext(Dispatchers.IO) {
+        request("call/dial", "POST", JSONObject().put("customer_id", customerId))
+        Unit
+    }
+
+    /** ยืนยันผู้ดูแลระดับสูงก่อนออกจากระบบ — คืน true ถ้าผ่าน, โยน ApiException ถ้าไม่ผ่าน */
+    suspend fun verifyAdmin(username: String, password: String): Boolean = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("username", username).put("password", password)
+        val res = request("call/verify_admin", "POST", body)
+        res.optBoolean("ok")
+    }
+
     // ── plumbing ──────────────────────────────────────────────────────────────────────────────
 
     private fun request(
@@ -127,12 +173,19 @@ class Api(private val session: Session) {
                 .getOrElse { throw ApiException("BAD_RESPONSE", "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง") }
 
             if (code == 401) {
-                // Credentials died — a revoked handset, or a session token that finally expired.
-                // Clearing both sends the agent back to sign-in rather than retrying for ever
-                // against a server that will keep refusing.
-                session.deviceToken = null
-                session.token = null
-                throw ApiException("UNAUTHORIZED", "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่")
+                // ห้ามล้าง token ทิ้งตรงนี้ — เจอ 401 ชั่วคราว (เช่นจังหวะ race ตอนเพิ่งลงทะเบียน
+                // เครื่อง หรือเน็ตสะดุด) ครั้งเดียวก็เคยเตะพนักงานหลุดหน้าล็อกอินทั้งวัน อาการที่เจอจริง:
+                // device token เพิ่งออกยังใช้ได้ แต่โดน 401 แวบเดียวแล้วโดนล้าง เหลือแต่ session token เปราะ
+                //
+                // แค่โยน error ออกไป ให้ผู้เรียก (CallBridgeService) ตัดสินใจว่าจะลงทะเบียนเครื่องใหม่
+                // หรือรอ ส่วนการล้าง token จริงเกิดตอนกดออกจากระบบเท่านั้น
+                //
+                // ใช้ข้อความจริงจาก server ถ้ามี — ตอนล็อกอินรหัสผิดจะได้ขึ้นว่ารหัสไม่ถูกต้อง
+                // ไม่ใช่ข้อความกำกวมว่าเซสชันหมดอายุ
+                throw ApiException(
+                    "UNAUTHORIZED",
+                    json.optString("message").ifBlank { "ยืนยันตัวตนไม่ผ่าน กรุณาเข้าสู่ระบบอีกครั้ง" },
+                )
             }
             if (code !in 200..299 || (json.has("ok") && !json.optBoolean("ok"))) {
                 throw ApiException(

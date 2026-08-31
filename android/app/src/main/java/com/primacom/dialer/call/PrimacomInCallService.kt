@@ -1,9 +1,15 @@
 package com.primacom.dialer.call
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
+import android.os.Build
 import android.telecom.Call
 import android.telecom.InCallService
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import com.primacom.dialer.R
 import com.primacom.dialer.data.Api
 import com.primacom.dialer.data.Session
 import com.primacom.dialer.ui.InCallActivity
@@ -38,6 +44,9 @@ class PrimacomInCallService : InCallService() {
             }
             if (state == Call.STATE_ACTIVE && activeSince == 0L) {
                 activeSince = System.currentTimeMillis()
+                // จังหวะเดียวที่รู้แน่ว่าอีกฝั่งยกหูจริง วิทยุบอกได้แค่ว่าเราเริ่มกดเบอร์
+                // สายโทรออกที่ CallBridgeService เป็นคนวาง ต้องเริ่มจับเวลาคุยตรงนี้
+                if (!ActiveCall.isInbound) CallBridgeService.notifyRemoteAnswered()
             }
             if (state == Call.STATE_DISCONNECTED) {
                 // Outbound sessions are closed by CallBridgeService, which placed them. Inbound ones
@@ -88,8 +97,18 @@ class PrimacomInCallService : InCallService() {
             identifyCaller(call)
         }
 
+        // การเปิดหน้าจอตรง ๆ จาก service ถูกบล็อกตั้งแต่ Android 10 เมื่อแอปไม่ได้อยู่หน้าจอ
+        // และถูกทิ้งเงียบ ๆ ไม่มี error — อาการที่เจอจริง: พนักงานปัดแอปทิ้งแล้วมีสายเข้า
+        // ระบบยังปลุก service นี้ให้ (เพราะเราเป็นแอปโทรศัพท์หลัก) แต่จอของเราไม่ขึ้น
+        // เครื่องเลยโชว์การแจ้งเตือนสายเข้าของระบบที่พิมพ์เบอร์เต็ม ๆ แทน
+        //
+        // ทางที่ระบบอนุญาตคือ notification แบบ full-screen intent: จอล็อก/จอดับ → เด้งหน้าจอสาย
+        // ของเราเต็มจอทันที, จออยู่ในแอปอื่น → ขึ้น heads-up ชื่อลูกค้า (ไม่มีเบอร์) ให้แตะรับ
+        postCallNotification()
+
         // Full screen, over the lock screen — the agent must see who it is without unlocking, and
-        // must never be shown the stock dialer instead.
+        // must never be shown the stock dialer instead. ยังเรียกไว้สำหรับกรณีแอปอยู่หน้าจอ
+        // ซึ่งเปิดได้ทันทีไม่ต้องรอ notification
         startActivity(
             Intent(this, InCallActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -101,6 +120,60 @@ class PrimacomInCallService : InCallService() {
         call.unregisterCallback(callCallback)
         RingbackPlayer.stop()
         ActiveCall.clear()
+        getSystemService(NotificationManager::class.java)?.cancel(CALL_NOTIFICATION_ID)
+        // ระบบเพิ่งเขียนสายนี้ลง call log กลางของเครื่อง ตามไปลบก่อนที่ใครจะเปิดแอปโทรศัพท์เดิมดู
+        CallLogScrubber.scrubSoon(this)
+    }
+
+    /**
+     * แจ้งเตือนสายที่กำลังเกิดขึ้น พร้อม full-screen intent ให้ระบบเด้งหน้าจอสายของเราได้
+     * แม้แอปถูกปัดทิ้งไปแล้ว — โชว์แค่ชื่อ/รหัสลูกค้า ไม่มีเบอร์ เหมือนหน้าจอสายทุกประการ
+     *
+     * เงียบโดยตั้งใจ: เสียงเรียกเข้าเป็นของระบบอยู่แล้ว (เราไม่ประกาศ IN_CALL_SERVICE_RINGING)
+     * ถ้า notification ส่งเสียงด้วยจะดังซ้อนกัน
+     */
+    private fun postCallNotification() {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    CALL_CHANNEL_ID,
+                    getString(R.string.notif_channel_call),
+                    // ต่ำกว่า HIGH จะไม่ขึ้น heads-up และ full-screen intent ไม่ทำงาน
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    setSound(null, null)
+                    enableVibration(false)
+                    setShowBadge(false)
+                }
+            )
+        }
+        val openScreen = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, InCallActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val who =
+            if (ActiveCall.isInbound && ActiveCall.customerName.isBlank()) {
+                getString(R.string.call_identifying)
+            } else {
+                ActiveCall.describe()
+            }
+        val notification = NotificationCompat.Builder(this, CALL_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+            .setContentTitle(
+                getString(if (ActiveCall.isInbound) R.string.call_incoming else R.string.call_dialing)
+            )
+            .setContentText(who)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setOngoing(true)
+            .setSilent(true)
+            .setContentIntent(openScreen)
+            .setFullScreenIntent(openScreen, true)
+            .build()
+        manager.notify(CALL_NOTIFICATION_ID, notification)
     }
 
     override fun onDestroy() {
@@ -134,10 +207,16 @@ class PrimacomInCallService : InCallService() {
                 Log.w(TAG, "identify failed: ${e.message}")
                 ActiveCall.customerName = "ตรวจสอบไม่ได้"
             }
+            // heads-up ที่โพสต์ไปตอนสายเข้ายังเขียนว่า "กำลังตรวจสอบ" — โพสต์ทับด้วยชื่อจริง
+            if (ActiveCall.call != null) postCallNotification()
         }
     }
 
     companion object {
         private const val TAG = "PrimacomInCall"
+
+        /** คนละ channel กับแถบสถานะของ CallBridgeService ซึ่งตั้งใจให้เงียบและความสำคัญต่ำ */
+        private const val CALL_CHANNEL_ID = "active_call"
+        private const val CALL_NOTIFICATION_ID = 2001
     }
 }

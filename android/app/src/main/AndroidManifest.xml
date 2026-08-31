@@ -8,9 +8,19 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+
+    <!-- เด้งหน้าจอสายของเราได้แม้แอปถูกปัดทิ้ง/จอดับ — startActivity จาก service เฉย ๆ
+         ถูกบล็อกตั้งแต่ Android 10 ทางที่ระบบอนุญาตคือ notification แบบ full-screen intent -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- ตามลบเบอร์ออกจากประวัติการโทรของเครื่อง — ระบบเขียนบันทึกทุกสายลง call log กลาง
+         ซึ่งแอปโทรศัพท์/รายชื่อเดิมเปิดดูได้ ซ่อนบนหน้าจอสายอย่างเดียวจึงยังรั่ว -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
 
     <application
         android:name=".App"
@@ -39,6 +49,11 @@
                 <data android:scheme="tel" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.HistoryActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
 
         <!-- Our own in-call screen. Replaces the one that would print the number. -->
         <activity
@@ -82,7 +97,16 @@
         <service
             android:name=".call.CallBridgeService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse">
+            <!--
+                ชนิด dataSync ถูกจำกัดไว้ 6 ชั่วโมงต่อ 24 ชั่วโมงตั้งแต่ Android 15
+                service ตัวนี้ต้องอยู่ตลอดวันทำงานเพื่อรอรับคำสั่งโทรจาก CRM ถ้าโดนตัด
+                พนักงานจะกดโทรจากคอมแล้วเครื่องไม่ตอบสนอง โดยไม่มีอะไรแจ้งเตือน
+            -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Maintains the agent handset connection to the company CRM so staff can place and receive customer calls from their workstation during working hours." />
+        </service>
 
     </application>
 </manifest>

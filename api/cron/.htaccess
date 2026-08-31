@@ -1,5 +1,11 @@
-# Allow direct access to PHP files in this directory (bypass main router)
-# Cron jobs use their own secret key authentication
-
-# Disable rewrite for this directory - execute files directly
-RewriteEngine Off
+# ยกเว้นกฎบล็อกชื่อไฟล์ของ api/.htaccess ให้กับโฟลเดอร์นี้
+#
+# สคริปต์ในนี้หลายตัวชื่อขึ้นต้นด้วย fix_ / init_ / test_ ซึ่งตรงกับรูปแบบที่ถูกบล็อกไว้
+# แต่บางตัวถูกตั้งเวลาให้เรียกผ่าน URL จากฝั่ง host การบล็อกจะทำให้งานตามเวลาหยุดเงียบ ๆ
+# โดยไม่มีใครรู้ ซึ่งแย่กว่าปัญหาที่กำลังแก้
+#
+# นี่เป็นการยอมแลกชั่วคราว ไม่ใช่คำตอบสุดท้าย ทางที่ถูกคือให้ทุกสคริปต์ในนี้ตรวจ token
+# ลับก่อนทำงาน แล้วค่อยถอดข้อยกเว้นนี้ทิ้ง — ดู CLEANUP-NOTICE.md
+<FilesMatch "\.php$">
+    Require all granted
+</FilesMatch>

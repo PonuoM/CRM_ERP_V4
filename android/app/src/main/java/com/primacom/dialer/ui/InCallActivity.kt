@@ -6,28 +6,37 @@ import android.os.Handler
 import android.os.Looper
 import android.telecom.Call
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.primacom.dialer.R
 import com.primacom.dialer.call.ActiveCall
+import com.primacom.dialer.ui.Design.callAction
+import com.primacom.dialer.ui.Design.chip
+import com.primacom.dialer.ui.Design.dp
+import com.primacom.dialer.ui.Design.flexSpacer
+import com.primacom.dialer.ui.Design.label
+import com.primacom.dialer.ui.Design.text
+import com.primacom.dialer.ui.Design.title
 
 /**
- * The in-call screen, replacing the one the phone shipped with.
+ * หน้าจอสาย แทนที่หน้าจอสายเดิมของเครื่อง
  *
- * It shows a name and a customer id. It does not show a number, it has no keypad, and there is no
- * "add call" or "contacts" affordance — every one of those is a route back to the digits this whole
- * system exists to keep out of an agent's hands.
+ * โชว์ชื่อและรหัสลูกค้า ไม่โชว์เบอร์ ไม่มีแป้นกด ไม่มีปุ่มเพิ่มสาย/รายชื่อ — ทุกอย่างที่อาจพา
+ * เบอร์ลูกค้าขึ้นจอถูกตัดออกโดยตั้งใจ
+ *
+ * เลย์เอาต์: ชื่อลูกค้าเด่นกลางบน · รหัสลูกค้าเป็น chip · สถานะ · นาฬิกาจับเวลาตัวใหญ่ mono ·
+ * แถวปุ่มวงกลม (รับ/ปิดเสียง/วาง) ล่างสุด กดโดนง่ายเวลาเร่ง
  */
 class InCallActivity : AppCompatActivity() {
 
     private lateinit var whoView: TextView
     private lateinit var stateView: TextView
     private lateinit var timerView: TextView
-    private lateinit var muteButton: Button
-    private lateinit var answerButton: Button
+    private lateinit var muteButton: LinearLayout
+    private lateinit var answerButton: LinearLayout
 
     private val ticker = Handler(Looper.getMainLooper())
     private var connectedAt = 0L
@@ -56,7 +65,7 @@ class InCallActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    /** An agent should not have to unlock the handset to see who is on the line. */
+    /** พนักงานไม่ควรต้องปลดล็อกเครื่องเพื่อดูว่าใครโทรเข้า */
     private fun showOverLockScreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -68,80 +77,90 @@ class InCallActivity : AppCompatActivity() {
                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             )
         }
+        window.statusBarColor = Design.bg
+        window.navigationBarColor = Design.bg
     }
 
     private fun buildUi() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(64, 160, 64, 96)
-            setBackgroundColor(0xFF0B1F22.toInt())
+            setBackgroundColor(Design.bg)
+            setPadding(dp(28), dp(72), dp(28), dp(40))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT
+            )
         }
 
-        whoView = TextView(this).apply {
-            textSize = 26f
-            setTextColor(0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-        }
-        val idView = TextView(this).apply {
-            textSize = 14f
-            setTextColor(0xFF7FB4B8.toInt())
-            gravity = Gravity.CENTER
-            setPadding(0, 12, 0, 0)
-            text = if (ActiveCall.customerId > 0) "รหัสลูกค้า #${ActiveCall.customerId}" else ""
-        }
-        stateView = TextView(this).apply {
-            textSize = 15f
-            setTextColor(0xFF9FC6C9.toInt())
-            gravity = Gravity.CENTER
-            setPadding(0, 40, 0, 0)
-        }
-        timerView = TextView(this).apply {
-            textSize = 34f
-            setTextColor(0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            setPadding(0, 16, 0, 0)
-        }
+        // ป้ายบนสุด บอกว่าเป็นสายของบริษัท (ตัวตนของแอป ไม่ใช่หน้าสายเครื่องเดิม)
+        root.addView(label(getString(R.string.app_name), Design.inkFaint).apply {
+            setPadding(0, 0, 0, dp(40))
+        })
 
-        val spacer = android.view.View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(1, 0, 1f)
+        whoView = title("").apply {
+            setPadding(dp(8), 0, dp(8), 0)
         }
-
-        muteButton = Button(this).apply {
-            text = getString(R.string.action_mute)
-            setOnClickListener {
-                muted = !muted
-                // setMuted lives on the service; the system keeps one instance, so ask through it.
-                ActiveCall.call?.let { _ ->
-                    com.primacom.dialer.call.InCallBridge.setMuted(muted)
-                }
-                text = getString(if (muted) R.string.action_unmute else R.string.action_mute)
-            }
-        }
-        answerButton = Button(this).apply {
-            text = getString(R.string.action_answer)
-            // Visibility follows the live call state in refresh(); deciding once at build time meant
-            // a call still being identified never grew an answer button.
-            visibility = android.view.View.GONE
-            setOnClickListener {
-                ActiveCall.call?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY)
-            }
-        }
-        val hangUp = Button(this).apply {
-            text = getString(R.string.action_hang_up)
-            setOnClickListener { hangUp() }
-        }
-
         root.addView(whoView)
-        root.addView(idView)
+
+        val idChip = if (ActiveCall.customerId > 0) {
+            chip("รหัสลูกค้า #${ActiveCall.customerId}", Design.accent, Design.surfaceHi)
+        } else null
+        idChip?.let {
+            root.addView(it, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(16); gravity = Gravity.CENTER_HORIZONTAL })
+        }
+
+        stateView = text("", 15f, Design.inkDim, gravity = Gravity.CENTER).apply {
+            setPadding(0, dp(36), 0, 0)
+            letterSpacing = 0.03f
+        }
         root.addView(stateView)
+
+        timerView = text("", 44f, Design.ink, Design.mono, Gravity.CENTER).apply {
+            setPadding(0, dp(14), 0, 0)
+            letterSpacing = 0.02f
+        }
         root.addView(timerView)
-        root.addView(spacer)
-        root.addView(answerButton)
-        root.addView(muteButton)
-        root.addView(hangUp)
+
+        root.addView(flexSpacer())
+
+        // แถวปุ่มวงกลม
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val gap = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { marginStart = dp(20); marginEnd = dp(20) }
+
+        answerButton = callAction(R.drawable.ic_call, getString(R.string.action_answer), Design.positive) {
+            ActiveCall.call?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY)
+        }
+        muteButton = callAction(R.drawable.ic_mic, getString(R.string.action_mute), Design.surfaceHi) {
+            toggleMute()
+        }
+        val hangUp = callAction(R.drawable.ic_call_end, getString(R.string.action_hang_up), Design.danger, 78) {
+            hangUp()
+        }
+
+        controls.addView(answerButton, gap)
+        controls.addView(muteButton, gap)
+        controls.addView(hangUp, gap)
+        root.addView(controls)
+
         setContentView(root)
         refresh()
+    }
+
+    private fun toggleMute() {
+        muted = !muted
+        com.primacom.dialer.call.InCallBridge.setMuted(muted)
+        // สลับไอคอนและป้ายให้ตรงสถานะ
+        (muteButton.getChildAt(0) as? android.widget.ImageView)
+            ?.setImageResource(if (muted) R.drawable.ic_mic_off else R.drawable.ic_mic)
+        (muteButton.getChildAt(1) as? TextView)
+            ?.text = getString(if (muted) R.string.action_unmute else R.string.action_mute)
     }
 
     private fun hangUp() {
@@ -161,21 +180,26 @@ class InCallActivity : AppCompatActivity() {
         when (call.state) {
             Call.STATE_DIALING, Call.STATE_CONNECTING -> {
                 stateView.text = getString(R.string.call_dialing)
+                stateView.setTextColor(Design.inkDim)
                 timerView.text = ""
+                answerButton.visibility = View.GONE
             }
             Call.STATE_RINGING -> {
                 stateView.text = getString(R.string.call_incoming)
+                stateView.setTextColor(Design.warning)
                 timerView.text = ""
-                answerButton.visibility = android.view.View.VISIBLE
+                answerButton.visibility = View.VISIBLE
             }
             Call.STATE_ACTIVE -> {
-                answerButton.visibility = android.view.View.GONE
+                answerButton.visibility = View.GONE
                 if (connectedAt == 0L) connectedAt = System.currentTimeMillis()
                 stateView.text = getString(R.string.call_active)
+                stateView.setTextColor(Design.positive)
                 timerView.text = elapsed()
             }
             Call.STATE_DISCONNECTED, Call.STATE_DISCONNECTING -> {
                 stateView.text = getString(R.string.call_ended)
+                stateView.setTextColor(Design.inkDim)
                 finish()
             }
             else -> stateView.text = ""

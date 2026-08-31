@@ -21,9 +21,16 @@
     <string name="status_connecting">กำลังเชื่อมต่อ…</string>
     <string name="status_signed_out">ยังไม่ได้เข้าสู่ระบบ</string>
     <string name="status_offline">เชื่อมต่อไม่ได้ กำลังลองใหม่…</string>
+    <string name="status_reauth">ยืนยันตัวตนไม่ผ่าน กรุณาเปิดแอปเข้าสู่ระบบอีกครั้ง</string>
     <string name="status_ready">พร้อมรับงาน · %1$s</string>
     <string name="status_calling">กำลังโทรหา %1$s</string>
-    <string name="permissions_hint">แอปต้องได้รับสิทธิ์โทรออกและอ่านสถานะสายก่อนจึงจะรับงานได้</string>
+    <string name="permissions_hint">แอปต้องได้รับสิทธิ์โทรออก อ่านสถานะสาย และจัดการประวัติการโทร ก่อนจึงจะรับงานได้</string>
+    <string name="notif_channel_call">หน้าจอสาย</string>
+    <string name="call_identifying">กำลังตรวจสอบผู้โทร…</string>
+    <string name="notif_channel_alert">แจ้งเตือนสำคัญ</string>
+    <string name="role_lost_title">เบอร์ลูกค้าไม่ถูกซ่อนแล้ว!</string>
+    <string name="role_lost_text">แอปถูกถอดจากแอปโทรศัพท์หลัก จะรับงานโทรไม่ได้จนกว่าจะตั้งกลับ — แตะที่นี่</string>
+    <string name="status_role_lost">หยุดรับงาน — ต้องตั้งเป็นแอปโทรศัพท์หลักก่อน</string>
     <string name="crash_title">แอปปิดตัวผิดปกติครั้งล่าสุด — แจ้งข้อความนี้ให้ผู้ดูแลระบบ</string>
     <string name="action_clear_crash">ล้างข้อความนี้</string>
     <string name="action_mute">ปิดไมค์</string>
@@ -38,4 +45,25 @@
     <string name="dialer_role_needed">ยังไม่ได้ตั้งเป็นแอปโทรศัพท์หลัก — เบอร์ลูกค้าจะยังปรากฏบนหน้าจอโทรศัพท์เดิม</string>
     <string name="action_set_dialer">ตั้งเป็นแอปโทรศัพท์หลัก</string>
     <string name="dialer_role_ok">เป็นแอปโทรศัพท์หลักแล้ว · เบอร์ลูกค้าถูกซ่อน</string>
+
+    <string name="action_view_history">ดูประวัติการโทร</string>
+    <string name="history_title">ประวัติการโทร</string>
+    <string name="history_empty">ยังไม่มีประวัติการโทร</string>
+    <string name="history_loading">กำลังโหลด…</string>
+    <string name="day_today">วันนี้</string>
+    <string name="day_yesterday">เมื่อวาน</string>
+    <string name="call_missed">ไม่ได้รับสาย</string>
+    <string name="call_out">โทรออก</string>
+    <string name="call_in">สายเข้า</string>
+    <string name="calling_back">กำลังโทรกลับ…</string>
+
+    <string name="settings_title">ตั้งค่า</string>
+    <string name="signout_locked">ต้องใช้บัญชีผู้ดูแลระดับสูงเพื่อออกจากระบบ</string>
+    <string name="signout_admin_title">ยืนยันด้วยบัญชีผู้ดูแล</string>
+    <string name="signout_admin_desc">กรอกชื่อผู้ใช้และรหัสผ่านของผู้ดูแลระดับสูง เพื่อออกจากระบบเครื่องนี้</string>
+    <string name="admin_user_hint">ชื่อผู้ใช้ผู้ดูแล</string>
+    <string name="admin_pass_hint">รหัสผ่านผู้ดูแล</string>
+    <string name="action_confirm_signout">ยืนยันออกจากระบบ</string>
+    <string name="action_cancel">ยกเลิก</string>
+    <string name="verifying">กำลังตรวจสอบ…</string>
 </resources>
