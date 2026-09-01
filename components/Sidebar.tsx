@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { User as UserType, UserRole, SystemUpdate } from "../types";
 import { getSystemUpdates } from '@/services/api';
+import { usePhonePolicy } from '@/hooks/usePhonePolicy';
 import NotificationDrawer from "./NotificationDrawer";
 import {
   LayoutDashboard,
@@ -80,6 +81,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   permissions,
   menuOrder,
 }) => {
+  // ปิดเบอร์เปิดอยู่ไหม — คุมการโผล่ของเมนู "ออเดอร์รอเปิด"
+  const phonePolicy = usePhonePolicy();
+  const saleCaptureOn = phonePolicy.stage !== "off";
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     "Home": true,
   });
@@ -158,6 +163,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     Tags: "แท็ก",
     Addresses: "ข้อมูลที่อยู่",
     Orders: "การสั่งซื้อ",
+    PendingOrders: "ออเดอร์รอเปิด",
     Customers: "ลูกค้า",
     "Customer Management": "จัดการลูกค้า",
     "Manage Customers": "จัดการลูกค้า",
@@ -348,6 +354,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           allowRule: (user: UserType) => user.role !== UserRole.Telesale
         },
         { label: "Orders", icon: ShoppingCart, key: "nav.orders" },
+        // ออเดอร์รอเปิด — โผล่เฉพาะตอนเปิดปิดเบอร์ (กรองด้วย usePhonePolicy ใน getNavItems)
+        { label: "PendingOrders", icon: ShoppingCart, key: "nav.pending_orders" },
         { label: "Manage Orders", icon: ShoppingCart, key: "nav.manage_orders" },
         { label: "Order Tab Settings", icon: Settings, key: "nav.order_tab_settings" },
         { label: "Basket Settings", icon: Layers, key: "nav.basket_settings" },
@@ -525,6 +533,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       // 3. Handle Group/Children
       if (item.children) {
         const visibleChildren = item.children.filter(child => {
+          // ออเดอร์รอเปิด: ผูกกับฟังก์ชันปิดเบอร์ ถ้าปิดเบอร์ไม่เปิดก็ไม่ต้องมีเมนูนี้
+          if (child.key === "nav.pending_orders" && !saleCaptureOn) return false;
           // Check allowRule first (code-level override)
           if (child.allowRule && !child.allowRule(user)) return false;
           // Then check permission key

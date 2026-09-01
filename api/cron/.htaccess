@@ -7,5 +7,11 @@
 # นี่เป็นการยอมแลกชั่วคราว ไม่ใช่คำตอบสุดท้าย ทางที่ถูกคือให้ทุกสคริปต์ในนี้ตรวจ token
 # ลับก่อนทำงาน แล้วค่อยถอดข้อยกเว้นนี้ทิ้ง — ดู CLEANUP-NOTICE.md
 <FilesMatch "\.php$">
-    Require all granted
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Allow from all
+    </IfModule>
 </FilesMatch>

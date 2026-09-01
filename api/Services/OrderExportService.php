@@ -180,36 +180,58 @@ class OrderExportService {
             sort($boxNumbers);
             $orderBoxes = $boxAmounts[$orderId] ?? [];
 
+            // ยอดที่ขนส่งเก็บมาให้จริง บันทึกรายกล่องไว้แล้ว (นับทุกกล่องของบิล
+            // ไม่ใช่แค่กล่องที่โผล่ในไฟล์ ไม่งั้นยอดระดับออเดอร์จะขาด)
             $collectedSum = 0.0;
             foreach ($orderBoxes as $b) {
                 $collectedSum += (float) ($b['collected'] ?? 0);
             }
 
-            // COD: มียอดเก็บจริงรายกล่องอยู่แล้ว ใช้ตามนั้น
-            if ($collectedSum > 0) {
-                $perBox = [];
-                $printed = 0.0;
-                foreach ($boxNumbers as $n) {
-                    $perBox[$n] = (float) ($orderBoxes[$n]['collected'] ?? 0);
-                    $printed += $perBox[$n];
-                }
-                // กล่องที่มีใน order_boxes แต่ไม่มีรายการสินค้าในไฟล์ จะตกหล่น
-                // ยกยอดส่วนที่หายไปใส่กล่องแรก เพื่อให้ผลรวมยังตรง
-                $missing = round($collectedSum - $printed, 2);
-                if (abs($missing) >= 0.01 && !empty($boxNumbers)) {
-                    $perBox[$boxNumbers[0]] += $missing;
-                }
-                $result[$orderId] = ['order' => $collectedSum, 'boxes' => $perBox];
-                continue;
+            // บิลจ่ายผ่านสลิป หรือ COD ที่ยังไม่ได้ import ใบนำส่งรายกล่อง
+            // เงินจะโผล่ที่ระดับบิลแทน — ส่วนที่เกินจากยอดรายกล่องคือส่วนนี้
+            $paid = $amountPaid[$orderId] ?? 0.0;
+            $orderTotal = max($collectedSum, $paid);
+            $remainder = round($orderTotal - $collectedSum, 2);
+
+            $perBox = [];
+            $placed = 0.0;
+            foreach ($boxNumbers as $n) {
+                $perBox[$n] = (float) ($orderBoxes[$n]['collected'] ?? 0);
+                $placed += $perBox[$n];
+            }
+            // กล่องที่มีใน order_boxes แต่ไม่มีรายการสินค้าในไฟล์ จะตกหล่น
+            // ยกยอดส่วนที่หายไปใส่กล่องแรก เพื่อให้ผลรวมยังตรง
+            $missing = round($collectedSum - $placed, 2);
+            if (abs($missing) >= 0.01 && !empty($boxNumbers)) {
+                $perBox[$boxNumbers[0]] += $missing;
             }
 
-            // Transfer / PayAfter / COD ที่ยังไม่ import ใบนำส่ง: เงินอยู่ระดับบิล
-            $paid = $amountPaid[$orderId] ?? 0.0;
-            $perBox = array_fill_keys($boxNumbers, 0.0);
-            if ($paid != 0.0 && !empty($boxNumbers)) {
+            if ($remainder != 0.0 && !empty($boxNumbers)) {
+                // ลงเฉพาะกล่องที่ยังไม่มียอดเก็บรายกล่องและไม่ถูกตีกลับ
+                // กล่องที่บันทึกยอดไว้แล้วถือว่าจบ ส่วนกล่องที่ตีกลับไม่ได้เก็บเงิน
+                // ถ้าไม่เหลือกล่องแบบนั้น ค่อยไล่ผ่อนเงื่อนไขลงทีละขั้น
+                $open = [];
+                $notReturned = [];
+                foreach ($boxNumbers as $n) {
+                    $isReturned = self::isBoxReturned($lookups, $orderId, $n);
+                    if (!$isReturned) {
+                        $notReturned[] = $n;
+                        if ((float) ($orderBoxes[$n]['collected'] ?? 0) == 0.0) {
+                            $open[] = $n;
+                        }
+                    }
+                }
+                if (!empty($open)) {
+                    $targets = $open;
+                } elseif (!empty($notReturned)) {
+                    $targets = $notReturned;
+                } else {
+                    $targets = $boxNumbers;
+                }
+
                 $weights = [];
                 $weightSum = 0.0;
-                foreach ($boxNumbers as $n) {
+                foreach ($targets as $n) {
                     $w = (float) ($orderBoxes[$n]['collection'] ?? 0);
                     if ($w <= 0) {
                         $w = (float) ($orderBoxes[$n]['cod'] ?? 0);
@@ -219,25 +241,27 @@ class OrderExportService {
                 }
                 if ($weightSum <= 0) {
                     // ไม่รู้สัดส่วน (เช่นกล่องถูกตีกลับจน collection_amount = 0) — หารเท่ากัน
-                    foreach ($boxNumbers as $n) {
+                    foreach ($targets as $n) {
                         $weights[$n] = 1.0;
                     }
-                    $weightSum = (float) count($boxNumbers);
+                    $weightSum = (float) count($targets);
                 }
-                $lastBox = $boxNumbers[count($boxNumbers) - 1];
+
+                $lastTarget = $targets[count($targets) - 1];
                 $running = 0.0;
-                foreach ($boxNumbers as $n) {
-                    if ($n === $lastBox) {
+                foreach ($targets as $n) {
+                    if ($n === $lastTarget) {
                         // เศษสตางค์จากการปัดลงกล่องสุดท้าย ผลรวมจึงตรงเป๊ะ
-                        $perBox[$n] = round($paid - $running, 2);
+                        $perBox[$n] += round($remainder - $running, 2);
                     } else {
-                        $share = round($paid * $weights[$n] / $weightSum, 2);
-                        $perBox[$n] = $share;
+                        $share = round($remainder * $weights[$n] / $weightSum, 2);
+                        $perBox[$n] += $share;
                         $running += $share;
                     }
                 }
             }
-            $result[$orderId] = ['order' => $paid, 'boxes' => $perBox];
+
+            $result[$orderId] = ['order' => $orderTotal, 'boxes' => $perBox];
         }
 
         return $result;
@@ -316,6 +340,7 @@ class OrderExportService {
         // ผลรวมคอลัมน์รายกล่องจึงเท่ากับผลรวมคอลัมน์ระดับออเดอร์
         $headers[] = 'เงินเก็บได้รวมทั้งออเดอร์';
         $headers[] = 'เงินเก็บได้แยกกล่อง';
+        $headers[] = 'ยอดคงเหลือจากยอดเก็บ';
 
         return $headers;
     }
@@ -527,6 +552,14 @@ class OrderExportService {
         } else {
             $result[] = '-';
         }
+
+        // ยอดที่ยังเก็บไม่ได้ = 'ยอดรวมทั้งบิล' ลบ 'เงินเก็บได้รวมทั้งออเดอร์'
+        // ใช้ยอดรวมทั้งบิล ไม่ใช่ยอดเฉพาะสินค้า เพราะค่าส่งก็เป็นเงินที่ต้องเก็บจากลูกค้า
+        // (ยอดเฉพาะสินค้าจะทำให้บิลที่จ่ายครบแล้วแต่มีค่าส่ง ติดลบเท่าค่าส่ง)
+        // ทั้งสองตัวลงเฉพาะรายการแรกของออเดอร์ คอลัมน์นี้จึงลงที่เดียวกัน
+        $result[] = $isFirstItem
+            ? round($totalAmount - (float) ($collected['order'] ?? 0), 2)
+            : '-';
 
         return $result;
     }

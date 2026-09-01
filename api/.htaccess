@@ -17,11 +17,27 @@ RewriteRule ^ index.php [QSA,L]
 #
 # บล็อกตามรูปแบบชื่อ ไม่ใช่บล็อกทั้งโฟลเดอร์ เพราะไฟล์อย่าง customers.php basket_config.php
 # companies.php เป็นส่วนของระบบจริงที่หน้าเว็บเรียกอยู่ การบล็อกเหมารวมจะทำให้ระบบพัง
+#
+# เขียนรองรับทั้ง Apache 2.4 (Require) และ 2.2 (Order/Deny) โดยตั้งใจ
+# host ตอบ header มาแค่ "Apache/2" ไม่บอกเวอร์ชันย่อย ถ้าใช้ไวยากรณ์ผิดรุ่น
+# ทั้งโฟลเดอร์จะกลายเป็น HTTP 500 ทันที ซึ่งคือ API ตายทั้งระบบ
 <FilesMatch "^(test_|dump_|show_|describe_|scan_|migrate_|kill_|convert_|manual_|fix_|init_|recreate_|clean_|optimize_|ensure_|create_.*table|add_.*column|database_sync|list_statuses).*\.php$">
-    Require all denied
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
 </FilesMatch>
 
-# ไฟล์ log ไม่ควรโหลดได้จากเว็บไม่ว่ากรณีใด
+# ไฟล์ log และ dump ฐานข้อมูลไม่ควรโหลดได้จากเว็บไม่ว่ากรณีใด
 <FilesMatch "\.(log|sql|bak|old|orig|save)$">
-    Require all denied
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
 </FilesMatch>

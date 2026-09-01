@@ -1523,8 +1523,41 @@ function handle_orders(PDO $pdo, ?string $id): void
             }
             break;
         case 'POST':
-            $in = json_input();
-            error_log('Order creation request: ' . json_encode($in));
+            // Support both JSON (legacy) and FormData (multipart) for order creation
+            if (isset($_POST['orderData_json'])) {
+                $in = json_decode($_POST['orderData_json'], true);
+                if (!$in) $in = [];
+            } else {
+                $in = json_input();
+            }
+
+            // Handle Multipart file upload for slip
+            if (isset($_FILES['slip_file']) && $_FILES['slip_file']['error'] === UPLOAD_ERR_OK) {
+                $tmpName = $_FILES['slip_file']['tmp_name'];
+                $ext = strtolower(pathinfo($_FILES['slip_file']['name'], PATHINFO_EXTENSION));
+                if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'])) $ext = 'jpg';
+                $dir = __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'slips';
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                $fname = 'slip_upload_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 6) . '.' . $ext;
+                if (move_uploaded_file($tmpName, $dir . DIRECTORY_SEPARATOR . $fname)) {
+                    $in['slipUrl'] = 'api/uploads/slips/' . $fname; 
+                }
+            }
+            
+            // Remove Base64 image data before logging to prevent Out of Memory
+            $logData = $in;
+            if (isset($logData['slipUrl']) && is_string($logData['slipUrl']) && strpos($logData['slipUrl'], 'data:image') === 0) {
+                $logData['slipUrl'] = '[BASE64_IMAGE_DATA_OMITTED]';
+            }
+            if (isset($logData['slips']) && is_array($logData['slips'])) {
+                foreach ($logData['slips'] as &$slip) {
+                    if (isset($slip['url']) && is_string($slip['url']) && strpos($slip['url'], 'data:image') === 0) {
+                        $slip['url'] = '[BASE64_IMAGE_DATA_OMITTED]';
+                    }
+                }
+            }
+            error_log('Order creation request: ' . json_encode($logData));
+            
             $pdo->beginTransaction();
             try {
                 // Validate creator_id exists in users table and is active
@@ -1536,7 +1569,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
                 $creatorCheck = $pdo->prepare('
-                    SELECT u.id, u.status, u.company_id, r.code AS role_code
+                    SELECT u.id, u.status, u.company_id, u.first_name, u.last_name, r.code AS role_code
                     FROM users u
                     LEFT JOIN roles r ON (
                         (u.role_id IS NOT NULL AND r.id = u.role_id) OR
@@ -1569,6 +1602,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 $authUser = get_authenticated_user($pdo);
                 $proxyCreatorId = null;
                 $proxyReason = null;
+                $ownershipClaimed = false;
 
                 if ($authUser && (int) $authUser['id'] !== (int) $creatorId) {
                     $actorId = (int) $authUser['id'];
@@ -1597,7 +1631,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
 
-                // 🛡️ OWNERSHIP GUARD (2026-08-26, เข้มขึ้น 2026-08-27)
+                // 🛡️ OWNERSHIP GUARD (2026-08-26, เข้มขึ้น 2026-08-27, เปิดทางขายแทน 2026-08-30)
                 // Telesale / Supervisor Telesale เปิดบิลได้เฉพาะลูกค้าที่ตัวเองดูแลอยู่เท่านั้น
                 // - เป็นลูกค้าของตัวเอง → เปิดได้ตามปกติ
                 // - มีผู้ดูแลเป็นคนอื่น → ห้าม
@@ -1606,11 +1640,18 @@ function handle_orders(PDO $pdo, ?string $id): void
                 //   Telesale สร้างลูกค้าใหม่เอง — ดู CustomerController POST
                 // - role อื่น (Admin Page ฯลฯ) ไม่ติดกฎนี้ ระบบจะส่งเข้า Upsell ให้เจ้าของเดิมตามกฎ P5
                 // - กรณีขายแทน (proxy) เช็คจาก creator_id ซึ่งคือคนที่ได้ยอด จึงกันได้ถูกคน
+                //
+                // ข้อยกเว้นเดียวที่เปิดไว้: ขายแทนเจอลูกค้าไร้เจ้าของ ให้ยืนยันแล้วรับลูกค้าเข้ามือ
+                // คนที่ถูกขายแทนได้ทันที (claimOwnerlessCustomer) เพราะงานขายแทนกระจุกอยู่เสาร์อาทิตย์
+                // ที่ไม่มีหัวหน้ามาแจก การให้รอจึงเท่ากับทิ้งบิล ไม่ได้เปิดให้คนขายเองใช้ทางนี้:
+                // ประตูคือ $proxyCreatorId ซึ่งตั้งได้เฉพาะเมื่อผ่าน orders.proxy_sale.use มาแล้ว
+                // และคนโอนถูกบันทึกจาก token ไม่ใช่จาก payload จึงโยนความผิดให้คนอื่นไม่ได้
                 if (in_array($creatorData['role_code'] ?? '', ['telesale', 'supervisor_telesale'], true)) {
                     $guardCustomerId = $in['customerId'] ?? null;
                     if ($guardCustomerId) {
                         $ownerGuard = $pdo->prepare('
-                            SELECT c.customer_id, c.assigned_to, u.first_name AS owner_first, u.last_name AS owner_last
+                            SELECT c.customer_id, c.assigned_to, c.company_id,
+                                   u.first_name AS owner_first, u.last_name AS owner_last
                             FROM customers c
                             LEFT JOIN users u ON u.id = c.assigned_to
                             WHERE c.customer_ref_id = ? OR c.customer_id = ?
@@ -1623,29 +1664,69 @@ function handle_orders(PDO $pdo, ?string $id): void
                         // เช็คเฉพาะเมื่อหาแถวลูกค้าเจอ — ถ้าหาไม่เจอปล่อยให้ด่านตรวจเดิมข้างล่างจัดการ
                         // ตามเดิม จะได้ไม่สร้างรูปแบบความล้มเหลวใหม่ให้ระบบที่ใช้งานอยู่จริง
                         if ($guardRow && $guardOwnerId !== (int) $creatorId) {
-                            $pdo->rollBack();
-
                             if ($guardOwnerId <= 0) {
+                                // ลูกค้าไร้เจ้าของ: ขายแทนเท่านั้นที่รับเข้ามือแทนได้ และต้องบริษัทเดียวกัน
+                                $claimSameCompany =
+                                    (int) ($guardRow['company_id'] ?? 0) === (int) $creatorData['company_id'];
+                                $canClaim = $proxyCreatorId !== null && $claimSameCompany;
+
+                                if ($canClaim && !empty($in['claimOwnerlessCustomer'])) {
+                                    // ผู้ลงมือคือคนขายแทน ผู้รับคือคนที่ถูกขายแทน — trigger customer_after_update
+                                    // เก็บทั้งคู่ให้ (created_by = @audit_user_id, assigned_to = เจ้าของใหม่)
+                                    set_audit_context($pdo, 'orders/proxy_sale_claim', $proxyCreatorId);
+                                    $claimStmt = $pdo->prepare('
+                                        UPDATE customers
+                                           SET assigned_to = ?, date_assigned = NOW()
+                                         WHERE customer_id = ?
+                                           AND (assigned_to IS NULL OR assigned_to = 0)
+                                    ');
+                                    $claimStmt->execute([(int) $creatorId, (int) $guardRow['customer_id']]);
+                                    $ownershipClaimed = $claimStmt->rowCount() > 0;
+                                    // คืนป้ายที่ bootstrap ตั้งไว้ ไม่งั้นการแก้ลูกค้าที่เหลือในบิลนี้จะถูกติดป้ายว่าเป็นการโอน
+                                    set_audit_context($pdo, 'index/orders_post', $proxyCreatorId);
+
+                                    if (!$ownershipClaimed) {
+                                        // แพ้การแย่งชิงระหว่างทาง มีคนคว้าลูกค้าไปก่อนแล้ว
+                                        $pdo->rollBack();
+                                        json_response([
+                                            'error' => 'CUSTOMER_CLAIM_RACE',
+                                            'message' => 'ลูกค้ารายนี้เพิ่งถูกโอนให้คนอื่นไปก่อนหน้าคุณ กรุณาเปิดหน้าลูกค้าใหม่แล้วลองอีกครั้ง',
+                                        ], 409);
+                                        return;
+                                    }
+                                } else {
+                                    $pdo->rollBack();
+                                    $claimOwnerName = trim(
+                                        ($creatorData['first_name'] ?? '') . ' ' . ($creatorData['last_name'] ?? '')
+                                    );
+                                    json_response([
+                                        'error' => 'CUSTOMER_HAS_NO_OWNER',
+                                        'message' => $canClaim
+                                            ? 'ลูกค้ารายนี้ยังไม่มีผู้ดูแล — ยืนยันเพื่อโอนเข้ามือคนที่คุณขายแทนก่อนเปิดบิล'
+                                            : 'ลูกค้ารายนี้ยังไม่มีผู้ดูแล จึงเปิดบิลให้ไม่ได้ — ให้แจ้งหัวหน้าแจกหรือโอนลูกค้าเข้ามือคุณก่อน',
+                                        'ownerId' => 0,
+                                        'ownerName' => null,
+                                        // บอกหน้าจอว่ามีทางไปต่อไหม จะได้ถามผู้ใช้แทนที่จะขึ้นทางตัน
+                                        'canClaim' => $canClaim,
+                                        'claimOwnerId' => $canClaim ? (int) $creatorId : null,
+                                        'claimOwnerName' => $canClaim && $claimOwnerName !== '' ? $claimOwnerName : null,
+                                    ], 403);
+                                    return;
+                                }
+                            } else {
+                                $pdo->rollBack();
+                                $guardOwnerName = trim(($guardRow['owner_first'] ?? '') . ' ' . ($guardRow['owner_last'] ?? ''));
+                                if ($guardOwnerName === '') {
+                                    $guardOwnerName = 'ผู้ดูแลรายอื่น (#' . $guardOwnerId . ')';
+                                }
                                 json_response([
-                                    'error' => 'CUSTOMER_HAS_NO_OWNER',
-                                    'message' => 'ลูกค้ารายนี้ยังไม่มีผู้ดูแล จึงเปิดบิลให้ไม่ได้ — ให้แจ้งหัวหน้าแจกหรือโอนลูกค้าเข้ามือคุณก่อน',
-                                    'ownerId' => 0,
-                                    'ownerName' => null
+                                    'error' => 'CUSTOMER_HAS_OTHER_OWNER',
+                                    'message' => 'ลูกค้ารายนี้อยู่ในความดูแลของ ' . $guardOwnerName . ' จึงเปิดบิลให้ไม่ได้ — ถ้าลูกค้าต้องการซื้อจริง ให้แจ้งหัวหน้าโอนลูกค้าก่อน',
+                                    'ownerId' => $guardOwnerId,
+                                    'ownerName' => $guardOwnerName
                                 ], 403);
                                 return;
                             }
-
-                            $guardOwnerName = trim(($guardRow['owner_first'] ?? '') . ' ' . ($guardRow['owner_last'] ?? ''));
-                            if ($guardOwnerName === '') {
-                                $guardOwnerName = 'ผู้ดูแลรายอื่น (#' . $guardOwnerId . ')';
-                            }
-                            json_response([
-                                'error' => 'CUSTOMER_HAS_OTHER_OWNER',
-                                'message' => 'ลูกค้ารายนี้อยู่ในความดูแลของ ' . $guardOwnerName . ' จึงเปิดบิลให้ไม่ได้ — ถ้าลูกค้าต้องการซื้อจริง ให้แจ้งหัวหน้าโอนลูกค้าก่อน',
-                                'ownerId' => $guardOwnerId,
-                                'ownerName' => $guardOwnerName
-                            ], 403);
-                            return;
                         }
                     }
                 }
@@ -2435,7 +2516,13 @@ function handle_orders(PDO $pdo, ?string $id): void
                 }
 
                 // 🔍 DEBUG: Include routing result in response
-                json_response(['ok' => true, 'id' => $in['id'], 'basket_routing' => $basketRoutingDebug]);
+                json_response([
+                    'ok' => true,
+                    'id' => $in['id'],
+                    'basket_routing' => $basketRoutingDebug,
+                    // ขายแทนแล้วรับลูกค้าไร้เจ้าของเข้ามือให้ — หน้าจอเอาไปบอกผู้ใช้ว่ามีอะไรเปลี่ยนไปอีก
+                    'ownership_claimed' => $ownershipClaimed,
+                ]);
             } catch (Throwable $e) {
                 $pdo->rollBack();
                 error_log('Order creation failed: ' . $e->getMessage());

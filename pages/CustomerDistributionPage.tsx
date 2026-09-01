@@ -286,7 +286,6 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     success: number;
     skipped: number;
   } | null>(null);
-  const [savingDistribution, setSavingDistribution] = useState(false);
   const [displayCount, setDisplayCount] = useState<number>(0);
 
   const telesaleAgents = useMemo(() => {
@@ -820,118 +819,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   };
 
 
-  const handleExecuteDistribution = async () => {
-    const actualCount = parseInt(distributionCount, 10);
-
-    if (isNaN(actualCount) || actualCount <= 0) {
-      alert("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
-      return;
-    }
-
-    if (selectedAgentIds.length === 0) {
-      alert("กรุณาเลือกพนักงานเป้าหมาย");
-      return;
-    }
-
-    if (
-      !window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${actualCount.toLocaleString()} รายการหรือไม่ ? `)
-    ) {
-      return;
-    }
-
-    setSavingDistribution(true);
-    try {
-      // Call bulk distribution API
-      const response = await bulkDistributeCustomers({
-        companyId: currentUser.companyId,
-        count: actualCount,
-        agentIds: selectedAgentIds,
-        targetStatus,
-        ownershipDays: 30,
-        filters: {
-          mode: poolSource,
-          grade: activeTab === "gradeA" ? "A" : undefined,
-        },
-      });
-
-      if (response?.ok) {
-        // Show success message
-        const { distributed, assignments, skipped } = response;
-        let message = `แจกลูกค้าสำเร็จ ${distributed.toLocaleString()} รายการ\n\n`;
-
-        // Show distribution per agent
-        const selectedAgents = telesaleStats.filter((a) =>
-          selectedAgentIds.includes(a.id),
-        );
-        selectedAgents.forEach((agent) => {
-          const count = assignments[agent.id] || 0;
-          message += `${agent.firstName} ${agent.lastName}: ${count.toLocaleString()} รายการ\n`;
-        });
-
-        if (skipped > 0) {
-          message += `\nข้ามไป: ${skipped.toLocaleString()} รายการ`;
-        }
-
-        alert(message);
-
-        // Reset form
-        setDistributionResult({ success: distributed, skipped });
-        setShowPreview(false);
-        setShowPreviewModal(false);
-        setPreviewAssignments({});
-        setSkippedCustomers([]);
-        setDistributionCount("");
-        setSelectedAgentIds([]);
-
-        // Refresh data
-        try {
-          // Set loading states
-          setLoadingStats(true);
-          setLoadingTelesaleStats(true);
-
-          // Refresh customer stats
-          const statsResponse = await getCustomerStats(currentUser.companyId);
-          if (statsResponse?.ok && statsResponse?.stats) {
-            setCustomerStats(statsResponse.stats);
-          }
-
-          // Refresh list if using specific source (except large pools that use stats)
-          if (poolSource !== "all" && poolSource !== "stock" && poolSource !== "new_sale" && poolSource !== "waiting_return") {
-            setLoadingPool(true);
-            const poolRes = await listCustomersBySource(poolSource);
-            const rows = Array.isArray(poolRes) ? poolRes : (poolRes?.data || []);
-            const mapped = Array.isArray(rows)
-              ? rows.map((row: any) => normalizeApiCustomer(row))
-              : [];
-            setPoolCustomers(mapped);
-            setLoadingPool(false);
-          }
-          setLoadingStats(false);
-
-          // Refresh telesale stats
-          const telesaleResponse = await getTelesaleUsers(currentUser.companyId);
-          if (telesaleResponse?.ok && telesaleResponse?.users) {
-            setTelesaleStats(telesaleResponse.users);
-          }
-          setLoadingTelesaleStats(false);
-        } catch (refreshError) {
-          console.error("Failed to refresh stats:", refreshError);
-          setLoadingStats(false);
-          setLoadingTelesaleStats(false);
-          // Don't show error to user, stats will refresh on next page load
-        }
-
-        // Stop loading after everything is done
-        setSavingDistribution(false);
-      } else {
-        throw new Error(response?.error || "Distribution failed");
-      }
-    } catch (error) {
-      console.error("Failed to distribute customers", error);
-      alert("ไม่สามารถบันทึกการแจกลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
-      setSavingDistribution(false);
-    }
-  };
+  // ปุ่ม "เริ่มแจกลูกค้า" ของหน้านี้ถูกถอดออกแล้ว
+  //
+  // เดิมเรียก api/customer/bulk_distribute.php ซึ่ง UPDATE customers โดยไม่แตะ
+  // current_basket_key และ basket_entered_date เลย ลูกค้าจึงได้เจ้าของใหม่แต่ยังค้าง
+  // อยู่ในถังฝั่ง Distribution เจ้าของมองไม่เห็นบน Dashboard และ basket_aging_cron
+  // ก็เก็บไม่ได้ (พบของจริง 98 ราย ส.ค. 2569 ไม่มีแถวใน basket_transition_log เลย)
+  //
+  // ทางแจกที่ใช้งานจริงคือเมนู "แจกงาน V2" (CustomerDistributionV2) ซึ่งบังคับ
+  // ถังปลายทางและเขียน log ครบ ปุ่มนี้ไม่มีใครกดมาตั้งแต่ระบบ audit เริ่มทำงาน
+  // (customer_audit_log 3.2 ล้านแถว ตั้งแต่ 5 มี.ค. 2569 ไม่มี api_source=bulk_distribute
+  // สักแถวเดียว) จึงถอดทั้งปุ่มและ endpoint ออกแทนที่จะแก้ให้ถูก
   const handleDatePresetClick = (preset: string) => {
     setActiveDatePreset(preset);
     setDateRange({ start: "", end: "" });
@@ -1078,24 +976,14 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
           </div>
 
           <div className="p-6 border-t border-gray-200 bg-gray-50">
-            <div className="flex justify-center">
-              <button
-                onClick={handleExecuteDistribution}
-                disabled={savingDistribution}
-                className="bg-green-100 text-green-700 font-semibold text-lg rounded-md py-3 px-8 flex items-center hover:bg-green-200 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-green-100"
-              >
-                {savingDistribution ? (
-                  <>
-                    <RefreshCw className="mr-2 animate-spin" size={20} />
-                    กำลังแจกลูกค้า...
-                  </>
-                ) : (
-                  <>
-                    <PlayCircle className="mr-2" size={20} />
-                    เริ่มแจกลูกค้า
-                  </>
-                )}
-              </button>
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-center">
+              <p className="text-sm font-semibold text-amber-900">
+                หน้านี้ใช้ดูตัวอย่างได้อย่างเดียว แจกจริงไม่ได้แล้ว
+              </p>
+              <p className="mt-1 text-sm text-amber-800">
+                การแจกลูกค้าย้ายไปที่เมนู <span className="font-semibold">แจกงาน V2</span> ทั้งหมด
+                เพราะช่องทางเดิมไม่ได้อัปเดตถังของลูกค้า ทำให้ลูกค้าตกไปอยู่ในถังกองกลางทั้งที่มีเจ้าของแล้ว
+              </p>
             </div>
           </div>
         </div>
@@ -1734,8 +1622,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   disabled={
                     !distributionCount ||
                     selectedAgentIds.length === 0 ||
-                    !!distributionCountError ||
-                    savingDistribution
+                    !!distributionCountError
                   }
                   className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 md:px-6 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500"
                 >

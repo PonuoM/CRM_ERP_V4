@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { ToastProvider } from "./components/Toast";
+import { CallProvider } from "./contexts/CallContext";
+import FloatingCallWidget from "./components/FloatingCallWidget";
 import { triggerCustomersRefresh } from "./utils/dataSync";
 import {
   UserRole,
@@ -164,6 +166,8 @@ import LoyaltyTrackerPage from "./pages/LoyaltyTrackerPage";
 import LoyaltyDashboard from "./pages/LoyaltyDashboard";
 import LoyaltyExecutiveReport from "./pages/LoyaltyExecutiveReport";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
+import { PendingOrdersPage } from "./pages/PendingOrdersPage";
+import { getCustomer as fetchCustomerById, openPendingOrder, type PendingOrder } from "./services/api";
 
 import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
@@ -620,6 +624,7 @@ const App: React.FC = () => {
       'Telesale Call Report': 'calls.telesale_report',
       'Telesale Campaign Compare': 'monitor.campaign_compare',
       'Commission Stamp': 'finance-commission-stamp',
+      'PendingOrders': 'nav.pending_orders',
     };
 
     // Check if current page needs permission check
@@ -3204,6 +3209,7 @@ const App: React.FC = () => {
           }
           return {
             dataUrl: entry?.dataUrl,
+            file: entry?.file,
             bankAccountId: entry?.bankAccountId,
             transferDate: entry?.transferDate,
             amount: entry?.amount,
@@ -3470,12 +3476,42 @@ const App: React.FC = () => {
           : {}),
       };
 
-      // If single slip and no multi-slip support in API yet, use slipUrl for the first one
-      if (slipUploadsArray.length === 1) {
-        (orderPayload as any).slipUrl = slipUploadsArray[0].dataUrl;
+      let finalPayload: any = orderPayload;
+      const hasFiles = slipUploadsArray.some(s => s.file);
+
+      if (hasFiles) {
+        finalPayload = new FormData();
+        const jsonPayload = { ...orderPayload };
+        
+        if (slipUploadsArray.length > 0) {
+          (jsonPayload as any).slips = slipUploadsArray.map(s => ({
+            dataUrl: s.dataUrl,
+            bankAccountId: s.bankAccountId,
+            transferDate: s.transferDate,
+            amount: s.amount,
+            mismatchReason: s.mismatchReason
+          }));
+          if (slipUploadsArray.length === 1) {
+            (jsonPayload as any).slipUrl = slipUploadsArray[0].dataUrl;
+          }
+        }
+        
+        finalPayload.append("orderData_json", JSON.stringify(jsonPayload));
+        
+        const firstFile = slipUploadsArray.find(s => s.file)?.file;
+        if (firstFile) {
+          finalPayload.append("slip_file", firstFile);
+        }
+      } else {
+        if (slipUploadsArray.length === 1) {
+          (finalPayload as any).slipUrl = slipUploadsArray[0].dataUrl;
+        }
+        if (slipUploadsArray.length > 0) {
+          (finalPayload as any).slips = slipUploadsArray;
+        }
       }
 
-      const res = await apiCreateOrder(orderPayload);
+      const res = await apiCreateOrder(finalPayload);
 
       if (res && res.ok) {
         // res.duplicate = true แปลว่าเซิร์ฟเวอร์เจอคีย์ซ้ำแล้วส่งบิลเดิมกลับมา ไม่ได้สร้างใบใหม่
@@ -7402,6 +7438,41 @@ const App: React.FC = () => {
         );
 
       // PROCESSED: Orders
+      case "PendingOrders":
+        return (
+          <PendingOrdersPage
+            currentUserId={Number(currentUser.id)}
+            canProxySale={isSuperAdmin || !!rolePermissions?.["orders.proxy_sale"]?.view}
+            onOpen={async (po: PendingOrder) => {
+              try {
+                const customer = await fetchCustomerById(po.customer_id);
+                if (!customer) {
+                  alert("ไม่พบข้อมูลลูกค้ารายนี้");
+                  return;
+                }
+                // เปิดแทนคนขาย = โหมดขายแทน เครดิตให้เทเลคนที่บันทึก (ถ้าไม่ใช่ตัวเราเอง)
+                const proxyForUserId =
+                  po.agent_user_id && po.agent_user_id !== Number(currentUser.id) ? po.agent_user_id : null;
+                setCreateOrderInitialData({
+                  customer,
+                  pendingOrderId: po.id,
+                  proxyForUserId,
+                  items: po.items.map((it) => ({
+                    productId: it.product_id,
+                    name: it.name,
+                    qty: it.qty,
+                    unit: it.unit,
+                  })),
+                });
+                setPreviousPage("PendingOrders");
+                setActivePage("CreateOrder");
+              } catch (e) {
+                alert("เปิดออเดอร์ไม่สำเร็จ");
+              }
+            }}
+          />
+        );
+
       case "CreateOrder":
         return (
           <CreateOrderPage
@@ -7422,6 +7493,9 @@ const App: React.FC = () => {
               setCreateOrderInitialData(null);
             }}
             onSuccess={() => {
+              // เปิดจาก "ออเดอร์รอเปิด" สำเร็จ → mark ว่า opened กันเปิดซ้ำ
+              const pid = createOrderInitialData?.pendingOrderId;
+              if (pid) openPendingOrder(Number(pid)).catch(() => {});
               setActivePage("Dashboard");
               setPreviousPage(null);
               setCreateOrderInitialData(null);
@@ -8257,6 +8331,7 @@ const App: React.FC = () => {
 
   return (
     <ToastProvider>
+      <CallProvider>
       <div className="h-screen bg-[#F5F5F5] relative">
         {showCheckInPrompt && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -8577,6 +8652,10 @@ const App: React.FC = () => {
           onClose={() => setCancellingOrderId(null)}
         />
       )}
+
+      {/* ปุ่มลอยมุมขวาล่าง — โชว์ทุกหน้าเมื่อกำลังมีสายอยู่ (สถานะไม่หายตอนสลับหน้า) */}
+      <FloatingCallWidget />
+      </CallProvider>
     </ToastProvider>
   );
 };

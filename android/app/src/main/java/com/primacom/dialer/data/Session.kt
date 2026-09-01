@@ -47,6 +47,34 @@ class Session(context: Context) {
         get() = prefs.getString(KEY_AGENT_NAME, null)
         set(value) { prefs.edit().putString(KEY_AGENT_NAME, value).commit() }
 
+    /** role จากตอนล็อกอิน (เช่น "Telesale") — หน้า "ฉัน" เอาไปแปลงเป็นป้ายไทย */
+    var role: String?
+        get() = prefs.getString(KEY_ROLE, null)
+        set(value) { prefs.edit().putString(KEY_ROLE, value).commit() }
+
+    /** ป้ายทีมจาก home() เช่น "ทีมหนิง" (ทีม = กลุ่มใต้หัวหน้าคนเดียวกัน) */
+    var teamLabel: String?
+        get() = prefs.getString(KEY_TEAM, null)
+        set(value) { prefs.edit().putString(KEY_TEAM, value).apply() }
+
+    /** รหัสเครื่องสั้นจากเซิร์ฟเวอร์ เช่น "PHONE-07" — ได้ตอนลงทะเบียนเครื่อง */
+    var deviceCode: String?
+        get() = prefs.getString(KEY_DEVICE_CODE, null)
+        set(value) { prefs.edit().putString(KEY_DEVICE_CODE, value).commit() }
+
+    /** โหมดสีที่พนักงานเลือก: "dark" | "light" | "system" (ค่าเริ่มต้นมืด ตามดีไซน์หลัก) */
+    var themeMode: String
+        get() = prefs.getString(KEY_THEME, "dark") ?: "dark"
+        set(value) { prefs.edit().putString(KEY_THEME, value).commit() }
+
+    /**
+     * เป็นหัวหน้าทีมไหม (มีลูกน้อง) — จำไว้เพื่อโชว์แท็บ "ทีม" ได้ทันทีตอนเปิดแอป
+     * ค่าจริงรีเฟรชจาก home() ทุกครั้ง ถ้าเปลี่ยนก็อัปเดต
+     */
+    var isSupervisor: Boolean
+        get() = prefs.getBoolean(KEY_IS_SUPERVISOR, false)
+        set(value) { prefs.edit().putBoolean(KEY_IS_SUPERVISOR, value).apply() }
+
     /**
      * Stable for the life of the install. Generated here rather than read from the hardware: device
      * identifiers need privileged permissions on modern Android, and the server only needs
@@ -62,9 +90,10 @@ class Session(context: Context) {
     val isSignedIn: Boolean get() = !authToken.isNullOrBlank()
 
     fun clear() {
-        // deviceId survives a sign-out — the same handset coming back should not look like a new one.
+        // deviceId + โหมดสี รอดพ้นการออกจากระบบ — เครื่องเดิมกลับมาไม่ควรดูเหมือนเครื่องใหม่/สลับธีมเอง
         val device = deviceId
-        prefs.edit().clear().putString(KEY_DEVICE_ID, device).commit()
+        val theme = themeMode
+        prefs.edit().clear().putString(KEY_DEVICE_ID, device).putString(KEY_THEME, theme).commit()
     }
 
     companion object {
@@ -74,6 +103,11 @@ class Session(context: Context) {
         private const val KEY_TOKEN = "token"
         private const val KEY_DEVICE_TOKEN = "device_token"
         private const val KEY_AGENT_NAME = "agent_name"
+        private const val KEY_ROLE = "agent_role"
+        private const val KEY_TEAM = "team_label"
         private const val KEY_DEVICE_ID = "device_id"
+        private const val KEY_DEVICE_CODE = "device_code"
+        private const val KEY_THEME = "theme_mode"
+        private const val KEY_IS_SUPERVISOR = "is_supervisor"
     }
 }

@@ -56,7 +56,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
     };
     const [callFilterStartDate, setCallFilterStartDate] = useState<string>(previousWorkDay);
     const [callFilterEndDate, setCallFilterEndDate] = useState<string>(previousWorkDay);
-    const [callFilterShift, setCallFilterShift] = useState<string>('09:00-18:00');
+    const [callFilterShift, setCallFilterShift] = useState<string>('07:00-18:30');
     const [customStartTime, setCustomStartTime] = useState<string>('00:00');
     const [customEndTime, setCustomEndTime] = useState<string>('23:59');
     const [loadingCallMinutes, setLoadingCallMinutes] = useState(false);
@@ -345,7 +345,7 @@ const DistributionTelesaleTable: React.FC<DistributionTelesaleTableProps> = ({
                         }}
                         className="border border-orange-200 rounded p-2 text-sm focus:ring-orange-500 focus:border-orange-500 bg-white"
                     >
-                        <option value="09:00-18:00">ปกติ (09:00 - 18:00)</option>
+                        <option value="07:00-18:30">ปกติ (07:00 - 18:30)</option>
                         <option value="09:00-16:30">วันเสาร์ (09:00 - 16:30)</option>
                         <option value="custom">กำหนดเอง (Custom)</option>
                     </select>

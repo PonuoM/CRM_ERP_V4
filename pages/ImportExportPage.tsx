@@ -896,7 +896,7 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
                   onChange={(e) => setSelectedBasketId(e.target.value || null)}
                   className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="">-- ลงตะกร้า Default (ถ้ามี) หรือตะกร้าเดิม --</option>
+                  <option value="">-- ไม่เลือก: ลูกค้าใหม่ลงถัง "ลูกค้าใหม่ (Distribution)" ลูกค้าเดิมอยู่ถังเดิม --</option>
                   {baskets.map(b => (
                     <option key={b.id} value={b.basket_key}>
                       {b.basket_name}

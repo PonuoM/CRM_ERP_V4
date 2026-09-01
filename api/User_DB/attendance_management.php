@@ -9,6 +9,7 @@
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../attendance_kpi.php';
 
 cors();
 
@@ -193,7 +194,7 @@ try {
                     u.id AS user_id,
                     CONCAT(u.first_name, ' ', u.last_name) AS full_name,
                     u.hr_employee_id,
-                    COALESCE(SUM(a.attendance_value), 0) AS total_days,
+                    u.role_id,
                     COUNT(a.id) AS work_days_count
                 FROM users u
                 LEFT JOIN user_daily_attendance a ON a.user_id = u.id
@@ -202,17 +203,41 @@ try {
                   AND u.status = 'active'
                   AND (u.role LIKE '%telesale%' OR u.role LIKE '%supervisor%')
                   {$supervisorFilter}
-                GROUP BY u.id, u.first_name, u.last_name, u.hr_employee_id
+                GROUP BY u.id, u.first_name, u.last_name, u.hr_employee_id, u.role_id
                 ORDER BY u.first_name, u.last_name
             ");
             // Reorder params: company_id first, then dates
             $stmt->execute(array_merge([$startDate, $endDate, $companyId], $supervisorParams));
             $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
+            // total_days คิดตามกติกา KPI (เสาร์-อาทิตย์ role 6/7 ฐาน 6 ชม. ดู attendance_kpi.php)
+            // ให้ตรงกับ Telesale Performance / Call Details — SUM(attendance_value) ดิบใช้ไม่ได้
+            // เพราะให้คนมาครบกะเสาร์แค่ 0.75 วัน
+            $totalDaysByUser = [];
+            if (!empty($records)) {
+                $summaryUserIds = array_map(function ($r) { return (int) $r['user_id']; }, $records);
+                $uidPh = implode(',', array_fill(0, count($summaryUserIds), '?'));
+                $dayStmt = $pdo->prepare("SELECT user_id, work_date, SUM(attendance_value) AS att_value
+                                          FROM user_daily_attendance
+                                          WHERE user_id IN ($uidPh) AND work_date BETWEEN ? AND ?
+                                          GROUP BY user_id, work_date");
+                $dayStmt->execute(array_merge($summaryUserIds, [$startDate, $endDate]));
+                $roleByUser = [];
+                foreach ($records as $r) {
+                    $roleByUser[(int) $r['user_id']] = (int) ($r['role_id'] ?? 0);
+                }
+                while ($dRow = $dayStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $uid = (int) $dRow['user_id'];
+                    $totalDaysByUser[$uid] = ($totalDaysByUser[$uid] ?? 0)
+                        + kpi_working_day_fraction($dRow['att_value'], $dRow['work_date'], $roleByUser[$uid] ?? 0);
+                }
+            }
+
             foreach ($records as &$r) {
                 $r['user_id'] = (int) $r['user_id'];
-                $r['total_days'] = (float) $r['total_days'];
+                $r['total_days'] = round($totalDaysByUser[$r['user_id']] ?? 0, 4);
                 $r['work_days_count'] = (int) $r['work_days_count'];
+                unset($r['role_id']);
             }
             unset($r);
 
@@ -248,6 +273,7 @@ try {
                     u.id AS user_id,
                     CONCAT(u.first_name, ' ', u.last_name) AS full_name,
                     u.hr_employee_id,
+                    u.role_id,
                     a.id,
                     a.work_date,
                     DATE_FORMAT(a.first_login, '%H:%i') AS first_login,
@@ -275,17 +301,20 @@ try {
                 $record['current_hours'] = $hours;
                 $record['attendance_value'] = (float) ($record['attendance_value'] ?? 0);
                 $record['user_id'] = (int) $record['user_id'];
-                
-                // Status logic: 8=full, 4=half, 0=leave, else=partial
-                if ($hours >= 8) {
+
+                // "เต็มวัน" วัดจากชั่วโมงของกะวันนั้น ไม่ใช่ 8 ตายตัว — กะเสาร์-อาทิตย์ของ
+                // role 6/7 คือ 6 ชม. มาครบกะต้องขึ้นเต็มวัน (กติกาเดียวกับวันทำงานทุกหน้า)
+                $fullDayHours = kpi_hours_per_work_day($date, (int) ($record['role_id'] ?? 0));
+                if ($hours >= $fullDayHours) {
                     $record['attendance_status'] = 'full';
-                } elseif ($hours >= 4) {
+                } elseif ($hours >= $fullDayHours / 2) {
                     $record['attendance_status'] = 'half';
                 } elseif ($hours == 0 || $record['first_login'] === null) {
                     $record['attendance_status'] = 'leave';
                 } else {
                     $record['attendance_status'] = 'partial';
                 }
+                unset($record['role_id']);
             }
             unset($record);
 
@@ -328,13 +357,18 @@ try {
         }
         
         // Calculate attendance_value with 4 decimal precision for HH:MM accuracy
+        // ค่าในตารางเก็บฐาน 8 ชม. เสมอ — กติกาเสาร์ 6 ชม. เป็นเรื่องของขาแสดงผล (attendance_kpi.php)
         $attendanceValue = round($hours / 8, 4);
         if ($attendanceValue > 1.5) $attendanceValue = 1.5;
-        
-        // Determine status: 8=full, 4=half, 0=leave, else=partial
-        if ($hours >= 8) {
+
+        // สถานะวัดจากชั่วโมงของกะวันนั้น (เสาร์-อาทิตย์ role 6/7 = 6 ชม.) ให้ตรงกับป้ายในหน้าเว็บ
+        $roleStmt = $pdo->prepare("SELECT role_id FROM users WHERE id = ?");
+        $roleStmt->execute([$userId]);
+        $editRoleId = (int) ($roleStmt->fetchColumn() ?: 0);
+        $fullDayHours = kpi_hours_per_work_day($date, $editRoleId);
+        if ($hours >= $fullDayHours) {
             $status = 'full';
-        } elseif ($hours >= 4) {
+        } elseif ($hours >= $fullDayHours / 2) {
             $status = 'half';
         } elseif ($hours == 0) {
             $status = 'absent';

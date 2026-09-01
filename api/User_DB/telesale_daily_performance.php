@@ -21,19 +21,13 @@
  *
  * Params: start_date, end_date (YYYY-MM-DD), start_time, end_time (HH:MM),
  *         roles (csv of telesale|adminpage, default telesale), teams (csv), agents (csv),
- *         inactive=1 (include people who have left)
+ *         inactive=1 (include people who have left),
+ *         all_teams=1 (supervisors only — widen scope from own team to the whole company)
  */
 
 require_once __DIR__ . '/../config.php';
-
-/** จ–ศ = 8 ชม./วัน; ส–อา = 6 ชม./วัน เฉพาะ role 6/7 (Supervisor/Telesale). Admin Page (3) ใช้ 8 ทุกวัน */
-function kpi_hours_per_work_day(string $date, int $roleId): int {
-    $w = (int) date('w', strtotime($date . ' 12:00:00'));
-    if (($w === 0 || $w === 6) && in_array($roleId, [6, 7], true)) {
-        return 6;
-    }
-    return 8;
-}
+// กติกาเสาร์-อาทิตย์ฐาน 6 ชม. ย้ายไปรวมศูนย์ที่ attendance_kpi.php ให้ทุกหน้าใช้ชุดเดียวกัน
+require_once __DIR__ . '/../attendance_kpi.php';
 
 cors();
 
@@ -94,6 +88,13 @@ try {
     $filterAgents = array_values(array_filter(array_map('intval', $csv('agents')), function ($n) { return $n > 0; }));
     $showInactive = isset($_GET['inactive']) && $_GET['inactive'] === '1';   // people who have left
 
+    // Supervisors see every team on the Telesale Performance screen — a deliberate grant, asked for
+    // so heads can compare their team against the others. It is opt-in per request rather than a
+    // change to $isSupervisor because SalesDashboard reads this same endpoint for personal/team KPI
+    // and must keep showing a supervisor their OWN team only. The flag is honoured for supervisors
+    // alone: a plain telesale sending all_teams=1 still gets just themselves.
+    $seeAllTeams = isset($_GET['all_teams']) && $_GET['all_teams'] === '1' && $isSupervisor;
+
     $TIER_NEW_KEYS = [38, 46, 47];
     $TIER_CORE_KEYS = [39, 40];
     $TIER_REVIVAL_KEYS = [49, 50, 58, 59];   // 58/59 were split out of the retired 48 in May 2026
@@ -149,7 +150,7 @@ try {
     };
     if (empty($userMap)) { $emptyOut(); exit; }
 
-    if ($isAdmin || $isCEO) {
+    if ($isAdmin || $isCEO || $seeAllTeams) {
         $visibleIds = array_keys($userMap);
     } elseif ($isSupervisor) {
         $visibleIds = array_values(array_filter(array_keys($userMap), function ($id) use ($userMap, $currentUserId) {
@@ -333,12 +334,8 @@ try {
         $d = $row['work_day'];
         $uid = (int) $row['user_id'];
         if (!isset($dailyData[$d][$uid])) continue;
-        $clockHours = min(floatval($row['working_days']), 1.0) * 8;
-        $hoursPerDay = kpi_hours_per_work_day($d, $roleByUser[$uid] ?? 0);
-        $dailyData[$d][$uid]['metrics']['workingHours'] = $clockHours;
-        $dailyData[$d][$uid]['metrics']['workingDays'] = $hoursPerDay > 0
-            ? min($clockHours / $hoursPerDay, 1.0)
-            : 0;
+        $dailyData[$d][$uid]['metrics']['workingHours'] = min(floatval($row['working_days']), 1.0) * 8;
+        $dailyData[$d][$uid]['metrics']['workingDays'] = kpi_working_day_fraction($row['working_days'], $d, $roleByUser[$uid] ?? 0);
     }
 
     $flatData = [];

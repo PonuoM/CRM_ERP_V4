@@ -102,6 +102,7 @@ interface TransferSlipUpload {
   transferDate?: string;
   amount?: number | null;
   mismatchReason?: string;
+  file?: File;
 }
 
 interface UpsellSlip {
@@ -195,6 +196,21 @@ const cleanAddressName = (name: string): string => {
     .trim();
 };
 
+/**
+ * ผลตรวจด่านเจ้าของลูกค้า
+ *
+ * แยก "ไม่มีผู้ดูแล" ออกจาก "มีผู้ดูแลคนอื่น" เพราะสองอย่างนี้ทางออกคนละทาง: อย่างแรกโหมดขายแทน
+ * รับเข้ามือให้ได้เลย อย่างหลังต้องให้หัวหน้าโอน จะยุบเป็นข้อความก้อนเดียวแล้วเดาเอาทีหลังไม่ได้
+ */
+type OwnershipIssue =
+  | { kind: "noOwner" }
+  | { kind: "otherOwner"; ownerName: string };
+
+/** สิ่งที่โมดัลเจ้าของลูกค้ากำลังบอก — claim คือใบเดียวที่มีปุ่มให้ไปต่อ */
+type OwnershipPrompt =
+  | { kind: "claim"; ownerName: string; customerName: string }
+  | { kind: "blocked"; title: string; detail: string };
+
 interface CreateOrderPageProps {
   products: Product[];
 
@@ -264,11 +280,22 @@ interface CreateOrderPageProps {
     slipUploads?: (string | SlipUploadPayload)[];
 
     proxySale?: { onBehalfOfUserId: number; reason?: string };
+
+    /** ขายแทน + ลูกค้าไร้เจ้าของ: ผู้ใช้ยืนยันแล้วว่าให้โอนเข้ามือคนที่ถูกขายแทนก่อนเปิดบิล */
+    claimOwnerlessCustomer?: boolean;
   }) => Promise<string | undefined>;
 
   onCancel: () => void;
 
-  initialData?: { customer: Customer; upsell?: boolean };
+  initialData?: {
+    customer: Customer;
+    upsell?: boolean;
+    // สินค้าที่เตรียมมาจาก "ออเดอร์รอเปิด" (เทเลบันทึกจากมือถือ) — เติมเป็นรายการเริ่มต้น
+    items?: { productId: number | null; name: string; qty: number; unit?: string | null }[];
+    // เปิดแทนคนขาย: id เทเลที่ต้องเครดิต (เข้าโหมดขายแทนอัตโนมัติ) + id ออเดอร์รอเปิด (ไว้ mark opened)
+    proxyForUserId?: number | null;
+    pendingOrderId?: number;
+  };
 
   onUpsellSuccess?: () => void;
 }
@@ -653,24 +680,37 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     Array(initialBackupPhones.length).fill("")
   );
 
+  // เติมรายการสินค้าจาก "ออเดอร์รอเปิด" ถ้ามี ไม่งั้นเริ่มด้วยแถวว่างหนึ่งแถวตามเดิม
+  const seededItems: LineItem[] =
+    initialData?.items && initialData.items.length > 0
+      ? initialData.items.map((it, idx) => {
+          const p = (products ?? []).find((pr) => pr.id === it.productId);
+          return {
+            id: Date.now() + idx,
+            productName: p?.name ?? it.name,
+            quantity: it.qty || 1,
+            pricePerUnit: p?.price ?? 0,
+            discount: 0,
+            isFreebie: false,
+            boxNumber: 1,
+            productId: it.productId ?? p?.id,
+            isPromotionParent: false,
+          } as LineItem;
+        })
+      : [
+          {
+            id: Date.now(),
+            productName: "",
+            quantity: 1,
+            pricePerUnit: 0,
+            discount: 0,
+            isFreebie: false,
+            boxNumber: 1,
+          } as LineItem,
+        ];
+
   const [orderData, setOrderData] = useState<Partial<Order>>({
-    items: [
-      {
-        id: Date.now(),
-
-        productName: "",
-
-        quantity: 1,
-
-        pricePerUnit: 0,
-
-        discount: 0,
-
-        isFreebie: false,
-
-        boxNumber: 1,
-      },
-    ],
+    items: seededItems,
 
     shippingCost: 0,
 
@@ -743,6 +783,21 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [isProxySale, setIsProxySale] = useState(false);
   const [proxyUserId, setProxyUserId] = useState<number | null>(null);
   const [proxyReason, setProxyReason] = useState("");
+
+  // เปิดจาก "ออเดอร์รอเปิด" ให้คนอื่น → เข้าโหมดขายแทน เครดิตเทเลคนที่บันทึกอัตโนมัติ
+  useEffect(() => {
+    if (initialData?.proxyForUserId) {
+      setIsProxySale(true);
+      setProxyUserId(initialData.proxyForUserId);
+      if (!proxyReason) setProxyReason("เปิดบิลแทนจากออเดอร์รอเปิด (ขายได้ผ่านมือถือ)");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ด่านเจ้าของลูกค้าเล่าเรื่องผ่านโมดัลของแอป ไม่ใช่ alert() ของเบราว์เซอร์ — กล่องของเบราว์เซอร์
+  // ขึ้นชื่อโดเมนนำหน้า ตัดบรรทัดเองไม่ได้ และไม่มีที่ให้วางปุ่ม "โอนแล้วเปิดบิล"
+  const [ownershipPrompt, setOwnershipPrompt] =
+    useState<OwnershipPrompt | null>(null);
 
   // Mirrors the backend rule in OrderController POST: same company, Telesale roles only.
   const proxyCandidates = useMemo(
@@ -2136,6 +2191,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             id: Date.now() + Math.floor(Math.random() * 1000),
             name: file.name,
             dataUrl,
+            file: file,
             bankAccountId: defaultBankId ?? undefined,
             transferDate: defaultTransferDate,
             amount: null,
@@ -2333,6 +2389,22 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     useState<string>("profile"); // Default to profile address
 
   const [updateProfileAddress, setUpdateProfileAddress] = useState(false); // For the new checkbox
+
+  // เปิดหน้าจากคิว/ลูกค้าที่ prefill มา: เติมที่อยู่ "เดียวกับลูกค้า" ให้ตั้งแต่โหลด
+  // (เดิม setShippingAddress ทำแค่ตอนคลิก radio → ต้องสะกิดก่อนถึงขึ้น) รันครั้งเดียวพอ
+  const didInitProfileAddress = React.useRef(false);
+  useEffect(() => {
+    if (didInitProfileAddress.current) return;
+    if (
+      selectedCustomer?.address &&
+      provinces.length > 0 &&
+      selectedAddressOption === "profile"
+    ) {
+      didInitProfileAddress.current = true;
+      handleAddressOptionChange("profile");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomer, provinces, selectedAddressOption]);
 
   const [loadingCustomerData, setLoadingCustomerData] = useState(false); // Loading state for fetching fresh customer data
 
@@ -3744,10 +3816,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     currentUser.role === UserRole.Telesale ||
     currentUser.role === UserRole.Supervisor;
 
-  const getOwnershipBlockMessage = (
+  const getOwnershipIssue = (
     customer: { assignedTo?: number | null } | null,
     sellerId: number | null,
-  ): string | null => {
+  ): OwnershipIssue | null => {
     if (!sellerId) return null;
 
     // แยก "ไม่มีเจ้าของจริง" (null / 0) ออกจาก "ไม่รู้ว่ามีหรือเปล่า" (ฟิลด์ไม่ได้ถูกส่งมา)
@@ -3759,9 +3831,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     const ownerId = Number(raw ?? 0);
 
     // ลูกค้าไร้เจ้าของก็เปิดบิลไม่ได้ (นโยบาย 2026-08-27) ต้องให้แจกหรือโอนเข้ามือก่อน
-    if (!ownerId) {
-      return "ลูกค้ารายนี้ยังไม่มีผู้ดูแล\n\nเปิดบิลให้ไม่ได้ครับ — ให้แจ้งหัวหน้าแจกหรือโอนลูกค้าเข้ามือคุณก่อน";
-    }
+    // ยกเว้นโหมดขายแทน ที่รับเข้ามือคนที่ถูกขายแทนได้เอง — ตัดสินที่ผู้เรียก
+    if (!ownerId) return { kind: "noOwner" };
 
     if (ownerId === Number(sellerId)) return null;
 
@@ -3770,7 +3841,71 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       ? `${owner.firstName} ${owner.lastName}`.trim()
       : `ผู้ดูแลรายอื่น (#${ownerId})`;
 
-    return `ลูกค้ารายนี้อยู่ในความดูแลของ ${ownerName}\n\nเปิดบิลให้ไม่ได้ครับ — ถ้าลูกค้าต้องการซื้อจริง ให้แจ้งหัวหน้าโอนลูกค้าก่อน`;
+    return { kind: "otherOwner", ownerName };
+  };
+
+  /** แปลผลตรวจเป็นใบแจ้ง "เปิดบิลไม่ได้" — ใช้เมื่อไม่มีทางไปต่อให้ผู้ใช้กด */
+  const describeOwnershipBlock = (issue: OwnershipIssue): OwnershipPrompt =>
+    issue.kind === "noOwner"
+      ? {
+        kind: "blocked",
+        title: "ลูกค้ารายนี้ยังไม่มีผู้ดูแล",
+        detail:
+          "เปิดบิลให้ไม่ได้ครับ — ให้แจ้งหัวหน้าแจกหรือโอนลูกค้าเข้ามือคุณก่อน",
+      }
+      : {
+        kind: "blocked",
+        title: `ลูกค้ารายนี้อยู่ในความดูแลของ ${issue.ownerName}`,
+        detail:
+          "เปิดบิลให้ไม่ได้ครับ — ถ้าลูกค้าต้องการซื้อจริง ให้แจ้งหัวหน้าโอนลูกค้าก่อน",
+      };
+
+  /**
+   * แปลคำตอบ 403 ของด่านเจ้าของลูกค้า (OrderController POST) เป็นโมดัลใบเดียวกัน
+   *
+   * ฝั่งเซิร์ฟเวอร์คือคนตัดสินจริง หน้าจอกันไว้ก่อนได้เท่าที่รู้ ถ้าไม่รู้ (assignedTo ไม่ติดมา)
+   * ก็ต้องมารับคำตอบตรงนี้ ไม่ใช่ปล่อยให้ alert ดิบขึ้นว่า "API 403:" ให้พนักงานอ่านเอาเอง
+   * คืน null เมื่อไม่ใช่เรื่องเจ้าของลูกค้า ผู้เรียกจะได้จัดการ error อื่นตามเดิม
+   */
+  const ownershipPromptFromApiError = (error: unknown): OwnershipPrompt | null => {
+    const data = (error as any)?.data;
+    if (!data || typeof data !== "object") return null;
+
+    if (data.error === "CUSTOMER_HAS_NO_OWNER") {
+      if (data.canClaim && isProxySale && proxyUserId) {
+        return {
+          kind: "claim",
+          ownerName:
+            data.claimOwnerName ||
+            (proxyTarget
+              ? `${proxyTarget.firstName} ${proxyTarget.lastName}`.trim()
+              : `ผู้ที่คุณขายแทน (#${proxyUserId})`),
+          customerName: selectedCustomer
+            ? `${selectedCustomer.firstName} ${selectedCustomer.lastName}`.trim()
+            : "",
+        };
+      }
+      return describeOwnershipBlock({ kind: "noOwner" });
+    }
+
+    if (data.error === "CUSTOMER_HAS_OTHER_OWNER") {
+      return describeOwnershipBlock({
+        kind: "otherOwner",
+        ownerName: data.ownerName || "ผู้ดูแลรายอื่น",
+      });
+    }
+
+    if (data.error === "CUSTOMER_CLAIM_RACE") {
+      return {
+        kind: "blocked",
+        title: "ลูกค้ารายนี้เพิ่งมีผู้ดูแลไปแล้ว",
+        detail:
+          String(data.message || "") ||
+          "มีคนโอนลูกค้ารายนี้ไปก่อนหน้าคุณ กรุณาเปิดหน้าลูกค้าใหม่แล้วลองอีกครั้ง",
+      };
+    }
+
+    return null;
   };
 
   // Helper function to set customer data consistently
@@ -3778,9 +3913,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const setCustomerData = (customerData: Customer) => {
     // กันตั้งแต่ตอนเลือกลูกค้า (ยกเว้นโหมดขายแทน ที่เช็คตอนบันทึกด้วย creator จริง)
     if (sellerIsTelesaleRole && !isProxySale) {
-      const blockMessage = getOwnershipBlockMessage(customerData, currentUser.id);
-      if (blockMessage) {
-        alert(blockMessage);
+      const issue = getOwnershipIssue(customerData, currentUser.id);
+      if (issue) {
+        setOwnershipPrompt(describeOwnershipBlock(issue));
         return;
       }
     }
@@ -4648,7 +4783,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   //     - Builds payload → calls onSave(payload)
   //     - Post-save: updates address, socials, quota recording
   // ──────────────────────────────────────────────────────────────────────────
-  const handleSave = async () => {
+  const handleSave = async (options?: { claimOwnerlessCustomer?: boolean }) => {
+    // ผู้ใช้กด "โอนแล้วเปิดบิล" ในโมดัลแล้ว — รอบนี้ให้ผ่านด่านลูกค้าไร้เจ้าของไปได้
+    const claimOwnerless = options?.claimOwnerlessCustomer === true;
+
     // Prevent double submission
     if (isSaving) return;
     setIsSaving(true);
@@ -4663,14 +4801,31 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       // 🛡️ กันเปิดบิลให้ลูกค้าของคนอื่น — เช็คด้วย creator จริง (รองรับโหมดขายแทน)
       const effectiveCreatorId =
         isProxySale && proxyUserId ? proxyUserId : currentUser.id;
+      const proxyClaimAllowed = Boolean(isProxySale && proxyUserId);
 
-      if (sellerIsTelesaleRole || (isProxySale && proxyUserId)) {
-        const ownershipBlock = getOwnershipBlockMessage(
-          selectedCustomer,
-          effectiveCreatorId,
-        );
-        if (ownershipBlock) {
-          alert(ownershipBlock);
+      if (sellerIsTelesaleRole || proxyClaimAllowed) {
+        const issue = getOwnershipIssue(selectedCustomer, effectiveCreatorId);
+
+        // ขายแทนเจอลูกค้าไร้เจ้าของ = ถามก่อน ไม่ใช่ทางตัน เสาร์อาทิตย์ไม่มีหัวหน้ามาแจกให้
+        if (issue?.kind === "noOwner" && proxyClaimAllowed && !claimOwnerless) {
+          setOwnershipPrompt({
+            kind: "claim",
+            ownerName: proxyTarget
+              ? `${proxyTarget.firstName} ${proxyTarget.lastName}`.trim()
+              : `ผู้ที่คุณขายแทน (#${effectiveCreatorId})`,
+            customerName: selectedCustomer
+              ? `${selectedCustomer.firstName} ${selectedCustomer.lastName}`.trim()
+              : "",
+          });
+          setIsSaving(false);
+          return;
+        }
+
+        const stillBlocked =
+          issue && !(issue.kind === "noOwner" && proxyClaimAllowed && claimOwnerless);
+
+        if (stillBlocked && issue) {
+          setOwnershipPrompt(describeOwnershipBlock(issue));
           setIsSaving(false);
           return;
         }
@@ -5110,6 +5265,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           transferDate: slip.transferDate,
           amount: slip.amount,
           mismatchReason: slip.mismatchReason,
+          file: slip.file,
         }));
       }
 
@@ -5170,7 +5326,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           province: sanitizeAddressValue(shippingAddress.province),
 
-          assignedTo: currentUser?.id || null,
+          // ขายแทน: ลูกค้าใหม่ต้องขึ้นกับคนที่ได้ยอด ไม่ใช่คนที่นั่งคีย์ให้ ไม่งั้นด่านเจ้าของลูกค้า
+          // จะปัดบิลทิ้งทันที (creator = คนที่ถูกขายแทน แต่เจ้าของ = คนคีย์) และคนที่ต้องดูแลต่อ
+          // ก็จะไม่เห็นลูกค้ารายนี้ในมือตัวเอง
+          assignedTo: effectiveCreatorId || null,
 
           currentBasketKey: 38, // ตะกร้า "ลูกค้าใหม่"
 
@@ -5314,6 +5473,10 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           onBehalfOfUserId: proxyUserId,
           reason: proxyReason.trim() || undefined,
         };
+
+        if (claimOwnerless) {
+          (payload as any).claimOwnerlessCustomer = true;
+        }
       }
 
       let savedOrderId: string | undefined;
@@ -5323,6 +5486,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       } catch (error) {
         console.error("create order failed", error);
 
+        // ด่านเจ้าของลูกค้าฝั่งเซิร์ฟเวอร์ตอบมา — หน้าจอเช็คก่อนแล้วแต่พลาดได้ เช่นลูกค้าที่มาจาก
+        // ลิสต์ที่ไม่มี assignedTo ติดมา หรือเจ้าของเพิ่งเปลี่ยนไป ให้เล่าเรื่องเดียวกันกับด่านหน้าบ้าน
+        const prompt = ownershipPromptFromApiError(error);
+        if (prompt) {
+          setOwnershipPrompt(prompt);
+          return;
+        }
+
         alert("เกิดข้อผิดพลาดในการบันทึกคำสั่งซื้อ กรุณาลองใหม่อีกครั้ง");
 
         return;
@@ -5330,6 +5501,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       if (!savedOrderId) {
         return;
+      }
+
+      // รับลูกค้าเข้ามือไปแล้วในรอบนี้ — สะท้อนลงหน้าจอด้วย ไม่งั้นด่านหน้าบ้านยังเห็นว่าไร้เจ้าของ
+      if (claimOwnerless && selectedCustomer) {
+        setSelectedCustomer({
+          ...selectedCustomer,
+          assignedTo: effectiveCreatorId,
+        } as Customer);
       }
 
       // บิลนี้จบแล้ว — คืนคีย์ให้ว่าง ใบถัดไปจะได้คีย์ของตัวเอง
@@ -10823,7 +11002,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
               <div className="mt-8 flex flex-col md:flex-row justify-end gap-3 pb-8 md:pb-6">
                 <button
                   data-testid="btn-save-order"
-                  onClick={handleSave}
+                  onClick={() => handleSave()}
                   disabled={
                     isSaving ||
                     !isCodValid ||
@@ -10922,6 +11101,120 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           </div>
         )
       }
+      {/* ด่านเจ้าของลูกค้า — ใบเดียวเล่าได้ทั้งกรณีที่ไปต่อได้และกรณีที่ต้องรอหัวหน้า */}
+      {ownershipPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            {ownershipPrompt.kind === "claim" ? (
+              <>
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                    />
+                  </svg>
+                </div>
+
+                <h3 className="text-center text-lg font-semibold text-[#0e141b]">
+                  ลูกค้ารายนี้ยังไม่มีผู้ดูแล
+                </h3>
+
+                <p className="mt-3 text-sm leading-relaxed text-[#4e7397]">
+                  {ownershipPrompt.customerName ? (
+                    <>
+                      โอนรายชื่อ{" "}
+                      <strong className="text-[#0e141b]">
+                        {ownershipPrompt.customerName}
+                      </strong>{" "}
+                      ให้{" "}
+                    </>
+                  ) : (
+                    <>โอนรายชื่อลูกค้ารายนี้ให้ </>
+                  )}
+                  <strong className="text-[#0e141b]">
+                    {ownershipPrompt.ownerName}
+                  </strong>{" "}
+                  ดูแลเลยหรือไม่ — ถ้าตกลง ระบบจะโอนให้แล้วเปิดบิลต่อทันที
+                </p>
+
+                <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                  ระบบจะบันทึกไว้ว่า{" "}
+                  <strong>
+                    {currentUser.firstName} {currentUser.lastName}
+                  </strong>{" "}
+                  เป็นผู้โอนรายชื่อนี้ให้ ดูย้อนหลังได้ที่ประวัติของลูกค้า
+                </p>
+
+                <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    onClick={() => setOwnershipPrompt(null)}
+                    className="rounded-lg border border-gray-300 px-5 py-2.5 font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    ยกเลิก
+                  </button>
+
+                  <button
+                    data-testid="btn-claim-ownerless-customer"
+                    onClick={() => {
+                      setOwnershipPrompt(null);
+                      void handleSave({ claimOwnerlessCustomer: true });
+                    }}
+                    className="rounded-lg bg-amber-600 px-5 py-2.5 font-semibold text-white hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                  >
+                    โอนแล้วเปิดบิล
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600">
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                    />
+                  </svg>
+                </div>
+
+                <h3 className="text-center text-lg font-semibold text-[#0e141b]">
+                  {ownershipPrompt.title}
+                </h3>
+
+                <p className="mt-3 text-center text-sm leading-relaxed text-[#4e7397]">
+                  {ownershipPrompt.detail}
+                </p>
+
+                <div className="mt-6 flex justify-center">
+                  <button
+                    onClick={() => setOwnershipPrompt(null)}
+                    className="rounded-lg bg-[#0e141b] px-5 py-2.5 font-semibold text-white hover:bg-black focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                  >
+                    รับทราบ
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <ImageLightbox src={previewImage} onClose={() => setPreviewImage(null)} />
     </div >
   );

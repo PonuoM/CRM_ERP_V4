@@ -34,6 +34,32 @@ if (!$user) {
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'User not found'], 401);
 }
 
+/**
+ * ถังปลายทางของลูกค้าที่ import เข้ามาใหม่
+ *
+ * มีเจ้าของ -> ถังฝั่ง Dashboard (เจ้าของถึงจะเห็นบนหน้าจอตัวเอง)
+ * ไม่มีเจ้าของ -> ถังฝั่ง Distribution (ถึงจะเอาไปแจกต่อได้)
+ *
+ * ค้นด้วย basket_key ไม่ hardcode id เพราะ id เปลี่ยนได้ตอนตั้งค่าถังใหม่
+ * ถ้าหาไม่เจอให้ล้มไปเลย ดีกว่า import สำเร็จแล้วได้ลูกค้าไร้ถัง
+ */
+function resolve_import_basket_id(PDO $pdo, bool $hasOwner) {
+    static $cache = [];
+    $key = $hasOwner ? 'new_customer' : 'new_customer_dis';
+    if (array_key_exists($key, $cache)) return $cache[$key];
+
+    $stmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND is_active = 1 LIMIT 1");
+    $stmt->execute([$key]);
+    $id = $stmt->fetchColumn();
+    if (!$id) {
+        json_response([
+            'error' => 'BASKET_NOT_CONFIGURED',
+            'message' => "ไม่พบถัง '$key' ใน basket_config จึงกำหนดถังให้ลูกค้าที่ import ไม่ได้"
+        ], 500);
+    }
+    return $cache[$key] = $id;
+}
+
 // Helpers
 function sanitize_value($val) {
     if ($val === null) return null;
@@ -338,12 +364,13 @@ foreach ($grouped as $orderId => $group) {
             }
             
             $insertSql = "INSERT INTO customers (
-                customer_ref_id, first_name, last_name, phone, email, 
+                customer_ref_id, first_name, last_name, phone, email,
                 street, subdistrict, district, province, postal_code,
                 company_id, assigned_to, date_assigned, date_registered, ownership_expires,
-                lifecycle_status, behavioral_status, grade, total_purchases
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            
+                lifecycle_status, behavioral_status, grade, total_purchases,
+                current_basket_key, basket_entered_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
             $addr = sanitize_value($first['address'] ?? null);
             $sub = sanitize_value($first['subdistrict'] ?? null);
             $dist = sanitize_value($first['district'] ?? null);
@@ -360,7 +387,13 @@ foreach ($grouped as $orderId => $group) {
                 $nowStr, // date_registered
                 $finalAssignedTo ? $expireDate : null, // ownership_expires only if assigned
                 'New', // lifecycle_status
-                'Cold', 'Standard', 0
+                'Cold', 'Standard', 0,
+                // ต้องมีถังเสมอ ไม่งั้นลูกค้าจะหายจากระบบถาวร -- basket_aging_cron
+                // วนหาจาก basket_config แล้วยิง WHERE current_basket_key = ? ลูกค้าที่ถังเป็น
+                // NULL จึงไม่แมตช์ถังไหนเลยและไม่มีทางถูกหยิบขึ้นมาอีก (เจอของจริง 1,583 ราย
+                // ส.ค. 2569 ไม่มีแถวใน basket_transition_log สักแถวเดียว)
+                resolve_import_basket_id($pdo, (bool)$finalAssignedTo),
+                $nowStr // basket_entered_date
             ]);
             $customerPk = $pdo->lastInsertId();
             $summary['createdCustomers']++;

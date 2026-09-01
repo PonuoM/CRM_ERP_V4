@@ -56,6 +56,18 @@
     <string name="call_out">โทรออก</string>
     <string name="call_in">สายเข้า</string>
     <string name="calling_back">กำลังโทรกลับ…</string>
+    <string name="customer_detail_title">รายละเอียดลูกค้า</string>
+    <string name="phone_hidden">ซ่อนไว้ · โทรผ่านปุ่มด้านล่าง</string>
+    <string name="action_call_customer">โทรหาลูกค้า</string>
+    <string name="recent_calls">ประวัติการโทรล่าสุด</string>
+    <string name="customer_info">ข้อมูลลูกค้า</string>
+
+    <string name="disposition_title">บันทึกการโทร</string>
+    <string name="disposition_sync_hint">กรอกในคอมก็ได้ — พอบันทึกฝั่งใดฝั่งหนึ่ง หน้านี้จะปิดเอง</string>
+    <string name="action_save_call">บันทึก</string>
+    <string name="disposition_need_result">กรุณาเลือกผลการโทร</string>
+    <string name="disposition_saved">บันทึกการโทรแล้ว</string>
+    <string name="disposition_done_elsewhere">บันทึกจากคอมแล้ว ปิดหน้านี้ให้อัตโนมัติ</string>
 
     <string name="settings_title">ตั้งค่า</string>
     <string name="signout_locked">ต้องใช้บัญชีผู้ดูแลระดับสูงเพื่อออกจากระบบ</string>

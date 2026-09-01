@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#071417; }
+  a { color:#35C7B4; text-decoration:none; }
+  a:hover { color:#6FE0D0; }
+</style>
+</helmet>
+
+<div style="min-height:100%;background:#071417;padding:48px 56px 80px;box-sizing:border-box;font-family:'Noto Sans Thai',Roboto,sans-serif">
+
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:780px;margin-bottom:40px">
+    <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;letter-spacing:0.2em;color:#35C7B4">IDEA I · หน้าตาแบบ B + โครงใหม่</div>
+    <div style="font-size:34px;font-weight:700;color:#EAF3F3;line-height:1.15">คิวงานนุ่ม · Soft Queue</div>
+    <div style="font-size:14.5px;line-height:1.65;color:#8FB0B2;text-wrap:pretty">อันนี้ทำมาตอบคำถามที่ยังไม่แน่ใจ — ใช้หน้าตาการ์ดมนนุ่มของ B ที่เลือกไว้ แต่เปลี่ยนโครงเป็นคิวงาน: หน้าแรกเห็นว่ากำลังจะโทรหาใคร เหลืออีกกี่ราย มีเมนูล่าง 3 ปุ่ม ตอนอยู่ในสายเปิดดูข้อมูลลูกค้าได้ และบันทึกการโทรเลื่อนขึ้นทับ ไม่เด้งไปหน้าใหม่ เทียบกับ B ได้ตรง ๆ ว่าชอบโครงไหน</div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:40px">
+
+    <!-- I1 -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;letter-spacing:0.1em;color:#5E7E80">01 / คิวงาน (แทนหน้าพร้อมรับงาน)</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#0B1D20" hint-size="412px,892px">
+        <div style="height:100%;box-sizing:border-box;background:radial-gradient(120% 45% at 50% 0%, #123C3B 0%, #0B1D20 60%);display:flex;flex-direction:column;font-family:'Noto Sans Thai',Roboto,sans-serif">
+          <div style="padding:16px 20px 0;display:flex;align-items:center">
+            <div style="flex:1">
+              <div style="font-size:21px;font-weight:700;color:#F2FAF9">คิวงานวันนี้</div>
+              <div style="font-size:12.5px;color:#8FB0B2;padding-top:3px">สมชาย · เหลือ 18 ราย</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.24);border-radius:999px;padding:7px 13px">
+              <div style="width:7px;height:7px;border-radius:50%;background:#4ADE80"></div>
+              <div style="font-size:11.5px;font-weight:600;color:#4ADE80;white-space:nowrap">พร้อมรับงาน</div>
+            </div>
+          </div>
+
+          <div style="margin:18px 20px 0;background:linear-gradient(150deg,rgba(53,199,180,0.16),rgba(255,255,255,0.035));border:1px solid rgba(53,199,180,0.24);border-radius:26px;padding:20px;box-shadow:0 18px 42px rgba(0,0,0,0.32)">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="font-size:11.5px;font-weight:600;letter-spacing:0.06em;color:#6FE0D0;white-space:nowrap">กำลังจะโทร</div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;color:#8FB0B2">#10482</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding-top:14px">
+              <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(160deg,#4B86C6,#2F5C93);color:#F2F7F7;font-size:21px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">ส</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:21px;font-weight:700;color:#F2FAF9">สมชาย ใจดี</div>
+                <div style="font-size:12.5px;color:#8FB0B2;padding-top:3px">เกรด A · ถังทอง · ทุเรียน 12 ไร่</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding-top:18px">
+              <div style="flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,0.1);overflow:hidden">
+                <div style="width:62%;height:6px;border-radius:3px;background:#35C7B4"></div>
+              </div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:13px;font-weight:700;color:#6FE0D0;white-space:nowrap">4 วิ</div>
+            </div>
+            <div style="display:flex;gap:9px;padding-top:16px">
+              <div style="flex:1;border-radius:999px;background:#35C7B4;padding:14px;text-align:center;font-size:14.5px;font-weight:700;color:#04211E;box-shadow:0 12px 26px rgba(53,199,180,0.3)">โทรเลย</div>
+              <div style="border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);padding:14px 20px;text-align:center;font-size:14.5px;color:#C7DAD8">ข้าม</div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 20px 10px">
+            <div style="font-size:12.5px;font-weight:600;color:#8FB0B2">ถัดไปในคิว</div>
+            <div style="font-size:12.5px;color:#35C7B4;white-space:nowrap">จัดลำดับ</div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:9px;padding:0 20px">
+            <div style="display:flex;align-items:center;gap:13px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:13px 15px">
+              <div style="width:38px;height:38px;border-radius:50%;background:#3A1C1A;color:#F0564B;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">ป</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14.5px;font-weight:600;color:#F2FAF9">ประยูร ทองแท้</div>
+                <div style="font-size:11.5px;color:#8FB0B2;padding-top:2px">ไม่รับสาย 2 ครั้ง · ถังเงิน</div>
+              </div>
+              <div style="border-radius:999px;background:rgba(240,86,75,0.14);padding:5px 10px;font-size:11px;font-weight:700;color:#F0564B;white-space:nowrap">ด่วน</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:13px 15px">
+              <div style="width:38px;height:38px;border-radius:50%;background:#3A6FB0;color:#F2F7F7;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">ว</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14.5px;font-weight:600;color:#F2FAF9">วิภา สุขสันต์</div>
+                <div style="font-size:11.5px;color:#8FB0B2;padding-top:2px">นัดไว้ 15:00 · มังคุด 8 ไร่</div>
+              </div>
+              <div style="border-radius:999px;background:rgba(242,180,76,0.14);padding:5px 10px;font-size:11px;font-weight:700;color:#F2B44C;white-space:nowrap">นัด</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:13px 15px">
+              <div style="width:38px;height:38px;border-radius:50%;background:#7A5AA8;color:#F2F7F7;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">ม</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14.5px;font-weight:600;color:#F2FAF9">มานพ เกษมสุข</div>
+                <div style="font-size:11.5px;color:#8FB0B2;padding-top:2px">ซื้อครั้งล่าสุด 3 เดือน</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:13px 15px">
+              <div style="width:38px;height:38px;border-radius:50%;background:#2E8C93;color:#F2F7F7;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">บ</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14.5px;font-weight:600;color:#F2FAF9">บุญมี ศรีสุข</div>
+                <div style="font-size:11.5px;color:#8FB0B2;padding-top:2px">ลูกค้าใหม่ · ยังไม่เคยคุย</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:1;min-height:14px"></div>
+
+          <div style="margin:0 16px 14px;display:flex;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);border-radius:999px;padding:6px;box-shadow:0 14px 32px rgba(0,0,0,0.34)">
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:999px;background:#35C7B4;padding:12px;color:#04211E">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z"/></svg>
+              <span style="font-size:13px;font-weight:700">คิวงาน</span>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;color:#8FB0B2">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M13,3a9,9 0 1,0 -8.94,10H6.1A7,7 0 1,1 13,19a6.96,6.96 0 0,1 -4.95,-2.05L6.64,18.36A9,9 0 0,0 13,21a9,9 0 0,0 0,-18zM12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08V8z"/></svg>
+              <span style="font-size:13px">ประวัติ</span>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;color:#8FB0B2">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M12,12a4,4 0 1,0 0,-8 4,4 0 0,0 0,8zM12,14c-4.42,0 -8,1.79 -8,4v2h16v-2c0,-2.21 -3.58,-4 -8,-4z"/></svg>
+              <span style="font-size:13px">ฉัน</span>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- I2 -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;letter-spacing:0.1em;color:#5E7E80">02 / IN CALL · เปิดดูข้อมูลได้ขณะคุย</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#0B1D20" hint-size="412px,892px">
+        <div style="height:100%;box-sizing:border-box;background:#0B1D20;display:flex;flex-direction:column;font-family:'Noto Sans Thai',Roboto,sans-serif">
+          <div style="background:radial-gradient(120% 90% at 50% 0%, #17514A 0%, #10333A 70%);border-radius:0 0 28px 28px;padding:18px 20px 20px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;align-items:center;gap:8px;background:rgba(74,222,128,0.16);border-radius:999px;padding:6px 13px">
+                <div style="width:7px;height:7px;border-radius:50%;background:#8BF3B4"></div>
+                <div style="font-size:12px;font-weight:600;color:#8BF3B4">กำลังสนทนา</div>
+              </div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:28px;color:#FFFFFF">03:12</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding-top:16px">
+              <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(160deg,#4B86C6,#2F5C93);color:#F2F7F7;font-size:20px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">ส</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:20px;font-weight:700;color:#FFFFFF">สมชาย ใจดี</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.72);padding-top:2px">#10482 · เกรด A · ถังทอง</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:9px;padding-top:18px">
+              <div style="flex:1;height:50px;border-radius:999px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;gap:8px;color:#FFFFFF">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M12,14c1.66,0 2.99,-1.34 2.99,-3L15,5c0,-1.66 -1.34,-3 -3,-3S9,3.34 9,5v6c0,1.66 1.34,3 3,3zM17.3,11c0,3 -2.54,5.1 -5.3,5.1S6.7,14 6.7,11L5,11c0,3.41 2.72,6.23 6,6.72V21h2v-3.28c3.28,-0.48 6,-3.3 6,-6.72h-1.7z"/></svg>
+                <span style="font-size:13.5px;font-weight:600">ปิดไมค์</span>
+              </div>
+              <div style="flex:1;height:50px;border-radius:999px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;gap:8px;color:#FFFFFF">
+                <span style="font-size:18px">＋</span><span style="font-size:13.5px;font-weight:600">โน้ต</span>
+              </div>
+              <div style="width:98px;height:50px;border-radius:999px;background:#F0564B;display:flex;align-items:center;justify-content:center;color:#FFFFFF;box-shadow:0 12px 26px rgba(240,86,75,0.36)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12,9c-1.6,0 -3.15,0.25 -4.6,0.72v3.1c0,0.39 -0.23,0.74 -0.56,0.9 -0.98,0.49 -1.87,1.12 -2.66,1.85 -0.18,0.18 -0.43,0.28 -0.7,0.28 -0.28,0 -0.53,-0.11 -0.71,-0.29L0.29,13.08c-0.18,-0.17 -0.29,-0.42 -0.29,-0.7 0,-0.28 0.11,-0.53 0.29,-0.71C3.34,8.78 7.46,7 12,7s8.66,1.78 11.71,4.67c0.18,0.18 0.29,0.43 0.29,0.71 0,0.28 -0.11,0.53 -0.29,0.71l-2.48,2.48c-0.18,0.18 -0.43,0.29 -0.71,0.29 -0.27,0 -0.52,-0.11 -0.7,-0.28 -0.79,-0.74 -1.69,-1.36 -2.67,-1.85 -0.33,-0.16 -0.56,-0.5 -0.56,-0.9v-3.1C15.15,9.25 13.6,9 12,9z"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;padding:16px 16px 0">
+            <div style="border-radius:999px;background:#35C7B4;padding:9px 15px;font-size:13px;font-weight:700;color:#04211E">ข้อมูล</div>
+            <div style="border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);padding:9px 15px;font-size:13px;color:#A9C7C6">ประวัติ 42</div>
+            <div style="border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);padding:9px 15px;font-size:13px;color:#A9C7C6">สวน 2</div>
+            <div style="border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);padding:9px 15px;font-size:13px;color:#A9C7C6">ออเดอร์</div>
+          </div>
+
+          <div style="flex:1;overflow:hidden;padding:14px 16px 0">
+            <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:22px;padding:4px 16px">
+              <div style="display:flex;justify-content:space-between;padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="font-size:12.5px;color:#8FB0B2">ยอดซื้อรวม</div><div style="font-family:'Roboto Mono',monospace;font-size:13.5px;color:#4ADE80">฿1,284,500</div></div>
+              <div style="display:flex;justify-content:space-between;padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="font-size:12.5px;color:#8FB0B2">ซื้อครั้งล่าสุด</div><div style="font-size:13px;color:#EAF3F3">19 ส.ค. · ฿24,800</div></div>
+              <div style="display:flex;justify-content:space-between;padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="font-size:12.5px;color:#8FB0B2">จังหวัด</div><div style="font-size:13px;color:#EAF3F3">จันทบุรี</div></div>
+              <div style="display:flex;justify-content:space-between;padding:14px 0"><div style="font-size:12.5px;color:#8FB0B2">ดูแลโดย</div><div style="font-size:13px;color:#EAF3F3">นภา ว.</div></div>
+            </div>
+
+            <div style="padding-top:16px">
+              <div style="font-size:12px;font-weight:600;color:#8FB0B2;padding-bottom:9px">โน้ตครั้งก่อน</div>
+              <div style="background:rgba(53,199,180,0.1);border:1px solid rgba(53,199,180,0.2);border-radius:20px;padding:14px 16px;font-size:13px;color:#9FD8CF;line-height:1.65">ขายได้ 2 กระสอบ · ลูกค้าถามโปรฯ เดือนหน้า ให้โทรกลับต้นเดือน</div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- I3 -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;letter-spacing:0.1em;color:#5E7E80">03 / บันทึกการโทร · แผ่นเลื่อนขึ้นทับ</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#0B1D20" hint-size="412px,892px">
+        <div style="position:relative;height:100%;box-sizing:border-box;background:#0B1D20;overflow:hidden;font-family:'Noto Sans Thai',Roboto,sans-serif">
+          <div style="padding:16px 20px 0;display:flex;align-items:center">
+            <div style="flex:1">
+              <div style="font-size:21px;font-weight:700;color:#F2FAF9">คิวงานวันนี้</div>
+              <div style="font-size:12.5px;color:#8FB0B2;padding-top:3px">สมชาย · เหลือ 17 ราย</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;background:rgba(242,180,76,0.14);border:1px solid rgba(242,180,76,0.26);border-radius:999px;padding:7px 13px">
+              <div style="width:7px;height:7px;border-radius:50%;background:#F2B44C"></div>
+              <div style="font-size:11.5px;font-weight:600;color:#F2B44C;white-space:nowrap">ค้างบันทึก</div>
+            </div>
+          </div>
+          <div style="margin:18px 20px 0;background:rgba(255,255,255,0.04);border-radius:26px;padding:20px;opacity:0.45">
+            <div style="font-size:21px;font-weight:700;color:#F2FAF9">ประยูร ทองแท้</div>
+            <div style="font-size:12.5px;color:#8FB0B2;padding-top:5px">ไม่รับสาย 2 ครั้ง · ถังเงิน</div>
+          </div>
+
+          <div style="position:absolute;inset:0;background:rgba(2,12,13,0.6)"></div>
+
+          <div style="position:absolute;left:0;right:0;bottom:0;height:670px;background:#10262A;border-radius:32px 32px 0 0;border-top:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;box-shadow:0 -20px 60px rgba(0,0,0,0.5)">
+            <div style="display:flex;justify-content:center;padding:11px 0 0"><div style="width:44px;height:4px;border-radius:2px;background:rgba(255,255,255,0.2)"></div></div>
+
+            <div style="display:flex;align-items:center;padding:14px 20px">
+              <div style="font-size:14px;color:#8FB0B2">ทีหลัง</div>
+              <div style="flex:1;text-align:center;font-size:17px;font-weight:700;color:#F2FAF9">บันทึกการโทร</div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:14px;color:#4ADE80">03:12</div>
+            </div>
+
+            <div style="flex:1;overflow:hidden;padding:6px 20px 0">
+              <div style="display:flex;align-items:center;gap:12px;background:linear-gradient(150deg,rgba(53,199,180,0.14),rgba(255,255,255,0.03));border:1px solid rgba(53,199,180,0.2);border-radius:22px;padding:14px 16px">
+                <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(160deg,#4B86C6,#2F5C93);color:#F2F7F7;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">ส</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:15.5px;font-weight:700;color:#F2FAF9">สมชาย ใจดี</div>
+                  <div style="font-size:11.5px;color:#8FB0B2;padding-top:2px">#10482 · โทรออก · 14:22</div>
+                </div>
+              </div>
+
+              <div style="font-size:12.5px;font-weight:600;color:#8FB0B2;padding:18px 0 10px">ผลการโทร · แตะเลือก</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+                <div style="border-radius:18px;background:#35C7B4;padding:15px 12px;text-align:center;font-size:14px;font-weight:700;color:#04211E">ขายได้</div>
+                <div style="border-radius:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);padding:15px 12px;text-align:center;font-size:14px;color:#C7DAD8">สินค้ายังไม่หมด</div>
+                <div style="border-radius:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);padding:15px 12px;text-align:center;font-size:14px;color:#C7DAD8">ยังไม่ถึงรอบ</div>
+                <div style="border-radius:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);padding:15px 12px;text-align:center;font-size:14px;color:#C7DAD8">ไม่สะดวกคุย</div>
+                <div style="border-radius:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);padding:15px 12px;text-align:center;font-size:14px;color:#C7DAD8">ไม่สนใจ</div>
+                <div style="border-radius:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);padding:15px 12px;text-align:center;font-size:14px;color:#8FB0B2">ดูทั้งหมด ▾</div>
+              </div>
+
+              <div style="display:flex;gap:9px;padding-top:16px">
+                <div style="flex:1;border-radius:18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);padding:13px 15px">
+                  <div style="font-size:10.5px;color:#5E7E80">นัดครั้งถัดไป</div>
+                  <div style="font-size:14px;color:#8FB0B2;padding-top:4px">ไม่นัด ▾</div>
+                </div>
+                <div style="flex:1;border-radius:18px;background:rgba(53,199,180,0.1);border:1px solid rgba(53,199,180,0.2);padding:13px 15px">
+                  <div style="font-size:10.5px;color:#5E7E80">สวน</div>
+                  <div style="font-size:14px;color:#9FD8CF;padding-top:4px">🌿 ทุเรียน 12 ไร่</div>
+                </div>
+              </div>
+
+              <div style="border-radius:18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);padding:14px 15px;margin-top:9px;font-size:14px;color:#5E7E80;min-height:56px">พิมพ์โน้ตสั้น ๆ…</div>
+
+              <div style="display:flex;flex-wrap:wrap;gap:8px;padding-top:14px">
+                <div style="display:flex;align-items:center;gap:7px;border-radius:999px;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.24);padding:9px 13px;font-size:12.5px;color:#4ADE80"><span style="width:7px;height:7px;border-radius:50%;background:#4ADE80;display:block"></span>ลูกค้าเกรด A</div>
+                <div style="display:flex;align-items:center;gap:7px;border-radius:999px;background:rgba(242,180,76,0.12);border:1px solid rgba(242,180,76,0.24);padding:9px 13px;font-size:12.5px;color:#F2B44C"><span style="width:7px;height:7px;border-radius:50%;background:#F2B44C;display:block"></span>สนใจโปรโมชั่น</div>
+                <div style="border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);padding:9px 13px;font-size:12.5px;color:#8FB0B2">+ Tag</div>
+              </div>
+            </div>
+
+            <div style="padding:14px 20px 18px;display:flex;gap:12px;align-items:center;border-top:1px solid rgba(255,255,255,0.06)">
+              <div style="flex:1;font-size:11.5px;color:#5E7E80;line-height:1.5">บันทึกแล้วจะโทรรายถัดไปอัตโนมัติ</div>
+              <div style="border-radius:999px;background:#35C7B4;padding:15px 30px;font-size:15px;font-weight:700;color:#04211E;box-shadow:0 12px 26px rgba(53,199,180,0.3)">บันทึก</div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

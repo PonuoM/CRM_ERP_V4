@@ -53,10 +53,70 @@ class PrimacomInCallService : InCallService() {
                 // were opened by identify() and have nobody else to close them — left alone they stay
                 // "ringing" for ever and the one-live-call rule locks the agent out of dialling.
                 if (ActiveCall.isInbound) closeInboundSession()
+                // เปิดฟอร์มบันทึกการโทรก่อนล้าง ActiveCall — ยิงจาก service ผ่าน full-screen intent
+                // ไม่ใช่ startActivity ตรง ๆ จาก Activity ที่กำลังจะปิด ซึ่งโดน BAL บล็อกบน Android 14+
+                maybeShowDisposition()
                 activeSince = 0L
                 ActiveCall.clear()
             }
         }
+    }
+
+    /**
+     * เปิดฟอร์มบันทึกการโทรตามกติกา: โทรออก = ทุกครั้ง, รับสาย = เฉพาะที่ได้คุยจริง (activeSince != 0)
+     *
+     * ใช้ full-screen intent notification เหมือนหน้าจอสายเข้า — เชื่อถือได้กว่า startActivity จาก
+     * service/Activity ที่กำลังปิด ซึ่งโดน background-activity-launch บล็อกบน Android รุ่นใหม่
+     */
+    private fun maybeShowDisposition() {
+        val sid = ActiveCall.sessionId
+        if (sid <= 0) return
+        val talked = activeSince != 0L
+        if (ActiveCall.isInbound && !talked) return
+        val duration = if (talked) ((System.currentTimeMillis() - activeSince) / 1000).toInt() else 0
+        val name = ActiveCall.describe()
+        val cid = ActiveCall.customerId
+
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                NotificationChannel(CALL_CHANNEL_ID, getString(R.string.notif_channel_call),
+                    NotificationManager.IMPORTANCE_HIGH).apply {
+                    setSound(null, null); enableVibration(false); setShowBadge(false)
+                }
+            )
+        }
+        val intent = Intent(this, com.primacom.dialer.ui.DispositionActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(com.primacom.dialer.ui.DispositionActivity.EXTRA_SESSION_ID, sid)
+            .putExtra(com.primacom.dialer.ui.DispositionActivity.EXTRA_CUSTOMER_NAME, name)
+            .putExtra(com.primacom.dialer.ui.DispositionActivity.EXTRA_CUSTOMER_ID, cid)
+            .putExtra(com.primacom.dialer.ui.DispositionActivity.EXTRA_DURATION, duration)
+            .putExtra(com.primacom.dialer.ui.DispositionActivity.EXTRA_CONNECTED, talked)
+
+        // เปิดฟอร์มตรง ๆ ก่อน — แอปเพิ่งมีหน้าจอสาย (foreground) อยู่แวบก่อน จึงมักได้รับข้อยกเว้น
+        // background-activity-launch ให้เปิดได้แม้จอปลดล็อก ถ้าโดนบล็อก notification ด้านล่างเป็นตัวสำรอง
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "direct disposition launch blocked: ${e.message}")
+        }
+
+        val open = PendingIntent.getActivity(
+            this, DISPO_REQUEST, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notif = NotificationCompat.Builder(this, CALL_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_edit)
+            .setContentTitle(getString(R.string.disposition_title))
+            .setContentText(name)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .setFullScreenIntent(open, true)
+            .build()
+        manager.notify(DISPO_NOTIFICATION_ID, notif)
     }
 
     private fun closeInboundSession() {
@@ -218,5 +278,7 @@ class PrimacomInCallService : InCallService() {
         /** คนละ channel กับแถบสถานะของ CallBridgeService ซึ่งตั้งใจให้เงียบและความสำคัญต่ำ */
         private const val CALL_CHANNEL_ID = "active_call"
         private const val CALL_NOTIFICATION_ID = 2001
+        const val DISPO_NOTIFICATION_ID = 2002
+        private const val DISPO_REQUEST = 2003
     }
 }

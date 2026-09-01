@@ -226,6 +226,150 @@ const authHeaders = () => ({
 });
 
 // ==========================================
+// ค่าที่จำไว้ในเครื่อง (localStorage)
+// ==========================================
+/**
+ * หัวหน้าหลายคนเปิดหน้านี้ด้วยมุมเดิมทุกวัน — ทีมตัวเอง เดือนที่กำลังปิดรอบ คอลัมน์ชุดที่ดูจริง
+ * การรีเซ็ตกลับค่าเริ่มต้นทุกครั้งที่รีเฟรชแปลว่าต้องตั้งใหม่ทุกครั้ง เก็บที่ localStorage เพราะ
+ * เป็นความชอบของ "เครื่องนั้น" ไม่ใช่ข้อมูลที่ต้องตามตัวคนไปทุกที่ และไม่ต้องแตะฐานข้อมูล prod
+ *
+ * ช่วงวันที่ของแท็บ KPI ไม่เก็บโดยตั้งใจ — ค่าเริ่มต้นคือ "7 วันล่าสุด" ที่ขยับตามวันจริง
+ * ถ้าจำช่วงวันแบบตายตัวไว้ อีกสองเดือนเปิดมาจะอ่านข้อมูลเก่าโดยไม่รู้ตัว ส่วนเดือน/ปีจำได้
+ * เพราะหัวเรื่องบนหน้าประกาศไว้ชัดว่ากำลังดูเดือนไหนอยู่
+ */
+const PREFS_KEY = 'telesalePerformance.prefs.v1';
+
+const DEFAULT_VISIBLE_COLS = {
+    kpi_calls: true, kpi_minutes: true, kpi_avgDailyMinutes: true, kpi_connected: true,
+    kpi_avgConnected: true, kpi_talked: true, kpi_avgTalked: true, kpi_missed: true,
+    kpi_avgMissed: true, kpi_answerRate: true, kpi_workingHours: true,
+    kpi_newCust: true, kpi_coreCust: true, kpi_revivalCust: true, kpi_upsell: true,
+    kpi_totalOrders: true, kpi_totalSales: true, kpi_closeRate: true,
+    sales_gross: true, sales_cancelled: true, sales_returned: true, sales_net: true,
+    sales_bio: true, sales_fertilizer: true, sales_other: true,
+};
+type VisibleCols = typeof DEFAULT_VISIBLE_COLS;
+
+interface StoredPrefs {
+    year?: number;
+    month?: number;
+    includeTelesale?: boolean;
+    includeAdminPage?: boolean;
+    selectedTeams?: string[];
+    selectedAgents?: string[];
+    showInactive?: boolean;
+    dailyViewMode?: 'old' | 'new';
+    visibleCols?: Partial<Record<keyof VisibleCols, boolean>>;
+}
+
+/** อ่านค่าที่จำไว้ ถ้าอ่านไม่ได้ (โหมดส่วนตัว / ค่าเก่าเสีย) ให้ถือว่าไม่เคยตั้ง ไม่ใช่ทำให้หน้าพัง */
+const readStoredPrefs = (): StoredPrefs => {
+    try {
+        const raw = localStorage.getItem(PREFS_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed as StoredPrefs : {};
+    } catch {
+        return {};
+    }
+};
+
+const asStringList = (v: unknown): string[] | null =>
+    Array.isArray(v) && v.every(x => typeof x === 'string') ? v as string[] : null;
+
+/** เอาเฉพาะคอลัมน์ที่รู้จัก คอลัมน์ที่เพิ่มมาทีหลังจะได้ขึ้นมาเองแทนที่จะหายเพราะค่าเก่าไม่มีคีย์ */
+const mergeVisibleCols = (saved?: StoredPrefs['visibleCols']): VisibleCols => {
+    const next = { ...DEFAULT_VISIBLE_COLS };
+    if (!saved) return next;
+    (Object.keys(next) as (keyof VisibleCols)[]).forEach(k => {
+        if (typeof saved[k] === 'boolean') next[k] = saved[k] as boolean;
+    });
+    return next;
+};
+
+// ==========================================
+// แถวรวมของตาราง KPI รายวัน
+// ==========================================
+const EMPTY_DAILY_METRICS: DailyMetrics = {
+    totalCalls: 0, connectedCalls: 0, talkedCalls: 0, missedCalls: 0, totalMinutes: 0,
+    answerRate: 0, workingHours: 0, workingDays: 0,
+    totalSales: 0, upsellSales: 0, cancelledSales: 0, returnedSales: 0, grossSales: 0,
+    totalOrders: 0, upsellOrders: 0, grossOrders: 0, netOrders: 0,
+    newCustOrders: 0, newCustSales: 0, coreCustOrders: 0, coreCustSales: 0,
+    revivalCustOrders: 0, revivalCustSales: 0, bioSales: 0, fertilizerSales: 0, otherSales: 0,
+};
+
+/**
+ * บวกทุกแถวเป็นก้อนเดียว — %รับ คิดใหม่จากผลรวม ไม่ใช่เฉลี่ยของเปอร์เซ็นต์รายแถว
+ * (เฉลี่ยเปอร์เซ็นต์จะให้น้ำหนักคนที่โทรวันละ 5 สาย เท่ากับคนที่โทรวันละ 200 สาย)
+ */
+const sumDailyMetrics = (records: DailyRecord[]): DailyMetrics => {
+    const total = { ...EMPTY_DAILY_METRICS };
+    records.forEach(r => {
+        (Object.keys(total) as (keyof DailyMetrics)[]).forEach(k => {
+            if (k === 'answerRate') return;
+            total[k] += r.metrics[k] || 0;
+        });
+    });
+    total.answerRate = pct(total.connectedCalls, total.totalCalls);
+    return total;
+};
+
+/**
+ * แถว "รวมทั้งหมด" ท้ายตาราง KPI รายวัน ใช้ทั้งท้ายส่วนแยกตามวันและท้ายส่วนสรุปรวม
+ *
+ * ทั้งสองส่วนคือข้อมูลชุดเดียวกันแค่จัดกลุ่มคนละแบบ ผลรวมจึงต้องเท่ากันเสมอ — ส่งค่าก้อนเดียว
+ * เข้าทั้งสองแถวเพื่อไม่ให้มีทางที่เลขสองที่จะเพี้ยนจากกันได้เลย
+ *
+ * ช่องเฉลี่ย/วันทำงาน หารด้วยผลรวม "วันทำงาน" ของทุกคนรวมกัน จึงอ่านว่า "ต่อคนต่อวัน"
+ * ส่วนออเดอร์เป็นการบวกตรง ๆ ตามแถวข้างบน บิลใบเดียวที่คีย์คนละวันจึงนับตามจำนวนวันที่คีย์
+ */
+function DailyTotalsRow({ metrics: m, cols, caption, note, tone }: {
+    metrics: DailyMetrics;
+    cols: VisibleCols;
+    caption: string;
+    note: string;
+    tone: 'day' | 'summary';
+}) {
+    const net = m.totalSales + m.upsellSales;
+    const closeRate = pct(m.netOrders, m.talkedCalls);
+    const rowBg = tone === 'day' ? 'bg-slate-200' : 'bg-indigo-100';
+    const cell = 'px-2 py-2 text-center tabular-nums';
+    const money = 'px-2 py-2 text-right tabular-nums';
+
+    return (
+        <tr className={`${rowBg} font-bold text-gray-800 border-t-2 border-slate-400`}>
+            <td className={`px-2 py-2 sticky left-0 ${rowBg} whitespace-nowrap`}>{caption}</td>
+            <td className="px-2 py-2 whitespace-nowrap text-gray-600 font-semibold">{note}</td>
+            {cols.kpi_calls && <td className={cell}>{m.totalCalls ? formatNumber(m.totalCalls) : '·'}</td>}
+            {cols.kpi_minutes && <td className={cell}>{m.totalMinutes > 0 ? formatNumber(m.totalMinutes) : '·'}</td>}
+            {cols.kpi_avgDailyMinutes && <td className={`${cell} text-blue-800`}>{renderPerWorkDay(m.totalMinutes, m.workingDays, m.workingHours)}</td>}
+            {cols.kpi_connected && <td className={`${cell} text-emerald-700`}>{m.connectedCalls ? formatNumber(m.connectedCalls) : '·'}</td>}
+            {cols.kpi_avgConnected && <td className={`${cell} text-emerald-800`}>{renderPerWorkDay(m.connectedCalls, m.workingDays, m.workingHours)}</td>}
+            {cols.kpi_talked && <td className={cell}>{m.talkedCalls ? formatNumber(m.talkedCalls) : '·'}</td>}
+            {cols.kpi_avgTalked && <td className={`${cell} text-indigo-800`}>{renderPerWorkDay(m.talkedCalls, m.workingDays, m.workingHours)}</td>}
+            {cols.kpi_missed && <td className={`${cell} text-red-600`}>{m.missedCalls ? formatNumber(m.missedCalls) : '·'}</td>}
+            {cols.kpi_avgMissed && <td className={`${cell} text-red-800`}>{renderPerWorkDay(m.missedCalls, m.workingDays, m.workingHours)}</td>}
+            {cols.kpi_answerRate && <td className={cell}>{m.totalCalls ? `${m.answerRate.toFixed(1)}%` : '·'}</td>}
+            {cols.kpi_workingHours && <td className={`${cell} text-blue-700 whitespace-nowrap`}>{m.workingHours > 0 ? formatWorkingTime(m.workingHours, m.workingDays) : '·'}</td>}
+            {cols.kpi_newCust && <td className={`${cell} border-l border-slate-300`}>{m.newCustOrders || '·'}</td>}
+            {cols.kpi_coreCust && <td className={cell}>{m.coreCustOrders || '·'}</td>}
+            {cols.kpi_revivalCust && <td className={cell}>{m.revivalCustOrders || '·'}</td>}
+            {cols.kpi_upsell && <td className={cell}>{m.upsellOrders || '·'}</td>}
+            {cols.kpi_totalOrders && <td className={`${cell} border-l border-slate-300 text-blue-800`}>{m.netOrders ? formatNumber(m.netOrders) : '·'}</td>}
+            {cols.kpi_totalSales && <td className={`${cell} text-green-800`}>{net > 0 ? formatNumber(net) : '·'}</td>}
+            {cols.kpi_closeRate && <td className={cell}>{closeRate > 0 ? `${closeRate.toFixed(1)}%` : '·'}</td>}
+            {cols.sales_gross && <td className={`${money} border-l border-slate-300`}>{m.grossSales > 0 ? formatNumber(m.grossSales) : '·'}</td>}
+            {cols.sales_cancelled && <td className={`${money} text-red-600`}>{m.cancelledSales > 0 ? `-${formatNumber(m.cancelledSales)}` : '·'}</td>}
+            {cols.sales_returned && <td className={`${money} text-orange-600`}>{m.returnedSales > 0 ? `-${formatNumber(m.returnedSales)}` : '·'}</td>}
+            {cols.sales_bio && <td className={`${money} border-l border-slate-300`}>{m.bioSales > 0 ? formatNumber(m.bioSales) : '·'}</td>}
+            {cols.sales_fertilizer && <td className={money}>{m.fertilizerSales > 0 ? formatNumber(m.fertilizerSales) : '·'}</td>}
+            {cols.sales_other && <td className={money}>{m.otherSales > 0 ? formatNumber(m.otherSales) : '·'}</td>}
+        </tr>
+    );
+}
+
+// ==========================================
 // Small shared UI
 // ==========================================
 function Tip({ text }: { text: string }) {
@@ -732,14 +876,19 @@ export default function TelesalePerformancePage() {
     const currentDate = new Date();
     const API_BASE = resolveApiBasePath();
 
+    // ค่าที่จำไว้จากการเปิดครั้งก่อนบนเครื่องนี้ — อ่านครั้งเดียวตอน mount
+    const [savedPrefs] = useState(readStoredPrefs);
+
     // ---- Filters (shared by every dataset on the page) ----
-    const [year, setYear] = useState(currentDate.getFullYear());
-    const [month, setMonth] = useState(currentDate.getMonth() + 1);
-    const [includeTelesale, setIncludeTelesale] = useState(true);
-    const [includeAdminPage, setIncludeAdminPage] = useState(false);
-    const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-    const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
-    const [showInactive, setShowInactive] = useState(false);
+    const [year, setYear] = useState(() =>
+        typeof savedPrefs.year === 'number' ? savedPrefs.year : currentDate.getFullYear());
+    const [month, setMonth] = useState(() =>
+        typeof savedPrefs.month === 'number' ? savedPrefs.month : currentDate.getMonth() + 1);
+    const [includeTelesale, setIncludeTelesale] = useState(() => savedPrefs.includeTelesale ?? true);
+    const [includeAdminPage, setIncludeAdminPage] = useState(() => savedPrefs.includeAdminPage ?? false);
+    const [selectedTeams, setSelectedTeams] = useState<string[]>(() => asStringList(savedPrefs.selectedTeams) ?? []);
+    const [selectedAgents, setSelectedAgents] = useState<string[]>(() => asStringList(savedPrefs.selectedAgents) ?? []);
+    const [showInactive, setShowInactive] = useState(() => savedPrefs.showInactive ?? false);
 
     const rolesParam = useMemo(() => {
         const r: string[] = [];
@@ -751,6 +900,10 @@ export default function TelesalePerformancePage() {
     const filterQS = useMemo(() => {
         const p = new URLSearchParams();
         p.set('roles', rolesParam);
+        // This screen lets a supervisor look across every team, not just their own. The backend
+        // only honours it for supervisors, and only here — SalesDashboard reads the same endpoint
+        // without the flag and keeps showing a head their own team.
+        p.set('all_teams', '1');
         if (selectedTeams.length) p.set('teams', selectedTeams.join(','));
         if (selectedAgents.length) p.set('agents', selectedAgents.join(','));
         if (showInactive) p.set('inactive', '1');
@@ -770,7 +923,8 @@ export default function TelesalePerformancePage() {
 
     // ---- Daily (lazy: nothing is fetched until the section is opened) ----
     const [dailyOpen, setDailyOpen] = useState(false);
-    const [dailyViewMode, setDailyViewMode] = useState<'old' | 'new'>('old');
+    const [dailyViewMode, setDailyViewMode] = useState<'old' | 'new'>(() =>
+        savedPrefs.dailyViewMode === 'new' ? 'new' : 'old');
     const [dailyDate, setDailyDate] = useState(() => {
         const t = new Date();
         return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
@@ -788,15 +942,21 @@ export default function TelesalePerformancePage() {
     const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>([]);
     const [dailyLoading, setDailyLoading] = useState(false);
 
-    const [visibleCols, setVisibleCols] = useState({
-        kpi_calls: true, kpi_minutes: true, kpi_avgDailyMinutes: true, kpi_connected: true,
-        kpi_avgConnected: true, kpi_talked: true, kpi_avgTalked: true, kpi_missed: true,
-        kpi_avgMissed: true, kpi_answerRate: true, kpi_workingHours: true,
-        kpi_newCust: true, kpi_coreCust: true, kpi_revivalCust: true, kpi_upsell: true,
-        kpi_totalOrders: true, kpi_totalSales: true, kpi_closeRate: true,
-        sales_gross: true, sales_cancelled: true, sales_returned: true, sales_net: true,
-        sales_bio: true, sales_fertilizer: true, sales_other: true,
-    });
+    const [visibleCols, setVisibleCols] = useState<VisibleCols>(() => mergeVisibleCols(savedPrefs.visibleCols));
+
+    // จำมุมมองไว้ให้เครื่องนี้ — เขียนทุกครั้งที่ผู้ใช้ขยับฟิลเตอร์ ไม่มีปุ่ม "บันทึก" ให้ต้องกด
+    useEffect(() => {
+        try {
+            localStorage.setItem(PREFS_KEY, JSON.stringify({
+                year, month, includeTelesale, includeAdminPage,
+                selectedTeams, selectedAgents, showInactive,
+                dailyViewMode, visibleCols,
+            } satisfies StoredPrefs));
+        } catch {
+            // โหมดส่วนตัว / พื้นที่เต็ม — ความชอบหายได้ แต่หน้าต้องใช้งานต่อได้ตามปกติ
+        }
+    }, [year, month, includeTelesale, includeAdminPage, selectedTeams, selectedAgents,
+        showInactive, dailyViewMode, visibleCols]);
 
     // ---- Target modal ----
     const [showTargetModal, setShowTargetModal] = useState(false);
@@ -956,6 +1116,15 @@ export default function TelesalePerformancePage() {
             return r;
         });
     }, [filteredDailyRecords]);
+
+    // ผลรวมทั้งตาราง ใช้ร่วมกันทั้งท้ายส่วน "แยกตามวัน" และท้ายส่วน "สรุปรวม"
+    // — ข้อมูลชุดเดียวกันจัดกลุ่มคนละแบบ เลขท้ายตารางจึงต้องเป็นก้อนเดียวกันเสมอ
+    const dailyGrandTotal = useMemo(() => sumDailyMetrics(filteredDailyRecords), [filteredDailyRecords]);
+
+    const dailyScope = useMemo(() => ({
+        agents: new Set(filteredDailyRecords.map(r => r.userId)).size,
+        days: new Set(filteredDailyRecords.map(r => r.date)).size,
+    }), [filteredDailyRecords]);
 
     // ---- Targets ----
     const fetchTargets = useCallback(async (m: number, y: number) => {
@@ -1542,6 +1711,15 @@ export default function TelesalePerformancePage() {
                                                                 </tr>
                                                             );
                                                         })}
+                                                        {filteredDailyRecords.length > 0 && (
+                                                            <DailyTotalsRow
+                                                                metrics={dailyGrandTotal}
+                                                                cols={visibleCols}
+                                                                caption="รวมทั้งหมด"
+                                                                note={`${dailyScope.days} วัน · ${dailyScope.agents} คน`}
+                                                                tone="day"
+                                                            />
+                                                        )}
                                                     </tbody>
                                                     <tbody className="divide-y divide-gray-100 bg-blue-50/40">
                                                         <tr className="bg-gray-100 text-gray-700 border-t-2 border-gray-300">
@@ -1607,6 +1785,15 @@ export default function TelesalePerformancePage() {
                                                                 </tr>
                                                             );
                                                         })}
+                                                        {summaryDailyRecords.length > 0 && (
+                                                            <DailyTotalsRow
+                                                                metrics={dailyGrandTotal}
+                                                                cols={visibleCols}
+                                                                caption="รวมทั้งหมด"
+                                                                note={`${dailyScope.agents} คน`}
+                                                                tone="summary"
+                                                            />
+                                                        )}
                                                     </tbody>
                                                 </table>
                                             )}

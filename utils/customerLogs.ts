@@ -36,6 +36,7 @@ const eventLabels: Record<string, string> = {
   "basket_config/distribute": "แจกลูกค้า",
   "basket_config/reclaim": "ดึงคืนเข้าถังกลาง",
   "basket_config/transfer": "โอนให้พนักงานคนอื่น",
+  "transfer_request/approve": "โอนตามคำขอที่อนุมัติแล้ว",
   monthly_cron: "ระบบดึงคืนรอบเดือน",
   "cron/basket_return_to_owner": "ระบบคืนลูกค้าให้เจ้าของเดิม",
   "ownership/status_check": "หมดสิทธิ์ครอบครอง ระบบปลดออก",
@@ -45,6 +46,7 @@ const eventLabels: Record<string, string> = {
 
   // ---- การขาย ----
   "ownership/sale": "ปิดการขายได้",
+  "orders/proxy_sale_claim": "ขายแทนแล้วโอนเข้าผู้ดูแล",
   "orders/batch_export": "เปิดบิล/ส่งออก",
   "import/sales": "นำเข้ายอดขาย",
   "import/sales_fast": "นำเข้ายอดขาย",
