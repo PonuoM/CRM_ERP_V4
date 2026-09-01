@@ -17,4 +17,4 @@ foreach ($envFile in @(
 }
 if (-not $loaded) { throw "Create .env at the project root from .env.example first" }
 & (Join-Path $here 'Start-BackupUi.ps1')
-Write-Output 'Use the Dump button in the browser UI, or POST http://127.0.0.1:8787/api.php?action=dump'
+Write-Output 'Use the Dump button in the browser UI (progress updates by itself). POST http://127.0.0.1:8787/api.php?action=dump starts a background job.'

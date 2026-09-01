@@ -14,29 +14,7 @@ if (!in_array($remote, ['127.0.0.1', '::1'], true)) {
     exit;
 }
 
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'env_file.php';
-
-function backup_env(): array
-{
-    $root = dirname(__DIR__, 2);
-    $fromFiles = erp_merge_env_files([
-        $root . DIRECTORY_SEPARATOR . '.env',
-        $root . DIRECTORY_SEPARATOR . '.env.local',
-        $root . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . '.env',
-        __DIR__ . DIRECTORY_SEPARATOR . '.env',
-    ]);
-    $out = erp_env_overlay_getenv($fromFiles);
-    foreach ([
-        'MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE',
-        'MYSQLDUMP', 'MYSQL', 'GZIP', 'WORKDIR', 'RCLONE_DEST', 'KEEP_LOCAL', 'RCLONE',
-    ] as $k) {
-        $g = getenv($k);
-        if (is_string($g) && trim($g) !== '') {
-            $out[$k] = trim($g);
-        }
-    }
-    return $out;
-}
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'job.php';
 
 function backup_json($data, int $code = 200): void
 {
@@ -47,7 +25,8 @@ function backup_json($data, int $code = 200): void
 
 $env = backup_env();
 $action = $_GET['action'] ?? $_POST['action'] ?? 'status';
-$work = $env['WORKDIR'] ?? (getenv('USERPROFILE') . '\\Documents\\prima_db_backups');
+$work = backup_workdir($env);
+backup_ensure_dirs($work);
 
 if ($action === 'status') {
     $files = [];
@@ -61,6 +40,7 @@ if ($action === 'status') {
         }
     }
     usort($files, fn($a, $b) => strcmp($b['mtime'], $a['mtime']));
+    $job = backup_job_reconcile($work, backup_job_read($work));
     backup_json([
         'ok' => true,
         'workdir' => $work,
@@ -68,7 +48,18 @@ if ($action === 'status') {
             || is_readable(__DIR__ . DIRECTORY_SEPARATOR . '.env'),
         'rclone_dest' => $env['RCLONE_DEST'] ?? '',
         'files' => $files,
+        'job' => $job,
+        'busy' => backup_job_is_busy($job),
         'hint' => 'กด Dump แล้วอัป Drive จากเครื่องนี้เท่านั้น ห้ามวางสคริปต์นี้บนโฮสต์',
+    ]);
+}
+
+if ($action === 'job') {
+    $job = backup_job_reconcile($work, backup_job_read($work));
+    backup_json([
+        'ok' => true,
+        'job' => $job,
+        'busy' => backup_job_is_busy($job),
     ]);
 }
 
@@ -81,37 +72,21 @@ if ($action === 'dump') {
     if (($env['MYSQL_PASSWORD'] ?? '') === '') {
         backup_json(['ok' => false, 'message' => 'ใส่ MYSQL_PASSWORD ใน .env ที่รากโปรเจกต์ (หรือ overlay ที่ scripts/backup/.env)'], 400);
     }
-    if (!is_dir($work)) {
-        mkdir($work, 0777, true);
+    $existing = backup_job_reconcile($work, backup_job_read($work));
+    if (backup_job_is_busy($existing)) {
+        backup_json(['ok' => false, 'message' => 'มีงานกำลังรันอยู่ รอให้จบก่อน'], 409);
     }
     $stamp = date('Ymd_His');
-    $gzPath = $work . DIRECTORY_SEPARATOR . 'primacom_mini_erp_' . $stamp . '.sql.gz';
-    $errPath = $work . DIRECTORY_SEPARATOR . 'dump_' . $stamp . '.err';
-    $cmd = sprintf(
-        '"%s" --host=%s --port=%s --user=%s --single-transaction --quick --skip-lock-tables --routines --triggers --events --hex-blob --default-character-set=utf8mb4 --no-tablespaces --force --ignore-table=%s.v_customer_buckets %s 2> "%s" | "%s" -1 > "%s"',
-        $mysqldump,
-        $env['MYSQL_HOST'] ?? '202.183.192.218',
-        $env['MYSQL_PORT'] ?? '3306',
-        $env['MYSQL_USER'] ?? 'primacom_mini_erp_backup',
-        $env['MYSQL_DATABASE'] ?? 'primacom_mini_erp',
-        $env['MYSQL_DATABASE'] ?? 'primacom_mini_erp',
-        $errPath,
-        $gzip,
-        $gzPath
-    );
-    putenv('MYSQL_PWD=' . ($env['MYSQL_PASSWORD'] ?? ''));
-    $code = 0;
-    system('cmd /c ' . $cmd, $code);
-    putenv('MYSQL_PWD');
-    $err = is_file($errPath) ? (string) file_get_contents($errPath) : '';
-    $okFile = is_file($gzPath) && filesize($gzPath) > 1000;
+    $file = 'primacom_mini_erp_' . $stamp . '.sql.gz';
+    $job = backup_job_new('dump', $file, backup_prev_dump_bytes($work));
+    backup_job_write($work, $job);
+    backup_spawn_worker('dump');
     backup_json([
-        'ok' => $code === 0 && $okFile,
-        'file' => $okFile ? basename($gzPath) : null,
-        'size' => $okFile ? filesize($gzPath) : 0,
-        'stderr' => mb_substr($err, 0, 2000),
-        'exit' => $code,
-        'note' => 'ตรวจท้ายไฟล์ว่ามี Dump completed ก่อนลบของท้องถิ่น — อัป Drive ด้วยปุ่ม Upload',
+        'ok' => true,
+        'started' => true,
+        'file' => $file,
+        'job' => $job,
+        'note' => 'dump รันพื้นหลัง — หน้าเว็บจะอัปเดต progress เอง',
     ]);
 }
 
@@ -135,20 +110,18 @@ if ($action === 'upload') {
     if ($rcloneBin !== 'rclone' && !is_file($rcloneBin)) {
         backup_json(['ok' => false, 'message' => 'ไม่พบ rclone ตาม RCLONE ใน .env'], 500);
     }
-    $rcloneCmd = ($rcloneBin === 'rclone') ? 'rclone' : ('"' . $rcloneBin . '"');
-    $cmd = sprintf('%s copy "%s" "%s" --progress', $rcloneCmd, $full, $dest);
-    $out = [];
-    $code = 0;
-    exec($cmd . ' 2>&1', $out, $code);
-    $keep = (int) ($env['KEEP_LOCAL'] ?? 0);
-    if ($code === 0 && $keep === 0) {
-        @unlink($full);
+    $existing = backup_job_reconcile($work, backup_job_read($work));
+    if (backup_job_is_busy($existing)) {
+        backup_json(['ok' => false, 'message' => 'มีงานกำลังรันอยู่ รอให้จบก่อน'], 409);
     }
+    $job = backup_job_new('upload', $file, (int) filesize($full));
+    backup_job_write($work, $job);
+    backup_spawn_worker('upload', $file);
     backup_json([
-        'ok' => $code === 0,
-        'exit' => $code,
-        'output' => mb_substr(implode("\n", $out), 0, 2000),
-        'deleted_local' => $code === 0 && $keep === 0,
+        'ok' => true,
+        'started' => true,
+        'file' => $file,
+        'job' => $job,
     ]);
 }
 
