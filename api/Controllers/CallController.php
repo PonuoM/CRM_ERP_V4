@@ -364,6 +364,7 @@ class CallController
                                         device_token, token_expires_at, revoked_at, status, last_seen_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY), NULL, 'active', NOW())
              ON DUPLICATE KEY UPDATE
+                id = LAST_INSERT_ID(id),
                 user_id = VALUES(user_id), label = VALUES(label), sim_phone = VALUES(sim_phone),
                 app_version = VALUES(app_version), push_token = VALUES(push_token),
                 device_token = VALUES(device_token), token_expires_at = VALUES(token_expires_at),
@@ -383,6 +384,9 @@ class CallController
         json_response([
             'ok' => true,
             'device_id' => $deviceId,
+            // ลำดับแถวใน agent_devices — แอปเอาไปทำรหัสเครื่องสั้น ๆ "PHONE-07"
+            // (LAST_INSERT_ID(id) ใน ON DUPLICATE ทำให้ได้ id เดิมแม้เป็นการอัปเดตซ้ำ)
+            'device_no' => (int) $pdo->lastInsertId(),
             'user_id' => (int) $user['id'],
             // The handset stores this and uses it from now on, so a nightly web-session expiry
             // never reaches the phone on the desk.
@@ -1395,7 +1399,7 @@ class CallController
         try {
             // อ่านจากตาราง appointments (แหล่งเดียวกับเว็บ) — นัดที่ยังไม่เสร็จ วันนี้ ของพนักงานคนนี้
             $f = $pdo->prepare(
-                "SELECT a.customer_id, c.first_name, c.last_name, a.date
+                "SELECT a.customer_id, c.first_name, c.last_name, a.date, a.title, a.notes
                    FROM appointments a
                    JOIN customers c ON c.customer_id = a.customer_id
                   WHERE a.status <> 'เสร็จสิ้น' AND a.date >= CURDATE() AND a.date < CURDATE() + INTERVAL 1 DAY
@@ -1405,10 +1409,15 @@ class CallController
             $f->execute([$agent, $agent]);
             foreach ($f->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $name = trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? ''));
+                // บรรทัดโน้ตใต้ชื่อในแอป: หัวข้อนัดก่อน ไม่มีค่อยใช้รายละเอียด — ตัดสั้นกันล้นการ์ด
+                $note = trim((string) ($r['title'] ?? ''));
+                if ($note === '') $note = trim((string) ($r['notes'] ?? ''));
+                if ($note !== '') $note = mb_substr(preg_replace('/\s+/u', ' ', $note), 0, 80);
                 $followups[] = [
                     'customer_id' => (int) $r['customer_id'],
                     'name'        => $name !== '' ? $name : 'ไม่ทราบชื่อ',
                     'at'          => substr((string) $r['date'], 11, 5),
+                    'note'        => $note !== '' ? $note : null,
                 ];
             }
         } catch (Throwable $e) {
@@ -1427,11 +1436,26 @@ class CallController
             error_log('CallController::home is_supervisor: ' . $e->getMessage());
         }
 
+        // ป้ายทีมในหน้า "ฉัน" — ระบบไม่มีตาราง teams ทีมจึงนิยามด้วยหัวหน้า (supervisor_id)
+        // ใช้ชื่อเล่นหัวหน้า (first_name เก็บชื่อเล่น) → "ทีมหนิง"
+        $team = null;
+        try {
+            $sv = $pdo->prepare(
+                'SELECT s.first_name FROM users u JOIN users s ON s.id = u.supervisor_id WHERE u.id = ? LIMIT 1'
+            );
+            $sv->execute([$agent]);
+            $n = trim((string) $sv->fetchColumn());
+            if ($n !== '') $team = 'ทีม' . $n;
+        } catch (Throwable $e) {
+            error_log('CallController::home team: ' . $e->getMessage());
+        }
+
         json_response([
             'ok' => true,
             'today' => $today,
             'followups' => $followups,
             'is_supervisor' => $isSupervisor,
+            'team' => $team,
         ]);
     }
 

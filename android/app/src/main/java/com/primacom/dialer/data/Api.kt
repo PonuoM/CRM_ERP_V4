@@ -35,6 +35,7 @@ data class FollowUp(
     val customerId: Int,
     val name: String,
     val at: String,
+    val note: String? = null,   // หัวข้อนัด เช่น "ใบเสนอราคาปุ๋ยสูตรใหม่"
 )
 
 /** A full appointment row for the appointments screen — with crop/province context. */
@@ -55,6 +56,7 @@ data class HomeData(
     val talkSec: Int,
     val followups: List<FollowUp>,
     val isSupervisor: Boolean = false,
+    val team: String? = null,   // ป้ายทีม เช่น "ทีมหนิง" (null = ไม่มีหัวหน้า)
 )
 
 /**
@@ -167,6 +169,7 @@ class Api(private val session: Session) {
                 .filter { it.isNotBlank() }
                 .joinToString(" ")
                 .ifBlank { u.optString("username") }
+            session.role = u.optString("role").ifBlank { null }
         }
         token
     }
@@ -182,6 +185,10 @@ class Api(private val session: Session) {
         // From here on the handset authenticates as itself. The web session token stays in storage
         // only so a re-registration can still be authorised if the device token is ever rejected.
         res.optString("device_token").takeIf { it.isNotBlank() }?.let { session.deviceToken = it }
+        // ลำดับแถวใน agent_devices → รหัสเครื่องสั้นบนหน้าจอ ("PHONE-07")
+        res.optInt("device_no").takeIf { it > 0 }?.let {
+            session.deviceCode = "PHONE-" + it.toString().padStart(2, '0')
+        }
         Unit
     }
 
@@ -205,7 +212,12 @@ class Api(private val session: Session) {
         val fus = buildList {
             if (arr != null) for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                add(FollowUp(o.optInt("customer_id"), o.optString("name").ifBlank { "ไม่ทราบชื่อ" }, o.optString("at")))
+                add(FollowUp(
+                    customerId = o.optInt("customer_id"),
+                    name = o.optString("name").ifBlank { "ไม่ทราบชื่อ" },
+                    at = o.optString("at"),
+                    note = o.optString("note").ifBlank { null }.takeUnless { o.isNull("note") },
+                ))
             }
         }
         HomeData(
@@ -216,6 +228,7 @@ class Api(private val session: Session) {
             talkSec = t?.optInt("talk_sec") ?: 0,
             followups = fus,
             isSupervisor = res.optBoolean("is_supervisor", false),
+            team = res.optString("team").ifBlank { null }.takeUnless { res.isNull("team") },
         )
     }
 
