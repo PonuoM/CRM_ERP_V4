@@ -99,20 +99,41 @@ function method(): string
     return $_SERVER['REQUEST_METHOD'] ?? 'GET';
 }
 
+$parts = route_path();
+$resource = $parts[0] ?? '';
+$id = $parts[1] ?? null;
+$action = $parts[2] ?? null;
+
+// Health must not depend on a successful connect: when MariaDB is down this is how
+// the UI shows a maintenance page instead of a white screen.
+if ($resource === 'health') {
+    try {
+        $pdo = db_connect();
+        $pdo->query('SELECT 1');
+        json_response(['ok' => true, 'db' => 'up', 'status' => 'healthy']);
+    } catch (Throwable $e) {
+        json_response([
+            'ok' => false,
+            'db' => 'down',
+            'error' => 'DB_UNAVAILABLE',
+            'message' => 'ระบบฐานข้อมูลใช้ไม่ได้ กำลังกู้',
+        ], 503);
+    }
+}
+
 try {
     $pdo = db_connect();
 } catch (Throwable $e) {
-    json_response(['ok' => false, 'error' => 'DB_CONNECT_FAILED', 'message' => $e->getMessage()], 500);
+    json_response([
+        'ok' => false,
+        'error' => 'DB_UNAVAILABLE',
+        'message' => 'ระบบฐานข้อมูลใช้ไม่ได้ กำลังกู้',
+    ], 503);
 }
 
 // Resolve the customer-phone policy once for every controller this request will reach.
 // Inert until app_settings `phone_masking_stage` = 'full' — see api/phone_privacy.php.
 phone_privacy_init($pdo);
-
-$parts = route_path();
-$resource = $parts[0] ?? '';
-$id = $parts[1] ?? null;
-$action = $parts[2] ?? null;
 
 // Set audit context early for tracked resources (orders + customers)
 if (in_array($resource, ['orders', 'customers'])) {
@@ -124,7 +145,7 @@ if ($resource === 'notifications' && $action === null && $id !== null) {
     $id = null;
 }
 
-if ($resource === '' || $resource === 'health') {
+if ($resource === '') {
     json_response(['ok' => true, 'status' => 'healthy']);
 }
 

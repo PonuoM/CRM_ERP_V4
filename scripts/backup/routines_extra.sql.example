@@ -1,0 +1,5 @@
+-- Paste phpMyAdmin Export → Custom → Routines only for:
+--   generate_test_customers
+--   UpdateCustomerStatsBatch
+-- These two are on production but not in the git repo.
+-- Copy this file to routines_extra.sql (gitignored) next to the dump sidecar.

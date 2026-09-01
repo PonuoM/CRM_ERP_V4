@@ -71,6 +71,7 @@ import {
   pingAttendance,
   logoutAttendance,
   apiFetch,
+  health,
   createUser as apiCreateUser,
   updateUser as apiUpdateUser,
   deleteUser as apiDeleteUser,
@@ -116,6 +117,8 @@ import TelesaleSummaryDashboard from "./pages/TelesaleSummaryDashboard";
 import PancakeUserIntegrationPage from "./pages/PancakeUserIntegrationPage";
 import ManageOrdersPage from "./pages/ManageOrdersPage";
 import DatabaseManagementPage from "./pages/DatabaseManagementPage";
+import BackupDriveStatusPage from "./pages/BackupDriveStatusPage";
+import DbUnavailablePage from "./pages/DbUnavailablePage";
 import DebtCollectionPage from "./pages/DebtCollectionPage";
 import UserManagementModal from "./components/UserManagementModal";
 import AllOrdersSentPage from "./pages/Accounting/AllOrdersSentPage";
@@ -446,6 +449,7 @@ const App: React.FC = () => {
   });
   const [passwordError, setPasswordError] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [dbUnavailable, setDbUnavailable] = useState(false);
   const [rolePermissions, setRolePermissions] = useState<Record<
     string,
     { view?: boolean; use?: boolean }
@@ -515,6 +519,19 @@ const App: React.FC = () => {
       }
     }
   }, [resolvePageFromParam, setActivePage, setHideSidebar]);
+
+  useEffect(() => {
+    const markDown = () => setDbUnavailable(true);
+    window.addEventListener("erp-db-unavailable", markDown);
+    health()
+      .then((h) => {
+        if (h && (h.db === "down" || h.error === "DB_UNAVAILABLE")) markDown();
+      })
+      .catch(() => {
+        /* a dropped 500 is not MariaDB down */
+      });
+    return () => window.removeEventListener("erp-db-unavailable", markDown);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -8003,6 +8020,10 @@ const App: React.FC = () => {
       case "จัดการฐานข้อมูล":
         return <DatabaseManagementPage />;
 
+      case "สำรองฐานข้อมูล":
+      case "data.backup_drive":
+        return <BackupDriveStatusPage />;
+
       default:
         // Fallback or 404
         return (
@@ -8210,6 +8231,10 @@ const App: React.FC = () => {
       </div>
     );
   };
+
+  if (dbUnavailable) {
+    return <DbUnavailablePage />;
+  }
 
   // Show loading/error message if currentUser is not available
   if (!currentUser) {

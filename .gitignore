@@ -136,6 +136,10 @@ nul
 # Scratch directory
 scratch/
 
+# Office backup helper secrets and extra routines (never commit dumps)
+scripts/backup/.env
+scripts/backup/routines_extra.sql
+
 # Android signing — ห้ามขึ้น git เด็ดขาด
 android/keystore/
 android/local.properties

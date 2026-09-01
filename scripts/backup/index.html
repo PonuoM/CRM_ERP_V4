@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <title>สำรอง ERP (เครื่องออฟฟิศเท่านั้น)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 2rem auto; color: #111; }
+    button { margin-right: .5rem; padding: .4rem .8rem; }
+    pre { background: #f4f4f5; padding: 1rem; overflow: auto; font-size: 12px; }
+    .warn { color: #9a3412; }
+  </style>
+</head>
+<body>
+  <h1>สำรองฐานข้อมูล — เครื่องออฟฟิศ</h1>
+  <p class="warn">อย่าอัปโฟลเดอร์นี้ขึ้น public_html / mini_erp โฮสต์ไม่มี mysqldump</p>
+  <p>ใส่คีย์ใน <code>.env</code> ที่รากโปรเจกต์ (คัดลอกจาก <code>.env.example</code>) ไม่ใช่ในโฟลเดอร์นี้ ยกเว้นจะ overlay พาธ XAMPP</p>
+  <p>
+    <button id="dump">Dump</button>
+    <button id="refresh">รีเฟรช</button>
+  </p>
+  <div id="status"></div>
+  <pre id="log"></pre>
+  <script>
+    async function j(path, opt) {
+      const r = await fetch(path, opt);
+      return r.json();
+    }
+    async function refresh() {
+      const s = await j('/api.php?action=status');
+      document.getElementById('status').innerHTML =
+        '<p>โฟลเดอร์: ' + s.workdir + '</p><p>.env: ' + (s.env_present ? 'มี' : 'ยังไม่มี') +
+        '</p><p>rclone: ' + (s.rclone_dest || 'ยังไม่ตั้ง — อัป Drive ด้วยมือได้') + '</p>' +
+        '<ul>' + (s.files || []).map(f =>
+          '<li>' + f.name + ' (' + Math.round(f.size/1048576) + ' MB) ' +
+          '<button data-file="' + f.name + '">อัป Drive (rclone)</button></li>'
+        ).join('') + '</ul>';
+      document.querySelectorAll('button[data-file]').forEach(b => {
+        b.onclick = async () => {
+          document.getElementById('log').textContent = 'กำลังอัป...';
+          const body = new URLSearchParams({ action: 'upload', file: b.dataset.file });
+          const res = await j('/api.php?action=upload&file=' + encodeURIComponent(b.dataset.file), { method: 'POST', body });
+          document.getElementById('log').textContent = JSON.stringify(res, null, 2);
+          refresh();
+        };
+      });
+    }
+    document.getElementById('dump').onclick = async () => {
+      document.getElementById('log').textContent = 'กำลัง dump ประมาณ 3–5 นาที...';
+      const res = await j('/api.php?action=dump', { method: 'POST' });
+      document.getElementById('log').textContent = JSON.stringify(res, null, 2);
+      refresh();
+    };
+    document.getElementById('refresh').onclick = refresh;
+    refresh();
+  </script>
+</body>
+</html>
