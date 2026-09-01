@@ -1,14 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Phone, PhoneOff, Loader2, Check } from "lucide-react";
 import {
-  cancelCall,
-  dialCustomer,
-  fetchCallStatus,
   fetchCallableNumbers,
   type CallSession,
   type CallableNumber,
 } from "../services/api";
 import { usePhonePolicy } from "../hooks/usePhonePolicy";
+import { useCall, CALL_STATUS_TEXT } from "../contexts/CallContext";
 
 interface CallCustomerButtonProps {
   customerId: number | string;
@@ -21,20 +19,11 @@ interface CallCustomerButtonProps {
   className?: string;
 }
 
-const LIVE_STATES: CallSession["status"][] = ["queued", "dispatched", "ringing", "answered"];
-
-const STATUS_TEXT: Record<CallSession["status"], string> = {
-  queued: "กำลังส่งไปที่มือถือ…",
-  dispatched: "มือถือรับงานแล้ว…",
-  ringing: "กำลังโทรออก",
-  answered: "กำลังสนทนา",
-  ended: "วางสายแล้ว",
-  failed: "โทรไม่สำเร็จ",
-  cancelled: "ยกเลิกแล้ว",
-};
-
 /**
  * Rings a customer from the agent's handset.
+ *
+ * สถานะสายอยู่ที่ CallContext (ระดับ App) ไม่ใช่ในปุ่มนี้ — สลับหน้าแล้วกลับมายังเห็นว่ากำลังโทร
+ * และมีปุ่มลอยมุมขวาล่างคอยบอกทุกหน้า (FloatingCallWidget)
  *
  * Appears only for an agent who actually has a registered phone, so a company that has not adopted
  * the dialler sees nothing new — no setting to configure, no button that does nothing.
@@ -46,74 +35,37 @@ export const CallCustomerButton: React.FC<CallCustomerButtonProps> = ({
   className = "",
 }) => {
   const policy = usePhonePolicy();
+  const call = useCall();
+
   const [numbers, setNumbers] = useState<CallableNumber[]>([]);
   const [picking, setPicking] = useState(false);
-  const [session, setSession] = useState<CallSession | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [talkSeconds, setTalkSeconds] = useState(0);
 
-  const pollRef = useRef<number | null>(null);
-  const tickRef = useRef<number | null>(null);
+  const idStr = String(customerId);
+  const mine = call.active && call.active.customerId === idStr ? call.active : null;
+  const live = !!mine && call.isLive;
+  const busyOther = call.isLive && call.callingCustomerId !== idStr;
 
-  const stopTimers = useCallback(() => {
-    if (pollRef.current) window.clearInterval(pollRef.current);
-    if (tickRef.current) window.clearInterval(tickRef.current);
-    pollRef.current = null;
-    tickRef.current = null;
-  }, []);
-
-  useEffect(() => stopTimers, [stopTimers]);
-
-  const beginPolling = useCallback(
-    (sessionId: number) => {
-      stopTimers();
-      pollRef.current = window.setInterval(async () => {
-        const s = await fetchCallStatus(sessionId).catch(() => null);
-        if (!s) return;
-        setSession(s);
-
-        if (s.status === "answered" && !tickRef.current) {
-          // Count locally while the call runs; the server's duration is authoritative at the end.
-          tickRef.current = window.setInterval(() => setTalkSeconds((n) => n + 1), 1000);
-        }
-        if (!LIVE_STATES.includes(s.status)) {
-          stopTimers();
-          onCallEnded?.(s);
-        }
-      }, 1500);
-    },
-    [onCallEnded, stopTimers],
-  );
+  // เมื่อสายของลูกค้าคนนี้จบ → ยิง onCallEnded ครั้งเดียว (เปิดฟอร์มบันทึกการโทรพร้อม duration)
+  const firedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (mine && !call.isLive && firedRef.current !== mine.session.id) {
+      firedRef.current = mine.session.id;
+      onCallEnded?.(mine.session);
+    }
+  }, [mine, call.isLive, onCallEnded]);
 
   const start = useCallback(
     async (phoneIndex: number) => {
       setPicking(false);
       setStarting(true);
       setError(null);
-      setTalkSeconds(0);
-      try {
-        const res = await dialCustomer(customerId, phoneIndex);
-        if (!res?.ok) {
-          setError(res?.message || "เริ่มการโทรไม่สำเร็จ");
-          return;
-        }
-        setSession({
-          id: res.session_id,
-          status: res.status ?? "queued",
-          answered_at: null,
-          ended_at: null,
-          duration_sec: null,
-          failure_reason: null,
-        });
-        beginPolling(res.session_id);
-      } catch {
-        setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
-      } finally {
-        setStarting(false);
-      }
+      const res = await call.startCall(customerId, customerName ?? "", phoneIndex);
+      if (!res.ok) setError(res.message || "เริ่มการโทรไม่สำเร็จ");
+      setStarting(false);
     },
-    [customerId, beginPolling],
+    [call, customerId, customerName],
   );
 
   const handleClick = useCallback(async () => {
@@ -130,23 +82,13 @@ export const CallCustomerButton: React.FC<CallCustomerButtonProps> = ({
     else setPicking(true);
   }, [customerId, numbers, start]);
 
-  const handleHangUp = useCallback(async () => {
-    if (!session) return;
-    await cancelCall(session.id).catch(() => undefined);
-    stopTimers();
-    const ended: CallSession = { ...session, status: "cancelled" };
-    setSession(ended);
-    onCallEnded?.(ended);
-  }, [session, stopTimers, onCallEnded]);
-
   // A company that has not rolled out handsets should see no trace of this feature.
   if (!policy.can_click_to_call) return null;
 
-  const live = session && LIVE_STATES.includes(session.status);
-
-  if (live) {
-    const mm = String(Math.floor(talkSeconds / 60)).padStart(2, "0");
-    const ss = String(talkSeconds % 60).padStart(2, "0");
+  if (live && mine) {
+    const secs = mine.talkSeconds;
+    const mm = String(Math.floor(secs / 60)).padStart(2, "0");
+    const ss = String(secs % 60).padStart(2, "0");
     return (
       <div className={`flex items-center gap-2 ${className}`}>
         <span className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -154,15 +96,15 @@ export const CallCustomerButton: React.FC<CallCustomerButtonProps> = ({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
           </span>
-          {STATUS_TEXT[session!.status]}
-          {session!.status === "answered" && (
+          {CALL_STATUS_TEXT[mine.session.status]}
+          {mine.session.status === "answered" && (
             <span className="font-mono tabular-nums">
               {mm}:{ss}
             </span>
           )}
         </span>
         <button
-          onClick={handleHangUp}
+          onClick={call.hangUp}
           className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
         >
           <PhoneOff className="h-4 w-4" />
@@ -177,33 +119,28 @@ export const CallCustomerButton: React.FC<CallCustomerButtonProps> = ({
   // ของเดิมพอวางสายแล้วปุ่ม "โทรออกหาลูกค้า" กลับมาเหมือนยังไม่เคยโทร ทั้งที่ฟอร์มบันทึกการโทร
   // เปิดค้างอยู่ตรงนั้นพอดี เผลอกดซ้ำแล้วลูกค้าโดนโทรซ้ำทันทีโดยไม่ได้ตั้งใจ
   // ตรงนี้จึงบอกผลของสายที่เพิ่งจบ แล้วให้กดโทรใหม่เป็นการตัดสินใจอีกครั้งหนึ่ง
-  if (session && !live) {
-    const answered = !!session.answered_at;
-    const mm = String(Math.floor(talkSeconds / 60)).padStart(2, "0");
-    const ss = String(talkSeconds % 60).padStart(2, "0");
+  if (mine && !live) {
+    const answered = !!mine.session.answered_at;
+    const secs = mine.session.duration_sec ?? mine.talkSeconds;
+    const mm = String(Math.floor(secs / 60)).padStart(2, "0");
+    const ss = String(secs % 60).padStart(2, "0");
     return (
       <div className={`flex flex-wrap items-center gap-2 ${className}`}>
         <span
           className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-            answered
-              ? "bg-emerald-50 text-emerald-800"
-              : "bg-amber-50 text-amber-800"
+            answered ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"
           }`}
         >
           {answered ? <Check className="h-4 w-4" /> : <PhoneOff className="h-4 w-4" />}
           {answered ? "โทรแล้ว" : "ไม่ได้รับสาย"}
-          {answered && talkSeconds > 0 && (
+          {answered && secs > 0 && (
             <span className="font-mono tabular-nums">
               {mm}:{ss}
             </span>
           )}
         </span>
         <button
-          onClick={() => {
-            setSession(null);
-            setTalkSeconds(0);
-            setError(null);
-          }}
+          onClick={call.dismiss}
           className="text-xs text-gray-500 underline hover:text-gray-700"
         >
           โทรอีกครั้ง
@@ -216,11 +153,12 @@ export const CallCustomerButton: React.FC<CallCustomerButtonProps> = ({
     <div className={`relative ${className}`}>
       <button
         onClick={handleClick}
-        disabled={starting}
+        disabled={starting || busyOther}
+        title={busyOther ? "กำลังมีสายอื่นอยู่" : undefined}
         className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
       >
         {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
-        โทรออกหาลูกค้า
+        {busyOther ? "กำลังโทรสายอื่นอยู่" : "โทรออกหาลูกค้า"}
       </button>
 
       {picking && (
@@ -246,12 +184,6 @@ export const CallCustomerButton: React.FC<CallCustomerButtonProps> = ({
       )}
 
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-      {session && !live && (
-        <p className="mt-1 text-xs text-gray-500">
-          {STATUS_TEXT[session.status]}
-          {session.duration_sec != null && session.duration_sec > 0 && ` · ${session.duration_sec} วินาที`}
-        </p>
-      )}
     </div>
   );
 };
