@@ -37,7 +37,8 @@
  *
  * Params: year, month, roles (csv of telesale|adminpage, default telesale),
  *         teams (csv of team keys: supervisor id | admin_page | 0), agents (csv of user ids),
- *         inactive=1 (include people who have left)
+ *         inactive=1 (include people who have left),
+ *         all_teams=1 (supervisors only — widen scope from own team to the whole company)
  */
 
 require_once __DIR__ . '/../config.php';
@@ -93,6 +94,13 @@ try {
     // People who have left are hidden by default — their book was reclaimed, so every column but
     // sales reads as a row of dashes. `inactive=1` brings them back for the months they did work.
     $showInactive = isset($_GET['inactive']) && $_GET['inactive'] === '1';
+
+    // Supervisors see every team on the Telesale Performance screen — a deliberate grant, asked for
+    // so heads can compare their team against the others. It is opt-in per request rather than a
+    // change to $isSupervisor because SalesDashboard reads this same endpoint for personal/team KPI
+    // and must keep showing a supervisor their OWN team only. The flag is honoured for supervisors
+    // alone: a plain telesale sending all_teams=1 still gets just themselves.
+    $seeAllTeams = isset($_GET['all_teams']) && $_GET['all_teams'] === '1' && $isSupervisor;
 
     $roleIds = [];
     if ($wantTelesale) { $roleIds[] = 6; $roleIds[] = 7; }
@@ -249,7 +257,7 @@ try {
     if (empty($userMap)) { $emptyResponse($segmentsOut, [], []); exit; }
 
     // Viewer scope
-    if ($isAdmin || $isCEO) {
+    if ($isAdmin || $isCEO || $seeAllTeams) {
         $visibleIds = array_keys($userMap);
     } elseif ($isSupervisor) {
         $visibleIds = array_values(array_filter(array_keys($userMap), function ($id) use ($userMap, $currentUserId) {

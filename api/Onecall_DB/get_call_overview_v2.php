@@ -1,6 +1,7 @@
 <?php
 // V2 Call Overview - per-employee detail with attendance, from call_import_logs
 require_once __DIR__ . "/../config.php";
+require_once __DIR__ . "/../attendance_kpi.php";
 cors();
 
 if ($_SERVER["REQUEST_METHOD"] !== "GET") {
@@ -31,7 +32,7 @@ try {
         $userParams[] = $companyId;
     }
 
-    $uStmt = $pdo->prepare("SELECT id, first_name, role, phone FROM users WHERE $userFilter");
+    $uStmt = $pdo->prepare("SELECT id, first_name, role, role_id, phone FROM users WHERE $userFilter");
     $uStmt->execute($userParams);
     $teamUsers = $uStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -79,13 +80,17 @@ try {
         }
     }
 
-    // Step 3: Query attendance
+    // Step 3: Query attendance — ดึงรายวันเพื่อคิด "วันทำงาน" ตามกติกา KPI
+    // (เสาร์-อาทิตย์ของ role 6/7 ฐาน 6 ชม. ดู attendance_kpi.php) ให้เลขตรงกับ
+    // หน้า Telesale Performance — เดิม SUM(attendance_value) ดิบทำให้คนมาวันเสาร์
+    // ได้ 0.75 วันทั้งที่มาครบกะ แล้ววันทำงานสองหน้าไม่เท่ากัน
     $attData = [];
     if (!empty($userIds)) {
         $in = implode(',', array_fill(0, count($userIds), '?'));
         $attSql = "SELECT
       user_id,
-      SUM(attendance_value) AS working_days
+      work_date,
+      SUM(attendance_value) AS att_value
     FROM user_daily_attendance
     WHERE user_id IN ($in)
       AND work_date < CURDATE()";
@@ -96,12 +101,15 @@ try {
             $attParams[] = $month;
         }
 
-        $attSql .= " GROUP BY user_id";
+        $attSql .= " GROUP BY user_id, work_date";
         $aStmt = $pdo->prepare($attSql);
         $aStmt->execute($attParams);
 
         while ($row = $aStmt->fetch(PDO::FETCH_ASSOC)) {
-            $attData[(int) $row['user_id']] = (float) $row['working_days'];
+            $uid = (int) $row['user_id'];
+            $roleId = (int) ($userMap[$uid]['role_id'] ?? 0);
+            $attData[$uid] = ($attData[$uid] ?? 0)
+                + kpi_working_day_fraction($row['att_value'], $row['work_date'], $roleId);
         }
     }
 

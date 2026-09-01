@@ -5,6 +5,7 @@ ini_set("display_errors", 1);
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../phone_utils.php';
+require_once __DIR__ . '/../attendance_kpi.php';
 
 // CORS headers
 cors();
@@ -52,7 +53,7 @@ try {
     }
 
     // Fetch relevant users with their phones
-    $uStmt = $pdo->prepare("SELECT id, first_name, role, phone FROM users WHERE $userFilter");
+    $uStmt = $pdo->prepare("SELECT id, first_name, role, role_id, phone FROM users WHERE $userFilter");
     $uStmt->execute($userParams);
     $teamUsers = $uStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -116,14 +117,15 @@ try {
         }
     }
 
-    // Step 4: Query attendance data
-    $attData = []; // user_id => { month_key, working_days }
+    // Step 4: Query attendance data — รายวัน แล้วคิด "วันทำงาน" ตามกติกา KPI
+    // (เสาร์-อาทิตย์ของ role 6/7 ฐาน 6 ชม. ดู attendance_kpi.php) ให้ตรงกับหน้าอื่นทุกหน้า
+    $attData = []; // user_id_month => { month_key, working_days }
     if (!empty($userIds)) {
         $uidPlaceholders = implode(',', array_fill(0, count($userIds), '?'));
-        $attSql = "SELECT 
+        $attSql = "SELECT
                 user_id,
-                DATE_FORMAT(work_date, '%Y-%m') AS month_key,
-                SUM(attendance_value) AS working_days
+                work_date,
+                SUM(attendance_value) AS att_value
             FROM user_daily_attendance
             WHERE user_id IN ($uidPlaceholders)
               AND work_date < CURDATE()";
@@ -134,17 +136,23 @@ try {
             $attParams[] = $month;
         }
 
-        $attSql .= " GROUP BY user_id, DATE_FORMAT(work_date, '%Y-%m')";
+        $attSql .= " GROUP BY user_id, work_date";
         $aStmt = $pdo->prepare($attSql);
         $aStmt->execute($attParams);
 
         while ($row = $aStmt->fetch(PDO::FETCH_ASSOC)) {
-            $key = $row['user_id'] . '_' . $row['month_key'];
-            $attData[$key] = [
-                'user_id' => (int)$row['user_id'],
-                'month_key' => $row['month_key'],
-                'working_days' => (float)$row['working_days'],
-            ];
+            $uid = (int)$row['user_id'];
+            $monthKey = substr($row['work_date'], 0, 7);
+            $key = $uid . '_' . $monthKey;
+            $roleId = (int)($userMap[$uid]['role_id'] ?? 0);
+            if (!isset($attData[$key])) {
+                $attData[$key] = [
+                    'user_id' => $uid,
+                    'month_key' => $monthKey,
+                    'working_days' => 0.0,
+                ];
+            }
+            $attData[$key]['working_days'] += kpi_working_day_fraction($row['att_value'], $row['work_date'], $roleId);
         }
     }
 

@@ -38,10 +38,12 @@
  *
  * Params: year, month, date (YYYY-MM-DD -> single-day mode),
  *         roles (csv of telesale|adminpage, default telesale), teams (csv of team keys),
- *         agents (csv of user ids), inactive=1 (include people who have left)
+ *         agents (csv of user ids), inactive=1 (include people who have left),
+ *         all_teams=1 (supervisors only — widen scope from own team to the whole company)
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../attendance_kpi.php';
 
 cors();
 
@@ -125,6 +127,13 @@ try {
     $filterAgents = array_values(array_filter(array_map('intval', $csv('agents')), function ($n) { return $n > 0; }));
     $showInactive = isset($_GET['inactive']) && $_GET['inactive'] === '1';   // people who have left
 
+    // Supervisors see every team on the Telesale Performance screen — a deliberate grant, asked for
+    // so heads can compare their team against the others. It is opt-in per request rather than a
+    // change to $isSupervisor because SalesDashboard reads this same endpoint for personal/team KPI
+    // and must keep showing a supervisor their OWN team only. The flag is honoured for supervisors
+    // alone: a plain telesale sending all_teams=1 still gets just themselves.
+    $seeAllTeams = isset($_GET['all_teams']) && $_GET['all_teams'] === '1' && $isSupervisor;
+
     // ---- Agents in scope --------------------------------------------------
     // Resolved once into a plain id list. Every aggregate below filters on that list, so none of
     // them has to join `users` or re-apply the role LIKE test.
@@ -184,7 +193,7 @@ try {
     };
     if (empty($userMap)) { $emptyPayload(); exit; }
 
-    if ($isAdmin || $isCEO) {
+    if ($isAdmin || $isCEO || $seeAllTeams) {
         $visibleIds = array_keys($userMap);
     } elseif ($isSupervisor) {
         $visibleIds = array_values(array_filter(array_keys($userMap), function ($id) use ($userMap, $currentUserId) {
@@ -409,23 +418,27 @@ try {
     // 6. Attendance. Days worked and minutes talked must cover the same span — capping days at
     //    yesterday while minutes included today inflated นาที/วัน for the whole current month.
     // ========================================================================
+    //    ดึงรายวันเพื่อคิด "วันทำงาน" ตามกติกา KPI (เสาร์-อาทิตย์ role 6/7 ฐาน 6 ชม.
+    //    ดู attendance_kpi.php) ให้ตรงกับแท็บรายวัน (telesale_daily_performance.php)
+    //    เดิม SUM ดิบทำให้คนมาวันเสาร์ได้ 0.75 วันแล้วสรุปเดือนไม่ตรงกับแท็บรายวัน
     if ($isDaily) {
-        $attSql = "SELECT user_id, COALESCE(SUM(attendance_value), 0) AS working_days
-                   FROM user_daily_attendance
-                   WHERE work_date >= ? AND work_date < ? AND user_id IN ($idPh)
-                   GROUP BY user_id";
-        $attParams = array_merge([$specificDate, date('Y-m-d', strtotime($specificDate . ' +1 day'))], $activeIds);
+        $attWindow = [$specificDate, date('Y-m-d', strtotime($specificDate . ' +1 day'))];
     } else {
-        $attSql = "SELECT user_id, COALESCE(SUM(attendance_value), 0) AS working_days
-                   FROM user_daily_attendance
-                   WHERE work_date >= ? AND work_date < ? AND user_id IN ($idPh)
-                   GROUP BY user_id";
-        $attParams = array_merge([$ownMonthStart, date('Y-m-d', strtotime($ownMonthStart . ' +1 month'))], $activeIds);
+        $attWindow = [$ownMonthStart, date('Y-m-d', strtotime($ownMonthStart . ' +1 month'))];
     }
+    $attSql = "SELECT user_id, work_date, COALESCE(SUM(attendance_value), 0) AS att_value
+               FROM user_daily_attendance
+               WHERE work_date >= ? AND work_date < ? AND user_id IN ($idPh)
+               GROUP BY user_id, work_date";
     $stmt = $pdo->prepare($attSql);
-    $stmt->execute($attParams);
+    $stmt->execute(array_merge($attWindow, $activeIds));
     $attendByUser = [];
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) $attendByUser[(int) $row['user_id']] = floatval($row['working_days']);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $uid = (int) $row['user_id'];
+        $roleId = (int) ($userMap[$uid]['role_id'] ?? 0);
+        $attendByUser[$uid] = ($attendByUser[$uid] ?? 0)
+            + kpi_working_day_fraction($row['att_value'], $row['work_date'], $roleId);
+    }
 
     // ========================================================================
     // 7. Returned bills — excluded from sales above, reported on their own so the loss stays visible
