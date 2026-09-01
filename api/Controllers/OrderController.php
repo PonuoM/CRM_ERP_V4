@@ -1524,7 +1524,21 @@ function handle_orders(PDO $pdo, ?string $id): void
             break;
         case 'POST':
             $in = json_input();
-            error_log('Order creation request: ' . json_encode($in));
+            
+            // Remove Base64 image data before logging to prevent Out of Memory
+            $logData = $in;
+            if (isset($logData['slipUrl']) && is_string($logData['slipUrl']) && strpos($logData['slipUrl'], 'data:image') === 0) {
+                $logData['slipUrl'] = '[BASE64_IMAGE_DATA_OMITTED]';
+            }
+            if (isset($logData['slips']) && is_array($logData['slips'])) {
+                foreach ($logData['slips'] as &$slip) {
+                    if (isset($slip['url']) && is_string($slip['url']) && strpos($slip['url'], 'data:image') === 0) {
+                        $slip['url'] = '[BASE64_IMAGE_DATA_OMITTED]';
+                    }
+                }
+            }
+            error_log('Order creation request: ' . json_encode($logData));
+            
             $pdo->beginTransaction();
             try {
                 // Validate creator_id exists in users table and is active
