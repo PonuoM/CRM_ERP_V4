@@ -81,7 +81,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
   // check_exist.php / update_customer_address.php) has validate_auth($pdo) injected by the
   // secure_endpoints.php one-shot script. Files on host carry the auth call; the repo copy
   // does not. apiFetch must therefore send the Bearer token — raw fetch() without it gets 401.
-  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Address_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('DistributionV2/') || path.startsWith('User_DB/') || path.startsWith('cron/') || path.startsWith('Database/') || path.startsWith('Marketplace/') || path.startsWith('Monitor/') || path.startsWith('Quota/') || path.startsWith('Commission/') || path.startsWith('Reports/') || path.startsWith('Customer/') || path.startsWith('Customers/') || path.startsWith('Quotation/') || path.startsWith('Page_DB/') || path.startsWith('Onecall_DB/') || path.startsWith('get_blocked_customers.php') || path.startsWith('customer_addresses.php') || path.startsWith('customer_stats_audit.php') || path.startsWith('SessionTags/') || path.startsWith('change_password.php') || path.startsWith('google_sheet_import.php')) {
+  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Address_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('DistributionV2/') || path.startsWith('User_DB/') || path.startsWith('cron/') || path.startsWith('Database/') || path.startsWith('Marketplace/') || path.startsWith('Monitor/') || path.startsWith('Quota/') || path.startsWith('Commission/') || path.startsWith('Reports/') || path.startsWith('Customer/') || path.startsWith('Customers/') || path.startsWith('Quotation/') || path.startsWith('Page_DB/') || path.startsWith('Onecall_DB/') || path.startsWith('get_blocked_customers.php') || path.startsWith('customer_addresses.php') || path.startsWith('customer_stats_audit.php') || path.startsWith('SessionTags/') || path.startsWith('change_password.php') || path.startsWith('google_sheet_import.php') || path.startsWith('customer/')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -425,6 +425,20 @@ export async function mergeCustomers(payload: {
   }
 
   return await res.json();
+}
+
+export async function bulkDistributeCustomers(payload: {
+  companyId: number;
+  count: number;
+  agentIds: number[];
+  targetStatus: string;
+  ownershipDays: number;
+  filters?: { mode?: string; grade?: string };
+}) {
+  return apiFetch("customer/bulk_distribute.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 // Admin Page users (Active only)
@@ -1084,7 +1098,8 @@ export async function updateOrder(id: string | number, data: any) {
 }
 
 export async function createOrder(payload: any) {
-  return apiFetch("orders", { method: "POST", body: JSON.stringify(payload) });
+  const isFormData = payload instanceof FormData;
+  return apiFetch("orders", { method: "POST", body: isFormData ? payload : JSON.stringify(payload) });
 }
 
 

@@ -620,6 +620,7 @@ export interface SlipUploadPayload {
   transferDate?: string;
   amount?: number;
   mismatchReason?: string;
+  file?: File;
 }
 
 export interface OrderSlip {
