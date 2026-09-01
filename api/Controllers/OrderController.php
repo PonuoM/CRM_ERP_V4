@@ -1523,7 +1523,26 @@ function handle_orders(PDO $pdo, ?string $id): void
             }
             break;
         case 'POST':
-            $in = json_input();
+            // Support both JSON (legacy) and FormData (multipart) for order creation
+            if (isset($_POST['orderData_json'])) {
+                $in = json_decode($_POST['orderData_json'], true);
+                if (!$in) $in = [];
+            } else {
+                $in = json_input();
+            }
+
+            // Handle Multipart file upload for slip
+            if (isset($_FILES['slip_file']) && $_FILES['slip_file']['error'] === UPLOAD_ERR_OK) {
+                $tmpName = $_FILES['slip_file']['tmp_name'];
+                $ext = strtolower(pathinfo($_FILES['slip_file']['name'], PATHINFO_EXTENSION));
+                if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'])) $ext = 'jpg';
+                $dir = __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'slips';
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                $fname = 'slip_upload_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 6) . '.' . $ext;
+                if (move_uploaded_file($tmpName, $dir . DIRECTORY_SEPARATOR . $fname)) {
+                    $in['slipUrl'] = 'api/uploads/slips/' . $fname; 
+                }
+            }
             
             // Remove Base64 image data before logging to prevent Out of Memory
             $logData = $in;

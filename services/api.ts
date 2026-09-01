@@ -1098,7 +1098,8 @@ export async function updateOrder(id: string | number, data: any) {
 }
 
 export async function createOrder(payload: any) {
-  return apiFetch("orders", { method: "POST", body: JSON.stringify(payload) });
+  const isFormData = payload instanceof FormData;
+  return apiFetch("orders", { method: "POST", body: isFormData ? payload : JSON.stringify(payload) });
 }
 
 
