@@ -3209,6 +3209,7 @@ const App: React.FC = () => {
           }
           return {
             dataUrl: entry?.dataUrl,
+            file: entry?.file,
             bankAccountId: entry?.bankAccountId,
             transferDate: entry?.transferDate,
             amount: entry?.amount,
@@ -3475,12 +3476,42 @@ const App: React.FC = () => {
           : {}),
       };
 
-      // If single slip and no multi-slip support in API yet, use slipUrl for the first one
-      if (slipUploadsArray.length === 1) {
-        (orderPayload as any).slipUrl = slipUploadsArray[0].dataUrl;
+      let finalPayload: any = orderPayload;
+      const hasFiles = slipUploadsArray.some(s => s.file);
+
+      if (hasFiles) {
+        finalPayload = new FormData();
+        const jsonPayload = { ...orderPayload };
+        
+        if (slipUploadsArray.length > 0) {
+          (jsonPayload as any).slips = slipUploadsArray.map(s => ({
+            dataUrl: s.dataUrl,
+            bankAccountId: s.bankAccountId,
+            transferDate: s.transferDate,
+            amount: s.amount,
+            mismatchReason: s.mismatchReason
+          }));
+          if (slipUploadsArray.length === 1) {
+            (jsonPayload as any).slipUrl = slipUploadsArray[0].dataUrl;
+          }
+        }
+        
+        finalPayload.append("orderData_json", JSON.stringify(jsonPayload));
+        
+        const firstFile = slipUploadsArray.find(s => s.file)?.file;
+        if (firstFile) {
+          finalPayload.append("slip_file", firstFile);
+        }
+      } else {
+        if (slipUploadsArray.length === 1) {
+          (finalPayload as any).slipUrl = slipUploadsArray[0].dataUrl;
+        }
+        if (slipUploadsArray.length > 0) {
+          (finalPayload as any).slips = slipUploadsArray;
+        }
       }
 
-      const res = await apiCreateOrder(orderPayload);
+      const res = await apiCreateOrder(finalPayload);
 
       if (res && res.ok) {
         // res.duplicate = true แปลว่าเซิร์ฟเวอร์เจอคีย์ซ้ำแล้วส่งบิลเดิมกลับมา ไม่ได้สร้างใบใหม่

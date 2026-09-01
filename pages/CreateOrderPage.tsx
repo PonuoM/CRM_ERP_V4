@@ -102,6 +102,7 @@ interface TransferSlipUpload {
   transferDate?: string;
   amount?: number | null;
   mismatchReason?: string;
+  file?: File;
 }
 
 interface UpsellSlip {
@@ -2190,6 +2191,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             id: Date.now() + Math.floor(Math.random() * 1000),
             name: file.name,
             dataUrl,
+            file: file,
             bankAccountId: defaultBankId ?? undefined,
             transferDate: defaultTransferDate,
             amount: null,
@@ -5263,6 +5265,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           transferDate: slip.transferDate,
           amount: slip.amount,
           mismatchReason: slip.mismatchReason,
+          file: slip.file,
         }));
       }
 
