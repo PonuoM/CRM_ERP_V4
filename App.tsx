@@ -61,7 +61,6 @@ import {
   listCustomerBlocks,
   addCustomerTag,
   removeCustomerTag,
-  listCustomerTags,
   createTag,
   listActivities,
   createActivity,
@@ -304,6 +303,25 @@ import resolveApiBasePath from "./utils/apiBasePath";
 
 const SLIP_ALL_LABEL = String.raw`ทั้งหมด,สลิปทั้งหมด,สลิปทั้งหมด,'สลิปทั้งหมด,>สลิปทั้งหมด,-สลิปทั้งหมด,สลิปทั้งหมด1%สลิปทั้งหมด,O.,สลิปทั้งหมด,สลิปทั้งหมด,\\\\"\\`;
 
+
+/**
+ * แปลง tag ที่ API ลูกค้าแนบมากับแถวลูกค้าอยู่แล้ว ให้เป็น Tag ของหน้าจอ
+ *
+ * เดิมหน้านี้ทิ้ง `r.tags` ที่ติดมากับลูกค้า แล้วไปเรียก listCustomerTags() ซึ่งขอ tag ของ
+ * "ลูกค้าทุกคน" กลับมาทำ map เอง = 116,969 แถว บัฟเฟอร์ 47 MB ต่อคำขอ ทั้งที่หน้าจอโหลด
+ * ลูกค้าจริงแค่ 500 คน และ handle_customers ก็ดึง tag แบบ WHERE customer_id IN (...)
+ * เฉพาะหน้านั้นมาให้อยู่แล้ว โดยกรอง user_tags ด้วยกติกาเดียวกันเป๊ะ ข้อมูลจึงเท่ากัน
+ * แต่ไม่กินแรม — ดูเหตุ 1 ก.ย. 2569 ที่กดบันทึกออเดอร์ครั้งเดียวแล้วแรมทั้งบัญชี host หมด
+ */
+const mapCustomerTags = (raw: any): Tag[] =>
+  Array.isArray(raw)
+    ? raw.map((t: any) => ({
+      id: Number(t.id),
+      name: t.name,
+      type: String(t.type) === "SYSTEM" ? TagType.System : TagType.User,
+      color: t.color ?? undefined,
+    }))
+    : [];
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(
@@ -950,7 +968,6 @@ const App: React.FC = () => {
           plats,
           ch,
           ap,
-          ctags,
           act,
           tags,
           comps,
@@ -982,7 +999,7 @@ const App: React.FC = () => {
           // Appointments are now primarily loaded from customer.next_appointment_* fields
           // This call is just a fallback for customers not yet loaded - reduced pageSize
           listAppointments({ companyId: sessionUser?.company_id, pageSize: 100, excludeStatus: 'เสร็จสิ้น' }),
-          shouldSkipCustomers ? Promise.resolve([]) : listCustomerTags(),
+          // tag ของลูกค้าติดมากับ listCustomers อยู่แล้ว (ดู mapCustomerTags)
           listActivities(undefined, 500),
           listTags({ type: "SYSTEM" }),
           apiFetch("companies"),
@@ -1002,7 +1019,6 @@ const App: React.FC = () => {
             pages: pg,
             callHistory: ch,
             appointments: ap,
-            customerTags: ctags,
             activities: act,
             tags: tags,
             companies: comps,
@@ -1166,23 +1182,6 @@ const App: React.FC = () => {
           isSystem: r.is_system === 1 || r.is_system === true,
         });
 
-        const tagsByCustomer: Record<string, Tag[]> = {};
-        if (Array.isArray(ctags)) {
-          for (const row of ctags as any[]) {
-            const t: Tag = {
-              id: Number(row.id),
-              name: row.name,
-              type:
-                (row.type as "SYSTEM" | "USER") === "SYSTEM"
-                  ? TagType.System
-                  : TagType.User,
-              color: row.color ?? undefined,
-            };
-            const cid = String(row.customer_id);
-            (tagsByCustomer[cid] = tagsByCustomer[cid] || []).push(t);
-          }
-        }
-
         const mapCustomer = (r: any): Customer => {
           const totalPurchases = Number(r.total_purchases || 0);
           const pk = r.customer_id ?? r.id ?? r.pk ?? null;
@@ -1240,7 +1239,7 @@ const App: React.FC = () => {
             behavioralStatus: (r.behavioral_status ??
               "Cold") as CustomerBehavioralStatus,
             grade: calculateCustomerGrade(totalPurchases),
-            tags: tagsByCustomer[resolvedId] || [],
+            tags: mapCustomerTags(r.tags),
             assignmentHistory: [],
             totalPurchases,
             totalCalls: Number(r.total_calls || 0),
@@ -1580,35 +1579,16 @@ const App: React.FC = () => {
 
       const lazyLoad = async () => {
         try {
-          const [ctags, cData] = await Promise.all([
-            listCustomerTags(),
-            listCustomers({
-              companyId: sessionUser.company_id,
-              page: 1,
-              pageSize: 500,
-              assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
-            }),
-          ]);
+          // tag ติดมากับลูกค้าแต่ละคนอยู่แล้ว ไม่ต้องขอ tag ของลูกค้าทั้งระบบมาแยกอีกชุด
+          const cData = await listCustomers({
+            companyId: sessionUser.company_id,
+            page: 1,
+            pageSize: 500,
+            assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
+          });
           const c = cData.data || [];
 
           if (cancelled) return;
-
-          const tagsByCustomer: Record<string, Tag[]> = {};
-          if (Array.isArray(ctags)) {
-            for (const row of ctags as any[]) {
-              const t: Tag = {
-                id: Number(row.id),
-                name: row.name,
-                type:
-                  (row.type as "SYSTEM" | "USER") === "SYSTEM"
-                    ? TagType.System
-                    : TagType.User,
-                color: row.color ?? undefined,
-              };
-              const cid = String(row.customer_id);
-              (tagsByCustomer[cid] = tagsByCustomer[cid] || []).push(t);
-            }
-          }
 
           const mapCustomerLocal = (r: any): Customer => {
             const totalPurchases = Number(r.total_purchases || 0);
@@ -1657,7 +1637,7 @@ const App: React.FC = () => {
               behavioralStatus:
                 (r.behavioral_status ?? "Cold") as CustomerBehavioralStatus,
               grade: calculateCustomerGrade(totalPurchases),
-              tags: (Array.isArray(r.tags) ? r.tags : []) || tagsByCustomer[resolvedId] || [],
+              tags: mapCustomerTags(r.tags),
               assignmentHistory: [],
               totalPurchases,
               orderCount: Number(r.order_count || 0),
@@ -3580,14 +3560,18 @@ const App: React.FC = () => {
         }
 
         // Refresh orders, customers, and activities with proper mapping
-        const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
+        //
+        // ⚠️ นี่คือจุดที่ทำระบบล่ม 1 ก.ย. 2569 — เดิมเรียก listActivities() + listCustomerTags()
+        // แบบไม่จำกัดจำนวนพร้อมกัน = ขอแรมเซิร์ฟเวอร์ ~270 MB จากการกดบันทึกออเดอร์ครั้งเดียว
+        // ออเดอร์บันทึกสำเร็จไปแล้วตอนถึงบรรทัดนี้ แต่คนกดเห็นข้อความ "สร้างออเดอร์ไม่สำเร็จ"
+        // เพราะขั้นรีเฟรชล้ม เสี่ยงกดซ้ำจนได้บิลซ้ำ
+        const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw] = await Promise.all([
           // Orders are now fetched only in TelesaleOrdersPage
           Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
           activePage === 'Customers' ? listCustomers({
             companyId: currentUser.companyId,
           }) : Promise.resolve({ total: 0, data: [] }),
-          listActivities(),
-          listCustomerTags(),
+          listActivities(undefined, 500),
         ]);
 
         // Map orders (filter out sub orders and map)
@@ -3751,20 +3735,6 @@ const App: React.FC = () => {
           return customer?.id || String(customerIdInt);
         };
 
-        // Build tags map for customers
-        const tagsByCustomer: Record<string, Tag[]> = {};
-        if (Array.isArray(refreshedCustomerTagsRaw)) {
-          for (const ct of refreshedCustomerTagsRaw) {
-            const cid = String(ct.customer_id || "");
-            if (!tagsByCustomer[cid]) tagsByCustomer[cid] = [];
-            tagsByCustomer[cid].push({
-              id: ct.id,
-              name: ct.name,
-              type: ct.type as TagType,
-            });
-          }
-        }
-
         // Map customers
         const customersData = (refreshedCustomersRaw as any).data || [];
         const mappedCustomers = Array.isArray(customersData)
@@ -3824,7 +3794,7 @@ const App: React.FC = () => {
               behavioralStatus: (r.behavioral_status ??
                 "Cold") as CustomerBehavioralStatus,
               grade: calculateCustomerGrade(totalPurchases),
-              tags: tagsByCustomer[resolvedId] || [],
+              tags: mapCustomerTags(r.tags),
               assignmentHistory: [],
               totalPurchases,
               totalCalls: Number(r.total_calls || 0),
@@ -3882,14 +3852,14 @@ const App: React.FC = () => {
 
     try {
       // Refresh orders, customers, and activities with proper mapping
-      const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
+      // tag ติดมากับลูกค้าอยู่แล้ว และ activities ต้องมีเพดานเสมอ (ดูเหตุ 1 ก.ย. 2569)
+      const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw] = await Promise.all([
         // Orders are now fetched only in TelesaleOrdersPage
         Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
         activePage === 'Customers' ? listCustomers({
           companyId: currentUser.companyId,
         }) : Promise.resolve({ total: 0, data: [] }),
-        listActivities(),
-        listCustomerTags(),
+        listActivities(undefined, 500),
       ]);
 
       const mappedOrders: Order[] = Array.isArray(refreshedOrdersRaw)
@@ -3939,20 +3909,6 @@ const App: React.FC = () => {
         return customer?.id || String(customerIdInt);
       };
 
-      const tagsByCustomer: Record<string, Tag[]> = {};
-      if (Array.isArray(refreshedCustomerTagsRaw)) {
-        refreshedCustomerTagsRaw.forEach((t) => {
-          if (!tagsByCustomer[t.customer_id]) {
-            tagsByCustomer[t.customer_id] = [];
-          }
-          tagsByCustomer[t.customer_id].push({
-            id: t.id,
-            name: t.name,
-            type: t.type as TagType,
-          });
-        });
-      }
-
       const customersData = (refreshedCustomersRaw as any).data || [];
       const mappedCustomers: Customer[] = Array.isArray(customersData)
         ? customersData.map((r) => {
@@ -3981,7 +3937,7 @@ const App: React.FC = () => {
             behavioralStatus: (r.behavioral_status ??
               "Cold") as CustomerBehavioralStatus,
             grade: calculateCustomerGrade(totalPurchasesVal),
-            tags: tagsByCustomer[resolvedId] || [],
+            tags: mapCustomerTags(r.tags),
             assignmentHistory: [],
             totalPurchases: totalPurchasesVal,
             totalCalls: Number(r.total_calls || 0),
@@ -7230,10 +7186,10 @@ const App: React.FC = () => {
             setPreviousPage(null);
             // Refresh activities and customers to update Do dashboard
             try {
-              const [act, c, ctags] = await Promise.all([
-                listActivities(),
+              // tag ติดมากับลูกค้าอยู่แล้ว และ activities ต้องมีเพดานเสมอ (ดูเหตุ 1 ก.ย. 2569)
+              const [act, c] = await Promise.all([
+                listActivities(undefined, 500),
                 activePage === 'Customers' ? listCustomers({ companyId: sessionUser?.company_id }) : Promise.resolve({ total: 0, data: [] }),
-                listCustomerTags(),
               ]);
               setActivities(
                 Array.isArray(act)
@@ -7247,19 +7203,6 @@ const App: React.FC = () => {
                   }))
                   : [],
               );
-              // Build tags map like in load()
-              const tagsByCustomer: Record<string, Tag[]> = {};
-              if (Array.isArray(ctags)) {
-                for (const ct of ctags) {
-                  const cid = String(ct.customer_id || "");
-                  if (!tagsByCustomer[cid]) tagsByCustomer[cid] = [];
-                  tagsByCustomer[cid].push({
-                    id: ct.id,
-                    name: ct.name,
-                    type: ct.type as TagType,
-                  });
-                }
-              }
               // Use the same mapCustomer logic from load()
               const cArray = (c as any).data || [];
               setCustomers(Array.isArray(cArray) ? cArray.map((r: any) => {
@@ -7318,7 +7261,7 @@ const App: React.FC = () => {
                   behavioralStatus: (r.behavioral_status ??
                     "Cold") as CustomerBehavioralStatus,
                   grade: calculateCustomerGrade(totalPurchasesVal),
-                  tags: tagsByCustomer[resolvedId] || [],
+                  tags: mapCustomerTags(r.tags),
                   assignmentHistory: [],
                   totalPurchases: totalPurchasesVal,
                   totalCalls: Number(r.total_calls || 0),
