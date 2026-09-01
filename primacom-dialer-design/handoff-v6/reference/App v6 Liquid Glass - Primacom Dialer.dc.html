@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0A0912; }
+  a { color:#3DDC84; text-decoration:none; }
+  a:hover { color:#8BEDB6; }
+</style>
+</helmet>
+
+<div style="min-height:100%;background:#0A0912;padding:52px 56px 90px;box-sizing:border-box;font-family:Anuphan,sans-serif;font-variant-numeric:tabular-nums">
+
+  <div style="max-width:860px;margin-bottom:22px">
+    <div style="font-size:12px;font-weight:600;letter-spacing:0.16em;color:#3DDC84">APP v6 · LIQUID GLASS</div>
+    <div style="font-size:40px;font-weight:600;letter-spacing:-0.02em;color:#FFFFFF;line-height:1.1;padding-top:12px">ใช้ได้ครับ — แต่ต้องมีกติกา</div>
+    <div style="font-size:15px;line-height:1.75;color:rgba(235,235,245,0.6);padding-top:14px;text-wrap:pretty">Liquid Glass ทำงานได้เพราะมี<strong style="color:#C9C4E8;font-weight:500">อะไรอยู่ข้างหลังให้หักเห</strong> ถ้าพื้นดำสนิทกระจกจะกลายเป็นสี่เหลี่ยมเทาทึบ ๆ เฉย ๆ ผมเลยวางชั้นแสงสีนุ่ม ๆ (aurora) ไว้เป็นพื้นทุกหน้า แล้วให้แผงกระจกลอยทับ — มีขอบบนสะท้อนแสงบาง ๆ เงาด้านใน และเบลอฉากหลัง</div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:14px;max-width:920px;margin-bottom:48px">
+    <div style="flex:1;min-width:250px;background:rgba(255,255,255,0.05);backdrop-filter:blur(20px);border-radius:18px;padding:16px 18px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.16),0 6px 22px rgba(0,0,0,0.3)">
+      <div style="font-size:13px;font-weight:600;color:#3DDC84">กติกา 1 · ตัวเลขห้ามอยู่บนกระจก</div>
+      <div style="font-size:13.5px;color:rgba(235,235,245,0.6);line-height:1.6;padding-top:6px">เครื่องวางบนโต๊ะ เหลือบมองจากมุมเฉียง กระจกทำคอนทราสต์ตก ตัวเลขสรุปกับชื่อลูกค้าจึงอยู่บนพื้นทึบเสมอ</div>
+    </div>
+    <div style="flex:1;min-width:250px;background:rgba(255,255,255,0.05);backdrop-filter:blur(20px);border-radius:18px;padding:16px 18px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.16),0 6px 22px rgba(0,0,0,0.3)">
+      <div style="font-size:13px;font-weight:600;color:#3DDC84">กติกา 2 · ปุ่มสำคัญเป็นสีทึบ</div>
+      <div style="font-size:13.5px;color:rgba(235,235,245,0.6);line-height:1.6;padding-top:6px">รับสาย/วางสาย/บันทึก เป็นสีเต็ม ไม่ใช่กระจก — กระจกใช้กับเปลือก (แถบล่าง แถบหัว แผงข้อมูลรอง) เท่านั้น</div>
+    </div>
+    <div style="flex:1;min-width:250px;background:rgba(255,255,255,0.05);backdrop-filter:blur(20px);border-radius:18px;padding:16px 18px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.16),0 6px 22px rgba(0,0,0,0.3)">
+      <div style="font-size:13px;font-weight:600;color:#3DDC84">กติกา 3 · แสงพื้นบอกสถานะ</div>
+      <div style="font-size:13.5px;color:rgba(235,235,245,0.6);line-height:1.6;padding-top:6px">สี aurora เปลี่ยนตามสถานะ — เขียวคือพร้อมรับงาน/สนทนา ส้มคือสายเข้า/ต้องทำ แดงคือขาดการเชื่อมต่อ</div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:56px 40px">
+
+    <!-- 01 HOME -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-size:13px;font-weight:500;color:rgba(235,235,245,0.45)">01 · หน้าหลัก — พร้อมรับงาน</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#0B0A14" hint-size="412px,892px">
+        <div style="position:relative;height:100%;box-sizing:border-box;background:#0B0A14;overflow:hidden;font-family:Anuphan,sans-serif;font-variant-numeric:tabular-nums">
+          <div style="position:absolute;inset:0;background:radial-gradient(78% 46% at 12% 2%,rgba(61,220,132,0.36) 0%,rgba(61,220,132,0) 62%),radial-gradient(70% 44% at 96% 14%,rgba(110,86,240,0.42) 0%,rgba(110,86,240,0) 66%),radial-gradient(90% 50% at 50% 104%,rgba(40,120,190,0.3) 0%,rgba(40,120,190,0) 70%)"></div>
+
+          <div style="position:relative;height:100%;display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;padding:15px 20px 0">
+              <div style="flex:1;font-size:13px;color:rgba(235,235,245,0.5)">PHONE-07 · 92%</div>
+              <div style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.1);backdrop-filter:blur(18px) saturate(170%);box-shadow:inset 0 1px 0 rgba(255,255,255,0.3),inset 0 -1px 0 rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.85)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5,14h-0.79l-0.28,-0.27a6.5,6.5 0 1,0 -0.7,0.7l0.27,0.28v0.79l5,4.99L21,19.5zM9.5,14a4.5,4.5 0 1,1 0,-9 4.5,4.5 0 0,1 0,9z"/></svg>
+              </div>
+            </div>
+
+            <div style="padding:20px 20px 0">
+              <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,0.12);backdrop-filter:blur(20px) saturate(180%);border-radius:999px;padding:7px 14px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.34),inset 0 -1px 0 rgba(255,255,255,0.06),0 4px 14px rgba(0,0,0,0.22)">
+                <span style="width:8px;height:8px;border-radius:50%;background:#3DDC84;box-shadow:0 0 10px rgba(61,220,132,0.9);display:block"></span>
+                <span style="font-size:13.5px;font-weight:500;color:#FFFFFF">พร้อมรับงาน · แอปโทรศัพท์หลัก</span>
+              </div>
+              <div style="font-size:36px;font-weight:600;letter-spacing:-0.025em;color:#FFFFFF;padding-top:16px;line-height:1.12;text-shadow:0 2px 20px rgba(0,0,0,0.3)">สวัสดีตอนบ่าย<br>สมชาย</div>
+            </div>
+
+            <div style="margin:24px 16px 0;background:rgba(12,10,22,0.55);backdrop-filter:blur(28px) saturate(180%);border-radius:26px;padding:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.22),inset 0 -1px 0 rgba(255,255,255,0.05),0 14px 40px rgba(0,0,0,0.45)">
+              <div style="display:flex;align-items:flex-end">
+                <div style="font-size:56px;font-weight:600;letter-spacing:-0.035em;color:#FFFFFF;line-height:0.88">42</div>
+                <div style="flex:1;padding:0 0 7px 13px;font-size:15px;color:rgba(235,235,245,0.65)">สายวันนี้</div>
+                <div style="font-size:12.5px;color:rgba(235,235,245,0.4);padding-bottom:9px">15:42</div>
+              </div>
+              <div style="display:flex;height:7px;border-radius:4px;overflow:hidden;margin-top:18px;background:rgba(255,255,255,0.12)">
+                <div style="width:67%;background:linear-gradient(90deg,#2FB86E,#3DDC84)"></div>
+                <div style="width:33%;background:linear-gradient(90deg,#D9453C,#FF6A5E)"></div>
+              </div>
+              <div style="display:flex;gap:18px;padding-top:13px">
+                <div style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#3DDC84;display:block"></span><span style="font-size:13.5px;color:rgba(235,235,245,0.75)">ได้คุย 28</span></div>
+                <div style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#FF6A5E;display:block"></span><span style="font-size:13.5px;color:rgba(235,235,245,0.75)">ไม่รับ 14</span></div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin:17px 0"></div>
+              <div style="display:flex">
+                <div style="flex:1"><div style="font-size:20px;font-weight:500;color:#FFFFFF">1:12:08</div><div style="font-size:12px;color:rgba(235,235,245,0.4);padding-top:3px">เวลาคุยรวม</div></div>
+                <div style="flex:1"><div style="font-size:20px;font-weight:500;color:#3DDC84">6</div><div style="font-size:12px;color:rgba(235,235,245,0.4);padding-top:3px">ขายได้</div></div>
+                <div style="flex:1"><div style="font-size:20px;font-weight:500;color:#FFFFFF">2:34</div><div style="font-size:12px;color:rgba(235,235,245,0.4);padding-top:3px">เฉลี่ยต่อสาย</div></div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:baseline;padding:24px 20px 9px">
+              <div style="flex:1;font-size:19px;font-weight:600;letter-spacing:-0.01em;color:#FFFFFF">นัดหมายวันนี้</div>
+              <div style="font-size:15px;color:#3DDC84">ทั้งหมด</div>
+            </div>
+
+            <div style="margin:0 16px;background:rgba(255,255,255,0.08);backdrop-filter:blur(24px) saturate(180%);border-radius:22px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.24),inset 0 -1px 0 rgba(255,255,255,0.05),0 10px 30px rgba(0,0,0,0.32)">
+              <div style="display:flex;align-items:center;padding:13px 16px">
+                <div style="width:48px;flex:none;font-size:16px;font-weight:600;color:#FFB340">15:00</div>
+                <div style="flex:1;min-width:0;padding-left:10px">
+                  <div style="font-size:16px;color:#FFFFFF">วิภา สุขสันต์</div>
+                  <div style="font-size:13px;color:rgba(235,235,245,0.6);padding-top:2px">ใบเสนอราคาปุ๋ยสูตรใหม่</div>
+                </div>
+                <div style="width:36px;height:36px;border-radius:50%;background:#3DDC84;display:flex;align-items:center;justify-content:center;color:#04170D;flex:none;box-shadow:0 4px 14px rgba(61,220,132,0.4)">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z"/></svg>
+                </div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin-left:16px"></div>
+              <div style="display:flex;align-items:center;padding:13px 16px">
+                <div style="width:48px;flex:none;font-size:16px;font-weight:500;color:rgba(235,235,245,0.6)">16:30</div>
+                <div style="flex:1;min-width:0;padding-left:10px">
+                  <div style="font-size:16px;color:#FFFFFF">อารีย์ พงษ์ไทย</div>
+                  <div style="font-size:13px;color:rgba(235,235,245,0.6);padding-top:2px">ติดตามผลการใช้ปุ๋ย</div>
+                </div>
+                <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.14);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.8);flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,0.3)">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z"/></svg>
+                </div>
+              </div>
+            </div>
+
+            <div style="flex:1;min-height:14px"></div>
+
+            <div style="margin:0 14px 14px;display:flex;background:rgba(255,255,255,0.1);backdrop-filter:blur(30px) saturate(190%);border-radius:26px;padding:8px 6px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.3),inset 0 -1px 0 rgba(255,255,255,0.06),0 12px 34px rgba(0,0,0,0.42)">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;background:rgba(255,255,255,0.14);border-radius:20px;color:#FFFFFF;box-shadow:inset 0 1px 0 rgba(255,255,255,0.26)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z"/></svg>
+                <div style="font-size:10.5px;font-weight:500">หน้าหลัก</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:rgba(235,235,245,0.55)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13,3a9,9 0 1,0 -8.94,10H6.1A7,7 0 1,1 13,19a6.96,6.96 0 0,1 -4.95,-2.05L6.64,18.36A9,9 0 0,0 13,21a9,9 0 0,0 0,-18zM12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08V8z"/></svg>
+                <div style="font-size:10.5px">ประวัติ</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:rgba(235,235,245,0.55)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16,11c1.66,0 2.99,-1.34 2.99,-3S17.66,5 16,5c-1.66,0 -3,1.34 -3,3s1.34,3 3,3zM8,11c1.66,0 2.99,-1.34 2.99,-3S9.66,5 8,5C6.34,5 5,6.34 5,8s1.34,3 3,3zM8,13c-2.33,0 -7,1.17 -7,3.5V19h14v-2.5C15,14.17 10.33,13 8,13zM16,13c-0.29,0 -0.62,0.02 -0.97,0.05 1.16,0.84 1.97,1.97 1.97,3.45V19h6v-2.5C23,14.17 18.33,13 16,13z"/></svg>
+                <div style="font-size:10.5px">ทีม</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:rgba(235,235,245,0.55)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12,12a4,4 0 1,0 0,-8 4,4 0 0,0 0,8zM12,14c-4.42,0 -8,1.79 -8,4v2h16v-2c0,-2.21 -3.58,-4 -8,-4z"/></svg>
+                <div style="font-size:10.5px">ฉัน</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- 02 INCOMING -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-size:13px;font-weight:500;color:rgba(235,235,245,0.45)">02 · สายเข้า — พื้นเปลี่ยนเป็นส้ม</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#100A08" hint-size="412px,892px">
+        <div style="position:relative;height:100%;box-sizing:border-box;background:#100A08;overflow:hidden;font-family:Anuphan,sans-serif;font-variant-numeric:tabular-nums">
+          <div style="position:absolute;inset:0;background:radial-gradient(84% 48% at 50% -4%,rgba(255,159,10,0.52) 0%,rgba(255,159,10,0) 64%),radial-gradient(70% 40% at 8% 34%,rgba(217,69,60,0.32) 0%,rgba(217,69,60,0) 66%),radial-gradient(80% 46% at 92% 96%,rgba(110,86,240,0.28) 0%,rgba(110,86,240,0) 70%)"></div>
+
+          <div style="position:relative;height:100%;display:flex;flex-direction:column;align-items:center;padding:0 20px 26px;box-sizing:border-box">
+            <div style="padding-top:68px;font-size:15px;font-weight:500;color:#FFD79B">สายเข้า</div>
+            <div style="font-size:40px;font-weight:600;letter-spacing:-0.025em;color:#FFFFFF;padding-top:10px;text-align:center;text-shadow:0 2px 24px rgba(0,0,0,0.35)">วิภา สุขสันต์</div>
+            <div style="font-size:15px;color:rgba(255,255,255,0.7);padding-top:8px">#8871 · มังคุด 8 ไร่ · จันทบุรี</div>
+
+            <div style="width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,0.14);backdrop-filter:blur(24px) saturate(180%);color:#FFFFFF;font-size:44px;font-weight:500;display:flex;align-items:center;justify-content:center;margin-top:32px;box-shadow:inset 0 2px 0 rgba(255,255,255,0.42),inset 0 -2px 0 rgba(255,255,255,0.08),0 16px 42px rgba(0,0,0,0.4)">ว</div>
+
+            <div style="width:100%;background:rgba(255,255,255,0.09);backdrop-filter:blur(26px) saturate(180%);border-radius:22px;padding:16px 18px;margin-top:30px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.05),0 10px 30px rgba(0,0,0,0.34);box-sizing:border-box">
+              <div style="font-size:13.5px;font-weight:500;color:#FFD79B">นัดไว้ 15:00 วันนี้</div>
+              <div style="font-size:15px;color:rgba(255,255,255,0.9);padding-top:7px;line-height:1.6">คุยครั้งก่อน: ขอใบเสนอราคาปุ๋ยสูตรใหม่ บอกให้โทรกลับหลังบ่ายสาม</div>
+            </div>
+
+            <div style="flex:1;min-height:20px"></div>
+
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;width:100%;padding:0 4px;box-sizing:border-box">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:11px">
+                <div style="width:74px;height:74px;border-radius:50%;background:#FF453A;display:flex;align-items:center;justify-content:center;color:#FFFFFF;box-shadow:inset 0 1px 0 rgba(255,255,255,0.34),0 14px 34px rgba(255,69,58,0.42)">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12,9c-1.6,0 -3.15,0.25 -4.6,0.72v3.1c0,0.39 -0.23,0.74 -0.56,0.9 -0.98,0.49 -1.87,1.12 -2.66,1.85 -0.18,0.18 -0.43,0.28 -0.7,0.28 -0.28,0 -0.53,-0.11 -0.71,-0.29L0.29,13.08c-0.18,-0.17 -0.29,-0.42 -0.29,-0.7 0,-0.28 0.11,-0.53 0.29,-0.71C3.34,8.78 7.46,7 12,7s8.66,1.78 11.71,4.67c0.18,0.18 0.29,0.43 0.29,0.71 0,0.28 -0.11,0.53 -0.29,0.71l-2.48,2.48c-0.18,0.18 -0.43,0.29 -0.71,0.29 -0.27,0 -0.52,-0.11 -0.7,-0.28 -0.79,-0.74 -1.69,-1.36 -2.67,-1.85 -0.33,-0.16 -0.56,-0.5 -0.56,-0.9v-3.1C15.15,9.25 13.6,9 12,9z"/></svg>
+                </div>
+                <div style="font-size:13px;color:rgba(255,255,255,0.75)">ปฏิเสธ</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:11px">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.13);backdrop-filter:blur(22px) saturate(180%);display:flex;align-items:center;justify-content:center;color:#FFFFFF;margin-top:3px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.34),inset 0 -1px 0 rgba(255,255,255,0.06),0 10px 26px rgba(0,0,0,0.32)">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12,14c1.66,0 2.99,-1.34 2.99,-3L15,5c0,-1.66 -1.34,-3 -3,-3S9,3.34 9,5v6c0,1.66 1.34,3 3,3zM17.3,11c0,3 -2.54,5.1 -5.3,5.1S6.7,14 6.7,11L5,11c0,3.41 2.72,6.23 6,6.72V21h2v-3.28c3.28,-0.48 6,-3.3 6,-6.72h-1.7z"/></svg>
+                </div>
+                <div style="font-size:13px;color:rgba(255,255,255,0.75)">ปิดเสียง</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:11px">
+                <div style="width:74px;height:74px;border-radius:50%;background:#3DDC84;display:flex;align-items:center;justify-content:center;color:#04170D;box-shadow:inset 0 1px 0 rgba(255,255,255,0.4),0 14px 34px rgba(61,220,132,0.42)">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z"/></svg>
+                </div>
+                <div style="font-size:13px;color:rgba(255,255,255,0.75)">รับสาย</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- 03 ACTIVE -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-size:13px;font-weight:500;color:rgba(235,235,245,0.45)">03 · กำลังสนทนา — แผงข้อมูลกระจกเลื่อนขึ้น</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#08100C" hint-size="412px,892px">
+        <div style="position:relative;height:100%;box-sizing:border-box;background:#08100C;overflow:hidden;font-family:Anuphan,sans-serif;font-variant-numeric:tabular-nums">
+          <div style="position:absolute;inset:0;background:radial-gradient(80% 44% at 50% -2%,rgba(61,220,132,0.44) 0%,rgba(61,220,132,0) 62%),radial-gradient(66% 38% at 96% 40%,rgba(40,150,200,0.3) 0%,rgba(40,150,200,0) 68%),radial-gradient(80% 44% at 4% 92%,rgba(110,86,240,0.26) 0%,rgba(110,86,240,0) 70%)"></div>
+
+          <div style="position:relative;height:100%;display:flex;flex-direction:column">
+            <div style="text-align:center;padding:36px 24px 0">
+              <div style="font-size:14.5px;font-weight:500;color:#8BEDB6">กำลังสนทนา</div>
+              <div style="font-size:34px;font-weight:600;letter-spacing:-0.025em;color:#FFFFFF;padding-top:8px;text-shadow:0 2px 20px rgba(0,0,0,0.3)">สมชาย ใจดี</div>
+              <div style="font-size:46px;font-weight:300;letter-spacing:-0.02em;color:rgba(255,255,255,0.92);padding-top:8px;line-height:1.1">03:12</div>
+              <div style="font-size:13.5px;color:rgba(255,255,255,0.55);padding-top:6px">#10482 · เกรด A · ถังทอง</div>
+            </div>
+
+            <div style="display:flex;justify-content:center;gap:20px;padding:28px 24px 0">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:9px">
+                <div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,0.13);backdrop-filter:blur(22px) saturate(180%);display:flex;align-items:center;justify-content:center;color:#FFFFFF;box-shadow:inset 0 1px 0 rgba(255,255,255,0.32),inset 0 -1px 0 rgba(255,255,255,0.06),0 8px 24px rgba(0,0,0,0.3)">
+                  <svg width="27" height="27" viewBox="0 0 24 24" fill="currentColor"><path d="M12,14c1.66,0 2.99,-1.34 2.99,-3L15,5c0,-1.66 -1.34,-3 -3,-3S9,3.34 9,5v6c0,1.66 1.34,3 3,3zM17.3,11c0,3 -2.54,5.1 -5.3,5.1S6.7,14 6.7,11L5,11c0,3.41 2.72,6.23 6,6.72V21h2v-3.28c3.28,-0.48 6,-3.3 6,-6.72h-1.7z"/></svg>
+                </div>
+                <div style="font-size:12.5px;color:rgba(255,255,255,0.68)">ปิดไมค์</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:9px">
+                <div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,0.13);backdrop-filter:blur(22px) saturate(180%);display:flex;align-items:center;justify-content:center;color:#FFFFFF;box-shadow:inset 0 1px 0 rgba(255,255,255,0.32),inset 0 -1px 0 rgba(255,255,255,0.06),0 8px 24px rgba(0,0,0,0.3)">
+                  <svg width="25" height="25" viewBox="0 0 24 24" fill="currentColor"><path d="M3,17.25V21h3.75L17.81,9.94l-3.75,-3.75L3,17.25zM20.71,7.04c0.39,-0.39 0.39,-1.02 0,-1.41l-2.34,-2.34c-0.39,-0.39 -1.02,-0.39 -1.41,0l-1.83,1.83 3.75,3.75 1.83,-1.83z"/></svg>
+                </div>
+                <div style="font-size:12.5px;color:rgba(255,255,255,0.68)">โน้ต</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:9px">
+                <div style="width:66px;height:66px;border-radius:50%;background:#FF453A;display:flex;align-items:center;justify-content:center;color:#FFFFFF;box-shadow:inset 0 1px 0 rgba(255,255,255,0.32),0 12px 30px rgba(255,69,58,0.42)">
+                  <svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor"><path d="M12,9c-1.6,0 -3.15,0.25 -4.6,0.72v3.1c0,0.39 -0.23,0.74 -0.56,0.9 -0.98,0.49 -1.87,1.12 -2.66,1.85 -0.18,0.18 -0.43,0.28 -0.7,0.28 -0.28,0 -0.53,-0.11 -0.71,-0.29L0.29,13.08c-0.18,-0.17 -0.29,-0.42 -0.29,-0.7 0,-0.28 0.11,-0.53 0.29,-0.71C3.34,8.78 7.46,7 12,7s8.66,1.78 11.71,4.67c0.18,0.18 0.29,0.43 0.29,0.71 0,0.28 -0.11,0.53 -0.29,0.71l-2.48,2.48c-0.18,0.18 -0.43,0.29 -0.71,0.29 -0.27,0 -0.52,-0.11 -0.7,-0.28 -0.79,-0.74 -1.69,-1.36 -2.67,-1.85 -0.33,-0.16 -0.56,-0.5 -0.56,-0.9v-3.1C15.15,9.25 13.6,9 12,9z"/></svg>
+                </div>
+                <div style="font-size:12.5px;color:rgba(255,255,255,0.68)">วางสาย</div>
+              </div>
+            </div>
+
+            <div style="flex:1;min-height:22px"></div>
+
+            <div style="background:rgba(255,255,255,0.09);backdrop-filter:blur(32px) saturate(190%);border-radius:30px 30px 0 0;padding:10px 0 18px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.3),0 -12px 40px rgba(0,0,0,0.4)">
+              <div style="display:flex;justify-content:center;padding-bottom:13px"><div style="width:38px;height:5px;border-radius:3px;background:rgba(255,255,255,0.3)"></div></div>
+              <div style="margin:0 16px;background:rgba(0,0,0,0.22);border-radius:12px;padding:3px;display:flex">
+                <div style="flex:1;background:rgba(255,255,255,0.2);border-radius:9px;padding:7px;text-align:center;font-size:13px;font-weight:500;color:#FFFFFF;box-shadow:inset 0 1px 0 rgba(255,255,255,0.3)">ข้อมูล</div>
+                <div style="flex:1;padding:7px;text-align:center;font-size:13px;color:rgba(255,255,255,0.6)">ประวัติ 42</div>
+                <div style="flex:1;padding:7px;text-align:center;font-size:13px;color:rgba(255,255,255,0.6)">สวน 2</div>
+                <div style="flex:1;padding:7px;text-align:center;font-size:13px;color:rgba(255,255,255,0.6)">ออเดอร์</div>
+              </div>
+              <div style="margin:14px 16px 0;background:rgba(0,0,0,0.28);border-radius:18px;overflow:hidden">
+                <div style="display:flex;align-items:center;padding:12px 16px"><div style="flex:1;font-size:15px;color:rgba(255,255,255,0.6)">เบอร์โทร</div><div style="font-size:14px;color:rgba(255,255,255,0.4)">ซ่อนไว้</div></div>
+                <div style="height:1px;background:rgba(255,255,255,0.09);margin-left:16px"></div>
+                <div style="display:flex;align-items:center;padding:12px 16px"><div style="flex:1;font-size:15px;color:rgba(255,255,255,0.6)">ยอดซื้อรวม</div><div style="font-size:16px;font-weight:500;color:#3DDC84">฿1,284,500</div></div>
+                <div style="height:1px;background:rgba(255,255,255,0.09);margin-left:16px"></div>
+                <div style="display:flex;align-items:center;padding:12px 16px"><div style="flex:1;font-size:15px;color:rgba(255,255,255,0.6)">ซื้อล่าสุด</div><div style="font-size:15px;color:#FFFFFF">19 ส.ค. · ฿24,800</div></div>
+              </div>
+              <div style="font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.45);padding:15px 20px 7px">โน้ตครั้งก่อน</div>
+              <div style="margin:0 16px;background:rgba(0,0,0,0.28);border-radius:18px;padding:14px 16px;font-size:15px;color:rgba(255,255,255,0.88);line-height:1.6">ขายได้ 2 กระสอบ · ลูกค้าถามโปรฯ เดือนหน้า ให้โทรกลับต้นเดือน</div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- 04 DISPOSITION -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-size:13px;font-weight:500;color:rgba(235,235,245,0.45)">04 · บันทึกการโทร — แผ่นกระจกทับจอเดิม</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#0B0A14" hint-size="412px,892px">
+        <div style="position:relative;height:100%;box-sizing:border-box;background:#0B0A14;overflow:hidden;font-family:Anuphan,sans-serif;font-variant-numeric:tabular-nums">
+          <div style="position:absolute;inset:0;background:radial-gradient(78% 44% at 14% 0%,rgba(61,220,132,0.4) 0%,rgba(61,220,132,0) 62%),radial-gradient(70% 42% at 94% 18%,rgba(110,86,240,0.45) 0%,rgba(110,86,240,0) 66%)"></div>
+          <div style="position:relative;padding:24px 20px 0">
+            <div style="font-size:36px;font-weight:600;color:rgba(255,255,255,0.9)">สวัสดีตอนบ่าย</div>
+            <div style="margin-top:20px;background:rgba(255,255,255,0.1);border-radius:26px;height:130px"></div>
+          </div>
+
+          <div style="position:absolute;left:0;right:0;bottom:0;height:800px;background:rgba(20,17,32,0.72);backdrop-filter:blur(38px) saturate(190%);border-radius:30px 30px 0 0;display:flex;flex-direction:column;box-shadow:inset 0 1px 0 rgba(255,255,255,0.3),0 -16px 50px rgba(0,0,0,0.5)">
+            <div style="display:flex;justify-content:center;padding:10px 0 0"><div style="width:38px;height:5px;border-radius:3px;background:rgba(255,255,255,0.28)"></div></div>
+            <div style="display:flex;align-items:center;padding:13px 20px 14px">
+              <div style="font-size:16px;color:rgba(255,255,255,0.6)">ทีหลัง</div>
+              <div style="flex:1;text-align:center;font-size:17px;font-weight:600;color:#FFFFFF">บันทึกการโทร</div>
+              <div style="font-size:16px;font-weight:500;color:#3DDC84">03:12</div>
+            </div>
+
+            <div style="flex:1;overflow:hidden;padding:0 18px">
+              <div style="background:rgba(255,255,255,0.09);border-radius:20px;padding:14px 16px;display:flex;align-items:center;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)">
+                <div style="width:44px;height:44px;border-radius:50%;background:rgba(61,220,132,0.22);color:#8BEDB6;font-size:19px;font-weight:500;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)">ส</div>
+                <div style="flex:1;min-width:0;padding-left:13px">
+                  <div style="font-size:18px;font-weight:600;color:#FFFFFF">สมชาย ใจดี</div>
+                  <div style="font-size:13px;color:rgba(255,255,255,0.6);padding-top:2px">#10482 · สายออก · 14:22</div>
+                </div>
+              </div>
+              <div style="font-size:12.5px;color:rgba(255,255,255,0.42);padding:9px 4px 0;line-height:1.5">กรอกในคอมก็ได้ — พอบันทึกฝั่งใดฝั่งหนึ่ง หน้านี้จะปิดเอง</div>
+
+              <div style="font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.45);padding:14px 4px 6px">ผลการโทร</div>
+              <div style="background:rgba(255,255,255,0.07);border-radius:20px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.16)">
+                <div style="display:flex;align-items:center;padding:13px 16px;background:rgba(61,220,132,0.18)">
+                  <div style="flex:1;font-size:16.5px;font-weight:500;color:#FFFFFF">ขายได้</div>
+                  <div style="color:#3DDC84;display:flex"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M9,16.17L4.83,12l-1.42,1.41L9,19 21,7l-1.41,-1.41z"/></svg></div>
+                </div>
+                <div style="height:1px;background:rgba(255,255,255,0.09);margin-left:16px"></div>
+                <div style="padding:13px 16px;font-size:16.5px;color:rgba(255,255,255,0.88)">สินค้ายังไม่หมด</div>
+                <div style="height:1px;background:rgba(255,255,255,0.09);margin-left:16px"></div>
+                <div style="padding:13px 16px;font-size:16.5px;color:rgba(255,255,255,0.88)">ยังไม่ถึงรอบ</div>
+                <div style="height:1px;background:rgba(255,255,255,0.09);margin-left:16px"></div>
+                <div style="padding:13px 16px;font-size:16.5px;color:rgba(255,255,255,0.88)">ไม่สนใจ</div>
+                <div style="height:1px;background:rgba(255,255,255,0.09);margin-left:16px"></div>
+                <div style="display:flex;align-items:center;padding:13px 16px"><div style="flex:1;font-size:16px;color:#3DDC84">ดูทั้งหมด 11 ข้อ</div><div style="color:rgba(255,255,255,0.35);display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10,6L8.59,7.41 13.17,12l-4.58,4.59L10,18l6,-6z"/></svg></div></div>
+              </div>
+
+              <div style="font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.45);padding:14px 4px 6px">รายละเอียด</div>
+              <div style="background:rgba(255,255,255,0.07);border-radius:20px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.16)">
+                <div style="display:flex;align-items:center;padding:13px 16px"><div style="flex:1;font-size:16px;color:#FFFFFF">นัดครั้งถัดไป</div><div style="font-size:15px;color:rgba(255,255,255,0.55)">ไม่นัด</div><div style="color:rgba(255,255,255,0.35);display:flex;padding-left:5px"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10,6L8.59,7.41 13.17,12l-4.58,4.59L10,18l6,-6z"/></svg></div></div>
+                <div style="height:1px;background:rgba(255,255,255,0.09);margin-left:16px"></div>
+                <div style="display:flex;align-items:center;padding:13px 16px"><div style="flex:1;font-size:16px;color:#FFFFFF">สวน</div><div style="font-size:15px;color:#3DDC84">ทุเรียน 12 ไร่</div><div style="color:rgba(255,255,255,0.35);display:flex;padding-left:5px"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10,6L8.59,7.41 13.17,12l-4.58,4.59L10,18l6,-6z"/></svg></div></div>
+                <div style="height:1px;background:rgba(255,255,255,0.09);margin-left:16px"></div>
+                <div style="padding:13px 16px;font-size:16px;color:rgba(255,255,255,0.38)">พิมพ์โน้ตสั้น ๆ…</div>
+              </div>
+
+              <div style="font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.45);padding:14px 4px 6px">Tag ลูกค้า</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <div style="display:flex;align-items:center;gap:7px;background:rgba(61,220,132,0.2);border-radius:12px;padding:8px 13px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)"><span style="width:7px;height:7px;border-radius:50%;background:#3DDC84;display:block"></span><span style="font-size:14px;color:#8BEDB6">ลูกค้าเกรด A</span></div>
+                <div style="display:flex;align-items:center;gap:7px;background:rgba(255,159,10,0.2);border-radius:12px;padding:8px 13px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)"><span style="width:7px;height:7px;border-radius:50%;background:#FF9F0A;display:block"></span><span style="font-size:14px;color:#FFD79B">สนใจโปรโมชั่น</span></div>
+                <div style="background:rgba(255,255,255,0.1);border-radius:12px;padding:8px 13px;font-size:14px;color:rgba(255,255,255,0.6);box-shadow:inset 0 1px 0 rgba(255,255,255,0.18)">+ Tag</div>
+              </div>
+            </div>
+
+            <div style="padding:14px 18px 20px">
+              <div style="background:#3DDC84;border-radius:17px;padding:17px;text-align:center;font-size:17px;font-weight:600;color:#04170D;box-shadow:inset 0 1px 0 rgba(255,255,255,0.4),0 10px 28px rgba(61,220,132,0.34)">บันทึก</div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- 05 HISTORY -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-size:13px;font-weight:500;color:rgba(235,235,245,0.45)">05 · ประวัติการโทร</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#0B0A14" hint-size="412px,892px">
+        <div style="position:relative;height:100%;box-sizing:border-box;background:#0B0A14;overflow:hidden;font-family:Anuphan,sans-serif;font-variant-numeric:tabular-nums">
+          <div style="position:absolute;inset:0;background:radial-gradient(76% 40% at 88% 0%,rgba(110,86,240,0.42) 0%,rgba(110,86,240,0) 64%),radial-gradient(70% 38% at 6% 22%,rgba(61,220,132,0.24) 0%,rgba(61,220,132,0) 68%),radial-gradient(80% 44% at 50% 102%,rgba(40,120,190,0.26) 0%,rgba(40,120,190,0) 70%)"></div>
+
+          <div style="position:relative;height:100%;display:flex;flex-direction:column">
+            <div style="padding:20px 20px 0;font-size:34px;font-weight:600;letter-spacing:-0.025em;color:#FFFFFF;text-shadow:0 2px 18px rgba(0,0,0,0.3)">ประวัติ</div>
+
+            <div style="margin:16px 18px 0;background:rgba(255,255,255,0.1);backdrop-filter:blur(24px) saturate(180%);border-radius:14px;padding:3px;display:flex;box-shadow:inset 0 1px 0 rgba(255,255,255,0.26),0 6px 20px rgba(0,0,0,0.28)">
+              <div style="flex:1;background:rgba(255,255,255,0.2);border-radius:11px;padding:7px;text-align:center;font-size:13.5px;font-weight:500;color:#FFFFFF;box-shadow:inset 0 1px 0 rgba(255,255,255,0.3)">ทั้งหมด</div>
+              <div style="flex:1;padding:7px;text-align:center;font-size:13.5px;color:rgba(255,255,255,0.6)">ได้คุย</div>
+              <div style="flex:1;padding:7px;text-align:center;font-size:13.5px;color:rgba(255,255,255,0.6)">ไม่รับ</div>
+              <div style="flex:1;padding:7px;text-align:center;font-size:13.5px;color:rgba(255,255,255,0.6)">ขายได้</div>
+            </div>
+
+            <div style="font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.45);padding:22px 22px 7px">วันนี้ · 12 สาย</div>
+            <div style="margin:0 18px;background:rgba(255,255,255,0.08);backdrop-filter:blur(26px) saturate(180%);border-radius:22px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.24),0 10px 30px rgba(0,0,0,0.3)">
+              <div style="display:flex;align-items:center;padding:12px 16px">
+                <div style="width:38px;height:38px;border-radius:50%;background:rgba(61,220,132,0.22);color:#8BEDB6;font-size:17px;font-weight:500;display:flex;align-items:center;justify-content:center;flex:none">ส</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">สมชาย ใจดี</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:2px">ได้คุย · ขายได้ · 3:12</div>
+                </div>
+                <div style="font-size:13.5px;color:rgba(255,255,255,0.4);padding-right:11px">14:22</div>
+                <div style="width:34px;height:34px;border-radius:50%;background:rgba(61,220,132,0.24);display:flex;align-items:center;justify-content:center;color:#8BEDB6;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z"/></svg>
+                </div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin-left:67px"></div>
+              <div style="display:flex;align-items:center;padding:12px 16px">
+                <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,69,58,0.24);color:#FF9A90;font-size:17px;font-weight:500;display:flex;align-items:center;justify-content:center;flex:none">ป</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">ประยูร ทองแท้</div>
+                  <div style="font-size:12.5px;color:#FF9A90;padding-top:2px">ไม่รับสาย</div>
+                </div>
+                <div style="font-size:13.5px;color:rgba(255,255,255,0.4);padding-right:11px">13:58</div>
+                <div style="width:34px;height:34px;border-radius:50%;background:rgba(61,220,132,0.24);display:flex;align-items:center;justify-content:center;color:#8BEDB6;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z"/></svg>
+                </div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin-left:67px"></div>
+              <div style="display:flex;align-items:center;padding:12px 16px">
+                <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.16);color:#FFFFFF;font-size:17px;font-weight:500;display:flex;align-items:center;justify-content:center;flex:none">ว</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">วิภา สุขสันต์</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:2px">สายเข้า · ได้คุย · 1:05</div>
+                </div>
+                <div style="font-size:13.5px;color:rgba(255,255,255,0.4);padding-right:11px">11:30</div>
+                <div style="width:34px;height:34px;border-radius:50%;background:rgba(61,220,132,0.24);display:flex;align-items:center;justify-content:center;color:#8BEDB6;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z"/></svg>
+                </div>
+              </div>
+            </div>
+
+            <div style="font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.45);padding:20px 22px 7px">เมื่อวาน · 38 สาย</div>
+            <div style="margin:0 18px;background:rgba(255,255,255,0.08);backdrop-filter:blur(26px) saturate(180%);border-radius:22px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.24),0 10px 30px rgba(0,0,0,0.3)">
+              <div style="display:flex;align-items:center;padding:12px 16px">
+                <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.16);color:#FFFFFF;font-size:17px;font-weight:500;display:flex;align-items:center;justify-content:center;flex:none">ม</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">มานพ เกษมสุข</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:2px">ได้คุย · สินค้ายังไม่หมด · 6:44</div>
+                </div>
+                <div style="font-size:13.5px;color:rgba(255,255,255,0.4);padding-right:11px">16:12</div>
+                <div style="width:34px;height:34px;border-radius:50%;background:rgba(61,220,132,0.24);display:flex;align-items:center;justify-content:center;color:#8BEDB6;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z"/></svg>
+                </div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin-left:67px"></div>
+              <div style="display:flex;align-items:center;padding:12px 16px">
+                <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.55);font-size:17px;font-weight:500;display:flex;align-items:center;justify-content:center;flex:none">?</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:rgba(255,255,255,0.6)">ไม่ทราบผู้ติดต่อ</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.4);padding-top:2px">สายเข้า · ไม่อยู่ในระบบ</div>
+                </div>
+                <div style="font-size:13.5px;color:rgba(255,255,255,0.4)">15:40</div>
+              </div>
+            </div>
+
+            <div style="flex:1;min-height:14px"></div>
+
+            <div style="margin:0 14px 14px;display:flex;background:rgba(255,255,255,0.1);backdrop-filter:blur(30px) saturate(190%);border-radius:26px;padding:8px 6px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.3),inset 0 -1px 0 rgba(255,255,255,0.06),0 12px 34px rgba(0,0,0,0.42)">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:rgba(235,235,245,0.55)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z"/></svg>
+                <div style="font-size:10.5px">หน้าหลัก</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;background:rgba(255,255,255,0.14);border-radius:20px;color:#FFFFFF;box-shadow:inset 0 1px 0 rgba(255,255,255,0.26)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13,3a9,9 0 1,0 -8.94,10H6.1A7,7 0 1,1 13,19a6.96,6.96 0 0,1 -4.95,-2.05L6.64,18.36A9,9 0 0,0 13,21a9,9 0 0,0 0,-18zM12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08V8z"/></svg>
+                <div style="font-size:10.5px;font-weight:500">ประวัติ</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:rgba(235,235,245,0.55)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16,11c1.66,0 2.99,-1.34 2.99,-3S17.66,5 16,5c-1.66,0 -3,1.34 -3,3s1.34,3 3,3zM8,11c1.66,0 2.99,-1.34 2.99,-3S9.66,5 8,5C6.34,5 5,6.34 5,8s1.34,3 3,3zM8,13c-2.33,0 -7,1.17 -7,3.5V19h14v-2.5C15,14.17 10.33,13 8,13zM16,13c-0.29,0 -0.62,0.02 -0.97,0.05 1.16,0.84 1.97,1.97 1.97,3.45V19h6v-2.5C23,14.17 18.33,13 16,13z"/></svg>
+                <div style="font-size:10.5px">ทีม</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:rgba(235,235,245,0.55)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12,12a4,4 0 1,0 0,-8 4,4 0 0,0 0,8zM12,14c-4.42,0 -8,1.79 -8,4v2h16v-2c0,-2.21 -3.58,-4 -8,-4z"/></svg>
+                <div style="font-size:10.5px">ฉัน</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- 06 TEAM -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-size:13px;font-weight:500;color:rgba(235,235,245,0.45)">06 · ทีม (หัวหน้า)</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#0B0A14" hint-size="412px,892px">
+        <div style="position:relative;height:100%;box-sizing:border-box;background:#0B0A14;overflow:hidden;font-family:Anuphan,sans-serif;font-variant-numeric:tabular-nums">
+          <div style="position:absolute;inset:0;background:radial-gradient(74% 40% at 10% 0%,rgba(61,220,132,0.34) 0%,rgba(61,220,132,0) 62%),radial-gradient(72% 42% at 96% 26%,rgba(110,86,240,0.4) 0%,rgba(110,86,240,0) 66%),radial-gradient(80% 44% at 40% 104%,rgba(40,120,190,0.28) 0%,rgba(40,120,190,0) 70%)"></div>
+
+          <div style="position:relative;height:100%;display:flex;flex-direction:column">
+            <div style="padding:20px 20px 0">
+              <div style="font-size:34px;font-weight:600;letter-spacing:-0.025em;color:#FFFFFF;text-shadow:0 2px 18px rgba(0,0,0,0.3)">ทีมของฉัน</div>
+              <div style="font-size:14px;color:rgba(255,255,255,0.5);padding-top:4px">อัปเดตอัตโนมัติทุก 15 วินาที</div>
+            </div>
+
+            <div style="display:flex;gap:10px;padding:20px 18px 0">
+              <div style="flex:1;background:rgba(255,255,255,0.09);backdrop-filter:blur(24px) saturate(180%);border-radius:20px;padding:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.26),0 8px 24px rgba(0,0,0,0.28)">
+                <div style="font-size:28px;font-weight:600;color:#3DDC84;line-height:1">4</div>
+                <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:5px">กำลังคุย</div>
+              </div>
+              <div style="flex:1;background:rgba(255,255,255,0.09);backdrop-filter:blur(24px) saturate(180%);border-radius:20px;padding:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.26),0 8px 24px rgba(0,0,0,0.28)">
+                <div style="font-size:28px;font-weight:600;color:#FFFFFF;line-height:1">7</div>
+                <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:5px">ออนไลน์</div>
+              </div>
+              <div style="flex:1;background:rgba(255,255,255,0.09);backdrop-filter:blur(24px) saturate(180%);border-radius:20px;padding:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.26),0 8px 24px rgba(0,0,0,0.28)">
+                <div style="font-size:28px;font-weight:600;color:rgba(255,255,255,0.6);line-height:1">9</div>
+                <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:5px">ลูกทีม</div>
+              </div>
+            </div>
+
+            <div style="font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.45);padding:22px 22px 7px">รายชื่อ · โทร / คุย / ขาย</div>
+            <div style="margin:0 18px;background:rgba(255,255,255,0.08);backdrop-filter:blur(26px) saturate(180%);border-radius:22px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.24),0 10px 30px rgba(0,0,0,0.3)">
+              <div style="display:flex;align-items:center;padding:12px 16px">
+                <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(150deg,#3DDC84,#1F8A52);color:#04170D;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">น</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">นภา วงศ์ทอง</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:2px">38 / 25 / 4</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:7px;background:rgba(61,220,132,0.22);border-radius:10px;padding:6px 10px;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)">
+                  <span style="width:6px;height:6px;border-radius:50%;background:#3DDC84;box-shadow:0 0 8px rgba(61,220,132,0.9);display:block"></span>
+                  <span style="font-size:13px;font-weight:500;color:#8BEDB6">2:41</span>
+                </div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin-left:67px"></div>
+              <div style="display:flex;align-items:center;padding:12px 16px">
+                <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(150deg,#5FA0E8,#2C5288);color:#FFFFFF;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">ธ</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">ธนา รุ่งเรือง</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:2px">44 / 31 / 7</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:7px;background:rgba(61,220,132,0.22);border-radius:10px;padding:6px 10px;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)">
+                  <span style="width:6px;height:6px;border-radius:50%;background:#3DDC84;box-shadow:0 0 8px rgba(61,220,132,0.9);display:block"></span>
+                  <span style="font-size:13px;font-weight:500;color:#8BEDB6">0:18</span>
+                </div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin-left:67px"></div>
+              <div style="display:flex;align-items:center;padding:12px 16px">
+                <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(150deg,#A177D6,#5E3F91);color:#FFFFFF;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">ก</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">กิตติ แสนสุข</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:2px">29 / 18 / 2</div>
+                </div>
+                <div style="background:rgba(255,159,10,0.22);border-radius:10px;padding:6px 10px;font-size:13px;font-weight:500;color:#FFD79B;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)">กำลังโทร</div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin-left:67px"></div>
+              <div style="display:flex;align-items:center;padding:12px 16px">
+                <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(150deg,#D6A05C,#8A5F26);color:#FFFFFF;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">ส</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">สุดา พันธ์ดี</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:2px">51 / 34 / 9</div>
+                </div>
+                <div style="font-size:13.5px;color:rgba(255,255,255,0.45);flex:none">ออนไลน์</div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin-left:67px"></div>
+              <div style="display:flex;align-items:center;padding:12px 16px;opacity:0.5">
+                <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.14);color:#FFFFFF;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">ว</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">วีระ ชูใจ</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:2px">12 / 6 / 0</div>
+                </div>
+                <div style="font-size:13.5px;color:rgba(255,255,255,0.45);flex:none">ล่าสุด 11:20</div>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.1);margin-left:67px"></div>
+              <div style="display:flex;align-items:center;padding:12px 16px;opacity:0.5">
+                <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.14);color:#FFFFFF;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">พ</div>
+                <div style="flex:1;min-width:0;padding:0 10px 0 13px">
+                  <div style="font-size:16px;color:#FFFFFF">พรทิพย์ ศรีมา</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,0.6);padding-top:2px">0 / 0 / 0</div>
+                </div>
+                <div style="font-size:13.5px;color:rgba(255,255,255,0.45);flex:none">ออฟไลน์</div>
+              </div>
+            </div>
+
+            <div style="flex:1;min-height:14px"></div>
+
+            <div style="margin:0 14px 14px;display:flex;background:rgba(255,255,255,0.1);backdrop-filter:blur(30px) saturate(190%);border-radius:26px;padding:8px 6px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.3),inset 0 -1px 0 rgba(255,255,255,0.06),0 12px 34px rgba(0,0,0,0.42)">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:rgba(235,235,245,0.55)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z"/></svg>
+                <div style="font-size:10.5px">หน้าหลัก</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:rgba(235,235,245,0.55)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13,3a9,9 0 1,0 -8.94,10H6.1A7,7 0 1,1 13,19a6.96,6.96 0 0,1 -4.95,-2.05L6.64,18.36A9,9 0 0,0 13,21a9,9 0 0,0 0,-18zM12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08V8z"/></svg>
+                <div style="font-size:10.5px">ประวัติ</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;background:rgba(255,255,255,0.14);border-radius:20px;color:#FFFFFF;box-shadow:inset 0 1px 0 rgba(255,255,255,0.26)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16,11c1.66,0 2.99,-1.34 2.99,-3S17.66,5 16,5c-1.66,0 -3,1.34 -3,3s1.34,3 3,3zM8,11c1.66,0 2.99,-1.34 2.99,-3S9.66,5 8,5C6.34,5 5,6.34 5,8s1.34,3 3,3zM8,13c-2.33,0 -7,1.17 -7,3.5V19h14v-2.5C15,14.17 10.33,13 8,13zM16,13c-0.29,0 -0.62,0.02 -0.97,0.05 1.16,0.84 1.97,1.97 1.97,3.45V19h6v-2.5C23,14.17 18.33,13 16,13z"/></svg>
+                <div style="font-size:10.5px;font-weight:500">ทีม</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:rgba(235,235,245,0.55)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12,12a4,4 0 1,0 0,-8 4,4 0 0,0 0,8zM12,14c-4.42,0 -8,1.79 -8,4v2h16v-2c0,-2.21 -3.58,-4 -8,-4z"/></svg>
+                <div style="font-size:10.5px">ฉัน</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
