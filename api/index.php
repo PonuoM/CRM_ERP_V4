@@ -66,6 +66,11 @@ try {
         case 'customer_tags':
             handle_customer_tags($pdo);
             break;
+        // ออเดอร์รอเปิด (ขายได้ผ่านมือถือ → เปิดที่บริษัท) — เมนูฝั่งเว็บโผล่เฉพาะตอนปิดเบอร์เปิด
+        case 'pending_orders':
+            require_once __DIR__ . '/Controllers/PendingOrderController.php';
+            PendingOrderController::handle($pdo);
+            break;
         // Bridge between the CRM and the agent's handset — see api/Controllers/CallController.php.
         case 'call':
             require_once __DIR__ . '/Controllers/CallController.php';
@@ -78,7 +83,18 @@ try {
             else if ($callAction === 'event')    CallController::event($pdo);
             else if ($callAction === 'identify') CallController::identify($pdo);
             else if ($callAction === 'history')  CallController::history($pdo);
+            else if ($callAction === 'customer') CallController::customer($pdo);
+            else if ($callAction === 'disposition') CallController::disposition($pdo);
+            else if ($callAction === 'disposition_status') CallController::dispositionStatus($pdo);
             else if ($callAction === 'verify_admin') CallController::verifyAdmin($pdo);
+            else if ($callAction === 'tags')     CallController::tags($pdo);
+            else if ($callAction === 'home')     CallController::home($pdo);
+            else if ($callAction === 'search')   CallController::search($pdo);
+            else if ($callAction === 'daily_summary') CallController::dailySummary($pdo);
+            else if ($callAction === 'appointments') CallController::appointments($pdo);
+            else if ($callAction === 'products')  CallController::products($pdo);
+            else if ($callAction === 'pending_order') CallController::pendingOrder($pdo);
+            else if ($callAction === 'team')     CallController::team($pdo);
             else json_response(['ok' => false, 'error' => 'INVALID_ACTION',
                 'message' => "Action '$callAction' is not valid for call"], 400);
             break;

@@ -27,6 +27,7 @@ dist-ssr
 api/uploads/slips/*
 api/vendor/*
 api/google-credentials.json
+api/mdm-credentials.json
 /src/generated/prisma
 uploads/*
 exemple_import/*
