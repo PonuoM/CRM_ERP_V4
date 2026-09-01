@@ -83,11 +83,13 @@ const BackupDriveStatusPage: React.FC = () => {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="h-full w-full p-6">
       <h1 className="text-xl font-semibold text-slate-900">สำรองฐานข้อมูล</h1>
       <p className="mt-1 text-sm text-slate-600">
         หน้านี้ดูไฟล์บน Google Drive เท่านั้น ไม่มีปุ่ม dump บนโฮสต์
-        การ dump จริงรันที่เครื่องออฟฟิศผ่าน <code className="text-xs">scripts/backup</code>
+        การ dump จริงรันที่เครื่องออฟฟิศ — กดปุ่มด้านล่างเพื่อเปิดเครื่องมือบนเครื่องนี้
+        (ต้องลงทะเบียน protocol ครั้งเดียวด้วย{" "}
+        <code className="text-xs">scripts/backup/Register-BackupProtocol.ps1</code>)
       </p>
 
       {error && (
@@ -101,7 +103,13 @@ const BackupDriveStatusPage: React.FC = () => {
         {data?.setting_key && <p className="text-xs text-slate-400">setting key: {data.setting_key}</p>}
       </div>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <a
+          href="primaerp-backup://open"
+          className="rounded-md bg-emerald-700 px-3 py-2 text-sm text-white"
+        >
+          เปิดเครื่องมือ dump บนเครื่องนี้
+        </a>
         <button
           type="button"
           className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50"
