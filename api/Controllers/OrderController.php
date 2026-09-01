@@ -74,7 +74,10 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $companyId = $_GET['companyId'] ?? null;
                 }
                 $page = max(1, (int) ($_GET['page'] ?? 1));
-                $pageSize = max(1, (int) ($_GET['pageSize'] ?? 50));
+                // เพดานแข็ง — ออเดอร์ 15,000 แถวกินแรม ~152 MB แล้ว (วัดจริง 1 ก.ย. 2569)
+                // ตั้ง 20000 ให้สูงกว่าที่ ReportsPage ใช้จริง (15000) พอมีหัวเหลือ
+                // แต่กัน ?pageSize=999999 ที่จะลากแรมทั้งบัญชี host ลงไปด้วย
+                $pageSize = min(20000, max(1, (int) ($_GET['pageSize'] ?? 50)));
                 $offset = ($page - 1) * $pageSize;
 
                 // Filter parameters

@@ -433,16 +433,33 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   // Auto-Sync State
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  // ธงกันยิงซ้อน + เวลาที่ดึงสำเร็จล่าสุด เก็บเป็น ref เพราะ effect ด้านล่างอ่านค่าล่าสุด
+  // ได้โดยไม่ต้องใส่ใน deps (ใส่แล้ว interval จะถูกสร้างใหม่ทุกครั้งที่ค่าเปลี่ยน)
+  const inFlightRef = useRef(false);
+  const lastFetchedAtRef = useRef(0);
 
   // Auto-Sync Logic - Now uses direct API instead of LocalDB
+  //
+  // ⏱️ รอบรีเฟรชเบื้องหลัง — ยืดจาก 1 นาทีเป็น 3 นาที และหยุดเมื่อไม่มีใครดูหน้าจอ
+  //
+  // คำขอนี้ดึงลูกค้าในมือทั้งหมด (เทเลคนหนึ่งถือได้ถึง 7,567 ราย) วัดจริงบนข้อมูล prod
+  // ได้ ~92 MB ต่อครั้ง มีเทเล active 52 คน แค่ 10 คนเปิดหน้านี้ทิ้งไว้
+  // ก็เท่ากับ ~920 MB ทุกนาทีวนไม่หยุด ซึ่งคือแรงกดที่ทำให้ระบบล่มเมื่อ 29 ส.ค. 2569
+  //
+  // ตัดจำนวนแถวลงไม่ได้ เพราะหน้านี้กรอง/นับ/เรียง ทั้งหมดในเบราว์เซอร์จากรายการเต็ม
+  // (นับตามแท็ก/ตามถัง ทำรายการจังหวัด ค้นหา) จึงลดที่ "ความถี่" แทน:
+  // แท็บที่ไม่มีใครดูไม่ต้องดึงเลย แล้วค่อยดึงทันทีตอนสลับกลับมาดู
   useEffect(() => {
     let active = true;
-    const AUTO_REFRESH_INTERVAL = 60 * 1000; // 1 minute
+    const AUTO_REFRESH_INTERVAL = 3 * 60 * 1000; // 3 นาที
 
     const fetchFromAPI = async () => {
-      if (!user || !user.id || isSyncing) return;
+      // กันยิงซ้อนด้วย ref ไม่ใช่ state — isSyncing ที่ closure นี้มองเห็นคือค่าตอนสร้าง effect
+      // (false เสมอ) ด่านเดิมจึงไม่เคยกันอะไรได้จริง ถ้าคำขอหนัก ~92 MB ซ้อนกันคือเติมเชื้อไฟ
+      if (!user || !user.id || inFlightRef.current) return;
 
       try {
+        inFlightRef.current = true;
         setIsSyncing(true);
         // Fetch directly from API - no LocalDB
         const response = await apiFetch(
@@ -460,18 +477,35 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       } catch (error) {
         console.error("API fetch failed:", error);
       } finally {
+        inFlightRef.current = false;
+        lastFetchedAtRef.current = Date.now();
         if (active) setIsSyncing(false);
       }
+    };
+
+    // รอบเบื้องหลัง: ข้ามไปเลยถ้าตอนนี้ไม่มีใครมองหน้านี้อยู่
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      fetchFromAPI();
+    };
+
+    // กลับมาดูหน้านี้อีกครั้ง ถ้าข้อมูลเก่าเกินหนึ่งรอบให้ดึงใหม่ทันที
+    // คนใช้จึงไม่เห็นของเก่าจากการที่หยุดดึงตอนสลับแท็บออกไป
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastFetchedAtRef.current >= AUTO_REFRESH_INTERVAL) fetchFromAPI();
     };
 
     // Initial load from API
     fetchFromAPI();
 
     // Auto-refresh interval
-    const intervalId = setInterval(fetchFromAPI, AUTO_REFRESH_INTERVAL);
+    const intervalId = setInterval(tick, AUTO_REFRESH_INTERVAL);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       active = false;
       clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [user.id, user.companyId]);
 

@@ -808,6 +808,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $limit = isset($_GET['pageSize']) ? (int) $_GET['pageSize'] : (isset($_GET['limit']) ? (int) $_GET['limit'] : 50);
                         if ($limit <= 0)
                             $limit = 50;
+                        // เพดานแข็ง — ลูกค้า 10,000 แถวกินแรม ~92 MB แล้ว (วัดจริง 1 ก.ย. 2569)
+                        // ตั้งเท่าที่ของจริงใช้อยู่ (TelesaleDashboard 10000, ReportsPage 5000)
+                        // เพื่อกัน ?pageSize=999999 โดยไม่ทำของที่ใช้งานอยู่พัง
+                        if ($limit > 10000)
+                            $limit = 10000;
 
                         $params = $parts['params'];
 
@@ -846,6 +851,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $limit = isset($_GET['pageSize']) ? (int) $_GET['pageSize'] : (isset($_GET['limit']) ? (int) $_GET['limit'] : 50);
                         if ($limit <= 0)
                             $limit = 50;
+                        // เพดานแข็ง — ลูกค้า 10,000 แถวกินแรม ~92 MB แล้ว (วัดจริง 1 ก.ย. 2569)
+                        // ตั้งเท่าที่ของจริงใช้อยู่ (TelesaleDashboard 10000, ReportsPage 5000)
+                        // เพื่อกัน ?pageSize=999999 โดยไม่ทำของที่ใช้งานอยู่พัง
+                        if ($limit > 10000)
+                            $limit = 10000;
                         $offset = $page ? ($page - 1) * $limit : 0;
 
                         $where = ['1'];
