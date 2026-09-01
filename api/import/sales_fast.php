@@ -67,10 +67,43 @@ $totalRows = count($rows);
 // Handle optional channel selection
 $salesChannel = sanitize_value($input['salesChannel'] ?? null);
 $salesChannelPageId = sanitize_value($input['salesChannelPageId'] ?? null);
-$basketId = sanitize_value($input['basketId'] ?? null);
 if ($salesChannelPageId !== null) {
     $salesChannelPageId = (int)$salesChannelPageId;
 }
+
+// ---------------------------------------------------------------------------
+// ตะกร้าปลายทาง
+//
+// หน้าจอส่ง basket_key มา (ImportExportPage ใช้ <option value={b.basket_key}>)
+// แต่ customers.current_basket_key ทั้งระบบเก็บเป็น "id ตัวเลข" ของ basket_config
+// ของเดิมเอาค่าที่รับมาเขียนลงตรง ๆ ลูกค้าจึงได้ถังเป็นสตริงที่ไม่ตรงกับ id ไหนเลย
+// (เจอของจริง 24 ราย ค้างเป็น 'marketplace_dis' ตั้งแต่ 31 ก.ค. 2569)
+//
+// และถ้าไม่เลือกถัง ของเดิมเขียน NULL ทั้งที่หน้าจอบอกว่า "ลงตะกร้า Default (ถ้ามี)"
+// ลูกค้ากลุ่มนั้นหลุดออกนอกระบบถังถาวร เพราะ basket_aging_cron วนจาก basket_config
+// แล้วยิง WHERE current_basket_key = ? -- NULL ไม่แมตช์ถังไหนเลย
+//
+// ตอนนี้จึงแปลง key -> id เสมอ และถ้าไม่เลือกให้ตกลงถัง pool ลูกค้าใหม่
+// (sales_fast สร้างลูกค้าโดยไม่มีเจ้าของเสมอ ปลายทางจึงเป็นฝั่ง Distribution)
+// ---------------------------------------------------------------------------
+// แยก "แอดมินเลือกถังเอง" ออกจาก "ตกลง default" ให้ชัด เพราะสองอย่างนี้ผลต่างกัน:
+// เลือกเอง = ตั้งใจย้ายถังลูกค้าเดิมด้วย, ตกลง default = ใช้กับลูกค้าที่สร้างใหม่เท่านั้น
+// ห้ามรวมเป็นเงื่อนไขเดียว ไม่งั้นการ import ธรรมดาจะลากลูกค้าเก่ากลับเข้า pool ทั้งยวง
+$basketKeyInput = sanitize_value($input['basketId'] ?? null);
+$basketExplicit = $basketKeyInput !== null && $basketKeyInput !== '';
+$basketKey = $basketExplicit ? $basketKeyInput : 'new_customer_dis';
+
+$basketStmt = $pdo->prepare("SELECT id, basket_key FROM basket_config WHERE basket_key = ? AND is_active = 1 LIMIT 1");
+$basketStmt->execute([$basketKey]);
+$basketRow = $basketStmt->fetch(PDO::FETCH_ASSOC);
+if (!$basketRow) {
+    json_response([
+        'error' => 'INVALID_BASKET',
+        'message' => "ไม่พบตะกร้า '$basketKey' ที่เปิดใช้งานอยู่ใน basket_config"
+    ], 400);
+}
+$basketId = (int)$basketRow['id'];
+$basketKey = $basketRow['basket_key'];
 
 $summary = [
     'totalRows' => $totalRows,
@@ -297,11 +330,11 @@ try {
         $customerPk = null;
         if (isset($existingCustomers[$phone])) {
             $customerPk = $existingCustomers[$phone]['customer_id'];
-            if ($basketId) {
-                if ($basketId === 'marketplace_dis') {
+            // ย้ายถังลูกค้าเดิมเฉพาะตอนแอดมินเลือกถังมาเองเท่านั้น
+            if ($basketExplicit) {
+                if ($basketKey === 'marketplace_dis') {
                     $summary['notes'][] = "ลูกค้ารายเดิม {$phone} มีในระบบอยู่แล้ว จะไม่ถูกย้ายไปถัง Marketplace";
                 } else {
-                    // Update existing customer's basket if basketId is provided and not marketplace_dis
                     $stmtUpdCustomerBasket->execute([
                         $basketId,
                         $nowStr,
@@ -317,9 +350,9 @@ try {
             $lastName = sanitize_value($first['customerLastName'] ?? null) ?: '';
             $refId = "CUS-{$phone}-{$user['company_id']}";
             
-            $lifecycleStatus = $basketId ? 'Assigned' : 'New';
+            $lifecycleStatus = $basketExplicit ? 'Assigned' : 'New';
             $finalOriginalSource = null;
-            if ($basketId === 'marketplace_dis') {
+            if ($basketKey === 'marketplace_dis') {
                 $finalOriginalSource = $salesChannel ?: 'Marketplace';
             }
             
@@ -332,8 +365,8 @@ try {
                 sanitize_value($first['postalCode'] ?? null),
                 $user['company_id'], null, $nowStr, $nowStr, null,
                 $lifecycleStatus,
-                $basketId,
-                $basketId ? $nowStr : null,
+                $basketId,  // id ตัวเลขเสมอ และมีค่าเสมอ (default = new_customer_dis)
+                $nowStr,    // basket_entered_date -- ต้องมีคู่กับถัง ไม่งั้น aging cron ข้าม
                 $finalOriginalSource
             ]);
             $customerPk = $pdo->lastInsertId();

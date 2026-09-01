@@ -84,6 +84,22 @@ class DistributionController {
         }
     }
 
+    // ถังปลายทางต้องหาให้เจอเสมอ ห้ามปล่อยผ่าน
+    //
+    // เดิมโค้ดข้างล่างเขียน current_basket_key แบบมีเงื่อนไข (if ($targetBasketId))
+    // ถ้า resolve ไม่สำเร็จ -- ไม่ส่ง target_basket_key/source_basket_key มาเลย
+    // หรือส่ง target_basket_key ที่พิมพ์ผิดจน fetchColumn() คืน false -- ลูกค้าจะได้
+    // assigned_to ใหม่แต่ current_basket_key ยังค้างอยู่ถังฝั่ง distribution เดิม
+    // กลายเป็น "มีเจ้าของแต่จมอยู่ในถังกองกลาง" ที่เจ้าของมองไม่เห็นบน Dashboard
+    // และ basket_aging_cron ก็เก็บไม่ได้ (พบของจริง 98 ราย ส.ค. 2569)
+    //
+    // ล้มตั้งแต่ตรงนี้ก่อนเปิด transaction ดีกว่าปล่อยให้แจกสำเร็จแบบข้อมูลเพี้ยน
+    if (!$targetBasketId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'การแจกล้มเหลว: ไม่ได้ระบุตะกร้าปลายทาง (ต้องส่ง target_basket_key หรือ source_basket_key ที่ตั้ง linked_basket_key ไว้)']);
+        return;
+    }
+
     $pdo->beginTransaction();
 
     set_audit_context($pdo, 'distribution_v2');
@@ -98,9 +114,7 @@ class DistributionController {
 
     // Update Customer Stmt
     $updateSql = "UPDATE customers SET assigned_to = ?, date_assigned = NOW(), basket_entered_date = NOW(), lifecycle_status = 'Assigned'";
-    if ($targetBasketId) {
-        $updateSql .= ", current_basket_key = ?";
-    }
+    $updateSql .= ", current_basket_key = ?"; // บังคับเสมอ -- $targetBasketId ถูกการันตีแล้วข้างบน
     $updateSql .= " WHERE customer_id = ? AND company_id = ?";
     $updateStmt = $pdo->prepare($updateSql);
 
@@ -298,10 +312,9 @@ class DistributionController {
                     $chunkCustomerIds[] = $assign['customer_id'];
                 }
                 $updateSql .= " END, date_assigned = NOW(), basket_entered_date = NOW(), lifecycle_status = 'Assigned' ";
-                if ($targetBasketId) {
-                    $updateSql .= ", current_basket_key = ? ";
-                    $updateParams[] = $targetBasketId;
-                }
+                // บังคับเสมอ -- $targetBasketId ถูกการันตีไว้ตั้งแต่ก่อนเปิด transaction
+                $updateSql .= ", current_basket_key = ? ";
+                $updateParams[] = $targetBasketId;
                 $updateSql .= " WHERE customer_id IN (" . implode(',', array_fill(0, count($chunk), '?')) . ") AND company_id = ?";
                 $updateParams = array_merge($updateParams, $chunkCustomerIds, [$companyId]);
                 $pdo->prepare($updateSql)->execute($updateParams);
