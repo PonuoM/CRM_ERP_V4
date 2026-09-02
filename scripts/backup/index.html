@@ -97,9 +97,19 @@
 </head>
 <body>
 
-<div class="header">
-  <h1>📀 สำรอง ERP + Export ฉุกเฉิน</h1>
-  <p class="sub">เครื่องออฟฟิศเท่านั้น — ห้ามวางสคริปต์นี้บนโฮสต์</p>
+<div class="header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+  <div>
+    <h1>📀 สำรอง ERP + Export ฉุกเฉิน</h1>
+    <p class="sub">เครื่องออฟฟิศเท่านั้น — ห้ามวางสคริปต์นี้บนโฮสต์</p>
+  </div>
+  <div class="toggle-wrapper" id="taskToggleWrapper" style="display:none;" title="เปิด/ปิด การดึงข้อมูลอัตโนมัติ (Task Scheduler)">
+    <span style="font-weight:600; color:var(--muted)">Background Tasks:</span>
+    <label class="switch">
+      <input type="checkbox" id="taskToggle" onchange="toggleTasks(this.checked)">
+      <span class="slider"></span>
+    </label>
+    <span id="taskStatusText" style="font-weight:bold; min-width:35px;">...</span>
+  </div>
 </div>
 
 <div class="tabs">
