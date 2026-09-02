@@ -9,12 +9,22 @@ if (!function_exists('method')) {
     }
 }
 
-function ensure_schema(PDO $pdo): void {
-    try { $pdo->exec("ALTER TABLE customers ADD COLUMN followup_bonus_remaining TINYINT(1) NOT NULL DEFAULT 1"); } catch (Throwable $e) {}
-}
+// เดิมตรงนี้มี ensure_schema() ที่ยิง ALTER TABLE customers ทุก request
+//
+// คอลัมน์ followup_bonus_remaining มีอยู่ในฐานข้อมูลนานแล้ว ALTER จึงล้มทุกครั้ง
+// (Duplicate column name) แล้วถูก catch กลืนเงียบ ๆ = ไม่เคยได้ประโยชน์อะไรเลย
+//
+// แต่มันไม่ฟรี: MySQL ต้องขอ metadata lock บน customers (240,000+ แถว) ก่อนจะรู้ว่าล้ม
+// ทุกคำขอที่เข้ามา ownership จึงไปต่อคิวล็อกตารางที่ร้อนที่สุดของระบบ วันละหลายพันครั้ง
+// query อื่นที่แตะ customers ต้องรอตาม ๆ กัน กลายเป็นขบวนล็อก (lock convoy)
+// PHP แต่ละ process ที่รออยู่ก็กินแรมค้างไว้ จนแรมทั้งบัญชี host หมด
+//
+// 2 ก.ย. 2569 เจอของจริง: จับ ALTER ตัวนี้ได้คาหนังคาเขาใน processlist ตอนระบบล่ม
+// (OOM 1,315 ครั้งในชั่วโมงเดียว ทุกตัวตายตั้งแต่จองได้ 4-8 MB = คิวยาวไม่ใช่ก้อนใหญ่)
+//
+// การเปลี่ยน schema เป็นงานของ api/migrations/ ไม่ใช่ของโค้ดที่รันทุกคำขอ
 
 function handle_ownership(PDO $pdo, ?string $id): void {
-    ensure_schema($pdo);
     // ค่าเริ่มต้นสำหรับ GET ซึ่ง checkAndUpdateCustomerStatus() ปลดสิทธิ์ครอบครองที่หมดอายุทิ้ง
     // เป็นการเขียนที่ไม่มีใครกดสั่ง จึงต้องมีป้ายของตัวเองไม่ให้ไปปนกับการกระทำของคน
     set_audit_context($pdo, 'ownership/status_check');
@@ -108,7 +118,6 @@ function handleFollowUpQuota(PDO $pdo, string $customerId, array $input): void {
     $stmt->execute([$customerId]);
     $customer = $stmt->fetch();
     if (!$customer) { json_response(['error' => 'Customer not found'], 404); return; }
-    ensure_schema($pdo);
     $now = new DateTime();
     $bonusRemaining = isset($customer['followup_bonus_remaining']) ? (int)$customer['followup_bonus_remaining'] : 1;
     if ($bonusRemaining > 0) {
