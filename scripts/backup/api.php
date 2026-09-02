@@ -65,6 +65,38 @@ if ($action === 'status') {
     ]);
 }
 
+if ($action === 'tasks_status') {
+    $cmd = 'powershell -NoProfile -Command "Get-ScheduledTask -TaskName ERP-* | Select-Object TaskName, State | ConvertTo-Json -Compress"';
+    $out = shell_exec($cmd);
+    $tasks = [];
+    if ($out) {
+        $decoded = json_decode($out, true);
+        if (is_array($decoded)) {
+            // If only one task matches, PowerShell returns an object, not an array.
+            if (isset($decoded['TaskName'])) $decoded = [$decoded];
+            foreach ($decoded as $t) {
+                // State: 1=Disabled, 3=Ready, 4=Running
+                $tasks[] = [
+                    'name' => $t['TaskName'],
+                    'enabled' => ($t['State'] !== 1),
+                    'state_code' => $t['State']
+                ];
+            }
+        }
+    }
+    backup_json(['ok' => true, 'tasks' => $tasks]);
+}
+
+if ($action === 'tasks_toggle') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') backup_json(['ok' => false], 405);
+    $input = json_decode(file_get_contents('php://input'), true);
+    $enable = !empty($input['enable']);
+    $cmdObj = $enable ? "Enable-ScheduledTask" : "Disable-ScheduledTask";
+    $cmd = 'powershell -NoProfile -Command "Get-ScheduledTask -TaskName ERP-* | ' . $cmdObj . '"';
+    shell_exec($cmd);
+    backup_json(['ok' => true]);
+}
+
 if ($action === 'job') {
     $job = backup_job_reconcile($work, backup_job_read($work));
     backup_json([

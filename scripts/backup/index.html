@@ -65,8 +65,17 @@
     .scard h4 { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: .3rem; }
     .scard .val { font-size: 1rem; font-weight: 600; }
     .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
-    .dot.g { background: var(--green); } .dot.r { background: var(--red); animation: pulse 1.5s infinite; } .dot.y { background: var(--yellow); }
+    .dot.g { background: var(--green); } .dot.r { background: var(--red); animation: pulse 1.5s infinite; } .dot.y { background: var(--yellow); } .dot.gray { background: #9ca3af; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+    
+    /* Toggle Switch */
+    .toggle-wrapper { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; background: #fff; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .2s; border-radius: 20px; }
+    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--green); }
+    input:checked + .slider:before { transform: translateX(14px); }
 
     /* Orders table */
     .table-wrap { max-height: 50vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
@@ -255,6 +264,53 @@ function bindUploads() {
   });
 }
 
+// Tasks Toggle Logic
+let tasksUpdating = false;
+async function loadTasksStatus() {
+  try {
+    const res = await j('/api.php?action=tasks_status');
+    if (!res.tasks || !res.tasks.length) return;
+    
+    // Check if at least one task is enabled (or all enabled)
+    // We'll consider it "ON" if the StandbySync task is enabled, or any of them.
+    const isEnabled = res.tasks.some(t => t.enabled);
+    const toggle = document.getElementById('taskToggle');
+    const txt = document.getElementById('taskStatusText');
+    const wrap = document.getElementById('taskToggleWrapper');
+    
+    toggle.checked = isEnabled;
+    txt.textContent = isEnabled ? 'เปิดทำงาน' : 'ปิด';
+    txt.style.color = isEnabled ? 'var(--green)' : 'var(--muted)';
+    wrap.style.display = 'flex';
+  } catch (e) {
+    console.error('Failed to load tasks status:', e);
+  }
+}
+
+async function toggleTasks(enable) {
+  if (tasksUpdating) return;
+  tasksUpdating = true;
+  const toggle = document.getElementById('taskToggle');
+  const txt = document.getElementById('taskStatusText');
+  toggle.disabled = true;
+  txt.textContent = 'กำลังเปลี่ยน...';
+  txt.style.color = 'var(--muted)';
+  
+  try {
+    await fetch('/api.php?action=tasks_toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enable })
+    });
+  } catch(e) {
+    showError(e);
+  } finally {
+    tasksUpdating = false;
+    toggle.disabled = false;
+    await loadTasksStatus();
+  }
+}
+
 let fileToDelete = null;
 function confirmDelete(btn, filename) {
   if (busy) return;
@@ -329,6 +385,7 @@ document.getElementById('dump').onclick = async () => {
 document.getElementById('refresh').onclick = () => tick();
 tick();
 setInterval(tick, 1000);
+loadTasksStatus(); // Load task statuses once on boot
 
 // ═══ TAB 2: Standby Export ═══
 let standbyLoaded = false;
