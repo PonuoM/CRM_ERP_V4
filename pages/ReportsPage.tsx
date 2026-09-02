@@ -256,7 +256,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const endDateStr = formatLocalDate(filterEndDate);
 
         // Fetch orders with date filter (pageSize needed since backend defaults to 50)
-        const ordersResponse = await apiFetch(`orders?pageSize=15000&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}${companyFilter}`);
+        // include_boxes=0 — หน้านี้ไม่ได้ใช้รายกล่องจากคำตอบนี้เลย มันไปเรียก
+        // Orders/get_order_boxes.php แยกเองข้างล่าง (~บรรทัด 332) การให้ backend
+        // ดึง order_boxes ของทั้ง 15,000 ออเดอร์มาสร้าง map จึงเป็นงานที่ทำทิ้งเปล่า
+        // และเป็นตัวที่ดันแรมคำขอนี้ขึ้นไปถึง 226 MB จนเซิร์ฟเวอร์ตาย (2 ก.ย. 2569)
+        const ordersResponse = await apiFetch(`orders?pageSize=15000&include_boxes=0&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}${companyFilter}`);
         const ordersData = Array.isArray(ordersResponse)
           ? ordersResponse
           : (ordersResponse?.orders || ordersResponse?.data || []);

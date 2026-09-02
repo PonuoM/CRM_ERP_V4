@@ -78,6 +78,17 @@ function handle_orders(PDO $pdo, ?string $id): void
                 // ตั้ง 20000 ให้สูงกว่าที่ ReportsPage ใช้จริง (15000) พอมีหัวเหลือ
                 // แต่กัน ?pageSize=999999 ที่จะลากแรมทั้งบัญชี host ลงไปด้วย
                 $pageSize = min(20000, max(1, (int) ($_GET['pageSize'] ?? 50)));
+
+                // ผู้เรียกที่ไม่ต้องใช้รายกล่อง ส่ง include_boxes=0 มาเพื่อข้ามงานก้อนใหญ่นี้
+                //
+                // การดึง order_boxes ของทุกออเดอร์มาสร้าง map เป็นตัวที่ทำให้คำขอเดียวพุ่งถึง
+                // 178-226 MB (วัดจาก fatal_error.log 2 ก.ย. 2569 บรรทัด 657/663 ของไฟล์นี้)
+                // หน้ารายงานไม่ได้ใช้ค่านี้เลย มันไปเรียก Orders/get_order_boxes.php แยกเอง
+                // (ดู ReportsPage.tsx ~บรรทัด 332) งานก้อนนั้นจึงถูกทำทิ้งเปล่า ๆ ทุกครั้ง
+                //
+                // ค่าปริยายยังเป็น "ดึง" เพื่อไม่ให้ผู้เรียกเดิมที่ใช้ boxes อยู่พังโดยไม่รู้ตัว
+                // ต้องส่งมาบอกเองว่าไม่เอา จึงจะข้าม
+                $includeBoxes = !isset($_GET['include_boxes']) || $_GET['include_boxes'] !== '0';
                 $offset = ($page - 1) * $pageSize;
 
                 // Filter parameters
@@ -648,6 +659,7 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                     // Fetch boxes from order_boxes for each main order
                     $boxesMap = [];
+                    if ($includeBoxes) {
                     $boxesSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status, return_status, return_note
                                  FROM order_boxes
                                  WHERE order_id IN ($parentPlaceholders)
@@ -675,6 +687,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                             'return_note' => $boxRow['return_note'] ?? null,
                         ];
                     }
+
+                    } // end if ($includeBoxes)
 
                     // Batch fetch reconcile_action for paginated orders only
                     $reconcileMap = [];
