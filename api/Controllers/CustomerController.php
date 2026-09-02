@@ -1161,6 +1161,16 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $t_query_start = microtime(true);
                             $stmt->execute($params);
                             $customers = $stmt->fetchAll();
+                            // ปล่อยบัฟเฟอร์ของ statement ทิ้ง ข้อมูลย้ายเข้าอาร์เรย์ PHP แล้ว
+                            //
+                            // mysqlnd ถือผลลัพธ์ทั้งชุดไว้ตั้งแต่ execute() แล้ว fetchAll() ก๊อปอีกชุด
+                            // โดยบัฟเฟอร์เดิมค้างอยู่จนจบคำขอ = ถือข้อมูลก้อนเดียวกันไว้สองชุด
+                            //
+                            // บรรทัดนี้คือจุดที่โผล่ใน fatal_error.log มากที่สุดตอนระบบล่ม 2 ก.ย. 2569
+                            // (516 ครั้งในชั่วโมง 09:00 ชั่วโมงเดียว) เพราะ TelesaleDashboard
+                            // ขอ pageSize=10000 ซึ่งวัดได้ ~92 MB ต่อคำขอ
+                            $stmt->closeCursor();
+                            $stmt = null;
                         attach_owner_names($pdo, $customers);
                             // Customer list is the screen telesale live in — phone, backup_phone,
                             // recipient_phone and customer_ref_id all leave from here. Nothing between
