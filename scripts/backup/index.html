@@ -292,23 +292,37 @@ async function loadOrders() {
 function renderOrders() {
   const body = document.getElementById('orderBody');
   if (!orders.length) { body.innerHTML = '<tr><td colspan="9" class="empty">📭 ไม่พบออเดอร์</td></tr>'; updateExportBtn(); return; }
-  body.innerHTML = orders.map(o => {
-    const items = (o.items||[]).filter(i=>!i.is_promotion_parent);
-    const names = items.map(i=>i.product_name||i.sku||'?').join(', ');
-    const name = ((o.recipient_first_name||o.customer_first_name||'')+' '+(o.recipient_last_name||o.customer_last_name||'')).trim();
-    const isSel = selected.has(o.id);
-    return `<tr class="${isSel?'sel':''}" onclick="toggleRow('${o.id}')">
-      <td><input type="checkbox" ${isSel?'checked':''} onclick="event.stopPropagation();toggleRow('${o.id}')"></td>
-      <td><b>${esc(o.id)}</b></td>
-      <td>${(o.order_date||'').substring(0,10)}</td>
-      <td>${esc(name)||'—'}</td>
-      <td>${esc(o.recipient_phone||o.customer_phone||'')}</td>
-      <td>${esc(o.province||o.customer_province||'')}</td>
-      <td title="${esc(names)}">${names.length>35?esc(names.substring(0,35))+'...':esc(names)}</td>
-      <td style="text-align:right">${Number(o.total_amount||0).toLocaleString('th-TH')}</td>
-      <td>${esc(o.payment_method||'—')}</td>
-    </tr>`;
-  }).join('');
+
+  const grouped = {};
+  orders.forEach(o => {
+    const cid = o.company_id || '0';
+    if (!grouped[cid]) grouped[cid] = { name: o.company_name || 'ไม่ระบุบริษัท', list: [] };
+    grouped[cid].list.push(o);
+  });
+
+  let html = '';
+  for (const cid in grouped) {
+    const g = grouped[cid];
+    html += `<tr style="background:#f1f5f9; border-top:2px solid var(--border)"><td colspan="9" style="font-weight:600; color:var(--blue); padding:.6rem;">🏢 ${esc(g.name)} <span style="font-weight:normal; color:var(--muted); font-size:.8rem;">(${g.list.length} รายการ)</span></td></tr>`;
+    html += g.list.map(o => {
+      const items = (o.items||[]).filter(i=>!i.is_promotion_parent);
+      const names = items.map(i=>i.product_name||i.sku||'?').join(', ');
+      const name = ((o.recipient_first_name||o.customer_first_name||'')+' '+(o.recipient_last_name||o.customer_last_name||'')).trim();
+      const isSel = selected.has(o.id);
+      return `<tr class="${isSel?'sel':''}" onclick="toggleRow('${o.id}')">
+        <td><input type="checkbox" ${isSel?'checked':''} onclick="event.stopPropagation();toggleRow('${o.id}')"></td>
+        <td><b>${esc(o.id)}</b></td>
+        <td>${(o.order_date||'').substring(0,10)}</td>
+        <td>${esc(name)||'—'}</td>
+        <td>${esc(o.recipient_phone||o.customer_phone||'')}</td>
+        <td>${esc(o.province||o.customer_province||'')}</td>
+        <td title="${esc(names)}">${names.length>35?esc(names.substring(0,35))+'...':esc(names)}</td>
+        <td style="text-align:right">${Number(o.total_amount||0).toLocaleString('th-TH')}</td>
+        <td>${esc(o.payment_method||'—')}</td>
+      </tr>`;
+    }).join('');
+  }
+  body.innerHTML = html;
   updateExportBtn();
 }
 

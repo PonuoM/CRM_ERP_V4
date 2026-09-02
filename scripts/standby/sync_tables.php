@@ -242,11 +242,23 @@ try {
     }
     sync_msg("  users: " . count($users) . " rows");
 
+    // Companies
+    $companyIds = array_unique(array_filter(array_column($orders, 'company_id')));
+    $companies = [];
+    if (!empty($companyIds)) {
+        $comp_p = implode(',', array_fill(0, count($companyIds), '?'));
+        $stmt = $prodPdo->prepare("SELECT * FROM companies WHERE id IN ($comp_p)");
+        $stmt->execute(array_values($companyIds));
+        $companies = $stmt->fetchAll();
+    }
+    sync_msg("  companies: " . count($companies) . " rows");
+
     // ─── Step 3: Ensure local table schemas exist ───────────────────────
-    $tables = ['orders', 'order_items', 'order_boxes', 'order_tracking_numbers', 'customers', 'products', 'users'];
+    $tables = ['orders', 'order_items', 'order_boxes', 'order_tracking_numbers', 'customers', 'products', 'users', 'companies'];
     foreach ($tables as $t) {
         sync_ensure_table($prodPdo, $localPdo, $t);
     }
+
 
     // ─── Step 4: Write to local MySQL (atomic swap) ─────────────────────
     // TRUNCATE is DDL — auto-commits any open transaction, so run it first
@@ -268,6 +280,7 @@ try {
     $counts['customers']              = sync_insert_batch($localPdo, 'customers', $customers);
     $counts['products']               = sync_insert_batch($localPdo, 'products', $products);
     $counts['users']                  = sync_insert_batch($localPdo, 'users', $users);
+    $counts['companies']              = sync_insert_batch($localPdo, 'companies', $companies);
 
     $localPdo->commit();
 

@@ -238,9 +238,11 @@ if ($action === 'standby_orders') {
                c.subdistrict AS customer_subdistrict,
                c.district AS customer_district,
                c.province AS customer_province,
-               c.postal_code AS customer_postal_code
+               c.postal_code AS customer_postal_code,
+               comp.name AS company_name
         FROM orders o
         LEFT JOIN customers c ON c.customer_id = o.customer_id
+        LEFT JOIN companies comp ON comp.id = o.company_id
         WHERE o.order_status = 'Pending'
         ORDER BY o.order_date DESC
     ");
