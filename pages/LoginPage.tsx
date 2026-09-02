@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { login } from '../services/api';
+import { login, health } from '../services/api';
 import APP_BASE_PATH from '../appBasePath';
 
 type StatusTone = 'idle' | 'info' | 'success' | 'error';
@@ -243,6 +243,7 @@ export default function LoginPage() {
   const [shake, setShake] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
+  const [dbUnavailable, setDbUnavailable] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Particle Effect
@@ -391,6 +392,16 @@ export default function LoginPage() {
     }
   }, [rememberMe, username, password]);
 
+  useEffect(() => {
+    health()
+      .then((h) => {
+        if (h && (h.db === "down" || h.error === "DB_UNAVAILABLE")) {
+          setDbUnavailable(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const handleCapsLockCheck = (event: React.KeyboardEvent<HTMLInputElement>) => {
     const caps = event.getModifierState && event.getModifierState('CapsLock');
     setCapsLockOn(Boolean(caps));
@@ -484,6 +495,14 @@ export default function LoginPage() {
         window.location.replace(APP_BASE_PATH);
       }, 800);
     } catch (e: any) {
+      const dbDown =
+        (e?.data && (e.data.error === 'DB_UNAVAILABLE' || e.data.error === 'DB_CONNECT_FAILED')) ||
+        e?.status === 503;
+      if (dbDown) {
+        setDbUnavailable(true);
+        setLoading(false);
+        return;
+      }
       const message =
         (e?.data && (e.data.message || e.data.error)) ||
         e?.message ||
@@ -494,6 +513,23 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (dbUnavailable) {
+    return (
+      <div className="login-screen">
+        <style>{loginCss}</style>
+        <div className="login-card">
+          <div className="login-header">
+            <h1 className="login-title">ระบบฐานข้อมูลใช้ไม่ได้</h1>
+            <p className="login-subtitle">กำลังกู้จากสำเนาบน Google Drive / HDD ไม่สามารถเข้าสู่ระบบได้ในขณะนี้</p>
+          </div>
+          <button type="button" className="submit-btn" onClick={() => window.location.reload()}>
+            ลองอีกครั้ง
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-screen">

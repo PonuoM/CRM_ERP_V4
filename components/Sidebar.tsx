@@ -247,6 +247,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "สต็อก V2": "สต็อกคงเหลือ",
     "ประวัติ V2": "ประวัติทั้งหมด",
     "Database Management": "จัดการฐานข้อมูล",
+    "สำรองฐานข้อมูล": "สำรองฐานข้อมูล",
     "Quota Settings": "ตั้งค่าโควตา",
     "Monitor": "ติดตามการทำงาน",
     "Daily Monitoring": "ติดตามรายวัน",
@@ -466,6 +467,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           allowRule: (u: UserType) => u.role === UserRole.SuperAdmin || u.role === UserRole.CEO },
         { label: "Addresses", icon: MapPin, key: "data.addresses" },
         { label: "Database Management", icon: Database, key: "data.database", allowRule: (u: UserType) => u.role === UserRole.SuperAdmin },
+        { label: "สำรองฐานข้อมูล", icon: Database, key: "data.backup_drive", allowRule: (u: UserType) => u.role === UserRole.SuperAdmin },
       ]
     },
     // Page Stats - Special Group for Marketing/Admins

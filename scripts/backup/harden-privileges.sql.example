@@ -1,0 +1,13 @@
+-- Run in phpMyAdmin as the DirectAdmin account owner (not the backup user).
+-- Target: primacom_mini_erp_backup on primacom_mini_erp
+-- After this, dump still works; ALTER/CREATE ROUTINE will not.
+-- Then change the password in DirectAdmin (it was pasted in chat).
+
+REVOKE ALTER, INDEX, CREATE TEMPORARY TABLES, CREATE ROUTINE, ALTER ROUTINE, EXECUTE, CREATE VIEW
+  ON `primacom_mini_erp`.*
+  FROM 'primacom_mini_erp_backup'@'171.97.73.143';
+
+-- Keep: SELECT, REFERENCES, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER
+FLUSH PRIVILEGES;
+
+SHOW GRANTS FOR 'primacom_mini_erp_backup'@'171.97.73.143';

@@ -81,7 +81,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
   // check_exist.php / update_customer_address.php) has validate_auth($pdo) injected by the
   // secure_endpoints.php one-shot script. Files on host carry the auth call; the repo copy
   // does not. apiFetch must therefore send the Bearer token — raw fetch() without it gets 401.
-  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Address_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('DistributionV2/') || path.startsWith('User_DB/') || path.startsWith('cron/') || path.startsWith('Database/') || path.startsWith('Marketplace/') || path.startsWith('Monitor/') || path.startsWith('Quota/') || path.startsWith('Commission/') || path.startsWith('Reports/') || path.startsWith('Customer/') || path.startsWith('Customers/') || path.startsWith('Quotation/') || path.startsWith('Page_DB/') || path.startsWith('Onecall_DB/') || path.startsWith('get_blocked_customers.php') || path.startsWith('customer_addresses.php') || path.startsWith('customer_stats_audit.php') || path.startsWith('SessionTags/') || path.startsWith('change_password.php') || path.startsWith('google_sheet_import.php') || path.startsWith('customer/')) {
+  if (path.startsWith('inventory/') || path.startsWith('inv2/') || path.startsWith('Product_DB/') || path.startsWith('Address_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('Slip_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php') || path.startsWith('Distribution/') || path.startsWith('DistributionV2/') || path.startsWith('User_DB/') || path.startsWith('cron/') || path.startsWith('Database/') || path.startsWith('Marketplace/') || path.startsWith('Monitor/') || path.startsWith('Quota/') || path.startsWith('Commission/') || path.startsWith('Reports/') || path.startsWith('Customer/') || path.startsWith('Customers/') || path.startsWith('Quotation/') || path.startsWith('Page_DB/') || path.startsWith('Onecall_DB/') || path.startsWith('get_blocked_customers.php') || path.startsWith('customer_addresses.php') || path.startsWith('customer_stats_audit.php') || path.startsWith('SessionTags/') || path.startsWith('change_password.php') || path.startsWith('google_sheet_import.php') || path.startsWith('health.php') || path.startsWith('backup_drive.php') || path.startsWith('customer/')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -118,6 +118,12 @@ export async function apiFetch(path: string, init?: RequestInit) {
   }
 
   if (!res.ok) {
+    const dbDown =
+      (data && (data.error === "DB_UNAVAILABLE" || data.error === "DB_CONNECT_FAILED")) ||
+      res.status === 503;
+    if (dbDown && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("erp-db-unavailable"));
+    }
     if (res.status === 401) {
       if (typeof window !== "undefined") {
         console.error("!!! 401 UNAUTHORIZED DETECTED !!!");
@@ -145,8 +151,8 @@ export async function apiFetch(path: string, init?: RequestInit) {
   return data;
 }
 
-export async function health(): Promise<{ ok: boolean; status: string }> {
-  return apiFetch("health");
+export async function health(): Promise<{ ok: boolean; status: string; db?: string; error?: string }> {
+  return apiFetch("health.php");
 }
 
 export async function login(
