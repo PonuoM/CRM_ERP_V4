@@ -132,7 +132,7 @@ if ($action === 'upload') {
 function standby_db(array $env): ?PDO
 {
     $user = $env['LOCAL_MYSQL_USER'] ?? 'root';
-    $pass = $env['LOCAL_MYSQL_PASS'] ?? '12345678';
+    $pass = $env['LOCAL_MYSQL_PASS'] ?? '';
     $db   = $env['STANDBY_DB_NAME'] ?? 'standby_erp';
     try {
         return new PDO(

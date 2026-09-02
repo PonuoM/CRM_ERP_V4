@@ -136,7 +136,7 @@ $prodDb   = $env['MYSQL_DATABASE'] ?? 'primacom_mini_erp';
 
 // Local MySQL credentials
 $localUser = $env['LOCAL_MYSQL_USER'] ?? 'root';
-$localPass = $env['LOCAL_MYSQL_PASS'] ?? '12345678';
+$localPass = $env['LOCAL_MYSQL_PASS'] ?? '';
 $localDb   = $env['STANDBY_DB_NAME'] ?? 'standby_erp';
 
 if ($prodPass === '') {
