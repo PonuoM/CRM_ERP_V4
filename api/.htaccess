@@ -41,3 +41,26 @@ RewriteRule ^ index.php [QSA,L]
         Deny from all
     </IfModule>
 </FilesMatch>
+
+# ── กุญแจและไฟล์ลับ ห้ามโหลดผ่านเว็บเด็ดขาด ─────────────────────────────────────────
+#
+# 2 ก.ย. 2569 ตรวจพบว่า https://prima49.com/mini_erp/api/google-credentials.json และ
+# mdm-credentials.json ดาวน์โหลดได้จากอินเทอร์เน็ตแบบไม่ต้องล็อกอิน (HTTP 200 พร้อมเนื้อไฟล์เต็ม)
+# ทั้งสองไฟล์อยู่ใน .gitignore จึงไม่มีใครเห็นตอนรีวิวโค้ด แต่มันอยู่บน host จริง
+#
+# ไม่ใช่ความเสี่ยงเชิงทฤษฎี: ในหน้า server-status วันเดียวกันมีบอตไล่ยิงหา
+# /credentials.json และ /sa.json อยู่ ณ ขณะนั้น (sa = service account) ตรงกับชื่อไฟล์เหล่านี้พอดี
+#
+# กฎเดิมบล็อก .env ไว้แล้วแต่ไม่ครอบ .json จึงเติมตรงนี้ ครอบชื่อที่ใช้จริงในโปรเจกต์
+# (google-credentials, mdm-credentials) และรูปแบบที่มักใช้กัน (secret, service-account, key)
+# ไม่บล็อก .json ทั้งหมดโดยตั้งใจ เพราะ composer.json / manifest ฯลฯ ไม่ใช่ความลับ
+# และการเหมารวมเคยทำระบบพังมาแล้ว
+<FilesMatch "(credential|secret|service[-_]?account|private[-_]?key|serviceaccount)[^/]*\.(json|pem|p12|key)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
