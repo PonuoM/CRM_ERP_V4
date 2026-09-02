@@ -110,9 +110,7 @@
   </div>
 
   <div class="toolbar">
-    <label class="meta">วันจัดส่ง:</label>
-    <input type="date" id="dateFilter">
-    <button class="primary" id="btnLoad" onclick="loadOrders()">🔄 โหลด</button>
+    <button class="primary" id="btnLoad" onclick="loadOrders()">🔄 โหลดออเดอร์</button>
     <button id="btnSelAll" onclick="toggleSelectAll()">☑️ เลือกทั้งหมด</button>
     <button class="green" id="btnExport" onclick="exportCsv()" disabled>📥 Export CSV (<span id="selCount">0</span>)</button>
     <span class="badge" id="totalBadge"></span>
@@ -255,7 +253,6 @@ setInterval(tick, 1000);
 
 // ═══ TAB 2: Standby Export ═══
 let standbyLoaded = false, orders = [], selected = new Set();
-document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
 
 async function loadStandbyStatus() {
   try {
@@ -278,19 +275,18 @@ async function loadStandbyStatus() {
 }
 
 async function loadOrders() {
-  const date = document.getElementById('dateFilter').value;
   const btn = document.getElementById('btnLoad');
   const body = document.getElementById('orderBody');
   btn.disabled = true; btn.innerHTML = '⏳ โหลด...';
   body.innerHTML = '<tr><td colspan="9" class="empty">⏳ กำลังโหลด...</td></tr>';
   try {
-    const data = await j('/api.php?action=standby_orders&date='+date);
+    const data = await j('/api.php?action=standby_orders');
     orders = data.orders || []; selected.clear(); renderOrders();
     document.getElementById('orderCount').textContent = orders.length + ' รายการ';
     document.getElementById('totalBadge').textContent = 'ทั้งหมด ' + orders.length;
   } catch(e) {
     body.innerHTML = '<tr><td colspan="9" class="empty">❌ '+esc(e.message)+'</td></tr>';
-  } finally { btn.disabled = false; btn.innerHTML = '🔄 โหลด'; }
+  } finally { btn.disabled = false; btn.innerHTML = '🔄 โหลดออเดอร์'; }
 }
 
 function renderOrders() {

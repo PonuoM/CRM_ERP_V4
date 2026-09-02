@@ -229,7 +229,7 @@ if ($action === 'standby_orders') {
     $today = date('Y-m-d');
     $dateFilter = $_GET['date'] ?? $today;
 
-    $stmt = $pdo->prepare("
+    $stmt = $pdo->query("
         SELECT o.*,
                c.first_name AS customer_first_name,
                c.last_name AS customer_last_name,
@@ -241,11 +241,9 @@ if ($action === 'standby_orders') {
                c.postal_code AS customer_postal_code
         FROM orders o
         LEFT JOIN customers c ON c.customer_id = o.customer_id
-        WHERE o.delivery_date = ?
-          AND o.order_status = 'Pending'
+        WHERE o.order_status = 'Pending'
         ORDER BY o.order_date DESC
     ");
-    $stmt->execute([$dateFilter]);
     $orders = $stmt->fetchAll();
 
     if (!empty($orders)) {
