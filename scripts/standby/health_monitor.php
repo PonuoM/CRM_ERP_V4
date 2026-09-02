@@ -28,7 +28,11 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
-const HEALTH_URL        = 'https://prima49.com/mini_erp/api/health.php';
+// Load env
+$env  = backup_env();
+$work = backup_workdir($env);
+
+$healthUrl = $env['HEALTH_CHECK_URL'] ?? 'https://prima49.com/mini_erp/api/health.php';
 const HEALTH_TIMEOUT    = 10;   // seconds
 const ALERT_COOLDOWN    = 900;  // 15 minutes — don't spam LINE
 const STATE_FILE_NAME   = 'health_state.json';
@@ -91,8 +95,10 @@ function send_line_notify(string $token, string $message): bool
     return false;
 }
 
-function check_server_health(): array
+function check_server_health(string $url): array
 {
+    if (empty($url)) return ['up' => false, 'reason' => 'Empty URL'];
+
     $ctx = stream_context_create([
         'http' => [
             'timeout'       => HEALTH_TIMEOUT,
@@ -104,7 +110,7 @@ function check_server_health(): array
         ],
     ]);
 
-    $res = @file_get_contents(HEALTH_URL, false, $ctx);
+    $res = @file_get_contents($url, false, $ctx);
 
     if ($res === false) {
         return ['up' => false, 'reason' => 'Connection failed or timeout'];
@@ -132,14 +138,11 @@ function get_last_sync_time(string $work): string
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
-
-$env   = backup_env();
-$work  = backup_workdir($env);
 $token = $env['LINE_NOTIFY_TOKEN'] ?? '';
 $state = health_read_state($work);
 
 $wasUp  = (bool) ($state['server_up'] ?? true);
-$health = check_server_health();
+$health = check_server_health($healthUrl);
 $isUp   = $health['up'];
 
 $ts = date('H:i:s');

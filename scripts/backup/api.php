@@ -163,13 +163,16 @@ function standby_read_health_state(string $work): ?array
     return json_decode((string) file_get_contents($path), true) ?: null;
 }
 
-function standby_check_server(): bool
+function standby_check_server(array $env): bool
 {
+    $url = $env['HEALTH_CHECK_URL'] ?? 'https://prima49.com/mini_erp/api/health.php';
+    if (empty($url)) return false;
+
     $ctx = stream_context_create([
         'http' => ['timeout' => 5, 'ignore_errors' => true],
         'ssl'  => ['verify_peer' => false, 'verify_peer_name' => false],
     ]);
-    $res = @file_get_contents('https://prima49.com/mini_erp/api/health.php', false, $ctx);
+    $res = @file_get_contents($url, false, $ctx);
     if ($res === false) return false;
     $data = json_decode($res, true);
     return is_array($data) && ($data['db'] ?? '') === 'up';
@@ -178,7 +181,7 @@ function standby_check_server(): bool
 if ($action === 'standby_status') {
     $syncLog = standby_read_sync_log($work);
     $healthState = standby_read_health_state($work);
-    $serverUp = standby_check_server();
+    $serverUp = standby_check_server($env);
 
     // Cleanup log
     $cleanupLog = null;
