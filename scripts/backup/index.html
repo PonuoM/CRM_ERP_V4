@@ -305,6 +305,15 @@ async function tick() {
     bindUploads();
     renderJob(s.job);
     if (s.job && s.job.id) lastJobId = s.job.id;
+    
+    // Real-time update for Standby Export sync time
+    if (s.standby_sync && s.standby_sync.finished_at) {
+      const t = s.standby_sync.finished_at;
+      const elSyncTime = document.getElementById('syncTime');
+      const elMeta = document.getElementById('standbyMeta');
+      if (elSyncTime) elSyncTime.textContent = new Date(t).toLocaleString('th-TH');
+      if (elMeta) elMeta.textContent = 'Sync ข้อมูลล่าสุดเมื่อ: ' + new Date(t).toLocaleTimeString('th-TH');
+    }
   } catch(e) { showError(e); }
 }
 

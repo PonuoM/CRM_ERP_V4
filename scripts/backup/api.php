@@ -41,6 +41,14 @@ if ($action === 'status') {
     }
     usort($files, fn($a, $b) => strcmp($b['mtime'], $a['mtime']));
     $job = backup_job_reconcile($work, backup_job_read($work));
+    
+    // Read standby sync log lightly
+    $syncLog = null;
+    $syncPath = $work . DIRECTORY_SEPARATOR . 'sync' . DIRECTORY_SEPARATOR . 'sync_log.json';
+    if (is_file($syncPath)) {
+        $syncLog = json_decode((string) file_get_contents($syncPath), true);
+    }
+
     backup_json([
         'ok' => true,
         'workdir' => $work,
@@ -51,6 +59,9 @@ if ($action === 'status') {
         'job' => $job,
         'busy' => backup_job_is_busy($job),
         'hint' => 'กด Dump แล้วอัป Drive จากเครื่องนี้เท่านั้น ห้ามวางสคริปต์นี้บนโฮสต์',
+        'standby_sync' => $syncLog ? [
+            'finished_at' => $syncLog['finished_at'] ?? $syncLog['started_at'] ?? null
+        ] : null
     ]);
 }
 
