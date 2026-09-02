@@ -13,7 +13,7 @@
 param(
     [string]$Php   = "C:\xampp\php\php.exe",
     [string]$Root  = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent),
-    [int]$IntervalMin = 30,
+    [int]$IntervalMin = 1,
     [string]$StartTime = "08:00",
     [int]$DurationHours = 5
 )

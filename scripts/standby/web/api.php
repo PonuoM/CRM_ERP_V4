@@ -147,7 +147,7 @@ case 'orders':
         FROM orders o
         LEFT JOIN customers c ON c.customer_id = o.customer_id
         WHERE o.delivery_date = ?
-          AND o.order_status = 'Confirmed'
+          AND o.order_status = 'Pending'
         ORDER BY o.order_date DESC
     ");
     $stmt->execute([$dateFilter]);
