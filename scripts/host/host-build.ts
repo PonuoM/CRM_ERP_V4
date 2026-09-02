@@ -40,8 +40,19 @@ const excludedApiSubdirs = ["uploads", "vendor", "config.php"];
  * log ฝั่ง host เป็นของที่ production เขียนเอง เราไม่มีอะไรต้องส่งขึ้นไปเลย
  */
 const excludedApiPatterns: RegExp[] = [
-  /\.log$/i,          // fatal_error.log, debug_check.log, performance.log, basket_debug.log
-  /^batch_out\.json$/i, // ไฟล์ผลลัพธ์ที่สคริปต์ในเครื่องเขียนทิ้งไว้
+  /\.log$/i,             // fatal_error.log, debug_check.log, performance.log, basket_debug.log
+  /^batch_out\.json$/i,   // ไฟล์ผลลัพธ์ที่สคริปต์ในเครื่องเขียนทิ้งไว้ (เคยหลุดขึ้น prod 9.2 MB)
+  /^(debug_output|tmp_tail|tables_list|migration_error)/i, // ของชั่วคราวจากการดีบักในเครื่อง
+
+  // กุญแจ: ให้ถือว่าไฟล์บน host เป็นตัวจริงเสมอ ห้ามเอาของในเครื่องไปทับ
+  //
+  // เหตุผลสำคัญกว่าเรื่องความปลอดภัย: ถ้าวันไหน revoke แล้วออก key ใหม่ อัปขึ้น host แล้ว
+  // แต่ในเครื่องยังเป็นตัวเก่า พอ host:build รอบถัดไปมันจะเอาตัวเก่าไปทับ key ใหม่
+  // แล้วฟีเจอร์พังแบบหาสาเหตุยากมาก เพราะไฟล์อยู่ใน .gitignore ไม่มีร่องรอยใน git
+  //
+  // ⚠️ เวลาเปลี่ยน google-credentials.json ต้องอัปขึ้น host เองต่างหาก
+  //    (mdm-credentials.json ไม่มีโค้ดฝั่ง server ใช้เลย ไม่ต้องอัปขึ้นไปตั้งแต่แรก)
+  /credentials?\.json$/i,
 ];
 
 function shouldExcludeApiPath(filePath: string): boolean {
