@@ -143,6 +143,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [fetchedOrders, setFetchedOrders] = useState<Order[]>([]);
+  // ข้อมูลถูกตัดหรือเปล่า — endpoint จำกัดที่ pageSize=15000 ถ้าเดือนไหนออเดอร์เกินนั้น
+  // จะได้มาไม่ครบแล้วทุกตัวเลขในรายงานจะน้อยกว่าความจริงโดยไม่มีใครรู้
+  // (ส.ค. 2569 มี 13,209 ออเดอร์ เหลือช่องว่างจากเพดานแค่ 12%)
+  const [truncation, setTruncation] = useState<{ shown: number; total: number } | null>(null);
   const [fetchedCustomers, setFetchedCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [returnSummary, setReturnSummary] = useState<{
@@ -264,6 +268,15 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const ordersData = Array.isArray(ordersResponse)
           ? ordersResponse
           : (ordersResponse?.orders || ordersResponse?.data || []);
+
+        // เทียบจำนวนที่ได้มากับยอดจริงในฐานข้อมูล ถ้าไม่เท่ากันแปลว่าโดนเพดาน pageSize ตัด
+        // ต้องบอกผู้ใช้ให้ชัด เพราะรายงานที่ตัวเลขขาดไปแบบเงียบ ๆ อันตรายกว่ารายงานที่ช้า
+        const serverTotal = Number(ordersResponse?.pagination?.total ?? 0);
+        setTruncation(
+          serverTotal > 0 && ordersData.length < serverTotal
+            ? { shown: ordersData.length, total: serverTotal }
+            : null
+        );
 
         const mappedOrders: Order[] = ordersData
           .filter((r: any) => !/-\d+$/.test(String(r.id || "")))
@@ -777,10 +790,25 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
 
     // รายงานลูกค้า
+    // จัดกลุ่มออเดอร์ตามลูกค้าครั้งเดียว แล้วค่อยหยิบใช้
+    //
+    // ของเดิมวน allCustomers.map() แล้วข้างในยิง filteredOrders.filter() ซ้ำทุกคน
+    // = ลูกค้า × ออเดอร์ ซึ่งที่ข้อมูลจริงคือ 5,000 × 12,000 ราว 60 ล้านรอบ
+    // ทำงานในเบราว์เซอร์ของพนักงาน หน้าจอจึงค้างตอนเปิดรายงานรายเดือน
+    // แบบใหม่วนออเดอร์รอบเดียวสร้าง Map ต้นทุนเหลือเชิงเส้น
+    const ordersByCustomer = new Map<string, typeof filteredOrders>();
+    for (const o of filteredOrders) {
+      const key = String(o.customerId);
+      const bucket = ordersByCustomer.get(key);
+      if (bucket) bucket.push(o); else ordersByCustomer.set(key, [o]);
+    }
+    // เรียงตามวันที่ครั้งเดียวต่อลูกค้า (ของเดิมเรียงใหม่ทุกครั้งที่วนถึงคนนั้น)
+    for (const bucket of ordersByCustomer.values()) {
+      bucket.sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
+    }
+
     const customersWithOrders = allCustomers.map(customer => {
-      const customerOrders = filteredOrders
-        .filter(o => o.customerId === customer.id)
-        .sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
+      const customerOrders = ordersByCustomer.get(String(customer.id)) ?? [];
 
       const totalSpent = customerOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
       const lastOrder = customerOrders.length > 0
@@ -1916,6 +1944,24 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               ⚠️ ข้อมูลอาจถูกตัด (แสดง 15,000 รายการ) - ลองเลือกช่วงเวลาที่สั้นลงหรือใช้ตัวกรองแผนก
             </div>
           )}
+        </div>
+      )}
+
+      {/* เตือนเมื่อข้อมูลไม่ครบ — ต้องอยู่เหนือรายงานและเห็นชัด
+          รายงานที่ตัวเลขขาดไปแบบเงียบ ๆ อันตรายกว่ารายงานที่ช้า เพราะเอาไปตัดสินใจได้เลย */}
+      {truncation && (
+        <div className="mb-4 rounded-lg border-2 border-red-300 bg-red-50 p-4">
+          <p className="font-bold text-red-700">
+            ⚠️ ข้อมูลไม่ครบ — ตัวเลขในรายงานนี้ต่ำกว่าความจริง
+          </p>
+          <p className="mt-1 text-sm text-red-700">
+            ช่วงวันที่ที่เลือกมีออเดอร์ {truncation.total.toLocaleString()} รายการ
+            แต่ระบบดึงมาได้สูงสุด {truncation.shown.toLocaleString()} รายการ
+            (ขาดไป {(truncation.total - truncation.shown).toLocaleString()} รายการ)
+          </p>
+          <p className="mt-1 text-sm text-red-700">
+            กรุณาแบ่งช่วงวันที่ให้สั้นลง เช่น ดูทีละครึ่งเดือน แล้วนำผลมารวมกันเอง
+          </p>
         </div>
       )}
 
