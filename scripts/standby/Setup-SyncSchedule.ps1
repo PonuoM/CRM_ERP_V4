@@ -39,13 +39,13 @@ if ($existing) {
 
 $trigger = New-ScheduledTaskTrigger `
     -Daily `
-    -At $StartTime `
+    -At "00:00" `
     -DaysInterval 1
 
-# Add repetition (every N minutes for M hours)
-$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At $StartTime `
+# Add repetition (every N minutes for 24 hours)
+$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At "00:00" `
     -RepetitionInterval (New-TimeSpan -Minutes $IntervalMin) `
-    -RepetitionDuration (New-TimeSpan -Hours $DurationHours)).Repetition
+    -RepetitionDuration (New-TimeSpan -Days 1)).Repetition
 
 $action = New-ScheduledTaskAction `
     -Execute $Php `
@@ -63,12 +63,12 @@ Register-ScheduledTask `
     -Trigger $trigger `
     -Action $action `
     -Settings $settings `
-    -Description "Auto-sync 7 critical order tables from production every $IntervalMin min ($StartTime - $($DurationHours)h window)" `
+    -Description "Auto-sync critical order tables from production every $IntervalMin min (24 hours)" `
     -Force
 
 Write-Host ""
 Write-Host "✅ Task '$taskName' registered successfully!" -ForegroundColor Green
-Write-Host "   Schedule: Every $IntervalMin min, $StartTime - $(([datetime]$StartTime).AddHours($DurationHours).ToString('HH:mm'))"
+Write-Host "   Schedule: Every $IntervalMin min, 24 hours a day"
 Write-Host "   Script:   $scriptPath"
 Write-Host ""
 Write-Host "To view:   Get-ScheduledTask -TaskName '$taskName'"
