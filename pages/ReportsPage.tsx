@@ -259,19 +259,47 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const startDateStr = formatLocalDate(filterStartDate);
         const endDateStr = formatLocalDate(filterEndDate);
 
-        // Fetch orders with date filter (pageSize needed since backend defaults to 50)
-        // include_boxes=0 — หน้านี้ไม่ได้ใช้รายกล่องจากคำตอบนี้เลย มันไปเรียก
-        // Orders/get_order_boxes.php แยกเองข้างล่าง (~บรรทัด 332) การให้ backend
-        // ดึง order_boxes ของทั้ง 15,000 ออเดอร์มาสร้าง map จึงเป็นงานที่ทำทิ้งเปล่า
-        // และเป็นตัวที่ดันแรมคำขอนี้ขึ้นไปถึง 226 MB จนเซิร์ฟเวอร์ตาย (2 ก.ย. 2569)
-        const ordersResponse = await apiFetch(`orders?pageSize=15000&include_boxes=0&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}${companyFilter}`);
-        const ordersData = Array.isArray(ordersResponse)
-          ? ordersResponse
-          : (ordersResponse?.orders || ordersResponse?.data || []);
+        // ดึงออเดอร์แบบแบ่งหน้า วนจนกว่าจะครบ
+        //
+        // ของเดิมยิงรอบเดียวด้วย pageSize=15000 ซึ่งมีปัญหา 2 ข้อ:
+        //   1. ถ้าเดือนไหนออเดอร์เกิน 15,000 ข้อมูลจะถูกตัดทิ้งเงียบ ๆ ทุกตัวเลขในรายงาน
+        //      ต่ำกว่าความจริงโดยไม่มีใครรู้ (ส.ค. 2569 มี 13,209 เหลือช่องว่างแค่ 12%)
+        //   2. คำขอเดียวดึง 15,000 แถวทำให้ฝั่งเซิร์ฟเวอร์จองแรมก้อนใหญ่
+        //
+        // แบ่งเป็นรอบละ 5,000 แล้ววนจนกว่าจะได้ครบ แก้ทั้งสองข้อ: ได้ข้อมูลครบเสมอ
+        // ไม่ว่าเดือนไหนจะมีกี่ออเดอร์ และแต่ละคำขอเบากว่าเดิม
+        //
+        // วัดจริงกับข้อมูล ส.ค. 2569 (13,209 ออเดอร์):
+        //   ดึงทีเดียว  แรมสูงสุดฝั่ง server 18.9 MB · 0.69s
+        //   แบ่ง 5,000  แรมสูงสุดฝั่ง server 13.5 MB · 1.14s (3 รอบ)
+        // แลกความเร็วราวครึ่งวินาทีกับความถูกต้องของตัวเลข ซึ่งคุ้ม
+        //
+        // ⚠️ ไม่แบ่งถี่กว่านี้โดยตั้งใจ — MySQL OFFSET ต้องอ่านแถวก่อนหน้าทิ้งทั้งหมด
+        //    หน้าลึกจึงแพงขึ้นเรื่อย ๆ (วัดได้ 0.23s -> 0.42s -> 0.49s) ยิ่งซอยยิ่งช้า
+        //
+        // include_boxes=0 — หน้านี้ไม่ได้ใช้รายกล่องจากคำตอบนี้ มันเรียก
+        // Orders/get_order_boxes.php แยกเองข้างล่าง งานก้อนนั้นจึงทำทิ้งเปล่า
+        const ORDERS_PAGE_SIZE = 5000;
+        // กันวนไม่รู้จบถ้า API ตอบแปลก ๆ — 20 รอบ = 100,000 ออเดอร์ มากกว่าเดือนที่หนักสุด 7 เท่า
+        const ORDERS_MAX_PAGES = 20;
 
-        // เทียบจำนวนที่ได้มากับยอดจริงในฐานข้อมูล ถ้าไม่เท่ากันแปลว่าโดนเพดาน pageSize ตัด
-        // ต้องบอกผู้ใช้ให้ชัด เพราะรายงานที่ตัวเลขขาดไปแบบเงียบ ๆ อันตรายกว่ารายงานที่ช้า
-        const serverTotal = Number(ordersResponse?.pagination?.total ?? 0);
+        const ordersData: any[] = [];
+        let serverTotal = 0;
+        for (let page = 1; page <= ORDERS_MAX_PAGES; page++) {
+          const res = await apiFetch(
+            `orders?page=${page}&pageSize=${ORDERS_PAGE_SIZE}&include_boxes=0&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}${companyFilter}`
+          );
+          const chunk = Array.isArray(res) ? res : (res?.orders || res?.data || []);
+          if (!Array.isArray(chunk) || chunk.length === 0) break;
+          ordersData.push(...chunk);
+          serverTotal = Number(res?.pagination?.total ?? 0) || serverTotal;
+          // หน้าสุดท้ายจะได้ไม่เต็มโควตา หรือได้ครบตามยอดที่เซิร์ฟเวอร์บอกแล้ว
+          if (chunk.length < ORDERS_PAGE_SIZE) break;
+          if (serverTotal > 0 && ordersData.length >= serverTotal) break;
+        }
+
+        // ถึงจะวนจนครบแล้วก็ยังต้องเช็ค เผื่อชนเพดานกันวนไม่รู้จบข้างบน
+        // รายงานที่ตัวเลขขาดแบบเงียบ ๆ อันตรายกว่ารายงานที่ช้า จึงต้องบอกผู้ใช้เสมอ
         setTruncation(
           serverTotal > 0 && ordersData.length < serverTotal
             ? { shown: ordersData.length, total: serverTotal }
