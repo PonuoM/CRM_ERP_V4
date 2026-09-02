@@ -249,15 +249,15 @@ try {
     }
 
     // ─── Step 4: Write to local MySQL (atomic swap) ─────────────────────
-    $localPdo->beginTransaction();
-
-    // Truncate all tables first
-    // Disable FK checks temporarily for clean truncate
+    // TRUNCATE is DDL — auto-commits any open transaction, so run it first
     $localPdo->exec("SET FOREIGN_KEY_CHECKS = 0");
     foreach ($tables as $t) {
         $localPdo->exec("TRUNCATE TABLE `$t`");
     }
     $localPdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+
+    // Now batch-insert inside a transaction
+    $localPdo->beginTransaction();
 
     // Insert all data
     $counts = [];
