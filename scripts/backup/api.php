@@ -125,6 +125,25 @@ if ($action === 'upload') {
     ]);
 }
 
+if ($action === 'delete_file') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        backup_json(['ok' => false, 'message' => 'POST required'], 405);
+    }
+    $input = json_decode(file_get_contents('php://input'), true);
+    $file = trim((string)($input['file'] ?? ''));
+    if (!preg_match('/^[\w\.-]+$/', $file) || strpos($file, '..') !== false) {
+        backup_json(['ok' => false, 'message' => 'ชื่อไฟล์ไม่ถูกต้อง'], 400);
+    }
+    $full = $work . DIRECTORY_SEPARATOR . $file;
+    if (!is_file($full)) {
+        backup_json(['ok' => false, 'message' => 'ไม่พบไฟล์'], 404);
+    }
+    if (unlink($full)) {
+        backup_json(['ok' => true, 'message' => 'ลบไฟล์สำเร็จ']);
+    } else {
+        backup_json(['ok' => false, 'message' => 'ลบไฟล์ไม่ได้ (อาจติด permission)'], 500);
+    }
+}
 // ═══════════════════════════════════════════════════════════════════════════════
 // Standby Export Actions (merged from scripts/standby/web/api.php)
 // ═══════════════════════════════════════════════════════════════════════════════
