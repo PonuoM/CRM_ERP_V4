@@ -2,214 +2,388 @@
 <html lang="th">
 <head>
   <meta charset="utf-8" />
-  <title>สำรอง ERP (เครื่องออฟฟิศเท่านั้น)</title>
+  <title>📀 สำรอง ERP + Export ฉุกเฉิน (เครื่องออฟฟิศ)</title>
   <style>
-    body { font-family: sans-serif; max-width: 720px; margin: 2rem auto; color: #111; }
-    button { margin-right: .5rem; margin-top: .25rem; padding: .4rem .8rem; }
+    :root { --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0; --text: #1e293b; --muted: #64748b; --blue: #2563eb; --green: #16a34a; --red: #dc2626; --yellow: #d97706; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); max-width: 900px; margin: 0 auto; padding: 1rem; }
+
+    /* Header */
+    .header { margin-bottom: 1rem; }
+    .header h1 { font-size: 1.3rem; }
+    .header .sub { color: var(--muted); font-size: .8rem; }
+    .warn { color: #9a3412; font-size: .85rem; margin-top: .25rem; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 1rem; }
+    .tab { padding: .6rem 1.2rem; cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .15s; user-select: none; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Common */
+    button { padding: .4rem .8rem; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: .85rem; background: white; }
+    button:hover:not(:disabled) { background: #f1f5f9; }
     button:disabled { opacity: .5; cursor: not-allowed; }
-    pre { background: #f4f4f5; padding: 1rem; overflow: auto; font-size: 12px; max-height: 240px; white-space: pre-wrap; }
+    button.primary { background: var(--blue); color: white; border-color: var(--blue); }
+    button.primary:hover:not(:disabled) { background: #1d4ed8; }
+    button.green { background: var(--green); color: white; border-color: var(--green); }
+    button.green:hover:not(:disabled) { background: #15803d; }
+
+    pre { background: #f4f4f5; padding: .75rem; overflow: auto; font-size: 11px; max-height: 200px; white-space: pre-wrap; border-radius: 6px; }
     pre[hidden] { display: none; }
-    .warn { color: #9a3412; }
-    .meta { color: #52525b; font-size: 14px; }
-    .bar { height: 12px; background: #e4e4e7; border-radius: 6px; overflow: hidden; margin: .5rem 0 1rem; }
-    .bar > span { display: block; height: 100%; background: #2563eb; width: 0%; transition: width .25s; }
+    .meta { color: var(--muted); font-size: .85rem; }
+
+    /* Progress bar */
+    .bar { height: 10px; background: #e4e4e7; border-radius: 5px; overflow: hidden; margin: .5rem 0; }
+    .bar > span { display: block; height: 100%; background: var(--blue); width: 0%; transition: width .25s; }
     .bar.indet > span { width: 28%; animation: slide 1.2s ease-in-out infinite; }
-    .bar.done > span { background: #16a34a; }
-    .bar.err > span { background: #dc2626; width: 100%; }
+    .bar.done > span { background: var(--green); }
+    .bar.err > span { background: var(--red); width: 100%; }
     @keyframes slide { 0% { margin-left: 0; } 50% { margin-left: 72%; } 100% { margin-left: 0; } }
-    #phase { font-weight: 600; margin: .75rem 0 .25rem; }
+    #phase { font-weight: 600; margin: .5rem 0 .25rem; font-size: .9rem; }
     ul { padding-left: 1.2rem; }
-    li { margin: .35rem 0; }
+    li { margin: .25rem 0; font-size: .9rem; }
+
+    /* Status cards */
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+    .scard { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1rem; }
+    .scard h4 { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: .3rem; }
+    .scard .val { font-size: 1rem; font-weight: 600; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    .dot.g { background: var(--green); } .dot.r { background: var(--red); animation: pulse 1.5s infinite; } .dot.y { background: var(--yellow); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
+    /* Orders table */
+    .table-wrap { max-height: 50vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    thead th { background: #f8fafc; padding: .5rem .6rem; text-align: left; font-size: .75rem; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1; }
+    tbody td { padding: .5rem .6rem; border-bottom: 1px solid #f1f5f9; }
+    tbody tr:hover { background: #eff6ff; }
+    tbody tr.sel { background: #dbeafe; }
+    .empty { text-align: center; padding: 2rem; color: var(--muted); }
+
+    .toolbar { display: flex; gap: .5rem; margin-bottom: .75rem; align-items: center; flex-wrap: wrap; }
+    .toolbar input[type="date"] { padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 6px; font-size: .85rem; }
+    .badge { background: #f1f5f9; border: 1px solid var(--border); padding: .3rem .6rem; border-radius: 6px; font-size: .8rem; color: var(--muted); }
+
+    .alert { padding: .6rem .8rem; border-radius: 8px; font-size: .85rem; margin-bottom: .75rem; }
+    .alert.danger { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .alert.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
   </style>
 </head>
 <body>
-  <h1>สำรองฐานข้อมูล — เครื่องออฟฟิศ</h1>
-  <p style="margin-bottom:.5rem"><a href="http://127.0.0.1:8899/" target="_blank" style="color:#2563eb;font-weight:600">📦 เปิด Standby Export (กรณี Server ล่ม ต้องส่งขนส่ง)</a></p>
-  <p class="warn">อย่าอัปโฟลเดอร์นี้ขึ้น public_html / mini_erp โฮสต์ไม่มี mysqldump</p>
-  <p>ใส่คีย์ใน <code>.env</code> ที่รากโปรเจกต์ (คัดลอกจาก <code>.env.example</code>) ไม่ใช่ในโฟลเดอร์นี้ ยกเว้นจะ overlay พาธ XAMPP</p>
-  <p>
-    <button id="dump" type="button">Dump</button>
-    <button id="refresh" type="button">รีเฟรช</button>
+
+<div class="header">
+  <h1>📀 สำรอง ERP + Export ฉุกเฉิน</h1>
+  <p class="sub">เครื่องออฟฟิศเท่านั้น — ห้ามวางสคริปต์นี้บนโฮสต์</p>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="backup" onclick="switchTab('backup')">💾 Backup</div>
+  <div class="tab" data-tab="standby" onclick="switchTab('standby')">📦 Standby Export</div>
+  <div class="tab" data-tab="status" onclick="switchTab('status')">📊 สถานะระบบ</div>
+</div>
+
+<!-- ═══ TAB 1: Backup ═══ -->
+<div id="tab-backup" class="tab-content active">
+  <p class="warn">ใส่คีย์ใน <code>.env</code> ที่รากโปรเจกต์ (คัดลอกจาก <code>.env.example</code>)</p>
+  <p style="margin:.5rem 0">
+    <button id="dump" type="button" class="primary">💾 Dump</button>
+    <button id="refresh" type="button">🔄 รีเฟรช</button>
   </p>
   <p id="phase"></p>
   <div class="bar" id="bar" hidden><span id="barfill"></span></div>
-  <div id="status"></div>
+  <div id="backup-status"></div>
   <pre id="log" hidden></pre>
-  <script>
-    let busy = false;
-    let lastJobId = '';
+</div>
 
-    function esc(s) {
-      return String(s ?? '').replace(/[&<>"'`]/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': ''
-      }[c]));
-    }
+<!-- ═══ TAB 2: Standby Export ═══ -->
+<div id="tab-standby" class="tab-content">
+  <div id="standbyAlert"></div>
 
-    function mb(n) {
-      const v = Number(n) || 0;
-      return (v / 1048576).toFixed(1) + ' MB';
-    }
+  <div class="status-grid" id="standbyCards">
+    <div class="scard"><h4>Server หลัก</h4><div class="val" id="srvStatus">—</div></div>
+    <div class="scard"><h4>Sync ล่าสุด</h4><div class="val" id="syncTime">—</div></div>
+    <div class="scard"><h4>ออเดอร์ Pending</h4><div class="val" id="orderCount">—</div></div>
+  </div>
 
-    async function j(path, opt) {
-      const r = await fetch(path, opt);
-      let data = null;
-      try {
-        data = await r.json();
-      } catch (e) {
-        throw new Error('ตอบกลับไม่ใช่ JSON (HTTP ' + r.status + ')');
-      }
-      if (!r.ok && data && data.message) {
-        const err = new Error(data.message);
-        err.status = r.status;
-        throw err;
-      }
-      if (!r.ok) {
-        throw new Error('HTTP ' + r.status);
-      }
-      return data;
-    }
+  <div class="toolbar">
+    <label class="meta">วันจัดส่ง:</label>
+    <input type="date" id="dateFilter">
+    <button class="primary" id="btnLoad" onclick="loadOrders()">🔄 โหลด</button>
+    <button id="btnSelAll" onclick="toggleSelectAll()">☑️ เลือกทั้งหมด</button>
+    <button class="green" id="btnExport" onclick="exportCsv()" disabled>📥 Export CSV (<span id="selCount">0</span>)</button>
+    <span class="badge" id="totalBadge"></span>
+  </div>
 
-    function showError(e) {
-      const log = document.getElementById('log');
-      log.hidden = false;
-      log.textContent = (e && e.message) ? e.message : String(e);
-    }
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:32px"><input type="checkbox" id="chkAll" onchange="toggleSelectAll()"></th>
+          <th>เลขออเดอร์</th>
+          <th>วันสั่ง</th>
+          <th>ลูกค้า</th>
+          <th>เบอร์โทร</th>
+          <th>จังหวัด</th>
+          <th>สินค้า</th>
+          <th style="text-align:right">ยอดรวม</th>
+          <th>ชำระ</th>
+        </tr>
+      </thead>
+      <tbody id="orderBody">
+        <tr><td colspan="9" class="empty">📋 เลือกวันจัดส่งแล้วกด "โหลด"</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 
-    function setBusy(on) {
-      busy = !!on;
-      document.getElementById('dump').disabled = busy;
-      document.querySelectorAll('button[data-file]').forEach((b) => { b.disabled = busy; });
-    }
+<!-- ═══ TAB 3: สถานะ ═══ -->
+<div id="tab-status" class="tab-content">
+  <div class="status-grid" id="dashCards"></div>
+  <div id="dashDetail"></div>
+</div>
 
-    function renderJob(job) {
-      const phaseEl = document.getElementById('phase');
-      const bar = document.getElementById('bar');
-      const fill = document.getElementById('barfill');
-      const log = document.getElementById('log');
-      if (!job) {
-        if (!busy) {
-          phaseEl.textContent = '';
-          bar.hidden = true;
-          document.getElementById('log').hidden = true;
-        }
-        return;
-      }
-      const running = job.status === 'running';
-      const labels = {
-        dump: 'กำลัง dump',
-        gzip: 'กำลังบีบอัด',
-        upload: 'กำลังอัป Google Drive',
-        done: 'เสร็จแล้ว',
-        error: 'ผิดพลาด'
-      };
-      let label = labels[job.phase] || job.phase || '';
-      if (job.type === 'dump' && running) {
-        label = 'กำลัง dump — ' + mb(job.bytes)
-          + (job.total_bytes ? ' / ประมาณ ' + mb(job.total_bytes) : '');
-        if (job.percent != null) label += ' (~' + job.percent + '% จากไฟล์รอบก่อน)';
-      }
-      if (job.type === 'upload' && running) {
-        if (job.skipped) {
-          label = 'พบไฟล์บน Drive แล้ว — ไม่ต้องอัปซ้ำ';
-        } else if (!(job.bytes > 0)) {
-          label = 'กำลังเช็ค Drive / เตรียมอัป — ไฟล์ ' + mb(job.total_bytes);
-        } else {
-          label = 'กำลังอัป Drive — ' + mb(job.bytes)
-            + (job.total_bytes ? ' / ' + mb(job.total_bytes) : '');
-          if (job.percent != null) label += ' ' + job.percent + '%';
-          if (job.speed) label += ' · ' + job.speed;
-          if (job.eta) label += ' · ETA ' + job.eta;
-        }
-        if (job.started_at) {
-          const sec = Math.max(0, Math.round((Date.now() - Date.parse(job.started_at)) / 1000));
-          if (!Number.isNaN(sec)) label += ' · ' + sec + ' วินาที';
-        }
-      }
-      if (job.status === 'done') {
-        if (job.type === 'upload' && job.skipped) {
-          label = 'มีบน Drive แล้ว ไม่ได้อัปซ้ำ' + (job.file ? ' — ' + job.file : '');
-        } else {
-          label = (job.type === 'upload' ? 'อัป Drive เสร็จ' : 'Dump เสร็จ') + (job.file ? ' — ' + job.file : '');
-        }
-      }
-      if (job.status === 'error') {
-        label = 'ผิดพลาด: ' + (job.error || 'ไม่ทราบสาเหตุ');
-      }
-      phaseEl.textContent = label;
-      bar.hidden = false;
-      bar.className = 'bar'
-        + (job.status === 'done' ? ' done' : '')
-        + (job.status === 'error' ? ' err' : '')
-        + (running && (job.percent == null || job.percent < 1) ? ' indet' : '');
-      const pct = job.status === 'error' ? 100
-        : job.status === 'done' ? 100
-        : Math.max(0, Math.min(100, Number(job.percent) || 0));
-      fill.style.width = (running && (job.percent == null || job.percent < 1) ? 32 : pct) + '%';
-      const text = job.error || job.log || '';
-      log.textContent = text;
-      log.hidden = !text;
-    }
+<script>
+// ═══ Tab switching ═══
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + name));
+  if (name === 'standby' && !standbyLoaded) { loadStandbyStatus(); standbyLoaded = true; }
+  if (name === 'status') loadDashboard();
+}
 
-    function bindUploads() {
-      document.querySelectorAll('button[data-file]').forEach((b) => {
-        b.disabled = busy;
-        b.onclick = async () => {
-          if (busy) return;
-          try {
-            const body = new URLSearchParams({ action: 'upload', file: b.dataset.file });
-            const res = await j('/api.php?action=upload&file=' + encodeURIComponent(b.dataset.file), {
-              method: 'POST',
-              body
-            });
-            lastJobId = (res.job && res.job.id) || '';
-            setBusy(true);
-            renderJob(res.job);
-            await tick();
-          } catch (e) {
-            showError(e);
-          }
-        };
-      });
-    }
+// ═══ TAB 1: Backup (original logic) ═══
+let busy = false, lastJobId = '';
 
-    async function tick() {
-      try {
-        const s = await j('/api.php?action=status');
-        const jobBusy = !!s.busy;
-        setBusy(jobBusy);
-        document.getElementById('status').innerHTML =
-          '<p class="meta">โฟลเดอร์: ' + esc(s.workdir) + '</p>' +
-          '<p class="meta">.env: ' + (s.env_present ? 'มี' : 'ยังไม่มี') + '</p>' +
-          '<p class="meta">rclone: ' + esc(s.rclone_dest || 'ยังไม่ตั้ง — อัป Drive ด้วยมือได้') + '</p>' +
-          '<ul>' + (s.files || []).map((f) =>
-            '<li>' + esc(f.name) + ' (' + Math.round((f.size || 0) / 1048576) + ' MB) ' +
-            '<button type="button" data-file="' + esc(f.name) + '"' + (jobBusy ? ' disabled' : '') +
-            '>อัป Drive (rclone)</button></li>'
-          ).join('') + '</ul>';
-        bindUploads();
-        renderJob(s.job);
-        if (s.job && s.job.id) lastJobId = s.job.id;
-      } catch (e) {
-        showError(e);
-      }
-    }
+function esc(s) { return String(s ?? '').replace(/[&<>"'`]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'": '&#39;','`':''}[c])); }
+function mb(n) { return (Number(n||0)/1048576).toFixed(1)+' MB'; }
 
-    document.getElementById('dump').onclick = async () => {
+async function j(path, opt) {
+  const r = await fetch(path, opt);
+  let data = null;
+  try { data = await r.json(); } catch(e) { throw new Error('ตอบกลับไม่ใช่ JSON (HTTP '+r.status+')'); }
+  if (!r.ok && data && data.message) { const err = new Error(data.message); err.status = r.status; throw err; }
+  if (!r.ok) throw new Error('HTTP '+r.status);
+  return data;
+}
+
+function showError(e) { const l = document.getElementById('log'); l.hidden = false; l.textContent = (e&&e.message)?e.message:String(e); }
+
+function setBusy(on) {
+  busy = !!on;
+  document.getElementById('dump').disabled = busy;
+  document.querySelectorAll('button[data-file]').forEach(b => { b.disabled = busy; });
+}
+
+function renderJob(job) {
+  const phaseEl = document.getElementById('phase'), bar = document.getElementById('bar'), fill = document.getElementById('barfill'), log = document.getElementById('log');
+  if (!job) { if (!busy) { phaseEl.textContent = ''; bar.hidden = true; log.hidden = true; } return; }
+  const running = job.status === 'running';
+  const labels = { dump:'กำลัง dump', gzip:'กำลังบีบอัด', upload:'กำลังอัป Google Drive', done:'เสร็จแล้ว', error:'ผิดพลาด' };
+  let label = labels[job.phase] || job.phase || '';
+  if (job.type==='dump' && running) {
+    label = 'กำลัง dump — '+mb(job.bytes)+(job.total_bytes?' / ประมาณ '+mb(job.total_bytes):'');
+    if (job.percent!=null) label += ' (~'+job.percent+'% จากไฟล์รอบก่อน)';
+  }
+  if (job.type==='upload' && running) {
+    if (job.skipped) { label = 'พบไฟล์บน Drive แล้ว — ไม่ต้องอัปซ้ำ'; }
+    else if (!(job.bytes>0)) { label = 'กำลังเช็ค Drive / เตรียมอัป — ไฟล์ '+mb(job.total_bytes); }
+    else { label = 'กำลังอัป Drive — '+mb(job.bytes)+(job.total_bytes?' / '+mb(job.total_bytes):''); if(job.percent!=null) label+=' '+job.percent+'%'; if(job.speed) label+=' · '+job.speed; if(job.eta) label+=' · ETA '+job.eta; }
+    if (job.started_at) { const sec = Math.max(0,Math.round((Date.now()-Date.parse(job.started_at))/1000)); if (!Number.isNaN(sec)) label+=' · '+sec+' วินาที'; }
+  }
+  if (job.status==='done') {
+    if (job.type==='upload'&&job.skipped) label = 'มีบน Drive แล้ว ไม่ได้อัปซ้ำ'+(job.file?' — '+job.file:'');
+    else label = (job.type==='upload'?'อัป Drive เสร็จ':'Dump เสร็จ')+(job.file?' — '+job.file:'');
+  }
+  if (job.status==='error') label = 'ผิดพลาด: '+(job.error||'ไม่ทราบสาเหตุ');
+  phaseEl.textContent = label;
+  bar.hidden = false;
+  bar.className = 'bar'+(job.status==='done'?' done':'')+(job.status==='error'?' err':'')+(running&&(job.percent==null||job.percent<1)?' indet':'');
+  const pct = job.status==='error'?100:job.status==='done'?100:Math.max(0,Math.min(100,Number(job.percent)||0));
+  fill.style.width = (running&&(job.percent==null||job.percent<1)?32:pct)+'%';
+  const text = job.error || job.log || '';
+  log.textContent = text; log.hidden = !text;
+}
+
+function bindUploads() {
+  document.querySelectorAll('button[data-file]').forEach(b => {
+    b.disabled = busy;
+    b.onclick = async () => {
       if (busy) return;
-      document.getElementById('log').textContent = 'เริ่ม dump…';
       try {
-        const res = await j('/api.php?action=dump', { method: 'POST' });
-        lastJobId = (res.job && res.job.id) || '';
-        setBusy(true);
-        renderJob(res.job);
-        await tick();
-      } catch (e) {
-        showError(e);
-      }
+        const body = new URLSearchParams({action:'upload', file:b.dataset.file});
+        const res = await j('/api.php?action=upload&file='+encodeURIComponent(b.dataset.file),{method:'POST',body});
+        lastJobId = (res.job&&res.job.id)||'';
+        setBusy(true); renderJob(res.job); await tick();
+      } catch(e) { showError(e); }
     };
-    document.getElementById('refresh').onclick = () => { tick(); };
-    tick();
-    setInterval(tick, 1000);
-  </script>
+  });
+}
+
+async function tick() {
+  try {
+    const s = await j('/api.php?action=status');
+    setBusy(!!s.busy);
+    document.getElementById('backup-status').innerHTML =
+      '<p class="meta">โฟลเดอร์: '+esc(s.workdir)+'</p>'+
+      '<p class="meta">.env: '+(s.env_present?'มี':'ยังไม่มี')+' · rclone: '+esc(s.rclone_dest||'ยังไม่ตั้ง')+'</p>'+
+      '<ul>'+(s.files||[]).map(f =>
+        '<li>'+esc(f.name)+' ('+Math.round((f.size||0)/1048576)+' MB) '+
+        '<button type="button" data-file="'+esc(f.name)+'"'+(s.busy?' disabled':'')+'>อัป Drive</button></li>'
+      ).join('')+'</ul>';
+    bindUploads();
+    renderJob(s.job);
+    if (s.job && s.job.id) lastJobId = s.job.id;
+  } catch(e) { showError(e); }
+}
+
+document.getElementById('dump').onclick = async () => {
+  if (busy) return;
+  document.getElementById('log').textContent = 'เริ่ม dump…';
+  try {
+    const res = await j('/api.php?action=dump',{method:'POST'});
+    lastJobId = (res.job&&res.job.id)||'';
+    setBusy(true); renderJob(res.job); await tick();
+  } catch(e) { showError(e); }
+};
+document.getElementById('refresh').onclick = () => tick();
+tick();
+setInterval(tick, 1000);
+
+// ═══ TAB 2: Standby Export ═══
+let standbyLoaded = false, orders = [], selected = new Set();
+document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
+
+async function loadStandbyStatus() {
+  try {
+    const data = await j('/api.php?action=standby_status');
+    const up = data.server_up;
+    document.getElementById('srvStatus').innerHTML = up
+      ? '<span class="dot g"></span>ออนไลน์'
+      : '<span class="dot r"></span>ล่ม!';
+    document.getElementById('standbyAlert').innerHTML = up
+      ? '<div class="alert info">✅ Server หลักออนไลน์ — แนะนำใช้ Export ผ่าน ERP ปกติ</div>'
+      : '<div class="alert danger">⚠️ <b>Server ล่ม!</b> ข้อมูลจาก Local Mirror — Sync ล่าสุด: '+(data.sync?.finished_at?new Date(data.sync.finished_at).toLocaleString('th-TH'):'ไม่ทราบ')+'</div>';
+    if (data.sync) {
+      const t = data.sync.finished_at;
+      document.getElementById('syncTime').textContent = t ? new Date(t).toLocaleString('th-TH') : '—';
+    }
+    loadOrders();
+  } catch(e) {
+    document.getElementById('srvStatus').innerHTML = '<span class="dot y"></span>เช็คไม่ได้';
+  }
+}
+
+async function loadOrders() {
+  const date = document.getElementById('dateFilter').value;
+  const btn = document.getElementById('btnLoad');
+  const body = document.getElementById('orderBody');
+  btn.disabled = true; btn.innerHTML = '⏳ โหลด...';
+  body.innerHTML = '<tr><td colspan="9" class="empty">⏳ กำลังโหลด...</td></tr>';
+  try {
+    const data = await j('/api.php?action=standby_orders&date='+date);
+    orders = data.orders || []; selected.clear(); renderOrders();
+    document.getElementById('orderCount').textContent = orders.length + ' รายการ';
+    document.getElementById('totalBadge').textContent = 'ทั้งหมด ' + orders.length;
+  } catch(e) {
+    body.innerHTML = '<tr><td colspan="9" class="empty">❌ '+esc(e.message)+'</td></tr>';
+  } finally { btn.disabled = false; btn.innerHTML = '🔄 โหลด'; }
+}
+
+function renderOrders() {
+  const body = document.getElementById('orderBody');
+  if (!orders.length) { body.innerHTML = '<tr><td colspan="9" class="empty">📭 ไม่พบออเดอร์</td></tr>'; updateExportBtn(); return; }
+  body.innerHTML = orders.map(o => {
+    const items = (o.items||[]).filter(i=>!i.is_promotion_parent);
+    const names = items.map(i=>i.product_name||i.sku||'?').join(', ');
+    const name = ((o.recipient_first_name||o.customer_first_name||'')+' '+(o.recipient_last_name||o.customer_last_name||'')).trim();
+    const isSel = selected.has(o.id);
+    return `<tr class="${isSel?'sel':''}" onclick="toggleRow('${o.id}')">
+      <td><input type="checkbox" ${isSel?'checked':''} onclick="event.stopPropagation();toggleRow('${o.id}')"></td>
+      <td><b>${esc(o.id)}</b></td>
+      <td>${(o.order_date||'').substring(0,10)}</td>
+      <td>${esc(name)||'—'}</td>
+      <td>${esc(o.recipient_phone||o.customer_phone||'')}</td>
+      <td>${esc(o.province||o.customer_province||'')}</td>
+      <td title="${esc(names)}">${names.length>35?esc(names.substring(0,35))+'...':esc(names)}</td>
+      <td style="text-align:right">${Number(o.total_amount||0).toLocaleString('th-TH')}</td>
+      <td>${esc(o.payment_method||'—')}</td>
+    </tr>`;
+  }).join('');
+  updateExportBtn();
+}
+
+function toggleRow(id) { selected.has(id)?selected.delete(id):selected.add(id); renderOrders(); }
+function toggleSelectAll() { if(selected.size===orders.length) selected.clear(); else orders.forEach(o=>selected.add(o.id)); document.getElementById('chkAll').checked=selected.size===orders.length; renderOrders(); }
+function updateExportBtn() { document.getElementById('selCount').textContent=selected.size; document.getElementById('btnExport').disabled=!selected.size; document.getElementById('chkAll').checked=orders.length>0&&selected.size===orders.length; }
+
+async function exportCsv() {
+  if (!selected.size) return;
+  const btn = document.getElementById('btnExport');
+  btn.disabled = true; btn.innerHTML = '⏳ สร้าง CSV...';
+  try {
+    const res = await fetch('/api.php?action=standby_export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderIds:Array.from(selected)})});
+    if (!res.ok) { const e = await res.json(); throw new Error(e.message||'Error'); }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'standby_export_'+new Date().toISOString().replace(/[:.]/g,'').substring(0,15)+'.csv';
+    a.click(); URL.revokeObjectURL(a.href);
+  } catch(e) { showError(e); }
+  finally { btn.disabled = false; btn.innerHTML = `📥 Export CSV (<span id="selCount">${selected.size}</span>)`; }
+}
+
+// ═══ TAB 3: Dashboard ═══
+async function loadDashboard() {
+  try {
+    const [backup, standby] = await Promise.all([
+      j('/api.php?action=status'),
+      j('/api.php?action=standby_status'),
+    ]);
+    const up = standby.server_up;
+    const syncOk = standby.sync && standby.sync.status === 'done';
+    const syncTime = standby.sync?.finished_at ? new Date(standby.sync.finished_at).toLocaleString('th-TH') : '—';
+    const dumpCount = standby.disk?.dump_files ?? 0;
+    const dumpSize = ((standby.disk?.total_bytes ?? 0)/1048576/1024).toFixed(1);
+    const cleanupTime = standby.cleanup?.mtime ? new Date(standby.cleanup.mtime).toLocaleString('th-TH') : 'ยังไม่เคยรัน';
+
+    document.getElementById('dashCards').innerHTML = `
+      <div class="scard"><h4>Server หลัก</h4><div class="val"><span class="dot ${up?'g':'r'}"></span>${up?'ออนไลน์':'ล่ม!'}</div></div>
+      <div class="scard"><h4>Orders Sync</h4><div class="val" style="color:${syncOk?'var(--green)':'var(--red)'}">${syncOk?'✅ สำเร็จ':'❌ '+(standby.sync?.error||'ยังไม่เคย Sync')}</div></div>
+      <div class="scard"><h4>Sync ล่าสุด</h4><div class="val">${syncTime}</div></div>
+      <div class="scard"><h4>ข้อมูลที่ Sync</h4><div class="val">${standby.sync?.total_rows ? Number(standby.sync.total_rows).toLocaleString()+' rows' : '—'}</div></div>
+      <div class="scard"><h4>ไฟล์ Backup</h4><div class="val">${dumpCount} ไฟล์ (${dumpSize} GB)</div></div>
+      <div class="scard"><h4>Cleanup ล่าสุด</h4><div class="val">${cleanupTime}</div></div>
+    `;
+
+    let detail = '<h3 style="margin:1rem 0 .5rem;font-size:1rem">📁 ไฟล์ Backup ล่าสุด</h3>';
+    detail += '<ul>'+(backup.files||[]).slice(0,10).map(f =>
+      '<li>'+esc(f.name)+' — '+Math.round((f.size||0)/1048576)+' MB</li>'
+    ).join('')+'</ul>';
+
+    if (standby.sync?.row_counts) {
+      detail += '<h3 style="margin:1rem 0 .5rem;font-size:1rem">📊 Sync Row Counts</h3><ul>';
+      for (const [tbl,cnt] of Object.entries(standby.sync.row_counts)) {
+        detail += '<li><b>'+esc(tbl)+'</b>: '+Number(cnt).toLocaleString()+' rows</li>';
+      }
+      detail += '</ul>';
+    }
+
+    if (standby.health_state) {
+      const h = standby.health_state;
+      detail += '<h3 style="margin:1rem 0 .5rem;font-size:1rem">🔴 Health Monitor</h3>';
+      detail += '<p class="meta">สถานะ: '+(h.server_up?'✅ ออนไลน์':'❌ ล่ม'+(h.down_since?' ตั้งแต่ '+new Date(h.down_since).toLocaleString('th-TH'):''))+'</p>';
+      detail += '<p class="meta">เช็คล่าสุด: '+(h.last_check?new Date(h.last_check).toLocaleString('th-TH'):'—')+'</p>';
+    }
+
+    document.getElementById('dashDetail').innerHTML = detail;
+  } catch(e) {
+    document.getElementById('dashCards').innerHTML = '<div class="scard"><h4>Error</h4><div class="val" style="color:var(--red)">'+esc(e.message)+'</div></div>';
+  }
+}
+</script>
 </body>
 </html>

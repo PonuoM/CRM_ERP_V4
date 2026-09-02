@@ -125,4 +125,283 @@ if ($action === 'upload') {
     ]);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Standby Export Actions (merged from scripts/standby/web/api.php)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function standby_db(array $env): ?PDO
+{
+    $user = $env['LOCAL_MYSQL_USER'] ?? 'root';
+    $pass = $env['LOCAL_MYSQL_PASS'] ?? '12345678';
+    $db   = $env['STANDBY_DB_NAME'] ?? 'standby_erp';
+    try {
+        return new PDO(
+            "mysql:host=127.0.0.1;dbname=$db;charset=utf8mb4",
+            $user, $pass,
+            [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES   => false,
+            ]
+        );
+    } catch (\PDOException $e) {
+        return null;
+    }
+}
+
+function standby_read_sync_log(string $work): ?array
+{
+    $path = $work . DIRECTORY_SEPARATOR . 'sync' . DIRECTORY_SEPARATOR . 'sync_log.json';
+    if (!is_file($path)) return null;
+    return json_decode((string) file_get_contents($path), true) ?: null;
+}
+
+function standby_read_health_state(string $work): ?array
+{
+    $path = $work . DIRECTORY_SEPARATOR . 'sync' . DIRECTORY_SEPARATOR . 'health_state.json';
+    if (!is_file($path)) return null;
+    return json_decode((string) file_get_contents($path), true) ?: null;
+}
+
+function standby_check_server(): bool
+{
+    $ctx = stream_context_create([
+        'http' => ['timeout' => 5, 'ignore_errors' => true],
+        'ssl'  => ['verify_peer' => false, 'verify_peer_name' => false],
+    ]);
+    $res = @file_get_contents('https://prima49.com/mini_erp/api/health.php', false, $ctx);
+    if ($res === false) return false;
+    $data = json_decode($res, true);
+    return is_array($data) && ($data['db'] ?? '') === 'up';
+}
+
+if ($action === 'standby_status') {
+    $syncLog = standby_read_sync_log($work);
+    $healthState = standby_read_health_state($work);
+    $serverUp = standby_check_server();
+
+    // Cleanup log
+    $cleanupLog = null;
+    $cleanupDir = $work . DIRECTORY_SEPARATOR . 'cleanup_logs';
+    if (is_dir($cleanupDir)) {
+        $logs = glob($cleanupDir . DIRECTORY_SEPARATOR . 'cleanup_*.log');
+        if ($logs) {
+            usort($logs, fn($a, $b) => filemtime($b) - filemtime($a));
+            $cleanupLog = ['file' => basename($logs[0]), 'mtime' => date('c', filemtime($logs[0]))];
+        }
+    }
+
+    // Disk usage of dump files
+    $dumpFiles = glob($work . DIRECTORY_SEPARATOR . '*.sql.gz') ?: [];
+    $totalSize = 0;
+    foreach ($dumpFiles as $f) $totalSize += filesize($f);
+
+    backup_json([
+        'ok' => true,
+        'sync' => $syncLog ? [
+            'status'      => $syncLog['status'] ?? 'unknown',
+            'finished_at' => $syncLog['finished_at'] ?? $syncLog['started_at'] ?? null,
+            'elapsed_sec' => $syncLog['elapsed_sec'] ?? null,
+            'row_counts'  => $syncLog['row_counts'] ?? null,
+            'total_rows'  => $syncLog['total_rows'] ?? null,
+            'error'       => $syncLog['error'] ?? null,
+        ] : null,
+        'server_up'    => $serverUp,
+        'health_state' => $healthState ? [
+            'server_up'  => $healthState['server_up'] ?? null,
+            'down_since' => $healthState['down_since'] ?? null,
+            'last_check' => $healthState['last_check_at'] ?? null,
+        ] : null,
+        'cleanup'      => $cleanupLog,
+        'disk'         => [
+            'dump_files'  => count($dumpFiles),
+            'total_bytes' => $totalSize,
+        ],
+    ]);
+}
+
+if ($action === 'standby_orders') {
+    $pdo = standby_db($env);
+    if (!$pdo) {
+        backup_json(['ok' => false, 'message' => 'ไม่สามารถเชื่อมต่อ Local standby database — เคยรัน sync_tables.php หรือยัง?'], 500);
+    }
+
+    $today = date('Y-m-d');
+    $dateFilter = $_GET['date'] ?? $today;
+
+    $stmt = $pdo->prepare("
+        SELECT o.*,
+               c.first_name AS customer_first_name,
+               c.last_name AS customer_last_name,
+               c.phone AS customer_phone,
+               c.street AS customer_street,
+               c.subdistrict AS customer_subdistrict,
+               c.district AS customer_district,
+               c.province AS customer_province,
+               c.postal_code AS customer_postal_code
+        FROM orders o
+        LEFT JOIN customers c ON c.customer_id = o.customer_id
+        WHERE o.delivery_date = ?
+          AND o.order_status = 'Pending'
+        ORDER BY o.order_date DESC
+    ");
+    $stmt->execute([$dateFilter]);
+    $orders = $stmt->fetchAll();
+
+    if (!empty($orders)) {
+        $orderIds = array_column($orders, 'id');
+        $ph = implode(',', array_fill(0, count($orderIds), '?'));
+
+        $itemStmt = $pdo->prepare("
+            SELECT oi.*, p.name AS product_name, p.sku, p.shop
+            FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id
+            WHERE oi.parent_order_id IN ($ph) ORDER BY oi.parent_order_id, oi.id
+        ");
+        $itemStmt->execute($orderIds);
+        $allItems = $itemStmt->fetchAll();
+
+        $boxStmt = $pdo->prepare("SELECT ob.* FROM order_boxes ob WHERE ob.order_id IN ($ph) ORDER BY ob.order_id, ob.box_number");
+        $boxStmt->execute($orderIds);
+        $allBoxes = $boxStmt->fetchAll();
+
+        $itemsByOrder = [];
+        foreach ($allItems as $it) $itemsByOrder[$it['parent_order_id']][] = $it;
+        $boxesByOrder = [];
+        foreach ($allBoxes as $bx) $boxesByOrder[$bx['order_id']][] = $bx;
+
+        foreach ($orders as &$o) {
+            $o['items'] = $itemsByOrder[$o['id']] ?? [];
+            $o['boxes'] = $boxesByOrder[$o['id']] ?? [];
+        }
+        unset($o);
+    }
+
+    backup_json(['ok' => true, 'orders' => $orders, 'count' => count($orders), 'date' => $dateFilter]);
+}
+
+if ($action === 'standby_export') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        backup_json(['ok' => false, 'message' => 'POST required'], 405);
+    }
+    $input = json_decode(file_get_contents('php://input'), true);
+    $orderIds = $input['orderIds'] ?? [];
+    if (empty($orderIds) || !is_array($orderIds)) {
+        backup_json(['ok' => false, 'message' => 'orderIds required'], 400);
+    }
+
+    $pdo = standby_db($env);
+    if (!$pdo) {
+        backup_json(['ok' => false, 'message' => 'ไม่สามารถเชื่อมต่อ Local standby database'], 500);
+    }
+
+    $orderIds = array_slice($orderIds, 0, 500);
+    $ph = implode(',', array_fill(0, count($orderIds), '?'));
+
+    $stmt = $pdo->prepare("
+        SELECT o.*, c.first_name AS customer_first_name, c.last_name AS customer_last_name,
+               c.phone AS customer_phone, c.street AS customer_street,
+               c.subdistrict AS customer_subdistrict, c.district AS customer_district,
+               c.province AS customer_province, c.postal_code AS customer_postal_code
+        FROM orders o LEFT JOIN customers c ON c.customer_id = o.customer_id
+        WHERE o.id IN ($ph)
+    ");
+    $stmt->execute($orderIds);
+    $orders = $stmt->fetchAll();
+
+    $foundIds = array_column($orders, 'id');
+    if (empty($foundIds)) {
+        backup_json(['ok' => false, 'message' => 'ไม่พบออเดอร์'], 404);
+    }
+
+    $fp = implode(',', array_fill(0, count($foundIds), '?'));
+    $itemStmt = $pdo->prepare("SELECT oi.*, p.name AS product_name, p.sku, p.shop FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id WHERE oi.parent_order_id IN ($fp) ORDER BY oi.parent_order_id, oi.id");
+    $itemStmt->execute($foundIds);
+    $allItems = $itemStmt->fetchAll();
+
+    $boxStmt = $pdo->prepare("SELECT ob.* FROM order_boxes ob WHERE ob.order_id IN ($fp) ORDER BY ob.order_id, ob.box_number");
+    $boxStmt->execute($foundIds);
+    $allBoxes = $boxStmt->fetchAll();
+
+    $itemsByOrder = [];
+    foreach ($allItems as $it) $itemsByOrder[$it['parent_order_id']][] = $it;
+    $boxesByOrder = [];
+    foreach ($allBoxes as $bx) $boxesByOrder[$bx['order_id']][] = $bx;
+
+    $creatorIds = array_unique(array_filter(array_column($orders, 'creator_id')));
+    $creatorNames = [];
+    if (!empty($creatorIds)) {
+        $cp = implode(',', array_fill(0, count($creatorIds), '?'));
+        $us = $pdo->prepare("SELECT id, first_name, last_name FROM users WHERE id IN ($cp)");
+        $us->execute(array_values($creatorIds));
+        foreach ($us->fetchAll() as $u) {
+            $creatorNames[$u['id']] = trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? ''));
+        }
+    }
+
+    // Output CSV
+    header_remove('Content-Type');
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="standby_export_' . date('Ymd_His') . '.csv"');
+
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF");
+
+    fputcsv($out, [
+        'หมายเลขออเดอร์ออนไลน์','ชื่อร้านค้า','เวลาที่สั่งซื้อ','บัญชีร้านค้า','หมายเลขใบชำระเงิน',
+        'COD','ช่องทางชำระเงิน','เวลาชำระเงิน','หมายเหตุใบสั่งซื้อ','ข้อความจากร้านค้า',
+        'ค่าขนส่ง','จำนวนเงินที่ต้องชำระ','ผู้รับสินค้า','นามสกุลผู้รับสินค้า','หมายเลขโทรศัพท์',
+        'หมายเลขมือถือ','สถานที่','ภูมิภาค','อำเภอ','จังหวัด','รหัสไปรษณีย์','ประเทศ',
+        'รับสินค้าที่ร้านหรือไม่','รหัสสินค้าบนแพลตฟอร์ม','รหัสสินค้าในระบบ','ชื่อสินค้า',
+        'สีและรูปแบบ','จำนวน','ราคาสินค้าต่อหน่วย','บริษัทขนส่ง','หมายเลขขนส่ง','เวลาส่งสินค้า',
+        'สถานะ','พนักงานขาย','หมายเหตุออฟไลน์','รูปแบบคำสั่งซื้อ','รูปแบบการชำระ',
+    ]);
+
+    foreach ($orders as $order) {
+        $items = $itemsByOrder[$order['id']] ?? [];
+        $boxes = $boxesByOrder[$order['id']] ?? [];
+        $seller = $creatorNames[$order['creator_id'] ?? 0] ?? '';
+        $totalCod = 0;
+        foreach ($boxes as $box) $totalCod += (float) ($box['cod_amount'] ?? 0);
+
+        $rowBase = [
+            $order['id'], '', $order['order_date'] ?? '', '', '',
+            $totalCod > 0 ? $totalCod : '', $order['payment_method'] ?? '', '',
+            $order['note'] ?? $order['notes'] ?? '', '',
+            $order['shipping_cost'] ?? 0, $order['total_amount'] ?? 0,
+            $order['recipient_first_name'] ?? $order['customer_first_name'] ?? '',
+            $order['recipient_last_name'] ?? $order['customer_last_name'] ?? '',
+            $order['recipient_phone'] ?? $order['customer_phone'] ?? '',
+            $order['recipient_phone'] ?? $order['customer_phone'] ?? '',
+            $order['street'] ?? $order['customer_street'] ?? '',
+            $order['subdistrict'] ?? $order['customer_subdistrict'] ?? '',
+            $order['district'] ?? $order['customer_district'] ?? '',
+            $order['province'] ?? $order['customer_province'] ?? '',
+            $order['postal_code'] ?? $order['customer_postal_code'] ?? '',
+            'TH', 'ไม่',
+        ];
+
+        if (empty($items)) {
+            fputcsv($out, array_merge($rowBase, [
+                '', '', '', '', '', '',
+                $order['shipping_provider'] ?? '', '', $order['delivery_date'] ?? '',
+                $order['order_status'] ?? '', $seller, '', '', $order['payment_method'] ?? '',
+            ]));
+        }
+
+        foreach ($items as $item) {
+            if (!empty($item['is_promotion_parent'])) continue;
+            fputcsv($out, array_merge($rowBase, [
+                '', $item['sku'] ?? '', $item['product_name'] ?? '', '',
+                $item['quantity'] ?? 1, $item['price_per_unit'] ?? 0,
+                $order['shipping_provider'] ?? '', '', $order['delivery_date'] ?? '',
+                $order['order_status'] ?? '', $seller, '', '', $order['payment_method'] ?? '',
+            ]));
+            $rowBase[1] = $item['shop'] ?? $order['shop'] ?? '';
+        }
+    }
+
+    fclose($out);
+    exit;
+}
+
 backup_json(['ok' => false, 'message' => 'unknown action'], 400);
