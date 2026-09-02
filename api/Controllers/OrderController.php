@@ -504,6 +504,18 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $stmt->execute();
                 }
                 $orders = $stmt->fetchAll();
+                // ปล่อยบัฟเฟอร์ของ statement ทิ้งทันทีที่ย้ายข้อมูลเข้าอาร์เรย์ PHP แล้ว
+                //
+                // mysqlnd บัฟเฟอร์ผลลัพธ์ทั้งชุดไว้ฝั่ง PHP ตั้งแต่ execute() แล้ว fetchAll()
+                // ก็ก๊อปอีกชุดเป็นอาร์เรย์ PHP โดยบัฟเฟอร์เดิมยังค้างอยู่จนกว่า statement จะถูกปล่อย
+                // = ถือข้อมูลก้อนเดียวกันไว้สองชุดตลอดช่วงที่เหลือของคำขอ
+                //
+                // วัดจริงบนข้อมูล prod (2 ก.ย. 2569, ออเดอร์ 14,026 ใบ):
+                //   หลัง execute() 15.8 MB -> หลัง fetchAll() 33.9 MB -> หลังปล่อยทิ้ง 18.1 MB
+                //   คืนได้ 15.8 MB พอดี คือบัฟเฟอร์ทั้งก้อน
+                // ในคำขอจริงของหน้ารายงานคืนได้รวมราว 65 MB (orders 37.9 + order_items 27.1)
+                $stmt->closeCursor();
+                $stmt = null;
                 // Orders list carries customer_phone AND a second copy aliased as phone (see the
                 // SELECT above). Nothing between here and the response reads either one.
                 foreach ($orders as $i => $o) {
@@ -546,6 +558,9 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $params = array_merge($orderIds, $orderIds);
                         $itemStmt->execute($params);
                         $items = $itemStmt->fetchAll();
+                        // ปล่อยบัฟเฟอร์ทิ้งเช่นเดียวกับ $stmt ข้างบน (คืนราว 27 MB ที่ 20,837 แถว)
+                        $itemStmt->closeCursor();
+                        $itemStmt = null;
                     } catch (Throwable $e) {
                         error_log("Failed to fetch order items: " . $e->getMessage());
                         error_log("SQL: " . ($itemSql ?? 'N/A'));
