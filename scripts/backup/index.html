@@ -22,6 +22,15 @@
     .tab-content { display: none; }
     .tab-content.active { display: block; }
 
+    /* Company Sub-tabs */
+    .company-tabs { display: flex; flex-wrap: wrap; gap: .25rem; border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0; overflow: hidden; background: #fff; }
+    .ctab { flex: 1; min-width: 120px; text-align: center; padding: .6rem; cursor: pointer; font-size: .85rem; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; background: #f8fafc; border-right: 1px solid var(--border); transition: all .15s; }
+    .ctab:last-child { border-right: none; }
+    .ctab:hover { background: #f1f5f9; }
+    .ctab.active { color: var(--blue); border-bottom-color: var(--blue); background: #fff; }
+    .ctab .badge { display: inline-block; background: #e2e8f0; color: #475569; font-size: .7rem; padding: 2px 6px; border-radius: 12px; margin-left: 4px; }
+    .ctab.active .badge { background: #dbeafe; color: #1e40af; }
+
     /* Common */
     button { padding: .4rem .8rem; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: .85rem; background: white; }
     button:hover:not(:disabled) { background: #f1f5f9; }
@@ -109,18 +118,28 @@
     <div class="scard"><h4>ออเดอร์ Pending</h4><div class="val" id="orderCount">—</div></div>
   </div>
 
-  <div class="toolbar">
-    <button class="primary" id="btnLoad" onclick="loadOrders()">🔄 โหลดออเดอร์</button>
-    <button id="btnSelAll" onclick="toggleSelectAll()">☑️ เลือกทั้งหมด</button>
-    <button class="green" id="btnExport" onclick="exportCsv()" disabled>📥 Export CSV (<span id="selCount">0</span>)</button>
-    <span class="badge" id="totalBadge"></span>
+  <div class="toolbar" style="justify-content: space-between">
+    <div>
+      <button class="primary" id="btnLoad" onclick="loadOrders()">🔄 โหลดออเดอร์ล่าสุด</button>
+      <span class="meta" style="margin-left:.5rem" id="standbyMeta"></span>
+    </div>
+    <div class="badge" id="totalBadge">ทั้งหมด 0</div>
   </div>
 
-  <div class="table-wrap">
+  <div class="company-tabs" id="companyTabs">
+    <!-- Tabs will be rendered here -->
+  </div>
+
+  <div class="toolbar" id="actionToolbar" style="display:none; background:#f8fafc; padding:.6rem .8rem; border:1px solid var(--border); border-top:none; border-radius:0 0 8px 8px; margin-bottom:1rem; align-items:center;">
+    <button id="btnSelAll" onclick="toggleSelectAllActive()">☑️ เลือกทั้งหมด (<span id="activeCompName"></span>)</button>
+    <button class="green" id="btnExport" onclick="exportCsvActive()" disabled style="margin-left:auto">📥 Export CSV (<span id="selCount">0</span>)</button>
+  </div>
+
+  <div class="table-wrap" id="tableWrap" style="display:none;">
     <table>
       <thead>
         <tr>
-          <th style="width:32px"><input type="checkbox" id="chkAll" onchange="toggleSelectAll()"></th>
+          <th style="width:32px"><input type="checkbox" id="chkAll" onchange="toggleSelectAllActive()"></th>
           <th>เลขออเดอร์</th>
           <th>วันสั่ง</th>
           <th>ลูกค้า</th>
@@ -132,7 +151,7 @@
         </tr>
       </thead>
       <tbody id="orderBody">
-        <tr><td colspan="9" class="empty">📋 เลือกวันจัดส่งแล้วกด "โหลด"</td></tr>
+        <tr><td colspan="9" class="empty">📋 กด "โหลดออเดอร์ล่าสุด" เพื่อดึงข้อมูล</td></tr>
       </tbody>
     </table>
   </div>
@@ -252,7 +271,11 @@ tick();
 setInterval(tick, 1000);
 
 // ═══ TAB 2: Standby Export ═══
-let standbyLoaded = false, orders = [], selected = new Set();
+let standbyLoaded = false;
+let orders = []; // All orders
+let grouped = {}; // Orders grouped by cid
+let activeCid = null; // Currently selected company
+let selected = new Set(); // Currently selected order IDs
 
 async function loadStandbyStatus() {
   try {
@@ -267,6 +290,7 @@ async function loadStandbyStatus() {
     if (data.sync) {
       const t = data.sync.finished_at;
       document.getElementById('syncTime').textContent = t ? new Date(t).toLocaleString('th-TH') : '—';
+      document.getElementById('standbyMeta').textContent = 'Sync ข้อมูลล่าสุดเมื่อ: ' + (t ? new Date(t).toLocaleTimeString('th-TH') : '—');
     }
     loadOrders();
   } catch(e) {
@@ -277,73 +301,184 @@ async function loadStandbyStatus() {
 async function loadOrders() {
   const btn = document.getElementById('btnLoad');
   const body = document.getElementById('orderBody');
-  btn.disabled = true; btn.innerHTML = '⏳ โหลด...';
+  const tabs = document.getElementById('companyTabs');
+  const tb = document.getElementById('actionToolbar');
+  const wrap = document.getElementById('tableWrap');
+  
+  btn.disabled = true; btn.innerHTML = '⏳ กำลังดึงข้อมูล...';
+  tabs.innerHTML = '';
+  tb.style.display = 'none';
+  wrap.style.display = 'block';
   body.innerHTML = '<tr><td colspan="9" class="empty">⏳ กำลังโหลด...</td></tr>';
+  
   try {
     const data = await j('/api.php?action=standby_orders');
-    orders = data.orders || []; selected.clear(); renderOrders();
+    orders = data.orders || [];
+    
+    // Group by company
+    grouped = {};
+    orders.forEach(o => {
+      const cid = o.company_id || '0';
+      if (!grouped[cid]) grouped[cid] = { id: cid, name: o.company_name || 'ไม่ระบุบริษัท', list: [] };
+      grouped[cid].list.push(o);
+    });
+
     document.getElementById('orderCount').textContent = orders.length + ' รายการ';
     document.getElementById('totalBadge').textContent = 'ทั้งหมด ' + orders.length;
+
+    renderCompanyTabs();
   } catch(e) {
     body.innerHTML = '<tr><td colspan="9" class="empty">❌ '+esc(e.message)+'</td></tr>';
-  } finally { btn.disabled = false; btn.innerHTML = '🔄 โหลดออเดอร์'; }
+  } finally { 
+    btn.disabled = false; btn.innerHTML = '🔄 โหลดออเดอร์ล่าสุด'; 
+  }
 }
 
-function renderOrders() {
-  const body = document.getElementById('orderBody');
-  if (!orders.length) { body.innerHTML = '<tr><td colspan="9" class="empty">📭 ไม่พบออเดอร์</td></tr>'; updateExportBtn(); return; }
+function renderCompanyTabs() {
+  const tabs = document.getElementById('companyTabs');
+  const tb = document.getElementById('actionToolbar');
+  const wrap = document.getElementById('tableWrap');
+  const keys = Object.keys(grouped);
+  
+  if (keys.length === 0) {
+    tabs.innerHTML = '';
+    tb.style.display = 'none';
+    document.getElementById('orderBody').innerHTML = '<tr><td colspan="9" class="empty">📭 ไม่มีออเดอร์ Pending</td></tr>';
+    return;
+  }
 
-  const grouped = {};
-  orders.forEach(o => {
-    const cid = o.company_id || '0';
-    if (!grouped[cid]) grouped[cid] = { name: o.company_name || 'ไม่ระบุบริษัท', list: [] };
-    grouped[cid].list.push(o);
+  // Sort keys: numeric IDs first, '0' (unknown) last
+  keys.sort((a,b) => {
+    if (a === '0') return 1;
+    if (b === '0') return -1;
+    return a.localeCompare(b);
   });
 
-  let html = '';
-  for (const cid in grouped) {
-    const g = grouped[cid];
-    html += `<tr style="background:#f1f5f9; border-top:2px solid var(--border)"><td colspan="9" style="font-weight:600; color:var(--blue); padding:.6rem;">🏢 ${esc(g.name)} <span style="font-weight:normal; color:var(--muted); font-size:.8rem;">(${g.list.length} รายการ)</span></td></tr>`;
-    html += g.list.map(o => {
-      const items = (o.items||[]).filter(i=>!i.is_promotion_parent);
-      const names = items.map(i=>i.product_name||i.sku||'?').join(', ');
-      const name = ((o.recipient_first_name||o.customer_first_name||'')+' '+(o.recipient_last_name||o.customer_last_name||'')).trim();
-      const isSel = selected.has(o.id);
-      return `<tr class="${isSel?'sel':''}" onclick="toggleRow('${o.id}')">
-        <td><input type="checkbox" ${isSel?'checked':''} onclick="event.stopPropagation();toggleRow('${o.id}')"></td>
-        <td><b>${esc(o.id)}</b></td>
-        <td>${(o.order_date||'').substring(0,10)}</td>
-        <td>${esc(name)||'—'}</td>
-        <td>${esc(o.recipient_phone||o.customer_phone||'')}</td>
-        <td>${esc(o.province||o.customer_province||'')}</td>
-        <td title="${esc(names)}">${names.length>35?esc(names.substring(0,35))+'...':esc(names)}</td>
-        <td style="text-align:right">${Number(o.total_amount||0).toLocaleString('th-TH')}</td>
-        <td>${esc(o.payment_method||'—')}</td>
-      </tr>`;
-    }).join('');
+  if (!activeCid || !grouped[activeCid]) {
+    activeCid = keys[0];
   }
-  body.innerHTML = html;
+
+  tabs.innerHTML = keys.map(cid => {
+    const g = grouped[cid];
+    const isAct = cid === activeCid;
+    return `<div class="ctab ${isAct ? 'active' : ''}" onclick="switchCompany('${cid}')">
+      ${esc(g.name)} <span class="badge">${g.list.length}</span>
+    </div>`;
+  }).join('');
+
+  tb.style.display = 'flex';
+  wrap.style.display = 'block';
+  renderActiveCompanyOrders();
+}
+
+function switchCompany(cid) {
+  if (activeCid === cid) return;
+  activeCid = cid;
+  selected.clear(); // Clear selection when switching tabs!
+  
+  // Re-render tabs to update active class
+  document.querySelectorAll('.ctab').forEach((el, idx) => {
+    const k = Object.keys(grouped).sort((a,b) => a==='0'?1:b==='0'?-1:a.localeCompare(b))[idx];
+    el.classList.toggle('active', k === activeCid);
+  });
+  
+  renderActiveCompanyOrders();
+}
+
+function renderActiveCompanyOrders() {
+  const body = document.getElementById('orderBody');
+  const g = grouped[activeCid];
+  document.getElementById('activeCompName').textContent = g.name;
+
+  if (!g.list.length) { 
+    body.innerHTML = '<tr><td colspan="9" class="empty">📭 ไม่พบออเดอร์</td></tr>'; 
+    updateExportBtn(); 
+    return; 
+  }
+
+  body.innerHTML = g.list.map(o => {
+    const items = (o.items||[]).filter(i=>!i.is_promotion_parent);
+    const names = items.map(i=>i.product_name||i.sku||'?').join(', ');
+    const name = ((o.recipient_first_name||o.customer_first_name||'')+' '+(o.recipient_last_name||o.customer_last_name||'')).trim();
+    const isSel = selected.has(o.id);
+    return `<tr class="${isSel?'sel':''}" onclick="toggleRow('${o.id}')">
+      <td><input type="checkbox" ${isSel?'checked':''} onclick="event.stopPropagation();toggleRow('${o.id}')"></td>
+      <td><b>${esc(o.id)}</b></td>
+      <td>${(o.order_date||'').substring(0,10)}</td>
+      <td>${esc(name)||'—'}</td>
+      <td>${esc(o.recipient_phone||o.customer_phone||'')}</td>
+      <td>${esc(o.province||o.customer_province||'')}</td>
+      <td title="${esc(names)}">${names.length>35?esc(names.substring(0,35))+'...':esc(names)}</td>
+      <td style="text-align:right">${Number(o.total_amount||0).toLocaleString('th-TH')}</td>
+      <td>${esc(o.payment_method||'—')}</td>
+    </tr>`;
+  }).join('');
   updateExportBtn();
 }
 
-function toggleRow(id) { selected.has(id)?selected.delete(id):selected.add(id); renderOrders(); }
-function toggleSelectAll() { if(selected.size===orders.length) selected.clear(); else orders.forEach(o=>selected.add(o.id)); document.getElementById('chkAll').checked=selected.size===orders.length; renderOrders(); }
-function updateExportBtn() { document.getElementById('selCount').textContent=selected.size; document.getElementById('btnExport').disabled=!selected.size; document.getElementById('chkAll').checked=orders.length>0&&selected.size===orders.length; }
+function toggleRow(id) { 
+  selected.has(id) ? selected.delete(id) : selected.add(id); 
+  renderActiveCompanyOrders(); 
+}
 
-async function exportCsv() {
+function toggleSelectAllActive() { 
+  const list = grouped[activeCid].list;
+  if (selected.size === list.length) {
+    selected.clear(); 
+  } else {
+    list.forEach(o => selected.add(o.id)); 
+  }
+  document.getElementById('chkAll').checked = selected.size === list.length; 
+  renderActiveCompanyOrders(); 
+}
+
+function updateExportBtn() { 
+  const list = grouped[activeCid]?.list || [];
+  document.getElementById('selCount').textContent = selected.size; 
+  document.getElementById('btnExport').disabled = !selected.size; 
+  document.getElementById('chkAll').checked = list.length > 0 && selected.size === list.length; 
+}
+
+async function exportCsvActive() {
   if (!selected.size) return;
   const btn = document.getElementById('btnExport');
+  const g = grouped[activeCid];
+  
   btn.disabled = true; btn.innerHTML = '⏳ สร้าง CSV...';
   try {
-    const res = await fetch('/api.php?action=standby_export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderIds:Array.from(selected)})});
-    if (!res.ok) { const e = await res.json(); throw new Error(e.message||'Error'); }
+    const payload = {
+      orderIds: Array.from(selected),
+      companyName: g.name
+    };
+    const res = await fetch('/api.php?action=standby_export',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    
+    if (!res.ok) { 
+      const e = await res.json(); 
+      throw new Error(e.message || 'Error'); 
+    }
+    
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'standby_export_'+new Date().toISOString().replace(/[:.]/g,'').substring(0,15)+'.csv';
+    // Extract filename from Content-Disposition if present, or use default
+    const disp = res.headers.get('Content-Disposition');
+    let filename = 'standby_export.csv';
+    if (disp && disp.indexOf('filename=') !== -1) {
+      const match = disp.match(/filename="(.+?)"/);
+      if (match) filename = match[1];
+    }
+    a.download = filename;
     a.click(); URL.revokeObjectURL(a.href);
-  } catch(e) { showError(e); }
-  finally { btn.disabled = false; btn.innerHTML = `📥 Export CSV (<span id="selCount">${selected.size}</span>)`; }
+  } catch(e) { 
+    showError(e); 
+  } finally { 
+    btn.disabled = false; 
+    btn.innerHTML = `📥 Export CSV (<span id="selCount">${selected.size}</span>)`; 
+  }
 }
 
 // ═══ TAB 3: Dashboard ═══

@@ -288,6 +288,8 @@ if ($action === 'standby_export') {
     }
     $input = json_decode(file_get_contents('php://input'), true);
     $orderIds = $input['orderIds'] ?? [];
+    $companyName = trim((string)($input['companyName'] ?? 'export'));
+    
     if (empty($orderIds) || !is_array($orderIds)) {
         backup_json(['ok' => false, 'message' => 'orderIds required'], 400);
     }
@@ -341,10 +343,14 @@ if ($action === 'standby_export') {
         }
     }
 
+    // Safe filename
+    $safeName = preg_replace('/[^a-zA-Z0-9_\x{0E00}-\x{0E7F}]/u', '_', $companyName);
+    if (empty($safeName)) $safeName = 'export';
+
     // Output CSV
     header_remove('Content-Type');
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="standby_export_' . date('Ymd_His') . '.csv"');
+    header('Content-Disposition: attachment; filename="standby_' . $safeName . '_' . date('Ymd_His') . '.csv"');
 
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
