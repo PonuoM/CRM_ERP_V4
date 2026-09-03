@@ -22,13 +22,11 @@ try {
 
     // Set status to CANCELLED and zero out the financial amounts
     // We explicitly set status = 'CANCELLED' so it doesn't match 'RETURNED'
+    // Update: We keep collection_amount intact, but set waived_amount to equal it
     $stmtUpdate = $pdo->prepare("
         UPDATE order_boxes 
         SET status = 'CANCELLED', 
-            collection_amount = 0, 
-            cod_amount = 0, 
-            collected_amount = 0,
-            waived_amount = 0,
+            waived_amount = collection_amount,
             updated_at = NOW()
         WHERE order_id = ? AND box_number = ?
     ");
