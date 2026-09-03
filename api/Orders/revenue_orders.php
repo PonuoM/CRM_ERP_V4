@@ -86,6 +86,7 @@ try {
                 COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as amount
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
+            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             LEFT JOIN customers c ON o.customer_id = c.customer_id AND c.company_id = o.company_id
             WHERE o.company_id = ?
             $dateFilter
@@ -114,6 +115,7 @@ try {
                 COALESCE(SUM(COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)), 0) as amount
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
+            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             LEFT JOIN customers c ON o.customer_id = c.customer_id AND c.company_id = o.company_id
             WHERE o.company_id = ?
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
@@ -148,6 +150,7 @@ try {
                 CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as seller_name
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
+            LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             LEFT JOIN customers c ON o.customer_id = c.customer_id AND c.company_id = o.company_id
             LEFT JOIN users u ON oi.creator_id = u.id
             WHERE o.company_id = ?
