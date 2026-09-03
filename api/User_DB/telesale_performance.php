@@ -455,7 +455,7 @@ try {
                COALESCE(SUM($lineAmount), 0) AS returned_sales
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
-          LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
+          LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE oi.creator_id IN ($idPh)
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
