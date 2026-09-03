@@ -5533,7 +5533,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               <button
                 onClick={async () => {
                   try {
-                    await apiFetch(`boxes/cancel.php`, {
+                    await apiFetch(`Orders/cancel_box.php`, {
                       method: 'POST',
                       body: JSON.stringify({ order_id: currentOrder.id, box_number: cancelBoxModal.boxNumber })
                     });
