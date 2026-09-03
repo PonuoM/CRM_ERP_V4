@@ -165,7 +165,10 @@ function noteDistState(files: string[]): void {
 function isDeployable(rel: string): boolean {
   if (rel.startsWith("api/") && rel.endsWith(".php")) return true;
   if (rel.startsWith("dist/")) return true;
-  if (rel === ".htaccess") return true;
+  // .htaccess ทุกระดับ ไม่ใช่แค่ที่ root — api/.htaccess กับ api/cron/.htaccess
+  // เป็นไฟล์ที่ host เสิร์ฟจริงและคุมสิทธิ์เข้าถึงทั้งโฟลเดอร์ เดิมตกหล่นจนอัปไม่ขึ้น
+  // (เจอ 2 ก.ย. 2569 ตอนจะอัปกฎบล็อกไฟล์ credential แล้วสคริปต์บอก "Nothing to upload")
+  if (rel === ".htaccess" || rel.endsWith("/.htaccess")) return true;
   return false;
 }
 

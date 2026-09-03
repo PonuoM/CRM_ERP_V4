@@ -27,12 +27,47 @@ const rootConfigFile = path.join(projectRoot, "config.php");
 
 const excludedApiSubdirs = ["uploads", "vendor", "config.php"];
 
+/**
+ * ของที่เกิดจากการรันในเครื่อง ห้ามติดขึ้น host เด็ดขาด
+ *
+ * ทีมใช้วิธี `npm run host:build` แล้วลากโฟลเดอร์ host/ ขึ้น FTP ทั้งก้อน ไฟล์อะไรที่หลุด
+ * เข้ามาในนี้จึงไปทับของจริงบน production ทันที
+ *
+ * 1 ก.ย. 2569 เกิดขึ้นจริง: `api/fatal_error.log` ของเครื่อง dev (123 บรรทัด ค้างตั้งแต่
+ * 28 ส.ค. เป็น path C:\AppServ\...) ไปทับ log ของ prod ที่มี 4,276 บรรทัด ทำให้หลักฐาน
+ * ตอนสอบสวนเหตุระบบล่ม (OOM 3,902 ครั้ง) หายทั้งหมดในคลิกเดียว
+ *
+ * log ฝั่ง host เป็นของที่ production เขียนเอง เราไม่มีอะไรต้องส่งขึ้นไปเลย
+ */
+const excludedApiPatterns: RegExp[] = [
+  /\.log$/i,             // fatal_error.log, debug_check.log, performance.log, basket_debug.log
+  /^batch_out\.json$/i,   // ไฟล์ผลลัพธ์ที่สคริปต์ในเครื่องเขียนทิ้งไว้ (เคยหลุดขึ้น prod 9.2 MB)
+  /^(debug_output|tmp_tail|tables_list|migration_error)/i, // ของชั่วคราวจากการดีบักในเครื่อง
+
+  // กุญแจ: ให้ถือว่าไฟล์บน host เป็นตัวจริงเสมอ ห้ามเอาของในเครื่องไปทับ
+  //
+  // เหตุผลสำคัญกว่าเรื่องความปลอดภัย: ถ้าวันไหน revoke แล้วออก key ใหม่ อัปขึ้น host แล้ว
+  // แต่ในเครื่องยังเป็นตัวเก่า พอ host:build รอบถัดไปมันจะเอาตัวเก่าไปทับ key ใหม่
+  // แล้วฟีเจอร์พังแบบหาสาเหตุยากมาก เพราะไฟล์อยู่ใน .gitignore ไม่มีร่องรอยใน git
+  //
+  // ⚠️ เวลาเปลี่ยน google-credentials.json ต้องอัปขึ้น host เองต่างหาก
+  //    (mdm-credentials.json ไม่มีโค้ดฝั่ง server ใช้เลย ไม่ต้องอัปขึ้นไปตั้งแต่แรก)
+  /credentials?\.json$/i,
+];
+
 function shouldExcludeApiPath(filePath: string): boolean {
   const relative = path.relative(apiDir, filePath);
-  return excludedApiSubdirs.some(
-    (name) =>
-      relative === name || relative.startsWith(name + path.sep),
-  );
+  if (
+    excludedApiSubdirs.some(
+      (name) =>
+        relative === name || relative.startsWith(name + path.sep),
+    )
+  ) {
+    return true;
+  }
+  // เทียบกับชื่อไฟล์ ไม่ใช่ path เต็ม จะได้ครอบคลุมทั้งใน api/ และโฟลเดอร์ย่อย
+  const base = path.basename(relative);
+  return excludedApiPatterns.some((re) => re.test(base));
 }
 
 function copyDirectory(

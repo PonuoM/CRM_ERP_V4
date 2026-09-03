@@ -74,7 +74,21 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $companyId = $_GET['companyId'] ?? null;
                 }
                 $page = max(1, (int) ($_GET['page'] ?? 1));
-                $pageSize = max(1, (int) ($_GET['pageSize'] ?? 50));
+                // เพดานแข็ง — ออเดอร์ 15,000 แถวกินแรม ~152 MB แล้ว (วัดจริง 1 ก.ย. 2569)
+                // ตั้ง 20000 ให้สูงกว่าที่ ReportsPage ใช้จริง (15000) พอมีหัวเหลือ
+                // แต่กัน ?pageSize=999999 ที่จะลากแรมทั้งบัญชี host ลงไปด้วย
+                $pageSize = min(20000, max(1, (int) ($_GET['pageSize'] ?? 50)));
+
+                // ผู้เรียกที่ไม่ต้องใช้รายกล่อง ส่ง include_boxes=0 มาเพื่อข้ามงานก้อนใหญ่นี้
+                //
+                // การดึง order_boxes ของทุกออเดอร์มาสร้าง map เป็นตัวที่ทำให้คำขอเดียวพุ่งถึง
+                // 178-226 MB (วัดจาก fatal_error.log 2 ก.ย. 2569 บรรทัด 657/663 ของไฟล์นี้)
+                // หน้ารายงานไม่ได้ใช้ค่านี้เลย มันไปเรียก Orders/get_order_boxes.php แยกเอง
+                // (ดู ReportsPage.tsx ~บรรทัด 332) งานก้อนนั้นจึงถูกทำทิ้งเปล่า ๆ ทุกครั้ง
+                //
+                // ค่าปริยายยังเป็น "ดึง" เพื่อไม่ให้ผู้เรียกเดิมที่ใช้ boxes อยู่พังโดยไม่รู้ตัว
+                // ต้องส่งมาบอกเองว่าไม่เอา จึงจะข้าม
+                $includeBoxes = !isset($_GET['include_boxes']) || $_GET['include_boxes'] !== '0';
                 $offset = ($page - 1) * $pageSize;
 
                 // Filter parameters
@@ -490,6 +504,18 @@ function handle_orders(PDO $pdo, ?string $id): void
                     $stmt->execute();
                 }
                 $orders = $stmt->fetchAll();
+                // ปล่อยบัฟเฟอร์ของ statement ทิ้งทันทีที่ย้ายข้อมูลเข้าอาร์เรย์ PHP แล้ว
+                //
+                // mysqlnd บัฟเฟอร์ผลลัพธ์ทั้งชุดไว้ฝั่ง PHP ตั้งแต่ execute() แล้ว fetchAll()
+                // ก็ก๊อปอีกชุดเป็นอาร์เรย์ PHP โดยบัฟเฟอร์เดิมยังค้างอยู่จนกว่า statement จะถูกปล่อย
+                // = ถือข้อมูลก้อนเดียวกันไว้สองชุดตลอดช่วงที่เหลือของคำขอ
+                //
+                // วัดจริงบนข้อมูล prod (2 ก.ย. 2569, ออเดอร์ 14,026 ใบ):
+                //   หลัง execute() 15.8 MB -> หลัง fetchAll() 33.9 MB -> หลังปล่อยทิ้ง 18.1 MB
+                //   คืนได้ 15.8 MB พอดี คือบัฟเฟอร์ทั้งก้อน
+                // ในคำขอจริงของหน้ารายงานคืนได้รวมราว 65 MB (orders 37.9 + order_items 27.1)
+                $stmt->closeCursor();
+                $stmt = null;
                 // Orders list carries customer_phone AND a second copy aliased as phone (see the
                 // SELECT above). Nothing between here and the response reads either one.
                 foreach ($orders as $i => $o) {
@@ -532,6 +558,9 @@ function handle_orders(PDO $pdo, ?string $id): void
                         $params = array_merge($orderIds, $orderIds);
                         $itemStmt->execute($params);
                         $items = $itemStmt->fetchAll();
+                        // ปล่อยบัฟเฟอร์ทิ้งเช่นเดียวกับ $stmt ข้างบน (คืนราว 27 MB ที่ 20,837 แถว)
+                        $itemStmt->closeCursor();
+                        $itemStmt = null;
                     } catch (Throwable $e) {
                         error_log("Failed to fetch order items: " . $e->getMessage());
                         error_log("SQL: " . ($itemSql ?? 'N/A'));
@@ -645,6 +674,7 @@ function handle_orders(PDO $pdo, ?string $id): void
 
                     // Fetch boxes from order_boxes for each main order
                     $boxesMap = [];
+                    if ($includeBoxes) {
                     $boxesSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status, return_status, return_note
                                  FROM order_boxes
                                  WHERE order_id IN ($parentPlaceholders)
@@ -672,6 +702,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                             'return_note' => $boxRow['return_note'] ?? null,
                         ];
                     }
+
+                    } // end if ($includeBoxes)
 
                     // Batch fetch reconcile_action for paginated orders only
                     $reconcileMap = [];
