@@ -270,6 +270,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const [cancellationError, setCancellationError] = useState<string>('');
   const cancellationRef = useRef<HTMLDivElement>(null);
   const [hasSlipChanges, setHasSlipChanges] = useState(false);
+  const [cancelBoxModal, setCancelBoxModal] = useState<{ isOpen: boolean; boxNumber: number | null }>({ isOpen: false, boxNumber: null });
   const [recipientPhoneError, setRecipientPhoneError] = useState<string>("");
 
   const [provinces, setProvinces] = useState<any[]>([]);
@@ -4891,7 +4892,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         );
 
                         const rowBg = idx % 2 === 0 ? "bg-white" : "bg-gray-50";
-                        const canEditFinancials = [PaymentMethod.COD, PaymentMethod.PayAfter].includes(currentOrder.paymentMethod as PaymentMethod);
+                        const isBoxCancelled = box.status?.toUpperCase() === 'CANCELLED';
+                        const canEditFinancials = !isBoxCancelled && [PaymentMethod.COD, PaymentMethod.PayAfter].includes(currentOrder.paymentMethod as PaymentMethod);
 
                         return (
                           <tr key={`box-${idx}`} className={rowBg}>
@@ -4908,6 +4910,18 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                     }`}>
                                       {box.status}
                                     </span>
+                                  )}
+                                  {showInputs && !isLocked && permission === "manager" && !isBoxCancelled && box.status?.toUpperCase() !== 'RETURNED' && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        setCancelBoxModal({ isOpen: true, boxNumber: box.boxNumber });
+                                      }}
+                                      className="text-[10px] text-red-500 hover:text-red-700 underline"
+                                    >
+                                      ยกเลิกส่งกล่องนี้
+                                    </button>
                                   )}
                                 </div>
 
@@ -5494,6 +5508,50 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           </div>
         )}
       </Modal>
+
+      {/* Cancel Box Modal */}
+      {cancelBoxModal.isOpen && (
+        <Modal
+          title="ยืนยันยกเลิกการส่งกล่อง"
+          onClose={() => setCancelBoxModal({ isOpen: false, boxNumber: null })}
+          size="sm"
+        >
+          <div className="p-4 space-y-4">
+            <p className="text-gray-700">
+              คุณต้องการยกเลิกการส่ง <strong>กล่องที่ {cancelBoxModal.boxNumber}</strong> ใช่หรือไม่?
+            </p>
+            <p className="text-sm text-red-600 bg-red-50 p-2 rounded">
+              การดำเนินการนี้จะเปลี่ยนสถานะกล่องเป็น CANCELLED และยอดเรียกเก็บของกล่องนี้จะกลายเป็น 0
+            </p>
+            <div className="flex justify-end space-x-2 pt-4">
+              <button
+                onClick={() => setCancelBoxModal({ isOpen: false, boxNumber: null })}
+                className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await apiFetch(`boxes/cancel.php`, {
+                      method: 'POST',
+                      body: JSON.stringify({ order_id: currentOrder.id, box_number: cancelBoxModal.boxNumber })
+                    });
+                    window.dispatchEvent(new CustomEvent('orderModalClosed', { detail: { saved: true } }));
+                    setCancelBoxModal({ isOpen: false, boxNumber: null });
+                    onClose();
+                  } catch (e: any) {
+                    console.error(e);
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-md transition-colors"
+              >
+                ยืนยันยกเลิกกล่องนี้
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Return Status Change Modal */}
       {returnStatusChangeModal?.isOpen && (

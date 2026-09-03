@@ -248,7 +248,7 @@ try {
     // authoritative bound is on oi.created_at.
     $lineAmount = "COALESCE(oi.net_total, oi.quantity * oi.price_per_unit)";
     $liveItem = "(oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL";
-    $alive = "o.order_status NOT IN ('Cancelled', 'BadDebt', 'Returned') AND (ob.status IS NULL OR ob.status <> 'RETURNED')";
+    $alive = "o.order_status NOT IN ('Cancelled', 'BadDebt', 'Returned') AND (ob.status IS NULL OR (ob.status <> 'RETURNED' AND ob.status <> 'CANCELLED'))";
     $itemWindowStart = date('Y-m-d', strtotime($startDate . ' -' . ITEM_LAG_DAYS . ' days'));
     $itemWindowEnd = date('Y-m-d', strtotime($endDate . ' +2 days'));
 
