@@ -66,6 +66,11 @@ try {
         case 'customer_tags':
             handle_customer_tags($pdo);
             break;
+        // ออเดอร์รอเปิด (ขายได้ผ่านมือถือ → เปิดที่บริษัท) — เมนูฝั่งเว็บโผล่เฉพาะตอนปิดเบอร์เปิด
+        case 'pending_orders':
+            require_once __DIR__ . '/Controllers/PendingOrderController.php';
+            PendingOrderController::handle($pdo);
+            break;
         // Bridge between the CRM and the agent's handset — see api/Controllers/CallController.php.
         case 'call':
             require_once __DIR__ . '/Controllers/CallController.php';
@@ -78,7 +83,18 @@ try {
             else if ($callAction === 'event')    CallController::event($pdo);
             else if ($callAction === 'identify') CallController::identify($pdo);
             else if ($callAction === 'history')  CallController::history($pdo);
+            else if ($callAction === 'customer') CallController::customer($pdo);
+            else if ($callAction === 'disposition') CallController::disposition($pdo);
+            else if ($callAction === 'disposition_status') CallController::dispositionStatus($pdo);
             else if ($callAction === 'verify_admin') CallController::verifyAdmin($pdo);
+            else if ($callAction === 'tags')     CallController::tags($pdo);
+            else if ($callAction === 'home')     CallController::home($pdo);
+            else if ($callAction === 'search')   CallController::search($pdo);
+            else if ($callAction === 'daily_summary') CallController::dailySummary($pdo);
+            else if ($callAction === 'appointments') CallController::appointments($pdo);
+            else if ($callAction === 'products')  CallController::products($pdo);
+            else if ($callAction === 'pending_order') CallController::pendingOrder($pdo);
+            else if ($callAction === 'team')     CallController::team($pdo);
             else json_response(['ok' => false, 'error' => 'INVALID_ACTION',
                 'message' => "Action '$callAction' is not valid for call"], 400);
             break;
@@ -4209,15 +4225,30 @@ function handle_customer_tags(PDO $pdo): void
                     json_response($stmt->fetchAll());
                 } else {
                     // Stream JSON output row-by-row to avoid OOM on large datasets
-                    $companyId = $_GET['companyId'] ?? null;
+                    //
+                    // ⚠️ ทางนี้แปลว่า "ขอ tag ของลูกค้าทุกคน" ซึ่งไม่มีขอบเขตโดยธรรมชาติ
+                    // ไม่ส่ง companyId มาด้วยจะได้ทั้งตาราง 116,969 แถว (บัฟเฟอร์ 47 MB ต่อคำขอ)
+                    // และเห็นข้ามบริษัทไปด้วย จึงผูกกับบริษัทของคนเรียกเสมอเมื่อไม่ได้ระบุมา
+                    // ตัดเพดานจำนวนแถวไม่ได้ เพราะการตัดแปลว่าลูกค้าบางคนจะ tag หายแบบเงียบ ๆ
+                    //
+                    // หน้าเว็บเลิกใช้ทางนี้แล้วตั้งแต่ 1 ก.ย. 2569 — API ลูกค้า (handle_customers)
+                    // แนบ tags มากับลูกค้าแต่ละคนอยู่แล้ว แบบ WHERE customer_id IN (...) เฉพาะหน้านั้น
+                    $companyId = $_GET['companyId'] ?? ($user['company_id'] ?? null);
                     if ($companyId) {
                         $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id JOIN customers c ON c.customer_id=ct.customer_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE c.company_id=? AND ct.deleted_at IS NULL AND (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY ct.customer_id, t.name');
                         $stmt->execute([$companyId, $authUserId]);
                     } else {
-                        $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id LEFT JOIN user_tags ut ON ut.tag_id = t.id WHERE ct.deleted_at IS NULL AND (ut.user_id IS NULL OR ut.user_id = ?) ORDER BY ct.customer_id, t.name');
-                        $stmt->execute([$authUserId]);
+                        // ไม่มีบริษัทให้ยึด (เช่น SuperAdmin ที่ company_id เป็น NULL) — ตอบว่าต้องระบุมา
+                        // ดีกว่าเงียบ ๆ แล้วดูดทั้งตารางจนแรมทั้งบัญชีหมดเหมือนเหตุ 1 ก.ย. 2569
+                        json_response([
+                            'error' => 'COMPANY_REQUIRED',
+                            'message' => 'ต้องระบุ companyId หรือ customerId — การขอ tag ของลูกค้าทุกบริษัทพร้อมกันหนักเกินกว่าที่เซิร์ฟเวอร์รับไหว'
+                        ], 400);
                     }
-                    // Stream output to avoid loading everything into memory
+
+                    // หมายเหตุ: ลูปข้างล่างอ่านทีละแถวก็จริง แต่ PDO บัฟเฟอร์ผลทั้งชุดไว้ตั้งแต่
+                    // execute() แล้ว (mysqlnd) การ "สตรีม" ตรงนี้จึงไม่ได้ลดแรมอย่างที่ชื่อบอก
+                    // ตัวที่ลดแรมจริงคือเงื่อนไข company ข้างบน
                     http_response_code(200);
                     header('Content-Type: application/json; charset=utf-8');
                     echo '[';
@@ -4314,10 +4345,25 @@ function handle_activities(PDO $pdo, ?string $id): void
                     }
                 }
                 $sql .= ' ORDER BY a.timestamp DESC';
+
+                // เพดานบังคับเสมอ — ไม่ใส่ LIMIT เท่ากับดึงทั้งตาราง
+                //
+                // 1 ก.ย. 2569: หน้าจอเรียก listActivities() แบบไม่ส่ง limit หลังบันทึกออเดอร์สำเร็จ
+                // วัดจริงบนข้อมูล prod: 99,854 แถว = peak 220 MB ต่อคำขอเดียว (ตอบกลับ JSON 47 MB)
+                // แรมหมดถึงระดับบัญชี host จึงลากทุกคำขอที่วิ่งอยู่ตายตามไปด้วย ไม่ใช่แค่คำขอนี้
+                // (log ขึ้น "Out of memory" ไม่ใช่ "Allowed memory size" = malloc ระดับ OS ล้ม)
+                //
+                // ต้องคุมที่นี่ ไม่ใช่ฝั่งหน้าจอ — ก.พ. 2569 เคยแก้ที่หน้าจอแล้วใส่ไม่ครบทุกจุด
+                // อาการจึงกลับมาอีก (commit 2114b336 "fix memory limit แต่ดูเหมือนว่ายังเกิดขึ้นอยู่")
+                //
+                // 500 = ค่าเดียวกับที่หน้าแอปใช้ตอนเปิดโปรแกรมอยู่แล้ว state จึงไม่เปลี่ยนพฤติกรรม
+                // เพดานแข็ง 2000 กัน ?limit=999999 — ลูกค้าที่มี activity เยอะสุดมี 246 แถว
+                // (เฉลี่ย 1.5) การเปิดดูรายคนจึงไม่มีทางถูกตัด
                 $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 0;
-                if ($limit > 0) {
-                    $sql .= " LIMIT $limit";
-                }
+                if ($limit <= 0)   $limit = 500;
+                if ($limit > 2000) $limit = 2000;
+                $sql .= " LIMIT $limit";
+
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 json_response($stmt->fetchAll());

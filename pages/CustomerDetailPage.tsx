@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import CustomerPhone from "../components/CustomerPhone";
 import CallCustomerButton from "../components/CallCustomerButton";
+import TransferRequestModal from "../components/TransferRequestModal";
+import { useTransferApprovalRequired } from "../hooks/useTransferPolicy";
 import {
   Customer,
   Order,
@@ -88,6 +90,13 @@ interface CustomerDetailPageProps {
   onCreateUserTag: (tagName: string) => Promise<Tag | null>;
   onCompleteAppointment?: (appointmentId: number, customerId?: string) => void;
   ownerName?: string;
+  /**
+   * ผู้ใช้คนนี้เปลี่ยนผู้ดูแลลูกค้าเองได้มั้ย (permission customers.transfer_owner)
+   *
+   * หัวหน้าทีมถูกตัดสิทธิ์นี้ออกโดยตั้งใจ เพราะการเปลี่ยนเจ้าของตัดสินว่าออเดอร์ใบถัดไป
+   * เป็นยอดของใคร คนที่ไม่มีสิทธิ์จะเห็นปุ่มขอโอนให้แอดมินอนุมัติแทน
+   */
+  canTransferOwner?: boolean;
   onStartCreateOrder?: (customer: Customer) => void;
   onUpsellClick?: (customer: Customer) => void;
   onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
@@ -128,6 +137,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     onRemoveTag,
     onCreateUserTag,
     ownerName,
+    canTransferOwner = false,
     onStartCreateOrder,
     onUpsellClick,
     onChangeOwner,
@@ -561,8 +571,20 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
   const currentOwnerName = currentOwnerBaseName;
 
+  // บริษัทนี้เปิดนโยบายขออนุมัติไว้หรือไม่ ปิดอยู่คือพฤติกรรมเดิมทุกอย่าง เทเลโอนให้หัวหน้าตัวเองได้
+  // หัวหน้าโอนหากันและโอนให้ลูกทีมได้ ตามที่ eligibleOwners กำหนดไว้แต่เดิม
+  const approvalRequired = useTransferApprovalRequired();
+
   const canChangeOwner =
-    Boolean(onChangeOwner) && filteredEligibleOwners.length > 0;
+    (!approvalRequired || canTransferOwner) &&
+    Boolean(onChangeOwner) &&
+    filteredEligibleOwners.length > 0;
+
+  // ปุ่มขอโอนมีความหมายเฉพาะตอนที่บริษัทเปิดนโยบายนี้ไว้เท่านั้น บริษัทที่ปิดอยู่ไม่มีคิวอนุมัติ
+  // ให้ยื่นไปหา ปุ่มจึงไม่ควรโผล่ให้กดแล้วค้าง ลูกค้าที่เป็นของตัวเองอยู่แล้วก็ไม่ต้องขอ
+  const canRequestTransfer =
+    approvalRequired && !canTransferOwner && customer.assignedTo !== user.id;
+  const [showTransferRequest, setShowTransferRequest] = useState(false);
 
   const ownerGroups = useMemo(() => {
     const supervisors = filteredEligibleOwners.filter(
@@ -1254,6 +1276,15 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                       onClick={handleToggleOwnerSelector}
                     >
                       (เปลี่ยนผู้ดูแล)
+                    </button>
+                  )}
+                  {canRequestTransfer && (
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:underline"
+                      onClick={() => setShowTransferRequest(true)}
+                    >
+                      (ขอโอนมาดูแล)
                     </button>
                   )}
                   {!canChangeOwner && user.role === UserRole.Telesale && !user.supervisorId && (
@@ -2176,6 +2207,16 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
           </div>
         </div >
       </div >
+
+      {showTransferRequest && (
+        <TransferRequestModal
+          customer={customer}
+          currentOwnerName={currentOwnerName}
+          user={user}
+          // ไม่ต้อง refresh อะไรหลังส่ง คำขอยังไม่เปลี่ยนเจ้าของจนกว่าแอดมินจะอนุมัติ
+          onClose={() => setShowTransferRequest(false)}
+        />
+      )}
 
       {showAddressManagement && (
         <AddressManagementModal

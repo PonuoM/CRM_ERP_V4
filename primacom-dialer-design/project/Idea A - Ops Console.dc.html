@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Roboto+Mono:wght@400;500;700&family=Noto+Sans+Thai:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#04090A; }
+  a { color:#38E0C4; text-decoration:none; }
+  a:hover { color:#7BF0DC; }
+</style>
+</helmet>
+
+<div style="min-height:100%;background:#04090A;padding:48px 56px 80px;box-sizing:border-box;font-family:'Noto Sans Thai',Roboto,sans-serif">
+
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:760px;margin-bottom:40px">
+    <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;letter-spacing:0.2em;color:#38E0C4">IDEA A</div>
+    <div style="font-size:34px;font-weight:900;color:#EAF3F3;line-height:1.15">แผงควบคุม · Ops Console</div>
+    <div style="font-size:14.5px;line-height:1.65;color:#7E9A98;text-wrap:pretty">เครื่องวางบนโต๊ะ เหลือบตาแวบเดียวต้องอ่านออก — ตัวเลขใหญ่ ขอบคม แถบสถานะเต็มความกว้าง ปุ่มเป็นแผ่นสี่เหลี่ยมกดโดนง่าย ตัวอักษรกำกับเป็นโมโนสเปซเหมือนเครื่องมือช่าง</div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:40px">
+
+    <!-- A1 STANDBY -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;letter-spacing:0.1em;color:#5E7E80">01 / STANDBY</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#06100F" hint-size="412px,892px">
+        <div style="height:100%;box-sizing:border-box;background:#06100F;display:flex;flex-direction:column;font-family:'Noto Sans Thai',Roboto,sans-serif">
+          <div style="background:#4ADE80;padding:11px 20px;display:flex;align-items:center;justify-content:space-between">
+            <div style="font-family:'Roboto Mono',monospace;font-size:12px;font-weight:700;letter-spacing:0.12em;color:#04211E">● ONLINE · DEFAULT DIALER</div>
+            <div style="font-family:'Roboto Mono',monospace;font-size:12px;font-weight:700;color:#04211E">9:30</div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0">
+            <div style="font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:0.16em;color:#4A6A68">PRIMACOM DIALER</div>
+            <div style="width:34px;height:34px;border:1px solid #21403F;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#7E9A98">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14,12.94c0.04,-0.3 0.06,-0.61 0.06,-0.94 0,-0.32 -0.02,-0.64 -0.07,-0.94l2.03,-1.58c0.18,-0.14 0.23,-0.41 0.12,-0.61l-1.92,-3.32c-0.12,-0.22 -0.37,-0.29 -0.59,-0.22l-2.39,0.96c-0.5,-0.38 -1.03,-0.7 -1.62,-0.94L14.4,2.81c-0.04,-0.24 -0.24,-0.41 -0.48,-0.41h-3.84c-0.24,0 -0.43,0.17 -0.47,0.41L9.25,5.35C8.66,5.59 8.12,5.92 7.63,6.29L5.24,5.33c-0.22,-0.08 -0.47,0 -0.59,0.22L2.74,8.87C2.62,9.08 2.66,9.34 2.86,9.48l2.03,1.58C4.84,11.36 4.8,11.69 4.8,12s0.02,0.64 0.07,0.94l-2.03,1.58c-0.18,0.14 -0.23,0.41 -0.12,0.61l1.92,3.32c0.12,0.22 0.37,0.29 0.59,0.22l2.39,-0.96c0.5,0.38 1.03,0.7 1.62,0.94l0.36,2.54c0.05,0.24 0.24,0.41 0.48,0.41h3.84c0.24,0 0.44,-0.17 0.47,-0.41l0.36,-2.54c0.59,-0.24 1.13,-0.56 1.62,-0.94l2.39,0.96c0.22,0.08 0.47,0 0.59,-0.22l1.92,-3.32c0.12,-0.22 0.07,-0.47 -0.12,-0.61l-2.01,-1.58zM12,15.6c-1.98,0 -3.6,-1.62 -3.6,-3.6s1.62,-3.6 3.6,-3.6 3.6,1.62 3.6,3.6 -1.62,3.6 -3.6,3.6z"/></svg>
+            </div>
+          </div>
+
+          <div style="padding:40px 20px 0">
+            <div style="font-size:44px;font-weight:900;color:#EAF3F3;line-height:1.05;letter-spacing:-0.01em">พร้อม<br>รับงาน</div>
+            <div style="height:4px;width:64px;background:#38E0C4;margin:20px 0 0"></div>
+          </div>
+
+          <div style="padding:24px 20px 0;display:flex;flex-direction:column;gap:1px">
+            <div style="display:flex;justify-content:space-between;background:#0D1A1B;border:1px solid #14282A;padding:13px 15px">
+              <div style="font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:0.12em;color:#4A6A68">AGENT</div>
+              <div style="font-size:14px;font-weight:700;color:#EAF3F3">สมชาย กิตติวัฒน์</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;background:#0D1A1B;border:1px solid #14282A;padding:13px 15px">
+              <div style="font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:0.12em;color:#4A6A68">DEVICE</div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:13px;color:#38E0C4">PHONE-07 · 92%</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;background:#0D1A1B;border:1px solid #14282A;padding:13px 15px">
+              <div style="font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:0.12em;color:#4A6A68">TODAY</div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:13px;color:#EAF3F3">42 สาย · คุย 1:12:08</div>
+            </div>
+          </div>
+
+          <div style="padding:22px 20px 0;font-size:12.5px;line-height:1.7;color:#4A6A68;font-family:'Roboto Mono',monospace">กดโทรจากหน้าจอคอมพิวเตอร์<br>เครื่องนี้จะโทรออกให้อัตโนมัติ</div>
+
+          <div style="flex:1;min-height:16px"></div>
+
+          <div style="display:flex;gap:1px;padding:0 20px 20px">
+            <div style="flex:1;background:#38E0C4;padding:17px 12px;text-align:center;font-size:15px;font-weight:700;color:#04211E">ประวัติการโทร</div>
+            <div style="width:56px;border:1px solid #21403F;display:flex;align-items:center;justify-content:center;color:#7E9A98">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12,14c1.66,0 2.99,-1.34 2.99,-3L15,5c0,-1.66 -1.34,-3 -3,-3S9,3.34 9,5v6c0,1.66 1.34,3 3,3zM17.3,11c0,3 -2.54,5.1 -5.3,5.1S6.7,14 6.7,11L5,11c0,3.41 2.72,6.23 6,6.72V21h2v-3.28c3.28,-0.48 6,-3.3 6,-6.72h-1.7z"/></svg>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- A2 IN CALL -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;letter-spacing:0.1em;color:#5E7E80">02 / IN CALL</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#06100F" hint-size="412px,892px">
+        <div style="height:100%;box-sizing:border-box;background:#06100F;display:flex;flex-direction:column;font-family:'Noto Sans Thai',Roboto,sans-serif">
+          <div style="background:#4ADE80;padding:11px 20px;display:flex;align-items:center;justify-content:space-between">
+            <div style="font-family:'Roboto Mono',monospace;font-size:12px;font-weight:700;letter-spacing:0.12em;color:#04211E">● กำลังสนทนา</div>
+            <div style="font-family:'Roboto Mono',monospace;font-size:12px;font-weight:700;color:#04211E">OUTBOUND</div>
+          </div>
+
+          <div style="padding:34px 24px 0">
+            <div style="font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:0.16em;color:#4A6A68">CUSTOMER #10482</div>
+            <div style="font-size:38px;font-weight:900;color:#EAF3F3;line-height:1.1;padding-top:10px">สมชาย ใจดี</div>
+            <div style="display:flex;gap:6px;padding-top:14px">
+              <div style="border:1px solid #21403F;padding:6px 10px;font-family:'Roboto Mono',monospace;font-size:11.5px;color:#38E0C4">เกรด A</div>
+              <div style="border:1px solid #21403F;padding:6px 10px;font-family:'Roboto Mono',monospace;font-size:11.5px;color:#FFC53D">ถังทอง</div>
+              <div style="border:1px solid #21403F;padding:6px 10px;font-family:'Roboto Mono',monospace;font-size:11.5px;color:#7E9A98">จันทบุรี</div>
+            </div>
+          </div>
+
+          <div style="margin:32px 24px 0;border-top:1px solid #14282A;border-bottom:1px solid #14282A;padding:22px 0">
+            <div style="font-family:'Roboto Mono',monospace;font-size:72px;font-weight:500;color:#38E0C4;line-height:1;letter-spacing:-0.02em">03:12</div>
+            <div style="font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:0.16em;color:#4A6A68;padding-top:12px">ELAPSED · ยอดซื้อรวม ฿1,284,500</div>
+          </div>
+
+          <div style="flex:1"></div>
+
+          <div style="display:flex;gap:1px;padding:0 24px 26px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:10px">
+              <div style="width:100%;height:78px;background:#0D1A1B;border:1px solid #21403F;display:flex;align-items:center;justify-content:center;color:#EAF3F3">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12,14c1.66,0 2.99,-1.34 2.99,-3L15,5c0,-1.66 -1.34,-3 -3,-3S9,3.34 9,5v6c0,1.66 1.34,3 3,3zM17.3,11c0,3 -2.54,5.1 -5.3,5.1S6.7,14 6.7,11L5,11c0,3.41 2.72,6.23 6,6.72V21h2v-3.28c3.28,-0.48 6,-3.3 6,-6.72h-1.7z"/></svg>
+              </div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:0.1em;color:#7E9A98">ปิดไมค์</div>
+            </div>
+            <div style="flex:2;display:flex;flex-direction:column;align-items:center;gap:10px">
+              <div style="width:100%;height:78px;background:#FF5A4E;display:flex;align-items:center;justify-content:center;color:#FFFFFF">
+                <svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor"><path d="M12,9c-1.6,0 -3.15,0.25 -4.6,0.72v3.1c0,0.39 -0.23,0.74 -0.56,0.9 -0.98,0.49 -1.87,1.12 -2.66,1.85 -0.18,0.18 -0.43,0.28 -0.7,0.28 -0.28,0 -0.53,-0.11 -0.71,-0.29L0.29,13.08c-0.18,-0.17 -0.29,-0.42 -0.29,-0.7 0,-0.28 0.11,-0.53 0.29,-0.71C3.34,8.78 7.46,7 12,7s8.66,1.78 11.71,4.67c0.18,0.18 0.29,0.43 0.29,0.71 0,0.28 -0.11,0.53 -0.29,0.71l-2.48,2.48c-0.18,0.18 -0.43,0.29 -0.71,0.29 -0.27,0 -0.52,-0.11 -0.7,-0.28 -0.79,-0.74 -1.69,-1.36 -2.67,-1.85 -0.33,-0.16 -0.56,-0.5 -0.56,-0.9v-3.1C15.15,9.25 13.6,9 12,9z"/></svg>
+              </div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:0.1em;color:#FF8A80">วางสาย</div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- A3 DISPOSITION -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:412px">
+      <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;letter-spacing:0.1em;color:#5E7E80">03 / DISPOSITION</div>
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="true" bg="#06100F" hint-size="412px,892px">
+        <div style="min-height:100%;box-sizing:border-box;background:#06100F;display:flex;flex-direction:column;font-family:'Noto Sans Thai',Roboto,sans-serif">
+          <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #14282A;padding:14px 20px">
+            <div style="font-family:'Roboto Mono',monospace;font-size:12px;color:#7E9A98">ข้าม</div>
+            <div style="font-size:15px;font-weight:700;color:#EAF3F3">บันทึกการโทร</div>
+            <div style="font-family:'Roboto Mono',monospace;font-size:12px;color:#4A6A68">1/1</div>
+          </div>
+
+          <div style="display:flex;border-left:4px solid #38E0C4;background:#0D1A1B;margin:16px 20px 0;padding:13px 15px;align-items:center">
+            <div style="flex:1">
+              <div style="font-size:15.5px;font-weight:700;color:#EAF3F3">สมชาย ใจดี</div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:11.5px;color:#4A6A68;padding-top:3px">#10482 · OUTBOUND</div>
+            </div>
+            <div style="font-family:'Roboto Mono',monospace;font-size:20px;font-weight:500;color:#4ADE80">03:12</div>
+          </div>
+
+          <div style="padding:22px 20px 0">
+            <div style="font-family:'Roboto Mono',monospace;font-size:10.5px;letter-spacing:0.16em;color:#4A6A68;padding-bottom:9px">สถานะการโทร</div>
+            <div style="display:flex;flex-wrap:wrap;gap:1px">
+              <div style="background:#38E0C4;padding:11px 14px;font-size:14px;font-weight:700;color:#04211E">ได้คุย</div>
+              <div style="border:1px solid #21403F;padding:11px 14px;font-size:14px;color:#7E9A98">ไม่รับสาย</div>
+              <div style="border:1px solid #21403F;padding:11px 14px;font-size:14px;color:#7E9A98">สายไม่ว่าง</div>
+              <div style="border:1px solid #21403F;padding:11px 14px;font-size:14px;color:#7E9A98">ตัดสายทิ้ง</div>
+            </div>
+          </div>
+
+          <div style="padding:22px 20px 0">
+            <div style="font-family:'Roboto Mono',monospace;font-size:10.5px;letter-spacing:0.16em;color:#4A6A68;padding-bottom:9px">ผลการโทร · ต้องเลือก</div>
+            <div style="background:#0D1A1B;border:1px solid #FFC53D;padding:14px;display:flex;justify-content:space-between;align-items:center">
+              <div style="font-size:15px;color:#FFC53D">เลือกผลการโทร</div>
+              <div style="font-family:'Roboto Mono',monospace;font-size:12px;color:#FFC53D">▾</div>
+            </div>
+          </div>
+
+          <div style="padding:22px 20px 0">
+            <div style="font-family:'Roboto Mono',monospace;font-size:10.5px;letter-spacing:0.16em;color:#4A6A68;padding-bottom:9px">ข้อมูลสวน</div>
+            <div style="display:flex;gap:1px;margin-bottom:1px">
+              <div style="flex:1;background:#0D1A1B;border:1px solid #14282A;padding:13px 14px;font-size:14.5px;color:#EAF3F3">ทุเรียนหมอนทอง</div>
+            </div>
+            <div style="display:flex;gap:1px">
+              <div style="flex:1;background:#0D1A1B;border:1px solid #14282A;padding:13px 14px;font-family:'Roboto Mono',monospace;font-size:14.5px;color:#EAF3F3">12</div>
+              <div style="background:#4ADE80;padding:13px 16px;font-size:14px;font-weight:700;color:#06231A">ไร่</div>
+              <div style="border:1px solid #21403F;padding:13px 16px;font-size:14px;color:#7E9A98">ต้น</div>
+            </div>
+          </div>
+
+          <div style="padding:22px 20px 0">
+            <div style="font-family:'Roboto Mono',monospace;font-size:10.5px;letter-spacing:0.16em;color:#4A6A68;padding-bottom:9px">หมายเหตุ</div>
+            <div style="background:#0D1A1B;border:1px solid #14282A;padding:13px 14px;font-size:14.5px;color:#3E5D5B;min-height:54px">รายละเอียดเพิ่มเติม…</div>
+          </div>
+
+          <div style="padding:22px 20px 0">
+            <div style="font-family:'Roboto Mono',monospace;font-size:10.5px;letter-spacing:0.16em;color:#4A6A68;padding-bottom:9px">TAG</div>
+            <div style="display:flex;flex-wrap:wrap;gap:1px">
+              <div style="background:#14282A;border:1px solid #21403F;padding:9px 12px;font-size:13px;color:#4ADE80">✓ ลูกค้าเกรด A</div>
+              <div style="background:#14282A;border:1px solid #21403F;padding:9px 12px;font-size:13px;color:#FFC53D">✓ สนใจโปรโมชั่น</div>
+              <div style="border:1px solid #21403F;padding:9px 12px;font-size:13px;color:#4A6A68">+ เพิ่ม</div>
+            </div>
+          </div>
+
+          <div style="flex:1;min-height:24px"></div>
+          <div style="padding:0 20px 20px">
+            <div style="background:#38E0C4;padding:18px;text-align:center;font-size:16px;font-weight:700;color:#04211E">บันทึก</div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

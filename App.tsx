@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { ToastProvider } from "./components/Toast";
+import { CallProvider } from "./contexts/CallContext";
+import FloatingCallWidget from "./components/FloatingCallWidget";
 import { triggerCustomersRefresh } from "./utils/dataSync";
 import {
   UserRole,
@@ -59,7 +61,6 @@ import {
   listCustomerBlocks,
   addCustomerTag,
   removeCustomerTag,
-  listCustomerTags,
   createTag,
   listActivities,
   createActivity,
@@ -167,6 +168,8 @@ import LoyaltyTrackerPage from "./pages/LoyaltyTrackerPage";
 import LoyaltyDashboard from "./pages/LoyaltyDashboard";
 import LoyaltyExecutiveReport from "./pages/LoyaltyExecutiveReport";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
+import { PendingOrdersPage } from "./pages/PendingOrdersPage";
+import { getCustomer as fetchCustomerById, openPendingOrder, type PendingOrder } from "./services/api";
 
 import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
@@ -303,6 +306,25 @@ import resolveApiBasePath from "./utils/apiBasePath";
 
 const SLIP_ALL_LABEL = String.raw`ทั้งหมด,สลิปทั้งหมด,สลิปทั้งหมด,'สลิปทั้งหมด,>สลิปทั้งหมด,-สลิปทั้งหมด,สลิปทั้งหมด1%สลิปทั้งหมด,O.,สลิปทั้งหมด,สลิปทั้งหมด,\\\\"\\`;
 
+
+/**
+ * แปลง tag ที่ API ลูกค้าแนบมากับแถวลูกค้าอยู่แล้ว ให้เป็น Tag ของหน้าจอ
+ *
+ * เดิมหน้านี้ทิ้ง `r.tags` ที่ติดมากับลูกค้า แล้วไปเรียก listCustomerTags() ซึ่งขอ tag ของ
+ * "ลูกค้าทุกคน" กลับมาทำ map เอง = 116,969 แถว บัฟเฟอร์ 47 MB ต่อคำขอ ทั้งที่หน้าจอโหลด
+ * ลูกค้าจริงแค่ 500 คน และ handle_customers ก็ดึง tag แบบ WHERE customer_id IN (...)
+ * เฉพาะหน้านั้นมาให้อยู่แล้ว โดยกรอง user_tags ด้วยกติกาเดียวกันเป๊ะ ข้อมูลจึงเท่ากัน
+ * แต่ไม่กินแรม — ดูเหตุ 1 ก.ย. 2569 ที่กดบันทึกออเดอร์ครั้งเดียวแล้วแรมทั้งบัญชี host หมด
+ */
+const mapCustomerTags = (raw: any): Tag[] =>
+  Array.isArray(raw)
+    ? raw.map((t: any) => ({
+      id: Number(t.id),
+      name: t.name,
+      type: String(t.type) === "SYSTEM" ? TagType.System : TagType.User,
+      color: t.color ?? undefined,
+    }))
+    : [];
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(
@@ -637,6 +659,7 @@ const App: React.FC = () => {
       'Telesale Call Report': 'calls.telesale_report',
       'Telesale Campaign Compare': 'monitor.campaign_compare',
       'Commission Stamp': 'finance-commission-stamp',
+      'PendingOrders': 'nav.pending_orders',
     };
 
     // Check if current page needs permission check
@@ -962,7 +985,6 @@ const App: React.FC = () => {
           plats,
           ch,
           ap,
-          ctags,
           act,
           tags,
           comps,
@@ -994,7 +1016,7 @@ const App: React.FC = () => {
           // Appointments are now primarily loaded from customer.next_appointment_* fields
           // This call is just a fallback for customers not yet loaded - reduced pageSize
           listAppointments({ companyId: sessionUser?.company_id, pageSize: 100, excludeStatus: 'เสร็จสิ้น' }),
-          shouldSkipCustomers ? Promise.resolve([]) : listCustomerTags(),
+          // tag ของลูกค้าติดมากับ listCustomers อยู่แล้ว (ดู mapCustomerTags)
           listActivities(undefined, 500),
           listTags({ type: "SYSTEM" }),
           apiFetch("companies"),
@@ -1014,7 +1036,6 @@ const App: React.FC = () => {
             pages: pg,
             callHistory: ch,
             appointments: ap,
-            customerTags: ctags,
             activities: act,
             tags: tags,
             companies: comps,
@@ -1178,23 +1199,6 @@ const App: React.FC = () => {
           isSystem: r.is_system === 1 || r.is_system === true,
         });
 
-        const tagsByCustomer: Record<string, Tag[]> = {};
-        if (Array.isArray(ctags)) {
-          for (const row of ctags as any[]) {
-            const t: Tag = {
-              id: Number(row.id),
-              name: row.name,
-              type:
-                (row.type as "SYSTEM" | "USER") === "SYSTEM"
-                  ? TagType.System
-                  : TagType.User,
-              color: row.color ?? undefined,
-            };
-            const cid = String(row.customer_id);
-            (tagsByCustomer[cid] = tagsByCustomer[cid] || []).push(t);
-          }
-        }
-
         const mapCustomer = (r: any): Customer => {
           const totalPurchases = Number(r.total_purchases || 0);
           const pk = r.customer_id ?? r.id ?? r.pk ?? null;
@@ -1252,7 +1256,7 @@ const App: React.FC = () => {
             behavioralStatus: (r.behavioral_status ??
               "Cold") as CustomerBehavioralStatus,
             grade: calculateCustomerGrade(totalPurchases),
-            tags: tagsByCustomer[resolvedId] || [],
+            tags: mapCustomerTags(r.tags),
             assignmentHistory: [],
             totalPurchases,
             totalCalls: Number(r.total_calls || 0),
@@ -1592,35 +1596,16 @@ const App: React.FC = () => {
 
       const lazyLoad = async () => {
         try {
-          const [ctags, cData] = await Promise.all([
-            listCustomerTags(),
-            listCustomers({
-              companyId: sessionUser.company_id,
-              page: 1,
-              pageSize: 500,
-              assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
-            }),
-          ]);
+          // tag ติดมากับลูกค้าแต่ละคนอยู่แล้ว ไม่ต้องขอ tag ของลูกค้าทั้งระบบมาแยกอีกชุด
+          const cData = await listCustomers({
+            companyId: sessionUser.company_id,
+            page: 1,
+            pageSize: 500,
+            assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
+          });
           const c = cData.data || [];
 
           if (cancelled) return;
-
-          const tagsByCustomer: Record<string, Tag[]> = {};
-          if (Array.isArray(ctags)) {
-            for (const row of ctags as any[]) {
-              const t: Tag = {
-                id: Number(row.id),
-                name: row.name,
-                type:
-                  (row.type as "SYSTEM" | "USER") === "SYSTEM"
-                    ? TagType.System
-                    : TagType.User,
-                color: row.color ?? undefined,
-              };
-              const cid = String(row.customer_id);
-              (tagsByCustomer[cid] = tagsByCustomer[cid] || []).push(t);
-            }
-          }
 
           const mapCustomerLocal = (r: any): Customer => {
             const totalPurchases = Number(r.total_purchases || 0);
@@ -1669,7 +1654,7 @@ const App: React.FC = () => {
               behavioralStatus:
                 (r.behavioral_status ?? "Cold") as CustomerBehavioralStatus,
               grade: calculateCustomerGrade(totalPurchases),
-              tags: (Array.isArray(r.tags) ? r.tags : []) || tagsByCustomer[resolvedId] || [],
+              tags: mapCustomerTags(r.tags),
               assignmentHistory: [],
               totalPurchases,
               orderCount: Number(r.order_count || 0),
@@ -3470,6 +3455,17 @@ const App: React.FC = () => {
       }
     }
 
+    // เลขบิลที่สร้างสำเร็จไปแล้ว — ใช้แยก "บันทึกไม่เข้า" ออกจาก "บันทึกเข้าแล้วแต่ขั้นถัดไปล้ม"
+    //
+    // try ก้อนนี้คลุมยาวตั้งแต่ยิงสร้างออเดอร์ไปจนจบการรีเฟรชหน้าจอ (อีก ~240 บรรทัด)
+    // อะไรพังหลังบิลเข้า DB แล้วก็ตกมาที่ catch เดียวกันแล้วประกาศว่า "สร้างออเดอร์ไม่สำเร็จ"
+    // ทั้งที่บิลมีอยู่จริง → พนักงานกดซ้ำได้บิลซ้ำ (เกิดจริง 1 ก.ย. 2569 ตอนแรม host เต็ม
+    // บิล 260901-00006telesale1w7 เข้าไปแล้วแต่หน้าจอบอกว่าล้มเหลว)
+    //
+    // ใช้ธงแทนการแยก try ซ้อน เพราะครอบคลุมทุกความล้มเหลวหลังบิลเข้า ไม่ใช่แค่ขั้นรีเฟรช
+    // ที่รู้จักตอนนี้ และไม่ต้องขยับย่อหน้าโค้ดเดิม 240 บรรทัดซึ่งเสี่ยงพลาดมากกว่า
+    let savedOrderId: string | undefined;
+
     try {
       const orderPayload = {
         ...newOrderData,
@@ -3529,6 +3525,7 @@ const App: React.FC = () => {
         // res.duplicate = true แปลว่าเซิร์ฟเวอร์เจอคีย์ซ้ำแล้วส่งบิลเดิมกลับมา ไม่ได้สร้างใบใหม่
         // ตั้งใจให้เดินทางเดียวกับสร้างสำเร็จปกติ เพราะสำหรับผู้ใช้แล้วผลลัพธ์คือ "บิลนี้มีแล้ว"
         const createdOrderId = res.id;
+        savedOrderId = createdOrderId;   // บิลเข้า DB แล้ว ตั้งแต่บรรทัดนี้เป็นต้นไปห้ามบอกว่าล้มเหลว
 
         if (clientRequestId) {
           mintedOrderIdRef.current.delete(clientRequestId);
@@ -3592,14 +3589,18 @@ const App: React.FC = () => {
         }
 
         // Refresh orders, customers, and activities with proper mapping
-        const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
+        //
+        // ⚠️ นี่คือจุดที่ทำระบบล่ม 1 ก.ย. 2569 — เดิมเรียก listActivities() + listCustomerTags()
+        // แบบไม่จำกัดจำนวนพร้อมกัน = ขอแรมเซิร์ฟเวอร์ ~270 MB จากการกดบันทึกออเดอร์ครั้งเดียว
+        // ออเดอร์บันทึกสำเร็จไปแล้วตอนถึงบรรทัดนี้ แต่คนกดเห็นข้อความ "สร้างออเดอร์ไม่สำเร็จ"
+        // เพราะขั้นรีเฟรชล้ม เสี่ยงกดซ้ำจนได้บิลซ้ำ
+        const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw] = await Promise.all([
           // Orders are now fetched only in TelesaleOrdersPage
           Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
           activePage === 'Customers' ? listCustomers({
             companyId: currentUser.companyId,
           }) : Promise.resolve({ total: 0, data: [] }),
-          listActivities(),
-          listCustomerTags(),
+          listActivities(undefined, 500),
         ]);
 
         // Map orders (filter out sub orders and map)
@@ -3763,20 +3764,6 @@ const App: React.FC = () => {
           return customer?.id || String(customerIdInt);
         };
 
-        // Build tags map for customers
-        const tagsByCustomer: Record<string, Tag[]> = {};
-        if (Array.isArray(refreshedCustomerTagsRaw)) {
-          for (const ct of refreshedCustomerTagsRaw) {
-            const cid = String(ct.customer_id || "");
-            if (!tagsByCustomer[cid]) tagsByCustomer[cid] = [];
-            tagsByCustomer[cid].push({
-              id: ct.id,
-              name: ct.name,
-              type: ct.type as TagType,
-            });
-          }
-        }
-
         // Map customers
         const customersData = (refreshedCustomersRaw as any).data || [];
         const mappedCustomers = Array.isArray(customersData)
@@ -3836,7 +3823,7 @@ const App: React.FC = () => {
               behavioralStatus: (r.behavioral_status ??
                 "Cold") as CustomerBehavioralStatus,
               grade: calculateCustomerGrade(totalPurchases),
-              tags: tagsByCustomer[resolvedId] || [],
+              tags: mapCustomerTags(r.tags),
               assignmentHistory: [],
               totalPurchases,
               totalCalls: Number(r.total_calls || 0),
@@ -3881,6 +3868,18 @@ const App: React.FC = () => {
         throw e;
       }
 
+      // บิลเข้าไปแล้ว ที่ล้มคือขั้นตอนหลังจากนั้น (รีเฟรชหน้าจอ / แมปข้อมูล)
+      // ต้องบอกให้ชัดว่าบันทึกสำเร็จ ไม่งั้นพนักงานจะกดซ้ำแล้วได้บิลซ้ำ
+      // และคืนเลขบิลออกไปตามปกติ เพื่อให้หน้าเปิดบิลถือว่าจบงานแล้วจริง ๆ
+      if (savedOrderId) {
+        alert(
+          `บันทึกออเดอร์เรียบร้อยแล้ว (เลขบิล ${savedOrderId})\n\n` +
+          `แต่รีเฟรชหน้าจอไม่สำเร็จ กรุณารีโหลดหน้าเว็บเพื่อดูข้อมูลล่าสุด\n` +
+          `⚠️ ห้ามกดบันทึกซ้ำ เพราะจะได้บิลซ้ำ`
+        );
+        return savedOrderId;
+      }
+
       alert(`สร้างออเดอร์ไม่สำเร็จ: ${e.message || "Unknown error"}`);
       return undefined;
     }
@@ -3894,14 +3893,14 @@ const App: React.FC = () => {
 
     try {
       // Refresh orders, customers, and activities with proper mapping
-      const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
+      // tag ติดมากับลูกค้าอยู่แล้ว และ activities ต้องมีเพดานเสมอ (ดูเหตุ 1 ก.ย. 2569)
+      const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw] = await Promise.all([
         // Orders are now fetched only in TelesaleOrdersPage
         Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
         activePage === 'Customers' ? listCustomers({
           companyId: currentUser.companyId,
         }) : Promise.resolve({ total: 0, data: [] }),
-        listActivities(),
-        listCustomerTags(),
+        listActivities(undefined, 500),
       ]);
 
       const mappedOrders: Order[] = Array.isArray(refreshedOrdersRaw)
@@ -3951,20 +3950,6 @@ const App: React.FC = () => {
         return customer?.id || String(customerIdInt);
       };
 
-      const tagsByCustomer: Record<string, Tag[]> = {};
-      if (Array.isArray(refreshedCustomerTagsRaw)) {
-        refreshedCustomerTagsRaw.forEach((t) => {
-          if (!tagsByCustomer[t.customer_id]) {
-            tagsByCustomer[t.customer_id] = [];
-          }
-          tagsByCustomer[t.customer_id].push({
-            id: t.id,
-            name: t.name,
-            type: t.type as TagType,
-          });
-        });
-      }
-
       const customersData = (refreshedCustomersRaw as any).data || [];
       const mappedCustomers: Customer[] = Array.isArray(customersData)
         ? customersData.map((r) => {
@@ -3993,7 +3978,7 @@ const App: React.FC = () => {
             behavioralStatus: (r.behavioral_status ??
               "Cold") as CustomerBehavioralStatus,
             grade: calculateCustomerGrade(totalPurchasesVal),
-            tags: tagsByCustomer[resolvedId] || [],
+            tags: mapCustomerTags(r.tags),
             assignmentHistory: [],
             totalPurchases: totalPurchasesVal,
             totalCalls: Number(r.total_calls || 0),
@@ -7242,10 +7227,10 @@ const App: React.FC = () => {
             setPreviousPage(null);
             // Refresh activities and customers to update Do dashboard
             try {
-              const [act, c, ctags] = await Promise.all([
-                listActivities(),
+              // tag ติดมากับลูกค้าอยู่แล้ว และ activities ต้องมีเพดานเสมอ (ดูเหตุ 1 ก.ย. 2569)
+              const [act, c] = await Promise.all([
+                listActivities(undefined, 500),
                 activePage === 'Customers' ? listCustomers({ companyId: sessionUser?.company_id }) : Promise.resolve({ total: 0, data: [] }),
-                listCustomerTags(),
               ]);
               setActivities(
                 Array.isArray(act)
@@ -7259,19 +7244,6 @@ const App: React.FC = () => {
                   }))
                   : [],
               );
-              // Build tags map like in load()
-              const tagsByCustomer: Record<string, Tag[]> = {};
-              if (Array.isArray(ctags)) {
-                for (const ct of ctags) {
-                  const cid = String(ct.customer_id || "");
-                  if (!tagsByCustomer[cid]) tagsByCustomer[cid] = [];
-                  tagsByCustomer[cid].push({
-                    id: ct.id,
-                    name: ct.name,
-                    type: ct.type as TagType,
-                  });
-                }
-              }
               // Use the same mapCustomer logic from load()
               const cArray = (c as any).data || [];
               setCustomers(Array.isArray(cArray) ? cArray.map((r: any) => {
@@ -7330,7 +7302,7 @@ const App: React.FC = () => {
                   behavioralStatus: (r.behavioral_status ??
                     "Cold") as CustomerBehavioralStatus,
                   grade: calculateCustomerGrade(totalPurchasesVal),
-                  tags: tagsByCustomer[resolvedId] || [],
+                  tags: mapCustomerTags(r.tags),
                   assignmentHistory: [],
                   totalPurchases: totalPurchasesVal,
                   totalCalls: Number(r.total_calls || 0),
@@ -7450,6 +7422,41 @@ const App: React.FC = () => {
         );
 
       // PROCESSED: Orders
+      case "PendingOrders":
+        return (
+          <PendingOrdersPage
+            currentUserId={Number(currentUser.id)}
+            canProxySale={isSuperAdmin || !!rolePermissions?.["orders.proxy_sale"]?.view}
+            onOpen={async (po: PendingOrder) => {
+              try {
+                const customer = await fetchCustomerById(po.customer_id);
+                if (!customer) {
+                  alert("ไม่พบข้อมูลลูกค้ารายนี้");
+                  return;
+                }
+                // เปิดแทนคนขาย = โหมดขายแทน เครดิตให้เทเลคนที่บันทึก (ถ้าไม่ใช่ตัวเราเอง)
+                const proxyForUserId =
+                  po.agent_user_id && po.agent_user_id !== Number(currentUser.id) ? po.agent_user_id : null;
+                setCreateOrderInitialData({
+                  customer,
+                  pendingOrderId: po.id,
+                  proxyForUserId,
+                  items: po.items.map((it) => ({
+                    productId: it.product_id,
+                    name: it.name,
+                    qty: it.qty,
+                    unit: it.unit,
+                  })),
+                });
+                setPreviousPage("PendingOrders");
+                setActivePage("CreateOrder");
+              } catch (e) {
+                alert("เปิดออเดอร์ไม่สำเร็จ");
+              }
+            }}
+          />
+        );
+
       case "CreateOrder":
         return (
           <CreateOrderPage
@@ -7470,6 +7477,9 @@ const App: React.FC = () => {
               setCreateOrderInitialData(null);
             }}
             onSuccess={() => {
+              // เปิดจาก "ออเดอร์รอเปิด" สำเร็จ → mark ว่า opened กันเปิดซ้ำ
+              const pid = createOrderInitialData?.pendingOrderId;
+              if (pid) openPendingOrder(Number(pid)).catch(() => {});
               setActivePage("Dashboard");
               setPreviousPage(null);
               setCreateOrderInitialData(null);
@@ -8313,6 +8323,7 @@ const App: React.FC = () => {
 
   return (
     <ToastProvider>
+      <CallProvider>
       <div className="h-screen bg-[#F5F5F5] relative">
         {showCheckInPrompt && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -8633,6 +8644,10 @@ const App: React.FC = () => {
           onClose={() => setCancellingOrderId(null)}
         />
       )}
+
+      {/* ปุ่มลอยมุมขวาล่าง — โชว์ทุกหน้าเมื่อกำลังมีสายอยู่ (สถานะไม่หายตอนสลับหน้า) */}
+      <FloatingCallWidget />
+      </CallProvider>
     </ToastProvider>
   );
 };

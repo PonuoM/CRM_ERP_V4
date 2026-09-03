@@ -385,8 +385,8 @@ class FarmProfileController
         return $id ? (int)$id : null;
     }
 
-    /** หา crop_id จากชื่อ ถ้าไม่มีให้สร้างเป็น pending (ไม่บล็อกการบันทึก) */
-    private static function resolveOrCreateCrop(PDO $pdo, $rawName, $userId): ?int
+    /** หา crop_id จากชื่อ ถ้าไม่มีให้สร้างเป็น pending (ไม่บล็อกการบันทึก) — เปิด public ให้ disposition มือถือ reuse */
+    public static function resolveOrCreateCrop(PDO $pdo, $rawName, $userId): ?int
     {
         $name = CropNormalizer::clean($rawName);
         if ($name === '' || CropNormalizer::isJunk($name)) return null;

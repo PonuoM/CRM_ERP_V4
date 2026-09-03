@@ -18,6 +18,9 @@
 
 class BasketRoutingServiceV2
 {
+    /** @var array<string,int>|null key -> id ของ basket_config (โหลดครั้งเดียวต่อ request) */
+    private $basketKeyCache = null;
+
     /** @var PDO */
     private $pdo;
 
@@ -828,17 +831,49 @@ class BasketRoutingServiceV2
                 $results['processed']++;
 
                 // Determine target basket
+                //
+                // ⚠️ ทั้งสองทางต้องคืน "id ตัวเลข" เท่านั้น
+                //    on_fail_basket_key เก็บเป็น basket_key (เช่น 'waiting_for_match') แต่
+                //    customers.current_basket_key เก็บเป็น id ของ basket_config
+                //    ของเดิมส่ง key เข้า transitionTo() ที่ประกาศพารามิเตอร์เป็น int ตรง ๆ
+                //    PHP จึง cast ให้เป็น 0 เงียบ ๆ -- ลูกค้าได้ถัง 0 ที่ไม่มีอยู่จริง
+                //    = หลุดออกนอกระบบถังทันที เหมือนเคสถังเป็น NULL
+                //    dry run 28 ส.ค. 2569 พบว่าจะโดนแบบนี้ประมาณ 8,100 ราย
+                //    (cron ตัวนี้ไม่เคยถูกตั้งบน host เลย บั๊กจึงไม่เคยแสดงตัว)
                 $targetBasket = null;
                 if ($config['on_fail_reevaluate']) {
                     // Re-evaluate based on days since last order
-                    $targetBasket = $this->findMatchingBasket($customer['customer_id']);
+                    $targetBasket = $this->findMatchingBasket(
+                        $customer['customer_id'],
+                        !empty($customer['assigned_to'])
+                    );
                 }
 
                 if (!$targetBasket && $config['on_fail_basket_key']) {
-                    $targetBasket = $config['on_fail_basket_key'];
+                    $targetBasket = $this->basketIdByKey($config['on_fail_basket_key']);
+                    if (!$targetBasket) {
+                        $results['errors']++;
+                        $results['details'][] = [
+                            'customer_id' => $customer['customer_id'],
+                            'error' => "on_fail_basket_key '{$config['on_fail_basket_key']}' ของถัง {$config['basket_name']} ไม่ตรงกับถังไหนใน basket_config"
+                        ];
+                        continue;
+                    }
                 }
 
                 if (!$targetBasket) {
+                    continue;
+                }
+
+                // ถังปลายทางเท่ากับถังปัจจุบัน = ไม่มีอะไรต้องย้าย
+                //
+                // เกิดจริงเยอะมาก: ถังที่ตั้ง on_fail_reevaluate ไว้ พอคำนวณตามอายุออเดอร์
+                // แล้วมักได้ถังเดิมกลับมา (dry run 28 ส.ค. 2569 เจอ 11,786 ราย ในนั้น
+                // 49 -> 49 อย่างเดียว 10,672 ราย) ถ้าปล่อยผ่านจะเขียน log เปล่า ๆ
+                // หมื่นกว่าแถวทุกรอบ และที่แย่กว่าคือ transitionTo() รีเซ็ต
+                // basket_entered_date ทุกครั้ง = นาฬิกาถังถูกปัดใหม่ไม่รู้จบ
+                // ลูกค้าจะไม่มีวันแก่พอจะหลุดไปถังถัดไปได้เลย
+                if ((int) $targetBasket === (int) $customer['current_basket_key']) {
                     continue;
                 }
 
@@ -877,9 +912,215 @@ class BasketRoutingServiceV2
     }
 
     /**
-     * Find matching basket based on days since last order
+     * เก็บกวาดลูกค้าที่ "หลุดออกนอกระบบถัง"
+     *
+     * processAgingCustomers() ข้างบนวนจาก basket_config แล้วยิง
+     * WHERE current_basket_key = ? ทีละถัง ลูกค้าที่ถังเป็น NULL หรือเป็นค่าที่ไม่ตรงกับ
+     * basket_config.id ใดเลย จึงไม่แมตช์รอบไหนทั้งสิ้น -- ไม่มีอะไรในระบบมองเห็นหรือ
+     * เก็บกวาดได้อีกตลอดกาล ยืนยันด้วยของจริง 1,583 ราย (ส.ค. 2569) ที่ไม่มีแถวใน
+     * basket_transition_log สักแถวเดียวนับจากวันที่ถูกสร้าง
+     *
+     * ตรวจ 4 อาการ:
+     *   1. ถังเป็น NULL
+     *   2. ถังเป็นค่าที่ไม่มีใน basket_config (เช่นเก็บ basket_key แทน id)
+     *   3. มีเจ้าของ แต่ถังอยู่ฝั่ง distribution -> เจ้าของมองไม่เห็นบน Dashboard
+     *   4. ไม่มีเจ้าของ แต่ถังอยู่ฝั่ง dashboard_v2 -> เอาไปแจกต่อไม่ได้
+     *
+     * ตั้งใจให้ idempotent: รันซ้ำแล้วไม่ขยับอะไรถ้าไม่มีของเสียใหม่
      */
-    private function findMatchingBasket(int $customerId): ?int
+    public function reconcileOrphanedBaskets(bool $dryRun = false): array
+    {
+        $results = ['processed' => 0, 'moved' => 0, 'errors' => 0, 'skipped' => 0, 'details' => []];
+
+        // key -> id ใช้แทนการ hardcode id เพราะ id เปลี่ยนได้เวลาตั้งค่าถังใหม่
+        $byKey = [];
+        $byId = [];
+        $rows = $this->pdo->query("
+            SELECT id, basket_key, basket_name, target_page, linked_basket_key, is_active
+            FROM basket_config
+        ")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $r) {
+            $byId[(string)$r['id']] = $r;
+            if ($r['is_active']) $byKey[$r['basket_key']] = $r;
+        }
+
+        $idOf = function (?string $key) use ($byKey) {
+            return isset($byKey[$key]) ? (int)$byKey[$key]['id'] : null;
+        };
+
+        // ลูกค้าที่ต้องตรวจ -- ดึงเฉพาะที่อาการเข้าข่าย ไม่กวาดทั้งตาราง
+        $stmt = $this->pdo->query("
+            SELECT c.customer_id, c.current_basket_key, c.assigned_to,
+                   u.status AS owner_status,
+                   DATEDIFF(NOW(), o.last_order_date) AS days_since_order,
+                   o.last_order_date
+            FROM customers c
+            LEFT JOIN users u ON u.id = c.assigned_to
+            LEFT JOIN basket_config bc ON bc.id = c.current_basket_key
+            LEFT JOIN (
+                SELECT customer_id, MAX(order_date) AS last_order_date
+                FROM orders WHERE order_status <> 'Cancelled' GROUP BY customer_id
+            ) o ON o.customer_id = c.customer_id
+            WHERE COALESCE(c.is_blocked, 0) = 0
+              AND (
+                    bc.id IS NULL
+                 OR (c.assigned_to IS NOT NULL AND bc.target_page = 'distribution')
+                 OR (c.assigned_to IS NULL     AND bc.target_page = 'dashboard_v2')
+              )
+        ");
+
+        while ($c = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $results['processed']++;
+            $customerId = (int)$c['customer_id'];
+            $currentKey = $c['current_basket_key'];
+            $current    = $currentKey !== null && isset($byId[(string)$currentKey]) ? $byId[(string)$currentKey] : null;
+            $hasOwner   = !empty($c['assigned_to']);
+
+            // เจ้าของลาออก/ปิดใช้งานแล้ว: ย้ายไปถัง Dashboard ก็ไม่มีใครเห็นอยู่ดี
+            // และการปลดเจ้าของเป็นการตัดสินใจเชิงธุรกิจ ไม่ใช่หน้าที่ cron -- รายงานไว้เฉย ๆ
+            if ($hasOwner && in_array($c['owner_status'], ['inactive', 'resigned'], true)) {
+                $results['skipped']++;
+                $results['details'][] = [
+                    'customer_id' => $customerId,
+                    'reason'      => 'owner_' . $c['owner_status'],
+                    'from'        => $currentKey,
+                ];
+                continue;
+            }
+
+            $target = null;
+            $reason = null;
+
+            if ($current === null) {
+                // อาการ 1 + 2: ไม่มีถัง หรือถังเป็นค่าเพี้ยน
+                $reason = $currentKey === null ? 'orphan_null_basket' : 'orphan_unknown_basket';
+
+                // ค่าเพี้ยนส่วนใหญ่คือ "เก็บ basket_key แทน id" ซึ่งบอกเจตนาเดิมไว้ครบแล้ว
+                // ต้องแปลงกลับเป็น id ของถังนั้น ไม่ใช่โยนไปคำนวณใหม่ตามอายุ
+                // (ของจริง 24 ราย ค้างเป็น 'marketplace_dis' -- เป็นลูกค้า Marketplace จริง
+                // ถ้า re-route ตามอายุจะหลุดออกจากถัง Marketplace ไปทั้งที่ไม่ควรหลุด)
+                $target = $currentKey !== null ? $idOf((string)$currentKey) : null;
+
+                if (!$target) {
+                    $target = $hasOwner
+                        ? $idOf('new_customer')
+                        : $this->poolBasketIdForAge($c['last_order_date'], $c['days_since_order'], $idOf);
+                }
+            } elseif ($hasOwner && $current['target_page'] === 'distribution') {
+                // อาการ 3: มีเจ้าของแต่จมอยู่ถังกองกลาง -> ถังคู่ฝั่ง Dashboard
+                $reason = 'owned_in_distribution';
+                $target = $idOf($current['linked_basket_key']) ?? $idOf('new_customer');
+            } elseif (!$hasOwner && $current['target_page'] === 'dashboard_v2') {
+                // อาการ 4: ไม่มีเจ้าของแต่อยู่ถังส่วนตัว -> ถังคู่ฝั่ง Distribution
+                // ถัง "ส่วนตัว" (personal_1_2m / personal_last_chance) ไม่มีถังคู่โดยเจตนา
+                // เพราะออกแบบให้มีอยู่ได้เฉพาะตอนมีเจ้าของ จึงต้องจัดถังตามอายุออเดอร์แทน
+                $reason = 'unowned_in_dashboard';
+                $target = $idOf($current['linked_basket_key'])
+                    ?? $this->poolBasketIdForAge($c['last_order_date'], $c['days_since_order'], $idOf);
+            }
+
+            if (!$target || (int)$target === (int)$currentKey) {
+                $results['skipped']++;
+                continue;
+            }
+
+            if ($dryRun) {
+                $results['moved']++;
+                $results['details'][] = [
+                    'customer_id' => $customerId,
+                    'from' => $currentKey,
+                    'to' => $target,
+                    'reason' => $reason,
+                    'dry_run' => true,
+                ];
+                continue;
+            }
+
+            try {
+                $this->transitionTo(
+                    $customerId,
+                    (int)$target,
+                    'reconcile_orphan',
+                    null,
+                    $hasOwner ? (int)$c['assigned_to'] : null,
+                    $hasOwner ? (int)$c['assigned_to'] : null,
+                    $reason
+                );
+                $results['moved']++;
+                $results['details'][] = [
+                    'customer_id' => $customerId,
+                    'from' => $currentKey,
+                    'to' => $target,
+                    'reason' => $reason,
+                ];
+            } catch (Exception $e) {
+                $results['errors']++;
+                $results['details'][] = ['customer_id' => $customerId, 'error' => $e->getMessage()];
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * ถังฝั่ง Distribution ที่เหมาะกับอายุออเดอร์ล่าสุด
+     *
+     * ใช้ช่วงเดียวกับ full_recalc_baskets.php เพื่อไม่ให้มีกติกาสองชุดในระบบ
+     * ไม่เคยซื้อเลย -> ถัง never_purchased ไม่ใช่ถังตามอายุ เพราะ date_registered
+     * ของลูกค้า import มักเป็นวันที่ import ไม่ใช่วันที่รู้จักลูกค้าจริง
+     */
+    private function poolBasketIdForAge(?string $lastOrderDate, $daysSinceOrder, callable $idOf): ?int
+    {
+        if ($lastOrderDate === null) {
+            return $idOf('never_purchased') ?? $idOf('new_customer_dis');
+        }
+
+        $days = (int)$daysSinceOrder;
+        if ($days <= 90)   return $idOf('waiting_for_match');
+        if ($days <= 180)  return $idOf('find_new_owner');
+        if ($days <= 270)  return $idOf('mid_6_9m');
+        if ($days <= 365)  return $idOf('mid_9_12m');
+        if ($days <= 1095) return $idOf('mid_1_3y');
+        return $idOf('ancient');
+    }
+
+    /**
+     * แปลง basket_key -> id ของ basket_config
+     *
+     * ทั้งระบบเก็บ customers.current_basket_key เป็น id ตัวเลข แต่ basket_config
+     * อ้างถึงกันเองด้วย basket_key (linked_basket_key, on_fail_basket_key)
+     * ทุกที่ที่หยิบค่าจากคอลัมน์พวกนั้นไปเขียนลง customers ต้องผ่านตัวนี้ก่อนเสมอ
+     */
+    private function basketIdByKey(?string $key): ?int
+    {
+        if ($key === null || $key === '') return null;
+
+        if (!isset($this->basketKeyCache)) {
+            $this->basketKeyCache = [];
+            $rows = $this->pdo->query("SELECT id, basket_key FROM basket_config WHERE is_active = 1")
+                              ->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as $r) {
+                $this->basketKeyCache[$r['basket_key']] = (int) $r['id'];
+            }
+        }
+
+        return $this->basketKeyCache[$key] ?? null;
+    }
+
+    /**
+     * หาถังที่เหมาะกับอายุออเดอร์ล่าสุด
+     *
+     * ⚠️ ต้องรู้ว่าลูกค้ามีเจ้าของหรือไม่ ก่อนเลือกถัง
+     *    ถังมาเป็นคู่เสมอ ฝั่ง dashboard_v2 (เจ้าของเห็นบนหน้าจอตัวเอง) กับ
+     *    ฝั่ง distribution (เอาไปแจกต่อได้) ของเดิมคืน id ตายตัว 44/45/50 โดยไม่ดู
+     *    เจ้าของเลย ลูกค้าที่มีคนดูแลอยู่จึงถูกโยนไปถังกองกลาง เจ้าของมองไม่เห็นทันที
+     *    dry run 28 ส.ค. 2569 พบว่าจะโดนแบบนี้ 10,672 ราย จากถัง 49 ถังเดียว
+     *
+     *    คอมเมนต์ของเดิมยังไม่ตรงกับ config ด้วย: เขียน 45 = mid_1_3y แต่ 45 คือ
+     *    ancient ส่วน 50 คือ ancient_dash (คนละฝั่งกัน) จึงเลิกใช้ id ตายตัว
+     *    เปลี่ยนมาค้นด้วย basket_key แทนทั้งหมด
+     */
+    private function findMatchingBasket(int $customerId, bool $hasOwner = false): ?int
     {
         $stmt = $this->pdo->prepare("
             SELECT DATEDIFF(NOW(), COALESCE(last_order_date, date_registered)) as days_since
@@ -889,15 +1130,21 @@ class BasketRoutingServiceV2
         $stmt->execute([$customerId]);
         $daysSince = (int) $stmt->fetchColumn();
 
-        // Route based on days
         if ($daysSince < 180) {
-            return null; // Keep in current or use on_fail_basket_key
-        } elseif ($daysSince >= 180 && $daysSince <= 365) {
-            return 44; // mid_6_12m
-        } elseif ($daysSince >= 366 && $daysSince <= 1095) {
-            return 45; // mid_1_3y
-        } else {
-            return 50; // ancient
+            return null; // ยังไม่ถึงเกณฑ์ ปล่อยให้ on_fail_basket_key ตัดสิน
         }
+
+        if ($daysSince <= 270) {
+            // ถัง 6-12 เดือนถูกแตกเป็น 6-9 กับ 9-12 แล้ว (mid_6_12m ตัวเก่า is_active=0)
+            $key = $hasOwner ? 'mid_6_9m_dash' : 'mid_6_9m';
+        } elseif ($daysSince <= 365) {
+            $key = $hasOwner ? 'mid_9_12m_dash' : 'mid_9_12m';
+        } elseif ($daysSince <= 1095) {
+            $key = $hasOwner ? 'mid_1_3y_dash' : 'mid_1_3y';
+        } else {
+            $key = $hasOwner ? 'ancient_dash' : 'ancient';
+        }
+
+        return $this->basketIdByKey($key);
     }
 }

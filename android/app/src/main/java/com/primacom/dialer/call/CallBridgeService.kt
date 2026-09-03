@@ -133,7 +133,14 @@ class CallBridgeService : Service() {
                 continue
             }
             if (activeSessionId != null) {
-                // A call is in progress; asking for more work would only queue a second one.
+                // ระหว่างมีสาย ไม่ขอ งานใหม่ (จะได้ไม่ต่อคิวสายซ้อน) แต่เช็คว่าคอมสั่งวางสายมาหรือยัง
+                // ถ้าสถานะกลายเป็น terminal (คอมกด cancel) ให้ตัดสายจริงที่วิทยุตาม — แก้อาการ
+                // "กดวางในคอมแล้วมือถือยังโทรค้าง"
+                val st = runCatching { api.callStatus(activeSessionId!!) }.getOrNull()
+                if (st != null && st in TERMINAL_STATUSES) {
+                    Log.i(TAG, "คอมสั่งวางสาย ($st) — ตัดสายที่เครื่อง")
+                    runCatching { ActiveCall.call?.disconnect() }
+                }
                 delay(POLL_BUSY_MS)
                 continue
             }
@@ -430,6 +437,9 @@ class CallBridgeService : Service() {
         fun notifyRemoteAnswered() {
             running?.onRemoteAnswered()
         }
+
+        /** สถานะที่แปลว่าสายจบแล้ว (คอมสั่งวาง/ยกเลิก/ล้มเหลว) เครื่องต้องตัดสายตาม */
+        private val TERMINAL_STATUSES = setOf("cancelled", "ended", "failed")
 
         private const val TAG = "CallBridge"
         private const val CHANNEL_ID = "call_bridge"

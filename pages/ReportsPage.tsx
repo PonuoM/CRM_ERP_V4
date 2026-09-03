@@ -143,6 +143,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [fetchedOrders, setFetchedOrders] = useState<Order[]>([]);
+  // ข้อมูลถูกตัดหรือเปล่า — endpoint จำกัดที่ pageSize=15000 ถ้าเดือนไหนออเดอร์เกินนั้น
+  // จะได้มาไม่ครบแล้วทุกตัวเลขในรายงานจะน้อยกว่าความจริงโดยไม่มีใครรู้
+  // (ส.ค. 2569 มี 13,209 ออเดอร์ เหลือช่องว่างจากเพดานแค่ 12%)
+  const [truncation, setTruncation] = useState<{ shown: number; total: number } | null>(null);
   const [fetchedCustomers, setFetchedCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [returnSummary, setReturnSummary] = useState<{
@@ -255,11 +259,52 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const startDateStr = formatLocalDate(filterStartDate);
         const endDateStr = formatLocalDate(filterEndDate);
 
-        // Fetch orders with date filter (pageSize needed since backend defaults to 50)
-        const ordersResponse = await apiFetch(`orders?pageSize=15000&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}${companyFilter}`);
-        const ordersData = Array.isArray(ordersResponse)
-          ? ordersResponse
-          : (ordersResponse?.orders || ordersResponse?.data || []);
+        // ดึงออเดอร์แบบแบ่งหน้า วนจนกว่าจะครบ
+        //
+        // ของเดิมยิงรอบเดียวด้วย pageSize=15000 ซึ่งมีปัญหา 2 ข้อ:
+        //   1. ถ้าเดือนไหนออเดอร์เกิน 15,000 ข้อมูลจะถูกตัดทิ้งเงียบ ๆ ทุกตัวเลขในรายงาน
+        //      ต่ำกว่าความจริงโดยไม่มีใครรู้ (ส.ค. 2569 มี 13,209 เหลือช่องว่างแค่ 12%)
+        //   2. คำขอเดียวดึง 15,000 แถวทำให้ฝั่งเซิร์ฟเวอร์จองแรมก้อนใหญ่
+        //
+        // แบ่งเป็นรอบละ 5,000 แล้ววนจนกว่าจะได้ครบ แก้ทั้งสองข้อ: ได้ข้อมูลครบเสมอ
+        // ไม่ว่าเดือนไหนจะมีกี่ออเดอร์ และแต่ละคำขอเบากว่าเดิม
+        //
+        // วัดจริงกับข้อมูล ส.ค. 2569 (13,209 ออเดอร์):
+        //   ดึงทีเดียว  แรมสูงสุดฝั่ง server 18.9 MB · 0.69s
+        //   แบ่ง 5,000  แรมสูงสุดฝั่ง server 13.5 MB · 1.14s (3 รอบ)
+        // แลกความเร็วราวครึ่งวินาทีกับความถูกต้องของตัวเลข ซึ่งคุ้ม
+        //
+        // ⚠️ ไม่แบ่งถี่กว่านี้โดยตั้งใจ — MySQL OFFSET ต้องอ่านแถวก่อนหน้าทิ้งทั้งหมด
+        //    หน้าลึกจึงแพงขึ้นเรื่อย ๆ (วัดได้ 0.23s -> 0.42s -> 0.49s) ยิ่งซอยยิ่งช้า
+        //
+        // include_boxes=0 — หน้านี้ไม่ได้ใช้รายกล่องจากคำตอบนี้ มันเรียก
+        // Orders/get_order_boxes.php แยกเองข้างล่าง งานก้อนนั้นจึงทำทิ้งเปล่า
+        const ORDERS_PAGE_SIZE = 5000;
+        // กันวนไม่รู้จบถ้า API ตอบแปลก ๆ — 20 รอบ = 100,000 ออเดอร์ มากกว่าเดือนที่หนักสุด 7 เท่า
+        const ORDERS_MAX_PAGES = 20;
+
+        const ordersData: any[] = [];
+        let serverTotal = 0;
+        for (let page = 1; page <= ORDERS_MAX_PAGES; page++) {
+          const res = await apiFetch(
+            `orders?page=${page}&pageSize=${ORDERS_PAGE_SIZE}&include_boxes=0&orderDateStart=${startDateStr}&orderDateEnd=${endDateStr}${companyFilter}`
+          );
+          const chunk = Array.isArray(res) ? res : (res?.orders || res?.data || []);
+          if (!Array.isArray(chunk) || chunk.length === 0) break;
+          ordersData.push(...chunk);
+          serverTotal = Number(res?.pagination?.total ?? 0) || serverTotal;
+          // หน้าสุดท้ายจะได้ไม่เต็มโควตา หรือได้ครบตามยอดที่เซิร์ฟเวอร์บอกแล้ว
+          if (chunk.length < ORDERS_PAGE_SIZE) break;
+          if (serverTotal > 0 && ordersData.length >= serverTotal) break;
+        }
+
+        // ถึงจะวนจนครบแล้วก็ยังต้องเช็ค เผื่อชนเพดานกันวนไม่รู้จบข้างบน
+        // รายงานที่ตัวเลขขาดแบบเงียบ ๆ อันตรายกว่ารายงานที่ช้า จึงต้องบอกผู้ใช้เสมอ
+        setTruncation(
+          serverTotal > 0 && ordersData.length < serverTotal
+            ? { shown: ordersData.length, total: serverTotal }
+            : null
+        );
 
         const mappedOrders: Order[] = ordersData
           .filter((r: any) => !/-\d+$/.test(String(r.id || "")))
@@ -773,10 +818,25 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
 
     // รายงานลูกค้า
+    // จัดกลุ่มออเดอร์ตามลูกค้าครั้งเดียว แล้วค่อยหยิบใช้
+    //
+    // ของเดิมวน allCustomers.map() แล้วข้างในยิง filteredOrders.filter() ซ้ำทุกคน
+    // = ลูกค้า × ออเดอร์ ซึ่งที่ข้อมูลจริงคือ 5,000 × 12,000 ราว 60 ล้านรอบ
+    // ทำงานในเบราว์เซอร์ของพนักงาน หน้าจอจึงค้างตอนเปิดรายงานรายเดือน
+    // แบบใหม่วนออเดอร์รอบเดียวสร้าง Map ต้นทุนเหลือเชิงเส้น
+    const ordersByCustomer = new Map<string, typeof filteredOrders>();
+    for (const o of filteredOrders) {
+      const key = String(o.customerId);
+      const bucket = ordersByCustomer.get(key);
+      if (bucket) bucket.push(o); else ordersByCustomer.set(key, [o]);
+    }
+    // เรียงตามวันที่ครั้งเดียวต่อลูกค้า (ของเดิมเรียงใหม่ทุกครั้งที่วนถึงคนนั้น)
+    for (const bucket of ordersByCustomer.values()) {
+      bucket.sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
+    }
+
     const customersWithOrders = allCustomers.map(customer => {
-      const customerOrders = filteredOrders
-        .filter(o => o.customerId === customer.id)
-        .sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
+      const customerOrders = ordersByCustomer.get(String(customer.id)) ?? [];
 
       const totalSpent = customerOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
       const lastOrder = customerOrders.length > 0
@@ -1912,6 +1972,24 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               ⚠️ ข้อมูลอาจถูกตัด (แสดง 15,000 รายการ) - ลองเลือกช่วงเวลาที่สั้นลงหรือใช้ตัวกรองแผนก
             </div>
           )}
+        </div>
+      )}
+
+      {/* เตือนเมื่อข้อมูลไม่ครบ — ต้องอยู่เหนือรายงานและเห็นชัด
+          รายงานที่ตัวเลขขาดไปแบบเงียบ ๆ อันตรายกว่ารายงานที่ช้า เพราะเอาไปตัดสินใจได้เลย */}
+      {truncation && (
+        <div className="mb-4 rounded-lg border-2 border-red-300 bg-red-50 p-4">
+          <p className="font-bold text-red-700">
+            ⚠️ ข้อมูลไม่ครบ — ตัวเลขในรายงานนี้ต่ำกว่าความจริง
+          </p>
+          <p className="mt-1 text-sm text-red-700">
+            ช่วงวันที่ที่เลือกมีออเดอร์ {truncation.total.toLocaleString()} รายการ
+            แต่ระบบดึงมาได้สูงสุด {truncation.shown.toLocaleString()} รายการ
+            (ขาดไป {(truncation.total - truncation.shown).toLocaleString()} รายการ)
+          </p>
+          <p className="mt-1 text-sm text-red-700">
+            กรุณาแบ่งช่วงวันที่ให้สั้นลง เช่น ดูทีละครึ่งเดือน แล้วนำผลมารวมกันเอง
+          </p>
         </div>
       )}
 

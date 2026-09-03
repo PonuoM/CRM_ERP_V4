@@ -1108,6 +1108,41 @@ export async function createOrder(payload: any) {
   return apiFetch("orders", { method: "POST", body: isFormData ? payload : JSON.stringify(payload) });
 }
 
+// ── ออเดอร์รอเปิด (ขายได้ผ่านมือถือ → เปิดที่บริษัท) ──
+export type PendingOrderItem = { product_id: number | null; name: string; qty: number; unit: string | null };
+export type PendingOrder = {
+  id: number;
+  customer_id: number;
+  customer_name: string;
+  agent_user_id: number;
+  agent_name: string | null;
+  owner_id: number | null;
+  owner_name: string | null;
+  owner_conflict: boolean;        // ลูกค้ามีเจ้าของคนอื่น (≠ คนขาย) → เปิดไม่ได้จนกว่าจะโอน
+  open_mode: "self" | "backoffice";
+  note: string | null;
+  created_at: string;
+  items: PendingOrderItem[];
+};
+
+export async function listPendingOrders(): Promise<{ ok: boolean; orders: PendingOrder[] }> {
+  return apiFetch("pending_orders");
+}
+
+export async function openPendingOrder(id: number, orderId?: number) {
+  return apiFetch("pending_orders", {
+    method: "POST",
+    body: JSON.stringify({ id, action: "open", order_id: orderId ?? null }),
+  });
+}
+
+export async function cancelPendingOrder(id: number) {
+  return apiFetch("pending_orders", {
+    method: "POST",
+    body: JSON.stringify({ id, action: "cancel" }),
+  });
+}
+
 
 
 export async function updateCustomer(id: string, payload: any) {

@@ -1,5 +1,30 @@
 <?php
 
+/**
+ * ถังเริ่มต้นของลูกค้าที่เพิ่งถูกสร้าง
+ *
+ * ลูกค้าที่ current_basket_key เป็น NULL จะมองไม่เห็นจากทุกหน้าจอและทุก cron:
+ * basket_aging_cron วนจาก basket_config แล้วยิง WHERE current_basket_key = ?
+ * ค่า NULL จึงไม่แมตช์ถังไหนเลยและไม่มีอะไรมาเก็บกวาดได้อีก
+ * (เจอของจริง 1,583 ราย ส.ค. 2569 ไม่มีแถวใน basket_transition_log สักแถว)
+ *
+ * ค้นด้วย basket_key ไม่ hardcode id เพราะ id เปลี่ยนได้เวลาตั้งค่าถังใหม่
+ * หาไม่เจอคืน null เพื่อไม่ให้การเพิ่มลูกค้าล้มทั้งใบ -- ตาข่ายรับใน cron
+ * จะเก็บเคสนั้นให้เองในรอบถัดไป
+ */
+function customer_default_basket_id(PDO $pdo, bool $hasOwner)
+{
+    static $cache = [];
+    $key = $hasOwner ? 'new_customer' : 'new_customer_dis';
+    if (array_key_exists($key, $cache)) return $cache[$key];
+
+    $stmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND is_active = 1 LIMIT 1");
+    $stmt->execute([$key]);
+    $id = $stmt->fetchColumn();
+
+    return $cache[$key] = ($id !== false ? $id : null);
+}
+
 function handle_customers(PDO $pdo, ?string $id): void
 {
 
@@ -783,6 +808,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $limit = isset($_GET['pageSize']) ? (int) $_GET['pageSize'] : (isset($_GET['limit']) ? (int) $_GET['limit'] : 50);
                         if ($limit <= 0)
                             $limit = 50;
+                        // เพดานแข็ง — ลูกค้า 10,000 แถวกินแรม ~92 MB แล้ว (วัดจริง 1 ก.ย. 2569)
+                        // ตั้งเท่าที่ของจริงใช้อยู่ (TelesaleDashboard 10000, ReportsPage 5000)
+                        // เพื่อกัน ?pageSize=999999 โดยไม่ทำของที่ใช้งานอยู่พัง
+                        if ($limit > 10000)
+                            $limit = 10000;
 
                         $params = $parts['params'];
 
@@ -821,6 +851,11 @@ function handle_customers(PDO $pdo, ?string $id): void
                         $limit = isset($_GET['pageSize']) ? (int) $_GET['pageSize'] : (isset($_GET['limit']) ? (int) $_GET['limit'] : 50);
                         if ($limit <= 0)
                             $limit = 50;
+                        // เพดานแข็ง — ลูกค้า 10,000 แถวกินแรม ~92 MB แล้ว (วัดจริง 1 ก.ย. 2569)
+                        // ตั้งเท่าที่ของจริงใช้อยู่ (TelesaleDashboard 10000, ReportsPage 5000)
+                        // เพื่อกัน ?pageSize=999999 โดยไม่ทำของที่ใช้งานอยู่พัง
+                        if ($limit > 10000)
+                            $limit = 10000;
                         $offset = $page ? ($page - 1) * $limit : 0;
 
                         $where = ['1'];
@@ -1126,6 +1161,16 @@ function handle_customers(PDO $pdo, ?string $id): void
                             $t_query_start = microtime(true);
                             $stmt->execute($params);
                             $customers = $stmt->fetchAll();
+                            // ปล่อยบัฟเฟอร์ของ statement ทิ้ง ข้อมูลย้ายเข้าอาร์เรย์ PHP แล้ว
+                            //
+                            // mysqlnd ถือผลลัพธ์ทั้งชุดไว้ตั้งแต่ execute() แล้ว fetchAll() ก๊อปอีกชุด
+                            // โดยบัฟเฟอร์เดิมค้างอยู่จนจบคำขอ = ถือข้อมูลก้อนเดียวกันไว้สองชุด
+                            //
+                            // บรรทัดนี้คือจุดที่โผล่ใน fatal_error.log มากที่สุดตอนระบบล่ม 2 ก.ย. 2569
+                            // (516 ครั้งในชั่วโมง 09:00 ชั่วโมงเดียว) เพราะ TelesaleDashboard
+                            // ขอ pageSize=10000 ซึ่งวัดได้ ~92 MB ต่อคำขอ
+                            $stmt->closeCursor();
+                            $stmt = null;
                         attach_owner_names($pdo, $customers);
                             // Customer list is the screen telesale live in — phone, backup_phone,
                             // recipient_phone and customer_ref_id all leave from here. Nothing between
@@ -1396,7 +1441,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                 'phone' => $in['phone'] ?? null,
                 'backupPhone' => $in['backupPhone'] ?? null,
             ]));
-            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type, current_basket_key, recipient_first_name, recipient_last_name, recipient_phone) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type, current_basket_key, basket_entered_date, recipient_first_name, recipient_last_name, recipient_phone) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             $params = [
                 $customerRefId,
                 $in['firstName'] ?? '',
@@ -1423,7 +1468,12 @@ function handle_customers(PDO $pdo, ?string $id): void
                 $in['address']['district'] ?? null,
                 $in['address']['postalCode'] ?? null,
                 $in['bucketType'] ?? null,
-                $in['current_basket_key'] ?? null,
+                // ถังต้องมีเสมอ ลูกค้าที่ current_basket_key เป็น NULL จะหลุดออกนอกระบบถัง
+                // ถาวร -- basket_aging_cron วนจาก basket_config แล้วยิง
+                // WHERE current_basket_key = ? จึงไม่มีทางหยิบ NULL ขึ้นมาได้เลย
+                // มีเจ้าของ -> ถังฝั่ง Dashboard, ไม่มีเจ้าของ -> ถังฝั่ง Distribution
+                $in['current_basket_key'] ?? customer_default_basket_id($pdo, !empty($in['assignedTo'])),
+                date('Y-m-d H:i:s'), // basket_entered_date -- aging cron ต้องใช้คู่กับถัง
                 // Recipient name/phone from address object (for shipping label)
                 $in['address']['recipientFirstName'] ?? $in['firstName'] ?? '',
                 $in['address']['recipientLastName'] ?? $in['lastName'] ?? '',

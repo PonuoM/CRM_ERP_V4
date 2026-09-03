@@ -48,13 +48,15 @@ class HistoryActivity : AppCompatActivity() {
             setBackgroundColor(Design.bg)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
+            // เผื่อ status bar บน + nav bar ล่าง ให้ทั้งหน้า
+            with(Design) { applyBarInsets(0, 0, 0, 0) }
         }
 
         // แถบหัว
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(48), dp(18), dp(14))
+            setPadding(dp(10), dp(12), dp(18), dp(14))
         }
         val back = ImageView(this).apply {
             setImageResource(R.drawable.ic_arrow_back)
@@ -141,6 +143,14 @@ class HistoryActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(13), 0, dp(10), 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            // กดชื่อ/แถว → เปิดรายละเอียดลูกค้า (เฉพาะสายที่รู้ว่าเป็นลูกค้าคนไหน)
+            if (c.customerId > 0) {
+                isClickable = true
+                setOnClickListener {
+                    startActivity(android.content.Intent(this@HistoryActivity, CustomerDetailActivity::class.java)
+                        .putExtra(CustomerDetailActivity.EXTRA_CUSTOMER_ID, c.customerId))
+                }
+            }
         }
         mid.addView(text(c.customerName, 15f, Design.ink, Design.faceMedium))
         mid.addView(text(metaLine(c), 12.5f, if (c.missed) Design.danger else Design.inkDim).apply {
@@ -175,10 +185,13 @@ class HistoryActivity : AppCompatActivity() {
     }
 
     private fun callBack(c: CallRecord) {
-        Toast.makeText(this, getString(R.string.calling_back), Toast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
-            runCatching { api.dialCustomer(c.customerId) }
-            finish() // กลับหน้าหลัก แล้วเครื่องจะกดออกเองภายในไม่กี่วินาที จอสายจะเด้ง
+        // ถามยืนยันก่อนเสมอ กันกดปุ่มโทรลั่นในหน้าประวัติ
+        showCallConfirm(c.customerId, c.customerName) {
+            Toast.makeText(this, getString(R.string.calling_back), Toast.LENGTH_SHORT).show()
+            lifecycleScope.launch {
+                runCatching { api.dialCustomer(c.customerId) }
+                finish() // กลับหน้าหลัก แล้วเครื่องจะกดออกเองภายในไม่กี่วินาที จอสายจะเด้ง
+            }
         }
     }
 

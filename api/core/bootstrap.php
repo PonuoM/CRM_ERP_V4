@@ -159,7 +159,10 @@ if ($resource === 'version') {
     ]);
 }
 
-if (!in_array($resource, ['', 'health', 'auth', 'uploads', 'version', 'cron'])) {
+// 'call' + 'device' = ช่องทางแอปมือถือเทเล ซึ่งยืนยันตัวเองด้วย device token ใน CallController::authUser
+// (get_authenticated_user รับ session token ล้วน device token จึงถูกตัดถ้าปล่อยเข้า validate_auth)
+// ทุก action ใน CallController เรียก authUser เป็นบรรทัดแรกอยู่แล้ว การยกเว้นตรงนี้จึงไม่เปิดช่องโหว่
+if (!in_array($resource, ['', 'health', 'auth', 'uploads', 'version', 'cron', 'call', 'device'])) {
     if ($resource === 'customers') {
         file_put_contents(__DIR__ . '/../debug_check.log', date('Y-m-d H:i:s') . " CUSTOMERS GET: " . json_encode($_GET) . "\n", FILE_APPEND);
     }

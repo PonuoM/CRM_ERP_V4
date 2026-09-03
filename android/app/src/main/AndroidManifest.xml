@@ -55,6 +55,33 @@
             android:exported="false"
             android:launchMode="singleTop" />
 
+        <activity
+            android:name=".ui.CustomerDetailActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.SearchActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
+        <activity
+            android:name=".ui.EndOfDayActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.AppointmentsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.DispositionActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:showOnLockScreen="true" />
+
+        <activity
+            android:name=".ui.SaleSummaryActivity"
+            android:exported="false" />
+
         <!-- Our own in-call screen. Replaces the one that would print the number. -->
         <activity
             android:name=".ui.InCallActivity"
@@ -107,6 +134,17 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Maintains the agent handset connection to the company CRM so staff can place and receive customer calls from their workstation during working hours." />
         </service>
+
+        <!-- แชร์รูปสรุปการขายออกไปแอปอื่น (ไลน์ ฯลฯ) ผ่าน content:// ที่ปลอดภัย -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>
