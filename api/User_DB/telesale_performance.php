@@ -291,7 +291,8 @@ try {
                COALESCE(SUM(CASE WHEN oi.basket_key_at_sale = 51 THEN $lineAmount ELSE 0 END), 0) AS upsell_sales
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
-        WHERE oi.creator_id IN ($idPh)
+          LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
+          WHERE oi.creator_id IN ($idPh)
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
           AND o.order_status NOT IN ($deadPh)
@@ -322,7 +323,8 @@ try {
                COALESCE(SUM(CASE WHEN p.category LIKE '%ชีวภัณฑ์%' THEN $lineAmount ELSE 0 END), 0) AS bio_sales
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
-        JOIN products p ON oi.product_id = p.id
+          LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
+          JOIN products p ON oi.product_id = p.id
         WHERE oi.creator_id IN ($idPh)
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
@@ -403,7 +405,8 @@ try {
                COALESCE(SUM(CASE WHEN $segCase IN ($revivalKeysIn) THEN $lineAmount ELSE 0 END), 0) AS revival_sales
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
-        WHERE oi.creator_id IN ($idPh)
+          LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
+          WHERE oi.creator_id IN ($idPh)
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
           AND o.order_status NOT IN ($deadPh)
@@ -452,7 +455,7 @@ try {
                COALESCE(SUM($lineAmount), 0) AS returned_sales
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
-        LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
+          LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
         WHERE oi.creator_id IN ($idPh)
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
@@ -622,7 +625,8 @@ try {
         SELECT COALESCE(SUM($lineAmount), 0) AS prev_sales
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
-        WHERE oi.creator_id IN ($idPh)
+          LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
+          WHERE oi.creator_id IN ($idPh)
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
           AND o.order_status NOT IN ($deadPh)
