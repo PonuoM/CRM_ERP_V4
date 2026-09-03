@@ -295,6 +295,7 @@ try {
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
           AND o.order_status NOT IN ($deadPh)
+            AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))
           AND $liveItem
         GROUP BY oi.creator_id
     ";
@@ -326,6 +327,7 @@ try {
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
           AND o.order_status NOT IN ($deadPh)
+            AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))
           AND $liveItem
         GROUP BY oi.creator_id
     ";
@@ -405,6 +407,7 @@ try {
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
           AND o.order_status NOT IN ($deadPh)
+            AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))
           AND $liveItem
           AND $segCase IN ($allSegmentKeysIn)
         GROUP BY oi.creator_id
@@ -453,7 +456,7 @@ try {
         WHERE oi.creator_id IN ($idPh)
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
-          AND (o.order_status = 'Returned' OR ob.status = 'RETURNED')
+          AND (o.order_status = 'Returned' OR ob.status = 'RETURNED' OR ob.status = 'CANCELLED')
           AND $liveItem
         GROUP BY oi.creator_id
     ";
@@ -623,6 +626,7 @@ try {
           AND o.company_id = ?
           AND o.order_date >= ? AND o.order_date < ?
           AND o.order_status NOT IN ($deadPh)
+            AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))
           AND $liveItem
     ";
     $stmt = $pdo->prepare($sqlPrev);

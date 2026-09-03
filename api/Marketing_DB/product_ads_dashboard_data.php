@@ -172,16 +172,16 @@ try {
     LEFT JOIN (
         SELECT 
             p.ads_group,
-            SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as total_sales,
-            SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.quantity ELSE 0 END) as total_qty,
-            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.parent_order_id END) as total_orders,
-            SUM(CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as new_customer_sales,
-            SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as reorder_customer_sales,
-            COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as new_customers,
-            COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as reorder_customers,
-            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as total_customers,
-            SUM(CASE WHEN o.order_status = 'Cancelled' THEN oi.net_total ELSE 0 END) as cancelled_sales,
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN oi.parent_order_id END) as cancelled_orders
+            SUM(CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.net_total ELSE 0 END) as total_sales,
+            SUM(CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.quantity ELSE 0 END) as total_qty,
+            COUNT(DISTINCT CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.parent_order_id END) as total_orders,
+            SUM(CASE WHEN o.customer_type = 'New Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.net_total ELSE 0 END) as new_customer_sales,
+            SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.net_total ELSE 0 END) as reorder_customer_sales,
+            COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.customer_id END) as new_customers,
+            COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.customer_id END) as reorder_customers,
+            COUNT(DISTINCT CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.customer_id END) as total_customers,
+            SUM(CASE WHEN (o.order_status = 'Cancelled' OR ob.status = 'CANCELLED') THEN oi.net_total ELSE 0 END) as cancelled_sales,
+            COUNT(DISTINCT CASE WHEN (o.order_status = 'Cancelled' OR ob.status = 'CANCELLED') THEN oi.parent_order_id END) as cancelled_orders
         FROM order_items oi
         JOIN orders o ON oi.parent_order_id = o.id
         JOIN products p ON oi.product_id = p.id

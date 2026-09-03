@@ -126,7 +126,7 @@ try {
     // SUM(ob.cod_amount) พองเป็นจำนวนเท่าของรายการในบิล (เคสตีกลับ 4 กล่อง โชว์ 92,000 แทน 23,000)
     $boxCategoryExpr = "COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1))";
     $boxItemsSumSql = function ($categoryCondition) use ($boxCategoryExpr) {
-      return "COALESCE((SELECT SUM(oi.net_total) FROM order_items oi LEFT JOIN products pr ON oi.product_id = pr.id"
+      return "COALESCE((SELECT SUM(oi.net_total) FROM order_items oi LEFT JOIN products pr ON oi.product_id = pr.id LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id"
         . " WHERE oi.parent_order_id = o.id AND oi.box_number = ob.box_number"
         . " AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL"
         . " AND {$boxCategoryExpr} {$categoryCondition}), 0)";
@@ -220,22 +220,22 @@ try {
             SELECT 
                 o.sales_channel_page_id,
                 ads_dates.user_id,
-                SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as total_sales,
-                SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') AND COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) = 'ชีวภัณฑ์' THEN oi.net_total ELSE 0 END) as total_sales_bio,
-                SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') AND COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) LIKE '%ปุ๋ย%' THEN oi.net_total ELSE 0 END) as total_sales_fertilizer,
-                COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.id END) as total_orders,
-                COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.id END) as new_customer_orders,
-                COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.id END) as reorder_customer_orders,
-                SUM(CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as new_customer_sales,
-                SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as reorder_customer_sales,
-                COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as new_customers,
-                COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as reorder_customers,
-                COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as total_customers,
-                SUM(CASE WHEN o.order_status = 'Cancelled' THEN oi.net_total ELSE 0 END) as cancelled_sales,
-                COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN o.id END) as cancelled_orders
+                SUM(CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.net_total ELSE 0 END) as total_sales,
+                SUM(CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) AND COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) = 'ชีวภัณฑ์' THEN oi.net_total ELSE 0 END) as total_sales_bio,
+                SUM(CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) AND COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) LIKE '%ปุ๋ย%' THEN oi.net_total ELSE 0 END) as total_sales_fertilizer,
+                COUNT(DISTINCT CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.id END) as total_orders,
+                COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.id END) as new_customer_orders,
+                COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.id END) as reorder_customer_orders,
+                SUM(CASE WHEN o.customer_type = 'New Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.net_total ELSE 0 END) as new_customer_sales,
+                SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.net_total ELSE 0 END) as reorder_customer_sales,
+                COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.customer_id END) as new_customers,
+                COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.customer_id END) as reorder_customers,
+                COUNT(DISTINCT CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.customer_id END) as total_customers,
+                SUM(CASE WHEN (o.order_status = 'Cancelled' OR ob.status = 'CANCELLED') THEN oi.net_total ELSE 0 END) as cancelled_sales,
+                COUNT(DISTINCT CASE WHEN (o.order_status = 'Cancelled' OR ob.status = 'CANCELLED') THEN o.id END) as cancelled_orders
             FROM orders o
             JOIN order_items oi ON o.id = oi.parent_order_id AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL
-            LEFT JOIN products pr ON oi.product_id = pr.id
+            LEFT JOIN products pr ON oi.product_id = pr.id LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             INNER JOIN (
                 SELECT DISTINCT page_id, user_id, date
                 FROM marketing_ads_log
@@ -317,22 +317,22 @@ try {
         INNER JOIN (
             SELECT 
                 o.sales_channel_page_id,
-                SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as total_sales,
-                SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') AND COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) = 'ชีวภัณฑ์' THEN oi.net_total ELSE 0 END) as total_sales_bio,
-                SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') AND COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) LIKE '%ปุ๋ย%' THEN oi.net_total ELSE 0 END) as total_sales_fertilizer,
-                COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.id END) as total_orders,
-                COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.id END) as new_customer_orders,
-                COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.id END) as reorder_customer_orders,
-                SUM(CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as new_customer_sales,
-                SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN oi.net_total ELSE 0 END) as reorder_customer_sales,
-                COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as new_customers,
-                COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as reorder_customers,
-                COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.customer_id END) as total_customers,
-                SUM(CASE WHEN o.order_status = 'Cancelled' THEN oi.net_total ELSE 0 END) as cancelled_sales,
-                COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN o.id END) as cancelled_orders
+                SUM(CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.net_total ELSE 0 END) as total_sales,
+                SUM(CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) AND COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) = 'ชีวภัณฑ์' THEN oi.net_total ELSE 0 END) as total_sales_bio,
+                SUM(CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) AND COALESCE(pr.category, (SELECT pr2.category FROM order_items oi2 JOIN products pr2 ON oi2.product_id = pr2.id WHERE oi2.parent_item_id = oi.id LIMIT 1)) LIKE '%ปุ๋ย%' THEN oi.net_total ELSE 0 END) as total_sales_fertilizer,
+                COUNT(DISTINCT CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.id END) as total_orders,
+                COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.id END) as new_customer_orders,
+                COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.id END) as reorder_customer_orders,
+                SUM(CASE WHEN o.customer_type = 'New Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.net_total ELSE 0 END) as new_customer_sales,
+                SUM(CASE WHEN o.customer_type = 'Reorder Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN oi.net_total ELSE 0 END) as reorder_customer_sales,
+                COUNT(DISTINCT CASE WHEN o.customer_type = 'New Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.customer_id END) as new_customers,
+                COUNT(DISTINCT CASE WHEN o.customer_type = 'Reorder Customer' AND (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.customer_id END) as reorder_customers,
+                COUNT(DISTINCT CASE WHEN (o.order_status NOT IN ('Cancelled', 'Returned') AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))) THEN o.customer_id END) as total_customers,
+                SUM(CASE WHEN (o.order_status = 'Cancelled' OR ob.status = 'CANCELLED') THEN oi.net_total ELSE 0 END) as cancelled_sales,
+                COUNT(DISTINCT CASE WHEN (o.order_status = 'Cancelled' OR ob.status = 'CANCELLED') THEN o.id END) as cancelled_orders
             FROM orders o
             JOIN order_items oi ON o.id = oi.parent_order_id AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL) AND oi.parent_item_id IS NULL
-            LEFT JOIN products pr ON oi.product_id = pr.id
+            LEFT JOIN products pr ON oi.product_id = pr.id LEFT JOIN order_boxes ob ON ob.sub_order_id = oi.order_id
             WHERE $orderWhereClause
             AND NOT EXISTS (
                 SELECT 1 FROM marketing_ads_log mal

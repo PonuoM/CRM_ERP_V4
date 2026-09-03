@@ -322,7 +322,7 @@ try {
             SELECT 
                 COALESCE(SUM(CASE WHEN ob.status = 'RETURNED' 
                     THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as returnedRevenue,
-                COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' 
+                COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' OR ob.status = 'CANCELLED' 
                     THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as cancelledRevenue
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id
@@ -343,7 +343,7 @@ try {
             SELECT 
                 COALESCE(SUM(CASE WHEN ob.status = 'RETURNED' 
                     THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as returnedRevenue,
-                COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' 
+                COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' OR ob.status = 'CANCELLED' 
                     THEN COALESCE(oi.net_total, oi.quantity * oi.price_per_unit) ELSE 0 END), 0) as cancelledRevenue
             FROM order_items oi
             JOIN orders o ON oi.parent_order_id = o.id

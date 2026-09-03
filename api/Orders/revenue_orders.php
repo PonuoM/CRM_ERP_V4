@@ -89,7 +89,7 @@ try {
             LEFT JOIN customers c ON o.customer_id = c.customer_id AND c.company_id = o.company_id
             WHERE o.company_id = ?
             $dateFilter
-            AND o.order_status = 'Cancelled'
+            AND (o.order_status = 'Cancelled' OR ob.status = 'CANCELLED')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.parent_item_id IS NULL
             $userFilter
@@ -118,6 +118,7 @@ try {
             WHERE o.company_id = ?
             AND YEAR(o.order_date) = ? AND MONTH(o.order_date) = ?
             AND o.order_status IN ($placeholders)
+              AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.parent_item_id IS NULL
         ";
@@ -153,6 +154,7 @@ try {
             $dateFilter
             AND oi.basket_key_at_sale = 51
             AND o.order_status NOT IN ('Cancelled', 'BadDebt')
+              AND (ob.status IS NULL OR (ob.status != 'RETURNED' AND ob.status != 'CANCELLED'))
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND oi.parent_item_id IS NULL
             $userFilter
