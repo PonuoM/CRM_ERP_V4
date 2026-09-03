@@ -152,6 +152,9 @@ export const mapOrderBoxesFromApi = (raw: any, trackingDetails: any[]): CodBox[]
             waivedAmount,
             paymentMethod: paymentMethodRaw ? fromApiPaymentMethod(paymentMethodRaw) : undefined,
             trackingNumber: trackingForBox?.trackingNumber,
+            status: b.status,
+            returnStatus: b.return_status ?? b.returnStatus,
+            returnNote: b.return_note ?? b.returnNote,
         };
     });
 };

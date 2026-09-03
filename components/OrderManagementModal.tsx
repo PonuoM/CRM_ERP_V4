@@ -4844,7 +4844,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         </th>
 
                         <th className="px-3 py-2 text-left font-semibold">
-                          สถานะตีกลับ
+                          ตรวจรับเข้าคลัง (QC)
                         </th>
                       </tr>
                     </thead>
@@ -4897,7 +4897,19 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           <tr key={`box-${idx}`} className={rowBg}>
                             <td className="px-3 py-2 font-medium text-gray-800">
                               <div className="flex flex-col leading-tight">
-                                <span>กล่อง {box.boxNumber}</span>
+                                <div className="flex items-center gap-2">
+                                  <span>กล่อง {box.boxNumber}</span>
+                                  {box.status && box.status.toUpperCase() !== 'PENDING' && (
+                                    <span className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                                      box.status.toUpperCase() === 'DELIVERED' ? 'bg-green-50 text-green-700 border-green-200' :
+                                      box.status.toUpperCase() === 'RETURNED' ? 'bg-red-50 text-red-700 border-red-200' :
+                                      box.status.toUpperCase() === 'CANCELLED' ? 'bg-gray-100 text-gray-600 border-gray-200' :
+                                      'bg-blue-50 text-blue-700 border-blue-200'
+                                    }`}>
+                                      {box.status}
+                                    </span>
+                                  )}
+                                </div>
 
                                 {showInputs && !isLocked && permission === "manager" ? (
                                   <div className="flex flex-wrap gap-1 mt-1">
@@ -5052,7 +5064,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                   }
                                   className="w-full text-left border border-gray-200 rounded px-2 py-1 text-sm bg-white"
                                 >
-                                  <option value="">ยกเลิกตีกลับ / จัดส่งสำเร็จ</option>
+                                  <option value="">- (ปกติ / ไม่ตีกลับ)</option>
                                   <option value="good">สภาพดี (Good)</option>
                                   <option value="returned">เข้าคลัง (Returned)</option>
                                   <option value="damaged">ชำรุด (Damaged)</option>
